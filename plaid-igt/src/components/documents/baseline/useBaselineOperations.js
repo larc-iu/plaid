@@ -6,6 +6,7 @@ import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { countTextDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { countOf } from '@ui/lib/plural.js';
 import { isTokenIgnored, readIgnoredTokens } from '@/domain/igtConfig';
 
 // Baseline tab operations, backed by the shared IgtDocument. The box keeps
@@ -51,13 +52,22 @@ export function removedStretches(base, gaps) {
 }
 
 // What a save that takes away `ranges` deletes, as a sentence for its
-// question, or '' when it deletes nothing: the shared loss counter's count of
-// every token wholly inside a removed stretch and what hangs off it.
+// question: the words wholly inside a removed stretch (never a token the
+// ignored-tokens rule excludes, which reads as text), and the shared loss
+// counter's count of what hangs off every token that goes.
 function baselineLossSentence(doc, ranges) {
   const loss = countTextDeleteLoss(doc.layerInfo?.primaryTextLayer?.tokenLayers || [], ranges, {
     vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
   });
-  const gone = lossPhrase(loss);
+  const layer = doc.layerInfo?.primaryTokenLayer;
+  const cfg = readIgnoredTokens(layer?.config);
+  const body = Array.from(doc.body || '');
+  const words = (layer?.tokens || []).filter(
+    (t) =>
+      ranges.some(([b, e]) => b <= t.begin && t.end <= e) &&
+      !isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg),
+  ).length;
+  const gone = [words && countOf(words, 'word'), lossPhrase(loss)].filter(Boolean).join(' and ');
   const cut = lossPhrase(loss.shortened);
   return [gone && `Deletes ${gone}.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
 }
@@ -141,9 +151,7 @@ export const useBaselineOperations = () => {
       removed.length > 0 &&
       !(await confirm({
         title: 'Save baseline changes?',
-        description:
-          baselineLossSentence(doc, removed) ||
-          'Deletes or shortens words in the changed or removed text.',
+        description: baselineLossSentence(doc, removed) || 'Changes the words in the removed text.',
         confirmLabel: 'Save anyway',
         destructive: true,
       }))

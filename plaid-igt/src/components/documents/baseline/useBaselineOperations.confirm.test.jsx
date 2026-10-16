@@ -134,7 +134,7 @@ describe('useBaselineOperations, the counts in the confirm', () => {
       [{ id: 's1', tokens: ['w2'], value: 'DOG' }],
     );
     const h = await save(doc, (h) => change(h, 3, 7, 'The ran.', 3));
-    expect(question()).toContain('Deletes 1 annotation.');
+    expect(question()).toContain('Deletes 1 word and 1 annotation.');
     await h.unmount();
   });
 
