@@ -299,7 +299,15 @@
                                 :document nil
                                 :description (str "Create user " id)
                                 :user acting-user-id}]
-                        (insert-user-row! tx id is-admin password display-name)))))
+                        (let [created (insert-user-row! tx id is-admin password display-name)]
+                          ;; The first admin is created by no one. Once the
+                          ;; account exists the operation is put down to it, so
+                          ;; a new server's activity names a person and not an
+                          ;; operation older than accounts.
+                          (when (nil? acting-user-id)
+                            (psc/execute! tx {:update :operations :set {:user_id created}
+                                              :where [:= :id (:id psaw/*op*)]}))
+                          created)))))
 
 (defn- count-other-admins
   "Count global admins OTHER than `eid`. Used to enforce the

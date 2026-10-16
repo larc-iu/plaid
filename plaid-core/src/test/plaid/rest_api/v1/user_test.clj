@@ -451,3 +451,16 @@
       (is (not (clojure.string/includes? all stored)))
       (is (clojure.string/includes? all "password_changes")
           "the rest of the row is still recorded"))))
+
+(deftest the-first-admin-is-put-down-as-creating-their-own-account
+  ;; Created at startup by no one, the first admin's account would read in a
+  ;; new server's activity as an operation older than accounts.
+  (is (:success (user/create db "first@b.com" true "first-pass" nil)))
+  (is (= "first@b.com"
+         (:user_id (plaid.sql.common/q1 db {:select [:user_id] :from [:operations]
+                                            :where [:= :description "Create user first@b.com"]}))))
+  (testing "an account an admin creates stays theirs"
+    (is (:success (user/create db "second@b.com" false "second-pass" "first@b.com")))
+    (is (= "first@b.com"
+           (:user_id (plaid.sql.common/q1 db {:select [:user_id] :from [:operations]
+                                              :where [:= :description "Create user second@b.com"]}))))))
