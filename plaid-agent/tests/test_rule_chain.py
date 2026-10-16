@@ -160,3 +160,14 @@ def test_a_quoted_document_name_is_read_as_the_name():
     for name in ('"Text 1"', '“Text 1”'):
         assert w.resolve_document_id(name) == 'd1'
     assert not call_tool(w, 'read_document', {'document': '"Text 2"'}).startswith('Error')
+
+
+def test_a_quoted_label_is_the_document_it_quotes_not_one_whose_name_holds_the_quotes():
+    # REV5-AGENT-6: reads print Cuento as "Cuento", and "Cuento" as ""Cuento"".
+    _client, w = _ws({'sp-g1': 'Ali'})
+    w._doc_list = [{'id': 'q', 'name': '"Cuento"'}, {'id': 'c', 'name': 'Cuento'}, {'id': 'm', 'name': "'Mito'"}]
+    for given, want in (('Cuento', 'c'), ('"Cuento"', 'c'), ('“Cuento”', 'c'), ('"cuento"', 'c'),
+                        ('""Cuento""', 'q'), ('"“Cuento”"', 'q'), ("'Mito'", 'm'), ("\"'Mito'\"", 'm')):
+        assert w.resolve_document_id(given) == want, given
+    w._doc_list = [{'id': 'q', 'name': '"Cuento"'}]
+    assert w.resolve_document_id('"Cuento"') == 'q'

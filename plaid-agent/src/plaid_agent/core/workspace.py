@@ -399,17 +399,21 @@ class BaseWorkspace:
             hit = next((d for d in docs if d['id'] == labelled.group(1)), None)
             if hit is not None:
                 return hit['id']
-        # As given, then without the quotes every read and refusal prints a
-        # name in ('"Cuento"', REV4-AGENT-6).
-        for name in [document] + ([document[1:-1].strip()] if _quoted(document) else []):
-            by_name = [d for d in docs if (d.get('name') or '').lower() == name.lower()]
-            # Then as the names would be typed: a model wrote "children's" for a
-            # name with ’ and "COMPLETE:Pear_Story_01" for "COMPLETE: Pear_Story_01"
-            # and was refused eight times (2026-10-12 survey).
-            for key in (name_key, loose_name_key):
+        # Without the quotes every read and refusal prints a name in first,
+        # then as given ('"Cuento"', REV4-AGENT-6): a quoted label is the
+        # document whose name it quotes, never one whose name holds the
+        # quotes while another matches it exactly (REV5-AGENT-6).
+        names = ([document[1:-1].strip()] if _quoted(document) else []) + [document]
+        by_name: List[dict] = []
+        # Exactly, then as the names would be typed: a model wrote
+        # "children's" for a name with ’ and "COMPLETE:Pear_Story_01" for
+        # "COMPLETE: Pear_Story_01" and was refused eight times (2026-10-12
+        # survey).
+        for key in (str.lower, name_key, loose_name_key):
+            for name in names:
+                by_name = [d for d in docs if key(d.get('name') or '') == key(name)]
                 if by_name:
                     break
-                by_name = [d for d in docs if key(d.get('name') or '') == key(name)]
             if by_name:
                 break
         if len(by_name) == 1:
