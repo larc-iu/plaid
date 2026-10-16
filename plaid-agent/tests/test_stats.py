@@ -303,9 +303,12 @@ def test_second_op_on_the_same_target_replaces_the_first():
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'X'})
     assert '1 earlier planned change on the same target superseded' in out
     assert len(w.ops) == 1 and w.ops[0]['value'] == 'X' and w.ops[0]['span_id'] == 'sp-g1'
-    # replace_in_field composes with the planned value rather than the stored one
+    # replace_in_field composes with the planned value rather than the stored
+    # one, and stays in the plan, so dropping it takes the rewrite back
     call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'X', 'replacement': 'Y'})
-    assert len(w.ops) == 1 and w.ops[0]['value'] == 'Y'
+    assert [(o['kind'], o.get('value')) for o in w.ops] == [('set_span', 'Y'), ('bulk_scope', None)]
+    call_tool(w, 'drop_planned', {'indexes': [2]})
+    assert len(w.ops) == 1 and w.ops[0]['value'] == 'X'
     # two analyses of one word: one op
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'gam'}, {'form': 'ar'}]})
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'gamar'}]})

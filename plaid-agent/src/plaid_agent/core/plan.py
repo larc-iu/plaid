@@ -31,7 +31,7 @@ from plaid_client.http import minted_taken
 from plaid_client.ids import drawn_uuid7
 from plaid_client.service import locked_for_writes
 
-from .keep import is_keep
+from .keep import is_keep, kept_value
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (confirmed_inferred, contribute_on_edit, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
@@ -97,7 +97,7 @@ def held_changes(ws) -> int:
 
 def kept_values(ops: List[Dict[str, Any]]) -> int:
     """How many of ``ops`` keep a value out of a corpus-wide change."""
-    return sum(1 for op in ops if is_keep(op))
+    return sum(1 for op in ops if kept_value(op))
 
 
 def _n(n: int, one: str, many: str) -> str:

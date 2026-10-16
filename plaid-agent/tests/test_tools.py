@@ -81,7 +81,7 @@ def test_set_field_plans_create_update_clear_and_respects_scope():
     out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2'], 'field': 'Gloss', 'value': 'X'})
     assert out.startswith('Planned 2 changes')
     assert w.ops[0] == {'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-1', 'span_id': 'sp-g1', 'value': 'X',
-                        'label': 'Text 1 s1.w1 "Ali-di": Gloss "Ali" → "X"', 'change_at': 23}
+                        'label': 'Text 1 s1.w1 "Ali-di": Gloss "Ali" → "X"', 'change_at': 23, 'seq': 1}
     assert w.ops[1]['span_id'] is None and w.ops[1]['token_id'] == 'w-2'
     # back to the stored value: the planned change is taken back, nothing restates it (REV-AGENT2-4)
     assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith(
@@ -127,7 +127,7 @@ def test_orthography_respell_links_entries():
     call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w1', 's1.w2'], 'orthography': 'ipa', 'value': 'alidi'})
     assert len(w.ops) == 1 and w.ops[0] == {'kind': 'set_orthography', 'word_id': 'w-2', 'key': 'orthog:IPA',
                                             'value': 'alidi', 'label': 'Text 1 s1.w2 "gam": IPA = "alidi"',
-                                            'change_at': 20}
+                                            'change_at': 20, 'seq': 1}
     assert 'No orthography named "Cyr"' in call_tool(w, 'set_orthography', {'document': 'd1', 'refs': 's1.w1', 'orthography': 'Cyr', 'value': 'x'})
     call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w3', 'new_text': 'akun'})
     assert w.ops[-1] == {'kind': 'respell', 'text_id': 'text1', 'begin': 11, 'end': 16, 'value': 'akun', 'doc': 'd1',

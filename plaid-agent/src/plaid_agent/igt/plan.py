@@ -1387,10 +1387,13 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Option
                                 lambda d: res.ws.corpus.doc_name(d), lambda d: _doc_name(res.ws, d))
     # A value two rules change is written once, by the later one, as staging
     # counted it (`bulk.settle_rules`).
-    from .bulk import later_rule_wins
+    # A value the rules set back to what is stored is no change, never
+    # written or restamped (`bulk.writes_stored`).
+    from .bulk import later_rule_wins, writes_stored
     rows = {op[ok.ROW] for op in ops if rules.is_rule(op) and ok.ROW in op}
     return ok.resolve_ops(KIND, res, ops, keep, check=check,
-                          final=lambda out: later_rule_wins(out, rows, ok.ROW)), notes
+                          final=lambda out: later_rule_wins(out, rows, ok.ROW,
+                                                            lambda o: writes_stored(res.ws, o))), notes
 
 
 def rule_keep(ws, ops: List[Dict[str, Any]], notes: Optional[List[str]] = None):

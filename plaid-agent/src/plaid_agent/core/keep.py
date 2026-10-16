@@ -17,6 +17,10 @@ since a stored plan comes back from JSON:
 
 ``kept``         what :attr:`OpKind.target` reads.
 ``kept_entity``  what the app's own beat-the-scope key reads, when it has one.
+``asked``        on a keep that stands for a change the model named, which
+                 the plan's rules then set back to the value stored: that
+                 change, as asked. The model kept nothing, so it is not
+                 counted as a kept value (:func:`kept_value`).
 
 A keep is not a change: it counts as none on the card's total, the plan's
 summary and the applied message, and its card row names what stays.
@@ -33,6 +37,16 @@ NOUN = ('kept value', 'kept values')
 
 def is_keep(op: Any) -> bool:
     return isinstance(op, dict) and op.get('kind') == KEEP
+
+
+#: See the module's key list.
+ASKED = 'asked'
+
+
+def kept_value(op: Any) -> bool:
+    """Whether ``op`` is a value the model kept out of a corpus-wide change:
+    a keep that stands for no named change."""
+    return is_keep(op) and not op.get(ASKED)
 
 
 def target(op: Dict[str, Any]) -> Optional[tuple]:

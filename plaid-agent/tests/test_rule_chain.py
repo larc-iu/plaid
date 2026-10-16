@@ -75,3 +75,70 @@ def test_a_later_rule_left_finding_nothing_by_a_drop_goes_and_is_said():
     out = call_tool(w, 'drop_planned', {'indexes': [1]})
     assert '1 later corpus-wide change that now finds nothing to change went with it.' in out, out
     assert w.ops == []
+
+
+# --- FX-E-AGENT (REV4-AGENT): a value that ends as stored is no change ---------------
+
+
+def test_rules_that_end_on_the_stored_value_count_and_write_nothing():
+    # "Ali" → "Bob", then "Bob" → "Ali": nothing changes (REV4-AGENT-1).
+    client, w = _ws({'sp-g1': 'Ali', 'sp-x2': 'Ali'})
+    _replace(w, 'Ali', 'Bob', whole=True)
+    out = _replace(w, 'Bob', 'Ali', whole=True)
+    assert out.startswith('Planned 0 values in 0 documents'), out
+    assert '2 values it matches go back to what is stored, so approval writes nothing there.' in out, out
+    payload = w.plan_payload()
+    assert plan_changes(payload['ops']) == 0
+    assert [r['rule']['total'] for r in payload['changes']] == [0, 0]
+    assert call_tool(w, 'plan_status', {}).startswith('0 planned changes in 2 numbered entries')
+    assert _approve(client, w) == {}
+
+
+def test_a_named_change_a_rule_sets_back_to_the_stored_value_is_kept_and_comes_back_when_the_rule_goes():
+    client, w = _ws({'sp-g1': 'Ali', 'sp-x2': 'Bob'})
+    _set(w, 's1.w1', 'Bob')
+    out = _replace(w, 'Bob', 'Ali', whole=True)
+    assert ('1 planned change rewritten by this one back to the value stored: approval leaves it as it is.'
+            in out), out
+    assert w.ops[0]['kind'] == 'keep' and w.ops[0]['label'].endswith('Gloss stays "Ali"')
+    assert plan_changes(w.plan_payload()['ops']) == 1
+    assert _approve(client, w) == {'sp-x2': 'Ali'}
+    # Dropped, the rule takes its rewrite with it (REV4-AGENT-2).
+    client, w = _ws({'sp-g1': 'Ali', 'sp-x2': 'Bob'})
+    _set(w, 's1.w1', 'Bob')
+    _replace(w, 'Bob', 'Ali', whole=True)
+    out = call_tool(w, 'drop_planned', {'indexes': [2]})
+    assert out.startswith('Dropped 1 planned change.') and 'Gloss "Ali" → "Bob"' in out, out
+    assert _approve(client, w) == {'sp-g1': 'Bob'}
+
+
+def test_dropping_a_rule_takes_back_its_rewrite_of_a_named_change():
+    client, w = _ws({'sp-g1': 'Ali', 'sp-x2': 'Bob'})
+    _set(w, 's1.w1', 'Bob')
+    out = _replace(w, 'Bob', 'Zed', whole=True)
+    assert '1 planned change rewritten by this one.' in out, out
+    assert w.ops[0]['value'] == 'Zed'
+    call_tool(w, 'drop_planned', {'indexes': [2]})
+    assert w.ops[0]['value'] == 'Bob' and 'asked' not in w.ops[0]
+    assert _approve(client, w) == {'sp-g1': 'Bob'}
+    # A value named after the rule is never rewritten by it, even named again
+    # in the earlier one's place.
+    client, w = _ws({'sp-g1': 'Ali', 'sp-x2': 'Bob'})
+    _set(w, 's1.w1', 'Bob')
+    _replace(w, 'Bob', 'Zed', whole=True)
+    _set(w, 's1.w1', 'Bob')
+    assert w.ops[0]['value'] == 'Bob'
+    assert _approve(client, w) == {'sp-g1': 'Bob', 'sp-x2': 'Zed'}
+
+
+def test_a_rule_asked_again_applies_last():
+    # REV4-AGENT-4: the last thing asked was "Bob" → "Cy".
+    client, w = _ws({'sp-g1': 'Ali', 'sp-x2': 'Bob'})
+    for p, r in [('Ali', 'Bob'), ('Bob', 'Cy'), ('Cy', 'Bob')]:
+        _replace(w, p, r, whole=True)
+    out = _replace(w, 'Bob', 'Cy', whole=True)
+    assert out.startswith('Planned 2 values'), out
+    assert ('It was planned already as entry 2: that copy is gone, and this one applies after the changes planned '
+            'since.') in out, out
+    assert [op['args']['pattern'] for op in w.ops] == ['Ali', 'Cy', 'Bob']
+    assert _approve(client, w) == {'sp-g1': 'Cy', 'sp-x2': 'Cy'}

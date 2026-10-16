@@ -167,7 +167,8 @@ def same_ops(proj, tool, args):
     Returns the workspace."""
     b = workspace(proj)
     out = fixture_ids(proj, call_tool(b, tool, args))
-    planned = fixture_ids(proj, [{k: v for k, v in op.items() if k != 'doc'} for op in b.ops])
+    # When each op was staged (igt.bulk.SEQ) is the plan's own bookkeeping.
+    planned = fixture_ids(proj, [{k: v for k, v in op.items() if k not in ('doc', 'seq')} for op in b.ops])
     want = expected(proj, tool, args, {'answer': out, 'ops': comparable(planned)})
     assert comparable(planned) == comparable(want['ops']), \
         f'{tool} {args}\n--- expected ---\n{want["ops"]}\n--- planned ---\n{planned}'

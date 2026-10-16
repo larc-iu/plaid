@@ -824,6 +824,11 @@ class Workspace(BaseWorkspace):
     def add_op(self, op: Dict[str, Any]) -> None:
         self.place_virtual(op)
         self.place_morph_type(op)
+        # When it was staged, among the named values and rules: a rule
+        # rewrites a value named before it, never one named after it.
+        from .bulk import SEQ, next_seq, sequenced
+        if sequenced(op) and SEQ not in op:
+            op[SEQ] = next_seq(self.ops)
         with self.superseding([op]):
             super().add_op(op)
             # A new analysis of a word (or a discard of it) replaces the one a
@@ -963,8 +968,12 @@ class Workspace(BaseWorkspace):
         self.new_entries.clear()
 
     def keep_holds(self, op: Dict[str, Any]) -> bool:
-        from .bulk import rule_taking
+        # A named change a rule set back to what is stored stays while that
+        # rule does: dropped, the change comes back (bulk.settle_named).
+        from .bulk import ASKED, rule_taking
         from ..core.keep import target
+        if op.get(ASKED):
+            return True
         t = target(op)
         return t is not None and rule_taking(self, t) is not None
 
@@ -977,6 +986,16 @@ class Workspace(BaseWorkspace):
         for k in keys:
             self.new_entries.pop(k, None)
         self.ops[:] = [op for op in self.ops if not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
+        # A dropped rule takes back what it changed in planned analyses, where
+        # nothing changed them since (bulk.UNDO).
+        from .bulk import UNDO
+        undone = 0
+        for op in dropped:
+            for was, now in op.get(UNDO) or []:
+                at = next((i for i, o in enumerate(self.ops) if o == now), None)
+                if at is not None:
+                    self.ops[at] = was
+                    undone += 1
         # A dropped analysis takes the links to its morphemes along: they have
         # nothing to be written on.
         before = self.unlinked
@@ -989,6 +1008,8 @@ class Workspace(BaseWorkspace):
         from .bulk import sync_rules
         emptied = sync_rules(self, drop_empty=any(rules.is_rule(op) for op in dropped))
         return ((' Links to the dropped new entries were dropped with them.' if keys else '')
+                + (f' The values it set in {undone} planned analys{"is" if undone == 1 else "es"} '
+                   'were taken back.' if undone else '')
                 + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '')
                 + (f' {emptied} later corpus-wide change{"s" if emptied != 1 else ""} that '
                    f'{"now find" if emptied != 1 else "now finds"} nothing to change went with it.'
@@ -1049,6 +1070,12 @@ class Workspace(BaseWorkspace):
         # kilobyte per word stored, and the record could not hold one.
         # Each merge as it will run: less the links another change takes.
         ops = self.mark_replaced_work(copy.deepcopy(settle_merges(self.ops)[0]))
+        # How the plan's named values and rules were staged is the plan's own
+        # bookkeeping (bulk.SEQ, ASKED, UNDO): approval reads none of it.
+        from .bulk import ASKED, SEQ, UNDO
+        for op in ops:
+            for k in (SEQ, ASKED, UNDO):
+                op.pop(k, None)
         spec = compact_spec(self)
         # An op the scan path staged names no document; the group it joins
         # must, so the card can place it and the label can head it.

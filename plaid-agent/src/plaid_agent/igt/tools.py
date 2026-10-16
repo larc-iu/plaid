@@ -103,8 +103,11 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                     # empty fields would write it (REV2-AGENT-1).
                     from .bulk import rule_taking
                     shown = qv(val) if val else 'empty'
+                    # A keep a rule left of a named change (bulk.ASKED) is
+                    # that change: named now, it is kept for good.
+                    from .bulk import ASKED
                     if rule_taking(ws, target) is not None:
-                        if not any(is_keep(op) for op in mine):
+                        if not any(is_keep(op) and not op.get(ASKED) for op in mine):
                             lab = labelled(f'{ws.doc_label(doc.id)} {ref} {qv(what[:40])}', f'{f.name} stays {shown}')
                             staged.append(keep.op(target, lab['label'], change_at=lab['change_at'],
                                                   layer_id=f.layer_id, token_id=obj.id))
@@ -115,10 +118,11 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                         dropped += mine
                         # A keep left with nothing to keep the value out of
                         # goes quietly: it planned nothing to take back.
-                        if any(not is_keep(op) for op in mine):
+                        if any(not is_keep(op) or op.get(ASKED) for op in mine):
                             took.append(f'{f.name} on {ref}')
                     continue
-                if any(op.get('kind') == 'set_span' and (op.get('value') or '') == val for op in mine):
+                if any(op.get('kind') == 'set_span' and (op.get('value') or '') == val and not op.get('asked')
+                       for op in mine):
                     continue
                 staged.append(span_op(ws, doc, ref, what, f, obj.id, old, val))
         ws.add_ops(staged)

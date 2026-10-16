@@ -8,9 +8,10 @@ to the plan, and as approval finds them.
 
 The oracle: random plans of chained rules, keeps, named changes and drops,
 staged in random order on a private core and approved through the service.
-What approval writes is computed from the final plan's ops alone, and the
-card's count, plan_status, the applied count and the values read back after
-approval must all equal it. Approval never refuses: nobody else touched the
+What approval writes is computed from the final plan's ops alone, as the
+values that end other than stored, and the card's count, plan_status, the
+applied count and the values read back after approval must all equal it.
+A value approval leaves as stored keeps its provenance. Approval never refuses: nobody else touched the
 project. ``RULE_ORACLE_CASES`` sets how many plans (12 by default, 300 for
 the sweep in the fix report).
 """
@@ -36,8 +37,8 @@ from plaid_agent.igt.workspace import Workspace
 VALUES = ['Ali', 'Bob', 'Cy', 'Dan']
 REFS = ['s1.w1', 's1.w2', 's1.w3', 's2.w1']
 # (pattern, replacement, whole): whole values, and pieces of one.
-RULES = [(a, b, True) for a in VALUES for b in VALUES if a != b] + [('li', 'LI', False), ('y', 'ie', False),
-                                                                    ('o', 'oo', False)]
+RULES = [(a, b, True) for a in VALUES for b in VALUES if a != b] + [
+    (a, b, False) for a, b in [('li', 'LI'), ('LI', 'li'), ('y', 'ie'), ('ie', 'y'), ('o', 'oo'), ('oo', 'o')]]
 
 
 def _doc(values):
@@ -57,7 +58,9 @@ def _rep(pattern, replacement, whole):
 
 def oracle(ops, stored):
     """What approval writes, by token id, from the plan's ops and the stored
-    values alone."""
+    values alone: the values that end other than they are stored. One the
+    rules or a named change bring back to its stored value is no change
+    (FX-E ruling a, REV4-AGENT-1)."""
     chain = [_rep(op['args']['pattern'], op['args'].get('replacement') or '', bool(op['args'].get('whole')))
              for op in ops if rules.is_rule(op)]
     kept = {op['kept'][2] for op in ops if is_keep(op)}
@@ -77,7 +80,7 @@ def oracle(ops, stored):
             out[tok] = v
     for tok, v in named.items():
         out.setdefault(tok, v)
-    return out
+    return {tok: v for tok, v in out.items() if v != stored.get(tok)}
 
 
 def _card_count(payload):
@@ -137,6 +140,7 @@ def run_case(c, seed_no):
         doc = ws.doc('Text 1')
         words = [w for sent in doc.sentences for w in sent.words]
         stored = {w.id: w.fields['Gloss'].value for w in words}
+        meta = {w.id: w.fields['Gloss'].metadata for w in words}
         steps = []
         for _ in range(rng.randint(2, 7)):
             name, args = _step(rng, ws)
@@ -158,6 +162,10 @@ def run_case(c, seed_no):
         got = {w.id: w.fields['Gloss'].value for sent in after.sentences for w in sent.words}
         expected = {**stored, **want}
         assert got == expected, f'stored after approval {got} != {expected}\n{where}'
+        # Nothing approval leaves as stored is written: its provenance stays.
+        restamped = {w.id for sent in after.sentences for w in sent.words
+                     if w.id not in want and w.fields['Gloss'].metadata != meta[w.id]}
+        assert not restamped, f'restamped {sorted(restamped)} with no change\n{where}'
         return 'ok'
     finally:
         s.delete()
