@@ -19,6 +19,8 @@ import { CHUNK } from '../../domain/bulk.js';
 import { importOtherLayerData, noOtherLayers } from './otherLayers.js';
 import { REFERENCE_KINDS } from './references.js';
 import { ImportCancelled } from '../resume.js';
+import { getIgtLayerInfo } from '../../domain/layerInfo.js';
+import { wantedConstraints } from '../../domain/igtConstraints.js';
 import {
   deriveSetupData,
   resolveNativeTargets,
@@ -106,6 +108,21 @@ function targetProject() {
       });
     });
   walk(p.textLayers);
+  return withSetupRules(p);
+}
+
+// The layer rules setup's step 9b leaves on igt's layers, read under the
+// project's config as it is then.
+function withSetupRules(p) {
+  const rules = new Map(
+    wantedConstraints(getIgtLayerInfo(p), p.config).map((w) => [w.layerId, w.constraints]),
+  );
+  for (const tl of p.textLayers.flatMap((t) => t.tokenLayers || [])) {
+    if (rules.has(tl.id)) tl.constraints = { igt: rules.get(tl.id) };
+    for (const sl of tl.spanLayers || []) {
+      if (rules.has(sl.id)) sl.constraints = { igt: rules.get(sl.id) };
+    }
+  }
   return p;
 }
 
@@ -135,6 +152,19 @@ function stubClient({
   });
   // Each call keeps what it answered, out of sight of toEqual, so a test can
   // follow an id from the call that made it to the calls that use it.
+  // Each span layer's config as written, so a later read of the project
+  // answers what the server would.
+  const spanConfigs = new Map();
+  const withSpanConfigs = (p) => {
+    for (const tl of p.textLayers.flatMap((t) => t.tokenLayers || [])) {
+      for (const sl of tl.spanLayers || []) {
+        for (const [ns, values] of Object.entries(spanConfigs.get(sl.id) || {})) {
+          sl.config = { ...sl.config, [ns]: { ...sl.config?.[ns], ...values } };
+        }
+      }
+    }
+    return p;
+  };
   const record = (name, args, result) => {
     if (failAt?.(name)) throw new Error(`${name} failed`);
     const entry = [name, ...args];
@@ -146,10 +176,14 @@ function stubClient({
     calls,
     projects: {
       get: async (id) =>
-        record('projects.get', [id], {
-          ...targetProject(),
-          ...(store ? { config: JSON.parse(JSON.stringify(store.config)) } : {}),
-        }),
+        record(
+          'projects.get',
+          [id],
+          withSpanConfigs({
+            ...targetProject(),
+            ...(store ? { config: JSON.parse(JSON.stringify(store.config)) } : {}),
+          }),
+        ),
       setConfig: async (...a) => {
         const [, ns, key, value] = a;
         record('projects.setConfig', a);
@@ -178,7 +212,12 @@ function stubClient({
     },
     spanLayers: {
       create: async (...a) => record('spanLayers.create', a, { id: fresh('sl') }),
-      setConfig: async (...a) => record('spanLayers.setConfig', a),
+      setConfig: async (...a) => {
+        const [id, ns, key, value] = a;
+        const held = spanConfigs.get(id) || {};
+        spanConfigs.set(id, { ...held, [ns]: { ...held[ns], [key]: value } });
+        return record('spanLayers.setConfig', a);
+      },
       ...ruleCalls('spanLayers'),
     },
     textLayers: {
@@ -308,6 +347,10 @@ function stubClient({
 }
 
 const callsOf = (client, name) => client.calls.filter(([n]) => n === name);
+// The last write of the import before the layer rules, which go on the
+// project once every document is in.
+const lastDocumentCall = (client) =>
+  client.calls.filter(([n]) => n !== 'projects.get' && !n.endsWith('Constraints')).at(-1);
 const argsOf = (client, name) => callsOf(client, name).map((c) => c.slice(1));
 
 // A vocab bulkCreate carries many entries in one call; flatten them back to
@@ -801,7 +844,7 @@ describe('runNativeImport (full archive)', () => {
   it('uploads media and marks the document done LAST', async () => {
     const { client } = await run();
     expect(callsOf(client, 'documents.uploadMedia')[0][2]).toBe('Doc One.wav');
-    const last = client.calls.at(-1);
+    const last = lastDocumentCall(client);
     expect(last[0]).toBe('documents.setMetadata');
     expect(last[2]).toMatchObject({ Source: 'notes', importDone: true });
   });
@@ -844,7 +887,7 @@ describe('runNativeImport (full archive)', () => {
     expect(result.warnings).toEqual([
       '"Doc One": Doc One.wav cannot be played in a browser (GSM 6.10 WAV). Not uploaded.',
     ]);
-    expect(client.calls.at(-1)[2]).toMatchObject({ importDone: true });
+    expect(lastDocumentCall(client)[2]).toMatchObject({ importDone: true });
   });
 
   it('writes autoAnalysis config from the schema', async () => {
@@ -2403,5 +2446,82 @@ describe('runNativeImport — "Tokenize new text"', () => {
       (a) => a[2] === 'tokenizeNewText',
     );
     expect(writes).toEqual([]);
+  });
+});
+
+// Setup runs before the archive's tagsets and each field's reference to one
+// are written, so it declares no closed list. The import does, at its end, as
+// setup's step 9b would on the finished project (REV2-WIRE-1).
+describe("runNativeImport, igt's own layer rules", () => {
+  const withTagset = (mode) => {
+    const archive = buildArchive();
+    const { schema } = archive.manifest;
+    schema.tagsets = {
+      Leipzig: { mode, delimiters: '.', values: [{ value: 'dog' }, { value: 'PL' }] },
+    };
+    schema.fields.morpheme = schema.fields.morpheme.map((f) =>
+      f.name === 'Gloss' ? { ...f, tagset: 'Leipzig' } : f,
+    );
+    return archive;
+  };
+  const leipzig = {
+    type: 'value-set',
+    values: ['dog', 'PL'],
+    delimiters: '.',
+    parts: 'all',
+  };
+
+  it("puts a closed tagset's list in force on its field once every document is in", async () => {
+    const client = stubClient({ store: makeStore() });
+    const result = await runNativeImport({
+      client,
+      projectId: 'newp',
+      archive: withTagset('closed'),
+    });
+    expect(result.warnings).toEqual([]);
+    expect(argsOf(client, 'spanLayers.setConstraints')).toEqual([
+      [
+        'new-slGloss',
+        'igt',
+        [{ type: 'single-span' }, leipzig],
+        undefined,
+        { expected: [{ type: 'single-span' }] },
+      ],
+    ]);
+    // Setup's rules on the other layers stand.
+    expect(callsOf(client, 'tokenLayers.setConstraints')).toEqual([]);
+    const names = client.calls.map(([n]) => n);
+    expect(names.indexOf('spanLayers.setConstraints')).toBeGreaterThan(
+      names.lastIndexOf('spans.bulkCreate'),
+    );
+  });
+
+  it('declares nothing for a tagset that is not closed', async () => {
+    const client = stubClient({ store: makeStore() });
+    const result = await runNativeImport({
+      client,
+      projectId: 'newp',
+      archive: withTagset('suggest'),
+    });
+    expect(result.warnings).toEqual([]);
+    expect(callsOf(client, 'spanLayers.setConstraints')).toEqual([]);
+  });
+
+  it('names a field whose stored values break the list, and imports the rest', async () => {
+    const client = stubClient({ store: makeStore() });
+    client.spanLayers.checkConstraints = async (id, rules) =>
+      rules.some((r) => r.type === 'value-set')
+        ? { violations: [{ constraint: 'value-set' }], violationCount: 2 }
+        : { violations: [], violationCount: 0 };
+    const result = await runNativeImport({
+      client,
+      projectId: 'newp',
+      archive: withTagset('closed'),
+    });
+    expect(result.imported).toBe(1);
+    expect(result.warnings).toEqual([
+      'The rules for "Gloss" are not in force (2 annotations break them)',
+    ]);
+    expect(callsOf(client, 'spanLayers.setConstraints')).toEqual([]);
   });
 });
