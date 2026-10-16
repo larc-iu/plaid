@@ -7,7 +7,7 @@ import { Loading } from '../shared/Loading.jsx';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
 import { countOf } from '../../lib/plural.js';
-import { atProjectCap, projectCandidates } from './projectReach.js';
+import { atProjectCap, projectCandidates, sameNameDetails } from './projectReach.js';
 
 // The other projects a conversation reads (see projectReach.js): one chip each
 // in the composer, and the button beside the paperclip that adds one.
@@ -39,13 +39,15 @@ export const ProjectChip = ({ project, onRemove, label = `Remove ${project.name}
 // above the field, and the list stays open for another pick. `max` counts the
 // home project, as the assistant advertises it. `opens(project)` says whether
 // the assistant can read a project (the adapter's `opensProject`), and only
-// those are offered.
+// those are offered. `language(project)` is the adapter's `projectLanguage`,
+// what tells two projects of one name apart.
 export const AddProject = ({
   client,
   homeId,
   joined,
   max,
   opens = null,
+  language = null,
   disabled = false,
   onPick,
 }) => {
@@ -80,16 +82,11 @@ export const AddProject = ({
     };
   }, [open, client]);
 
-  // Two projects with one name tell themselves apart by their document count
-  // (ruling 41, 2026-10-16).
-  const candidates = projectCandidates(projects, homeId, joined, opens);
-  const named = new Map();
-  for (const p of candidates) named.set(p.name, (named.get(p.name) || 0) + 1);
-  const options = candidates.map((p) => ({
-    value: p.id,
-    label: p.name,
-    detail: named.get(p.name) > 1 ? countOf(p.documentCount ?? 0, 'document') : null,
-  }));
+  // Two projects with one name tell themselves apart by their language, and
+  // by their document count where that is the same too (ruling 41).
+  const candidates = projectCandidates(projects, homeId, joined, opens, language);
+  const details = sameNameDetails(candidates, (n) => countOf(n, 'document'));
+  const options = candidates.map((p, i) => ({ value: p.id, label: p.name, detail: details[i] }));
 
   const pick = async (id, option) => {
     if (checking) return;

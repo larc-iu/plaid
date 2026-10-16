@@ -338,4 +338,29 @@ describe('AssistantComposer and other projects', () => {
     expect(onAddProject).toHaveBeenCalledWith({ id: 'pY', name: 'Lezgi' });
     await m.unmount();
   });
+
+  it('tells two projects of one name and one document count apart by their language', async () => {
+    const client = {
+      ...fakeClient(),
+      projects: {
+        ...fakeClient().projects,
+        list: vi.fn().mockResolvedValue([
+          { id: 'p1', name: 'Home' },
+          { id: 'pX', name: 'Stories', documentCount: 3, config: { lang: 'Lezgi' } },
+          { id: 'pY', name: 'Stories', documentCount: 3, config: { lang: 'Kalamang' } },
+        ]),
+      },
+    };
+    const m = await mount({
+      client,
+      onAddProject: vi.fn().mockResolvedValue(true),
+      maxProjects: 5,
+      projectLanguage: (p) => p.config?.lang || '',
+    });
+    await m.step(() => addButton(m).click());
+    await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const options = all(document.body, '[role="option"]').map((n) => n.textContent);
+    expect(options).toEqual(['Stories · Lezgi', 'Stories · Kalamang']);
+    await m.unmount();
+  });
 });

@@ -43,6 +43,9 @@ export const ADAPTER_MEMBERS = [
   // "Add project" offers only those.
   'opensProject',
 ];
+// Optional: `projectLanguage(project)`, the project's language as this app
+// names it ('' when unset), which "Add project" shows to tell two projects of
+// one name apart.
 // Optional: `rowText(row)`, what a plan row says beside its place, where the
 // default (`change`, else `label`) does not fit (PLAIN_ASSISTANT).
 // Optional: `writesFirst(plan)`, whether `writeFirst` writes this plan, so a

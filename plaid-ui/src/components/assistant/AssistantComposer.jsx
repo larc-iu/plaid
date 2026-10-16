@@ -71,6 +71,7 @@ export const AssistantComposer = ({
   maxProjects = null,
   // Whether the assistant can read a project: only those are offered.
   opensProject = null,
+  projectLanguage = null,
   onAddProject = null,
   onRemoveProject = null,
   onSend,
@@ -326,6 +327,7 @@ export const AssistantComposer = ({
             joined={projects}
             max={maxProjects}
             opens={opensProject}
+            language={projectLanguage}
             disabled={!canSend}
             onPick={onAddProject}
           />

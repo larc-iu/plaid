@@ -25,11 +25,37 @@ export const lastProjects = (display) => {
 // {id, name}. `opens(project)` is the app adapter's `opensProject`, which
 // says whether a project is set up for that app. A project that is not was
 // offered, and then reported as "could not be opened" with no reason.
-export const projectCandidates = (projects, homeId, joined = [], opens = null) => {
+export const projectCandidates = (projects, homeId, joined = [], opens = null, language = null) => {
   const taken = new Set([homeId, ...joined.map((p) => p.id)]);
   return (projects || [])
     .filter((p) => p?.id && !taken.has(p.id) && (!opens || opens(p)))
-    .map((p) => ({ id: p.id, name: p.name || p.id, documentCount: p.documentCount ?? 0 }));
+    .map((p) => ({
+      id: p.id,
+      name: p.name || p.id,
+      documentCount: p.documentCount ?? 0,
+      language: (language && language(p)) || '',
+    }));
+};
+
+// What a candidate's row says after its name, when another candidate has the
+// same name (ruling 41, 2026-10-16): its language, and its document count
+// when the language does not tell them apart either. Null for a name only
+// one candidate has. `count(n)` words the document count.
+export const sameNameDetails = (candidates, count) => {
+  const key = (p) => `${p.name}\u0000${p.language}`;
+  const names = new Map();
+  const langs = new Map();
+  for (const p of candidates) {
+    names.set(p.name, (names.get(p.name) || 0) + 1);
+    langs.set(key(p), (langs.get(key(p)) || 0) + 1);
+  }
+  return candidates.map((p) => {
+    if (names.get(p.name) < 2) return null;
+    const parts = [];
+    if (p.language) parts.push(p.language);
+    if (!p.language || langs.get(key(p)) > 1) parts.push(count(p.documentCount));
+    return parts.join(' · ');
+  });
 };
 
 // Whether no more can be added. `max` is what the assistant advertises, and it

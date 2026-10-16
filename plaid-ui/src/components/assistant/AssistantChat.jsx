@@ -1276,6 +1276,7 @@ export const AssistantChat = ({
           projects={reach}
           maxProjects={maxProjects}
           opensProject={adapter.opensProject}
+          projectLanguage={adapter.projectLanguage}
           onAddProject={addProject}
           onRemoveProject={removeProject}
           onSend={send}

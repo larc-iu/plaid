@@ -4,7 +4,7 @@
 //
 // This is the whole of IGT's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-ud has an adapter of its own.
-import { readInitialized } from '../../../domain/igtConfig.js';
+import { readInitialized, readLanguages } from '../../../domain/igtConfig.js';
 import { isTagsetPlan, writeTagsetPlan } from '../../../domain/tagsetPlan.js';
 import { putRulesInForce } from '../settings/putRulesInForce.js';
 import { ExampleCard } from './ExampleCard.jsx';
@@ -127,6 +127,10 @@ export const IGT_ASSISTANT = {
   parseCitationHref,
   // The assistant reads a project set up for IGT, and no other.
   opensProject: (project) => readInitialized(project?.config),
+  projectLanguage: (project) => {
+    const { object } = readLanguages(project?.config);
+    return object.name || object.tag;
+  },
   // A plan of tagset changes is settings, which the assistant's delegated
   // token may not write: written here, with the user's session, before the
   // approval goes (domain/tagsetPlan.js). Then every field's rules are put

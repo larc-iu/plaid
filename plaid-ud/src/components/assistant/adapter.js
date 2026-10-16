@@ -7,6 +7,7 @@
 // plaid-ui/src/components/assistant/, and plaid-igt has an adapter of its own.
 import { linkLabel, tableCell } from '@ui/components/assistant/citations.js';
 import { isUdProject } from '@ui/domain/udProject.js';
+import { readProjectLanguage } from '../../utils/udLayerUtils.js';
 import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, sentenceHref } from './cite.js';
@@ -108,6 +109,7 @@ export const UD_ASSISTANT = {
   parseCitationHref,
   // The assistant reads a project set up for UD, and no other.
   opensProject: isUdProject,
+  projectLanguage: readProjectLanguage,
   examples: [
     'Which words in this project still have no lemma?',
     'Are there dependency relations that look wrong?',

@@ -13,6 +13,7 @@ import {
   tableCell,
 } from '@ui/components/assistant/citations.js';
 import { isUmrProject } from '@ui/domain/umrProject.js';
+import { readProjectLanguage } from '../../utils/umrLayerUtils.js';
 import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, deepLink, sentenceHref } from './cite.js';
@@ -126,6 +127,7 @@ export const UMR_ASSISTANT = {
   parseCitationHref,
   // The assistant reads a project set up for UMR, and no other.
   opensProject: isUmrProject,
+  projectLanguage: readProjectLanguage,
   examples: [
     'Which sentences have a graph with no aspect on its root?',
     'What does the document graph say about the first sentence?',

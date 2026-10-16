@@ -10,6 +10,7 @@ import {
   projectNamesAt,
   projectsToSend,
   reachChanged,
+  sameNameDetails,
   withProjects,
 } from './projectReach.js';
 import { linkLabel, linkifyCitations } from './citations.js';
@@ -31,6 +32,34 @@ describe('projectCandidates', () => {
 
   it('offers nothing before the projects are read', () => {
     expect(projectCandidates(null, 'pA', [])).toEqual([]);
+  });
+});
+
+describe('sameNameDetails', () => {
+  const docs = (n) => `${n} documents`;
+  const row = (name, language, documentCount) => ({ name, language, documentCount });
+
+  it('names the language of projects that share a name, and nothing for a name of its own', () => {
+    const rows = [row('Stories', 'Lezgi', 3), row('Stories', 'Kalamang', 3), row('Other', 'x', 1)];
+    expect(sameNameDetails(rows, docs)).toEqual(['Lezgi', 'Kalamang', null]);
+  });
+
+  it('adds the document count where the language is the same too', () => {
+    const rows = [
+      row('Stories', 'Lezgi', 3),
+      row('Stories', 'Lezgi', 5),
+      row('Stories', 'Ainu', 3),
+    ];
+    expect(sameNameDetails(rows, docs)).toEqual([
+      'Lezgi · 3 documents',
+      'Lezgi · 5 documents',
+      'Ainu',
+    ]);
+  });
+
+  it('falls back to the document count where no language is set', () => {
+    const rows = [row('Stories', '', 3), row('Stories', 'Lezgi', 3)];
+    expect(sameNameDetails(rows, docs)).toEqual(['3 documents', 'Lezgi']);
   });
 });
 
