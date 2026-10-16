@@ -44,6 +44,11 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
       confirmLabel={count ? `Delete ${count} ${noun}` : 'Delete'}
       confirmDisabled={count === 0}
       onConfirm={confirm}
+      description={
+        count === 0
+          ? 'No segments match.'
+          : `${count} ${noun}. Times and speakers are removed. The baseline text is unchanged.`
+      }
     >
       <div role="radiogroup" className="flex flex-col gap-2 text-foreground">
         {SCOPES.map(([key, label]) => (
@@ -68,11 +73,6 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
           </label>
         ))}
       </div>
-      <p>
-        {count === 0
-          ? 'No segments match.'
-          : `${count} ${noun}. Times and speakers are removed. The baseline text is unchanged.`}
-      </p>
     </ConfirmDeleteDialog>
   );
 }

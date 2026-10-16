@@ -28,6 +28,10 @@ import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
  *   unless the handler calls `event.preventDefault()`, which a caller that
  *   shows its own progress inside the dialog does.
  * - `children`: the body, re-rendered live.
+ * - `description`: for a body that holds a control (a field, a choice), the
+ *   sentence a screen reader gives as the dialog's description. The children
+ *   then sit below it, outside the description, so the control is not read
+ *   out as part of it. Without it the children are the description.
  */
 export function ConfirmDeleteDialog({
   open,
@@ -37,6 +41,7 @@ export function ConfirmDeleteDialog({
   confirmDisabled = false,
   busy = false,
   onConfirm,
+  description,
   children,
 }) {
   return (
@@ -50,12 +55,19 @@ export function ConfirmDeleteDialog({
             />
             {title}
           </AlertDialogTitle>
-          {children != null && (
-            <AlertDialogDescription asChild>
-              <div className="flex flex-col gap-2">{children}</div>
-            </AlertDialogDescription>
+          {description != null ? (
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          ) : (
+            children != null && (
+              <AlertDialogDescription asChild>
+                <div className="flex flex-col gap-2">{children}</div>
+              </AlertDialogDescription>
+            )
           )}
         </AlertDialogHeader>
+        {description != null && children != null && (
+          <div className="flex flex-col gap-2 text-sm text-muted-foreground">{children}</div>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction

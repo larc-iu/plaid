@@ -64,4 +64,18 @@ describe('ConfirmDeleteDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
     await view.unmount();
   });
+
+  it('keeps a control out of the description when one is given', async () => {
+    const view = await renderComponent(
+      <ConfirmDeleteDialog open onOpenChange={() => {}} title="T" description="3 documents.">
+        <input aria-label="Name" />
+      </ConfirmDeleteDialog>,
+    );
+    const box = dialog();
+    const described = document.getElementById(box.getAttribute('aria-describedby'));
+    expect(described.textContent).toBe('3 documents.');
+    expect(described.querySelector('input')).toBe(null);
+    expect(box.querySelector('input[aria-label="Name"]')).not.toBe(null);
+    await view.unmount();
+  });
 });

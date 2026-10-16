@@ -90,8 +90,8 @@ export const DeleteProjectCard = ({ project }) => {
         confirmDisabled={!matches}
         busy={deleting}
         onConfirm={handleDelete}
+        description={consequence}
       >
-        <p>{consequence}</p>
         <div className="flex flex-col gap-1.5 text-foreground">
           <Label htmlFor="delete-project-confirm">
             To confirm, type{' '}
