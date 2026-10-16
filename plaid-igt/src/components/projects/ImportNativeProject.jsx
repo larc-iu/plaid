@@ -202,7 +202,7 @@ export const ImportNativeProject = () => {
             )}
 
             <div className="flex justify-end gap-2">
-              {stage === 'review' && (
+              {stage === 'review' && (retryable || !runError) && (
                 <Button onClick={startImport} disabled={!projectName.trim()}>
                   {runError ? (
                     <>

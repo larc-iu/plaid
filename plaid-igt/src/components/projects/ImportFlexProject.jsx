@@ -891,25 +891,29 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 >
                   Choose another file
                 </Button>
-                <Button
-                  onClick={startImport}
-                  disabled={!projectName.trim() || selectedTexts.size === 0 || !lexiconChoiceValid}
-                >
-                  {runError ? (
-                    <>
-                      <RefreshCw className="h-4 w-4" /> Retry import
-                    </>
-                  ) : projectIdRef.current ? (
-                    <>
-                      <RefreshCw className="h-4 w-4" /> Resume import
-                    </>
-                  ) : (
-                    <>
-                      <FileUp className="h-4 w-4" /> Import {selectedTexts.size} text
-                      {selectedTexts.size === 1 ? '' : 's'}
-                    </>
-                  )}
-                </Button>
+                {(retryable || !runError) && (
+                  <Button
+                    onClick={startImport}
+                    disabled={
+                      !projectName.trim() || selectedTexts.size === 0 || !lexiconChoiceValid
+                    }
+                  >
+                    {runError ? (
+                      <>
+                        <RefreshCw className="h-4 w-4" /> Retry import
+                      </>
+                    ) : projectIdRef.current ? (
+                      <>
+                        <RefreshCw className="h-4 w-4" /> Resume import
+                      </>
+                    ) : (
+                      <>
+                        <FileUp className="h-4 w-4" /> Import {selectedTexts.size} text
+                        {selectedTexts.size === 1 ? '' : 's'}
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             )}
 

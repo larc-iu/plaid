@@ -262,15 +262,17 @@ export const ImportElanProject = () => {
                 </ImportRunPanel>
 
                 <div className="flex items-center gap-2">
-                  <Button onClick={startImport} disabled={!canRun}>
-                    {runError ? (
-                      <>
-                        <RefreshCw className="h-4 w-4" /> Retry import
-                      </>
-                    ) : (
-                      'Import'
-                    )}
-                  </Button>
+                  {(retryable || !runError) && (
+                    <Button onClick={startImport} disabled={!canRun}>
+                      {runError ? (
+                        <>
+                          <RefreshCw className="h-4 w-4" /> Retry import
+                        </>
+                      ) : (
+                        'Import'
+                      )}
+                    </Button>
+                  )}
                   <span className="ms-2 text-xs text-muted-foreground">
                     {elanCounts(batch.build)}
                   </span>

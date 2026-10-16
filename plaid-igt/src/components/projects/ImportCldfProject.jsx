@@ -419,7 +419,7 @@ export const ImportCldfProject = () => {
             )}
 
             <div className="flex justify-end gap-2">
-              {editable && (
+              {editable && (retryable || !runError) && (
                 <Button
                   onClick={startImport}
                   disabled={!projectName.trim() || !build.documents.length}
