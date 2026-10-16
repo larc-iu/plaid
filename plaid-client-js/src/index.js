@@ -569,6 +569,81 @@ import {
  */
 
 /**
+ * A project as the project list gives it: the project, with how many
+ * documents it has and when the newest of them last changed.
+ * @typedef {Project & {documentCount: number, lastModified: string | null}} ProjectListEntry
+ */
+
+/**
+ * A document as a project's document list gives it.
+ * @typedef {object} DocumentListEntry
+ * @property {string} id
+ * @property {string} name
+ * @property {number} version
+ * @property {string} timeCreated
+ * @property {string} timeModified
+ */
+
+/**
+ * A named API token, without the signed token itself, which only `create`
+ * returns.
+ * @typedef {object} ApiToken
+ * @property {string} id
+ * @property {string} userId
+ * @property {string} name
+ * @property {string} createdAt
+ * @property {string | null} lastUsedAt
+ * @property {string | null} revokedAt
+ */
+
+/**
+ * Who made an operation, as the audit log names them.
+ * @typedef {{id: string, displayName: string, avatarHash: string | null}} AuditUser
+ */
+
+/**
+ * A project or a document an audit entry names, while it exists.
+ * @typedef {{id: string, name: string}} AuditTarget
+ */
+
+/**
+ * One operation of an audit entry.
+ * @typedef {object} AuditOp
+ * @property {string} id
+ * @property {string} type The kind of write, such as "document/update".
+ * @property {string} description
+ * @property {string} time
+ * @property {string} endTime The time to read at to see the operation done.
+ * @property {AuditUser | null} user
+ * @property {string} [credential]
+ * @property {AuditTarget} [project]
+ * @property {AuditTarget} [document]
+ * @property {string} [batchId]
+ */
+
+/**
+ * One entry of an audit log: a logical operation, an atomic batch or a lone
+ * write, with its operations oldest first (`ops`, cut to `opsLimit` when one
+ * was asked for, while `opCount` counts them all).
+ * @typedef {object} AuditEntry
+ * @property {string} id
+ * @property {string} time
+ * @property {string} endTime
+ * @property {AuditUser | null} user
+ * @property {AuditTarget[]} projects
+ * @property {AuditTarget[]} documents
+ * @property {AuditOp[]} ops
+ * @property {number} opCount
+ * @property {string} [groupId]
+ * @property {string} [message]
+ * @property {OperationKind} [kind]
+ * @property {string} [ref]
+ * @property {string} [batchId]
+ * @property {{id: string, name: string}} [apiToken]
+ * @property {string} [credential]
+ */
+
+/**
  * A document lock as its holder sees it. `expiresAt` is in epoch
  * milliseconds.
  * @typedef {{lockId: string, userId: string, expiresAt: number}} LockGrant
@@ -587,6 +662,9 @@ import {
  * @property {RestoreCounts & {byLayer: Array<RestoreCounts & {layerId: string}>}} relations
  * @property {RestoreCounts} vocabLinks
  * @property {Array<{kind: string, count: number, reason: string}>} skipped
+ * @property {{name: string, taken: string}} [nameKept] When the name the
+ *   document had then belongs to another document now: the name it keeps,
+ *   and that other document's name.
  * @property {number} total 0 when nothing changes.
  */
 
@@ -719,9 +797,12 @@ const AVATAR_TOKEN_FRESH_MS = 5 * 1000;
  * the prototype: the token and base URL, strict mode and the document versions
  * it tracks, the open logical operation.
  */
-function openBatch(client) {
+function openBatch(client, { timeout } = {}) {
   const batch = Object.create(client);
   batch.client = client;
+  // This batch's own timeout per request, in place of the client's
+  // `batchTimeout` (undefined: the client's).
+  batch.submitTimeout = timeout;
   batch.operations = [];
   // The document each queued op's strict-mode stamp is for (null for none),
   // and the logical operation it joined (null for none), index for index with
@@ -784,7 +865,15 @@ async function submitBatch(batch) {
   // needs to know. The same holds for `committedResults`.
   const results = [];
   try {
-    await sendChunks(client, url, ops, stamps, results, groups);
+    await sendChunks(
+      client,
+      url,
+      ops,
+      stamps,
+      results,
+      groups,
+      batch.submitTimeout,
+    );
   } catch (error) {
     if (error && typeof error === "object") {
       error.committed = results.length;
@@ -801,7 +890,15 @@ function claimedVersion(path) {
   return v == null ? null : Number(v);
 }
 
-async function sendChunks(client, url, ops, stamps, results, groups = []) {
+async function sendChunks(
+  client,
+  url,
+  ops,
+  stamps,
+  results,
+  groups = [],
+  timeout = undefined,
+) {
   // Every chunk's refs are checked before the first request goes, so a batch
   // whose refs cannot resolve writes nothing.
   const chunks = [];
@@ -839,7 +936,7 @@ async function sendChunks(client, url, ops, stamps, results, groups = []) {
     // its path now carries it.
     const j = stamps.slice(i, i + chunk.length).findIndex(Boolean);
     record(j < 0 ? null : claimedVersion(chunk[j].path));
-    const answered = await client._postBatch(url, chunk, { key });
+    const answered = await client._postBatch(url, chunk, { key, timeout });
     results.push(...answered);
     if (wasReplayed(answered)) markReplayed(results);
     // The server took the chunk, so each operation it joined exists.
@@ -1128,6 +1225,7 @@ class PlaidClient {
        *   each with only its operations that did
        * @param {string[]|string} [kinds] - Only the entries of operations of
        *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
+       * @returns {Promise<AuditEntry[]>}
        */
       audit: (id, startTime, endTime, opTypes, itemId, kinds) =>
         listAll(this, `/api/v1/vocab-layers/${id}/audit`, {
@@ -1158,7 +1256,7 @@ class PlaidClient {
        * @param {string} [opts.entryId] - Read only this entry, not a page
        * @param {string} [opts.itemId] - Only the changes that wrote this one
        *   entry, each with only its operations that did
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<AuditEntry>>}
        */
       auditPage: (
         id,
@@ -1795,6 +1893,7 @@ class PlaidClient {
        *   one of its operations matches, carrying only the ones that did.
        * @param {string[]|string} [kinds] - Only the entries of operations of
        *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
+       * @returns {Promise<AuditEntry[]>}
        */
       audit: (userId, startTime, endTime, opTypes, kinds) =>
         listAll(this, `/api/v1/users/${userId}/audit`, {
@@ -1822,7 +1921,7 @@ class PlaidClient {
        *   operations in `ops` (1..1000). `opCount` on every entry says how
        *   many it has
        * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<AuditEntry>>}
        */
       auditPage: (
         userId,
@@ -2173,6 +2272,7 @@ class PlaidClient {
        * string itself — that is only returned once, by create().
        * Transparently follows pagination cursors and returns the full flat array.
        * @param {string} userId - The user ID who owns the tokens
+       * @returns {Promise<ApiToken[]>}
        */
       list: (userId) => listAll(this, `/api/v1/users/${userId}/tokens`),
       /**
@@ -2181,7 +2281,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<ApiToken>>}
        */
       listPage: (userId, { limit, cursor } = {}) =>
         listPage(this, `/api/v1/users/${userId}/tokens`, { limit, cursor }),
@@ -2191,7 +2291,7 @@ class PlaidClient {
        * @param {string} userId - The user ID who owns the tokens
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<ApiToken[]>}
        */
       iterPages: (userId, { pageSize } = {}) =>
         iterPages(this, `/api/v1/users/${userId}/tokens`, { pageSize }),
@@ -2506,6 +2606,7 @@ class PlaidClient {
        *   matches, carrying only the ones that did.
        * @param {string[]|string} [opts.kinds] - Only the entries of operations
        *   of these kinds (e.g. `['review']`), each whole
+       * @returns {Promise<AuditEntry[]>}
        */
       list: ({ startTime, endTime, opTypes, kinds } = {}) =>
         listAll(this, "/api/v1/audit", {
@@ -2531,7 +2632,7 @@ class PlaidClient {
        *   operations in `ops` (1..1000). `opCount` on every entry says how
        *   many it has
        * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<AuditEntry>>}
        */
       listPage: ({ startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {}) =>
         listPage(this, "/api/v1/audit", {
@@ -2555,7 +2656,7 @@ class PlaidClient {
        * @param {string[]|string} [opts.opTypes] - Only these op types
        * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<AuditEntry[]>}
        */
       iterPages: ({ startTime, endTime, opTypes, kinds, pageSize } = {}) =>
         iterPages(this, "/api/v1/audit", {
@@ -2868,6 +2969,7 @@ class PlaidClient {
        *   one of its operations matches, carrying only the ones that did.
        * @param {string[]|string} [kinds] - Only the entries of operations of
        *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
+       * @returns {Promise<AuditEntry[]>}
        */
       audit: (documentId, startTime, endTime, opTypes, kinds) =>
         listAll(this, `/api/v1/documents/${documentId}/audit`, {
@@ -2895,7 +2997,7 @@ class PlaidClient {
        *   operations in `ops` (1..1000). `opCount` on every entry says how
        *   many it has
        * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<AuditEntry>>}
        */
       auditPage: (
         documentId,
@@ -3131,6 +3233,7 @@ class PlaidClient {
        *   one of its operations matches, carrying only the ones that did.
        * @param {string[]|string} [kinds] - Only the entries of operations of
        *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
+       * @returns {Promise<AuditEntry[]>}
        */
       audit: (projectId, startTime, endTime, opTypes, kinds) =>
         listAll(this, `/api/v1/projects/${projectId}/audit`, {
@@ -3158,7 +3261,7 @@ class PlaidClient {
        *   operations in `ops` (1..1000). `opCount` on every entry says how
        *   many it has
        * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<AuditEntry>>}
        */
       auditPage: (
         projectId,
@@ -3228,6 +3331,7 @@ class PlaidClient {
        * Note: this endpoint does not support temporal (`as-of`) queries; the
        * server rejects `?as-of=` on the documents-list route with a 400.
        * @param {string} id - The project ID
+       * @returns {Promise<DocumentListEntry[]>}
        */
       listDocuments: (id) => listAll(this, `/api/v1/projects/${id}/documents`),
       /**
@@ -3239,7 +3343,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<DocumentListEntry>>}
        */
       listDocumentsPage: (id, { limit, cursor } = {}) =>
         listPage(this, `/api/v1/projects/${id}/documents`, { limit, cursor }),
@@ -3252,7 +3356,7 @@ class PlaidClient {
        * @param {string} id - The project ID
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<DocumentListEntry[]>}
        */
       iterDocuments: (id, { pageSize } = {}) =>
         iterPages(this, `/api/v1/projects/${id}/documents`, { pageSize }),
@@ -3286,6 +3390,7 @@ class PlaidClient {
       /**
        * List all projects accessible to user. Transparently follows pagination
        * cursors and returns the full flat array.
+       * @returns {Promise<ProjectListEntry[]>}
        */
       list: () => listAll(this, "/api/v1/projects"),
       /**
@@ -3293,7 +3398,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       * @returns {Promise<Page<ProjectListEntry>>}
        */
       listPage: ({ limit, cursor } = {}) =>
         listPage(this, "/api/v1/projects", {
@@ -3304,7 +3409,7 @@ class PlaidClient {
        * Async-iterate projects page by page; yields each page's entries array.
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * @returns {AsyncGenerator<Array>}
+       * @returns {AsyncGenerator<ProjectListEntry[]>}
        */
       iterPages: ({ pageSize } = {}) =>
         iterPages(this, "/api/v1/projects", {
@@ -4510,10 +4615,15 @@ class PlaidClient {
    * parents created earlier in the same batch, and any op's failure rolls the
    * whole batch back. A batch is not nestable. Prefer `batched()`, which
    * submits or aborts for you.
+   *
+   * `timeout` (ms, or null for none) is how long each of this batch's
+   * requests may wait for its answer, in place of the client's
+   * `batchTimeout`, for this batch alone.
+   * @param {{timeout?: number | null}} [options]
    * @returns {PlaidBatch} the batch view
    */
-  batch() {
-    return openBatch(this);
+  batch({ timeout } = {}) {
+    return openBatch(this, { timeout });
   }
 
   /**
@@ -4522,9 +4632,10 @@ class PlaidClient {
    * recased: the headers keep the server's spelling. `key` is the request's
    * Idempotency-Key: a batch whose answer is lost (no response, 502, 504) is
    * sent again under it, and answered from the first send if that landed.
+   * `timeout` is this request's, in place of `batchTimeout` when given.
    * @private
    */
-  async _postBatch(url, body, { key = uuidv7() } = {}) {
+  async _postBatch(url, body, { key = uuidv7(), timeout } = {}) {
     const fetchOptions = {
       method: "POST",
       headers: {
@@ -4540,7 +4651,9 @@ class PlaidClient {
       // repeating it is safe. A fresh timeout signal per attempt — an
       // AbortSignal.timeout stays aborted once it fires.
       const attempt = async () => {
-        const signal = timeoutSignal(this.batchTimeout);
+        const signal = timeoutSignal(
+          timeout !== undefined ? timeout : this.batchTimeout,
+        );
         let res;
         try {
           res = await fetch(
@@ -4654,12 +4767,14 @@ class PlaidClient {
    *   });
    *
    * A write made on `client` inside `fn` is not part of the batch: it goes
-   * over the wire at once, as it would anywhere else. See `batch()`.
+   * over the wire at once, as it would anywhere else. See `batch()`, which
+   * also says what `timeout` does.
    * @param {(batch: PlaidBatch) => (void | Promise<void>)} fn
+   * @param {{timeout?: number | null}} [options]
    * @returns {Promise<any[]>}
    */
-  async batched(fn) {
-    const batch = this.batch();
+  async batched(fn, { timeout } = {}) {
+    const batch = this.batch({ timeout });
     try {
       await fn(batch);
     } catch (e) {
