@@ -14,7 +14,7 @@ import {
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
 import { countDeleteLoss, hasLoss } from '@ui/domain/annotationLoss.js';
-import { absorbedTokens } from '../../../domain/mutations/tokens.js';
+import { absorbedTokens, mergeAbsorbs } from '../../../domain/mutations/tokens.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
@@ -133,7 +133,8 @@ export const useTokenOperations = () => {
   const mergeTokens = async (tokenIds) => {
     const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
     const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((t) => ids.includes(t.id));
-    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words);
+    const absorbed = mergeAbsorbs(doc.layerInfo, doc.body || '', words);
+    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words, absorbed);
     if (!hasLoss(loss)) return run(() => doc.mergeTokens(ids));
     setPendingStructural({
       kind: 'merge',

@@ -114,17 +114,19 @@ export const countReTokenizeCut = (layerInfo) => {
  * @param {object} layerInfo  getIgtLayerInfo result
  * @param {object} vocabularies  the doc's vocabularies map
  * @param {object[]} words  the affected word token(s) [{id, begin, end}, …]
+ * @param {object[]} [absorbed]  the punctuation tokens between the words that
+ *   the merge deletes (mergeAbsorbs), whose own annotations go too
  * @returns {{annotations: number, links: number}}
  */
-export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
+export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words, absorbed = []) => {
   const list = (words || []).filter(Boolean);
   if (!layerInfo?.primaryTokenLayer || list.length === 0) return ZERO();
+  const stay = new Set(list.map((w) => w.id));
   return counted(
-    countDeleteLoss(
-      tokenLayersOf(layerInfo),
-      list.map((w) => w.id),
-      { under: true, vocabLinks: linksOf(vocabularies) },
-    ),
+    countDeleteLoss(tokenLayersOf(layerInfo), [...stay, ...(absorbed || []).map((t) => t.id)], {
+      under: stay,
+      vocabLinks: linksOf(vocabularies),
+    }),
   );
 };
 

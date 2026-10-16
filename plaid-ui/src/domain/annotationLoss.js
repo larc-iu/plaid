@@ -79,14 +79,18 @@ const nestedUnder = (childrenOf, layerId) => {
 const within = (outer, t) => t.begin >= outer.begin && t.end <= outer.end;
 
 // Every token deleting `ids` takes, with the layer it is on: the tokens
-// themselves (unless `under`) and every token of a nested layer within one.
+// themselves (unless `under` says they stay: true for all, or a set of the
+// ids that stay) and every token of a nested layer within one.
 const dyingTokens = (layers, ids, under = false) => {
   const childrenOf = childrenByParent(layers);
+  const stays = under instanceof Set ? (id) => under.has(id) : () => Boolean(under);
   const dying = new Map(); // token id -> token layer id
   for (const tl of layers) {
     const given = (tl.tokens || []).filter((t) => ids.has(t.id));
     if (!given.length) continue;
-    if (!under) given.forEach((t) => dying.set(t.id, tl.id));
+    given.forEach((t) => {
+      if (!stays(t.id)) dying.set(t.id, tl.id);
+    });
     for (const nested of nestedUnder(childrenOf, tl.id)) {
       for (const t of nested.tokens || []) {
         if (given.some((g) => within(g, t))) dying.set(t.id, nested.id);
@@ -129,8 +133,10 @@ const skipper = (skip) => {
  * @param {object[]} tokenLayers a text layer's token layers, every app's
  * @param {Iterable<string>} tokenIds the tokens deleted
  * @param {object} [options]
- * @param {boolean} [options.under] the given tokens stay and only what is
- *   nested under them goes (a merge or a split that takes a word's morphemes)
+ * @param {boolean|Set<string>} [options.under] the given tokens stay and only
+ *   what is nested under them goes (a merge or a split that takes a word's
+ *   morphemes), or the set of the given ids that stay so (a merge that also
+ *   deletes the punctuation tokens between its words)
  * @param {Iterable<string>} [options.skip] layer ids the caller counts itself:
  *   a token layer (its tokens, spans, relations and links), a span layer (its
  *   spans and relations) or a relation layer. The cascade still runs through

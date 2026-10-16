@@ -51,6 +51,17 @@ export const absorbedTokens = (info, body, begin, end) => {
   );
 };
 
+// The tokens a merge of `words` takes in: those absorbedTokens names over the
+// merged extent, other than the words themselves.
+export const mergeAbsorbs = (info, body, words) => {
+  const list = [...(words || [])].sort((a, b) => a.begin - b.begin);
+  if (list.length < 2) return [];
+  const ids = new Set(list.map((w) => w.id));
+  return absorbedTokens(info, body, list[0].begin, list[list.length - 1].end).filter(
+    (t) => !ids.has(t.id),
+  );
+};
+
 export const tokenMutations = {
   // Merge a set of word tokens into the earliest-beginning one, which grows
   // to cover the rest. Coincident morphemes (same begin/end as any merged
@@ -105,8 +116,13 @@ export const tokenMutations = {
     const patch = survivorPatch(firstToken.metadata, inherited, (m) => this.editStamp(m));
     const removedWordIds = new Set(toMerge.slice(1).map((t) => t.id));
     const removedMorphIds = new Set(coincident);
+    // Punctuation tokens between the words (ud's, say) read as text here, so
+    // the merged word takes their place, as it would over untokenized text.
+    const absorbed = mergeAbsorbs(info, this.body, toMerge).map((t) => t.id);
+    const textId = info.primaryTextLayer?.text?.id;
 
     this._applyRawPatch((next, infoNext, vocabs) => {
+      if (absorbed.length) removeTokensLocally(next, textId, absorbed, vocabs);
       if (infoNext.primaryTokenLayer?.tokens) {
         const first = infoNext.primaryTokenLayer.tokens.find((t) => t.id === firstToken.id);
         if (first) {
@@ -139,6 +155,7 @@ export const tokenMutations = {
       const first = settledId(firstToken.id);
       await this._client.batched(async (b) => {
         if (coincident.length > 0) b.tokens.bulkDelete(coincident.map(settledId));
+        if (absorbed.length > 0) b.tokens.bulkDelete(absorbed.map(settledId));
         // Sequential merges into firstToken in begin-order. The server processes
         // batch ops sequentially, so each merge sees firstToken's widened extent.
         for (let i = 1; i < toMerge.length; i++) {
