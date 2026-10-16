@@ -12,13 +12,14 @@ from live import live_client, seed  # noqa: F401 - fixture
 from plaid_agent.igt.tagsets import refusal_words
 from plaid_agent.igt.toolkit import call_tool
 from plaid_client import PlaidAPIError
-from test_tagset_tools import igt_config, layer, run, ws_of
+from test_tagset_tools import declare_igt_rules, igt_config, layer, run, ws_of
 
 
 @pytest.fixture
 def proj(live_client):
     s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()},
              name='igt-agent tagset exemption test')
+    declare_igt_rules(s)
     # "Ali" is a person's (the seed's plain batch). XIMP comes in through an
     # import, XMACH from a machine nobody confirmed.
     with s.client.operation('Import a text', kind='import'):

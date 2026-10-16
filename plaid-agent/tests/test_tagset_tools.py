@@ -17,6 +17,7 @@ from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.tagsets import HELP, refusal_words, write_settings
 from plaid_client import PlaidAPIError
+from plaid_client.workflows.igt.tagsets import field_constraints
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import Workspace
 
@@ -57,10 +58,23 @@ def test_edits_build_on_what_the_plan_already_holds():
 
 # --- applied ---------------------------------------------------------------------------
 
+def declare_igt_rules(s):
+    """Every igt field's rules as its settings want them, as igt's setup
+    declares them on a new project (the seed declares none)."""
+    p = s.client.projects.get(s.project_id)
+    for tl in p['text_layers']:
+        for tk in tl['token_layers']:
+            for sl in tk.get('span_layers') or []:
+                if ((sl.get('config') or {}).get('igt') or {}).get('scope'):
+                    s.client.span_layers.set_constraints(sl['id'], 'igt',
+                                                         field_constraints(sl.get('config'), p.get('config')))
+
+
 @pytest.fixture
 def proj(live_client):
     s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()},
              name='igt-agent tagset test')
+    declare_igt_rules(s)
     yield s
     s.delete()
 

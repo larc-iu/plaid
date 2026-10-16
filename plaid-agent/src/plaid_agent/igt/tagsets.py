@@ -56,7 +56,7 @@ Actions of the tagsets tool:
 - assign (field, tagset): plans a field's tagset. Pass tagset "" for none. field is an annotation field, a document metadata field, or with lexicon= a lexicon entry field.
 
 Tagset changes are settings: they are a plan of their own, which holds no other change, and only a maintainer may approve one.
-Core refuses to close a list, or to assign a closed list, while a stored value in an annotation field that a person or an approved plan wrote breaks it, and then nothing in the plan is written. It lets stay a value an import, a document copy or a restore set, and an unconfirmed machine value. check and edit say which values core would refuse: tell the user, and plan fixes to them first, as a separate plan the user approves, then the close.'''
+Core refuses to close a list, or to assign a closed list, while a stored value in an annotation field that a person or an approved plan wrote breaks it, and then nothing in the plan is written. A field where core does not hold its closed list now (out of force) holds up nothing: the change is written, and the list stays out of force there while stored values break it. It lets stay a value an import, a document copy or a restore set, and an unconfirmed machine value. check and edit say which values core would refuse: tell the user, and plan fixes to them first, as a separate plan the user approves, then the close.'''
 
 
 def t_tagsets(ws, action: str, tagset: Optional[str] = None, field: Optional[str] = None,
@@ -342,8 +342,8 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
             continue
         if as_stored and t['mode'] == CLOSED and f['field'].tagset_name == key:
             lines.append(f'  Closed in the settings, but core does not hold the list on {f["name"]}: writes to it '
-                         'are not checked against it until a change to the list, or to the field\'s tagset, '
-                         'declares it.')
+                         'are not checked against it. It takes force there with the next settings change once no '
+                         'stored value core would refuse breaks it.')
         # Said before any staging: a close that adds every part in use would
         # list the word glosses as tags (the edit refuses that in one call).
         every = _unlisted(attested, {**t, 'mode': CLOSED})
@@ -633,36 +633,37 @@ def _stored_field_tagset(ws, owner: str, f: dict) -> Optional[str]:
 
 
 def _planned(ws, owner: str, notes: List[str]) -> str:
-    """The planned note, and for the project the stored values a closed list
-    the plan puts on an annotation field would have core refuse."""
+    """The planned note, and for the project what approval does on each
+    annotation field whose closed list it changes: for a field in force
+    (its layer holds what its settings asked for), the stored values core
+    would refuse the whole approval for, and for one out of force, the values
+    that keep it out once the change is written (igt's ``savedRules``)."""
     out = ws.planned_note(1)
     if notes:
         out += ' ' + ' '.join(notes)
     if owner != PROJECT:
         return out
-    tagsets = planned_tagsets(ws, owner)
-    stored = _stored_tagsets(ws, owner)
-    breaks = []
+    names = {f.layer_id: f.name for f in ws.project.fields.values()}
+    cfg, layers, _ = _live(ws.client, ws.project, PROJECT)
+    breaks, stays = [], []
     words = refused_n = 0
-    ws.corpus.forget_clipping()
-    for f in _fields(ws, owner):
-        t = tagsets.get(f['tagset']) if f['tagset'] else None
-        if f['kind'] != SPAN or not t or t['mode'] != CLOSED:
-            continue
-        old = stored.get(f['field'].tagset_name) if f['field'].tagset_name else None
-        # Asked only of a field whose rules approval changes, the ones it
-        # declares (queue_settings), and not of one that holds them already.
-        if _same_rule(_rule(old), _rule(t)) or _held(f, t):
+    for r in _field_rules(cfg, layers, settings_ops(ws.ops)):
+        rule = next((c for c in r['wanted'] if c['type'] == 'value-set'), None)
+        if not r['changes'] or rule is None or _canonical(r['wanted']) == _canonical(r['stored']):
             continue
         # As many values as core lists, the sample the word glosses are
         # counted on.
-        r = _core_refused(ws, f, t, limit=100)
-        if not r['count']:
+        answer = ws.client.span_layers.refused_values(r['id'], rule, limit=100)
+        if not answer['count']:
             continue
-        refused_n += min(r['value_count'], len(r['values']))
-        words += sum(1 for v in r['values'] if isinstance(v['value'], str)
-                     and all(is_lexical_part(p) for p in _parts(v['value'], t['delimiters'])))
-        breaks.append(f'{f["name"]} ({_refused_line(r)})')
+        name = names.get(r['id'], r['id'])
+        if not r['in_force']:
+            stays.append(f'{qv(r["tagset"])} stays out of force on {name}, held off by {_refused_line(answer)}')
+            continue
+        refused_n += min(answer['value_count'], len(answer['values']))
+        words += sum(1 for v in answer['values'] if isinstance(v['value'], str)
+                     and all(is_lexical_part(p) for p in _parts(v['value'], rule.get('delimiters') or '')))
+        breaks.append(f'{name} ({_refused_line(answer)})')
     if breaks:
         out += (' Core will refuse this approval, writing nothing, while these stored values break the closed '
                 'list: ' + '; '.join(breaks) + '. Tell the user. Add them to the list, leave it open, or drop '
@@ -671,6 +672,10 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
             out += (f' {words} of them are ordinary word glosses: a closed list would have to list every word '
                     'gloss. Ask the user whether they mean mixed (tags enforced, word glosses free) before '
                     'planning more.')
+    elif stays:
+        out += (' Approval writes it. ' + '. '.join(stays)
+                + '. The list takes force there once they are listed or changed (a plan of their own), and igt '
+                'names them under Validation.')
     return out
 
 
@@ -775,29 +780,73 @@ def _canonical(rules) -> str:
     return json.dumps(rules or [], sort_keys=True)
 
 
-def queue_settings(client, b, project, ops) -> None:
-    """Queue on the batcher ``b`` every write the plan's tagset changes make."""
+def _after(cfg, ops):
+    """(the owner's tagsets once ``ops`` (its own) are written, as stored,
+    and ``final(kind, key, name)``: the tagset a field of that kind and key
+    naming ``name`` names after them)."""
+    raw = _igt(cfg).get('tagsets')
+    raw = raw if isinstance(raw, dict) else None
+    new = dict(raw or {})
+    renames = {}
+    for op in ops:
+        if op['kind'] != 'set_tagset':
+            continue
+        new.pop(op['was'], None)
+        if op.get('after') is not None:
+            new[op['name']] = op['after']
+            if op['was'] != op['name']:
+                renames[op['was']] = op['name']
+    assigns = {(op['field_kind'], op['key']): op.get('after') for op in ops if op['kind'] == 'assign_tagset'}
+
+    def final(kind, key, name):
+        if (kind, key) in assigns:
+            return assigns[(kind, key)]
+        return renames.get(name, name)
+
+    return new, final, assigns
+
+
+def _field_rules(cfg, layers, ops) -> List[dict]:
+    """Each igt annotation field of the project as the plan's ``ops`` leave
+    it, as igt's settings save reads it (``rulesChange`` and ``savedRules``
+    in plaid-igt ``domain/igtConstraints.js``): {id, old (the tagset name as
+    stored), tagset (as written), wanted (its rules after), stored (its
+    layer's igt rules), changes (the plan changes its rules), in_force (its
+    layer holds what its settings asked for before the plan)}."""
+    ops = [op for op in ops if op['owner'] == PROJECT]
+    new, final, _ = _after(cfg, ops)
+    igt = _igt(cfg)
+    after_cfg = {**cfg, IGT: {**igt, 'tagsets': new}}
+    out = []
+    for sl in layers:
+        lcfg = _igt(sl.get('config'))
+        old = lcfg.get('tagset') if isinstance(lcfg.get('tagset'), str) else None
+        old_name = (old or '').strip() or None
+        name = final(SPAN, sl['id'], old_name)
+        layer_after = {**(sl.get('config') or {}), IGT: {**lcfg, 'tagset': name}}
+        wanted = field_constraints(layer_after, after_cfg)
+        before = field_constraints(sl.get('config') or {}, cfg)
+        stored = (sl.get('constraints') or {}).get(IGT)
+        out.append({'id': sl['id'], 'old': old, 'old_name': old_name, 'tagset': name, 'wanted': wanted,
+                    'stored': stored, 'changes': _canonical(wanted) != _canonical(before),
+                    'in_force': _canonical(stored) == _canonical(before)})
+    return out
+
+
+def queue_settings(client, b, project, ops) -> List[str]:
+    """Queue on the batcher ``b`` every write the plan's tagset changes make.
+    A field's rules go in the batch only when the plan changes them and the
+    field was in force, so a list in force that stored values break refuses
+    the batch. A field out of force is left to the heal after it, and nothing
+    is repaired (igt's ``queueFieldDeclarations``). Returns the ids of the
+    fields whose rules the plan changes, in force or not."""
+    changed: List[str] = []
     for owner in dict.fromkeys(op['owner'] for op in settings_ops(ops)):
         mine = [op for op in settings_ops(ops) if op['owner'] == owner]
         cfg, layers, entry_fields = _live(client, project, owner)
         igt = _igt(cfg)
         raw = igt.get('tagsets') if isinstance(igt.get('tagsets'), dict) else None
-        new = dict(raw or {})
-        renames = {}
-        for op in mine:
-            if op['kind'] != 'set_tagset':
-                continue
-            new.pop(op['was'], None)
-            if op.get('after') is not None:
-                new[op['name']] = op['after']
-                if op['was'] != op['name']:
-                    renames[op['was']] = op['name']
-        assigns = {(op['field_kind'], op['key']): op.get('after') for op in mine if op['kind'] == 'assign_tagset'}
-
-        def final(kind, key, name):
-            if (kind, key) in assigns:
-                return assigns[(kind, key)]
-            return renames.get(name, name)
+        new, final, assigns = _after(cfg, mine)
 
         owner_api = 'projects' if owner == PROJECT else 'vocab_layers'
         owner_id = project.id if owner == PROJECT else owner
@@ -842,35 +891,76 @@ def queue_settings(client, b, project, ops) -> None:
                 b.add(lambda batch, v=new_meta, e=meta: batch.projects.set_config(
                     owner_id, IGT, 'documentMetadata', v, expected=e))
 
-        after_cfg = {**cfg, IGT: {**igt, 'tagsets': new}}
-        for sl in layers:
-            lcfg = _igt(sl.get('config'))
-            old = lcfg.get('tagset') if isinstance(lcfg.get('tagset'), str) else None
-            old_name = (old or '').strip() or None
-            name = final(SPAN, sl['id'], old_name)
-            if name != old_name:
-                if name:
-                    b.add(lambda batch, i=sl['id'], v=name, e=old: batch.span_layers.set_config(
+        for r in _field_rules(cfg, layers, mine):
+            if r['tagset'] != r['old_name']:
+                if r['tagset']:
+                    b.add(lambda batch, i=r['id'], v=r['tagset'], e=r['old']: batch.span_layers.set_config(
                         i, IGT, 'tagset', v, expected=e))
                 else:
-                    b.add(lambda batch, i=sl['id'], e=old: batch.span_layers.delete_config(
+                    b.add(lambda batch, i=r['id'], e=r['old']: batch.span_layers.delete_config(
                         i, IGT, 'tagset', expected=e))
-            layer_after = {**(sl.get('config') or {}), IGT: {**lcfg, 'tagset': name}}
-            wanted = field_constraints(layer_after, after_cfg)
-            # Only a field whose rules the plan changes is declared, as igt's
-            # settings save does: one whose layer holds other rules than its
-            # settings ask for is left as it is.
-            if _canonical(wanted) == _canonical(field_constraints(sl.get('config') or {}, cfg)):
+            if not r['changes']:
                 continue
-            stored = (sl.get('constraints') or {}).get(IGT)
-            if _canonical(wanted) == _canonical(stored):
+            changed.append(r['id'])
+            if not r['in_force'] or _canonical(r['wanted']) == _canonical(r['stored']):
                 continue
-            # A layer that holds none of IGT's rules yet: what core can
-            # repair goes first, as igt's settings save does.
-            if not stored and any(r['type'] in REMEDIABLE for r in wanted):
-                b.add(lambda batch, i=sl['id'], w=wanted: batch.span_layers.repair_constraints(i, w))
-            b.add(lambda batch, i=sl['id'], w=wanted, e=stored: batch.span_layers.set_constraints(
+            b.add(lambda batch, i=r['id'], w=r['wanted'], e=r['stored']: batch.span_layers.set_constraints(
                 i, IGT, w, expected=e))
+    return changed
+
+
+def heal_fields(client, project_id: str, layer_ids) -> List[dict]:
+    """Put in force on each field of ``layer_ids`` what its settings want as
+    far as the stored values allow, changing no annotation (igt's
+    ``declareIgtRules`` with ``repair: false``): a closed list the values
+    break is not declared, and a list the field holds stays, and one span a
+    token is declared only where no token holds two. Returns the fields left
+    out of force, as {id, refused (core's answer for the list, or None),
+    doubled (the tokens holding two, or 0)}."""
+    from plaid_client import PlaidAPIError
+    p = client.projects.get(project_id)
+    cfg = p.get('config') or {}
+    out = []
+    for sl in _span_layers(p):
+        if sl['id'] not in layer_ids:
+            continue
+        wanted = field_constraints(sl.get('config') or {}, cfg)
+        stored = (sl.get('constraints') or {}).get(IGT)
+        if _canonical(wanted) == _canonical(stored):
+            continue
+        held = [c for c in stored or [] if c.get('type') == 'value-set']
+        held_keys = {_canonical([c]) for c in stored or []}
+        rules, refused, doubled = [], None, 0
+        for c in wanted:
+            if _canonical([c]) in held_keys:
+                rules.append(c)
+            elif c['type'] == 'value-set':
+                answer = client.span_layers.refused_values(sl['id'], c, limit=SHOWN)
+                if answer['count']:
+                    refused = answer
+                    rules.extend(held)
+                else:
+                    rules.append(c)
+            elif c['type'] in REMEDIABLE:
+                found = client.span_layers.check_constraints(sl['id'], [c])
+                n = found.get('violation_count') or found.get('violation-count') or len(found.get('violations') or [])
+                if n:
+                    doubled = n
+                else:
+                    rules.append(c)
+            else:
+                rules.append(c)
+        if _canonical(rules) != _canonical(stored):
+            try:
+                client.span_layers.set_constraints(sl['id'], IGT, rules, expected=stored)
+            except PlaidAPIError as e:
+                # Moved since the read, or a value written since breaks it:
+                # the next heal decides.
+                if e.status not in (409, 422):
+                    raise
+        if refused or doubled:
+            out.append({'id': sl['id'], 'refused': refused, 'doubled': doubled})
+    return out
 
 
 class _Queue:
@@ -883,19 +973,23 @@ class _Queue:
         self.calls.append(fn)
 
 
-def write_settings(client, project, ops) -> None:
+def write_settings(client, project, ops) -> List[dict]:
     """Write the plan's tagset changes as the app does on approval: refused
-    when what they change moved, one atomic batch otherwise."""
+    when what they change moved, one atomic batch otherwise, then the fields
+    whose rules the plan changes put in force as far as their values allow
+    (the adapter's ``afterWrite``, in the caller's operation). Returns the
+    fields of the plan left out of force (``heal_fields``)."""
     from plaid_agent.core.plan import PlanOutOfDate
     reasons = check_settings(client, project, ops)
     if reasons:
         raise PlanOutOfDate(reasons)
     q = _Queue()
-    queue_settings(client, q, project, ops)
+    changed = queue_settings(client, q, project, ops)
     if q.calls:
         with client.batched() as batch:
             for fn in q.calls:
                 fn(batch)
+    return heal_fields(client, project.id, set(changed)) if changed else []
 
 
 def _state(cfg, layers, entry_fields, op) -> str:
