@@ -1319,11 +1319,13 @@ class PlanOutOfDate(ValueError):
     another), so no version the staleness check reads has moved. Raised
     before anything is written, and settled like a stale document: the card
     stops offering Approve and the model is told to plan again. ``reasons``
-    are sentences for the user, one per thing gone."""
+    are sentences for the user, one per thing gone. ``then`` is what the
+    user is told to do next, when planning again cannot simply redo it."""
 
-    def __init__(self, reasons: List[str]):
+    def __init__(self, reasons: List[str], then: Optional[str] = None):
         super().__init__('; '.join(reasons))
         self.reasons = list(reasons)
+        self.then = then
 
 
 class ScopeMoved(Exception):

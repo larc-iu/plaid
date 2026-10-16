@@ -1711,7 +1711,7 @@ class BaseAssistantService(BaseService):
         failed, the answer to give once the locks are released: it writes the
         conversation record, which must not be written under a lock that may
         have lapsed."""
-        def out_of_date(reasons):
+        def out_of_date(reasons, then=None):
             # Settled as out of date, so the card stops offering an Approve
             # that can only fail again, and the model is told on the next turn.
             said = ' '.join(_sentence(s) for s in reasons)
@@ -1719,7 +1719,7 @@ class BaseAssistantService(BaseService):
             def refuse():
                 # The card says why, in the same words (`reason`).
                 settled('stale', f'(note) The plan was not applied: {said} Nothing was written.', reason=said)
-                response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
+                response_helper.error(f'Nothing was written. {said} {then or "Ask the assistant to plan again."}')
             return refuse
 
         stale = self._stale(client, project, documents)
@@ -1798,7 +1798,7 @@ class BaseAssistantService(BaseService):
         except PlanOutOfDate as e:
             # Something the plan names outside its documents is gone, which no
             # document version says. Asked before the first write.
-            return out_of_date(e.reasons)
+            return out_of_date(e.reasons, e.then)
         except PlanError as e:
             # A write whose answer was lost may have landed, so it counts as
             # written: "Nothing was written" was false, and approving again

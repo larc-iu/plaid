@@ -157,3 +157,75 @@ def test_a_conversations_lock_goes_once_nothing_holds_it():
         del lock
     assert len(svc._locks) == 0
 
+
+def test_latin_letters_above_the_bmp_are_never_checked_and_styled_letters_are():
+    """Luke 2026-10-16 (DECIDE 7, 8): an extIPA letter is typed as it is,
+    whatever the turn read, and a mathematical bold letter such as 𝐍 is
+    still refused unless the turn read one."""
+    from plaid_agent.core.garble import Seen, refusal
+    seen = Seen()
+    assert refusal({'value': 'pa\U00010780a'}, seen) is None
+    assert refusal({'value': 'ta\U0001DF0Ae'}, seen) is None
+    out = refusal({'value': '\U0001D40D\U0001D40E\U0001D40C'}, seen)
+    assert out and 'characters from Mathematical Alphanumeric Symbols' in out
+    seen.add('\U0001D40D')
+    assert refusal({'value': '\U0001D40D\U0001D40E\U0001D40C'}, seen) is None
+
+
+def test_a_merge_joins_values_with_the_rules_join_with():
+    """Core's single-span remedy joins a merge's values with its rule's
+    join-with, " | " when it has none, and the card showed " | " always
+    (REV-AGENT F8)."""
+    from fixtures import document_raw, project_raw, GLOSS
+
+    def merged(join=None):
+        project = project_raw()
+        if join is not None:
+            for tk in project['text_layers'][0]['token_layers']:
+                for sl in tk.get('span_layers') or []:
+                    if sl['id'] == GLOSS:
+                        sl['constraints'] = {'igt': [{'type': 'single-span', 'join-with': join}]}
+        raw = document_raw()
+        raw['text_layers'][0]['token_layers'][1]['span_layers'][0]['spans'].append(
+            {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2']})
+        w = fake_ws(FakeClient(project=project, documents={'d1': raw}))
+        call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
+        return w.ops[0]['spans'][0]['value']
+
+    assert merged() == 'Ali | fish'
+    assert merged(' / ') == 'Ali / fish'
+
+
+def test_a_turns_reshapes_read_the_whole_document_once():
+    """delete_word, merge_words and split_sentence read the whole document,
+    every app's layers, on every call (REV-D7-FAKES). Once a turn now, for
+    each version of the document."""
+    w = igt_ws()
+    real = w.client.documents.get
+    whole = []
+
+    def get(doc_id, *a, **k):
+        if k.get('include_body'):
+            whole.append(doc_id)
+        return real(doc_id, *a, **k)
+    w.client.documents.get = get
+    call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w3']})
+    call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
+    call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1.w2'})
+    assert len(whole) <= 2, whole  # the document's own load, and the whole read once
+
+
+def test_corpus_stats_says_how_many_segments_it_left_out_for_ending_before_they_start(monkeypatch):
+    """A segment whose end is before its start is left out of every count of
+    time, as the editor leaves it out, and corpus_stats said nothing of it
+    (FX-H16-IGT)."""
+    from test_time_alignment import _ws
+    from plaid_agent.core.bidi import for_model
+    w = _ws(monkeypatch, seconds=125.0)
+    assert 'left out' not in for_model(call_tool(w, 'corpus_stats', {}))
+    w = _ws(monkeypatch, seconds=125.0)
+    seg = w.client._documents['d1']['text_layers'][0]['token_layers'][-1]['tokens'][2]
+    seg['metadata'] = {'timeBegin': 5.0, 'timeEnd': 4.0}
+    out = for_model(call_tool(w, 'corpus_stats', {}))
+    assert '1 segment whose end is before its start is left out.' in out, out
+    assert 'Time alignment: 2 segments in 1 document' in out, out

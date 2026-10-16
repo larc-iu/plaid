@@ -157,7 +157,7 @@ def test_a_multiword_token_kept_whole_names_its_forms_and_counts_its_new_words(w
 
 
 def test_parts_cut_a_token_with_no_space(ws):
-    out = t_split_token(ws, document='Partes', ref='s3.w1', parts=['can', 'not'])
+    out = t_split_token(ws, document='Partes', ref='s3.w1 "cannot"', parts=['can', 'not'])
     assert out.startswith('Planned splitting s3.w1 "cannot" into 2 tokens: "can", "not". "can" keeps its word')
     assert ws.ops[0]['pieces'] == [[0, 3], [3, 6]]
 
@@ -190,6 +190,16 @@ def test_a_token_is_reshaped_once_per_plan_either_way(ws):
     t_set_words(ws, document='Partes', ref='s1.w2-3', forms=['vende'])
     with pytest.raises(ToolError, match='already reshapes this token'):
         t_split_token(ws, document='Partes', ref='s1.w2-3')
+
+
+def test_a_second_split_of_the_same_token_replaces_the_first(ws):
+    """A split restates every cut, so the second split of one token in a
+    plan is the correction of the first, not a clash (UD.md, 2026-10-16)."""
+    t_split_token(ws, document='Partes', ref='s3.w1', parts=['ca', 'nnot'])
+    out = t_split_token(ws, document='Partes', ref='s3.w1 "cannot"', parts=['can', 'not'])
+    assert out.startswith('Planned splitting'), out
+    [op] = ws.ops
+    assert op['kind'] == 'split_token' and [op['surface'][a:b] for a, b in op['pieces']] == ['can', 'not']
 
 
 def test_a_word_the_split_moves_keeps_taking_writes_and_its_neighbours_are_renumbered(ws):

@@ -33,6 +33,16 @@ def value_set_rules(layer) -> List[dict]:
             if isinstance(c, dict) and c.get('type') == 'value-set']
 
 
+def join_with(layer) -> str:
+    """What a merge joins a layer's values with: core's single-span remedy
+    reads its rule's ``join-with``, and " | " when it has none."""
+    for cs in ((layer or {}).get('constraints') or {}).values():
+        for c in cs or []:
+            if isinstance(c, dict) and c.get('type') == 'single-span' and isinstance(c.get('join-with'), str):
+                return c['join-with']
+    return ' | '
+
+
 def declares(layer, rule_type: str) -> bool:
     """Whether any app stored a rule of ``rule_type`` on a layer."""
     return any(isinstance(c, dict) and c.get('type') == rule_type

@@ -356,6 +356,10 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
                 else f'{what}, case sensitive, by frequency{of}{place}')
     else:
         head = (f'{noun} by frequency{place}' if n > 1 else f'{what} by frequency{of}{place}')
+    if n > 1:
+        # A punctuation word is a word in UD, with its own UPOS, so a run may
+        # hold one ("NOUN PUNCT"), and the header says so (Luke 2026-10-16).
+        head += ', punctuation included'
     out = [f'{head}: {len(rows)} distinct value(s), {total} {unit}.' + clipped]
     for v, k in rows[:limit]:
         out.append(f'  {k:>7}  {v}')

@@ -293,6 +293,18 @@ def q_segments(ws: Workspace) -> Dict[str, Dict[str, float]]:
     return out
 
 
+def q_backward_segments(ws: Workspace) -> int:
+    """How many time-aligned segments end before they start, which every
+    read leaves out as the editor does (``hasValidTimes``). 0 without an
+    alignment layer."""
+    layer = ws.project.alignment_layer_id
+    if not layer:
+        return 0
+    seg = '?ta'
+    return ws.corpus.count([['token', seg, {'layer': layer}],
+                            ['<', f'{seg}.metadata.timeEnd', f'{seg}.metadata.timeBegin']], [seg])
+
+
 # --- frequency_list ---------------------------------------------------------------
 
 def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int,

@@ -111,7 +111,10 @@ def test_ngrams_are_runs_of_adjacent_words_inside_a_sentence(ws):
     out = t_frequency_list(ws, what='form', ngram=2, document='Uno')
     assert sorted(tuple(r[1:]) for r in _rows(out)) == [
         ('a', 'el'), ('corre', '.'), ('el', 'mar'), ('mar', '.'), ('vamos', 'a')]
-    assert out.splitlines()[0] == 'form bigrams, case folded, by frequency in "Uno": 5 distinct value(s), 5 in all.'
+    # Punctuation is a word in UD, counted in a run, and the header says so
+    # (Luke 2026-10-16).
+    assert out.splitlines()[0] == ('form bigrams, case folded, by frequency in "Uno", punctuation included: '
+                                   '5 distinct value(s), 5 in all.')
     tags = t_frequency_list(ws, what='upos', ngram=2)
     assert ['3', 'VERB', 'ADP'] in _rows(tags) and ['2', 'NOUN', 'PUNCT'] in _rows(tags)
     assert ['1', 'NOUN', 'SYM'] in _rows(tags)

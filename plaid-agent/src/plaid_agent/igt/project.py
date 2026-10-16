@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
-from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
+from ..core.project import declares, find_layer, join_with, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from plaid_client import ROLES, find_by_role
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.igt import precedence, read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
+# A clitic, as plaid-client-py's glossing reads one (the one Python copy).
+from plaid_client.workflows.igt.glossing import is_clitic
 # Which tokens are left out of annotation is plaid_client's, the one Python copy
 # of igtConfig.js's rule. Re-exported for the modules that read it from here.
 from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
@@ -42,10 +44,6 @@ SCOPES = ('Word', 'Morpheme', 'Sentence')
 
 def _igt(cfg, key):
     return ((cfg or {}).get('igt') or {}).get(key)
-
-
-def is_clitic(morph_type):
-    return isinstance(morph_type, str) and 'clitic' in morph_type.lower()
 
 
 def joiner(prev_type, next_type):
@@ -89,6 +87,8 @@ class Field:
     value_sets: List[dict] = dataclasses.field(default_factory=list)
     #: The tagset name the layer references, a dangling one included.
     tagset_name: Optional[str] = None
+    #: What a merge joins two of its values with (core.project.join_with).
+    join_with: str = ' | '
 
 
 def _unique_field_names(entries):
@@ -322,6 +322,9 @@ def load_project(client, project_id: str) -> IgtProject:
                 entries.append((sl['name'], sl['id'], scope, tname, tagsets.get(tname) if tname else None,
                                 value_set_rules(sl)))
     fields = _unique_field_names(entries)
+    joins = {sl['id']: join_with(sl) for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
+    for f in fields.values():
+        f.join_with = joins.get(f.layer_id, f.join_with)
     metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
     metadata_tagsets, metadata_tagset_names = {}, {}
     for m in metadata:

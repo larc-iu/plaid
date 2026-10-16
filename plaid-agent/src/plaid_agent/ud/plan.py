@@ -511,9 +511,11 @@ KIND = ok.registry([
            extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
     # One token made several. Nothing is deleted: the words move to their
     # parts with what is on them, so it names the words only for the guard
-    # against a second reshape of the same token.
+    # against a second reshape of the same token. A second split of the same
+    # token restates every cut, so it replaces the first (UD.md, 2026-10-16).
     OpKind('split_token', ('split token', 'split tokens'), apply=_apply_split_token, shape=WORD_SHAPE,
            required=('token_id', 'text_id', 'pieces', 'word_ids', 'word_layer_id'),
+           target=lambda op: ('split_token', op.get('token_id')),
            extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
            required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,

@@ -70,14 +70,15 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
             continue
         keep = next((sp for sp in spans if sp.id in own), None) or min(spans, key=lambda sp: sp.id)
         joined = keep.value
+        f = project.field_by_layer(layer_id) if project is not None else None
         if keep.value is None or isinstance(keep.value, str):
             values: List[str] = []
             for sp in [keep] + [sp for sp in spans if sp is not keep]:
                 if isinstance(sp.value, str) and not _blank(sp.value) and sp.value not in values:
                     values.append(sp.value)
             if values:
-                joined = ' | '.join(values)
-        f = project.field_by_layer(layer_id) if project is not None else None
+                # Joined as core joins them, with the rule's join-with.
+                joined = (f.join_with if f is not None else ' | ').join(values)
         refused = any(not value_set_allows(c, joined) for c in (f.value_sets if f else ()))
         out.append({'layer_id': layer_id, 'keep_id': keep.id,
                     'value': joined if joined != keep.value and not refused else None,
@@ -87,8 +88,14 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
 
 def _other_layers(ws: Workspace, doc) -> Dict[str, Any]:
     """The whole document, every app's layers, for what a reshape takes from
-    the layers this assistant does not read (``core/loss.py``)."""
-    return ws.client.documents.get(doc.id, include_body=True)
+    the layers this assistant does not read (``core/loss.py``). Read once a
+    turn for each version of a document (a workspace is a turn's), not once
+    for every delete, merge or split (REV-D7-FAKES). Read only."""
+    cache = ws.__dict__.setdefault('_whole_documents', {})
+    key = (doc.id, doc.version)
+    if key not in cache:
+        cache[key] = ws.client.documents.get(doc.id, include_body=True)
+    return cache[key]
 
 
 def _own_layers(ws: Workspace) -> tuple:

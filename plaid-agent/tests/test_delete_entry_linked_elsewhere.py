@@ -62,6 +62,8 @@ def test_the_card_settles_with_no_approve(monkeypatch):
     helper = la.sbs._approve(spec, client, plan)
     [error] = helper.errors
     assert error.startswith('Nothing was written. The entry ') and 'linked in projects this assistant cannot open' in error
+    # Planning again can only leave the delete out, and the line says so (W-PY3).
+    assert error.endswith(' Ask the assistant to plan again without the delete.'), error
     assert 'HTTP 409' not in error
     item = la._stored(spec, client)
     assert item['status'] == 'stale'

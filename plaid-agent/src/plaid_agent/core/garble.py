@@ -94,6 +94,11 @@ _CHECKED = re.compile('[\ud800-\udfff\ufffd\U00010000-\U0010ffff]')
 
 BROKEN = 'broken'
 PRIVATE = 'private'
+#: What is never checked, though it is above the BMP: Latin letters (the
+#: extIPA ones, U+10780 to U+107BF and U+1DF00 to U+1DFFF), which a model
+#: writes reliably (Luke 2026-10-16). Mathematical styled letters such as 𝐍 are
+#: a block of their own, and stay checked.
+NEVER_CHECKED = frozenset({'script:Latin'})
 
 
 @lru_cache(maxsize=1 << 16)
@@ -248,7 +253,7 @@ def refusal(value: Any, seen: Seen, more: Optional[Callable[[], Iterable[str]]] 
                         'half, which cannot be stored. Write the whole character, or copy the value in '
                         'run_code from the data that holds it.')
             k = key(ch)
-            if k is None or k in seen.scripts:
+            if k is None or k in seen.scripts or k in NEVER_CHECKED:
                 continue
             if not asked and more is not None:
                 asked = True

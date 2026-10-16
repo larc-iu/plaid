@@ -78,7 +78,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
     metadata field (`by="Genre"`)."""
     project = ws.project
     lines: List[str] = []
-    from .queries import q_corpus_numbers, q_segments
+    from .queries import q_backward_segments, q_corpus_numbers, q_segments
     with ws.corpus.within(document) as held:
         names = {held: ws.corpus.doc_name(held)} if held else {
             i: n for i, n in ws.corpus.doc_names().items() if not ws.corpus.documents or i in ws.corpus.documents}
@@ -87,6 +87,9 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         # (survey item 11). A project with no segments reads no recording.
         times = q_segments(ws)
         recs = recordings(ws, names) if times else {}
+        # Left out of every count of time, as the editor leaves them out, and
+        # said, so a total is never read as the whole recording's.
+        backward = q_backward_segments(ws)
         if by is None:
             whole = q_corpus_numbers(ws, per_doc=False)
             # One document is loaded whole, so its longest words can be named.
@@ -102,6 +105,10 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
             def total(ids):
                 return merge_numbers([rows[i] for i in ids])
         clipped = ws.corpus.clipped_note('counts')
+    if backward:
+        clipped = (f'\n{backward} segment{"s" if backward != 1 else ""} whose end is before '
+                   f'{"their" if backward != 1 else "its"} start {"are" if backward != 1 else "is"} left out.'
+                   + clipped)
 
     def describe(n: Dict[str, Any], docs_n: int, head: str, ids=None):
         lines.append(head)

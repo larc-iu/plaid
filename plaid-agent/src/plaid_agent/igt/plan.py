@@ -1732,14 +1732,19 @@ def _document_of_text(ops) -> Optional[str]:
     return next((op.get('doc') for op in ops or () if op.get('doc')), None)
 
 
+#: What to do about a Delete entry refused for links elsewhere: planning again
+#: can only leave the delete out (W-PY3).
+WITHOUT_THE_DELETE = 'Ask the assistant to plan again without the delete.'
+
+
 def _linked_elsewhere(deletes: List[Dict[str, Any]]) -> PlanOutOfDate:
     if len(deletes) == 1:
         name = deletes[0].get('name')
         what = f'The entry {name}' if name else 'The entry'
         return PlanOutOfDate([f'{what} is linked in projects this assistant cannot open, so it was not '
-                              f'deleted'])
+                              f'deleted'], then=WITHOUT_THE_DELETE)
     return PlanOutOfDate(['An entry this plan deletes is linked in projects this assistant cannot open, '
-                          'so none was deleted'])
+                          'so none was deleted'], then=WITHOUT_THE_DELETE)
 
 
 def _entry_links_now(client, project, op) -> List[str]:
