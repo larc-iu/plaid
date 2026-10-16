@@ -12,7 +12,6 @@ import { AssistantChat } from '../components/assistant/AssistantChat.jsx';
 
 export const ADAPTER = {
   app: 'igt',
-  command: 'plaid-igt-agent',
   intro: 'Ask about this project.',
   examples: [],
   textName: 'the transcription',

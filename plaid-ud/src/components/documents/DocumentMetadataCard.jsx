@@ -19,8 +19,7 @@ export const DocumentMetadataCard = ({ doc, project, readOnly }) => {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          What this project records about a document. Each field saves as you leave it. A maintainer
-          chooses the fields under Settings → UD settings.
+          Fields are set under Settings → UD settings.
         </p>
         <MetadataFields
           rows={rows}

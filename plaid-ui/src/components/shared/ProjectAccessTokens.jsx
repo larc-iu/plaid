@@ -16,15 +16,11 @@ export const ProjectAccessTokens = ({ profileHref }) => (
     </CardHeader>
     <CardContent className="flex flex-col items-start gap-4">
       <p className="text-sm text-muted-foreground">
-        A named token reaches the API from an external service such as a parser or a script. It can
-        be revoked on its own, and its name appears in the audit history.
+        Named tokens for a parser, a script or another service, each revoked on its own.
       </p>
       <Button asChild variant="outline">
         <Link to={profileHref}>Manage API tokens</Link>
       </Button>
-      <p className="text-xs text-muted-foreground">
-        Use a token to initialize a Python <code>PlaidClient</code> instance.
-      </p>
     </CardContent>
   </Card>
 );

@@ -17,8 +17,6 @@ export const ADAPTER_MEMBERS = [
   // Which app's conversations these are. The record keys carry it and the
   // service advertises the same value in `extras.app`.
   'app',
-  // How an operator starts an assistant, for the "none is online" line.
-  'command',
   // The tab's opening line, and the examples under it.
   'intro',
   'examples',

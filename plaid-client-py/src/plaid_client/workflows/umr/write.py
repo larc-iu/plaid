@@ -372,11 +372,9 @@ def draft_params() -> List[Param]:
         Param.number('sentence', 'Sentence', default=1, min=1,
                      description='Which sentence, when the scope is one sentence.'),
         Param.boolean('overwrite', 'Overwrite existing graphs', default=False,
-                      description='Write over sentences whose graph is machine-made, '
-                                  'discarding those graphs. A sentence a person built '
-                                  'or confirmed is kept either way, and so is every '
-                                  'sentence with a graph when this is off. What is '
-                                  'kept is counted in the report.'),
+                      description='Redraft machine-made graphs, including what a person '
+                                  'deleted from them. Graphs a person built or confirmed '
+                                  'are kept.'),
     ]
 
 

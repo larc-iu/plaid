@@ -12,12 +12,6 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => (
     title="New UD project"
     create={createUdProject}
   >
-    <p>Layers created with the project:</p>
-    <ul className="mt-2 list-disc pl-5">
-      <li>Text layer</li>
-      <li>Token hierarchy: Sentences &rarr; Tokens &rarr; Words</li>
-      <li>Span layers for Form, Lemma, UPOS, XPOS and Features</li>
-      <li>Relation layers for dependencies and enhanced dependencies</li>
-    </ul>
+    <p>Sentences, tokens and words, with lemma, UPOS, XPOS, features and dependencies.</p>
   </NewProjectDialog>
 );

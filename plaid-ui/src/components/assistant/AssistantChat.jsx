@@ -34,6 +34,7 @@ import { AssistantMark } from './PlaidMarks.jsx';
 import { DisclosureButton, DisclosureNotice } from './AssistantDisclosure.jsx';
 import { latestUsage, totalSpend } from './usage.js';
 import { UsageMeter } from './UsageMeter.jsx';
+import { useNarrower } from './useNarrower.js';
 import { RetryLine } from './RetryLine.jsx';
 import { authService } from '../../services/auth.js';
 import { turnContext } from './transcript.js';
@@ -193,6 +194,9 @@ export const AssistantChat = ({
   // This tab's id (hold.js), for the requests made from callbacks declared
   // above the hold itself.
   const tabRef = useRef(null);
+  // Below this width the header's gauge drops its number (UsageMeter).
+  const headerRef = useRef(null);
+  const narrowHeader = useNarrower(headerRef, NARROW_HEADER);
   // A send storing its files: a second press in that moment is the same send,
   // not another one.
   const sendingRef = useRef(false);
@@ -1070,16 +1074,16 @@ export const AssistantChat = ({
             line up with. One row at every dock width: the model's name gives
             way (it truncates, its title has it whole) and the controls keep
             their room, with the icon buttons at 32px. */}
-        <header className="flex min-h-[var(--plaid-sticky-top)] items-center gap-2 border-b px-3 py-2 text-sm">
+        <header
+          ref={headerRef}
+          className="flex min-h-[var(--plaid-sticky-top)] items-center gap-2 border-b px-3 py-2 text-sm"
+        >
           <AssistantMark className="h-4 w-4 shrink-0" />
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {choice.discovering && !choice.services.length ? (
               <span className="truncate text-muted-foreground">Looking for an assistant…</span>
             ) : !service ? (
-              <span className="text-muted-foreground">
-                No assistant is online for this project. An operator can start one with{' '}
-                <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
-              </span>
+              <span className="truncate text-muted-foreground">No assistant online.</span>
             ) : (
               renderIdentity?.(chrome)
             )}
@@ -1097,7 +1101,7 @@ export const AssistantChat = ({
                   : `${elsewhere.length} running elsewhere`}
               </Link>
             )}
-            <UsageMeter usage={usage} spend={spend} record={record} />
+            <UsageMeter usage={usage} spend={spend} record={record} barOnly={narrowHeader} />
             <DisclosureButton text={disclosure} />
             {renderActions?.(chrome)}
             <Button
@@ -1279,6 +1283,9 @@ export const AssistantChat = ({
     </>
   );
 };
+
+// The header width below which the gauge shows its bar alone (Luke, 2026-10-16).
+const NARROW_HEADER = 400;
 
 const TITLE_MAX = 60;
 

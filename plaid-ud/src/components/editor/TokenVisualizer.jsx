@@ -385,7 +385,7 @@ export const TokenVisualizer = ({
   }, [wordTokens, originalText, text, originalCps, textCps]);
 
   if (!text) {
-    return <p className="py-8 text-center text-muted-foreground">No text to visualize</p>;
+    return <p className="py-8 text-center text-muted-foreground">No text.</p>;
   }
 
   if (wordTokens.length === 0) {
@@ -485,9 +485,6 @@ export const TokenVisualizer = ({
             <div className="flex items-center justify-between gap-4">
               <span dir="auto" className="font-text text-sm font-semibold">
                 {display}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                [{word.begin}&ndash;{word.end}]
               </span>
             </div>
 

@@ -7,7 +7,7 @@ export function DraftDialog({ draft, isDiscovering, writeLockHeld, disabled = fa
     <ServiceSpotDialog
       label="Draft"
       icon={Sparkles}
-      description="A first graph for each sentence, written into this document for correction on the canvas."
+      description="A first graph for each sentence, written into this document."
       run={draft.run}
       spot={draft.spot}
       onRun={() => draft.start()}

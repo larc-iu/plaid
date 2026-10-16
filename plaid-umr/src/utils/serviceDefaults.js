@@ -20,7 +20,7 @@ export const DRAFT_SPOT = {
   key: TASKS.DRAFT_GRAPH,
   label: 'Draft',
   description:
-    'Writes a first UMR graph for the sentences of a document, to be corrected on the canvas. ' +
+    'Writes a first UMR graph for the sentences of a document. ' +
     'The Draft button on the annotation page.',
   builtins: [],
 };

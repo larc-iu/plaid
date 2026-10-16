@@ -411,7 +411,7 @@ export const EditableCell = React.memo(
     //
     // Machine-origin record for the tooltip + the producer's distribution (when
     // one was recorded in provDetail) for ranking the dropdown.
-    const cellTitle = provCellTitle(`Edit ${field}`, provMeta);
+    const cellTitle = provCellTitle(`Edit ${FIELD_NAMES[field] ?? field}`, provMeta);
     // The name a screen reader gives the cell: its row and its word, as igt's
     // grid says "Gloss for dog". The tooltip stays a description.
     const cellName = `${FIELD_NAMES[field] ?? field} for ${tokenForm ?? ''}`.trim();

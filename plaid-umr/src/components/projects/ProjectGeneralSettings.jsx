@@ -28,11 +28,10 @@ const rolesetNote = (savedLanguage) => {
   if (savedLanguage)
     return (
       <>
-        No bundled rolesets for <code>{savedLanguage}</code>. Rolesets come from the project&rsquo;s
-        vocabularies, written on an entry in Plaid IGT. Bundled: {BUNDLED_NAMES}.
+        No bundled rolesets for <code>{savedLanguage}</code>. Bundled: {BUNDLED_NAMES}.
       </>
     );
-  return <>No language, so no bundled rolesets. Bundled: {BUNDLED_NAMES}.</>;
+  return <>Bundled rolesets: {BUNDLED_NAMES}.</>;
 };
 
 // "General": the shared page (name, language, delete). UMR adds what the saved
@@ -88,7 +87,7 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
         description: (
           <>
             The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>zh</code>,{' '}
-            <code>arp</code>). It picks the rolesets the concept editor offers.
+            <code>arp</code>).
           </>
         ),
         note: rolesetNote,

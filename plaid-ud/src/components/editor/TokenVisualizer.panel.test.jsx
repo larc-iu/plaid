@@ -65,16 +65,14 @@ describe('the token panel', () => {
 
     await hover(view, badges[1]);
     expect(panel()?.textContent).toContain('dog');
-    expect(panel()?.textContent).toContain('[4–7]');
+    expect(panel()?.textContent).not.toContain('[4–7]');
 
     await hover(view, badges[2]);
     expect(panel()?.textContent).toContain('multi-word token');
     expect(all(panel(), 'input').map((i) => i.value)).toEqual(['de', 'el']);
 
-    // Code points, not UTF-16 units: the emoji is one character.
     await hover(view, badges[3]);
     expect(all(panel(), 'input').map((i) => i.value)).toEqual(['😀x']);
-    expect(panel()?.textContent).toContain('[12–14]');
 
     const del = all(panel(), 'button').find((b) => b.textContent.includes('Delete'));
     await view.step(async () => del.click());

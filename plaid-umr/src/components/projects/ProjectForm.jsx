@@ -12,12 +12,6 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => (
     title="New UMR project"
     create={createUmrProject}
   >
-    <p>Layers created with the project:</p>
-    <ul className="mt-2 list-disc pl-5">
-      <li>Text layer</li>
-      <li>Token layers: Sentences &rarr; Words</li>
-      <li>UMR nodes, concepts, relations and document graph</li>
-    </ul>
-    <p className="mt-2">Documents come from .umr import. Text is edited in Plaid IGT.</p>
+    <p>Sentence and document graphs over each text&rsquo;s words.</p>
   </NewProjectDialog>
 );

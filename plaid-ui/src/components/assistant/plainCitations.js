@@ -33,7 +33,6 @@ export const PLAIN_CITATIONS = {
 export const PLAIN_ASSISTANT = {
   ...PLAIN_CITATIONS,
   app: '',
-  command: '',
   intro: '',
   examples: [],
   textName: 'the text',

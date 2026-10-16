@@ -107,7 +107,6 @@ export const parseCitationHref = (href) => {
 
 export const UMR_ASSISTANT = {
   app: 'umr',
-  command: 'plaid-umr-agent',
   intro: 'Ask about the graphs or the corpus, or ask for changes.',
   // What a change flagged on the card is replacing. This app never edits the
   // text, so the only kind that sets the flag is a guideline rewrite, and what

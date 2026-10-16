@@ -90,7 +90,7 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     label: 'Tokenize',
     copy: {
       successTitle: 'Tokenized',
-      successMessage: 'The document is tokenized.',
+      successMessage: 'The tokenizer finished.',
       errorTitle: 'Failed to tokenize',
       errorMessage: 'The tokenizer did not run.',
       stoppedTitle: 'Tokenize',
@@ -110,7 +110,7 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       builtinRun.start(['Tokenize']);
       try {
         const ok = await doc.tokenize(textContent);
-        if (ok) notifySuccess('The document is tokenized.', 'Tokenized');
+        if (ok) notifySuccess('Tokenized');
       } finally {
         builtinRun.finish();
         lock.release();
