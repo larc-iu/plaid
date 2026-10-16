@@ -53,6 +53,9 @@ const REJECTED = new Set([422]);
 
 const settlePending = settleKey;
 
+// What `bind` may hand over: the readers and the drawing.
+const BOUND = ['read', 'shape', 'recut', 'view', 'announce', 'describe', 'entityIds'];
+
 // Two values the same: the server stores text composed (NFC), so a value
 // typed decomposed comes back composed and is the same value.
 const same = (a, b) =>
@@ -121,6 +124,19 @@ export class CellEngine {
     // View calls `reconcile({ deferViews: true })` held back for `flushViews`.
     this._deferred = null;
     this._listeners = new Set();
+  }
+
+  /**
+   * Hand the engine to another drawing of the same document: what reads and
+   * draws its cells (`read`, `shape`, `recut`, `view`, `announce`,
+   * `describe`, `entityIds`, each as in the constructor), keeping every value
+   * held. A key left out keeps what it was, and `view: null` draws nothing.
+   */
+  bind(options = {}) {
+    for (const name of BOUND) {
+      if (name in options) this[`_${name}`] = options[name];
+    }
+    return this;
   }
 
   get size() {

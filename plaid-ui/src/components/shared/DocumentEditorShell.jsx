@@ -5,6 +5,7 @@ import { isReviewed } from '@larc-iu/plaid-client';
 import { Button } from '../ui/button';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentModel } from '../../domain/useDocumentModel.js';
+import { releaseCellEngines } from '../../domain/cells/heldCells.js';
 import { SaveStatus } from './SaveStatus.jsx';
 import { CommentStore } from '../../domain/CommentStore';
 import { useCommentStore } from '../../domain/useCommentStore';
@@ -191,6 +192,10 @@ const DocumentEditor = ({ app, documentClient }) => {
 
   // Re-render on any mutation of the shared document (see useDocumentModel).
   useDocumentModel(doc);
+  // A cell's refused value, waiting to be sent again or for keep-yours, is
+  // the document's for as long as it is open, whatever is drawn meanwhile
+  // (domain/cells/heldCells.js). It goes when the document does.
+  useEffect(() => () => releaseCellEngines(doc), [doc]);
   // The document's copy of the project once there is one: it reads it again
   // while open and after a refused write, so a member demoted or removed
   // meanwhile gets the read-only page without a reload.

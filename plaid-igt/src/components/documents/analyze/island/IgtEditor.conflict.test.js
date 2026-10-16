@@ -10,6 +10,7 @@ import {
 } from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { releaseCellEngines } from '@ui/domain/cells/heldCells.js';
 
 // A cell edit refused because another user changed the cell first (Luke's
 // ruling Q1): the cell shows theirs, with "Yours: X · Enter to keep yours"
@@ -94,7 +95,10 @@ beforeEach(() => {
 afterEach(() => {
   // What the cell engine reads under each cell is what the grid drew there.
   expectIndexMatchesDom(editor);
+  const doc = editor?.doc;
   editor?.destroy();
+  // What the grid held is the document's, which closes with the test.
+  releaseCellEngines(doc);
   host?.remove();
   editor = null;
   host = null;

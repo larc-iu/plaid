@@ -20,6 +20,7 @@ import { handleComposeBeforeInput } from '@/lib/composeInput';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorpheme.js';
 import { precedentFetchedAt } from '@/domain/precedentCache';
 import { CellEngine } from '@ui/domain/cells/CellEngine.js';
+import { heldCellEngine } from '@ui/domain/cells/heldCells.js';
 import { domCells } from '@ui/domain/cells/domCells.js';
 import { announceCells } from '@ui/lib/cellConflict.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
@@ -211,8 +212,10 @@ export class IgtEditor {
     // another user's value (conflicts.js). What is stored under a cell is read
     // from the document (cellReader.js), so a cell on a page not drawn is
     // decided like a drawn one. The template draws the engine's state: the
-    // value at rest, the unsent mark, the note.
-    this._cells = new CellEngine({
+    // value at rest, the unsent mark, the note. The engine is the document's
+    // (heldCells.js), so an island built again on it (after a history entry
+    // was on screen, or a tab switch) finds every value it held.
+    this._cells = heldCellEngine(doc, 'analyze', () => new CellEngine()).bind({
       read: (key) => readCell(this.doc, key),
       shape: (key) => shapeOf(this.doc, key),
       recut: (snapshot) => recutOf(this.doc, snapshot),
@@ -416,7 +419,8 @@ export class IgtEditor {
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     this._unsubCells?.();
-    this._cells.clear();
+    // The values it holds stay with the document, for the next island on it.
+    this._cells.bind({ view: null });
     window.removeEventListener('igt:focus-sentence', this._onAssistantFocus);
     window.removeEventListener('resize', this._onDockWidth);
     document.removeEventListener('visibilitychange', this._onVisibility);

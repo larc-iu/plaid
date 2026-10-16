@@ -10,6 +10,7 @@ import {
   mountIsland,
 } from '@/domain/test-helpers.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { releaseCellEngines } from '@ui/domain/cells/heldCells.js';
 
 // Values put back into their cells after they were not saved: what keeps them
 // on screen, and what counts them as unsaved.
@@ -87,7 +88,10 @@ beforeEach(() => resetIds());
 afterEach(() => {
   // What the cell engine reads under each cell is what the grid drew there.
   expectIndexMatchesDom(editor);
+  const doc = editor?.doc;
   editor?.destroy();
+  // What the grid held is the document's, which closes with the test.
+  releaseCellEngines(doc);
   host?.remove();
   editor = null;
   host = null;
@@ -153,7 +157,7 @@ describe('an in-app way out asks', () => {
     expect(hasUnsavedDraft()).toBe(null);
   });
 
-  it('no longer once the island is gone', async () => {
+  it('no longer once the document is closed', async () => {
     const { doc, client } = mount();
     const b = cell('ma:m-2:Gloss');
     const { c } = await refuseFirst(doc, client, async () => {
@@ -162,9 +166,29 @@ describe('an in-app way out asks', () => {
     });
     type(c, c.dataset.orig ?? '');
     expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
+    // The island alone going (another tab, a history entry on screen) keeps
+    // it: it is the document's.
     editor.destroy();
     editor = null;
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
+    releaseCellEngines(doc);
     expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('is there again on an island built again on the same document', async () => {
+    const { doc, client } = mount();
+    const b = cell('ma:m-2:Gloss');
+    const { c } = await refuseFirst(doc, client, async () => {
+      focus(b);
+      type(b, 'BBB');
+    });
+    type(c, c.dataset.orig ?? '');
+    editor.destroy();
+    host.remove();
+    ({ host, editor } = mountIsland(doc));
+    await settle(30);
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
+    expect(cell('ma:m-2:Gloss').value).toBe('BBB');
   });
 });
 

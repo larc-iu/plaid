@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { CellEngine } from '../domain/cells/CellEngine.js';
+import { heldCellEngine } from '../domain/cells/heldCells.js';
 
 // The React side of the cell engine (domain/cells/CellEngine.js): one engine
 // per document, which every cell of a grid shares, so a value put back for a
-// cell outlives the cell (a page turned away from) and still counts as typed
-// and not saved.
+// cell outlives the cell (a page turned away from, the grid drawn again) and
+// still counts as typed and not saved.
 
 // Each engine's drawn cells, by canonical key: what `useConflictCell` registers.
 const drawn = new WeakMap();
@@ -28,29 +29,31 @@ export const reactCellEngine = (options) => {
 };
 
 /**
- * One engine for `doc`'s grid. `read`, `shape`, `recut`, `describe`,
+ * The engine `name` of `doc`'s grid. `read`, `shape`, `recut`, `describe`,
  * `entityIds` and `announce` are CellEngine's, read through a ref so a new
  * closure each render is fine. Every change to the document's data is gone
- * over (`reconcile`), and the engine is let go with the grid.
+ * over (`reconcile`). The engine is the document's (domain/cells/
+ * heldCells.js): a grid drawn again, after a history entry was on screen in
+ * its place or a tab switch, finds every value it held, and the shell lets
+ * it go with the document.
  */
-export function useCellEngine(doc, options) {
+export function useCellEngine(doc, options, name = 'grid') {
   const opts = useRef(options);
   opts.current = options;
-  const engine = useMemo(
-    () =>
-      reactCellEngine({
-        read: (key) => opts.current.read(key),
-        shape: (key) => opts.current.shape?.(key) ?? null,
-        recut: (snapshot, key) => opts.current.recut?.(snapshot, key) ?? null,
-        describe: (key) => opts.current.describe?.(key) ?? null,
-        entityIds: (key) => opts.current.entityIds?.(key) ?? [],
-        announce: (event) => opts.current.announce?.(event),
-      }),
+  const engine = useMemo(() => {
+    if (!doc) return reactCellEngine({ read: () => undefined });
+    const held = heldCellEngine(doc, name, () => reactCellEngine({}));
+    // The drawing now on screen reads for it.
+    return held.bind({
+      read: (key) => opts.current.read(key),
+      shape: (key) => opts.current.shape?.(key) ?? null,
+      recut: (snapshot, key) => opts.current.recut?.(snapshot, key) ?? null,
+      describe: (key) => opts.current.describe?.(key) ?? null,
+      entityIds: (key) => opts.current.entityIds?.(key) ?? [],
+      announce: (event) => opts.current.announce?.(event),
+    });
     // One per document: another document is another grid.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [doc],
-  );
-  useEffect(() => () => engine.clear(), [engine]);
+  }, [doc, name]);
   const dataVersion = doc?.dataVersion ?? 0;
   useEffect(() => {
     if (engine.size) engine.reconcile();
