@@ -257,6 +257,17 @@
   [col]
   [:raw (str "+" (name col))])
 
+(def ^:private outside-removed-projects
+  "Leave out every operation of a project being removed. A deleted project's
+  rows stay until its removal finishes in the background, and until then the
+  log shows none of them, as once they are gone: not its chips, not its
+  descriptions. The list of such projects is read once per query and is
+  almost always empty. `+project_id` keeps the term off the index, so the
+  walk's own index still serves the read."
+  [:or
+   [:= (no-index :project_id) nil]
+   [:not-in (no-index :project_id) {:select [:id] :from [:projects] :where [:<> :deleted_at nil]}]])
+
 ;; ============================================================
 ;; Paging: walk the scope from the page's edge
 ;; ============================================================
@@ -300,7 +311,7 @@
     []
     (let [wanted (set units)
           ids (mapv str units)
-          filters (cond-> (ts-where start-time end-time (no-index :ts))
+          filters (cond-> (conj (ts-where start-time end-time (no-index :ts)) outside-removed-projects)
                     (seq op-types) (conj (op-type-where op-types))
                     (seq kinds) (conj (kind-where kinds))
                     member? (conj member?))
@@ -355,7 +366,7 @@
   [db scope time-range limit cursor-vals op-types kinds order ops-limit]
   (let [eff (pagination/clamp-limit limit)
         desc? (= order :desc)
-        filters (cond-> (ts-where (first time-range) (second time-range))
+        filters (cond-> (conj (ts-where (first time-range) (second time-range)) outside-removed-projects)
                   (seq op-types) (conj (op-type-where op-types))
                   (seq kinds) (conj (kind-where kinds)))
         page-edge (first cursor-vals)
@@ -586,7 +597,7 @@
   "WHERE for the aggregate reads: an optional project scope plus the window,
   and never a repair, which is nobody's activity (`not-repair`)."
   [project-id start-time end-time]
-  (conj-where (cond-> (conj (ts-where start-time end-time) (not-repair :operations.group_id))
+  (conj-where (cond-> (conj (ts-where start-time end-time) (not-repair :operations.group_id) outside-removed-projects)
                 project-id (conj [:= :project_id project-id]))))
 
 (defn- tally-daily

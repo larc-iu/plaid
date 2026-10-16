@@ -312,7 +312,15 @@
     (is (not (contains? (named :project/id) proj)))
     (is (not (contains? (named :document/id) doc)))
     (is (not (contains? (op-named :op/project) proj)))
-    (is (not (contains? (op-named :op/document) doc)))))
+    (is (not (contains? (op-named :op/document) doc)))
+    (testing "its rows are left out whole, so no description names it either (REV7-CORE-6)"
+      (let [said (map :op/description (mapcat :audit/ops entries))]
+        (is (some #(re-find #"Still here" %) said))
+        (is (not-any? #(re-find #"Being removed|Its doc" %) said))))
+    (testing "the same in the server-wide log"
+      (let [all (-> (api-call admin-request {:method :get :path "/api/v1/audit?limit=200"}) :body :entries)]
+        (is (seq all))
+        (is (not-any? #(re-find #"Being removed|Its doc" %) (map :op/description (mapcat :audit/ops all))))))))
 
 (deftest audit-window-bounds-include-an-entry-given-its-own-time
   ;; An entry's time has nanosecond digits, the route's coercion keeps
