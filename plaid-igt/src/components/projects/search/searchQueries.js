@@ -96,6 +96,23 @@ export function searchDomains(layerInfo, vocabs) {
   return domains;
 }
 
+// A stored morpheme with no form of its own shows its word's surface when it
+// is alone in its word (beside others it is a gap, shown as ?), so a
+// Morphemes search matches it by that surface, as the assistant does
+// (plaid-agent Corpus.shown_morph). `doc` is the document: an id, or a var.
+const formlessAlone = (layer, spec, doc) => {
+  const at = (v, extra = {}) => [
+    'token',
+    v,
+    { layer, doc, begin: { var: '?fb' }, end: { var: '?fe' }, ...extra },
+  ];
+  return [
+    at('?t', { value: spec }),
+    ['not', ['token', '?t', { metadata: { form: { regex: '.' } } }]],
+    ['not', at('?fa'), at('?fz'), ['precedes', '?fa', '?fz']],
+  ];
+};
+
 // The clause that keeps a word search to words, or none.
 const wordsOnly = (domain) =>
   domain.wordValue ? [['token', '?t', { value: domain.wordValue }]] : [];
@@ -141,6 +158,7 @@ export function hitsQueries(domain, spec, docId) {
         ],
         limit: HIT_LIMIT,
       },
+      { find: ['?t'], where: formlessAlone(domain.layerId, spec, docId), limit: HIT_LIMIT },
     ];
   }
   if (domain.kind === 'span') {
@@ -190,6 +208,7 @@ export function hitsByDocQueries(domain, spec) {
         ],
         return: agg,
       },
+      { where: formlessAlone(domain.layerId, spec, { var: '?d' }), return: agg },
     ];
   }
   if (domain.kind === 'span') {
@@ -215,7 +234,10 @@ export function hitsByDocQueries(domain, spec) {
 //   (first clause filters, second binds — verified shape).
 // - morpheme: filter on metadata.form, group by the ?t.metadata.form dot path.
 // - lexicon: group by the item entity (ids; caller maps id -> form).
-export function freqQueries(domain, spec) {
+// `formless`: also count a stored morpheme with no form by its word's surface
+// (formlessAlone), as Search shows it. Validation's sweep of written forms
+// leaves it out.
+export function freqQueries(domain, spec, { formless = false } = {}) {
   const agg = { group: null, aggregates: [['count']] };
   if (domain.kind === 'token') {
     return [
@@ -235,6 +257,14 @@ export function freqQueries(domain, spec) {
         where: [['token', '?t', { layer: domain.layerId, metadata: { form: metadataSpec(spec) } }]],
         return: { ...agg, group: ['?t.metadata.form'] },
       },
+      ...(formless
+        ? [
+            {
+              where: formlessAlone(domain.layerId, spec, { var: '?fd' }),
+              return: { ...agg, group: ['?t.value'] },
+            },
+          ]
+        : []),
     ];
   }
   if (domain.kind === 'span') {

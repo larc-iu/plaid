@@ -139,3 +139,26 @@ describe('a words search under the ignored-tokens rule', () => {
     expect(freqQueries(words, 'x')[0].where).toContainEqual(keep);
   });
 });
+
+describe('a Morphemes search', () => {
+  const morphemes = searchDomains(LAYER_INFO, []).find((d) => d.id === 'morphemes');
+  const formless = (where) =>
+    where.some((c) => c[0] === 'not' && c[1]?.[2]?.metadata?.form?.regex === '.');
+
+  it('also finds a stored morpheme with no form, alone in its word, by its surface', () => {
+    const [byForm, bySurface] = hitsQueries(morphemes, 'kai', 'd1');
+    expect(byForm.where[0][2].metadata.form).toEqual({ literal: 'kai' });
+    expect(bySurface.where[0]).toEqual([
+      'token',
+      '?t',
+      { layer: 'morphL', doc: 'd1', begin: { var: '?fb' }, end: { var: '?fe' }, value: 'kai' },
+    ]);
+    expect(formless(bySurface.where)).toBe(true);
+    expect(hitsByDocQueries(morphemes, 'kai')).toHaveLength(2);
+    expect(freqQueries(morphemes, 'kai', { formless: true })).toHaveLength(2);
+  });
+
+  it("leaves it out of the frequency query Validation's sweep reads", () => {
+    expect(freqQueries(morphemes, 'kai')).toHaveLength(1);
+  });
+});

@@ -264,7 +264,7 @@ export async function runHitsSearch(
 
 export async function runFreqSearch(client, domain, queryText, matchType) {
   const spec = buildMatchSpec(queryText, matchType);
-  const results = await runAll(client, freqQueries(domain, spec));
+  const results = await runAll(client, freqQueries(domain, spec, { formless: true }));
 
   const counts = new Map();
   for (const r of results) {
