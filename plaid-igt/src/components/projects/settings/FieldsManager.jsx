@@ -891,11 +891,8 @@ export const FieldsManager = ({
             ) : (
               <>
                 This field currently has{' '}
-                <strong>
-                  {pendingDelete.count.toLocaleString()} annotation
-                  {pendingDelete.count === 1 ? '' : 's'}
-                </strong>
-                . This cannot be undone.
+                <strong>{countOf(pendingDelete.count, 'annotation')}</strong>. This cannot be
+                undone.
               </>
             ))}
         </p>

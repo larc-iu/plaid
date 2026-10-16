@@ -674,7 +674,7 @@ export const VocabularyItems = ({
       // Not always a deleted entry: a field changed to Entry holds text that
       // names no entry either, and this is what clears it.
       notifyWarning(
-        `${findings.length} entr${findings.length === 1 ? 'y' : 'ies'} held a value that names no entry. Those values were cleared.`,
+        `${countOf(findings.length, 'entry')} held a value that names no entry. Those values were cleared.`,
         'Entries repaired',
       );
     }

@@ -3,6 +3,7 @@ import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Input } from '@ui/components/ui/input';
 import { notifySuccess } from '@/utils/feedback';
 import { segmentsWithText } from '@/domain/segments.js';
+import { plural } from '@ui/lib/plural.js';
 
 // Deleting segments in bulk: all of them, the ones with no text, or the ones
 // whose text is a given value. The baseline text is left alone whichever is
@@ -25,7 +26,7 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
     return value.trim() === '' ? [] : segmentsWithText(alignmentTokens, doc.body, value);
   }, [scope, value, alignmentTokens, doc.body]);
   const count = targets.length;
-  const noun = count === 1 ? 'segment' : 'segments';
+  const noun = plural(count, 'segment');
 
   const confirm = async () => {
     onOpenChange(false);

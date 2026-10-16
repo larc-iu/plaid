@@ -10,6 +10,7 @@ import {
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
 import { FormLabel } from './FormLabel';
+import { countOf, plural } from '@ui/lib/plural.js';
 
 // The confirmation the screen asks before deleting the open entry. Whether it
 // is open is the reducer's `dialog`.
@@ -98,7 +99,7 @@ export const EntryDialogs = ({
                     <>
                       It is linked to{' '}
                       <strong>
-                        {uses} word{uses === 1 ? '' : 's'}/morpheme{uses === 1 ? '' : 's'}
+                        {countOf(uses, 'word')}/{plural(uses, 'morpheme')}
                       </strong>
                       {deleteHidden?.hidden
                         ? `, ${deleteHidden.hidden} of them in projects you cannot open`
@@ -108,10 +109,7 @@ export const EntryDialogs = ({
                   ) : null}
                   {deleteRefPatches.length > 0 && (
                     <>
-                      <strong>
-                        {deleteRefPatches.length} entr
-                        {deleteRefPatches.length === 1 ? 'y' : 'ies'}
-                      </strong>{' '}
+                      <strong>{countOf(deleteRefPatches.length, 'entry')}</strong>{' '}
                       {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it.{' '}
                       {deleteFreesSenses
                         ? 'Its senses become entries of their own, and those '

@@ -13,7 +13,7 @@ import { resolveAutoAnalysis } from '@/domain/igtConfig';
 import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
-import { countOf } from '@ui/lib/plural.js';
+import { countOf, plural } from '@ui/lib/plural.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { runHeldNotice } from '@ui/components/services/runHeld.js';
 
@@ -377,9 +377,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           if (!ok) return;
           if (wasStopped) return halt();
           if (linked) {
-            parts.push(
-              `linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`,
-            );
+            parts.push(`linked ${countOf(linked, 'word')}/${plural(linked, 'morpheme')}`);
             wrote = true;
           }
         } else {

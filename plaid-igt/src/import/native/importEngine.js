@@ -70,6 +70,7 @@ import { convertedNote, prepareRecording } from '../../domain/media/playableReco
 import { declareIgtRules, igtFields } from '../../domain/igtConstraints.js';
 import { getIgtLayerInfo } from '../../domain/layerInfo.js';
 import { notInForceText } from '../../components/projects/settings/refusedValues.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -266,7 +267,7 @@ export async function importVocabulary({
   const unmarkedCount = pending.filter((it) => !fitsMark(it)).length;
   if (unmarkedCount) {
     warnings.push(
-      `"${vocabData.name}": ${unmarkedCount} ${unmarkedCount === 1 ? 'entry' : 'entries'} imported without ${unmarkedCount === 1 ? 'its archive id' : 'their archive ids'} (metadata at the 500-key limit)`,
+      `"${vocabData.name}": ${countOf(unmarkedCount, 'entry')} imported without ${unmarkedCount === 1 ? 'its archive id' : 'their archive ids'} (metadata at the 500-key limit)`,
     );
   }
   const stamped = (it) =>
@@ -632,7 +633,7 @@ async function importNativeDocument({
         );
       } else {
         warnings.push(
-          `"${docData.name}": ${alignment.length} time-aligned segment${alignment.length === 1 ? '' : 's'} skipped. This project is not set up for time alignment.`,
+          `"${docData.name}": ${countOf(alignment.length, 'time-aligned segment')} skipped. This project is not set up for time alignment.`,
         );
       }
     }
@@ -1443,7 +1444,7 @@ async function relinkVocabStructure({
   }
   if (dropped.length) {
     warnings.push(
-      `"${vocabData.name}": ${dropped.length} reference${dropped.length === 1 ? '' : 's'} pointed at something not in the archive and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
+      `"${vocabData.name}": ${countOf(dropped.length, 'reference')} pointed at something not in the archive and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
     );
   }
 }

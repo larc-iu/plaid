@@ -4,6 +4,7 @@ import { markImportStarted } from '@/domain/igtConfig';
 import { finishImport } from '@/domain/importFinish';
 import { ImportCancelled, NotYoursToFinish } from '@/import/resume';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 // The run of a project import, shared by the four wizards that make a project
 // from a file (FLEx, CLDF, ELAN, the archive). A wizard reads its file, shows
@@ -111,15 +112,9 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       setStage('done');
       const warnings = res.warnings?.length ?? 0;
       if (warnings) {
-        notifyWarning(
-          `Imported with ${warnings} warning${warnings === 1 ? '' : 's'}.`,
-          'Import finished',
-        );
+        notifyWarning(`Imported with ${countOf(warnings, 'warning')}.`, 'Import finished');
       } else {
-        notifySuccess(
-          `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
-          'Import complete',
-        );
+        notifySuccess(`Imported ${countOf(res.imported, 'document')}.`, 'Import complete');
       }
       return res;
     } catch (e) {

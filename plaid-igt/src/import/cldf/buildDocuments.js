@@ -37,6 +37,7 @@ import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
 import { isLangTag, withLangSuffix } from '../../domain/fieldNames.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
 /**
  * Grouping sentinel: one document per example row. Not every corpus is running
@@ -394,8 +395,8 @@ export function buildCldfDocuments(dataset, options = {}) {
     }
     if (off) {
       warnings.push(
-        `"${c.column}" does not line up with the analyzed words on ${off} ` +
-          `${off === 1 ? 'example' : 'examples'}. Its values there are read by position ` +
+        `"${c.column}" does not line up with the analyzed words on ${countOf(off, 'example')}. ` +
+          `Its values there are read by position ` +
           'and may be shifted or missing.',
       );
     }
@@ -794,7 +795,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   ).length;
   if (perExampleMedia && o.groupBy !== PER_EXAMPLE) {
     warnings.push(
-      `${perExampleMedia} example${perExampleMedia === 1 ? ' has' : 's have'} their own media ` +
+      `${countOf(perExampleMedia, 'example')} ${perExampleMedia === 1 ? 'has' : 'have'} their own media ` +
         'file, which only "one document per example" can keep: a Plaid document holds one media ' +
         'file for the whole text.',
     );
@@ -802,7 +803,7 @@ export function buildCldfDocuments(dataset, options = {}) {
 
   if (synthesizedBodies) {
     warnings.push(
-      `${synthesizedBodies} example${synthesizedBodies === 1 ? '' : 's'} had no Primary_Text, so ` +
+      `${countOf(synthesizedBodies, 'example')} had no Primary_Text, so ` +
         'the baseline was rebuilt from the analyzed words. Original spacing and punctuation are ' +
         'not recoverable.',
     );

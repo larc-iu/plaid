@@ -161,10 +161,8 @@ export const ElanFiles = ({
     <ElanSection
       step={step}
       title="Files"
-      note={`${eafs.length} .eaf file${eafs.length === 1 ? '' : 's'}${
-        mediaFiles?.length
-          ? `, ${mediaFiles.length} recording${mediaFiles.length === 1 ? '' : 's'}`
-          : ''
+      note={`${countOf(eafs.length, '.eaf file')}${
+        mediaFiles?.length ? `, ${countOf(mediaFiles.length, 'recording')}` : ''
       }. Every .eaf becomes one document.`}
       aside={
         editable &&
@@ -193,7 +191,7 @@ export const ElanFiles = ({
                     <span className={TONES.muted}>
                       <span aria-hidden="true">→ </span>
                       <span className="font-medium text-foreground">{doc.name}</span> ·{' '}
-                      {doc.sentences.length} sentence{doc.sentences.length === 1 ? '' : 's'}
+                      {countOf(doc.sentences.length, 'sentence')}
                     </span>
                   ) : (
                     <span className={TONES.muted}>{countOf(eaf.tiers.length, 'tier')}</span>

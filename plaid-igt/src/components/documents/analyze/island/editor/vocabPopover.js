@@ -18,6 +18,7 @@ import { leavePrecedent, openPrecedent, precedentBase } from '@/domain/precedent
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
 import { numHtml } from './shared.js';
 import { keys } from '@/lib/keymap.js';
+import { countOf } from '@ui/lib/plural.js';
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
 // ranks them, the entry detail, and the morph type row.
@@ -575,9 +576,7 @@ export const vocabPopover = {
                     ${it._prec
                       ? html`<span
                           class="igt-vocab-pop__prec"
-                          title=${`“${precForm}” was linked to this entry ${it._prec} time${
-                            it._prec === 1 ? '' : 's'
-                          } in this project`}
+                          title=${`“${precForm}” was linked to this entry ${countOf(it._prec, 'time')} in this project`}
                           >×${it._prec}</span
                         >`
                       : nothing}

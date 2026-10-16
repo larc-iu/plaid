@@ -60,6 +60,7 @@ import { xmlEscape, phraseSpeakerFor } from './flextext.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { mediaTypeForName } from '../domain/media/mediaTypes.js';
 import { ELAN_FIELD_NAMES_PROPERTY, writeElanFieldNames } from '../domain/elanFieldNames.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 const EAF_VERSION = '2.8';
 const SCHEMA_URL = 'http://www.mpi.nl/tools/elan/EAFv2.8.xsd';
@@ -393,7 +394,7 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   const model = buildModel(igtDoc, options, nextAnn);
   if (model.overlapped && onWarning) {
     onWarning(
-      `${model.overlapped} sentence${model.overlapped === 1 ? '' : 's'} overlap in time with ` +
+      `${countOf(model.overlapped, 'sentence')} overlap in time with ` +
         'another on the same tier, so they were written without times. Turn on "One tier set per ' +
         'speaker" to keep the alignment of overlapping speech.',
     );
@@ -402,7 +403,7 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   if (model.straddling && onWarning) {
     const n = model.straddling;
     onWarning(
-      `${n} segment${n === 1 ? ' crosses' : 's cross'} a sentence break and ${n === 1 ? 'was' : 'were'} left out.`,
+      `${countOf(n, 'segment')} ${n === 1 ? 'crosses' : 'cross'} a sentence break and ${n === 1 ? 'was' : 'were'} left out.`,
     );
   }
 

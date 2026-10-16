@@ -48,6 +48,7 @@ import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
 import { mayOverlap } from '../../domain/alignmentTimes.js';
 import { nameKey, sameName } from '@ui/lib/nameKey.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
 // A value that is only punctuation (or symbols), as FLEx's punctuation is.
 const PUNCTUATION = /^[\p{P}\p{S}]+$/u;
@@ -666,12 +667,12 @@ function buildGroup(files, nodes, roles, options = {}) {
     }
     if (blankUtterances) {
       docWarnings.push(
-        `Skipped ${blankUtterances} empty annotation${blankUtterances === 1 ? '' : 's'} on the utterance tier.`,
+        `Skipped ${countOf(blankUtterances, 'empty annotation')} on the utterance tier.`,
       );
     }
     if (unplacedWords) {
       docWarnings.push(
-        `Skipped ${unplacedWords} empty word${unplacedWords === 1 ? '' : 's'} that ${unplacedWords === 1 ? 'is' : 'are'} not punctuation.`,
+        `Skipped ${countOf(unplacedWords, 'empty word')} that ${unplacedWords === 1 ? 'is' : 'are'} not punctuation.`,
       );
     }
 
@@ -853,7 +854,7 @@ function buildGroup(files, nodes, roles, options = {}) {
           });
           if (respelled.length) {
             docWarnings.push(
-              `Utterance ${si + 1}: the word tier spells ${respelled.length} word${respelled.length === 1 ? '' : 's'} differently from the text, and the text wins (${respelled.slice(0, 4).join(', ')}${respelled.length > 4 ? ', …' : ''}).`,
+              `Utterance ${si + 1}: the word tier spells ${countOf(respelled.length, 'word')} differently from the text, and the text wins (${respelled.slice(0, 4).join(', ')}${respelled.length > 4 ? ', …' : ''}).`,
             );
           }
         }

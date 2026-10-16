@@ -1,4 +1,5 @@
 import { Label } from '@ui/components/ui/label';
+import { countOf } from '@ui/lib/plural.js';
 
 // Step 3: what to export. Scope is a run-time choice, never part of the
 // preset; includeVocabularies IS preset state, so this step SAYS what the
@@ -65,10 +66,7 @@ export const ScopeStep = ({
       <div className="flex flex-col gap-2">
         <Label>Scope</Label>
         {defaultDocument && radio('document', `This document: ${defaultDocument.name}`)}
-        {radio(
-          'project',
-          `Whole project (${documents?.length ?? 0} document${documents?.length === 1 ? '' : 's'})`,
-        )}
+        {radio('project', `Whole project (${countOf(documents?.length ?? 0, 'document')})`)}
         {radio('documents', 'Selected documents')}
       </div>
 

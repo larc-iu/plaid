@@ -9,6 +9,7 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 import { useListManager } from './useListManager';
+import { countOf } from '@ui/lib/plural.js';
 
 // The Baseline is first, and cannot be moved or removed.
 const DEFAULT_ORTHOGRAPHIES = [
@@ -202,11 +203,8 @@ export const OrthographiesManager = ({
               'No words have a transcription in this orthography yet.'
             ) : (
               <>
-                <strong>
-                  {pendingDelete.count.toLocaleString()} word{pendingDelete.count === 1 ? '' : 's'}
-                </strong>{' '}
-                currently {pendingDelete.count === 1 ? 'has' : 'have'} a transcription in this
-                orthography.
+                <strong>{countOf(pendingDelete.count, 'word')}</strong> currently{' '}
+                {pendingDelete.count === 1 ? 'has' : 'have'} a transcription in this orthography.
               </>
             ))}
         </p>

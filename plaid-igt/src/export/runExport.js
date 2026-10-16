@@ -137,7 +137,7 @@ const flexReadme = ({ stem, lexicon, docCount }) =>
     ...(lexicon.ranges
       ? [`  ${stem}.lift-ranges: the grammatical categories the lexicon uses`]
       : []),
-    `  ${stem}.flextext: ${docCount} interlinear text${docCount === 1 ? '' : 's'}`,
+    `  ${stem}.flextext: ${countOf(docCount, 'interlinear text')}`,
     '',
     'Import them in this order. Each import only appears in the File > Import',
     'menu while FLEx is showing the area named here.',

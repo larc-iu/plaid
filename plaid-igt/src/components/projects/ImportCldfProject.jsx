@@ -382,9 +382,8 @@ export const ImportCldfProject = () => {
 
             {build.stats.unalignedWords > 0 && (
               <p className="text-xs text-muted-foreground">
-                {build.stats.unalignedWords} analyzed word
-                {build.stats.unalignedWords === 1 ? '' : 's'} could not be located in the primary
-                text and will be skipped. The full list is in the import warnings.
+                {countOf(build.stats.unalignedWords, 'analyzed word')} could not be located in the
+                primary text and will be skipped. The full list is in the import warnings.
               </p>
             )}
 
@@ -400,8 +399,7 @@ export const ImportCldfProject = () => {
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
                 <p className="font-medium">
-                  Imported {results.imported} text
-                  {results.imported === 1 ? '' : 's'}
+                  Imported {countOf(results.imported, 'text')}
                   {results.skipped ? ` (${results.skipped} already done)` : ''}
                   {results.redone ? ` (${results.redone} redone)` : ''}
                 </p>

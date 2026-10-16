@@ -5,6 +5,7 @@ import { commentThread } from '@/components/documents/comments/island/CommentThr
 import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
 import { isVirtualMorphemeId } from '@/domain/virtualMorpheme';
 import { notifyWarning } from '@/utils/feedback';
+import { countOf } from '@ui/lib/plural.js';
 
 // How long after a refused post its anchor is watched for going (the
 // document read again after the refusal), so the typed text can follow it.
@@ -35,7 +36,7 @@ export const comments = {
     // counts but is never offered a control they cannot use.
     if (!n && !this.canComment) return nothing;
     const open = this._popover?.variant === 'comment' && this._popover.entityId === entityId;
-    const title = n ? `${n} comment${n === 1 ? '' : 's'} on ${label}` : `Comment on ${label}`;
+    const title = n ? `${countOf(n, 'comment')} on ${label}` : `Comment on ${label}`;
     return html`
       <button
         type="button"

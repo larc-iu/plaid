@@ -21,6 +21,7 @@ import {
 import { NAMED_ROLES, nodeLabel, ROLES } from '@/import/elan/schema';
 import { Panel } from '../ImportPanels.jsx';
 import { ElanSection } from './ElanSection.jsx';
+import { countOf } from '@ui/lib/plural.js';
 
 // What a tier can become, grouped the way the document is built: first the
 // text and the pieces it divides into, then the values that hang off those
@@ -94,7 +95,7 @@ export const SchemaMismatch = ({ batch, onReset }) => (
 const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
   <Panel
     tone={undecided.length ? 'error' : 'warning'}
-    title={`${groups.length} pair${groups.length === 1 ? '' : 's'} of tier names read alike`}
+    title={`${countOf(groups.length, 'pair')} of tier names read alike`}
   >
     <p className="mt-1 text-xs">
       Tiers are matched by exact name. These read alike, which usually means a typo.
@@ -184,10 +185,10 @@ export const ElanTierReview = ({
         title="Tiers"
         note={
           files.length === 1
-            ? `One file, ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
+            ? `One file, ${countOf(nodes.length, 'tier')}.`
             : nodes.every((n) => (n.fileCount ?? files.length) === files.length)
-              ? `${files.length} files with the same ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
-              : `${files.length} files, ${nodes.length} tier${nodes.length === 1 ? '' : 's'}. Not every file has every tier.`
+              ? `${files.length} files with the same ${countOf(nodes.length, 'tier')}.`
+              : `${files.length} files, ${countOf(nodes.length, 'tier')}. Not every file has every tier.`
         }
         aside={
           <Button
@@ -228,7 +229,7 @@ export const ElanTierReview = ({
                 >
                   <span className="font-medium">{rowLabel(node)}</span>
                   <span className="ml-2 text-xs text-muted-foreground">
-                    {node.annotationCount} annotation{node.annotationCount === 1 ? '' : 's'}
+                    {countOf(node.annotationCount, 'annotation')}
                     {node.participants.length > 1 ? ` · ${node.participants.length} speakers` : ''}
                     {node.fileCount < files.length
                       ? ` · in ${node.fileCount} of ${files.length} files`
@@ -290,8 +291,7 @@ export const ElanTierReview = ({
               onClick={() => setShowEmpty((v) => !v)}
               className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
             >
-              {showEmpty ? 'Hide' : 'Show'} {emptyCount} tier{emptyCount === 1 ? '' : 's'} with no
-              annotations
+              {showEmpty ? 'Hide' : 'Show'} {countOf(emptyCount, 'tier')} with no annotations
             </button>
           )}
         </div>
@@ -316,10 +316,7 @@ export const ElanProblems = ({ batch }) => {
       )}
 
       {build && build.warnings.length > 0 && (
-        <Panel
-          tone="warning"
-          title={`${build.warnings.length} warning${build.warnings.length === 1 ? '' : 's'}`}
-        >
+        <Panel tone="warning" title={`${countOf(build.warnings.length, 'warning')}`}>
           <ul className="mt-1 list-inside list-disc text-xs">
             {build.warnings.map((w) => (
               <li key={w}>{w}</li>
@@ -334,14 +331,14 @@ export const ElanProblems = ({ batch }) => {
           title={(() => {
             const values = build.stats.skipped.reduce((n, s) => n + s.values, 0);
             const tiers = build.stats.skipped.length;
-            return `Not imported: ${values} annotation${values === 1 ? '' : 's'} on ${tiers} tier${tiers === 1 ? '' : 's'}`;
+            return `Not imported: ${countOf(values, 'annotation')} on ${countOf(tiers, 'tier')}`;
           })()}
         >
           <p className="mt-1 text-xs">Set to “Don’t import” in Tiers.</p>
           <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
             {build.stats.skipped.map((sk) => (
               <li key={sk.label}>
-                {sk.tiers.join(', ')}: {sk.values} annotation{sk.values === 1 ? '' : 's'}
+                {sk.tiers.join(', ')}: {countOf(sk.values, 'annotation')}
               </li>
             ))}
           </ul>

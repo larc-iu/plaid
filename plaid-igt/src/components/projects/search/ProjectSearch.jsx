@@ -22,6 +22,7 @@ import { runHitsSearch, runFreqSearch } from './searchRunner.js';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
+import { countOf } from '@ui/lib/plural.js';
 
 export const ProjectSearch = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
@@ -209,8 +210,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       {result?.mode === 'hits' && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            {result.totalHits.toLocaleString()} hit{result.totalHits === 1 ? '' : 's'} in{' '}
-            {result.totalDocs} document{result.totalDocs === 1 ? '' : 's'}
+            {countOf(result.totalHits, 'hit')} in {countOf(result.totalDocs, 'document')}
             {result.truncated ? ' (capped, so refine your search for exact totals)' : ''}
           </p>
           {result.groups.map((g) => (
@@ -220,9 +220,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                 <span dir="auto" className="font-text text-sm font-medium">
                   {g.docName}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {g.docHits} hit{g.docHits === 1 ? '' : 's'}
-                </span>
+                <span className="text-xs text-muted-foreground">{countOf(g.docHits, 'hit')}</span>
               </div>
               <div className="divide-y">
                 {g.rows.map((row) => (
@@ -271,9 +269,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           ))}
           {result.remainingDocs > 0 && (
             <ListHint>
-              Another {result.remainingHits.toLocaleString()} hit
-              {result.remainingHits === 1 ? '' : 's'} in {result.remainingDocs} more document
-              {result.remainingDocs === 1 ? '' : 's'} are not shown. Refine your search to see them.
+              Another {countOf(result.remainingHits, 'hit')} in{' '}
+              {countOf(result.remainingDocs, 'more document')} are not shown. Refine your search to
+              see them.
             </ListHint>
           )}
           {result.totalHits === 0 && (
@@ -285,9 +283,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       {result?.mode === 'freq' && (
         <div className="rounded-lg border bg-card p-4">
           <p className="mb-3 text-sm text-muted-foreground">
-            {result.totalValues.toLocaleString()} distinct value
-            {result.totalValues === 1 ? '' : 's'} · {result.totalHits.toLocaleString()} total
-            occurrence{result.totalHits === 1 ? '' : 's'}
+            {countOf(result.totalValues, 'distinct value')} ·{' '}
+            {countOf(result.totalHits, 'total occurrence')}
           </p>
           {result.rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>
@@ -309,9 +306,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               distinct forms when the line above said 11,130. */}
           {result.totalValues > result.rows.length && (
             <ListHint>
-              Another {(result.totalValues - result.rows.length).toLocaleString()} value
-              {result.totalValues - result.rows.length === 1 ? '' : 's'} are not shown. Refine your
-              search to see them.
+              Another {countOf(result.totalValues - result.rows.length, 'value')} are not shown.
+              Refine your search to see them.
             </ListHint>
           )}
         </div>

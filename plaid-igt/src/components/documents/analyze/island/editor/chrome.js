@@ -22,6 +22,7 @@ import {
   PAGER_LABEL,
   PAGER_FOOT,
 } from '@ui/components/shared/runBar.js';
+import { countOf } from '@ui/lib/plural.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
@@ -255,7 +256,7 @@ export const chrome = {
         ${pageCount > 1
           ? this._pager(nSent, pageCount, 'top')
           : html`<span class="igt-toolbar__count ${RUN_COUNT}"
-              >${nSent} sentence${nSent === 1 ? '' : 's'}</span
+              >${countOf(nSent, 'sentence')}</span
             >`}
         <span class="igt-status-mount ms-auto"></span>
         <button
@@ -288,7 +289,7 @@ export const chrome = {
       return g.trusted ? `from ${entry}` : `from ${entry}, unconfirmed link`;
     }
     if (g.source === PRECEDENT_SOURCE && g.count)
-      return `seen ${g.count} time${g.count === 1 ? '' : 's'} in this project`;
+      return `seen ${countOf(g.count, 'time')} in this project`;
     return null;
   },
 

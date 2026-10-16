@@ -64,6 +64,7 @@ import {
   makeRefusal,
   serializeImportReport,
 } from '@/import/vocabBulk';
+import { countOf } from '@ui/lib/plural.js';
 
 // What a plan writes, as the server gets it: pending ids named by the ids the
 // server gave them. Two plans that write the same are the same import.
@@ -656,9 +657,7 @@ export const BulkAddDialog = ({
           setProgress({ done: created + updated, total, phase: 'updating' });
         }
         await sendMorphTypeCaches(client, await caches());
-        setMessage(
-          `Bulk add: ${created} entr${created === 1 ? 'y' : 'ies'} added, ${updated} updated`,
-        );
+        setMessage(`Bulk add: ${countOf(created, 'entry')} added, ${updated} updated`);
       },
       { kind: 'import', ref: 'format:table' },
     );
@@ -666,7 +665,7 @@ export const BulkAddDialog = ({
       await onImported();
       notifySuccess(
         [
-          created ? `Added ${n(created)} entr${created === 1 ? 'y' : 'ies'}` : null,
+          created ? `Added ${countOf(created, 'entry')}` : null,
           updated ? `filled in ${n(updated)}` : null,
         ]
           .filter(Boolean)
@@ -701,7 +700,7 @@ export const BulkAddDialog = ({
           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
           <span className="text-xs text-muted-foreground">
-            {n(rows.length)} row{rows.length === 1 ? '' : 's'} · {delimiterName(delimiter)}
+            {countOf(rows.length, 'row')} · {delimiterName(delimiter)}
           </span>
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setFile(null)}>
             <X className="h-3.5 w-3.5" />
@@ -758,9 +757,7 @@ export const BulkAddDialog = ({
             {rows.length > 0 && (
               <>
                 {' '}
-                <span className="text-foreground">
-                  {n(rows.length)} row{rows.length === 1 ? '' : 's'} read.
-                </span>
+                <span className="text-foreground">{countOf(rows.length, 'row')} read.</span>
               </>
             )}
           </p>
@@ -825,7 +822,7 @@ export const BulkAddDialog = ({
         )}
         {skip > 0 && (
           <p className="text-xs text-muted-foreground">
-            {n(skip)} row{skip === 1 ? '' : 's'} above it {skip === 1 ? 'is' : 'are'} left out:{' '}
+            {countOf(skip, 'row')} above it {skip === 1 ? 'is' : 'are'} left out:{' '}
             <span dir="auto" className="font-mono">
               {rows.slice(0, Math.min(skip, 2)).map(cellsPreview).join(' / ')}
               {skip > 2 ? ' / …' : ''}
@@ -1072,7 +1069,7 @@ export const BulkAddDialog = ({
                   className="h-6 text-xs"
                   onClick={() => setOverrides({})}
                 >
-                  Reset {n(overrideCount)} choice{overrideCount === 1 ? '' : 's'}
+                  Reset {countOf(overrideCount, 'choice')}
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={downloadReport}>
@@ -1143,7 +1140,7 @@ export const BulkAddDialog = ({
         {rejectedRows > 0 && (
           <p className="flex items-start gap-1.5 text-xs text-warning-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have a'} value that{' '}
+            {countOf(rejectedRows, 'row')} {rejectedRows === 1 ? 'has' : 'have'} a value that{' '}
             {rejectedIn} does not accept. That value is left out and the rest of the row still
             imports.
           </p>

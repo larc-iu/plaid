@@ -67,6 +67,7 @@ import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { useMaintainersOnly } from './useMaintainersOnly.js';
+import { countOf } from '@ui/lib/plural.js';
 
 const NEW_FIELD = '__new__';
 
@@ -240,7 +241,7 @@ export const ImportElanDocuments = () => {
       setStage('done');
       if (res.warnings.length) {
         notifyWarning(
-          `Imported with ${res.warnings.length} warning${res.warnings.length === 1 ? '' : 's'}.`,
+          `Imported with ${countOf(res.warnings.length, 'warning')}.`,
           'Import finished',
         );
       } else {
@@ -527,10 +528,7 @@ export const ImportElanDocuments = () => {
               <WarningLog log={log} />
             ) : (
               results.warnings.length > 0 && (
-                <Panel
-                  tone="warning"
-                  title={`${results.warnings.length} warning${results.warnings.length === 1 ? '' : 's'}`}
-                >
+                <Panel tone="warning" title={`${countOf(results.warnings.length, 'warning')}`}>
                   <ul className="mt-1 list-inside list-disc text-xs">
                     {results.warnings.map((w, i) => (
                       <li key={i}>{w}</li>

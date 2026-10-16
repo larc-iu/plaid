@@ -184,8 +184,7 @@ export const ImportNativeProject = () => {
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
                 <p className="font-medium">
-                  Imported {results.imported} document
-                  {results.imported === 1 ? '' : 's'}
+                  Imported {countOf(results.imported, 'document')}
                   {results.skipped ? ` (${results.skipped} already done)` : ''}
                   {results.redone ? ` (${results.redone} redone)` : ''}
                 </p>

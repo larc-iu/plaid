@@ -537,8 +537,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               {totalWarnings > 0 && (
                 <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
                   <p className="font-medium text-warning-foreground">
-                    {totalWarnings} word{totalWarnings === 1 ? '' : 's'} could not be aligned to the
-                    baseline and will be skipped:
+                    {countOf(totalWarnings, 'word')} could not be aligned to the baseline and will
+                    be skipped:
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-warning-foreground">
                     {warningSamples.map((w, i) => (
@@ -554,8 +554,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
                   <p className="font-medium text-warning-foreground">
                     {flextext
-                      ? `${irWarnings.length} warning${irWarnings.length === 1 ? '' : 's'}:`
-                      : `${irWarnings.length} reference${irWarnings.length === 1 ? '' : 's'} in the backup could not be resolved. Some data may be missing from the import:`}
+                      ? `${countOf(irWarnings.length, 'warning')}:`
+                      : `${countOf(irWarnings.length, 'reference')} in the backup could not be resolved. Some data may be missing from the import:`}
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-warning-foreground">
                     {irWarningSamples.map((w, i) => (
@@ -673,9 +673,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                       <span>
                         Variants and complex forms
                         <span className="block text-xs text-muted-foreground">
-                          {variantEntryCount} {variantEntryCount === 1 ? 'entry' : 'entries'}. A
-                          variant refers to its canonical form, and a complex form to what it is
-                          built from.
+                          {countOf(variantEntryCount, 'entry')}. A variant refers to its canonical
+                          form, and a complex form to what it is built from.
                         </span>
                       </span>
                     </label>
@@ -806,10 +805,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 <div className="flex flex-col gap-2">
                   {parsed.ir.lexiconFields.map((f) => {
                     const where = [
-                      f.entries > 0 &&
-                        `${f.entries.toLocaleString()} entr${f.entries === 1 ? 'y' : 'ies'}`,
-                      f.senses > 0 &&
-                        `${f.senses.toLocaleString()} sense${f.senses === 1 ? '' : 's'}`,
+                      f.entries > 0 && countOf(f.entries, 'entry'),
+                      f.senses > 0 && countOf(f.senses, 'sense'),
                     ]
                       .filter(Boolean)
                       .join(', ');
@@ -917,8 +914,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                       </>
                     ) : (
                       <>
-                        <FileUp className="h-4 w-4" /> Import {selectedTexts.size} text
-                        {selectedTexts.size === 1 ? '' : 's'}
+                        <FileUp className="h-4 w-4" /> Import {countOf(selectedTexts.size, 'text')}
                       </>
                     )}
                   </Button>

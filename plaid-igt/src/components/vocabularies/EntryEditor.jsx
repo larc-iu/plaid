@@ -9,6 +9,7 @@ import { TagsetField } from '@/components/shared/TagsetField.jsx';
 import { ItemRefField, EntryPlace, HomographNumber } from './DictionaryPanels';
 import { RolesetBand } from './RolesetBand';
 import { FormLabel } from './FormLabel';
+import { countOf } from '@ui/lib/plural.js';
 
 // A titled band of the entry form. The grid is three across when the pane is
 // wide, so a lexicon's dozen fields fit on one screen. Module-level, so a
@@ -182,9 +183,7 @@ export const EntryEditor = ({
         </h3>
         {!isNew && selectedItem && usageCounts && (
           <div className="text-right text-xs text-muted-foreground">
-            <span>
-              {uses.toLocaleString()} use{uses === 1 ? '' : 's'}
-            </span>
+            <span>{countOf(uses, 'use')}</span>
             {usageKinds?.[selectedItem.id] && (
               <span className="ml-1.5" title="Linked from this many words and morphemes">
                 ·{' '}
@@ -192,7 +191,7 @@ export const EntryEditor = ({
                   .filter((k) => usageKinds[selectedItem.id][k])
                   .map((k) => {
                     const n = usageKinds[selectedItem.id][k];
-                    return `${n.toLocaleString()} ${k}${n === 1 ? '' : 's'}`;
+                    return countOf(n, k);
                   })
                   .join(', ')}
               </span>

@@ -26,6 +26,7 @@ import {
 import { textIncludes } from '@ui/domain/collation.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 import { nameKey } from '@ui/lib/nameKey.js';
+import { countOf, plural } from '@ui/lib/plural.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
@@ -183,10 +184,7 @@ export const TagsetsManager = ({
     // page knows.
     const n = saved.repointed ?? (usage?.[from] || []).length;
     if (n) {
-      notifyInfo(
-        `${n} field${n === 1 ? '' : 's'} now use${n === 1 ? 's' : ''} "${name}"`,
-        'Tagset renamed',
-      );
+      notifyInfo(`${countOf(n, 'field')} now use${n === 1 ? 's' : ''} "${name}"`, 'Tagset renamed');
     }
   };
 
@@ -229,7 +227,7 @@ export const TagsetsManager = ({
   const seedWith = async (name, records) => {
     setSeedPending(null);
     const n = await handleAddValues(name, records);
-    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'} found in this project`);
+    if (n) notifySuccess(`Added ${countOf(n, 'value')} found in this project`);
   };
 
   // The attested rows are per-tagset (they come from the fields referencing it),
@@ -261,7 +259,7 @@ export const TagsetsManager = ({
       .map((value) => ({ value }));
     const n = await handleAddValues(name, records);
     if (n === null) return;
-    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'}`);
+    if (n) notifySuccess(`Added ${countOf(n, 'value')}`);
     setPasteText('');
     setPasteOpen(false);
   };
@@ -342,7 +340,7 @@ export const TagsetsManager = ({
                 {MODES_UI[t.mode].label}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                {t.values.length} value{t.values.length === 1 ? '' : 's'}
+                {countOf(t.values.length, 'value')}
                 {t.delimiters && ` · split on ${[...t.delimiters].join(' ')}`}
                 {fields.length > 0 &&
                   ` · used by ${fields.map((f) => `${f.field} (${f.scope})`).join(', ')}`}
@@ -632,10 +630,10 @@ export const TagsetsManager = ({
                   {seedPending?.name === name && (
                     <div className="flex flex-col gap-2 rounded-md border bg-background p-3">
                       <p className="text-sm">
-                        Found <strong>{seedPending.tags.length}</strong> tag
-                        {seedPending.tags.length === 1 ? '' : 's'} and{' '}
-                        <strong>{seedPending.lexical.length}</strong> value
-                        {seedPending.lexical.length === 1 ? '' : 's'} not written in capitals (
+                        Found <strong>{seedPending.tags.length}</strong>{' '}
+                        {plural(seedPending.tags.length, 'tag')} and{' '}
+                        <strong>{seedPending.lexical.length}</strong>{' '}
+                        {plural(seedPending.lexical.length, 'value')} not written in capitals (
                         <span className="font-mono">
                           {seedPending.lexical
                             .slice(0, 5)
@@ -653,8 +651,7 @@ export const TagsetsManager = ({
                           disabled={seedPending.tags.length === 0}
                           onClick={() => seedWith(name, seedPending.tags)}
                         >
-                          Add {seedPending.tags.length} tag
-                          {seedPending.tags.length === 1 ? '' : 's'}
+                          Add {countOf(seedPending.tags.length, 'tag')}
                         </Button>
                         <Button
                           variant="outline"

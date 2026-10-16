@@ -26,6 +26,7 @@
 
 import { SaxesParser } from 'saxes';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
 const nfc = (s) => String(s ?? '').normalize('NFC');
 
@@ -462,9 +463,7 @@ function readText(it, census, warnings, fileLabel, vernaculars = []) {
       const r = readPhrase(ph, census, vernaculars);
       const where = `sentence ${r.segnum || sentence}`;
       if (r.empty) {
-        warnings.push(
-          `${label}: ${r.empty} word${r.empty === 1 ? '' : 's'} with no text left out of ${where}`,
-        );
+        warnings.push(`${label}: ${countOf(r.empty, 'word')} with no text left out of ${where}`);
       }
       if (!r.text) {
         const { freeTranslation, literalTranslation, notes } = r.segment;

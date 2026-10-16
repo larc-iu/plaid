@@ -4,6 +4,7 @@ import { cn } from '@ui/lib/utils';
 import { ContextRow } from './DictionaryPanels';
 import { sentenceTo } from './vocabConcordance';
 import { Loading } from '@ui/components/shared/Loading.jsx';
+import { countOf } from '@ui/lib/plural.js';
 
 // The Concordance tab: the open entry's uses, grouped by document, each row
 // a link into the sentence, with "Use as example" for a maintainer. `conc` is
@@ -26,9 +27,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
         <span className="text-sm font-medium">Concordance</span>
         {concPlan && (
           <span className="text-xs text-muted-foreground">
-            {concPlan.totalHits.toLocaleString()} use
-            {concPlan.totalHits === 1 ? '' : 's'} in {concPlan.totalDocs} document
-            {concPlan.totalDocs === 1 ? '' : 's'}
+            {countOf(concPlan.totalHits, 'use')} in {countOf(concPlan.totalDocs, 'document')}
             {concPlan.truncated ? ' (capped)' : ''}
           </span>
         )}
@@ -49,9 +48,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
               <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
                 <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-sm font-medium">{g.docName}</span>
-                <span className="text-xs text-muted-foreground">
-                  {g.docHits} use{g.docHits === 1 ? '' : 's'}
-                </span>
+                <span className="text-xs text-muted-foreground">{countOf(g.docHits, 'use')}</span>
               </div>
               <div className="divide-y">
                 {g.rows.map((row) => {
@@ -99,7 +96,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
               <Button variant="outline" size="sm" onClick={loadMore} disabled={concLoadingMore}>
                 {concLoadingMore
                   ? 'Loading…'
-                  : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
+                  : `Load more (${countOf(concPlan.totalDocs - concLoaded, 'document')} left)`}
               </Button>
             </div>
           )}

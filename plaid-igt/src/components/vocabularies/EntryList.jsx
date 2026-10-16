@@ -24,6 +24,7 @@ import { ANY_FIELD } from '@/domain/vocabItemFilter';
 import { FormLabel } from './FormLabel';
 import { NEW_ID } from './vocabItemsState';
 import { SegmentedControl } from '@ui/components/shared/SegmentedControl.jsx';
+import { countOf } from '@ui/lib/plural.js';
 
 // The left pane: the search box and its scope, the view toggle, the paged
 // rows, and the footer's bulk actions. `list` is a useEntryList; `scope` and
@@ -216,7 +217,7 @@ export const EntryList = ({
                     {(comments?.countFor(item.id) ?? 0) > 0 && (
                       <span
                         className="inline-flex shrink-0 items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground"
-                        title={`${comments.countFor(item.id)} comment${comments.countFor(item.id) === 1 ? '' : 's'}`}
+                        title={countOf(comments.countFor(item.id), 'comment')}
                       >
                         <MessageSquare className="h-3 w-3" />
                         {comments.countFor(item.id)}

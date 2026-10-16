@@ -40,6 +40,7 @@ import { userMetadata } from '@ui/domain/textDirection.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import { FIELD_TYPES, exportedVocabFields } from '../domain/vocabFields.js';
 import { phraseSpeakerFor } from './flextext.js';
+import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
 const term = (name) => `${TERMS}${name}`;
@@ -569,12 +570,12 @@ export function buildCldfDataset({
 
   if (fellBack) {
     warnings.push(
-      `${fellBack} sentence${fellBack === 1 ? ' has' : 's have'} no text in the ${o.primaryText} orthography, and ${fellBack === 1 ? 'its' : 'their'} Primary_Text is the baseline text.`,
+      `${countOf(fellBack, 'sentence')} ${fellBack === 1 ? 'has' : 'have'} no text in the ${o.primaryText} orthography, and ${fellBack === 1 ? 'its' : 'their'} Primary_Text is the baseline text.`,
     );
   }
   if (leftOut) {
     warnings.push(
-      `${leftOut} sentence${leftOut === 1 ? ' has' : 's have'} no text in the Primary_Text line and ${leftOut === 1 ? 'was' : 'were'} left out.`,
+      `${countOf(leftOut, 'sentence')} ${leftOut === 1 ? 'has' : 'have'} no text in the Primary_Text line and ${leftOut === 1 ? 'was' : 'were'} left out.`,
     );
   }
 
@@ -694,8 +695,8 @@ export function buildCldfDataset({
     }
     if (entriesWithoutSense > 0) {
       warnings.push(
-        `${entriesWithoutSense} lexicon ${
-          entriesWithoutSense === 1 ? 'entry has' : 'entries have'
+        `${entriesWithoutSense} lexicon ${plural(entriesWithoutSense, 'entry')} ${
+          entriesWithoutSense === 1 ? 'has' : 'have'
         } no gloss or definition, so ${
           entriesWithoutSense === 1 ? 'it has' : 'they have'
         } no sense row.`,

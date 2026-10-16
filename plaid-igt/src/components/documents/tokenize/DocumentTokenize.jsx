@@ -21,6 +21,7 @@ import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
+import { countOf, plural } from '@ui/lib/plural.js';
 
 export function DocumentTokenize() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
@@ -101,17 +102,17 @@ export function DocumentTokenize() {
     const ok = await confirm({
       title: 'Split sentences at segments?',
       description:
-        `${n} sentence break${n === 1 ? '' : 's'} will be added where segments start.` +
+        `${countOf(n, 'sentence break')} will be added where segments start.` +
         (insideWord
-          ? ` ${insideWord} segment${insideWord === 1 ? ' starts' : 's start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
+          ? ` ${countOf(insideWord, 'segment')} ${insideWord === 1 ? 'starts' : 'start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
           : '') +
-        (lost ? ` Deletes ${lost} that cross the new break${n === 1 ? '' : 's'}.` : ''),
+        (lost ? ` Deletes ${lost} that cross the new ${plural(n, 'break')}.` : ''),
       confirmLabel: 'Split sentences',
       destructive: Boolean(lost),
     });
     if (!ok) return;
     if (await ops.splitSentencesAt(positions)) {
-      notifySuccess(`Added ${n} sentence break${n === 1 ? '' : 's'}`, 'Sentences split');
+      notifySuccess(`Added ${countOf(n, 'sentence break')}`, 'Sentences split');
     }
   };
 
@@ -322,12 +323,8 @@ export function DocumentTokenize() {
         }}
       >
         <p>
-          Deletes all{' '}
-          <strong>
-            {existingTokens.length.toLocaleString()} word token
-            {existingTokens.length === 1 ? '' : 's'}
-          </strong>{' '}
-          in this document, with their morphemes and every annotation and vocabulary link on them.
+          Deletes all <strong>{countOf(existingTokens.length, 'word token')}</strong> in this
+          document, with their morphemes and every annotation and vocabulary link on them.
         </p>
         <p>Sentence boundaries and sentence-level annotations are unchanged.</p>
       </ConfirmDeleteDialog>
@@ -441,10 +438,9 @@ export function DocumentTokenize() {
             <>
               Re-tokenizing re-segments this document, discarding{' '}
               <strong>
-                {ops.pendingTokenize?.annotations || 0} existing annotation
-                {ops.pendingTokenize?.annotations === 1 ? '' : 's'}
+                {countOf(ops.pendingTokenize?.annotations || 0, 'existing annotation')}
                 {ops.pendingTokenize?.links
-                  ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}`
+                  ? ` and ${countOf(ops.pendingTokenize.links, 'vocabulary link')}`
                   : ''}
               </strong>{' '}
               (word, morpheme, and sentence level).
@@ -459,7 +455,7 @@ export function DocumentTokenize() {
               <strong>
                 {ops.pendingTokenize.cut}
                 {ops.pendingTokenize.annotations || ops.pendingTokenize.links ? ' more' : ''}{' '}
-                annotation{ops.pendingTokenize.cut === 1 ? '' : 's'}
+                {plural(ops.pendingTokenize.cut, 'annotation')}
               </strong>
               .
             </>

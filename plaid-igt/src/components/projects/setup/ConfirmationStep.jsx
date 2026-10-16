@@ -9,6 +9,7 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
 import { IGNORED_TOKEN_MODES } from '@/domain/igtConfig';
 import { scopeBadgeClass } from '@/domain/scopeColors';
+import { countOf } from '@ui/lib/plural.js';
 
 export const ConfirmationStep = ({ setupData, isNewProject, projectId, client }) => {
   const navigate = useNavigate();
@@ -68,7 +69,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
       if (result.failures.length > 0) {
         setErrors(result.failures);
         notifyError(
-          `${result.failures.length} setup step${result.failures.length === 1 ? '' : 's'} failed. ` +
+          `${countOf(result.failures.length, 'setup step')} failed. ` +
             'The project is not ready until Retry setup finishes.',
           'Setup incomplete',
         );

@@ -20,6 +20,7 @@ import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { notifySuccess } from '@/utils/feedback';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { countOf } from '@ui/lib/plural.js';
 
 const NEW_PROJECT_CRUMBS = [
   { label: 'Projects', to: '/projects', fixed: true },
@@ -129,7 +130,7 @@ export const WarningLog = ({ log }) => {
   // what is readable, not about what was recorded.
   const asText = () => log.map((e) => `${e.document ?? 'Corpus'}\t${e.text}`).join('\n');
   return (
-    <Panel tone="warning" title={`${log.length} warning${log.length === 1 ? '' : 's'}`}>
+    <Panel tone="warning" title={`${countOf(log.length, 'warning')}`}>
       <div className="mt-2 max-h-64 overflow-y-auto rounded-md border bg-background/60 p-2">
         {groups.map((g, gi) => (
           <div key={gi} className={gi ? 'mt-2' : ''}>

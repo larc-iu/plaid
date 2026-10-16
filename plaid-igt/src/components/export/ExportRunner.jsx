@@ -12,6 +12,7 @@ import { ScopeStep } from './ScopeStep.jsx';
 import { FlexImportSteps } from './FlexImportSteps.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { cn } from '@ui/lib/utils';
+import { countOf } from '@ui/lib/plural.js';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
@@ -127,7 +128,7 @@ export const ExportRunner = ({
         const n = result.warnings.length;
         setOutcome({
           tone: 'warning',
-          title: `Downloaded ${result.filename} with ${n} warning${n === 1 ? '' : 's'}`,
+          title: `Downloaded ${result.filename} with ${countOf(n, 'warning')}`,
           lines: result.warnings,
         });
       } else {

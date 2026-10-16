@@ -23,6 +23,7 @@ import { pendingMutations } from './mutations/pending.js';
 import { linkFootprint, linksUntouched, tokenIdsOf } from './linkRebase.js';
 import { linkChangedTo } from '@ui/lib/cellConflict.js';
 import { buildItemNumbers, itemLabel } from './vocabDictionary.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 // A patch's own copy of the vocabularies. Everything but the entry lists is
 // copied whole: this document's links and the vocabulary's settings, which
@@ -170,7 +171,7 @@ export class IgtDocument extends DocumentModel {
     next.onError = this.onError;
     if (failed.length && next.onError) {
       next.onError(
-        `${failed.length} ${failed.length === 1 ? 'vocabulary' : 'vocabularies'} could not be read as of that time. Entries show as they are now.`,
+        `${countOf(failed.length, 'vocabulary')} could not be read as of that time. Entries show as they are now.`,
         null,
         'Failed to read the vocabularies',
       );
@@ -522,7 +523,7 @@ export class IgtDocument extends DocumentModel {
       this._vocabsUnread = failedCount > 0;
       if (failedCount > 0 && this.onError) {
         this.onError(
-          `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Linked entries may show old values until the page is reloaded.`,
+          `${countOf(failedCount, 'vocabulary')} could not be refreshed. Linked entries may show old values until the page is reloaded.`,
           null,
           'Failed to refresh the vocabularies',
         );

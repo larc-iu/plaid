@@ -1,3 +1,4 @@
+import { countOf } from '@ui/lib/plural.js';
 // What a finished Transcribe says, from the counts the service reports
 // (`segmentsAdded`, `segmentsSkipped`). A run that added nothing, every
 // segment it heard overlapping one already here (a second press, say), says
@@ -7,7 +8,7 @@ export function transcribeNotice(result) {
   const added = result?.segmentsAdded;
   if (!Number.isInteger(added)) return null;
   const skipped = Number.isInteger(result?.segmentsSkipped) ? result.segmentsSkipped : 0;
-  const segments = (n) => `${n} segment${n === 1 ? '' : 's'}`;
+  const segments = (n) => countOf(n, 'segment');
   if (added === 0) {
     return {
       level: 'warning',

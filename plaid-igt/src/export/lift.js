@@ -39,6 +39,7 @@ import { readVocabFields } from '../domain/igtConfig.js';
 import { FIELD_SCOPES, FIELD_TYPES, RESERVED_ITEM_KEYS } from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { parseFieldName } from '../domain/fieldNames.js';
+import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
 
 export const LIFT_VERSION = '0.13';
 
@@ -648,7 +649,7 @@ export function buildLiftLexicon({
   }
   if (formless > 0) {
     warnings.push(
-      `${formless} lexicon ${formless === 1 ? 'entry has' : 'entries have'} no form and ${
+      `${formless} lexicon ${plural(formless, 'entry')} ${formless === 1 ? 'has' : 'have'} no form and ${
         formless === 1 ? 'was' : 'were'
       } left out of the .lift file.`,
     );
@@ -657,7 +658,7 @@ export function buildLiftLexicon({
   if (ctx.unresolved.count > 0) {
     const n = ctx.unresolved.count;
     warnings.push(
-      `${n} example${n === 1 ? '' : 's'} could not be read from the document ${
+      `${countOf(n, 'example')} could not be read from the document ${
         n === 1 ? 'it points' : 'they point'
       } into and ${n === 1 ? 'was' : 'were'} left out of the .lift file.`,
     );
