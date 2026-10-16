@@ -602,7 +602,7 @@ Closing a tagset, removing a value from a closed one, or assigning a closed tags
 A **Not saved** notice names those values, with how many annotations use each, and for a composite value the parts that are not on the list.
 When a value is written in the moment before the save, a message names it instead.
 Change them first, or add them to the tagset.
-A change to one tagset is never held up by the values of a field that another tagset governs.
+A change to one tagset is never held up by the values of a field that another tagset governs, nor by a field it is out of force on (see below).
 
 The project's **Validation** tab (maintainers) lists, for each governed field, every value in the project that its tagset refuses, with a count.
 It offers the remedies: **Add to tagset**, **Fix in Bulk Edit**, or open each occurrence and correct it by hand.
@@ -611,8 +611,13 @@ It also finds zero morphs written some other way than ∅ (see <<_typing_special
 
 A closed tagset is out of force on a field when values a person typed were already outside its list as the tagset reached the field, for instance during an import that stopped part way.
 Validation then names the tagset and the field above the list.
+The tagset can still be changed, and each save names the values still in the way.
 Once those values are changed, **Put in force** applies the list.
 Saving any tagset or field does the same for every field whose values allow it.
+
+Validation also names a field that allows more than one annotation on a word, morpheme or sentence, such as a field a script made, and a field that holds a list no closed tagset names.
+**Put in force** applies one annotation on each once no word, morpheme or sentence holds two, and **Remove the list** removes the list.
+Neither changes an annotation.
 
 NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. A service's proposals are not refused, even outside a closed tagset. The Validation tab lists them.
 
