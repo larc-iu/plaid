@@ -20,6 +20,13 @@ const linksOf = (vocabularies) =>
 
 const tokenLayersOf = (layerInfo) => layerInfo?.primaryTextLayer?.tokenLayers || [];
 
+// A token that goes with content of its own counts as one annotation: a
+// segmentation, an orthography line, any metadata beyond provenance, and a
+// stamped token a person verified or contributed (a person's merge or split
+// of a machine tokenizer's token leaves only provenance).
+const ownContent = (t) =>
+  hasOwnContent(t) || (PROV.key in (t.metadata || {}) && isProtected(t.metadata));
+
 // What is deleted, and apart from it what is only cut down (a link over this
 // word and the next keeps the next).
 const counted = ({ annotations, links, shortened }) => ({ annotations, links, shortened });
@@ -31,12 +38,17 @@ const counted = ({ annotations, links, shortened }) => ({ annotations, links, sh
  *   the FULL tokenLayers list, other apps' layers included)
  * @param {object} vocabularies  the doc's vocabularies map
  * @param {object} word  the word token {id, begin, end}
- * @returns {{annotations: number, links: number}} spans + relations, and vocab links
+ * @returns {{annotations: number, links: number}} spans, relations and the
+ *   tokens with content of their own that go (the word's own segmentation and
+ *   orthography lines included), and vocab links
  */
 export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   if (!layerInfo?.primaryTokenLayer || !word) return ZERO();
   return counted(
-    countDeleteLoss(tokenLayersOf(layerInfo), [word.id], { vocabLinks: linksOf(vocabularies) }),
+    countDeleteLoss(tokenLayersOf(layerInfo), [word.id], {
+      vocabLinks: linksOf(vocabularies),
+      content: ownContent,
+    }),
   );
 };
 
@@ -58,14 +70,10 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
 export const countReTokenizeLoss = (layerInfo, vocabularies) => {
   const sentenceTokens = layerInfo?.sentenceTokenLayer?.tokens || [];
   if (sentenceTokens.length !== 1) return ZERO(); // non-destructive path
-  // A person's merge or split of a machine tokenizer's token leaves only
-  // provenance, verified or contributed.
-  const content = (t) =>
-    hasOwnContent(t) || (PROV.key in (t.metadata || {}) && isProtected(t.metadata));
   return counted(
     countDeleteLoss(tokenLayersOf(layerInfo), [sentenceTokens[0].id], {
       vocabLinks: linksOf(vocabularies),
-      content,
+      content: ownContent,
     }),
   );
 };

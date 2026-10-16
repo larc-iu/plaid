@@ -77,6 +77,24 @@ describe('countAnnotationLossForWord', () => {
     });
   });
 
+  // FX5-LOSS: igt's own content on the word and its morphemes, a
+  // segmentation and an orthography line, was not counted.
+  it("counts the word's and its morphemes' own content, not their provenance", () => {
+    const { layerInfo, vocabularies } = make();
+    const word = { id: 'w2', begin: 6, end: 9, metadata: { Latin: 'tok' } };
+    layerInfo.primaryTokenLayer.tokens[1] = word;
+    layerInfo.primaryTextLayer.tokenLayers[1].tokens.push(
+      { id: 'm2', begin: 6, end: 8, metadata: { form: 'to' } },
+      { id: 'm3', begin: 8, end: 9, metadata: { prov: 'inferred', provSource: 'service:tok' } },
+    );
+    // w2 and m2 hold content, m3 only provenance. s5 goes with sw2, and r1
+    // and r2 with s5. l2 goes with w2.
+    expect(countAnnotationLossForWord(layerInfo, vocabularies, word)).toMatchObject({
+      annotations: 5,
+      links: 1,
+    });
+  });
+
   it('reports zero for an unannotated token (instant delete path)', () => {
     const { layerInfo, vocabularies } = make();
     const bare = { id: 'w3', begin: 10, end: 12 };
