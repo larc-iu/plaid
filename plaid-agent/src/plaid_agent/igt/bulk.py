@@ -4,6 +4,7 @@ orthography copy, apply-analysis-everywhere, and the lexicon / document
 operations (merge, delete, rename). Everything lands in the turn's plan and
 is applied only after approval."""
 
+import json
 from typing import Any, Dict, List, Optional
 
 from plaid_client.workflows.igt import precedence
@@ -303,6 +304,8 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     earlier values (an enumerated change staged after it wins at approval).
     """
     key = ('rule', tool, rules.fingerprint_args(args))
+    # The plan's rules as they stand, so this one reads what they leave.
+    sync_rules(ws)
     where = f' in {ws.doc_label(args["document"], quote=True)}' if args.get('document') else ''
     op, found, kept, left = _build_rule(ws, tool, args, list(unit), change + where, head + where,
                                         ws.rule_found_before(key), mode)
@@ -340,6 +343,14 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             _rewrite_planned(ws, rewrites)
             ws.add_op(op)
             ws.rule_found[key] = found
+            # Found over every rule before it. One that took an earlier
+            # place (the same rule asked again) is found again where it
+            # stands, and the rules after it with it (sync_rules).
+            keys = [rules.target(o) for o in ws.ops if rules.is_rule(o) and o.get('head') is not None]
+            if keys and keys[-1] == key:
+                ws.rule_basis[key] = _basis(keys[:-1], kept_targets(ws.ops))
+            else:
+                ws.rule_basis.pop(key, None)
             # An earlier rule leaves to this one what this one changes again,
             # so the plan is measured once every rule is counted as it writes.
             settle_rules(ws)
@@ -522,6 +533,8 @@ def settle_rules(ws: Workspace) -> None:
     what a later rule changes again. That later rule writes the value both
     leave, so a value two rules change is counted once, on the later row.
     What a rule matched, which approval checks, is left as found."""
+    # Each rule found as approval finds it, first.
+    sync_rules(ws)
     idx = [i for i, op in enumerate(ws.ops) if rules.is_rule(op) and op.get('head') is not None
            and rules.target(op) in ws.rule_found]
     if not idx:
@@ -620,6 +633,7 @@ def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
     (what it found when staged, less what the plan's own changes and later
     rules take, as :func:`settle_rules` counts it), for a reader that wants
     every change one by one."""
+    sync_rules(ws)
     keep = rule_keep(ws, ws.ops)
     later: set = set()
     per: Dict[int, List[Dict[str, Any]]] = {}
@@ -636,26 +650,56 @@ def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
     return out
 
 
-def refresh_rules(ws: Workspace, drop_empty: bool = True) -> None:
-    """Resolve every rule of the plan again, in plan order, after a change to
-    the plan that one of them may depend on (an earlier rule dropped, a value
-    kept or no longer kept), so what each one stores is what approval will
-    find. ``drop_empty`` drops a rule left with nothing to change. After a
-    keep it is False: the rule stays, as the row its value was kept out of."""
+def _basis(earlier: List[tuple], kept: set) -> str:
+    """What a rule is found over, as :attr:`Workspace.rule_basis` holds it:
+    the rules before it, in plan order, and the values the plan keeps."""
+    return json.dumps([[list(k) for k in earlier], sorted(json.dumps(list(t), default=str) for t in kept)],
+                      default=str)
+
+
+def sync_rules(ws: Workspace, drop_empty: bool = False) -> int:
+    """THE way the plan's rules are found, at staging, after any change to
+    the plan, and as approval finds them (``igt.plan.resolve_scopes``):
+    each rule in plan order, over the stored values as only the rules BEFORE
+    it leave them, a value the plan keeps read as stored (``resolve_rule``).
+
+    A rule is found again when what it was found over changed (the rules
+    before it, the values the plan keeps, an earlier rule found again), so
+    this may be called after anything that changes the plan, however the op
+    list changed: a keep staged, superseded inside a batch or dropped, a
+    rule dropped, a change named on a kept value. ``drop_empty`` drops a
+    rule found again that now finds nothing at all. Gives how many it
+    dropped."""
+    kept = kept_targets(ws.ops)
+    earlier: List[tuple] = []
+    again = False
+    dropped = 0
     for op in list(ws.ops):
         if not rules.is_rule(op) or op.get('head') is None:
             continue
         key = rules.target(op)
-        new, found, kept, _left = _build_rule(ws, op['tool'], op['args'], op.get('unit') or ['change', 'changes'],
-                                              op.get('change') or '', op['head'], ws.rule_found_before(key))
+        basis = _basis(earlier, kept)
+        if not again and key in ws.rule_found and ws.rule_basis.get(key) == basis:
+            earlier.append(key)
+            continue
+        again = True
+        new, found, _writes, _left = _build_rule(ws, op['tool'], op['args'], op.get('unit') or ['change', 'changes'],
+                                                 op.get('change') or '', op['head'],
+                                                 [ws.rule_found[k] for k in earlier])
         i = ws.ops.index(op)
-        ws.rule_found[key] = found
-        if kept or not drop_empty:
-            ws.ops[i] = new
-        else:
+        if drop_empty and not found:
             # Nothing left for it to change: a row of no changes says nothing.
             del ws.ops[i]
+            ws.rule_found.pop(key, None)
+            ws.rule_basis.pop(key, None)
             ws._gone_at = -1
+            dropped += 1
+            continue
+        ws.ops[i] = new
+        ws.rule_found[key] = found
+        ws.rule_basis[key] = basis
+        earlier.append(key)
+    return dropped
 
 
 #: The key a rule op carries in the turn's plan for its card row, moved into
@@ -687,14 +731,6 @@ def _rewrite_planned(ws: Workspace, rewrites) -> None:
         line = change_of(op) or ''
         line = line.replace(qv(old), qv(new)) if qv(old) in line else f'{line} → {qv(new)}'
         ws.ops[i] = {**op, key: new, **labelled(place, line)}
-
-
-def after_keeps(ws: Workspace) -> None:
-    """After a keep is staged or dropped: a rule later in the plan reads the
-    value as approval will leave it, so with more than one rule each is
-    resolved again."""
-    if sum(1 for op in ws.ops if rules.is_rule(op) and op.get('head') is not None) > 1:
-        refresh_rules(ws, drop_empty=False)
 
 
 def kept_targets(ops: List[Dict[str, Any]]) -> set:
@@ -736,20 +772,15 @@ def rule_taking(ws: Workspace, target: tuple) -> Optional[Dict[str, Any]]:
     """The rule of the plan that changes what ``target`` names (an op's
     target, ``op_target``) as it stands, or None. A value named with what
     it holds then stands against that rule as a keep (core.keep). A rule
-    carried from an earlier turn is resolved again here, as a later rule
-    would read it."""
+    carried from an earlier turn is found again here (sync_rules)."""
+    try:
+        sync_rules(ws)
+    except ToolError:
+        pass
     for op in ws.ops:
         if not rules.is_rule(op) or op.get('head') is None:
             continue
-        key = rules.target(op)
-        found = ws.rule_found.get(key)
-        if found is None:
-            try:
-                found = resolve_rule(ws, op['tool'], op['args'], ws.rule_found_before(key))
-            except ToolError:
-                continue
-            ws.rule_found[key] = found
-        if any(op_target(o) == target for o in found):
+        if any(op_target(o) == target for o in ws.rule_found.get(rules.target(op)) or []):
             return op
     return None
 

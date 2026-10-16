@@ -123,9 +123,10 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                 staged.append(span_op(ws, doc, ref, what, f, obj.id, old, val))
         ws.add_ops(staged)
         ws.take_back(dropped)
-        if any(is_keep(op) for op in staged + dropped):
-            from .bulk import after_keeps
-            after_keeps(ws)
+        # A keep staged, taken back or superseded by a value named on the
+        # same target changes what a later rule reads (REV3-AGENT-2).
+        from .bulk import sync_rules
+        sync_rules(ws)
     n = len([op for op in staged if not is_keep(op)]) + edits
     if not (n or kept or took):
         if already:

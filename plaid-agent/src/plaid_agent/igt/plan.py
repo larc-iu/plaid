@@ -690,7 +690,8 @@ def _resolve_bulk_scope(res: Resolution, op):
     from .bulk import resolve_rule
     from ..core.tools import ToolError
     try:
-        # Over the values the plan's earlier rules leave, as when it was staged.
+        # Over the values only the plan's earlier rules leave, a kept value
+        # read as stored, as staging found it (`bulk.sync_rules`).
         found = resolve_rule(res.ws, op.get('tool'), dict(op.get('args') or {}), list(res.found), res.kept)
         # Rebuilt now, outside add_op: held to the layers' lists as staged.
         for o in found:

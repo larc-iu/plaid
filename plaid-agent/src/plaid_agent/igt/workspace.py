@@ -200,6 +200,10 @@ class Workspace(BaseWorkspace):
         # What each rule of the plan found when it was staged, by its target
         # (``core.rules.target``), so a later rule reads the values it leaves.
         self.rule_found: Dict[tuple, List[Dict[str, Any]]] = {}
+        # What each rule was found over (``bulk.sync_rules``): the rules
+        # before it and the values the plan kept, so a rule is found again
+        # exactly when either changed, however the plan changed.
+        self.rule_basis: Dict[tuple, str] = {}
         # While a rule is resolved: the values the plan's earlier rules leave,
         # (layer id, token id) -> (value, the change that leaves it), which
         # ``planned_value`` reads instead of the plan's enumerated changes.
@@ -214,11 +218,22 @@ class Workspace(BaseWorkspace):
 
     # --- rules (core.rules) ---------------------------------------------------
 
-    def rule_found_before(self, key: tuple) -> List[List[Dict[str, Any]]]:
-        """What the plan's rules other than ``key`` found, in plan order."""
+    def rule_found_before(self, key: Optional[tuple]) -> List[List[Dict[str, Any]]]:
+        """What the plan's rules BEFORE ``key`` found, in plan order: every
+        rule of the plan for a rule not in it yet (it goes last) or None.
+        Never a later rule: approval resolves each rule over the earlier ones
+        only (REV3-AGENT-1)."""
         from ..core import rules
-        return [self.rule_found[rules.target(op)] for op in self.ops
-                if rules.is_rule(op) and rules.target(op) != key and rules.target(op) in self.rule_found]
+        out = []
+        for op in self.ops:
+            if not rules.is_rule(op):
+                continue
+            t = rules.target(op)
+            if t == key:
+                break
+            if t in self.rule_found:
+                out.append(self.rule_found[t])
+        return out
 
     @staticmethod
     def _values_left(found_lists) -> Dict[tuple, tuple]:
@@ -783,6 +798,7 @@ class Workspace(BaseWorkspace):
                 # leave (H16-IGT-TOOLS-1). Keyed by tuples, kept as lists so
                 # the state stored beside the conversation holds them.
                 'rule_found': [[list(k), copy.deepcopy(v)] for k, v in self.rule_found.items() if k in self._rule_keys()],
+                'rule_basis': [[list(k), v] for k, v in self.rule_basis.items() if k in self._rule_keys()],
                 'stored_values': [[*k, v] for k, v in self.stored_values.items()]}
 
     def _rule_keys(self) -> set:
@@ -799,6 +815,7 @@ class Workspace(BaseWorkspace):
         self.analysis_took = saved['analysis_took']
         self.reported_took = saved['reported_took']
         self.rule_found = {tuple(k): v for k, v in saved['rule_found']}
+        self.rule_basis = {tuple(k): v for k, v in saved['rule_basis']}
         self.stored_values = {(layer, token): v for layer, token, v in saved['stored_values']}
         self._patch_version += 1
 
@@ -963,19 +980,17 @@ class Workspace(BaseWorkspace):
         before = self.unlinked
         orphans = self.unlink_orphans()
         self.reported_unlinked += self.unlinked - before
-        # A later rule was found over the values a dropped one leaves.
+        # A later rule was found over the values a dropped one leaves, or
+        # read a value a dropped keep held as stored: each is found again.
+        # One that now finds nothing goes, and is said.
         from ..core import rules
-        from ..core.keep import is_keep
-        if any(rules.is_rule(op) for op in dropped):
-            from .bulk import refresh_rules
-            refresh_rules(self)
-        elif any(is_keep(op) for op in dropped):
-            # A later rule now reads the value the keep held as an earlier
-            # rule leaves it.
-            from .bulk import after_keeps
-            after_keeps(self)
+        from .bulk import sync_rules
+        emptied = sync_rules(self, drop_empty=any(rules.is_rule(op) for op in dropped))
         return ((' Links to the dropped new entries were dropped with them.' if keys else '')
-                + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else ''))
+                + (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '')
+                + (f' {emptied} later corpus-wide change{"s" if emptied != 1 else ""} that '
+                   f'{"now find" if emptied != 1 else "now finds"} nothing to change went with it.'
+                   if emptied else ''))
 
     def superseded_note(self) -> str:
         out = super().superseded_note()
