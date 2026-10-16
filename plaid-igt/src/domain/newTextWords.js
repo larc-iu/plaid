@@ -213,6 +213,47 @@ export function newTextLayout({ base, gaps, words, sentences = [] }) {
     }
   }
 
+  // A line typed before the first sentence's first letter left, holding a
+  // letter before its last line break, is a sentence of its own: the first
+  // sentence begins at the first letter after that line (plaid-core
+  // `apply-plain-gaps`, `head-end`). Core reads "a letter" there as anything
+  // but ASCII whitespace. Not where a word the save typed over with the line
+  // ends inside it, which core keeps on its own text.
+  const first = (sentences || []).find((s) => s.begin === 0);
+  if (first) {
+    const inGap = (x) => sorted.some((g) => g.start <= x && x < g.end);
+    let q = -1;
+    for (let x = 0; x < Math.min(first.end, old.length); x++) {
+      if (!isSpace(old[x]) && !inGap(x)) {
+        q = x;
+        break;
+      }
+    }
+    if (q >= 0) {
+      const p = startOf(q);
+      let k = -1;
+      for (let x = p - 1; x >= 0; x--) {
+        if (isLineBreak(body[x])) {
+          k = x + 1;
+          break;
+        }
+      }
+      const letter = k > 0 && body.slice(0, k).some((c) => !/^[ \t\n\v\f\r]$/.test(c));
+      const typedOver = (words || []).some(
+        (w) =>
+          w.begin < w.end &&
+          sorted.some((g) => g.start <= w.begin && w.end <= g.end && g.value) &&
+          endOf(w.end) <= k,
+      );
+      if (letter && !typedOver) {
+        const e = endOf(first.end);
+        let b = k;
+        while (b < e && isSpace(body[b])) b += 1;
+        cut[Math.min(b, e - 1)] = 1;
+      }
+    }
+  }
+
   // Typed text against a word with no whitespace between goes to the word.
   const joins = (x) => typed[x] && !isSpace(body[x]);
   for (let x = 1; x < n; x++) if (!covered[x] && covered[x - 1] && joins(x)) covered[x] = 1;

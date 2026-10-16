@@ -2,7 +2,11 @@
   "The shared table `sentence_cut_cases.json`: edits near sentence
   boundaries (REV3-TEXT's twin generators, seeded: sentences with assorted
   boundary shapes, some of only whitespace, words, one to three inserts,
-  deletes and replacements, never touching) with what core makes of each on
+  deletes and replacements, never touching, and after them FX-E-TEXT's 507
+  user-shaped saves after REV4-TEXT's generator: Devanagari, Hebrew, Thai,
+  Arabic and Latin texts of up to 30 sentences, leading whitespace, pasted
+  sentences, a line typed at the start beside other edits, up to 13 gaps)
+  with what core makes of each on
   the edits path, the body and the sentence begins and words after the save.
   igt's \"Tokenize new text\" (plaid-igt `newTextWords.js`) and its Python
   twin (plaid-client-py `new_words.py`) read where core puts a sentence

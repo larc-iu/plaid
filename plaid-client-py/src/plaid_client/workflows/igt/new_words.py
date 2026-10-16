@@ -307,6 +307,31 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
                 for x in range(at[j], at[j] + lens[j]):
                     covered[x] = 1
 
+    # A line typed before the first sentence's first letter left, holding a
+    # letter before its last line break, is a sentence of its own: the first
+    # sentence begins at the first letter after that line (plaid-core
+    # `apply-plain-gaps`, `head-end`). Core reads "a letter" there as anything
+    # but ASCII whitespace. Not where a word the save typed over with the line
+    # ends inside it, which core keeps on its own text.
+    first = next((snt for snt in sentences or () if (snt['begin'] if isinstance(snt, dict) else snt[0]) == 0), None)
+    if first is not None:
+        first_end = first['end'] if isinstance(first, dict) else first[1]
+        q = next((x for x in range(min(first_end, len(old)))
+                  if not is_js_space(old[x]) and not any(s <= x < e for s, e, _ in srt)), -1)
+        if q >= 0:
+            p = start_of(q)
+            k = next((x + 1 for x in range(p - 1, -1, -1) if _is_line_break(body[x])), -1)
+            letter = k > 0 and any(c not in ' \t\n\v\f\r' for c in body[:k])
+            spans = [(w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1]) for w in words or []]
+            typed_over = any(wb < we and any(s <= wb and we <= e and v for s, e, v in srt) and end_of(we) <= k
+                             for wb, we in spans)
+            if letter and not typed_over:
+                e = end_of(first_end)
+                b = k
+                while b < e and is_js_space(body[b]):
+                    b += 1
+                cut[min(b, e - 1)] = 1
+
     # Typed text against a word with no whitespace between goes to the word.
     def joins(x: int) -> bool:
         return typed[x] and not is_js_space(body[x])
