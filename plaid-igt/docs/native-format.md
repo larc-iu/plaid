@@ -503,3 +503,11 @@ vocabulary items (step 4), where an entry id counts too.
 Deliberately not in the archive: cross-project vocabulary usage counts, server
 users/permissions, document history, and text layers other than the baseline with
 everything on them.
+
+Not promised for older archives: an archive exported before 2026-09-30 can hold
+shapes the project's layer rules now refuse (a morpheme matching no word, a
+duplicate annotation, two annotations in one field sharing some of their tokens, an
+annotation or link on such an orphan, two links on one token). Re-import follows
+the rules and does not restore those shapes, so such an archive does not round-trip
+identically. This is the one exception to the archive's round-trip guarantee
+(ruling, 2026-10-16).

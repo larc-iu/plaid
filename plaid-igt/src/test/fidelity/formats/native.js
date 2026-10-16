@@ -8,6 +8,12 @@
 // are carried too. What the archive leaves out on purpose is the review list, and comments and
 // promoted examples pointing at things that no longer exist. Comments are re-posted by the
 // importer, which is a known transformation, not a loss.
+//
+// One exception to the round trip, ruled 2026-10-16: an archive exported before 2026-09-30
+// can hold shapes the layer rules now refuse (an orphan morpheme, a duplicate annotation,
+// a partial overlap in one field, an annotation or link on an orphan, two links on one
+// token). The rules win and such an archive need not come back identically. The kitchen
+// sink plants none of them (cd5b2ff72), so no key here answers for them.
 
 // How every imported comment differs from the one it was exported from.
 const REPOSTED = [
