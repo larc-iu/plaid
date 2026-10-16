@@ -135,6 +135,24 @@ def test_a_failed_turns_calls_are_read_off_its_own_item():
     assert arg_names({'x' * 40: 1}) == ['x' * 23 + '…']
 
 
+def test_an_answer_beginning_error_is_a_failed_call_only_when_its_step_says_so():
+    # The loop asks the answer's type (core.tools.Refusal), so a run_code
+    # that printed "Error rates ..." went through, and its row says so
+    # (REV7-AGENT R7A-4).
+    from plaid_agent.research.records import Conversations
+    conv = Conversations(Pseudonyms(b'k' * 32))
+    record = {'messages': [{'role': 'user', 'content': 'q'}], 'display': [
+        {'kind': 'user', 'text': 'q', 'created-at': '2026-10-16T01:00:00.000Z'},
+        {'kind': 'assistant', 'text': 'Done.', 'created-at': '2026-10-16T01:00:09.000Z',
+         'steps': [{'id': 'c1', 'name': 'run_code', 'kind': 'read', 'label': 'Ran code'}],
+         'calls': [{'id': 'c1', 'name': 'run_code', 'arguments': '{"code": "print(1)"}',
+                    'result': 'Error rates by document:\n  Text 1  0.12\n'}]}]}
+    conv.add('u@x', 'igt', 'p1', 'c1', record, None, 10, None)
+    [row] = conv.tool_calls
+    assert row['failed'] is False and row['error_class'] is None
+    assert conv.turns[0]['n_failed_steps'] == 0
+
+
 def test_a_retried_turn_keeps_the_attempt_that_did_not_finish():
     # Luke, 2026-10-06: Retry keeps the failed attempt in the record and sends
     # the question again as a new item marked `retry` (plaid-ui resume.js).

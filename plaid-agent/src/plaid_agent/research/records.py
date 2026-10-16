@@ -366,9 +366,10 @@ class Conversations:
             else:
                 text = results.get(s.get('id'))
                 kept = isinstance(text, str) and text != DROPPED
+                # The step says whether the tool refused the call (the loop
+                # asks the answer's type, core.tools.Refusal): an answer that
+                # begins "Error" went through when the step does not say so.
                 failed = bool(s.get('failed'))
-                if not failed and kept and text.startswith('Error'):
-                    failed = True
                 args = arguments.get(s.get('id'))
             failed_n += failed
             row = {**base, 'item_index': index, 'turn': turn, 'turn_end': end, 'step': i, 'tool': s.get('name'),
