@@ -166,6 +166,9 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
     } catch (err) {
       console.error('Error deactivating user:', err);
       notifyError(humanizeError(err), 'Failed to deactivate the account');
+      // The refusal is the answer (the sole maintainer of a project, say):
+      // the question goes, rather than standing open behind the toast.
+      setDeactivateTarget(null);
     } finally {
       setDeactivating(false);
     }

@@ -112,3 +112,17 @@ describe('useUserAdmin emails', () => {
     expect(notifySuccess).toHaveBeenCalledWith('User "ana@example.org" created', 'User created');
   });
 });
+
+describe('useUserAdmin deactivation', () => {
+  it('lets the question go when the server refuses, rather than leave it open behind the toast', async () => {
+    const { admin, step, client } = await mount();
+    client.users.delete = vi.fn(async () => {
+      throw Object.assign(new Error('HTTP 409 sole maintainer'), { status: 409 });
+    });
+    await step(() => admin().state.setDeactivateTarget({ id: 'b@x.org', displayName: 'b' }));
+    expect(admin().state.deactivateTarget).not.toBeNull();
+    await step(() => admin().state.deactivateUser());
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(admin().state.deactivateTarget).toBeNull();
+  });
+});
