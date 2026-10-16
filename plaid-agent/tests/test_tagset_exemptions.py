@@ -12,7 +12,7 @@ from live import live_client, seed  # noqa: F401 - fixture
 from plaid_agent.igt.tagsets import refusal_words
 from plaid_agent.igt.toolkit import call_tool
 from plaid_client import PlaidAPIError
-from test_tagset_tools import igt_config, run, ws_of
+from test_tagset_tools import igt_config, layer, run, ws_of
 
 
 @pytest.fixture
@@ -66,3 +66,29 @@ def test_a_close_a_persons_value_breaks_is_still_refused_by_core(proj):
         run(proj, ws)
     words = refusal_words(e.value)
     assert 'Ali' in words and 'XIMP' not in words and 'XMACH' not in words, words
+
+
+def test_a_field_whose_layer_lost_its_list_is_read_from_core_and_holds_up_no_other_change(proj):
+    """REV-WIRE-1: Leipzig is closed in the settings, but the Morph Gloss layer
+    holds no list (another client removed its rules) and a person wrote QQ.
+    check says core does not hold the list instead of calling QQ a value core
+    let stay, and a change to another tagset neither warns about Morph Gloss
+    nor declares on it, so approval goes through."""
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed', 'add': ['Ali']}})
+    run(proj, ws)
+    proj.client.span_layers.delete_constraints(proj.ids[MGLOSS], 'igt')
+    proj.client.spans.create(proj.ids[MGLOSS], [proj.ids['m-4b']], 'QQ')
+
+    out = call_tool(ws_of(proj), 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
+    assert 'kept as core lets them stay' not in out, out
+    assert 'core does not hold the list on Morph Gloss' in out, out
+    assert '  Closed, core would refuse 1 stored value: "QQ" (1).' in out, out
+
+    ws = ws_of(proj)
+    out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'POS',
+                                    'changes': {'mode': 'closed', 'add': ['N', 'V']}})
+    assert 'Core will refuse' not in out, out
+    run(proj, ws)
+    assert igt_config(proj)['tagsets']['POS']['mode'] == 'closed'
+    assert not (layer(proj, MGLOSS).get('constraints') or {}).get('igt')

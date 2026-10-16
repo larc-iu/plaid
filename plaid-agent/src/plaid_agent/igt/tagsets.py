@@ -198,9 +198,32 @@ def _unlisted(attested, t: dict) -> List[Tuple[str, int, bool]]:
     return sorted(rows, key=lambda r: (-r[1], r[0]))
 
 
+def _rule(t: Optional[dict]) -> Optional[dict]:
+    """The value-set rule a tagset puts on the fields it governs, None unless
+    it is closed (``field_constraints``)."""
+    if not t or t.get('mode') != CLOSED:
+        return None
+    return {'values': [v['value'] for v in t['values']], 'delimiters': t['delimiters'] or '', 'parts': 'all'}
+
+
+def _same_rule(a: Optional[dict], b: Optional[dict]) -> bool:
+    if a is None or b is None:
+        return a is b
+    return (sorted(a.get('values') or []) == sorted(b.get('values') or [])
+            and (a.get('delimiters') or '') == (b.get('delimiters') or '')
+            and (a.get('parts') or 'all') == (b.get('parts') or 'all'))
+
+
+def _held(f: dict, t: dict) -> bool:
+    """Whether core holds closed ``t``'s list on span field ``f`` (the
+    layer's stored rules, not the settings)."""
+    rule = _rule(t)
+    return rule is not None and any(_same_rule(rule, c) for c in f['field'].value_sets)
+
+
 def _refused(attested, t: dict) -> List[Tuple[str, int]]:
     """The stored values off a closed ``t``, as core's rule reads them."""
-    rule = {'values': [v['value'] for v in t['values']], 'delimiters': t['delimiters'], 'parts': 'all'}
+    rule = _rule({**t, 'mode': CLOSED})
     return [(v, n) for v, n in attested if not value_set_allows(rule, v)]
 
 
@@ -209,15 +232,22 @@ def _core_refused(ws, f: dict, t: dict, limit: int = SHOWN) -> dict:
     values a declaration of the list would be refused for, read by core's own
     rule with its exemptions (an unconfirmed machine value, a value an import,
     a document copy or a restore set), as {count, value_count, values}."""
-    rule = {'values': [v['value'] for v in t['values']], 'delimiters': t['delimiters'], 'parts': 'all'}
-    return ws.client.span_layers.refused_values(f['key'], rule, limit=limit)
+    return ws.client.span_layers.refused_values(f['key'], _rule({**t, 'mode': CLOSED}), limit=limit)
+
+
+def _refused_value(v: dict) -> str:
+    """One refused value with its count, and the parts off the list when core
+    names fewer than the whole value ("1SG.NOM" (2, "1SG" not listed))."""
+    value = v['value']
+    parts = [p for p in (v.get('parts') or []) if isinstance(p, str)]
+    off = '' if not parts or parts == [value] else ', ' + ', '.join(qv(p) for p in parts) + ' not listed'
+    return f'{qv(value) if isinstance(value, str) else value} ({v["count"]}{off})'
 
 
 def _refused_line(r: dict) -> str:
     """Core's answer for one field, from the count on."""
     n, distinct = r['count'], r['value_count']
-    shown = ', '.join(f'{qv(v["value"]) if isinstance(v["value"], str) else v["value"]} ({v["count"]})'
-                      for v in r['values'][:SHOWN])
+    shown = ', '.join(_refused_value(v) for v in r['values'][:SHOWN])
     more = distinct - min(len(r['values']), SHOWN)
     return (_stored_n(n) + (f', {distinct} distinct' if distinct != n else '') + ': ' + shown
             + (f', and {more} more' if more > 0 else ''))
@@ -245,7 +275,7 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
     if field:
         governed = [_field(ws, owner, fields, field)]
     old = _stored_tagsets(ws, owner).get(key) if owner == PROJECT else None
-    in_force = t['mode'] == CLOSED and old is not None and old == {**t, 'name': old['name']}
+    as_stored = old is not None and old == {**t, 'name': old['name']}
     lines = [f'Tagset {qv(key)} of {where} ({"as planned" if _ops(ws, "set_tagset", owner) else "as stored"}): '
              f'{t["mode"]}, {len(t["values"])} values, delimiters {qv(t["delimiters"]) if t["delimiters"] else "none"}. '
              + mode_rule(t)]
@@ -281,13 +311,17 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
                 lines.append('  Lexical glosses: ' + _listing(words, lambda r: f'{r[0]} ({r[1]})'))
         if f['kind'] != SPAN:
             continue
-        if in_force and f['field'].tagset_name == key:
+        if as_stored and _held(f, t):
             # Core holds every write to it, so what is off it now is what core let stay.
             kept = _refused(attested, t)
             if kept:
                 lines.append(f'  Off the closed list, kept as core lets them stay: {_stored_n(len(kept))}: '
                              + _listing(kept, lambda r: f'{qv(r[0])} ({r[1]})'))
             continue
+        if as_stored and t['mode'] == CLOSED and f['field'].tagset_name == key:
+            lines.append(f'  Closed in the settings, but core does not hold the list on {f["name"]}: writes to it '
+                         'are not checked against it until a change to the list, or to the field\'s tagset, '
+                         'declares it.')
         # Said before any staging: a close that adds every part in use would
         # list the word glosses as tags (the edit refuses that in one call).
         every = _unlisted(attested, {**t, 'mode': CLOSED})
@@ -594,8 +628,10 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
         if f['kind'] != SPAN or not t or t['mode'] != CLOSED:
             continue
         old = stored.get(f['field'].tagset_name) if f['field'].tagset_name else None
-        if old is not None and old == {**t, 'name': old['name']}:
-            continue  # in force already, so stored values keep to it
+        # Asked only of a field whose rules approval changes, the ones it
+        # declares (queue_settings), and not of one that holds them already.
+        if _same_rule(_rule(old), _rule(t)) or _held(f, t):
+            continue
         # As many values as core lists, the sample the word glosses are
         # counted on.
         r = _core_refused(ws, f, t, limit=100)
@@ -799,6 +835,11 @@ def queue_settings(client, b, project, ops) -> None:
                         i, IGT, 'tagset', expected=e))
             layer_after = {**(sl.get('config') or {}), IGT: {**lcfg, 'tagset': name}}
             wanted = field_constraints(layer_after, after_cfg)
+            # Only a field whose rules the plan changes is declared, as igt's
+            # settings save does: one whose layer holds other rules than its
+            # settings ask for is left as it is.
+            if _canonical(wanted) == _canonical(field_constraints(sl.get('config') or {}, cfg)):
+                continue
             stored = (sl.get('constraints') or {}).get(IGT)
             if _canonical(wanted) == _canonical(stored):
                 continue

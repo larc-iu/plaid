@@ -350,3 +350,11 @@ def test_check_sets_numerals_and_bracketed_parts_apart_from_tags(monkeypatch):
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add_used': 'tags',
                                                                                   'from_fields': ['Morph Gloss']}})
     assert {'YON)', '1941', '3AUG'} <= {v['value'] for v in ws.ops[-1]['after']['values']}
+
+
+def test_a_refused_value_names_the_parts_off_the_list():
+    """REV-WIRE-3: of a composite value, the parts core names are shown."""
+    from plaid_agent.igt.tagsets import _refused_line
+    r = {'count': 3, 'value_count': 2, 'values': [{'value': '1SG.NOM', 'parts': ['1SG'], 'count': 2},
+                                                  {'value': 'QQ', 'parts': ['QQ'], 'count': 1}]}
+    assert _refused_line(r) == '3 stored values, 2 distinct: "1SG.NOM" (2, "1SG" not listed), "QQ" (1)'
