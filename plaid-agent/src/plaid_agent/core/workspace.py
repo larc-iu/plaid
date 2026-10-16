@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
 
-from . import docload, fingerprint as fp, garble, opkind, work
+from . import docload, fingerprint as fp, garble, opkind, rules, work
 from .bidi import plain_quote
 from .java_regex import matcher
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
@@ -549,9 +549,17 @@ class BaseWorkspace:
                     touched.append(did)
         for did in touched:
             doc = self._docs.get(did)
-            if doc is not None:
-                out.append(self.pinned({'id': did, 'name': doc.name, 'version': doc.version}, doc,
-                                       [op for op in self.ops if did in docs_of_op(op)]))
+            # Reached by rules alone (core.rules): what they match there is
+            # checked by its digest at approval, so the version may move. A
+            # document holding other changes too is pinned for those.
+            plain = [op for op in self.ops if did in docs_of_op(op) and not rules.is_rule(op)]
+            if not plain and doc is not None:
+                out.append({'id': did, 'name': doc.name, 'version': doc.version, 'rule': True})
+            elif not plain and did in listed:
+                out.append({'id': did, 'name': listed[did].get('name'), 'version': listed[did].get('version'),
+                            'rule': True})
+            elif doc is not None:
+                out.append(self.pinned({'id': did, 'name': doc.name, 'version': doc.version}, doc, plain))
             elif did in listed:
                 # Matched by a corpus-wide op without being read: pinned whole
                 # by the version its query saw, else by the list's.

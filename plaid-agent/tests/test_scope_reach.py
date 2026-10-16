@@ -204,12 +204,12 @@ def test_the_check_names_what_was_gained_and_lost():
     assert (e.value.gained, e.value.lost) == (['c'], ['b'])
 
 
-# --- UD, the version a stored replacement is pinned to ------------------------------
+# --- UD, a stored replacement is a rule (core/rules.py) ---------------------------
 #
-# A stored replacement's documents are pinned whole, by version, and the pin
-# must be the version the replacement's query read. The project's document
-# list is read once a turn, so taking the version from it pinned whatever the
-# list said when the turn first read it, before or after the query.
+# A replacement keeps a digest of what it matched in each document, and its
+# documents are recorded `rule: true`: approval finds it again and compares,
+# so an edit to a document the replacement reaches refuses the plan only when
+# it changes what the replacement finds there.
 
 def _ud_ws():
     from plaid_agent.ud.project import load_project
@@ -224,46 +224,39 @@ def _ud_replace(ws):
     assert [op['kind'] for op in ws.ops] == ['replace_scope']
 
 
-def test_ud_an_edit_before_the_query_does_not_refuse_the_replacement():
-    """The turn listed the documents, then a person edited Viaje, then the
-    replacement read it. The query saw the edit, so the plan stands."""
+def test_ud_a_replacement_records_its_documents_as_reached_by_a_rule():
     client, ws = _ud_ws()
-    ws.documents()
-    client._documents['ud1']['version'] += 1
     _ud_engine(client, UD1)
     _ud_replace(ws)
     plan = _store(ws, client, ud_fx.PID, 'ud')
-    assert plan['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 4}]
+    assert plan['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 3, 'rule': True}]
+    [op] = plan['ops']
+    assert [m[:2] for m in op['matched']] == [['ud1', 2]]
+
+
+def test_ud_an_edit_elsewhere_in_a_matched_document_does_not_refuse_the_replacement():
+    client, ws = _ud_ws()
+    _ud_engine(client, UD1)
+    _ud_replace(ws)
+    plan = _store(ws, client, ud_fx.PID, 'ud')
+    client._documents['ud1']['version'] += 1
     helper = _approve(APPS['ud'](), client, plan)
     assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
 
 
-def test_ud_an_edit_after_the_query_refuses_the_replacement():
-    """A person edits Viaje just after the replacement's query answered, and
-    before the turn first lists the documents."""
+def test_ud_an_edit_to_a_matched_value_refuses_the_replacement_saying_what_it_finds_now():
     client, ws = _ud_ws()
     _ud_engine(client, UD1)
-    real = client.query
-
-    def query(body):
-        out = real(body)
-        if body.get('return') == 'entities':
-            client._documents['ud1']['version'] += 1
-        return out
-    client.query = query
     _ud_replace(ws)
     plan = _store(ws, client, ud_fx.PID, 'ud')
-    assert plan['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 3}]
+    # A person retypes one of the two lemmas, which the replacement now finds
+    # as another value.
+    _ud_engine(client, [UD1[0], ('sp-l3', 'marx', 'uw-3', 'ud1')])
+    client._documents['ud1']['version'] += 1
+    before = len(client.calls)
     helper = _approve(APPS['ud'](), client, plan)
     [said] = helper.errors
-    assert 'Document "Viaje" has changed since the plan was made' in said
-
-
-def test_ud_an_edit_after_the_turn_refuses_the_replacement():
-    client, ws = _ud_ws()
-    _ud_engine(client, UD1)
-    _ud_replace(ws)
-    plan = _store(ws, client, ud_fx.PID, 'ud')
-    client._documents['ud1']['version'] += 1
-    helper = _approve(APPS['ud'](), client, plan)
-    assert helper.errors and 'has changed since the plan was made' in helper.errors[0]
+    assert said.startswith('Nothing was written.'), said
+    assert ('Since it was planned, lemma "mar" → "mare" matches other values than the 2 shown '
+            '(other values in "Viaje")') in said, said
+    assert _writes(client, before) == []

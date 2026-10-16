@@ -82,12 +82,22 @@ def target(op: Dict[str, Any]) -> tuple:
 
 # --- what a rule matched ---------------------------------------------------------
 
+#: The key a change a scope resolves to carries for the digest (:func:`matched`)
+#: when its label names its place (``confirm X on s3.w2``): the change as
+#: found, with no place, such as ``X "a" (machine)``. What it writes to
+#: is read off the registry as for any change, and a kind with no target of
+#: its own names it here too. Only the digest reads it.
+AS_FOUND = 'as_found'
+
+
 def _fact(reg, op: Dict[str, Any], replaces: Callable[[Dict[str, Any]], int]) -> list:
     """One change as the digest reads it: what it writes to, the change as the
     card says it (the value as found and the new one), and whether it
     replaces a person's work. Its place in the document is left out, so text
     typed into another sentence does not move it."""
-    change = change_of(op)
+    change = op.get(AS_FOUND)
+    if change is None:
+        change = change_of(op)
     if change is None:
         change = op.get('label') or ''
     return [repr(opkind.target_of(reg, op)), change, int(replaces(op) or 0)]

@@ -3,6 +3,7 @@
 import pytest
 
 from plaid_client.testing import as_fragment
+from plaid_agent.core.bidi import qname, qv
 from plaid_agent.ud.plan import execute_plan, summarize
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.toolkit import TOOLS, WRITE_TOOLS, call_tool
@@ -424,11 +425,19 @@ def test_confirming_a_whole_document_is_one_scope_op_resolved_at_approval(ws):
     hold. The scope op costs one, and approval finds the spans again."""
     out = run(ws, 'confirm', document='Viaje')
     assert out.startswith('Planned confirming 1 value(s) in "Viaje": upos 1.')
-    assert ws.ops == [{'kind': 'confirm_scope', 'document_id': 'ud1',
-                       'fields': ['lemma', 'upos', 'xpos', 'features', 'deprel'],
-                       'count': 1, 'per_field': {'upos': 1}, 'ref': None,
-                       'label': 'confirm 1 values in "Viaje" (upos 1)'}]
-    assert summarize(ws.ops) == '1 confirmation'
+    [op] = ws.ops
+    assert {k: v for k, v in op.items() if k not in ('matched', 'change', 'card', 'unit')} == {
+        'kind': 'confirm_scope', 'document_id': 'ud1',
+        'fields': ['lemma', 'upos', 'xpos', 'features', 'deprel'],
+        'count': 1, 'per_field': {'upos': 1}, 'ref': None,
+        'label': 'confirm 1 values in "Viaje" (upos 1)'}
+    # A rule (core/rules.py): what it matched, its change in words, its card.
+    assert [m[:2] for m in op['matched']] == [['ud1', 1]]
+    assert op['change'] == 'confirm the values waiting for review in "Viaje"'
+    assert op['card']['total'] == 1 and op['card']['documents'] == [['ud1', 'Viaje', 1]]
+    assert [c['label'] for c in op['card']['sample']] == ['confirm upos on s1.w4']
+    # A rule is named in its own words, with what it writes.
+    assert summarize(ws.ops) == f'confirm the values waiting for review in {qname("Viaje")} (1 value)'
     payload = ws.plan_payload()
     assert payload['changes'][0]['where']['kind'] == 'document'
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
@@ -510,7 +519,7 @@ def test_discarding_a_whole_document_is_one_scope_op_that_clears_at_approval(ws)
                    'covering the whole of "Viaje". To leave one value out, set it (set_field, or set_head for '
                    'a head) to what it holds now.')
     assert ws.ops[0]['kind'] == 'discard_scope' and ws.ops[0]['per_field'] == {'upos': 1}
-    assert summarize(ws.ops) == '1 cleared value'
+    assert summarize(ws.ops) == f'discard the unconfirmed machine values in {qname("Viaje")} (1 value)'
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert counts == {'cleared values': 1}, 'as the card counts it'
     assert ws.client.batches[0] == [('spans.delete', 'sp-u3')]
@@ -1239,7 +1248,7 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     # staged since the scope is found again only at approval.
     assert op['label'] == ('lemma: replace "mar" with "mare" on 2 values in 2 documents, '
                            '2 of them replace accepted work')
-    assert summarize(ws.ops) == '2 field values'
+    assert summarize(ws.ops) == f'lemma {qv("mar")} → {qv("mare")} (2 values)'
     # The document the preview matched without reading is pinned by version too.
     payload = ws.plan_payload()
     assert [(d['id'], d['version']) for d in payload['documents']] == [('other', 9), ('ud1', 3)]
@@ -1296,7 +1305,7 @@ def test_a_deprel_replacement_relabels_the_relations(ws):
     _engine_rows(ws, [('r-3', 'obl', 'ud1', None)])
     out = run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='obl:arg', whole=True)
     assert 'Planned 1 deprel change' in out
-    assert summarize(ws.ops) == '1 relabeled dependency'
+    assert summarize(ws.ops) == f'deprel {qv("obl")} → {qv("obl:arg")} (1 dependency)'
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert counts == {'relabeled dependencies': 1}
     [(kind, [item])] = ws.client.batches[0]

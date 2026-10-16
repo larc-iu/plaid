@@ -25,12 +25,14 @@ from typing import Any, Dict, List, Optional
 from ..core import guidelines as _guidelines
 from ..core import keep as _keep
 from ..core import opkind as ok
+from ..core import rules, work
+from ..core.bidi import qv
 from ..core.opkind import OpKind
 from plaid_client import metadata_ops
 
 from .project import LEMMA_FROM_FORM
 
-from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
+from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher,
                          apply_add_comment, apply_restore_document, confirm_note, ConfirmRows,
                          docs_of_op)
 from .project import feature_key, load_document, word_ref
@@ -401,6 +403,15 @@ def _relation_entity(op):
 # resolver beside everything else it declares, and `resolve_scopes` runs them
 # without naming one.
 
+# Each change a scope resolves to carries what it found (``rules.AS_FOUND``)
+# for the digest the plan was staged with (core/rules.py): its labels name the
+# word's place, which an edit elsewhere may move, and a confirmation has no
+# target of its own to name what it writes to.
+
+def _head_found(w) -> str:
+    return f'deprel {qv(w.deprel or "")} head {w.head}'
+
+
 def _resolve_confirm_scope(res: Resolution, op):
     did = op['document_id']
     doc = res.document(did)
@@ -408,9 +419,12 @@ def _resolve_confirm_scope(res: Resolution, op):
     targets, _left = confirm_targets(all_words(doc), fields, res.project)
     for sentence, w, f, span_id, relation_id, state in targets:
         ref = word_ref(sentence, w)
+        found = (_head_found(w) if f == 'deprel'
+                 else f'{f} {qv(next((sp.value for sp in w.spans(f) if sp.id == span_id), ""))}')
         yield {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
                'token_id': w.id, 'document_id': did, 'ref': ref, **contributed_work(state),
-               'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'}
+               'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}',
+               rules.AS_FOUND: f'{span_id or relation_id} {found} {state}'}
 
 
 def _resolve_discard_scope(res: Resolution, op):
@@ -424,12 +438,13 @@ def _resolve_discard_scope(res: Resolution, op):
             yield {'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
                    'document_id': did, 'ref': ref,
                    'suppressor_ids': [w.suppressor_id] if w.suppressor_id else [],
-                   'label': f'discard the unconfirmed head of {ref}'}
+                   'label': f'discard the unconfirmed head of {ref}', rules.AS_FOUND: _head_found(w)}
         else:
             yield {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                    'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
                    'feature': feature_key(f, span.value),
-                   'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'}
+                   'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}',
+                   rules.AS_FOUND: f'{f} {qv(span.value)}'}
 
 
 def _resolve_replace_scope(res: Resolution, op):
@@ -753,22 +768,54 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     Each scope kind declares its own resolver and this dispatches on that, so
     a kind added later is resolved without being named here.
 
-    Approval has already refused the plan if the document's version moved
-    since the model counted, so what is found here is what it counted.
-    Nothing is written: this only reads, and a document that cannot be read
-    refuses the whole plan before any batch opens."""
+    A scope is a rule (core/rules.py): what it finds here is compared with
+    what it found when it was staged, and the plan is refused whole when
+    anything differs, so what is written is what the card counted. Nothing is
+    written: this only reads, and a document that cannot be read refuses the
+    whole plan before any batch opens."""
     notes: List[str] = []
     if not any(ok.resolver(KIND, op) for op in ops):
         return ops, notes
     if project is None:
         raise ValueError('a whole-document review needs the project to read the document with')
     keep = ok.named_beats_scope(KIND, ops, notes, target=entity_of)
+    names = _names(client, project)
+    kept = kept_entities(ops)
 
-    # The documents a scope reaches now must be the ones it was pinned to,
-    # checked and locked by: `check_reach` refuses the plan otherwise.
-    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep,
-                          check=lambda op, found: check_reach(op, found,
-                                                              lambda o: o.get('document_id'))), notes
+    def check(op, found):
+        # A rule must find what it found when it was staged, in every
+        # document (`core.rules.check_matched`): the plan is refused whole
+        # otherwise, saying which change finds what now and where. A value
+        # the plan keeps out of it is no part of it, whatever it holds now.
+        # A scope staged without a digest is pinned to its documents whole.
+        if rules.is_rule(op):
+            rules.check_matched(op, matched([o for o in found if entity_of(o) not in kept]), names)
+    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep, check=check), notes
+
+
+def kept_entities(ops: List[Dict[str, Any]]) -> set:
+    """What the plan's keeps (core.keep) hold out of its scopes, named as
+    :func:`entity_of` names what a scope's change writes to."""
+    return {entity_of(op) for op in ops if _keep.is_keep(op)} - {None}
+
+
+def matched(found: List[Dict[str, Any]]) -> List[list]:
+    """What a scope resolved to, as its digest (`core.rules.matched`): by
+    document, each change as found and whether it replaces a person's work
+    (``work.FLAG``, set by the resolver from what it read)."""
+    return rules.matched(KIND, found, lambda o: o.get('document_id'), lambda o: int(o.get(work.FLAG) or 0))
+
+
+def _names(client, project):
+    """A document's name by its id, read from the project's list once."""
+    held: Dict[str, str] = {}
+
+    def name_of(did: str) -> str:
+        if not held:
+            held.update({d['id']: d.get('name') or d['id']
+                         for d in client.projects.list_documents(project.id) or []})
+        return held.get(did, did)
+    return name_of
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
@@ -843,8 +890,14 @@ def _plural(name: str, n: int) -> str:
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
-    """A plan in one phrase, for the audit label and the applied message."""
-    return ok.summarize(KIND, ops, ok.stored_count, common_first=True)
+    """A plan in one phrase, for the audit label and the applied message. A
+    rule is named in its own words (`core.rules.phrase`), as igt names its
+    own, and everything else is counted by kind."""
+    named, rest = rules.named(ops)
+    tail = ok.summarize(KIND, rest, ok.stored_count, common_first=True) if rest else ''
+    if named and tail == 'no changes':
+        tail = ''
+    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(KIND, [], ok.stored_count)
 
 
 def _parse(client, op, document_id: str, notes: List[str], b, total: int,

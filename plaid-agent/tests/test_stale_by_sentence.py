@@ -84,7 +84,10 @@ def _ud():
                 same=lambda raw: _layer(raw, ud_fx.LEMMA)['spans'].append(
                     {'id': 'sp-l6', 'value': '!', 'tokens': ['uw-6']}),
                 # Confirm everything waiting in the document: a scope.
-                whole=('confirm', {'document': 'Viaje'}))
+                whole=('confirm', {'document': 'Viaje'}),
+                # A person's lemma, which nothing waits on.
+                elsewhere=lambda raw: _layer(raw, ud_fx.LEMMA)['spans'].append(
+                    {'id': 'sp-l6', 'value': '!', 'tokens': ['uw-6']}))
 
 
 def _umr():
@@ -102,7 +105,10 @@ def _umr():
                     {'rel': ':polarity', 'value': '-', 'order': 1}),
                 whole=('set_attribute_for_concept', {'document': 'Story', 'concept': 'bark-01',
                                                      'rel': ':aspect', 'value': 'state',
-                                                     'overwrite': True}))
+                                                     'overwrite': True}),
+                # An attribute on a node of another concept.
+                elsewhere=lambda raw: _span(raw, 'mc-d')['metadata']['umr']['attrs'].append(
+                    {'rel': ':polarity', 'value': '-', 'order': 1}))
 
 
 APPS = {'igt': _igt, 'ud': _ud, 'umr': _umr}
@@ -197,14 +203,30 @@ def test_an_edit_to_the_planned_sentence_refuses_it_and_names_the_sentence(spec)
     assert before['version'] + 1 == client._documents[spec['did']]['version']
 
 
-def test_a_change_over_the_whole_document_stays_pinned_to_it(spec):
+def test_a_respelling_of_the_text_stays_pinned_to_its_document():
+    spec = APPS['igt']()
     client = spec['client']()
     plan, _store = _plan(spec, client, tool=spec['whole'])
     [doc] = plan['documents']
-    assert 'sentences' not in doc
+    assert 'sentences' not in doc and not doc.get('rule')
     _edit(client, spec, spec['other'])
     helper = _approve(spec, client, plan)
     assert helper.errors and 'Document "' in helper.errors[0], helper.errors
+
+
+@pytest.mark.parametrize('app', ['ud', 'umr'])
+def test_a_change_over_the_whole_document_is_a_rule_an_edit_it_does_not_reach_leaves_standing(app):
+    """A whole-document confirm (ud) and an attribute over a concept (umr)
+    are rules (core/rules.py): the document is recorded `rule: true` and
+    approval compares what the change finds, not the version."""
+    spec = APPS[app]()
+    client = spec['client']()
+    plan, _store = _plan(spec, client, tool=spec['whole'])
+    [doc] = plan['documents']
+    assert doc.get('rule') is True and 'sentences' not in doc
+    _edit(client, spec, spec['elsewhere'])
+    helper = _approve(spec, client, plan)
+    assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
 
 
 # --- the comparison itself --------------------------------------------------------

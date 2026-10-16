@@ -3,9 +3,9 @@
 A field-wide replacement is stored as a PREDICATE (the field, the pattern,
 the replacement) and resolved to spans when the plan is approved, the same
 way a whole-document review is (see :mod:`.review`). Stored per span it
-would not fit the record; resolved at approval it is exact, because the plan
-pins the version of every document the preview matched and approval
-refuses a plan whose documents have moved on.
+would not fit the record. It is a rule (core/rules.py): it keeps a digest of
+what it matched in each document, and approval refuses the whole plan when it
+finds anything else there, so what is written is what the card counted.
 
 The engine applies the pattern, so only matches come back and a corpus of
 any size can be searched: what is capped is the number of CHANGES one plan
@@ -24,7 +24,7 @@ from ..core.history import doc_label
 from ..core.plan import MANY, by_document
 from ..core.replace import replacer
 from .corpus import Corpus, rx
-from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
+from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE, matched
 from .settle import replace_label
 from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
 from .tools import FIELDS, ToolError, Workspace, _check_feature
@@ -115,23 +115,31 @@ def resolve_replace(client, project: UdProject, op: Dict[str, Any]) -> List[Dict
     rows = matches(c, field, spec, op.get('document_id'), REPLACE_MAX)
     if len(rows) > REPLACE_MAX:
         raise ValueError(f'the replacement now matches more than {REPLACE_MAX} values')
-    out = []
     found = changes(rows, field, rep)
     if field == 'deprel':
         refusal = root_rule(found)
         if refusal:
             raise ValueError(refusal)
+    return replace_ops(found, field)
+
+
+def replace_ops(found: List[Dict[str, Any]], field: str) -> List[Dict[str, Any]]:
+    """The per-span ops of a replacement's changes (:func:`changes`), each
+    flagged when it replaces a person's work (``work.FLAG``), as the query
+    read it: what staging digests and approval finds again (core/rules.py)."""
+    out = []
     for ch in found:
+        flag = {work.FLAG: 1} if work.protected(ch.get('metadata')) else {}
         if field == 'deprel':
             out.append({'kind': 'set_deprel', 'relation_id': ch['id'], 'deprel': ch['new'],
                         'document_id': ch['document_id'], 'ref': None,
-                        'label': f'deprel {qv(ch["old"])} → {qv(ch["new"])}'})
+                        'label': f'deprel {qv(ch["old"])} → {qv(ch["new"])}', **flag})
         else:
             out.append({'kind': 'set_span', 'layer_id': ch['layer_id'], 'token_id': ch['token_id'],
                         'span_id': ch['id'], 'value': ch['new'], 'field': field,
                         'feature': feature_key(field, ch['old']),
                         'document_id': ch['document_id'], 'ref': None,
-                        'label': f'{field} {qv(ch["old"])} → {qv(ch["new"])}'})
+                        'label': f'{field} {qv(ch["old"])} → {qv(ch["new"])}', **flag})
     return out
 
 
@@ -154,9 +162,6 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     document_id = ws.resolve_document_id(document) if document else None
     c = ws.corpus
     ws.on_progress(f'Finding every {field} matching "{pattern}"…')
-    # Read before the query, so the plan is pinned to no later state than the
-    # query saw.
-    versions = ws.current_versions()
     rows = matches(c, field, spec, document_id, REPLACE_MAX)
     if len(rows) > REPLACE_MAX:
         raise ToolError(f'More than {REPLACE_MAX} {field} values match "{pattern}", more than one plan '
@@ -179,7 +184,6 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
             ws.refuse_value(layer or ws.project.span_layers.get(field), value)
     docs = sorted({ch['document_id'] for ch in found if ch['document_id']})
     _clear_of_reshapes(ws, docs)
-    ws.note_staged_versions({d: versions.get(d) for d in docs})
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
     sample = [f'{doc_label(ws, ch["document_id"], qname)}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
               for ch in found[:SAMPLE_LINES]]
@@ -192,8 +196,16 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
           'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
           'document_id': document_id, 'documents': docs, 'count': len(found), MANY: True, 'ref': None,
           work.COUNTED: accepted, 'change': f'{field} {shown} → {qv(replacement)}',
+          'unit': ['dependency', 'dependencies'] if field == 'deprel' else ['value', 'values'],
+          # A rule (core/rules.py): what it matched, by document, found again
+          # and compared at approval, so an edit elsewhere in a matched
+          # document leaves it standing.
+          'matched': matched(replace_ops(found, field)),
           CARD: _card(field, pattern, replacement, bool(regex), bool(whole), bool(case_sensitive),
                       found, names)}
+    full = rules.too_many(KIND, ws.ops, len(found), docs)
+    if full:
+        raise ToolError(full)
     ws.add_op({**op, 'label': replace_label(ws, op, len(found), len(docs), accepted)})
     # Counted by document, never by name: two documents may share one, and
     # their counts are then told apart by id.

@@ -1078,9 +1078,10 @@ def confirm_note(accepted: int, left: int) -> Optional[str]:
 
 COMPACT_ABOVE = 12  # a group larger than this is stored as one op
 
-# The keys an op carries for people rather than for the write. Two ops that
-# differ only in these are the same change, so they never keep ops apart.
-PRESENTATION_KEYS = ('label', 'change_at')
+# The keys an op carries for people or for a rule's digest (core.rules
+# AS_FOUND) rather than for the write. Two ops that differ only in these are
+# the same change, so they never keep ops apart.
+PRESENTATION_KEYS = ('label', 'change_at', 'as_found')
 
 # The key a change carries on the card's copy of a plan once it is known to
 # replace a person's work (``core.work.FLAG``), named here too so folding

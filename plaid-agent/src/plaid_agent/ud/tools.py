@@ -302,7 +302,8 @@ class Workspace(BaseWorkspace):
         # Each discard or replacement counted as approval writes it: less
         # what the plan names or keeps.
         settle_scopes(self)
-        ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)), compact_spec(self))
+        from .settle import digested
+        ops = compact_ops(digested(self, self.mark_replaced_work(copy.deepcopy(self.ops))), compact_spec(self))
         # A replace's card row was built when it was staged and goes in
         # `changes` only.
         changes = describe_changes(self, ops)
@@ -1286,10 +1287,12 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
                 else f'Nothing in {doc_label(ws, doc.id, qname)} is waiting for review.')
     counts = per_field(targets)
     off = f', {len(left)} off the list left unconfirmed' if left else ''
-    ws.add_op({'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
-               'count': len(targets), 'per_field': counts, 'ref': None,
-               **({'contributed_count': k} if (k := sum(1 for t in targets if t[5] == 'contributed')) else {}),
-               'label': f'confirm {len(targets)} values in {doc_label(ws, doc.id, qname)} ({counts_phrase(counts)}{off})'})
+    from .settle import as_rule
+    ws.add_op(as_rule(ws, {
+        'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
+        'count': len(targets), 'per_field': counts, 'ref': None,
+        **({'contributed_count': k} if (k := sum(1 for t in targets if t[5] == 'contributed')) else {}),
+        'label': f'confirm {len(targets)} values in {doc_label(ws, doc.id, qname)} ({counts_phrase(counts)}{off})'}))
     return (f'Planned confirming {len(targets)} value(s) in {doc_label(ws, doc.id, qname)}: {counts_phrase(counts)}. '
             f'That is one planned change covering the whole document.' + _reviewed_phrase(ws, targets)
             + (f' {left_phrase(left)}' if left else ''))
@@ -1343,10 +1346,10 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
         n = len(targets)
         if n:
             counts = per_field(targets)
-            from .settle import discard_label
-            ws.add_op({'kind': 'discard_scope', 'document_id': doc.id, 'fields': fields,
-                       'count': n, MANY: True, 'per_field': counts, 'ref': None,
-                       'label': discard_label(ws, doc.id, n, counts)})
+            from .settle import as_rule, discard_label
+            ws.add_op(as_rule(ws, {'kind': 'discard_scope', 'document_id': doc.id, 'fields': fields,
+                                   'count': n, MANY: True, 'per_field': counts, 'ref': None,
+                                   'label': discard_label(ws, doc.id, n, counts)}))
     spared_note = f' Left {spared} machine lemma(s) that anchor arcs a person drew.' if spared else ''
     if not n:
         if spared:

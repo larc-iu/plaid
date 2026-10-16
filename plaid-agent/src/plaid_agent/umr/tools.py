@@ -356,9 +356,14 @@ class Workspace(BaseWorkspace):
         # one (the summary still counts what they stand for).
         ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)),
                           opkind.compact_spec(KIND))
+        changes = describe_changes(self, ops)
+        # A rule's card row was built when it was staged and goes in
+        # `changes` only.
+        for op in ops:
+            op.pop('card', None)
         return {'id': uuid7(), 'summary': summarize(self.ops),
                 'ops': ops,
-                'changes': describe_changes(self, ops),
+                'changes': changes,
                 'documents': self.touched_documents()}
 
 
@@ -697,6 +702,7 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
     op['count'] = len(targets)
     op['label'] = (f'{what} on {len(targets)} node(s) with concept {qv(concept)} in {qv(doc.name)}'
                    + (f', replacing {replacing}' if replacing else ''))
+    _as_rule(ws, doc, op, targets)
     ws.add_ops(_staged([op]))
     out = [f'Planned {what} on {len(targets)} node(s) in {plain_quote(doc.name)}'
            + (f', replacing {replacing}' if replacing else '') + ', read again when you approve it:']
@@ -708,6 +714,37 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
     if kept_note:
         out.append(kept_note)
     return '\n'.join(out)
+
+
+def _as_rule(ws: Workspace, doc: UmrDoc, op: Dict[str, Any], targets) -> None:
+    """Make a concept-wide attribute change a rule (core/rules.py): what it
+    matched (``matched``, the digest approval compares, by the resolver
+    approval runs), the change in words, and its card row: the total, the
+    document, every distinct change of the attribute and a sample, each
+    placed at its node."""
+    from ..core import rules, work
+    from ..core.plan import Resolution
+    from .changes import describe_change
+    from .plan import matched
+    found = list(opkind.resolver(KIND, op)(Resolution(ws.client, ws.project, lambda _c, _p, _d: doc), op))
+    rel, value = op['rel'], op.get('value') or ''
+    op['matched'] = matched(found)
+    # How many of its changes take a value from a person's node, counted now
+    # as the card says it: it is found again only when it is approved.
+    op[work.COUNTED] = sum(int(o.get(work.FLAG) or 0) for o in found)
+    op['change'] = f'{rel} {value or "removed"} on concept {qv(op["concept"])} in {qv(doc.name)}'
+    op['unit'] = ['node', 'nodes']
+    card = rules.card({'tool': 'set_attribute_for_concept',
+                       'args': {k: op.get(k) for k in ('document_id', 'concept', 'rel', 'value', 'regex', 'whole',
+                                                       'case_sensitive', 'overwrite')},
+                       'counts': {'set_attrs': len(found)}},
+                      found, lambda o: o.get('document_id'), lambda _d: doc.name,
+                      lambda o: describe_change(ws, o), lambda o: int(o.get(work.FLAG) or 0))
+    card['mode'] = rules.match_mode(op['concept'], op['regex'], op['whole'], op['case_sensitive'])
+    rows, more = rules.transitions(targets, lambda t: (' '.join(holds(t[1], rel)), value))
+    card[rules.TRANSITIONS], card[rules.TRANSITIONS_MORE] = rows, more
+    card[rules.UNIT] = ['node', 'nodes']
+    op['card'] = card
 
 
 def _end(ws: Workspace, doc: UmrDoc, name: str, side: str) -> Dict[str, Any]:
@@ -924,16 +961,6 @@ def _replaced_attrs(ws: Workspace, op: Dict[str, Any]) -> List[str]:
     return [node.id] if lost else []
 
 
-def _replaced_by_scope(ws: Workspace, op: Dict[str, Any]) -> List[str]:
-    """The nodes a concept-wide change takes a value from: an overwrite's,
-    or a removal's."""
-    doc = ws._docs.get(op.get('document_id'))
-    if doc is None:
-        return []
-    rel = op.get('rel') or ''
-    return [node.id for _s, node, _placed in attrs_scope_targets(doc, op) if holds(node, rel)]
-
-
 _NONE = None
 REPLACES = {
     'set_concept': lambda ws, op: [op.get('span_id')],
@@ -945,7 +972,8 @@ REPLACES = {
     'delete_edge': lambda ws, op: [op.get('relation_id')],
     'set_edge_order': lambda ws, op: [op.get('relation_id')],
     'delete_triple': lambda ws, op: [op.get('relation_id')],
-    'attrs_scope': _replaced_by_scope,
+    # Counted when it is staged, change by change (``work.COUNTED``).
+    'attrs_scope': _NONE,
     # A root mark put on a node takes nothing: the node that loses it is the
     # plan's unset_root.
     'set_root': _NONE,

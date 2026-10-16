@@ -5,9 +5,9 @@ again at approval): a whole-document confirm or discard is stored as a
 SCOPE, the document and the fields, not as one op per span. A document with
 1300 words and four columns is over five thousand spans, and a plan that
 named each of them was too large for the conversation record to hold. The
-plan already pins the version of every document it touches, and approval
-refuses a plan whose document has moved on, so what is found at approval is
-what the model counted.
+scope is a rule (core/rules.py): it keeps a digest of what it found, and
+approval refuses the whole plan when it finds anything else, so what is
+found at approval is what the model counted.
 """
 
 from typing import Dict, List, Optional, Tuple

@@ -7,6 +7,7 @@ Dropping a corpus-wide change drops the keeps made against it, and a plan
 holding only keeps reads as no changes."""
 
 from plaid_agent.core.conversation import ConversationStore, proposed_changes
+from plaid_agent.core.bidi import qv
 from plaid_agent.core.plan import plan_changes
 from plaid_agent.core.trace import summarize_steps
 from plaid_agent.ud.project import load_project
@@ -85,7 +86,8 @@ def test_ud_a_replacement_row_counts_without_its_kept_value():
     assert [d[2] for d in row['rule']['documents']] == [1]
     assert [(t['from'], t['to'], t['count']) for t in row['rule']['transitions']] == [('mar', 'maR', 1)]
     assert 'on 1 value in' in row['label'], row['label']
-    assert payload['summary'] == '1 field value'
+    # A rule is named in its own words, with what it writes.
+    assert payload['summary'] == f'lemma {qv("r")} → {qv("R")} (1 value)'
     assert plan_changes(payload['ops']) == 1
     # The stored op keeps what the preview found, without the card.
     assert payload['ops'][0]['found']['count'] == 2 and 'card' not in payload['ops'][0]['found']

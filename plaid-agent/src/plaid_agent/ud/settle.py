@@ -134,20 +134,75 @@ def settle_scopes(ws) -> None:
         found = _found(op)
         if not taken and op.get(FOUND) is None:
             continue
-        out = (_discard(ws, op, found, list(taken.values())) if op['kind'] == 'discard_scope'
+        out = (_discard(ws, op, found, taken) if op['kind'] == 'discard_scope'
                else _replace(ws, op, found, list(taken.values())))
         if out != op:
             ws.ops[i] = out
 
 
-def _discard(ws, op, found, taken) -> Dict[str, Any]:
+def _discard(ws, op, found, taken: Dict[Any, tuple]) -> Dict[str, Any]:
     per = dict(found['per_field'])
-    for _d, _s, _w, field, _span in taken:
+    for _d, _s, _w, field, _span in taken.values():
         per[field] = per.get(field, 0) - 1
     per = {f: n for f, n in per.items() if n > 0}
     n = max(0, found['count'] - len(taken))
-    return {**op, FOUND: found, 'count': n, 'per_field': per,
-            'label': discard_label(ws, op['document_id'], n, per)}
+    out = {**op, FOUND: found, 'count': n, 'per_field': per,
+           'label': discard_label(ws, op['document_id'], n, per)}
+    if op.get('card') is not None:
+        # Its card counts and samples what approval writes: what it finds in
+        # the document less the values the plan names or keeps.
+        left = [o for o in scope_found(ws, op) if entity_of(o) not in taken]
+        out['card'] = rule_card(ws, op, left)
+    return out
+
+
+# --- a scope as a rule (core/rules.py) ------------------------------------------------
+
+def _fields_words(fields) -> str:
+    """The values a review scope covers, as its change says them."""
+    from .review import REVIEW_FIELDS
+    return 'values' if set(fields or ()) >= set(REVIEW_FIELDS) else f'{", ".join(fields or ())} values'
+
+
+def scope_found(ws, op: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """What a whole-document scope resolves to now, by the resolver approval
+    runs (``ud.plan``), read from the document as the turn loaded it."""
+    from ..core import opkind
+    from ..core.plan import Resolution
+    ctx = Resolution(ws.client, ws.project, lambda _c, _p, did: ws.doc(did))
+    return list(opkind.resolver(KIND, op)(ctx, op))
+
+
+def rule_card(ws, op: Dict[str, Any], found: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The card row's ``rule`` of a whole-document scope
+    (:func:`core.rules.card`): its total, its document and a sample of what
+    it changes, each placed at its word."""
+    from .changes import describe_change
+    counts: Dict[str, int] = {}
+    for o in found:
+        counts[o['kind']] = counts.get(o['kind'], 0) + 1
+    tool = 'confirm' if op['kind'] == 'confirm_scope' else 'discard_predictions'
+    out = rules.card({'tool': tool, 'args': {'document': op['document_id'], 'fields': list(op.get('fields') or [])},
+                      'counts': counts},
+                     found, lambda o: o.get('document_id'), lambda d: ws.doc(d).name,
+                     lambda o: describe_change(ws, o), lambda o: int(o.get(work.FLAG) or 0))
+    out[rules.UNIT] = ['value', 'values']
+    return out
+
+
+def as_rule(ws, op: Dict[str, Any]) -> Dict[str, Any]:
+    """A whole-document confirm or discard staged as a rule: ``op`` with
+    what it matched (``matched``, the digest approval compares), the change
+    in words and its card row."""
+    from .plan import matched
+    found = scope_found(ws, op)
+    where = doc_label(ws, op['document_id'], qname)
+    what = _fields_words(op.get('fields'))
+    change = (f'confirm the {what} waiting for review in {where}' if op['kind'] == 'confirm_scope'
+              else f'discard the unconfirmed machine {what} in {where}')
+    out = {**op, 'matched': matched(found), 'change': change, 'unit': ['value', 'values']}
+    out['card'] = rule_card(ws, out, found)
+    return out
 
 
 def discard_label(ws, document_id: str, n: int, per: Dict[str, int]) -> str:
@@ -214,3 +269,57 @@ def _less(card: Dict[str, Any], doc_id: str, old: str, new: str) -> None:
     else:
         more = card.get(rules.TRANSITIONS_MORE) or [0, 0]
         card[rules.TRANSITIONS_MORE] = [more[0], max(0, more[1] - 1)]
+
+
+def digested(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``ops``, a copy of the plan for its record, with each rule's digest
+    (``matched``) taken over what it finds less the values the plan keeps out
+    of it (core.keep), as approval reads it (``ud.plan.resolve_scopes``): a
+    kept value is no part of the change, whatever it holds by then. Only the
+    documents a keep is in are read again, by the rule's own reader."""
+    from .plan import kept_entities, matched
+    keeps = [op for op in ops if is_keep(op)]
+    if not keeps:
+        return ops
+    kept = kept_entities(ops)
+    places = []
+    for k in keeps:
+        if k.get('document_id'):
+            ws.doc(k['document_id'])
+        place = value_place(ws, k)
+        if place is not None:
+            places.append(place)
+    for op in ops:
+        if not rules.is_rule(op):
+            continue
+        takes = KIND[op['kind']].extra.get('takes')
+        docs = {p[0] for p in places if takes is not None and takes(op, *p)}
+        if not docs:
+            continue
+        by = {m[0]: m for m in op['matched']}
+        for d in sorted(docs):
+            got = matched([o for o in _found_in(ws, op, d)
+                           if o.get('document_id') == d and entity_of(o) not in kept])
+            if got:
+                by[d] = got[0]
+            else:
+                by.pop(d, None)
+        op['matched'] = [by[d] for d in sorted(by, key=lambda d: (d is None, d or ''))]
+    return ops
+
+
+def _found_in(ws, op: Dict[str, Any], doc_id: str) -> List[Dict[str, Any]]:
+    """What a rule resolves to in one document now, read once a turn."""
+    held = ws.__dict__.setdefault('_rule_found_in', {})
+    key = (rules.fingerprint_args({k: v for k, v in op.items() if k in ('kind', 'field', 'pattern', 'replacement',
+                                                                         'regex', 'whole', 'case_sensitive',
+                                                                         'document_id', 'fields')}), doc_id)
+    if key not in held:
+        if op['kind'] == 'replace_scope':
+            from .bulk import REPLACE_MAX, changes, matches, replace_ops, spec_of
+            spec, rep = spec_of(op)
+            held[key] = replace_ops(changes(matches(ws.corpus, op['field'], spec, doc_id, REPLACE_MAX),
+                                            op['field'], rep), op['field'])
+        else:
+            held[key] = scope_found(ws, op)
+    return held[key]

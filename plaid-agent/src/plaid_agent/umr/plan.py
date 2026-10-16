@@ -21,6 +21,7 @@ from plaid_client import metadata_ops
 
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
+from ..core import rules, work
 from ..core.opkind import OpKind
 from ..core.java_regex import matcher
 from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher, docs_of_op)
@@ -297,15 +298,33 @@ def attr_line(attrs) -> str:
 
 
 def _resolve_attrs_scope(res: Resolution, op):
+    """One ``set_attrs`` per node the scope changes. Each carries what it
+    found (``rules.AS_FOUND``: its concept and what it holds under the
+    attribute, before and after) for
+    the digest the scope was staged with (core/rules.py), and is flagged
+    (``work.FLAG``) where it takes a value from a person's node, as
+    ``tools._replaced_attrs`` counts it."""
     did = op['document_id']
     doc = res.document(did)
     rel, value = op.get('rel') or '', op.get('value') or ''
+    index = None
     for s, node, placed in attrs_scope_targets(doc, op):
         shown = f'{rel} {value}' if value else f'{rel} removed'
+        kept = {(a.get('rel'), str(a.get('value'))) for a in placed}
+        lost = any((a.get('rel'), str(a.get('value'))) not in kept for a in node.attrs)
+        if lost and index is None:
+            index = work.entity_index(doc)
+        flag = {work.FLAG: 1} if lost and work.protected(index.get(node.id)) else {}
         yield {'kind': 'set_attrs', 'document_id': did, 'ref': node_ref(s, node),
                'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
                'attrs': placed, 'attr_line': attr_line(placed), 'umr_set': {'attrs': placed},
-               'label': f'{node.var}: {shown}'}
+               'label': f'{node.var}: {shown}',
+               rules.AS_FOUND: f'{node.concept} {rel} {" ".join(holds(node, rel))} → {value}', **flag}
+
+
+def matched(found: List[Dict[str, Any]]) -> List[list]:
+    """What a scope resolved to, as its digest (`core.rules.matched`)."""
+    return rules.matched(KIND, found, lambda o: o.get('document_id'), lambda o: int(o.get(work.FLAG) or 0))
 
 
 def _attrs_scope_summary(op, n):
@@ -578,9 +597,10 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     Each scope kind declares its own resolver and this dispatches on that, so
     a kind added later is resolved without being named here.
 
-    Approval has already refused the plan if the document's version moved
-    since the model counted, so what is found here is what it counted. Nothing
-    is written: this only reads, and a document that cannot be read refuses the
+    A scope is a rule (core/rules.py): what it finds here is compared with
+    what it found when it was staged, and the plan is refused whole when
+    anything differs, so what is written is what the card counted. Nothing is
+    written: this only reads, and a document that cannot be read refuses the
     whole plan before any batch opens.
     """
     notes: List[str] = []
@@ -589,8 +609,22 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     if project is None:
         raise ValueError('a change over a whole document needs the project to read it with')
     keep = ok.named_beats_scope(KIND, ops, notes)
+    names: Dict[str, str] = {}
 
-    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep), notes
+    def name_of(did: str) -> str:
+        if not names:
+            names.update({d['id']: d.get('name') or d['id']
+                          for d in client.projects.list_documents(project.id) or []})
+        return names.get(did, did)
+
+    def check(op, found):
+        # A rule must find what it found when it was staged
+        # (`core.rules.check_matched`): the plan is refused whole otherwise,
+        # saying which change finds what now. A scope staged without a
+        # digest is pinned to its document whole.
+        if rules.is_rule(op):
+            rules.check_matched(op, matched(found), name_of)
+    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep, check=check), notes
 
 
 def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
@@ -622,8 +656,14 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
-    """A plan in one phrase, for the audit label and the applied message."""
-    return ok.summarize(KIND, ops, ok.stored_count, common_first=True)
+    """A plan in one phrase, for the audit label and the applied message. A
+    rule is named in its own words (`core.rules.phrase`), as igt names its
+    own, and everything else is counted by kind."""
+    named, rest = rules.named(ops)
+    tail = ok.summarize(KIND, rest, ok.stored_count, common_first=True) if rest else ''
+    if named and tail == 'no changes':
+        tail = ''
+    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(KIND, [], ok.stored_count)
 
 
 __all__ = ['KIND', 'STAGES', 'GRAPH_KINDS', 'SCOPES', 'EXCLUSIVE_KINDS', 'Context',
