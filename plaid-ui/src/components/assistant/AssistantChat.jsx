@@ -251,12 +251,14 @@ export const AssistantChat = ({
   // and the reply then says it could not be opened.
   const [liveNames, setLiveNames] = useState(() => new Map());
   const edited = reachEdit.convId === active?.id;
-  const reach = (
-    !maxProjects ? [] : edited ? reachEdit.projects : lastProjects(active?.display)
-  ).map((p) => {
-    const now = liveNames.get(p.id);
-    return now && now !== p.name ? { ...p, name: now } : p;
-  });
+  // Held to the cap of the assistant answering now, home included, so one
+  // that reads fewer than the last one shows and sends only as many.
+  const reach = (!maxProjects ? [] : edited ? reachEdit.projects : lastProjects(active?.display))
+    .slice(0, Math.max(0, (maxProjects ?? 1) - 1))
+    .map((p) => {
+      const now = liveNames.get(p.id);
+      return now && now !== p.name ? { ...p, name: now } : p;
+    });
   const namesWanted = !!maxProjects && lastProjects(active?.display).length > 0;
   useEffect(() => {
     if (!namesWanted) return undefined;

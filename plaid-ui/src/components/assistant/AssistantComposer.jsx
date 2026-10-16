@@ -272,7 +272,7 @@ export const AssistantComposer = ({
             !service
               ? 'No assistant online'
               : held
-                ? ''
+                ? 'Read-only in this tab'
                 : pendingPlan === 'again'
                   ? full
                     ? 'Apply the plan above again'

@@ -93,9 +93,9 @@ describe('AssistantComposer', () => {
     await m.unmount();
   });
 
-  it('shows no plan prompt in a tab that holds no conversation', async () => {
+  it('says a tab that holds no conversation is read-only, with no plan prompt', async () => {
     const m = await mount({ held: true, pendingPlan: true, canSend: false });
-    expect(m.box.getAttribute('placeholder')).toBe('');
+    expect(m.box.getAttribute('placeholder')).toBe('Read-only in this tab');
     await m.unmount();
   });
 
@@ -273,8 +273,13 @@ describe('AssistantComposer and other projects', () => {
   it('is disabled at the cap, which counts the home project', async () => {
     const four = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id }));
     const m = await mount({ onAddProject: vi.fn(), maxProjects: 5, projects: four });
-    expect(addButton(m).disabled).toBe(true);
+    // Reachable by keyboard, so its reason is: aria-disabled, and a press
+    // opens nothing.
+    expect(addButton(m).disabled).toBe(false);
+    expect(addButton(m).getAttribute('aria-disabled')).toBe('true');
     expect(addButton(m).title).toBe('At most 5 projects');
+    await m.step(() => addButton(m).click());
+    expect(document.body.querySelector('[aria-label="Project"]')).toBeNull();
     await m.unmount();
   });
 

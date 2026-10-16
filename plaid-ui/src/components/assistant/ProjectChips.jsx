@@ -121,11 +121,19 @@ export const AddProject = ({
       }}
     >
       <PopoverTrigger asChild>
+        {/* At the cap the button stays in the tab order, so the reason in
+            its title can be reached by keyboard: aria-disabled, and a press
+            opens nothing. */}
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          disabled={disabled || full}
+          disabled={disabled}
+          aria-disabled={full || undefined}
+          className={full ? 'cursor-not-allowed opacity-50' : undefined}
+          onClick={(e) => {
+            if (full) e.preventDefault();
+          }}
           title={full ? `At most ${max} projects` : 'Add project'}
           aria-label="Add project"
         >

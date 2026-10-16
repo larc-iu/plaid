@@ -379,6 +379,23 @@ describe('AssistantChat and other projects', () => {
     expect(lastAsked(client)).not.toHaveProperty('projects');
     await m.unmount();
   });
+
+  it('shows and sends only as many as an assistant with a lower cap reads', async () => {
+    const two = { ...SERVICE, extras: { ...SERVICE.extras, maxProjects: 2 } };
+    const conv = {
+      ...CONV,
+      display: [{ kind: 'user', text: 'compare -ka', projects: [B, C] }, CONV.display[1]],
+    };
+    const client = fakeClient({ service: two, conv });
+    const m = await mount(client);
+    await flush(m);
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    expect(chip(m, 'Lamkang C')).toBeNull();
+    await typeAndSend(m, 'and -ki?');
+    await flush(m, 8);
+    expect(lastAsked(client).projects).toEqual([B]);
+    await m.unmount();
+  });
 });
 
 // A project may be renamed or deleted after it was added. The chip and the
