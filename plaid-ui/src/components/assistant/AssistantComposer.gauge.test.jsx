@@ -136,4 +136,15 @@ describe('the meter', () => {
     expect(title).toContain('10% of this model');
     await view.unmount();
   });
+
+  it('shows the bar alone at the narrow dock, the number in its tooltip', async () => {
+    const view = await renderComponent(
+      <UsageMeter usage={{ sent: 30_000, window: 100_000 }} spend={30_000} barOnly />,
+    );
+    const meter = view.container.firstChild;
+    expect(meter.querySelector('.rounded-full')).not.toBeNull();
+    expect(meter.querySelector('.sr-only').textContent).toBe('30%');
+    expect(meter.getAttribute('title')).toContain('30%');
+    await view.unmount();
+  });
 });

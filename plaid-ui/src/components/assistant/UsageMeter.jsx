@@ -9,10 +9,15 @@ import { gauge, gaugeLabel, gaugeTitle } from './usage.js';
 // Two limits fill: the model's context window (`usage`) and the stored
 // record's size against the server's cap (`record`, as {bytes, cap}). The bar
 // shows the fuller one, and the tooltip names it and gives both.
-export const UsageMeter = ({ usage, spend, record = null }) => {
+//
+// `barOnly` is the narrow dock's: the bar alone, the number in the tooltip, so
+// the model's name keeps its room (Luke, 2026-10-16). A gauge with no bar
+// keeps its number, or it would show nothing.
+export const UsageMeter = ({ usage, spend, record = null, barOnly = false }) => {
   const g = gauge(usage, record);
   const label = gaugeLabel(g);
   if (!label) return null;
+  const numberShown = !barOnly || g.share === null;
   return (
     <span
       className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
@@ -30,7 +35,7 @@ export const UsageMeter = ({ usage, spend, record = null }) => {
           />
         </span>
       )}
-      {label}
+      {numberShown ? label : <span className="sr-only">{label}</span>}
     </span>
   );
 };
