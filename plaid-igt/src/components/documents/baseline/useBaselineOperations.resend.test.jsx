@@ -77,9 +77,17 @@ async function saveResentAndRefused({ body, typed, during = [], between, refuse 
   server.loseNext(1);
   const edit = server.client.texts.edit;
   let calls = 0;
+  // The resend waits until the text typed during the save is in the box. On
+  // a timer alone (the queue's 5 ms retry), a slow run sent and settled the
+  // resend first, so the box closed before anything was typed in it.
+  let typedSince;
+  const typingDone = new Promise((r) => {
+    typedSince = r;
+  });
   server.client.texts.edit = async (...args) => {
     calls += 1;
     if (calls === 2) {
+      await typingDone;
       between?.(server);
       throw refuse;
     }
@@ -90,6 +98,7 @@ async function saveResentAndRefused({ body, typed, during = [], between, refuse 
     saved = h.api.handleSave();
   });
   for (const d of during) await change(h, ...d);
+  typedSince();
   await act(async () => {
     await saved;
     await settle();
