@@ -73,4 +73,9 @@
       (assert-ok res)
       (is (some? (-> res :body :openapi)))
       (is (some? (-> res :body :paths)))
-      (is (some? (-> res :body :info))))))
+      (is (some? (-> res :body :info)))))
+  (testing "the document GET lists as-of, which it reads"
+    (let [params (-> (get-openapi admin-request) :body :paths
+                     (get "/api/v1/documents/{document-id}") :get :parameters)]
+      (is (some #(and (= "as-of" (name (:name %))) (= "query" (name (:in %))) (not (:required %))) params)
+          (pr-str (map :name params))))))

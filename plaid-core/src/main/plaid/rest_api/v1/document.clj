@@ -133,12 +133,16 @@
                              "(of any kind) and returns only those layers' contents: a layer "
                              "survives when it is named or is an ancestor of a named layer, and "
                              "carries its own texts/tokens/spans/relations/vocabs only when it "
-                             "is itself named.")
+                             "is itself named. <query>as-of</query>, an ISO-8601 instant, reads the "
+                             "document as it was at that moment.")
                :middleware [wrap-resolve-as-of
                             [pra/wrap-reader-required get-project-id]]
                :parameters {:query [:map
                                     [:include-body {:optional true} boolean?]
-                                    [:layers {:optional true} string?]]}
+                                    [:layers {:optional true} string?]
+                                    ;; Read by `prm/wrap-route-as-of` from the raw
+                                    ;; query string. Declared so the API lists it.
+                                    [:as-of {:optional true} string?]]}
                :handler (fn [{{{:keys [document-id]} :path
                                {:keys [include-body layers]} :query} :parameters
                               db :db
