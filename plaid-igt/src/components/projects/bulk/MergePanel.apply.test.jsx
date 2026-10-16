@@ -118,6 +118,16 @@ const apply = async (view) => {
 };
 
 describe('Merge', () => {
+  // H2-IGT-ANALYZE: the Merge checkbox had no name, so a screen reader read
+  // "checkbox" on every row.
+  it('names each entry on its Merge checkbox, homonyms by their numbers', async () => {
+    const view = await mount(makeClient());
+    expect(
+      all(document.body, 'input[type="checkbox"]').map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Merge cat', 'Merge dog 1', 'Merge dog 2']);
+    await view.unmount();
+  });
+
   // The morphemes linked to the entry merged away go by the survivor's type
   // from then on, and the cache they hold is written in the merge's batch.
   it("writes the survivor's type on the merged entry's morphemes", async () => {

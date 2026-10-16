@@ -359,6 +359,7 @@ export const MergePanel = ({ project, client }) => {
                   <Checkbox
                     checked={on}
                     onChange={(v) => pick(it.id, v)}
+                    aria-label={`Merge ${it.form}${idx ? ` ${idx}` : ''}`}
                     className="h-4 w-4 cursor-pointer justify-self-center accent-primary"
                   />
                   <input

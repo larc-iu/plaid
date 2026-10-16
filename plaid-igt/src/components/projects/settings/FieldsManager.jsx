@@ -658,7 +658,7 @@ export const FieldsManager = ({
                         value={record.tagset ?? NO_TAGSET}
                         onValueChange={(v) => handleSetTagset(record.key, v)}
                       >
-                        <SelectTrigger className="h-8">
+                        <SelectTrigger className="h-8" aria-label={`Tagset of ${record.name}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
