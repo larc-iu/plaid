@@ -403,7 +403,9 @@ export function DocumentTokenize() {
               loss={ops.pendingStructural}
               under={ops.pendingStructural?.kind === 'merge' ? 'these words' : 'this word'}
             />
-            {' Word-level annotations are unchanged.'}
+            {ops.pendingStructural?.kind === 'merge'
+              ? ' Word-level annotations are joined.'
+              : ' Word-level annotations are unchanged.'}
           </p>
         )}
       </ConfirmDeleteDialog>
