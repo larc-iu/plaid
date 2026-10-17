@@ -434,3 +434,31 @@ def test_a_rule_row_is_a_plan_rules_row_with_ids_counts_and_clipped_values():
     rows.add('u@x', 'ud', 'p1', 'c2', conv, {}, 10, None)
     assert rows.plan_rules[2]['args']['document'] == did
     assert first['conversation_id'] == 'c1' and first['app'] == 'ud'
+
+
+def test_a_step_is_failed_only_by_its_flag_in_every_shape():
+    # Luke, R8A-1: steps written before the flag (2026-09-28) get it from a
+    # one-off backfill. The extractor reads the flag alone, in the shape
+    # trace_step wrote then and in the older inline shape.
+    from plaid_agent.research.records import Conversations
+
+    def rows(steps, calls=()):
+        conv = Conversations(Pseudonyms(b'k' * 32))
+        record = {'messages': [{'role': 'user', 'content': 'q'}], 'display': [
+            {'kind': 'user', 'text': 'q'},
+            {'kind': 'assistant', 'text': 'Done.', 'steps': steps, 'calls': list(calls)}]}
+        conv.add('u@x', 'igt', 'p1', 'c1', record, None, 10, None)
+        return conv
+
+    refused = 'Error: No document "Nope". Documents: "Text 1"'
+    call = {'id': 'c1', 'name': 'set_field', 'arguments': '{"document": "Nope"}', 'result': refused}
+    step = {'id': 'c1', 'name': 'set_field', 'kind': 'plan', 'label': 'Set Gloss'}
+    inline = {'name': 'set_field', 'args': {'document': 'Nope'}, 'result': refused}
+    for steps, calls, want in (([step], [call], False), ([{**step, 'failed': True}], [call], True),
+                               ([inline], [], False), ([{**inline, 'failed': True}], [], True),
+                               ([{**inline, 'error': True}], [], False)):
+        conv = rows(steps, calls)
+        [row] = conv.tool_calls
+        assert row['failed'] is want, (steps, row)
+        assert row['error_class'] == ('not_found' if want else None)
+        assert conv.turns[0]['n_failed_steps'] == int(want)

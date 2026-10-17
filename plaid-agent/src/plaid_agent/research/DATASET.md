@@ -31,6 +31,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - A conversation the user deleted is gone with its plans, by design. An applied plan's operation stays in the log with its kind and reference, marked `plan_record: deleted` in `units.jsonl`.
 - Comments are not in the audit log, by design. A plan's comments are found by their ids (`comments.jsonl`): since 2026-09-30 a plan draws the id of every row it creates from its own. An applied plan from before then that left no operation is `comment_link: unrecoverable`, and what it commented cannot be found.
 - Which credential made a write (`credential`: a password login, a named API token or a token delegated to a service) is recorded since 2026-10-06. Before that only `via_token` says a named token was used. From 2026-10-06 to 2026-10-08 a named token that held a service connection when it wrote was recorded as `service`, whoever opened the connection. Since 2026-10-08 the kind comes from the token alone and such writes are `named-token`, so a service's own writes are told from a script's by the unit's kind (`service-run`), not by its credential.
+- A step says the tool refused its call since 2026-09-28. Steps written before then were given the flag by a one-off backfill, by their answer: one that began `Error` was a refusal. A step whose answer was pruned before the backfill reads as a call that went through. Until 2026-10-16 the loop also took an answer that began `Error` for a refusal, so a read whose output began with the word (a `run_code` printing "Error rates") is marked failed in records of that time.
 - The parts of a record pruned to fit its size cap are gone: old tool results (`tool_results_dropped`), the steps and citations of old replies, the `ops` of settled plans. A failed tool call whose answer was pruned has `error_class: unknown`.
 - User data is not in the audit log. Only the latest version of each record exists.
 - Operation kinds and references are recorded since 2026-09-29. Older operations are classed by what they wrote (see `units.jsonl`).
@@ -114,7 +115,7 @@ One row per tool call.
 | step | the call's place in the turn |
 | tool | the tool's name |
 | step_kind | `document`, `read`, `plan`, `web` or `meta` |
-| failed | the tool refused the call, as its step records it (an older inline step: its answer began `Error`) |
+| failed | the tool refused the call, as its step records it |
 | error_class | for a refusal: `query_rejected` (the server refused a query), `bad_arguments`, `wrong_level` (a reference to the wrong kind of thing: a word where a morpheme was wanted, a sentence where a word was, a multi-word token where one of its words was), `ambiguous` (a name matched several things), `not_found`, `plan_limit`, `plan_conflict`, `unavailable` (a service or capability not there), `server_refused`, `code_exception` (run_code raised), `tool_fault` (a bug in the tool), `other`, or `unknown` when the answer was pruned |
 | recovered_in_turn | for a refusal: a later call to the same tool in the same turn went through |
 | result_kept | the tool's answer is still in the record |

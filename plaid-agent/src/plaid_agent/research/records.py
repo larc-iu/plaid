@@ -361,17 +361,18 @@ class Conversations:
             legacy = 'args' in s or 'result' in s or 'error' in s
             if legacy:
                 text = s.get('result') if isinstance(s.get('result'), str) else None
-                failed = bool(s.get('error')) or (isinstance(text, str) and text.startswith('Error'))
                 kept = text is not None
                 args = s.get('args')
             else:
                 text = results.get(s.get('id'))
                 kept = isinstance(text, str) and text != DROPPED
-                # The step says whether the tool refused the call (the loop
-                # asks the answer's type, core.tools.Refusal): an answer that
-                # begins "Error" went through when the step does not say so.
-                failed = bool(s.get('failed'))
                 args = arguments.get(s.get('id'))
+            # The step says whether the tool refused the call (the loop asks
+            # the answer's type, core.tools.Refusal): an answer that begins
+            # "Error" went through when the step does not say so. A step
+            # written before the flag (2026-09-28) has it from a one-off
+            # backfill (Luke, R8A-1), never from its text here.
+            failed = bool(s.get('failed'))
             failed_n += failed
             row = {**base, 'item_index': index, 'turn': turn, 'turn_end': end, 'step': i, 'tool': s.get('name'),
                    'step_kind': s.get('kind'), 'failed': failed,

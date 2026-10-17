@@ -24,7 +24,7 @@ from . import fates as F
 from .pseudo import Pseudonyms, load_salt
 from .records import Conversations, iter_records, seconds_between
 
-EXTRACTOR_VERSION = '8'
+EXTRACTOR_VERSION = '9'
 HERE = Path(__file__).parent
 
 
