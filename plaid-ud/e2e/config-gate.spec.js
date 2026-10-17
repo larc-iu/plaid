@@ -71,9 +71,9 @@ test('the button sets the project up and the document list appears', async ({ pa
   }
 });
 
-// A project born in IGT has tokens but no syntactic words: UD makes one per
-// token when a document is first opened. The list must count them before that.
-test('a document tokenized elsewhere shows its word count as soon as the project is set up', async ({
+// A project born in IGT has tokens but no syntactic words: Set up for UD makes
+// one per token in every document (Luke, H17-UD-4), and the list counts them.
+test('a document tokenized elsewhere gets its UD words when the project is set up', async ({
   page,
 }) => {
   const { token } = readToken();
@@ -112,7 +112,7 @@ test('a document tokenized elsewhere shows its word count as soon as the project
     await page.getByRole('button', { name: 'Set up for UD' }).click();
     const row = page.getByRole('row').filter({ hasText: 'Tokenized' });
     await expect(row.getByRole('cell').nth(1)).toHaveText('3');
-    // Counted, not written: nothing has opened the document yet.
+    // Written by the set-up, though nothing has opened the document yet.
     const configured = await client.projects.get(project.id);
     const sw = configured.textLayers[0].tokenLayers.find(
       (t) => t.config?.plaid?.role === 'syntactic-word',
@@ -121,7 +121,7 @@ test('a document tokenized elsewhere shows its word count as soon as the project
       where: [['token', '?t', { layer: sw.id }]],
       return: { aggregates: [['count']] },
     });
-    expect(res.results).toEqual([[0]]);
+    expect(res.results).toEqual([[3]]);
   } finally {
     await client.projects.delete(project.id);
   }
