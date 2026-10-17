@@ -100,7 +100,6 @@ from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
 
 from plaid_client.service import requester_message
-from plaid_client.workflows.igt.new_words import words_refused
 
 from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
@@ -1786,7 +1785,7 @@ def _entry_links_now(client, project, op) -> List[str]:
 def create_document(client, project, name: str, text: str, metadata: Dict[str, Any], new_id):
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, and the words a Baseline save gives a
-    first text, ``project_new_words``). Each is made under an id from ``new_id()`` (a :class:`Minter`),
+    first text, which the server makes). Each is made under an id from ``new_id()`` (a :class:`Minter`),
     and one an earlier run of the plan made is taken as made. Returns the new
     document id."""
     doc_id = new_id()
@@ -1805,19 +1804,21 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
 def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     """A document's first text, with sentence and word tokens. Returns the text id.
 
-    The sentence layer is a partition, which the server takes only whole: the
-    first sentence starts at 0, each runs to the start of the next, so the
-    newline and the whitespace after it stay with the sentence before (as
-    ``_line_starts`` says), and the last runs to the end of the text. A bulk
-    create is one layer, so the sentences and the words are two, in one
-    batch."""
+    The words are the server's: the create names the word layer when the
+    project's "Tokenize new text" is on (``tokenize_layer``). The sentence
+    layer is a partition, which the server takes only whole: the first
+    sentence starts at 0, each runs to the start of the next, so the newline
+    and the whitespace after it stay with the sentence before (as
+    ``_line_starts`` says), and the last runs to the end of the text."""
     from plaid_client import compose_text
-    from .project import project_new_words, split_sentences
-    # Composed, as the server stores it, so the sentences and words are
-    # measured on the text that is stored.
+    from .project import split_sentences
+    # Composed, as the server stores it, so the sentences are measured on the
+    # text that is stored.
     text = compose_text(text)[0]
     text_id = new_id()
-    new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id))
+    tokenize = project.word_layer_id if project.tokenize_new_text else None
+    new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id,
+                                            tokenize_layer=tokenize))
     lines = split_sentences(text)
     if not lines:
         return text_id
@@ -1825,15 +1826,7 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     ends = starts[1:] + [len(text)]
     sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e,
                   'id': new_id()} for b, e in zip(starts, ends)]
-    words = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
-              'id': new_id()}
-             for wb, we in project_new_words(project, '', [(0, 0, text)], [])]
-    def tokens():
-        with client.batched() as batch:
-            batch.tokens.bulk_create(sentences)
-            if words:
-                batch.tokens.bulk_create(words)
-    new_id.once(tokens, whole=True)
+    new_id.once(lambda: client.tokens.bulk_create(sentences), whole=True)
     return text_id
 
 
@@ -1863,46 +1856,38 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     as edits at their place (``texts.edit`` with the digest of the body read),
     so no word outside the region can be taken for the one changed, then give
-    the edited region the sentence boundaries its line starts call for and
-    the words a Baseline save gives the text it types (``project_new_words``: the
-    project's "Tokenize new text", none when it is off). What it creates is
+    the edited region the sentence boundaries its line starts call for. The
+    edit names the word layer when the project's "Tokenize new text" is on,
+    and the server makes the words of the text it types. What it creates is
     made under ids from ``new_id()``."""
     from plaid_client import compose_text, gaps_to_ops
-    from .project import find_layer, project_new_words
+    from .project import find_layer
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
         _seed_text(client, project, doc_id, new, new_id)
         return
     raw = client.documents.get(doc_id, include_body=True)
-    tl, read_words = find_layer(raw.get('text_layers'), project.word_layer_id)
-    _, read_sents = find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    tl, _ = find_layer(raw.get('text_layers'), project.word_layer_id)
     body = ((tl or {}).get('text') or {}).get('body') or ''
     b, e = op['begin'], op['end']
     if body[b:e] != op['old']:
         raise ValueError(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made')
     new_body = body[:b] + new + body[e:]
     gaps = _region_gaps(op['old'], new, b)
-    # Measured on the body read, before the server places its words on the
-    # new one, as the Baseline save measures them.
-    planned = project_new_words(project, body, gaps,
-                                [(t['begin'], t['end']) for t in (read_words or {}).get('tokens') or []],
-                                [(t['begin'], t['end']) for t in (read_sents or {}).get('tokens') or []])
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
-                      base=((tl or {}).get('text') or {}).get('digest'), versioned=True)
+                      base=((tl or {}).get('text') or {}).get('digest'), versioned=True,
+                      tokenize_layer=project.word_layer_id if project.tokenize_new_text else None)
     # The server stores the body composed: text written that composes with a
     # letter beside it becomes one character with it, unless a token edge
-    # falls between them. Every place measured on the body written is moved
-    # onto the composed one, as the server moves its tokens, and a word left
-    # with no text of its own is dropped.
+    # falls between them. The region is moved onto the composed body, as the
+    # server moves its tokens.
     new_body, at = compose_text(new_body, _edges_after_gaps(
         [t for layer in (tl or {}).get('token_layers') or [] for t in layer.get('tokens') or []], gaps))
-    planned = [(at(wb), at(we)) for wb, we in planned if at(wb) < at(we)]
     region_end = at(b + len(new))
     b = at(b)
 
     raw = client.documents.get(doc_id, include_body=True)
     _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
-    _, word_layer = find_layer(raw.get('text_layers'), project.word_layer_id)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents and new_body:
         made = new_id()
@@ -1919,21 +1904,6 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         sents.remove(hit)
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
-    words = [(t['begin'], t['end']) for t in (word_layer or {}).get('tokens') or []]
-    # A planned word over one the server placed, or outside every sentence as
-    # they stand now, is left out (the app's save goes again without its
-    # words then), and so are all of them when the server refuses them so.
-    creates = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
-                'id': new_id()}
-               for wb, we in planned
-               if not any(ob < we and wb < oe for ob, oe in words)
-               and any(sb <= wb and we <= se for sb, se, _ in sents)]
-    if creates:
-        try:
-            new_id.once(lambda: client.tokens.bulk_create(creates), whole=True)
-        except PlaidAPIError as e:
-            if not words_refused(e):
-                raise
 
 
 def _cut_after(p: int, gaps: List[Dict[str, Any]], end: bool) -> int:

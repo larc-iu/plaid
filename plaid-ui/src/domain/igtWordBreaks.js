@@ -136,26 +136,6 @@ export const isIgnoredCharacter = (c, cfg) =>
   cfg?.type === 'unicodePunctuation' && isPunctChar(c) && !isLetterLike(c, cfg);
 
 /**
- * Is this character punctuation to plaid-core's text rules (its `punct?`,
- * which reads the project's rule as `ignored-letter-like` does)? A word token
- * made only of it takes no text typed against it, and text typed right after
- * it with no whitespace goes to the sentence after. Punctuation, minus what
- * the project's rule calls letters: under the punctuation rule its
- * letter-like characters, under an explicit list every character but the
- * entries of one character, since the tokenizer breaks a word only at those.
- * Under no rule, all punctuation. "Tokenize new text" reads it to foresee
- * where core puts the text a save types.
- *
- * @param {string} c - Single character
- * @param {Object|null} cfg - The word layer's ignored-tokens config
- */
-export const isTextPunctuation = (c, cfg) => {
-  if (!isPunctChar(c)) return false;
-  if (cfg?.type === 'blacklist') return (cfg.blacklist || []).includes(c);
-  return !isLetterLike(c, cfg);
-};
-
-/**
  * Is a token excluded from word-level annotation under an ignored-tokens config
  * (`readIgnoredTokensOf` shape)? `content` is the token's surface text. IGT's
  * editor render and reconcile read it, so "ignored" means the same in both:

@@ -2,8 +2,7 @@
 // it, and every token measured on it is measured on the composed text.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
-import { buildRawDoc, resetIds, makeIgtDoc } from './test-helpers.js';
-import { digestOf, segmentServer } from '../test/segmentServer.js';
+import { resetIds } from './test-helpers.js';
 import { parseCsv } from '../import/cldf/readDataset.js';
 import { readEaf } from '../import/elan/readEaf.js';
 import { readNativeArchive } from '../import/native/readArchive.js';
@@ -12,66 +11,10 @@ beforeEach(() => resetIds());
 
 const A = 'a\u0301'; // á typed as a and a combining acute
 
-describe('the Baseline tab', () => {
-  const tokenized = (body) =>
-    buildRawDoc({
-      body,
-      words: [...body.matchAll(/\S+/gu)].map((m, i) => ({
-        id: `w-${i + 1}`,
-        begin: [...body.slice(0, m.index)].length,
-        end: [...body.slice(0, m.index)].length + [...m[0]].length,
-      })),
-      morphemes: [],
-    });
-
-  it('measures the words of a new sentence on the text composed', async () => {
-    const server = segmentServer(tokenized('uno dos'));
-    const doc = makeIgtDoc({
-      raw: structuredClone(server.stored),
-      client: server.client,
-      user: { id: 'a' },
-    });
-    doc._writes._retryDelay = () => 5;
-    const gaps = [{ start: 7, end: 7, value: `. tr${A}s c${A}` }];
-    await doc.editBaselineText({ base: 'uno dos', digest: digestOf('uno dos'), gaps });
-    const [edit, words] = server.sent[0].ops;
-    expect(edit.kind).toBe('texts.edit');
-    const composed = [...'uno dos. trás cá'];
-    expect(words.args[0].map((w) => composed.slice(w.begin, w.end).join(''))).toEqual([
-      'trás',
-      'cá',
-    ]);
-  });
-});
-
 describe('a character a token edge keeps decomposed', () => {
   // "ka", its tone mark as a word of its own, "ma": the server keeps the
   // mark apart from the a, so each word keeps its own letters
   const KEPT = 'ka\u0301 ma';
-
-  it('a new word is measured on the body the server keeps', async () => {
-    const raw = buildRawDoc({
-      body: KEPT,
-      words: [
-        { id: 'w-1', begin: 0, end: 2 },
-        { id: 'w-2', begin: 2, end: 3 },
-        { id: 'w-3', begin: 4, end: 6 },
-      ],
-      morphemes: [],
-    });
-    const server = segmentServer(raw);
-    const doc = makeIgtDoc({
-      raw: structuredClone(server.stored),
-      client: server.client,
-      user: { id: 'a' },
-    });
-    doc._writes._retryDelay = () => 5;
-    const gaps = [{ start: 6, end: 6, value: ' tres' }];
-    await doc.editBaselineText({ base: KEPT, digest: digestOf(KEPT), gaps });
-    const [edit, words] = server.sent[0].ops;
-    expect(edit.kind).toBe('texts.edit');
-    expect(words.args[0].map((w) => [w.begin, w.end])).toEqual([[7, 11]]);
-  });
 
   it('a native archive keeps it, with its offsets', () => {
     const enc = new TextEncoder();

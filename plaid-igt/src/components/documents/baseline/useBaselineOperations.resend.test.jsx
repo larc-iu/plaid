@@ -11,7 +11,7 @@ import { useBaselineOperations } from './useBaselineOperations.js';
 import { buildRawDoc as buildDoc, resetIds, makeIgtDoc } from '@/domain/test-helpers.js';
 
 // These tests are of the edit's own send: "Tokenize new text" is off, so
-// typing adds no words (newTextWords and its batch have tests of their own).
+// the edit names no word layer (baselineNewWords.test.js has that).
 const buildRawDoc = (opts) => {
   const raw = buildDoc(opts);
   const words = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');

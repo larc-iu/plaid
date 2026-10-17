@@ -1916,16 +1916,14 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(doc.layerInfo.sentenceTokenLayer.tokens).toEqual([
       { id: 's-1', text: 'text-1', begin: 0, end: 10 },
     ]);
-    // Words before the insert are untouched, and the new text is a word
-    // ("Tokenize new text").
+    // Words before the insert are untouched. The new text's words are the
+    // server's ("Tokenize new text"), which this fake makes none of.
     expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => [t.begin, t.end])).toEqual([
       [0, 3],
       [4, 7],
-      [8, 10],
     ]);
-    // The word goes in the batch that makes the segment.
     expect(kinds(doc.client).filter((k) => k !== 'beginOperation' && k !== 'endOperation')).toEqual(
-      ['texts.update', 'tokens.create', 'tokens.bulkCreate', 'batch.submit'],
+      ['texts.update', 'tokens.create', 'batch.submit'],
     );
   });
 

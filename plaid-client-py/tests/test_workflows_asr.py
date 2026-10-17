@@ -80,6 +80,8 @@ class _FakeClient:
         self.strict_mode_document_id = document_id
 
     def __init__(self, documents):
+        # the word layer each text update named for "Tokenize new text"
+        self.tokenize_layers = []
         self.document_versions = {}
         self._documents = list(documents)
         self.token = 'tok'
@@ -140,8 +142,9 @@ class _FakeClient:
         def __init__(self, client):
             self._client = client
 
-        def update(self, text_id, ops):
+        def update(self, text_id, ops, tokenize_layer=None):
             self._client._record(('text_update', list(ops)))
+            self._client.tokenize_layers.append(tokenize_layer)
 
         def create(self, layer_id, document_id, body):
             self._client._record(('text_create', body))

@@ -32,12 +32,12 @@ from plaid_client.workflows.igt.glossing import is_clitic
 # Which tokens are left out of annotation is plaid_client's, the one Python copy
 # of igtConfig.js's rule. Re-exported for the modules that read it from here.
 from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
-# So are the editor's word splitter and "Tokenize new text" (plaid-igt's
-# tokenizationUtils.js and newTextWords.js), which the ASR transcription reads
-# too. Word numbering depends on them agreeing with the editor exactly, and
-# tests/test_igt_tokens_mirror.py runs the app's over the same cases.
-from plaid_client.workflows.igt.new_words import (is_js_space, is_unicode_punctuation,  # noqa: F401
-                                                  new_text_words, split_words)
+# So is the editor's word splitter (plaid-igt's tokenizationUtils.js), which
+# the ASR transcription reads too. Word numbering depends on it agreeing with
+# the editor exactly, and tests/test_igt_tokens_mirror.py runs the app's over
+# the same cases.
+from plaid_client.workflows.igt.word_breaks import (is_js_space, is_unicode_punctuation,  # noqa: F401
+                                                    split_words)
 from .vocab import normalize_vocab_fields, vocab_field_summary
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
@@ -142,7 +142,8 @@ class IgtProject:
     # prompt names it every turn; see plaid_agent.core.guidelines.
     guidelines: List[Guideline] = dataclasses.field(default_factory=list)
     # "Tokenize new text" on the word layer (``igt.tokenizeNewText``): the text
-    # a plan adds gets words (``project_new_words``). On unless set to false.
+    # a plan adds gets words, which the server makes (``tokenize_layer`` on the
+    # text writes). On unless set to false.
     tokenize_new_text: bool = True
     # The time alignment's token layer (role ``time-alignment``), read only
     # (media.py), or None.
@@ -1156,13 +1157,11 @@ def document_lines(documents: List[dict]) -> List[str]:
 
 # --- cutting the text the way the editor does --------------------------------
 
-def project_new_words(project: 'IgtProject', base: str, gaps, words, sentences=()) -> List[Tuple[int, int]]:
-    """The words "Tokenize new text" gives an edit of ``gaps`` over ``base``
-    (``plaid_client.workflows.igt.new_words``), kept inside ``sentences``,
-    under the project's setting: none when it is off."""
-    if not project.tokenize_new_text:
-        return []
-    return new_text_words(base, gaps, words, project.ignored_cfg, sentences)
+def planned_word_count(project: 'IgtProject', text: str) -> int:
+    """About how many words "Tokenize new text" gives ``text`` when a plan
+    writes it, for a plan card's label: its runs without whitespace, none when
+    the project has it off. The server makes the words themselves."""
+    return len(text.split()) if project.tokenize_new_text else 0
 
 
 def split_sentences(text: str) -> List[tuple]:

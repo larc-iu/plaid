@@ -1,8 +1,7 @@
-"""The ASR transcription's text stands apart from the text beside it, and gets the words of igt's "Tokenize new text",
-read off the word layer it is handed, as typed text gets them: in the batch
-that writes the text, none when the layer has the setting off, none in a
-script written without spaces. The rule is checked against the app's in
-plaid-agent/tests/test_igt_tokens_mirror.py."""
+"""The ASR transcription's text stands apart from the text beside it, and gets the words of igt's "Tokenize new text"
+as typed text gets them: its text update names the word layer it is handed,
+none when the layer has the setting off, and the server makes the words
+(plaid-core's ``tokenize_new_text_test.clj``)."""
 
 import os
 import sys
@@ -12,7 +11,6 @@ import pytest
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client.http import PlaidAPIError  # noqa: E402
 from plaid_client.workflows.asr import Alignment, AlignmentProcessor  # noqa: E402
 from test_workflows_asr import (ALIGN_LAYER, SENTENCE_LAYER, TEXT_LAYER, _Batch,  # noqa: E402
                                 _document, _FakeClient, _Helper)
@@ -51,24 +49,12 @@ def _body_after(client, before):
     return body
 
 
-def test_the_transcribed_text_gets_its_words_in_the_batch_that_writes_it():
+def test_the_text_update_names_the_word_layer():
     client = _FakeClient([_with_words(_document(''))])
     _run(client, [Alignment(text='hello there,', start=0.0, end=1.0),
                   Alignment(text='我今天去北京 ok', start=1.0, end=2.0)])
-    body = _body_after(client, '')
-    assert [body[r['begin']:r['end']] for r in _word_rows(client)] == ['hello', 'there', 'ok']
-    assert all(r['text'] == 'text-1' for r in _word_rows(client))
-    # Last in the one batch, after the sentences it lies in.
-    assert client.calls[-2][0] == 'bulk_create' and client.calls[-2][1][0]['token_layer_id'] == WORD_LAYER
-
-
-def test_words_already_there_are_kept_and_text_against_them_is_left_to_them():
-    client = _FakeClient([_with_words(_document('one', sentences=[(0, 3)], align=[(0, 3, 0.0, 1.0)]),
-                                      words=[(0, 3)])])
-    _run(client, [Alignment(text='two three', start=1.0, end=2.0)])
-    body = _body_after(client, 'one')
-    assert body == 'one two three'
-    assert [body[r['begin']:r['end']] for r in _word_rows(client)] == ['two', 'three']
+    assert client.tokenize_layers == [WORD_LAYER]
+    assert _word_rows(client) == []
 
 
 def _segments(client):
@@ -101,54 +87,16 @@ def test_the_first_text_of_an_empty_document_gets_no_space():
     assert _body_after(client, '') == 'a b c'
 
 
-def test_no_words_when_the_project_has_the_setting_off():
+def test_no_layer_is_named_when_the_project_has_the_setting_off():
     client = _FakeClient([_with_words(_document(''), tokenize=False)])
     _run(client, [Alignment(text='hello there', start=0.0, end=1.0)])
-    assert _word_rows(client) == []
+    assert client.tokenize_layers == [None]
 
 
-def test_no_words_without_a_word_layer():
+def test_no_layer_is_named_without_a_word_layer():
     client = _FakeClient([_with_words(_document(''))])
     _run(client, [Alignment(text='hello there', start=0.0, end=1.0)], word_layer=None)
-    assert _word_rows(client) == []
-
-
-def test_a_batch_refused_for_a_word_over_one_the_server_placed_goes_again_without_them():
-    client = _FakeClient([_with_words(_document(''))])
-    refused = []
-    submit = _Batch.submit
-
-    def once(self):
-        if not refused and any(c[0] == 'bulk_create' and c[1] and c[1][0]['token_layer_id'] == WORD_LAYER
-                               for c in self.queued):
-            refused.append(self.queued)
-            self.queued = []
-            raise PlaidAPIError('HTTP 409', status=409,
-                                response_data={'error': 'Bulk-created token overlaps an existing token.'})
-        return submit(self)
-    _Batch.submit = once
-    try:
-        assert _run(client, [Alignment(text='hello there', start=0.0, end=1.0)]) == 1
-    finally:
-        _Batch.submit = submit
-    assert refused
-    assert _word_rows(client) == []
-    assert [c[0] for c in client.calls].count('text_update') == 1
-
-
-def test_another_refusal_is_not_taken_for_one():
-    client = _FakeClient([_with_words(_document(''))])
-    submit = _Batch.submit
-
-    def refuse(self):
-        self.queued = []
-        raise PlaidAPIError('HTTP 409', status=409, response_data={'error': 'Document version mismatch.'})
-    _Batch.submit = refuse
-    try:
-        with pytest.raises(PlaidAPIError):
-            _run(client, [Alignment(text='hello there', start=0.0, end=1.0)])
-    finally:
-        _Batch.submit = submit
+    assert client.tokenize_layers == [None]
 
 
 # --- what the core does with the run's writes ----------------------------------
@@ -240,8 +188,9 @@ def test_a_transcription_keeps_every_word_and_gloss_already_there():
         layers = {layer['id']: layer for layer in tl['token_layers']}
         words = sorted(layers[WORD_LAYER]['tokens'], key=lambda t: t['begin'])
         assert body == 'one two three'
-        assert [body[t['begin']:t['end']] for t in words] == (
-            ['one', 'two', 'three'] if word_layer else ['one', 'two'])
+        # the new text's word is the server's, for the update naming its layer
+        assert [body[t['begin']:t['end']] for t in words] == ['one', 'two']
+        assert client.tokenize_layers == [word_layer]
         assert [w['id'] for w in words][:2] == ['w0', 'w1']
         assert [sp['value'] for sp in layers[WORD_LAYER]['span_layers'][0]['spans']] == ['ONE', 'TWO']
         # The new segment has a sentence of its own, split from the old one.
@@ -264,7 +213,7 @@ def test_a_segment_put_between_two_gets_a_sentence_of_its_own():
     assert body == 'one two\nthree'
     assert [body[t['begin']:t['end']] for t in sentences] == ['one', ' two\n', 'three']
     assert [body[t['begin']:t['end']] for t in sorted(layers[WORD_LAYER]['tokens'], key=lambda t: t['begin'])] == [
-        'one', 'two', 'three']
+        'one', 'three']
 
 
 def _sentences_of(after):
@@ -333,7 +282,7 @@ def test_a_segment_ending_inside_a_word_puts_the_new_text_after_the_word():
     assert words['w0'] == 'onetwo'
 
 
-def test_a_document_with_no_text_yet_gets_one_and_its_sentences_and_words():
+def test_a_document_with_no_text_yet_gets_one_and_its_sentences():
     # REV-ASR R5: the text was made, and then no sentence and no word.
     doc = _with_words(_document(''))
     doc['text_layers'][0]['text'] = None
@@ -343,7 +292,6 @@ def test_a_document_with_no_text_yet_gets_one_and_its_sentences_and_words():
     doc['text_layers'][0]['text'] = {'id': 'text-1', 'body': ''}
     after = _replay(doc, client.calls)
     assert [text for _, text in _sentences_of(after)] == ['a b', ' c']
-    body = after['text_layers'][0]['text']['body']
-    words = sorted(after['text_layers'][0]['token_layers'][2]['tokens'], key=lambda t: t['begin'])
-    assert [body[t['begin']:t['end']] for t in words] == ['a', 'b', 'c']
+    # the words are the server's, for the text update that names their layer
+    assert client.tokenize_layers == [WORD_LAYER]
 

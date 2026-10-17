@@ -12,12 +12,11 @@ import requests
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred
-from plaid_client.http import PlaidAPIError
 from plaid_client.ids import uuid7
 from plaid_client.service import locked_for_writes, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
-from plaid_client.workflows.igt.new_words import is_js_space, layer_new_words, words_refused
+from plaid_client.workflows.igt.word_breaks import is_js_space, tokenize_new_text
 
 from .asr_model import Alignment
 
@@ -80,9 +79,9 @@ class AlignmentProcessor:
                 transcription the bar ran 70, then 2, then 75.
             word_token_layer_id: Optional ID of the word token layer. When
                 given, the text the run adds gets the words its "Tokenize new
-                text" gives it (``plaid_client.workflows.igt.new_words``, read
-                off that layer's config, none when it is off), in the batch
-                that writes the text.
+                text" gives it, which the server makes for the text write
+                (``tokenize_layer``), none when that layer's config has it
+                off.
 
         Returns:
             Number of new alignment tokens created
@@ -245,8 +244,8 @@ class AlignmentProcessor:
         text_modifications = []  # List of (position, old_length, new_text) tuples
         
         for trans in non_colliding_transcriptions:
-            # Composed, as the server stores text, so the segment and the
-            # words are measured on the text that is stored.
+            # Composed, as the server stores text, so the segment is measured
+            # on the text that is stored.
             segment_text = unicodedata.normalize('NFC', trans['text']).strip()
             if not segment_text:
                 continue
@@ -319,21 +318,10 @@ class AlignmentProcessor:
             self._refuse_out_of_time_order(
                 self._shifted(existing_alignment_tokens, text_modifications), new_alignment_tokens)
 
-            words = self._new_words(text_layer, word_token_layer_id, sentence_token_layer_id, text_id,
-                                    current_text, text_modifications)
-            try:
-                self._write(client, document, text_id, text_modifications, new_alignment_tokens,
-                            words, existing_alignment_tokens, current_text, new_text,
-                            sentence_token_layer_id, response_helper, overwrite)
-            except PlaidAPIError as e:
-                # A new word over one the server placed, or outside every
-                # sentence: the batch stored nothing, and it goes again
-                # without the words.
-                if not words or not words_refused(e):
-                    raise
-                self._write(client, document, text_id, text_modifications, new_alignment_tokens,
-                            [], existing_alignment_tokens, current_text, new_text,
-                            sentence_token_layer_id, response_helper, overwrite)
+            self._write(client, document, text_id, text_modifications, new_alignment_tokens,
+                        self._tokenize_layer(text_layer, word_token_layer_id),
+                        existing_alignment_tokens, current_text, new_text,
+                        sentence_token_layer_id, response_helper, overwrite)
 
         return len(new_alignment_tokens)
 
@@ -361,36 +349,18 @@ class AlignmentProcessor:
             mod['segment_start_offset'] = len(lead)
 
     @staticmethod
-    def _new_words(text_layer: Dict, word_token_layer_id: Optional[str],
-                   sentence_token_layer_id: Optional[str], text_id: str,
-                   current_text: str, text_modifications: List[Dict]) -> List[Dict]:
-        """The words the inserted text gets from the word layer's "Tokenize
-        new text", as bulk-create rows, measured on the text read and kept
-        inside its sentences. Inserts at one place are one gap, in the order
-        they are written."""
-        if not word_token_layer_id:
-            return []
+    def _tokenize_layer(text_layer: Dict, word_token_layer_id: Optional[str]) -> Optional[str]:
+        """The word layer the text write names for "Tokenize new text", or
+        None when there is none or its config has the setting off."""
         layer = next((tl for tl in text_layer.get("token_layers", [])
-                      if tl.get("id") == word_token_layer_id), None)
-        if layer is None:
-            return []
-        sentences = next((tl.get("tokens") or [] for tl in text_layer.get("token_layers", [])
-                          if tl.get("id") == sentence_token_layer_id), [])
-        gaps: List[Dict] = []
-        for mod in text_modifications:
-            if gaps and gaps[-1]['start'] == mod['position']:
-                gaps[-1]['value'] += mod['new_text']
-            else:
-                gaps.append({'start': mod['position'], 'end': mod['position'], 'value': mod['new_text']})
-        return [{"token_layer_id": word_token_layer_id, "text": text_id, "begin": b, "end": e}
-                for b, e in layer_new_words(layer.get("config"), current_text, gaps,
-                                            layer.get("tokens") or [], sentences)]
+                      if word_token_layer_id and tl.get("id") == word_token_layer_id), None)
+        return word_token_layer_id if layer is not None and tokenize_new_text(layer.get("config")) else None
 
-    def _write(self, client, document, text_id, text_modifications, new_alignment_tokens, words,
+    def _write(self, client, document, text_id, text_modifications, new_alignment_tokens, tokenize_layer,
                existing_alignment_tokens, current_text, new_text, sentence_token_layer_id,
                response_helper, overwrite):
-        """The run's one batch: the text, the segments, the sentences and the
-        new words."""
+        """The run's one batch: the text, with the words the server makes for
+        it on ``tokenize_layer``, the segments and the sentences."""
         # Begin atomic batch operation
         response_helper.progress(88, "Saving…")
         with client.batched() as b:
@@ -421,7 +391,7 @@ class AlignmentProcessor:
                     "value": mod['new_text'],
                 })
                 running_offset += len(mod['new_text'])
-            b.texts.update(text_id, edit_ops)
+            b.texts.update(text_id, edit_ops, tokenize_layer=tokenize_layer)
         
             # Create alignment tokens
             if new_alignment_tokens:
@@ -440,12 +410,7 @@ class AlignmentProcessor:
                 self._update_sentence_partitioning(
                     b, document, text_id, sentence_token_layer_id,
                     existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
-                    new_words=words,
                 )
-        
-            # The new words, once the sentences they lie in are there.
-            if words:
-                b.tokens.bulk_create(words)
 
             # All queued ops are submitted atomically when this
             # `with client.batched()` block exits.
@@ -562,8 +527,7 @@ class AlignmentProcessor:
 
     def _update_sentence_partitioning(self, batch, document: Dict, text_id: str, sentence_token_layer_id: str,
                                      existing_alignment_tokens: List[Dict], new_alignment_tokens: List[Dict],
-                                     original_text: str, updated_text: str, text_modifications: List[Dict],
-                                     new_words: List[Dict] = ()):
+                                     original_text: str, updated_text: str, text_modifications: List[Dict]):
         """
         Give each new segment a sentence of its own, on the batch it is handed.
 
@@ -623,7 +587,8 @@ class AlignmentProcessor:
         sentences = sorted([moved(t["begin"], True), moved(t["end"], False), t["id"]]
                            for t in existing_sentence_tokens)
         # Every other token over the text (the words and morphemes nested in
-        # the sentences), where the inserts leave it, and the new words.
+        # the sentences), where the inserts leave it. The words the server
+        # makes for the inserted text lie inside it, between the cuts below.
         # An insert at a token's edge stands outside it (the inserts are
         # padded with whitespace, `_pad`).
         def shift(p: int, inclusive: bool) -> int:
@@ -634,7 +599,6 @@ class AlignmentProcessor:
         inner = [(shift(t["begin"], True), shift(t["end"], False))
                  for tl in (text_layer or {}).get("token_layers", []) if tl["id"] not in skip
                  for t in tl.get("tokens", [])]
-        inner += [(w["begin"], w["end"]) for w in new_words]
 
         def blank(a: int, z: int) -> bool:
             return all(is_js_space(c) for c in updated_text[a:z])

@@ -1,6 +1,7 @@
-// "Tokenize new text" on the Baseline tab's save: the words of the text typed
-// go in the same request as the edit, or the save goes alone when there are
-// none, the setting is off, or the text is spaceless.
+// "Tokenize new text" on the Baseline tab's save: the edit names the word
+// layer, the server makes the words of the text it types, and the page shows
+// them from the answer. Which words the server makes is the core's
+// (`tokenize_new_text_test.clj`): the fake server here makes a stand-in's.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 import { digestOf, segmentServer } from '../test/segmentServer.js';
@@ -23,18 +24,15 @@ const open = (server) => {
   return doc;
 };
 
-// The words stored, as their text.
-const storedWords = (server) => {
-  const body = [...server.body];
-  return wordLayer(server.stored)
-    .tokens.slice()
-    .sort((a, b) => a.begin - b.begin)
-    .map((t) => body.slice(t.begin, t.end).join(''));
-};
-
 // What was sent: each request as the kinds of its writes.
 const requests = (server) =>
   server.sent.map((r) => (r.kind === 'batch' ? r.ops.map((o) => o.kind) : [r.kind]));
+
+// The options the text write of request `i` went with.
+const textOptions = (server, i = 0) => {
+  const r = server.sent[i];
+  return (r.kind === 'batch' ? r.ops[0].args : r.args)[3];
+};
 
 const tokenized = (body, extra = {}) =>
   buildRawDoc({
@@ -48,33 +46,22 @@ const tokenized = (body, extra = {}) =>
     ...extra,
   });
 
+const shownWords = (doc) => {
+  const body = [...doc.body];
+  return doc.layerInfo.primaryTokenLayer.tokens.map((t) => body.slice(t.begin, t.end).join(''));
+};
+
 describe('a Baseline save with "Tokenize new text"', () => {
-  it('sends the words of a new sentence in the request that saves it', async () => {
+  it('names the word layer in the edit, and shows the words the answer made', async () => {
     const server = segmentServer(tokenized('uno dos'));
     const doc = open(server);
-    const gaps = [{ start: 7, end: 7, value: '. Tres cuatro, cinco.' }];
+    const gaps = [{ start: 7, end: 7, value: ' tres cuatro' }];
     expect(await doc.editBaselineText({ base: 'uno dos', digest: digestOf('uno dos'), gaps })).toBe(
       true,
     );
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate']]);
-    expect(server.body).toBe('uno dos. Tres cuatro, cinco.');
-    expect(storedWords(server)).toEqual(['uno', 'dos', 'Tres', 'cuatro', 'cinco']);
-    // the page shows them
-    const body = [...doc.body];
-    expect(
-      doc.layerInfo.primaryTokenLayer.tokens.map((t) => body.slice(t.begin, t.end).join('')),
-    ).toEqual(['uno', 'dos', 'Tres', 'cuatro', 'cinco']);
-  });
-
-  it('gives a word to one added by a line pasted over itself (L1-TEXT-2)', async () => {
-    const line = 'One two three four.';
-    const server = segmentServer(tokenized(line));
-    const doc = open(server);
-    const gaps = [{ start: 0, end: 19, value: 'One two and three four.' }];
-    await doc.editBaselineText({ base: line, digest: digestOf(line), gaps });
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate']]);
-    const made = server.sent[0].ops[1].args[0];
-    expect(made.map((w) => [...server.body].slice(w.begin, w.end).join(''))).toEqual(['and']);
+    expect(requests(server)).toEqual([['texts.edit']]);
+    expect(textOptions(server).tokenizeLayer).toBe('wordL');
+    expect(shownWords(doc)).toEqual(['uno', 'dos', 'tres', 'cuatro']);
   });
 
   it('is on when the project has never set it', async () => {
@@ -84,134 +71,56 @@ describe('a Baseline save with "Tokenize new text"', () => {
     const doc = open(server);
     const gaps = [{ start: 3, end: 3, value: ' dos' }];
     await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps });
-    expect(storedWords(server)).toEqual(['uno', 'dos']);
+    expect(textOptions(server).tokenizeLayer).toBe('wordL');
   });
 
-  it('sends the edit alone when the text typed joins a word', async () => {
-    const server = segmentServer(tokenized('uno dos'));
-    const doc = open(server);
-    const gaps = [{ start: 7, end: 7, value: 's' }];
-    await doc.editBaselineText({ base: 'uno dos', digest: digestOf('uno dos'), gaps });
-    expect(requests(server)).toEqual([['texts.edit']]);
-  });
-
-  it('sends the edit alone when the project has it off', async () => {
+  it('names no layer when the project has it off', async () => {
     const server = segmentServer(setting(tokenized('uno dos'), false));
     const doc = open(server);
     const gaps = [{ start: 7, end: 7, value: ' tres' }];
     await doc.editBaselineText({ base: 'uno dos', digest: digestOf('uno dos'), gaps });
     expect(requests(server)).toEqual([['texts.edit']]);
-    expect(storedWords(server)).toEqual(['uno', 'dos']);
+    expect(textOptions(server).tokenizeLayer).toBeUndefined();
+    expect(shownWords(doc)).toEqual(['uno', 'dos']);
   });
 
-  it('makes no words of text in a script written without spaces', async () => {
-    const body = '我今天去北京。';
-    const server = segmentServer(
-      buildRawDoc({ body, words: [], morphemes: [], sentences: [{ id: 's-1', begin: 0, end: 7 }] }),
-    );
-    const doc = open(server);
-    const gaps = [{ start: 7, end: 7, value: '他明天来。' }];
-    await doc.editBaselineText({ base: body, digest: digestOf(body), gaps });
-    expect(requests(server)).toEqual([['texts.edit']]);
-    expect(storedWords(server)).toEqual([]);
-  });
-
-  it('sends the first sentences and the words with the edit when the text has no sentences', async () => {
+  it('sends the first sentences with the edit when the text has no sentences', async () => {
     const server = segmentServer(
       buildRawDoc({ body: 'uno', words: [], morphemes: [], sentences: [] }),
     );
     const doc = open(server);
     const gaps = [{ start: 3, end: 3, value: ' dos\ntres' }];
     await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps });
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate', 'tokens.bulkCreate']]);
-    // `uno` was there before the save, untyped: it stays as it was
-    expect(storedWords(server)).toEqual(['dos', 'tres']);
+    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate']]);
+    expect(textOptions(server).tokenizeLayer).toBe('wordL');
   });
 
-  it('sends a save whose answer was lost again as it was, words and all, under its keys', async () => {
-    const server = segmentServer(tokenized('uno'));
-    const doc = open(server);
-    server.loseNext(1);
-    const gaps = [{ start: 3, end: 3, value: ' dos' }];
-    expect(await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps })).toBe(true);
-    const [lost, again] = server.sent;
-    expect([lost.answer, again.answer]).toEqual(['lost', 'replayed']);
-    expect(again.key).toBe(lost.key);
-    expect(again.ops).toEqual(lost.ops);
-    expect(storedWords(server)).toEqual(['uno', 'dos']);
-    expect(doc.layerInfo.primaryTokenLayer.tokens).toHaveLength(2);
-  });
-
-  it('saves the edit without the words when a word of them lies over one the server placed', async () => {
-    const server = segmentServer(tokenized('uno'));
-    const doc = open(server);
-    const errors = [];
-    doc.onError = (message, err) => errors.push(err?.message ?? message);
-    server.refuseNext(409, 'Bulk-created token overlaps with existing token(s)');
-    const gaps = [{ start: 3, end: 3, value: ' dos' }];
-    expect(await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps })).toBe(true);
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate'], ['texts.edit']]);
-    const [first, second] = server.sent;
-    expect(second.key).not.toBe(first.key);
-    expect(server.body).toBe('uno dos');
-    expect(errors).toEqual([]);
-  });
-
-  it('saves the edit without the words when one of them lies outside every sentence', async () => {
-    // REV-R4-TOK F3: a 400, refused whole, every save while the setting is on.
-    const server = segmentServer(tokenized('uno'));
-    const doc = open(server);
-    server.refuseNext(400, 'Token is not contained within any parent-layer token');
-    const gaps = [{ start: 3, end: 3, value: ' dos' }];
-    expect(await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps })).toBe(true);
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate'], ['texts.edit']]);
-    expect(server.sent[1].key).not.toBe(server.sent[0].key);
-    expect(server.body).toBe('uno dos');
-  });
-
-  it('gives a document’s first text its words in the batch that makes it', async () => {
+  it('names the word layer when it makes a document’s first text', async () => {
     const raw = buildRawDoc({ body: '', words: [], morphemes: [], sentences: [] });
     delete raw.textLayers[0].text;
     const client = makeFakeClient({
       reloadDoc: buildRawDoc({ body: 'uno dos.\ntres cuatro' }),
     });
-    const doc = makeIgtDoc({
-      raw,
-      client,
-    });
+    const doc = makeIgtDoc({ raw, client });
     const gaps = [{ start: 0, end: 0, value: 'uno dos.\ntres cuatro' }];
     expect(await doc.editBaselineText({ base: '', digest: null, gaps })).toBe(true);
     const writes = client.calls.filter((c) => c.kind !== 'beginOperation');
-    expect(writes.slice(0, 3).map((c) => c.kind)).toEqual([
-      'texts.create',
-      'tokens.bulkCreate',
-      'tokens.bulkCreate',
+    expect(writes.slice(0, 2).map((c) => c.kind)).toEqual(['texts.create', 'tokens.bulkCreate']);
+    expect(writes[0].args[5].tokenizeLayer).toBe('wordL');
+    expect(writes[1].args[0].map((s) => [s.tokenLayerId, s.begin, s.end])).toEqual([
+      ['sentL', 0, 9],
+      ['sentL', 9, 20],
     ]);
-    const [, sentences, words] = writes;
-    expect(sentences.args[0].map((s) => [s.begin, s.end])).toEqual([
-      [0, 9],
-      [9, 20],
-    ]);
-    expect(words.args[0].map((w) => [w.tokenLayerId, w.begin, w.end])).toEqual([
-      ['wordL', 0, 3],
-      ['wordL', 4, 7],
-      ['wordL', 9, 13],
-      ['wordL', 14, 20],
-    ]);
-    expect(words.args[0][0].text).toBe(sentences.args[0][0].text);
   });
 
-  it('gives a script’s save of a document’s first text no words', async () => {
+  it('names no layer in a script’s save of a document’s first text', async () => {
     const raw = buildRawDoc({ body: '', words: [], morphemes: [], sentences: [] });
     delete raw.textLayers[0].text;
     const client = makeFakeClient({ reloadDoc: buildRawDoc({ body: 'uno dos' }) });
-    const doc = makeIgtDoc({
-      raw,
-      client,
-    });
+    const doc = makeIgtDoc({ raw, client });
     expect(await doc.saveBaselineText('uno dos', '')).toBe(true);
     const writes = client.calls.filter((c) => c.kind.startsWith('t'));
     expect(writes.map((c) => c.kind)).toEqual(['texts.create', 'tokens.bulkCreate']);
-    expect(writes[1].args[0].map((t) => t.tokenLayerId)).toEqual(['sentL']);
+    expect(writes[0].args[5].tokenizeLayer).toBeUndefined();
   });
 });

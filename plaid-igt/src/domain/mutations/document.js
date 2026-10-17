@@ -26,8 +26,7 @@ import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
 import { edgesAfterGaps } from '../textEdits.js';
-import { readIgnoredTokens, readTokenizeNewText } from '../igtConfig.js';
-import { newTextWords } from '../newTextWords.js';
+import { readTokenizeNewText } from '../igtConfig.js';
 import { underKeys } from './alignment.js';
 import { VAD_METADATA_KEY } from '../media/speechDetectionKey.js';
 import { followedForms, soleForms } from '../soleMorphemeForms.js';
@@ -47,34 +46,13 @@ const BASELINE_CONFLICT = 'The same passage was changed elsewhere. Cancel and re
 // an edit never goes without one.
 const NO_DIGEST = 'The saved text could not be read. Reload the page and save again.';
 
-// The new words of a Baseline save (newTextWords.js) as the word layer takes
-// them, on the text `textId`.
-const wordCreates = (tokenLayerId, text, words) =>
-  words.map(({ begin, end }) => ({ tokenLayerId, text, begin, end }));
-
-// A batch refused because a new word of it lies over a word the server put
-// there, or outside every sentence (a boundary moved where newTextWords did
-// not foresee): nothing of the batch is stored.
-export const wordsOverlap = (err) =>
-  [400, 409].includes(statusOf(err)) &&
-  /Bulk-created token overlaps|Tokens in batch overlap|not contained within any parent-layer token/i.test(
-    String(err?.responseData?.error ?? err?.message ?? ''),
-  );
-
-// The words "Tokenize new text" gives an edit of `gaps` over `base`, the
-// body stored (newTextWords.js), read off the word layer of `info` (layer
-// info, getIgtLayerInfo): none when the project has it off. The Baseline
-// save and the Media tab's transcript rows ask it alike.
-export const newWordsOf = (info, base, gaps) => {
+// The word layer a text save of `info` (layer info, getIgtLayerInfo) names
+// for "Tokenize new text", whose words the server makes for the text the save
+// types: none when the project has it off. The Baseline save and the Media
+// tab's transcript rows send it alike, and the words come in the answer.
+export const tokenizeLayerOf = (info) => {
   const wordLayer = info?.primaryTokenLayer;
-  if (!wordLayer?.id || !readTokenizeNewText(wordLayer.config)) return [];
-  return newTextWords({
-    base,
-    gaps,
-    words: wordLayer.tokens || [],
-    ignored: readIgnoredTokens(wordLayer.config),
-    sentences: info.sentenceTokenLayer?.tokens || [],
-  });
+  return wordLayer?.id && readTokenizeNewText(wordLayer.config) ? wordLayer.id : undefined;
 };
 
 // The vocabulary links igt keeps beside the document (`vocabs`, a patch's
@@ -122,8 +100,8 @@ export const documentMutations = {
   // batch, the text under an id minted here, so the sentences can name it. A
   // lost answer is sent again under the same keys by the queue and answered
   // from what the first one stored. `tokenize`: it also gets the words of the
-  // project's "Tokenize new text" (`_newWords`). The Baseline tab asks for
-  // it, scripts do not.
+  // project's "Tokenize new text" (`tokenizeLayerOf`), which the server makes.
+  // The Baseline tab asks for it, scripts do not.
   //
   // A text that exists takes the body as the one edit that turns `base` into
   // it (the start and end they share kept), sent as the Baseline tab sends
@@ -134,8 +112,8 @@ export const documentMutations = {
     if (primaryTextLayer?.text?.id) {
       return this.editBaselineText({ base, digest: null, gaps: wholeEdit(base, typedBody) });
     }
-    // A new text as the server stores it, composed, so the sentences and
-    // words made with it are measured on the text that is stored.
+    // A new text as the server stores it, composed, so the sentences made
+    // with it are measured on the text that is stored.
     const newBody = composeText(typedBody).text;
     const sentenceTokenLayer = info.sentenceTokenLayer;
 
@@ -150,17 +128,15 @@ export const documentMutations = {
 
     // Minted outside the send, so a resend of it names the same text.
     const newTextId = pendingId();
-    const words = tokenize ? this._newWords('', [{ start: 0, end: 0, value: newBody }]) : [];
+    const tokenizeLayer = tokenize ? tokenizeLayerOf(info) : undefined;
     return this._queueWrite('Failed to save baseline text', async () => {
       await this._client.batched(async (b) => {
         b.texts.create(primaryTextLayer.id, this.id, newBody, undefined, undefined, {
           id: newTextId,
+          tokenizeLayer,
         });
         if (cpLength(newBody) > 0) {
           b.tokens.bulkCreate(sentenceSeed(sentenceTokenLayer.id, newTextId, newBody));
-        }
-        if (words.length) {
-          b.tokens.bulkCreate(wordCreates(info.primaryTokenLayer.id, newTextId, words));
         }
       });
       await this._reloadInSend();
@@ -214,7 +190,6 @@ export const documentMutations = {
       digest,
       gaps,
       seed: false,
-      words: [],
       keys: null,
       sentUnder: null,
       landed: false,
@@ -276,10 +251,11 @@ export const documentMutations = {
     });
   },
 
-  // The edit half of `editBaselineText`, from inside its send. A text with no
-  // sentences gets its partition in the same batch as the edit, measured on
-  // the body the edit makes, and the words of "Tokenize new text"
-  // (`plan.words`) go in that batch too. A lost answer is sent again by the
+  // The edit half of `editBaselineText`, from inside its send. The edit names
+  // the word layer of "Tokenize new text" (`tokenizeLayerOf`), and the server
+  // makes the words of the text it types, which come in its answer. A text
+  // with no sentences gets its partition in the same batch as the edit,
+  // measured on the body the edit makes. A lost answer is sent again by the
   // queue: the plan is sent again as it was, under its keys, and answered
   // from what the first send stored. Answers whether the document is to be
   // read: a batch is not patched from its answer, and an answer to a request
@@ -297,7 +273,8 @@ export const documentMutations = {
       again = plan.sentUnder === plan.keys && plan.keys != null;
       plan.sentUnder = plan.keys;
       replayed = false;
-      batched = plan.seed || plan.words.length > 0;
+      batched = plan.seed;
+      const tokenizeLayer = tokenizeLayerOf(this.layerInfo);
       await underKeys(this._client, plan.keys, async () => {
         if (batched) {
           // The tokens after it are stamped with the version from before the
@@ -308,19 +285,19 @@ export const documentMutations = {
             edgesAfterGaps(info.primaryTextLayer?.tokenLayers, plan.gaps),
           ).text;
           await this._client.batched(async (b) => {
-            b.texts.edit(textId, ops, undefined, { base: plan.digest, versioned: true });
-            if (plan.seed) {
-              b.tokens.bulkCreate(sentenceSeed(info.sentenceTokenLayer.id, textId, body));
-            }
-            if (plan.words.length) {
-              b.tokens.bulkCreate(wordCreates(info.primaryTokenLayer.id, textId, plan.words));
-            }
+            b.texts.edit(textId, ops, undefined, {
+              base: plan.digest,
+              versioned: true,
+              tokenizeLayer,
+            });
+            b.tokens.bulkCreate(sentenceSeed(info.sentenceTokenLayer.id, textId, body));
           });
           plan.landed = true;
           return;
         }
         const answer = await this._client.texts.edit(textId, ops, undefined, {
           base: plan.digest,
+          tokenizeLayer,
         });
         plan.landed = true;
         this._applyRawPatch((next, infoNext, vocabs) => {
@@ -335,18 +312,7 @@ export const documentMutations = {
         if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
         return true;
       },
-      send: async () => {
-        try {
-          await sendOnce();
-        } catch (err) {
-          // A new word over one the edit placed: the batch stored nothing,
-          // and the edit goes again without the words, under new keys.
-          if (!plan.words.length || !wordsOverlap(err)) throw err;
-          plan.words = [];
-          plan.keys = this._client.keySeed?.() ?? null;
-          await sendOnce();
-        }
-      },
+      send: sendOnce,
       sentBefore: () => again,
       readStored: () => this._readStoredText(),
       holds: (stored) => storedHolds(plan.base, plan.gaps, stored.body),
@@ -393,28 +359,10 @@ export const documentMutations = {
       plan.base = stored.body;
     }
     plan.digest = stored.digest;
-    // The server stores the body composed: text typed that composes with a
-    // letter beside it becomes one character with it, unless a token edge
-    // falls between them. The words are measured on the body typed and moved
-    // onto the composed one, as the server moves its tokens, and a word left
-    // with no text of its own is dropped.
-    const { text: body, at } = composeText(
-      applyTextOps(plan.base, gapsToOps(plan.gaps)),
-      edgesAfterGaps(this.layerInfo.primaryTextLayer?.tokenLayers, plan.gaps),
-    );
     plan.seed =
-      cpLength(body) > 0 && (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
-    plan.words = this._newWords(plan.base, plan.gaps)
-      .map((w) => ({ ...w, begin: at(w.begin), end: at(w.end) }))
-      .filter((w) => w.begin < w.end);
+      cpLength(applyTextOps(plan.base, gapsToOps(plan.gaps))) > 0 &&
+      (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
     plan.keys = this._client.keySeed?.() ?? null;
-  },
-
-  // The words "Tokenize new text" gives a save of `gaps` over `base`, the
-  // body stored (newTextWords.js), read off the word layer on screen: none
-  // when the project has it off.
-  _newWords(base, gaps) {
-    return newWordsOf(this.layerInfo, base, gaps);
   },
 
   // Edit the document's metadata with path ops that name only the keys being

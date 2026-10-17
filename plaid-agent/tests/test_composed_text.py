@@ -1,7 +1,6 @@
 """The assistant's new document text is written composed (NFC), as the server
-stores it, so its sentences and words are measured on the text stored."""
+stores it, so its sentences are measured on the text stored."""
 
-import contextlib
 from types import SimpleNamespace
 
 from plaid_agent.igt import plan as igt_plan
@@ -19,21 +18,22 @@ class _NewId:
         return fn()
 
 
-def test_a_new_documents_text_is_composed_and_its_tokens_measured_on_it():
+def test_a_new_documents_text_is_composed_and_its_sentences_measured_on_it():
     sent = {'texts': [], 'tokens': []}
-    batch = SimpleNamespace(tokens=SimpleNamespace(bulk_create=lambda ops: sent['tokens'].append(ops)))
     client = SimpleNamespace(
-        texts=SimpleNamespace(create=lambda layer, doc, text, id=None: sent['texts'].append(text)),
-        batched=lambda: contextlib.nullcontext(batch),
+        texts=SimpleNamespace(create=lambda layer, doc, text, id=None, tokenize_layer=None:
+                              sent['texts'].append((text, tokenize_layer))),
+        tokens=SimpleNamespace(bulk_create=lambda ops: sent['tokens'].append(ops)),
     )
     project = SimpleNamespace(text_layer_id='tl', sentence_layer_id='sl', word_layer_id='wl',
                               tokenize_new_text=True, ignored_cfg=None)
     igt_plan._seed_text(client, project, 'doc', 'pʰa\u0301 bo\u0301\nca\u0301', _NewId())
-    body = sent['texts'][0]
+    body, layer = sent['texts'][0]
     assert body == 'pʰá bó\ncá'
-    sentences, words = sent['tokens'][0], sent['tokens'][1]
+    # the words are the server's, on the text stored
+    assert layer == 'wl'
+    [sentences] = sent['tokens']
     assert [body[t['begin']:t['end']] for t in sentences] == ['pʰá bó\n', 'cá']
-    assert [body[t['begin']:t['end']] for t in words] == ['pʰá', 'bó', 'cá']
 
 
 def test_an_edit_composes_the_body_as_the_server_does_with_its_token_edges():

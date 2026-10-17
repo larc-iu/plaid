@@ -1,10 +1,9 @@
-// "Tokenize new text" on the Media tab's transcript rows: the text a new
-// segment or a row edit adds gets the words a Baseline save would give it,
-// shown at once and made in the batch that writes the text, unless the
-// project has the setting off or the text is in a script written without
-// spaces. Against a server that keeps what it stores (test/segmentServer.js).
+// "Tokenize new text" on the Media tab's transcript rows: the text write of a
+// new segment or a row edit names the word layer, unless the project has the
+// setting off, and the words the server makes are shown from its answer.
+// Which words it makes is the core's (`tokenize_new_text_test.clj`): the
+// server here (test/segmentServer.js) makes a stand-in's.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { isPendingId } from '@ui/domain/pendingIds.js';
 import { buildRawDoc, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
 
@@ -62,49 +61,33 @@ const wordsOf = (raw) => {
 const requests = (server) =>
   server.sent.map((r) => (r.kind === 'batch' ? r.ops.map((o) => o.kind) : [r.kind]));
 
+// The options the text write of request `i` went with.
+const textOptions = (server, i = 0) => server.sent[i].ops[0].args[3];
+
 const editRow = (doc, id, over, text, gaps, times) =>
   doc.editAlignment(id, { text, ...times, edits: { over, gaps } });
 
 describe('a new segment with "Tokenize new text"', () => {
-  it('shows the words of its text at once and makes them in the batch that writes it', async () => {
+  it('names the word layer, and shows the words the answer made under their ids', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);
-    const saving = doc.createAlignment({ text: 'four, five', timeBegin: 3, timeEnd: 4 });
-    // On screen before the server answers, under pending ids.
-    expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three', 'four', 'five']);
-    const shown = wordLayer(doc._raw).tokens.filter((t) => t.begin >= 14);
-    expect(shown.every((t) => isPendingId(t.id))).toBe(true);
-    expect(await saving).toBe(true);
+    expect(await doc.createAlignment({ text: 'four, five', timeBegin: 3, timeEnd: 4 })).toBe(true);
     await idle(doc);
-    expect(requests(server)).toEqual([['texts.update', 'tokens.create', 'tokens.bulkCreate']]);
-    expect(server.body).toBe('one two three four, five');
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three', 'four', 'five']);
-    // The page holds the ids the server made them under.
+    expect(requests(server)).toEqual([['texts.update', 'tokens.create']]);
+    expect(textOptions(server).tokenizeLayer).toBe('wordL');
+    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three', 'four,', 'five']);
+    expect(wordsOf(doc._raw)).toEqual(wordsOf(server.stored));
     const stored = new Set(wordLayer(server.stored).tokens.map((t) => t.id));
     expect(wordLayer(doc._raw).tokens.every((t) => stored.has(t.id))).toBe(true);
   });
 
-  it('makes no words when the project has the setting off', async () => {
+  it('names no layer when the project has the setting off', async () => {
     const server = segmentServer(RAW(false));
     const doc = open(server);
     expect(await doc.createAlignment({ text: 'four five', timeBegin: 3, timeEnd: 4 })).toBe(true);
     await idle(doc);
-    expect(requests(server)).toEqual([['texts.update', 'tokens.create']]);
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three']);
+    expect(textOptions(server).tokenizeLayer).toBeUndefined();
     expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three']);
-  });
-
-  it('makes no words of a script written without spaces, and words of the rest', async () => {
-    const server = segmentServer(RAW());
-    const doc = open(server);
-    await doc.createAlignment({ text: '我今天去北京。', timeBegin: 3, timeEnd: 4 });
-    await doc.createAlignment({ text: '我用 Plaid 写', timeBegin: 4, timeEnd: 5 });
-    await idle(doc);
-    expect(requests(server)).toEqual([
-      ['texts.update', 'tokens.create'],
-      ['texts.update', 'tokens.create', 'tokens.bulkCreate'],
-    ]);
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three', 'Plaid']);
   });
 
   it('a lost answer is sent again as it was, and the words are made once', async () => {
@@ -117,82 +100,26 @@ describe('a new segment with "Tokenize new text"', () => {
     expect(server.sent[0].key).toBe(server.sent[1].key);
     expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three', 'four']);
   });
-
-  it('a batch refused for a word over one the server placed goes again without its words', async () => {
-    const server = segmentServer(RAW());
-    const doc = open(server);
-    server.refuseNext(409, 'Bulk-created token overlaps an existing token.');
-    expect(await doc.createAlignment({ text: 'four', timeBegin: 3, timeEnd: 4 })).toBe(true);
-    await idle(doc);
-    expect(requests(server)).toEqual([
-      ['texts.update', 'tokens.create', 'tokens.bulkCreate'],
-      ['texts.update', 'tokens.create'],
-    ]);
-    // Under new keys: the refused request stored nothing under its own.
-    expect(server.sent[1].key).not.toBe(server.sent[0].key);
-    expect(server.answers()).toEqual([409, 200]);
-    expect(server.body).toBe('one two three four');
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three']);
-    expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three']);
-    expect(doc._raw.textLayers[0].text.body).toBe('one two three four');
-  });
-});
-
-describe('a Media write refused for a word outside every sentence', () => {
-  it('goes again without its words', async () => {
-    const server = segmentServer(RAW());
-    const doc = open(server);
-    server.refuseNext(400, 'Token is not contained within any parent-layer token');
-    expect(await doc.createAlignment({ text: 'four', timeBegin: 3, timeEnd: 4 })).toBe(true);
-    await idle(doc);
-    expect(requests(server)).toEqual([
-      ['texts.update', 'tokens.create', 'tokens.bulkCreate'],
-      ['texts.update', 'tokens.create'],
-    ]);
-    expect(server.body).toBe('one two three four');
-  });
 });
 
 describe('a transcript row edit with "Tokenize new text"', () => {
-  it('a word typed after a space is made', async () => {
+  it('names the word layer, and shows the words the answer made', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);
-    const saving = editRow(
-      doc,
-      'a-3',
-      'three',
-      'three more',
-      [{ start: 5, end: 5, value: ' more' }],
-      {
+    expect(
+      await editRow(doc, 'a-3', 'three', 'three more', [{ start: 5, end: 5, value: ' more' }], {
         timeBegin: 2,
         timeEnd: 3,
-      },
-    );
-    // On screen before the server answers.
-    expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three', 'more']);
-    expect(await saving).toBe(true);
-    await idle(doc);
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.update', 'tokens.bulkCreate']]);
-    expect(server.body).toBe('one two three more');
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three', 'more']);
-    expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three', 'more']);
-    const stored = new Set(wordLayer(server.stored).tokens.map((t) => t.id));
-    expect(wordLayer(doc._raw).tokens.every((t) => stored.has(t.id))).toBe(true);
-  });
-
-  it('letters typed against a word are left to it', async () => {
-    const server = segmentServer(RAW());
-    const doc = open(server);
-    await editRow(doc, 'a-3', 'three', 'threes', [{ start: 5, end: 5, value: 's' }], {
-      timeBegin: 2,
-      timeEnd: 3,
-    });
+      }),
+    ).toBe(true);
     await idle(doc);
     expect(requests(server)).toEqual([['texts.edit', 'tokens.update']]);
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'threes']);
+    expect(textOptions(server).tokenizeLayer).toBe('wordL');
+    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three', 'more']);
+    expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three', 'more']);
   });
 
-  it('makes no words when the project has the setting off', async () => {
+  it('names no layer when the project has the setting off', async () => {
     const server = segmentServer(RAW(false));
     const doc = open(server);
     await editRow(doc, 'a-3', 'three', 'three more', [{ start: 5, end: 5, value: ' more' }], {
@@ -200,39 +127,7 @@ describe('a transcript row edit with "Tokenize new text"', () => {
       timeEnd: 3,
     });
     await idle(doc);
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.update']]);
+    expect(textOptions(server).tokenizeLayer).toBeUndefined();
     expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three']);
-  });
-
-  it('makes no words of a script written without spaces', async () => {
-    const server = segmentServer(RAW());
-    const doc = open(server);
-    await editRow(doc, 'a-3', 'three', 'three 北京', [{ start: 5, end: 5, value: ' 北京' }], {
-      timeBegin: 2,
-      timeEnd: 3,
-    });
-    await idle(doc);
-    expect(requests(server)).toEqual([['texts.edit', 'tokens.update']]);
-  });
-
-  it('a batch refused for a word over one the server placed goes again without its words', async () => {
-    const server = segmentServer(RAW());
-    const doc = open(server);
-    server.refuseNext(409, 'Bulk-created token overlaps an existing token.');
-    expect(
-      await editRow(doc, 'a-2', 'two', 'two too', [{ start: 3, end: 3, value: ' too' }], {
-        timeBegin: 1,
-        timeEnd: 2,
-      }),
-    ).toBe(true);
-    await idle(doc);
-    expect(requests(server)).toEqual([
-      ['texts.edit', 'tokens.update', 'tokens.bulkCreate'],
-      ['texts.edit', 'tokens.update'],
-    ]);
-    expect(server.sent[1].key).not.toBe(server.sent[0].key);
-    expect(server.body).toBe('one two too three');
-    expect(wordsOf(server.stored)).toEqual(['one', 'two', 'three']);
-    expect(wordsOf(doc._raw)).toEqual(['one', 'two', 'three']);
   });
 });

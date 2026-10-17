@@ -24,6 +24,10 @@
 //   when a row had that id.
 // - A batch is atomic: when one of its writes is refused, nothing of it is
 //   stored.
+// - A text write naming `tokenizeLayer` gets a word on that layer over each
+//   run without whitespace that no token of the layer touches, named in its
+//   answer's reshape with its layer and text: a stand-in for the core's
+//   "Tokenize new text" (`new-words`), which the core's own tests hold.
 //
 // `other` writes as another user, with an entry in the audit log naming the
 // rows it wrote, so a toast can say who changed a segment. Not imported by app
@@ -143,6 +147,32 @@ function takeEdit(raw, textId, gaps, vocabs) {
 
 // The writes the two tabs send, applied to `raw` in place. Each answers what
 // the server answers.
+// The words the stand-in "Tokenize new text" makes on layer `layerId` of
+// `raw` (see the header), each as a reshape entry.
+function madeWords(raw, textId, layerId, mint) {
+  const layer = layerOf(raw, layerId);
+  if (!layer) return [];
+  const body = [...textOf(raw).body];
+  const made = [];
+  let x = 0;
+  while (x < body.length) {
+    if (/\s/u.test(body[x])) {
+      x += 1;
+      continue;
+    }
+    let y = x;
+    while (y < body.length && !/\s/u.test(body[y])) y += 1;
+    if (!layer.tokens.some((t) => t.begin < y && x < t.end)) {
+      const word = { id: mint(), text: textId, begin: x, end: y };
+      layer.tokens.push(word);
+      made.push({ ...word, layer: layerId });
+    }
+    x = y;
+  }
+  layer.tokens.sort((a, b) => a.begin - b.begin);
+  return made;
+}
+
 const writesOn = (raw, { mint, claim }) => {
   const checkBase = (base) => {
     const digest = digestOf(textOf(raw).body);
@@ -155,7 +185,7 @@ const writesOn = (raw, { mint, claim }) => {
     }
   };
   const on = {
-    'texts.update': (textId, ops, auditMessage, { base } = {}) => {
+    'texts.update': (textId, ops, auditMessage, { base, tokenizeLayer } = {}) => {
       checkBase(base);
       const text = textOf(raw);
       if (typeof ops === 'string') {
@@ -164,9 +194,15 @@ const writesOn = (raw, { mint, claim }) => {
         applyTextEditsLocally(raw, textId, ops, vocabsIn(raw));
       }
       text.digest = digestOf(text.body);
-      return { id: textId, body: text.body, digest: text.digest };
+      const made = tokenizeLayer ? madeWords(raw, textId, tokenizeLayer, mint) : [];
+      return {
+        id: textId,
+        body: text.body,
+        digest: text.digest,
+        ...(made.length ? { reshape: { tokens: made, deleted: {} } } : {}),
+      };
     },
-    'texts.edit': (textId, ops, auditMessage, { base } = {}) => {
+    'texts.edit': (textId, ops, auditMessage, { base, tokenizeLayer } = {}) => {
       checkBase(base);
       const before = structuredClone(raw);
       // The side an op was typed on stays with its gap (one gap per op here).
@@ -175,7 +211,9 @@ const writesOn = (raw, { mint, claim }) => {
       takeEdit(raw, textId, gaps, vocabsIn(raw));
       const text = textOf(raw);
       text.digest = digestOf(text.body);
-      return { id: textId, body: text.body, digest: text.digest, reshape: reshapeOf(before, raw) };
+      const reshape = reshapeOf(before, raw);
+      if (tokenizeLayer) reshape.tokens.push(...madeWords(raw, textId, tokenizeLayer, mint));
+      return { id: textId, body: text.body, digest: text.digest, reshape };
     },
     'tokens.create': (layerId, textId, begin, end, precedence, metadata, auditMessage, opts) => {
       const id = claim(opts?.id) ?? mint();

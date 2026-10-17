@@ -31,10 +31,9 @@
 // over its new text in the same batch.
 //
 // The text a new segment or a row edit adds gets the words of the project's
-// "Tokenize new text", as a Baseline save's does (`newWordsOf`,
-// newTextWords.js), shown at once under pending ids and made in the same
-// batch. A batch refused because one of them lies over a word the server
-// placed stores nothing, and goes again without them, under new keys.
+// "Tokenize new text", as a Baseline save's does: the text write names the
+// word layer (`tokenizeLayerOf`), the server makes them, and they are shown
+// from its answer.
 
 import {
   applyTextOps,
@@ -55,7 +54,7 @@ import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/error
 import { inferEdit } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
-import { newWordsOf, reshapeVocabLinks, wordsOverlap } from './document.js';
+import { reshapeVocabLinks, tokenizeLayerOf } from './document.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
 import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
 import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js';
@@ -142,36 +141,22 @@ const findTemporalInversion = (tokens, posBegin, timeBegin, excludeId = null) =>
 
 const bodyOf = (info) => info.primaryTextLayer?.text?.body ?? '';
 
-// A write's new words (`{ begin, end }`, code points of the body it makes)
-// with ids: the ones `before` showed, so a write made again after a refusal
-// names the words already on screen, and pending ids for the rest.
-const wordsWithIds = (words, before = null) =>
-  (words || []).map((w, i) => ({
-    id: before?.[i]?.id ?? pendingId(),
-    begin: w.begin,
-    end: w.end,
-  }));
-
-// A write's new words shown on the word layer, in begin order.
-const pushWordTokens = (infoNext, textId, words) => {
+// The words a text write's answer says the server made on the word layer
+// ("Tokenize new text"), shown in begin order.
+const pushMadeWords = (infoNext, textId, answer) => {
   const layer = infoNext.primaryTokenLayer;
-  if (!layer || !words.length) return;
+  if (!layer) return;
+  const have = new Set((layer.tokens || []).map((t) => t.id));
+  const made = (answer?.reshape?.tokens ?? []).filter(
+    (t) => t.layer === layer.id && !have.has(t.id),
+  );
+  if (!made.length) return;
   if (!Array.isArray(layer.tokens)) layer.tokens = [];
-  for (const w of words) {
-    layer.tokens.push({ id: w.id, text: textId, begin: w.begin, end: w.end, metadata: {} });
+  for (const t of made) {
+    layer.tokens.push({ id: t.id, text: textId, begin: t.begin, end: t.end, metadata: {} });
   }
   layer.tokens.sort(sortByBegin);
 };
-
-// A write's new words as the word layer's bulk create takes them.
-const wordRows = (info, textId, words) =>
-  words.map(({ id, begin, end }) => ({
-    id,
-    tokenLayerId: info.primaryTokenLayer.id,
-    text: textId,
-    begin,
-    end,
-  }));
 
 // Where a new segment's text goes in the body, so that text order follows time
 // order, and the token over it. `{ error }` when it cannot go anywhere, else
@@ -256,9 +241,6 @@ const planCreate = (info, trimmed, timeBegin) => {
     textOps: [{ type: 'insert', index: insertBegin, value: insertedText }],
     token: { begin: tokenBegin, end: tokenEnd },
     seedLength: seedSentence ? newTextLength : null,
-    words: newWordsOf(info, existingText, [
-      { start: insertBegin, end: insertBegin, value: insertedText },
-    ]),
   };
 };
 
@@ -344,11 +326,6 @@ const planEdit = (info, segment, gaps, next, timeBegin) => {
   }
 
   const sentences = info.sentenceTokenLayer.tokens || [];
-  const bodyGaps = gaps.map((g) => ({
-    ...g,
-    start: g.start + tokenBegin,
-    end: g.end + tokenBegin,
-  }));
   return {
     gaps: gaps.map((g) => {
       const side =
@@ -368,7 +345,6 @@ const planEdit = (info, segment, gaps, next, timeBegin) => {
     }),
     extent: { begin: tokenBegin, end: newAlignmentEnd },
     seedLength: sentences.length === 0 && newTextLength > 0 ? newTextLength : null,
-    words: newWordsOf(info, body, bodyGaps),
   };
 };
 
@@ -760,7 +736,6 @@ export const alignmentMutations = {
       token: { begin, end },
       metadata: meta,
       seedLength: null,
-      words: [],
       speaker,
       recheck: this._sameRecording(recordingOf(this._raw), 'Segment'),
     });
@@ -1233,15 +1208,16 @@ export const alignmentMutations = {
   // once: the edit mirrored locally (textEdits.js), the segment under a
   // pending id, and a first sentence under another when the edit leaves the
   // partition empty (`seedLength`, the body's new length). The segment and
-  // the sentence are made in ONE batch with the text edit, and so are the
-  // words of the text it adds (`words`). `replan(fresh)`
+  // the sentence are made in ONE batch with the text edit, and the words the
+  // server makes for the text it adds ("Tokenize new text") are shown from its
+  // answer. `replan(fresh)`
   // makes the write again on the layers of the document as stored, after a
   // refusal: `{ plan }` to send (with its own `metadata` when it differs),
   // or `{ conflict }` to refuse with. `recheck` is the write's
   // (`_sameRecording`), for when it waits behind a refused one.
   _showSegmentWrite(
     label,
-    { textId, textOps, token, metadata, seedLength, words, speaker, replan, recheck = null },
+    { textId, textOps, token, metadata, seedLength, speaker, replan, recheck = null },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -1262,21 +1238,20 @@ export const alignmentMutations = {
         plan.seedLength != null
           ? { id: before?.seeded?.id ?? pendingId(), text: textId, begin: 0, end: plan.seedLength }
           : null,
-      words: wordsWithIds(plan.words, before?.words),
     });
     const show = (m) => (next, infoNext, vocabs) => {
       if (m.textOps.length) applyTextEditsLocally(next, textId, m.textOps, vocabs);
       pushAlignmentToken(infoNext, { ...m.segment });
       if (m.seeded) infoNext.sentenceTokenLayer.tokens = [{ ...m.seeded }];
-      pushWordTokens(infoNext, textId, m.words);
     };
+    const tokenizeLayer = tokenizeLayerOf(info);
     const send = (m, base) =>
       this._client.batched(async (b) => {
         // The text write claims the document's version beside its base: a
         // batch checks the version at the first write that claims one, and
         // the token after it claims the version from before the batch.
         if (m.textOps.length) {
-          b.texts.update(textId, m.textOps, undefined, { base, versioned: true });
+          b.texts.update(textId, m.textOps, undefined, { base, versioned: true, tokenizeLayer });
         }
         // Under the ids shown, so a resend of a lost answer names the same rows.
         b.tokens.create(
@@ -1300,15 +1275,13 @@ export const alignmentMutations = {
             },
           ]);
         }
-        if (m.words.length) b.tokens.bulkCreate(wordRows(info, textId, m.words));
       });
-    let sent = made({ textOps, token, seedLength, words });
+    let sent = made({ textOps, token, seedLength });
     this._applyRawPatch(show(sent));
     // What is sent, kept outside the send (see `_sendOverSegmentText`).
     const state = {
       planned,
       send: (base) => send(sent, base),
-      dropWords: () => this._dropWords(textId, sent),
     };
     const write = async () => {
       const results = !textOps.length
@@ -1334,18 +1307,20 @@ export const alignmentMutations = {
       if (at) this._heardText(textId, results?.[0]?.body);
       const ids = new Map([[sent.segment.id, createdId(results?.[at])]]);
       if (sent.seeded) ids.set(sent.seeded.id, createdIds(results?.[at + 1])[0]);
-      if (sent.words.length) {
-        const made = createdIds(results?.[at + 1 + (sent.seeded ? 1 : 0)]);
-        sent.words.forEach((w, i) => ids.set(w.id, made[i]));
-      }
       if ([...ids.values()].some((id) => !id)) {
         await this._reloadInSend(); // the batch answered without the ids the patch needs
       } else {
         this._settle(ids);
         // A replayed answer (this send run again, or the client's own resend)
         // carries the body as it was when the write first landed: what is
-        // stored now is read once the queue has drained.
+        // stored now is read once the queue has drained. Otherwise the words
+        // the server made are shown from the answer.
         if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
+        else if (at) {
+          this._applyRawPatch((next, infoNext) =>
+            pushMadeWords(infoNext, textId, results?.[0]?.body),
+          );
+        }
       }
       await this._rememberSpeaker(speaker);
     };
@@ -1366,19 +1341,7 @@ export const alignmentMutations = {
   // is `recheck`.
   _showRowEdit(
     label,
-    {
-      textId,
-      segmentId,
-      gaps,
-      extent,
-      typed,
-      seedLength,
-      words,
-      patch,
-      speaker,
-      replan,
-      recheck = null,
-    },
+    { textId, segmentId, gaps, extent, typed, seedLength, patch, speaker, replan, recheck = null },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -1392,7 +1355,6 @@ export const alignmentMutations = {
         plan.seedLength != null
           ? { id: before?.seeded?.id ?? pendingId(), end: plan.seedLength }
           : null,
-      words: wordsWithIds(plan.words, before?.words),
       // The tokens the edit moved on screen, the last time it was shown.
       changed: new Set(),
     });
@@ -1411,8 +1373,8 @@ export const alignmentMutations = {
           { id: m.seeded.id, text: textId, begin: 0, end: m.seeded.end },
         ];
       }
-      pushWordTokens(infoNext, textId, m.words);
     };
+    const tokenizeLayer = tokenizeLayerOf(info);
     // Answers where in the batch's results the last text write and the
     // sentences are.
     const send = (m, base) => {
@@ -1421,7 +1383,11 @@ export const alignmentMutations = {
       return this._client
         .batched(async (b) => {
           const patched = Object.keys(m.patch).length > 0;
-          b.texts.edit(textId, sidedOps(m.gaps), undefined, { base, versioned: true });
+          b.texts.edit(textId, sidedOps(m.gaps), undefined, {
+            base,
+            versioned: true,
+            tokenizeLayer,
+          });
           b.tokens.update(id, m.extent.begin, m.extent.end);
           at.text = 0;
           if (patched) b.tokens.patchMetadata(id, metadataOps(m.patch));
@@ -1437,14 +1403,10 @@ export const alignmentMutations = {
             ]);
             at.seeded = 2 + (patched ? 1 : 0);
           }
-          if (m.words.length) {
-            b.tokens.bulkCreate(wordRows(info, textId, m.words));
-            at.words = 2 + (patched ? 1 : 0) + (m.seeded ? 1 : 0);
-          }
         })
         .then((results) => Object.assign(results, { at }));
     };
-    let sent = made({ gaps, extent, seedLength, words });
+    let sent = made({ gaps, extent, seedLength });
     // The sole morphemes spelled as their word before the edit, which follow
     // the words it respells (Luke, H17, as a Baseline save).
     const forms = soleForms(this.layerInfo, this.body);
@@ -1452,7 +1414,6 @@ export const alignmentMutations = {
     const state = {
       planned,
       send: (base) => send(sent, base),
-      dropWords: () => this._dropWords(textId, sent),
     };
     const write = async () => {
       const results = await this._sendOverSegmentText(state, {
@@ -1483,10 +1444,6 @@ export const alignmentMutations = {
       if (sent.seeded) {
         const made = createdIds(results[at.seeded])[0];
         if (made) ids.set(sent.seeded.id, made);
-      }
-      if (sent.words.length) {
-        const made = createdIds(results[at.words]);
-        sent.words.forEach((w, i) => made[i] && ids.set(w.id, made[i]));
       }
       if (ids.size) this._settle(ids);
       // A replayed answer (this send run again, or the client's own resend)
@@ -1728,29 +1685,9 @@ export const alignmentMutations = {
     return this._sendSegmentBatch(state);
   },
 
-  // `state.send(state.base)` under `state.keys`. A batch refused because one
-  // of its new words lies over a word the server placed stored nothing: the
-  // words go (`state.dropWords()`), and the batch goes again without them,
-  // under new keys.
+  // `state.send(state.base)` under `state.keys`.
   async _sendSegmentBatch(state) {
-    try {
-      return await underKeys(this._client, state.keys, () => state.send(state.base));
-    } catch (err) {
-      if (!wordsOverlap(err) || !state.dropWords?.()) throw err;
-      state.keys = this._client.keySeed?.() ?? null;
-      state.again = false;
-      return underKeys(this._client, state.keys, () => state.send(state.base));
-    }
-  },
-
-  // A segment write's new words (`sent.words`) given up: taken off the
-  // screen, and sent no more. Answers whether there were any.
-  _dropWords(textId, sent) {
-    if (!sent.words.length) return false;
-    const ids = sent.words.map((w) => w.id);
-    sent.words = [];
-    this._applyRawPatch((next, infoNext, vocabs) => removeTokensLocally(next, textId, ids, vocabs));
-    return true;
+    return underKeys(this._client, state.keys, () => state.send(state.base));
   },
 
   // From inside a send: `updated`, just read, on screen, with `producer` (the

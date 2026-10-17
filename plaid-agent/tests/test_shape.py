@@ -390,15 +390,18 @@ class _TextServer:
 
     def __init__(self, c):
         self.c = c
+        # the word layer each edit named for "Tokenize new text"
+        self.tokenize_layers = []
         c.texts.update = self.update  # replaces the fake's recording for this method
         c.texts.edit = self.edit
 
-    def edit(self, text_id, edits, audit_message=None, *, base=None, versioned=None):
+    def edit(self, text_id, edits, audit_message=None, *, base=None, versioned=None, tokenize_layer=None):
         from plaid_client import apply_text_ops
         tl = self.c._documents['d1']['text_layers'][0]
         assert base is None or base == tl['text'].get('digest')
         self._apply(apply_text_ops(tl['text']['body'], edits))
         self.c.record('texts.edit', (text_id, edits))
+        self.tokenize_layers.append(tokenize_layer)
         return {'id': text_id}
 
     def update(self, text_id, body):
@@ -439,10 +442,10 @@ class _TextServer:
         tl['text']['body'] = body
 
 
-def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
+def test_execute_append_splits_the_gap_filled_sentence_and_names_the_word_layer():
     from plaid_agent.igt.project import load_project
     c = FakeClient()
-    _TextServer(c)
+    server = _TextServer(c)
     project = load_project(c, 'p1')
     # tokens.split makes the new right half under the id it is given, and
     # mimics the server locally
@@ -469,11 +472,9 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
     splits = c.payloads('tokens.split')
     # The last sentence was gap-filled over the new text, then split per line.
     assert splits == [('s-2', 26), (made[0], 40)] and all(made)
-    bulk = c.payloads('tokens.bulk_create')[0]
-    assert [(body[t['begin']:t['end']], t['token_layer_id']) for t in bulk] == \
-        [('Gam', 'tk-word'), ('akuna', 'tk-word'), ('Ali', 'tk-word'), ('gam', 'tk-word')]
-    # Existing words were left alone (no re-creation over them).
-    assert all(t['begin'] >= 26 for t in bulk)
+    # The words of the new text are the server's ("Tokenize new text").
+    assert server.tokenize_layers == ['tk-word']
+    assert not c.payloads('tokens.bulk_create')
 
 
 def test_execute_retype_keeps_unchanged_words_and_verifies_the_region():
@@ -493,8 +494,7 @@ def test_execute_retype_keeps_unchanged_words_and_verifies_the_region():
     assert not [kind for kind, _ in c.writes if kind == 'texts.update']
     assert c._documents['d1']['text_layers'][0]['text']['body'] == body
     assert not c.payloads('tokens.split')  # no newline: no new sentence
-    bulk = c.payloads('tokens.bulk_create')[0]
-    assert [(t['begin'], t['end']) for t in bulk] == [(11, 14)]  # only the inserted "gam" is new; the rest survived
+    assert not c.payloads('tokens.bulk_create')  # the inserted "gam"'s word is the server's
     # The region no longer reads as planned: refused, nothing written.
     c2 = FakeClient()
     _TextServer(c2)

@@ -57,18 +57,6 @@ def is_ignorable_char(c: str, cfg) -> bool:
     return is_punct_char(c) and not is_letter_like(c, cfg)
 
 
-def is_text_punctuation(c: str, cfg) -> bool:
-    """Punctuation to plaid-core's text rules (``punct?``), under the
-    project's rule: punctuation minus what the rule calls letters, its
-    letter-like characters, or under an explicit list every character but
-    the entries of one character (plaid-ui ``isTextPunctuation``)."""
-    if not is_punct_char(c):
-        return False
-    if cfg and cfg.get('type') == 'blacklist':
-        return c in (cfg.get('blacklist') or [])
-    return not is_letter_like(c, cfg)
-
-
 def is_token_ignored(content, cfg) -> bool:
     """Is this word token left out of annotation by the word layer's
     ``config.igt.ignoredTokens`` rule? (``isTokenIgnored``)."""

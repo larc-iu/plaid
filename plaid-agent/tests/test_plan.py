@@ -583,22 +583,18 @@ def test_execute_creates_documents_tokenized_like_the_editor():
     assert made['args'] == ('p1', 'Text 2', {'Date': '2022'})
     # The text names the document by the id the plan made it under.
     assert c.payloads('texts.create')[0]['args'] == ('tl', made['kwargs']['id'], 'Ali-di gam, akuna!\n  Gam-ar.\n')
-    # One batch, two bulk creates: the server takes one layer per bulk create,
-    # and the sentence layer only as a whole partition of the text, which the
-    # fake refuses otherwise (conc-2026-09-29 REV-F-PY R3).
-    [batch] = [b for b in c.batches if b[0][0] == 'tokens.bulk_create']
-    assert [kind for kind, _ in batch] == ['tokens.bulk_create', 'tokens.bulk_create']
-    (_, sentences), (_, words) = batch
+    # The sentences, as a whole partition of the text, which the fake refuses
+    # otherwise (conc-2026-09-29 REV-F-PY R3). The words are the server's: the
+    # create names the word layer ("Tokenize new text").
+    [sentences] = c.payloads('tokens.bulk_create')
     assert {t['token_layer_id'] for t in sentences} == {'tk-sent'}
-    assert {t['token_layer_id'] for t in words} == {'tk-word'}
     text = 'Ali-di gam, akuna!\n  Gam-ar.\n'
     # The newline and the indent after it stay with the sentence before, and
     # the last sentence runs to the end of the text.
     assert [text[t['begin']:t['end']] for t in sentences] == ['Ali-di gam, akuna!\n  ', 'Gam-ar.\n']
-    # '-' is punctuation, so it splits words (no whitelist in the fixture); ',' and '!' stay in gaps
-    assert [text[t['begin']:t['end']] for t in words] == ['Ali', 'di', 'gam', 'akuna', 'Gam', 'ar']
     [text] = c.payloads('texts.create')
-    assert all(t['text'] == text['kwargs']['id'] for t in sentences + words)
+    assert text['kwargs']['tokenize_layer'] == 'tk-word'
+    assert all(t['text'] == text['kwargs']['id'] for t in sentences)
 
 
 def test_execute_lexicon_and_document_ops():

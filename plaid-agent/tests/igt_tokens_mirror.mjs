@@ -2,15 +2,11 @@
 // test_igt_tokens_mirror.py writes, so the Python copies can be compared with
 // them answer by answer: `is_token_ignored` (plaid_client.workflows.igt.ignored)
 // against igtConfig.js's `isTokenIgnored`, and `split_words`
-// (plaid_client.workflows.igt.new_words) against tokenizationUtils.js's
+// (plaid_client.workflows.igt.word_breaks) against tokenizationUtils.js's
 // `tokenizeText`.
 //
-// And "Tokenize new text" (newTextWords.js) against
-// `new_text_words` (plaid_client.workflows.igt.new_words), which the igt
-// assistant and the ASR transcription read.
-//
 // The rules read generated tables of character classes
-// (plaid-igt/tools/punctuationClasses.mjs, tools/spacelessScripts.mjs), so the
+// (plaid-igt/tools/punctuationClasses.mjs), so the
 // answers do not depend on the Unicode version of the node running this. The
 // tables go out too, to be compared with the Python copies written from the
 // same runs.
@@ -42,15 +38,9 @@ const tokenization = await import(
 const classes = await import(
   pathToFileURL(resolve(UI, "domain/punctuationClasses.js")).href
 );
-const spaceless = await import(
-  pathToFileURL(resolve(SRC, "domain/spacelessScripts.js")).href
-);
-const newWords = await import(
-  pathToFileURL(resolve(SRC, "domain/newTextWords.js")).href
-);
 
-// The code points a predicate holds for, as ranges: the spaceless table (not
-// exported itself) and the editor's word-break punctuation class.
+// The code points a predicate holds for, as ranges: the editor's word-break
+// punctuation class.
 const rangesOf = (holds) => {
   const out = [];
   for (let cp = 0; cp <= 0x10ffff; cp++) {
@@ -61,7 +51,6 @@ const rangesOf = (holds) => {
   }
   return out;
 };
-const spacelessRanges = () => rangesOf(spaceless.isSpacelessScript);
 
 const cases = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const len = (text) => Array.from(text).length;
@@ -70,7 +59,6 @@ process.stdout.write(
     tables: {
       punctOrSymbol: classes.PUNCT_OR_SYMBOL,
       pictographic: classes.PICTOGRAPHIC,
-      spaceless: spacelessRanges(),
       breaks: rangesOf(tokenization.isUnicodePunctuation),
     },
     ignored: cases.configs.map((cfg) =>
@@ -82,9 +70,6 @@ process.stdout.write(
           .tokenizeText(text, cfg, [{ start: 0, end: len(text) }])
           .map((t) => [t.begin, t.end]),
       ),
-    ),
-    newWords: (cases.newWords || []).map((c) =>
-      newWords.newTextWords(c).map((w) => [w.begin, w.end]),
     ),
   }),
 );

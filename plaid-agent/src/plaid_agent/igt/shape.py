@@ -22,7 +22,7 @@ from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
-from .project import Sentence, Word, plain_ref, project_new_words, resolve, split_sentences, word_ref
+from .project import Sentence, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell)
 from .workspace import Workspace, _need, _refs
@@ -385,9 +385,7 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
     _guard_text_edit(ws, doc.text_id, at, at, f'{ws.doc_label(doc.id)}: append')
     sep = '' if not doc.body or doc.body.endswith('\n') else '\n'
     sents = split_sentences(text)
-    words = len(project_new_words(ws.project, doc.body, [(at, at, sep + text)],
-                                  [(w.begin, w.end) for st in doc.sentences for w in st.words],
-                                  [(st.begin, st.end) for st in doc.sentences]))
+    words = planned_word_count(ws.project, text)
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
                'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
                **labelled(ws.doc_label(doc.id), f'append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
