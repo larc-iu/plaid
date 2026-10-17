@@ -538,6 +538,45 @@ def test_a_redraft_that_adds_a_node_writes_it_and_its_edge_from_the_kept_one():
     assert edge['source'] == 'c-b' and edge['value'] == ':mod'
 
 
+def test_a_redraft_keeps_a_kept_nodes_variable():
+    """REV8-APPS-3: the plan mints variables in its graph's order, so a new
+    dog written before the stored one takes s1d and the stored dog comes out
+    s1d2. The stored dog keeps s1d, untouched, and the new one takes s1d2."""
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    [plan] = _stored_plan(_read(raw))
+    plan['pieces'].append((0, 3))
+    plan['nodes'][1]['meta'] = {**plan['nodes'][1]['meta'], 'var': 's1d2'}
+    plan['nodes'].insert(1, {'concept': 'dog', 'meta': {'var': 's1d', 'attrs': []},
+                             'piece_indexes': [2]})
+    plan['edges'] = [{'source': 0, 'target': 2, 'role': ':ARG0', 'order': 0},
+                     {'source': 0, 'target': 1, 'role': ':mod', 'order': 1}]
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), [plan], {'prov': 'inferred'})
+    [batch] = client.batches
+    assert [kind for kind, _ in batch] == ['tokens.bulk_create', 'spans.bulk_create',
+                                          'relations.bulk_create']
+    [[span]] = client.payloads('spans.bulk_create')
+    assert span['metadata']['umr']['var'] == 's1d2'
+
+
+def test_a_redraft_mints_past_every_taken_variable_when_none_is_freed():
+    """A planned node whose variable a kept node holds, with no variable of
+    its letter given up, takes the next free one in the document."""
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    [plan] = _stored_plan(_read(raw))
+    plan['pieces'].append((0, 3))
+    plan['nodes'].append({'concept': 'dingo', 'meta': {'var': 's1d', 'attrs': []},
+                          'piece_indexes': [2]})
+    plan['nodes'][1]['meta'] = {**plan['nodes'][1]['meta'], 'var': 's1x9'}
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), [plan], {'prov': 'inferred'},
+                 taken={'s1d2'})
+    [[span]] = client.payloads('spans.bulk_create')
+    assert span['metadata']['umr']['var'] == 's1d3'
+
+
 @pytest.mark.parametrize('extent', [(4, 7), (0, 17)])
 def test_a_redraft_gives_a_new_node_its_own_anchor_where_a_kept_node_stands(extent):
     """REV8-APPS-1 (data loss): a new node over a kept node's word, or a new

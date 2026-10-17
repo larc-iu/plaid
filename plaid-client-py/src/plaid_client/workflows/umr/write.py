@@ -267,7 +267,44 @@ def _restamp(stored: Optional[dict], planned: dict) -> List[dict]:
                if k in PROVENANCE_KEYS and k not in planned])
 
 
-def _keep_stored(plan: dict, unit: dict) -> dict:
+def _keep_variables(planned: list, match: Dict[int, Node], number: int, taken) -> list:
+    """``planned`` with each node kept with its concept (``match``) under its
+    stored variable, as it was before the redraft (REV8-APPS-3). The plan mints
+    variables in its graph's order, so a new node of the same letter written
+    first took the kept node's, and the untouched kept node showed renamed. A
+    planned node whose variable a kept node now holds takes a variable a kept
+    node gave up, one of its own letter, else the next free one."""
+    def var_of(op):
+        return ((op['metadata'].get(UMR_NAMESPACE) or {}).get('var'))
+
+    keeps = {k: n.var for k, n in match.items()
+             if n.var and n.concept == planned[k][0]['value']}
+    if not keeps:
+        return planned
+    held = set(keeps.values())
+    freed = [var_of(planned[k][0]) for k in keeps
+             if var_of(planned[k][0]) and var_of(planned[k][0]) not in held]
+    used = held | {var_of(op) for k, (op, _i, _a) in enumerate(planned) if k not in keeps}
+    out = []
+    for k, (op, indexes, at) in enumerate(planned):
+        var = keeps.get(k)
+        if var is None and var_of(op) in held:
+            letter = next_variable(number, op['value'], ())
+            var = next((v for v in freed if v.rstrip('0123456789') == letter), None)
+            if var is None:
+                var = next_variable(number, op['value'], set(taken or ()) | used | set(freed))
+            else:
+                freed.remove(var)
+            used.add(var)
+        if var is not None and var != var_of(op):
+            meta = {**op['metadata'], UMR_NAMESPACE: {
+                **(op['metadata'].get(UMR_NAMESPACE) or {}), 'var': var}}
+            op = {**op, 'metadata': meta}
+        out.append((op, indexes, at))
+    return out
+
+
+def _keep_stored(plan: dict, unit: dict, taken=()) -> dict:
     """``unit`` with only the rows of its new graph that are not stored as
     they are (ruling 30, 2026-10-16, per row). A stored node with the concept,
     ``umr`` metadata and anchors the plan gives is kept as it is, with its
@@ -300,13 +337,19 @@ def _keep_stored(plan: dict, unit: dict) -> dict:
     def umr_of(n):
         return (n.metadata or {}).get(UMR_NAMESPACE)
 
+    def but_var(meta):
+        return {key: value for key, value in (meta or {}).items() if key != 'var'}
+
     pair(lambda op, at, n: at == ranges[n.id] and op['value'] == n.concept
          and _same(op['metadata'].get(UMR_NAMESPACE), umr_of(n)))
-    exact = set(match)
+    pair(lambda op, at, n: at == ranges[n.id] and op['value'] == n.concept
+         and _same(but_var(op['metadata'].get(UMR_NAMESPACE)), but_var(umr_of(n))))
     pair(lambda op, at, n: at == ranges[n.id] and op['value'] == n.concept)
     pair(lambda op, at, n: at == ranges[n.id])
+    planned = _keep_variables(planned, match, sentence.number, taken)
     for k, n in match.items():
-        if k in exact:
+        if planned[k][0]['value'] == n.concept and _same(
+                planned[k][0]['metadata'].get(UMR_NAMESPACE), umr_of(n)):
             continue
         op = planned[k][0]
         updates.append({'id': n.id, 'value': op['value'],
@@ -449,7 +492,7 @@ def _queue_sentences(b, units: Sequence[dict], progress: DraftProgress, alone: b
 
 
 def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
-                 progress: Optional[DraftProgress] = None) -> None:
+                 progress: Optional[DraftProgress] = None, taken=()) -> None:
     """Anchors, then nodes, then edges, one atomic batch per group of sentences.
 
     A node names its anchors, and an edge its nodes, by a ref to the ids an
@@ -473,13 +516,14 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     app's own half sits beside it under ``umr``, exactly as the importer and
     the canvas write it. Each node's ``provDetail`` also records the concept
     and attributes it was drafted with, and each edge's its role.
+    ``taken`` is every variable a new node may not take (``DraftRun.taken``).
     """
     progress = progress or DraftProgress(None)
     kept = [plan['sentence'].number for plan in plans
             if plan['sentence'].nodes and not plan['sentence'].redraftable]
     if kept:
         raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
-    units = [_keep_stored(plan, _sentence_writes(layers, plan, frag)) for plan in plans]
+    units = [_keep_stored(plan, _sentence_writes(layers, plan, frag), taken) for plan in plans]
     units = [unit for unit in units if _writes_anything(unit)]
     if not units:
         return
@@ -678,7 +722,7 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
                 label = operation(plans) if callable(operation) else operation
                 with client.operation(run.requester.label(label), kind='service-run',
                                       ref=service_source(service_id)):
-                    write_graphs(client, layers, plans, frag, run.progress)
+                    write_graphs(client, layers, plans, frag, run.progress, run.taken)
             outcome['drafted'] = len(plans)
         complete()
 
