@@ -6,6 +6,7 @@
 import { cpLength } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/umrLayerUtils.js';
 import { parseUmrFile } from './format/umrFile.js';
+import { resolveIlg } from './ilg.js';
 import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import {
@@ -30,7 +31,9 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  *   whose words must match the file's sentence by sentence; it must hold no
  *   UMR nodes yet. `mint`: a `{ current }` holding the id the new document
  *   is created under, kept by the caller across attempts of the same import
- *   so a second cannot make a second document (createOnce.js)
+ *   so a second cannot make a second document (createOnce.js). `ilg`: the
+ *   project's saved Gloss lines (readIlgConfig), so the report can say when
+ *   they show none of the lines the file carried
  * @returns {Promise<{ document: { id: string, name: string }, warnings: string[], attached: boolean }>}
  */
 export const importUmrDocument = (client, projectId, name, text, layerInfo, options = {}) =>
@@ -78,6 +81,16 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
   }
 
   const plan = planImport(parsed.sentences, warnings, existing ? { existing: existing.graph } : {});
+  // Saved Gloss lines without "Lines an import stored" show none of the
+  // file's own lines, which are stored all the same (H17-UMR-3).
+  if (
+    plan.sentences.some((s) => s.meta.ilg.length) &&
+    !resolveIlg(options.ilg, layerInfo).some((e) => e.source === 'stored')
+  ) {
+    warnings.push(
+      'Gloss lines stored but not shown. Add "Lines an import stored" in UMR settings.',
+    );
+  }
   // What an attach makes, for the rollback below: the anchors, whose
   // deletion cascades to the spans and relations made on them.
   let createdTokenIds = [];

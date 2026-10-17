@@ -382,3 +382,39 @@ test('an import makes its anchors and the nodes on them in one request', async (
   const pieceIds = new Set(pieces.map((p) => p.id));
   assert.ok(spans.every((s) => s.tokens.every((id) => pieceIds.has(id))));
 });
+
+// H17-UMR-3: saved Gloss lines without "Lines an import stored" show none of
+// the lines a file carried, and the import said nothing of it.
+test('the report says when the saved Gloss lines show none of the lines the file carried', async () => {
+  const glossed = file({
+    words: 'the cat sleeps',
+    graph: '(s1s / sleep-01\n    :ARG0 (s1c / cat))',
+    alignment: 's1s: 3-3\ns1c: 2-2',
+    header: 'Word Gloss (en): the cat sleeps',
+  });
+  const raw = rawFromPlan(planImport(parseUmrFile(glossed).sentences, []));
+  const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+  nodes.tokens = [];
+  nodes.spanLayers[0].spans = [];
+  nodes.spanLayers[0].relationLayers.forEach((l) => (l.relations = []));
+  const notice = 'Gloss lines stored but not shown. Add "Lines an import stored" in UMR settings.';
+  const run = async (text, ilg) => {
+    const { client } = recordingClient();
+    client.documents.get = async () => structuredClone(raw);
+    const { warnings } = await importUmrDocument(client, 'p', 'doc', text, getUmrLayerInfo(raw), {
+      into: raw.id,
+      ilg,
+    });
+    return warnings.includes(notice);
+  };
+  const saved = [{ header: 'pos', lang: null, source: 'layer:x' }];
+  assert.equal(await run(glossed, saved), true);
+  assert.equal(
+    await run(glossed, [...saved, { header: null, lang: null, source: 'stored' }]),
+    false,
+  );
+  // No saved lines: the proposal shows what an import stored.
+  assert.equal(await run(glossed, null), false);
+  // A file with no gloss lines loses nothing.
+  assert.equal(await run(glossed.replace(/^Word Gloss.*\n/m, ''), saved), false);
+});
