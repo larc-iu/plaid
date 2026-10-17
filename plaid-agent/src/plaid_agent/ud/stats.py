@@ -297,6 +297,28 @@ def _ngram_rows(c: Corpus, column: str, n: int) -> List[tuple]:
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
+#: Documents per n-gram read over a whole project. One read over GUM's 301
+#: documents ran past the engine's 30 s (H17-ASSIST-5). A run of words lies
+#: inside one sentence, so the counts of the batches add up.
+NGRAM_BATCH = 40
+
+
+def _ngram_rows_batched(ws: Workspace, c: Corpus, column: str, n: int) -> List[tuple]:
+    """:func:`_ngram_rows` over the whole project, read
+    :data:`NGRAM_BATCH` documents at a time and summed."""
+    ids = [d['id'] for d in ws.documents() if d.get('id')]
+    if len(ids) <= NGRAM_BATCH:
+        return _ngram_rows(c, column, n)
+    counts: Dict[str, int] = defaultdict(int)
+    for i in range(0, len(ids), NGRAM_BATCH):
+        ws.on_progress(f'Counting runs of words in documents {i + 1} to {min(i + NGRAM_BATCH, len(ids))} '
+                       f'of {len(ids)}…')
+        with c.among(ids[i:i + NGRAM_BATCH]):
+            for value, k in _ngram_rows(c, column, n):
+                counts[value] += k
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
 def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
                      limit: int = None, where: dict = None, ngram: int = None) -> str:
     """The commonest values of one column, of the words meeting ``where``, or
@@ -332,7 +354,8 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     else:
         with c.within(document) as held:
             c.forget_clipping()
-            rows = _ngram_rows(c, what, n) if n > 1 else _column_rows(c, what, cond)
+            rows = (_ngram_rows_batched(ws, c, what, n) if n > 1 and not c.held_documents()
+                    else _ngram_rows(c, what, n) if n > 1 else _column_rows(c, what, cond))
             rows = [(v, k) for v, k in rows if v]
             clipped = c.clipped_note(noun)
             place = (f' in {_named(ws, held)}' if held

@@ -165,3 +165,23 @@ def test_the_trace_counts_documents_and_names_the_column_as_the_read_does(args, 
 def test_grew_search_counts_a_doubled_name_once():
     assert describe_step('grew_search', {'pattern': 'X', 'documents': ['French 1', 'French 1']}) == \
         'Searched with Grew for “X” in “French 1”'
+
+
+def test_ngrams_over_many_documents_are_read_a_batch_at_a_time(ws, monkeypatch):
+    """One n-gram read over GUM's 301 documents ran past the engine's 30 s
+    (H17-ASSIST-5). Past NGRAM_BATCH documents the project is read a batch at
+    a time and the counts summed, the same counts as one read."""
+    from plaid_agent.ud import stats
+
+    whole = t_frequency_list(ws, what='upos', ngram=2)
+    sent = []
+    real = ws.client.query
+
+    def query(body):
+        sent.append(body)
+        return real(body)
+    monkeypatch.setattr(ws.client, 'query', query)
+    monkeypatch.setattr(stats, 'NGRAM_BATCH', 1)
+    assert t_frequency_list(ws, what='upos', ngram=2) == whole
+    held = [c for b in sent for c in b['where'] if c[0] == 'in']
+    assert held and all(len(c[2]) == 1 for c in held), held
