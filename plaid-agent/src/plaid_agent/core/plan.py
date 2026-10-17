@@ -16,6 +16,7 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 """
 
 import base64
+import copy
 import json
 import logging
 import unicodedata
@@ -1469,6 +1470,16 @@ def waiting_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
             'documents': [d for d in plan.get('documents') or () if isinstance(d, dict)]}
 
 
+def stale_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
+    """The plan of the last card when approval refused it as out of date
+    (status ``stale``), in :func:`waiting_plan`'s shape, or None. resume_plan
+    asks its requests again on the data as it is now (H17-ASSIST-9)."""
+    cards = [d for d in display or () if isinstance(d, dict) and isinstance(d.get('plan'), dict)]
+    if not cards or cards[-1].get('status') != 'stale':
+        return None
+    return waiting_plan([{**cards[-1], 'status': None, 'interrupted': None}])
+
+
 def waiting_phrase(waiting: Dict[str, Any], the: str = 'the') -> str:
     """"the plan of 114 changes (its summary) from your earlier message"."""
     n = waiting['count']
@@ -1555,6 +1566,8 @@ def resume_plan(ws) -> str:
     if getattr(ws, 'resumed', False) and ws.ops:
         raise ToolError('This turn already resumed the plan from your earlier message. plan_status lists it.')
     if not waiting:
+        if getattr(ws, 'stale', None):
+            return _ask_stale_again(ws, ws.stale)
         raise ToolError('No plan from an earlier message is waiting on its card.')
     if ws.ops:
         n = held_changes(ws)
@@ -1570,6 +1583,34 @@ def resume_plan(ws) -> str:
     n = held_changes(ws)
     return (f'Took over {n} change{"s" if n != 1 else ""} from {waiting_phrase(waiting)}. This turn\'s plan now '
             'holds them: what you stage next is added, and drop_planned takes any out. Nothing is written until '
+            'the user approves.')
+
+
+def _ask_stale_again(ws, stale: Dict[str, Any]) -> str:
+    """resume_plan on a plan approval refused as out of date: its requests
+    asked again, in order, over the documents as they are now, so the plan is
+    what asking them from scratch makes today (ruled by Luke 2026-10-17). Its
+    pins are this turn's, not the old plan's."""
+    from .tools import ToolError
+    if ws.ops:
+        n = held_changes(ws)
+        raise ToolError(f'This turn has already planned {n} change{"s" if n != 1 else ""}, and resume_plan only '
+                        'starts a plan. discard_plan, call resume_plan, then stage them again.')
+    load = getattr(ws, 'load_plan_state', None)
+    state = load(stale['id']) if load is not None and stale.get('id') else None
+    requests = state.get('requests') if isinstance(state, dict) else None
+    if not isinstance(requests, list) or not requests or not hasattr(ws, 'replay'):
+        raise ToolError('Resume is not available for that plan. Stage its changes again.')
+    ws.refuse_read_only()
+    ws.empty_plan = copy.deepcopy(ws.snapshot())
+    # Where each was asked is read again as it is asked now.
+    ws.replay([{k: v for k, v in r.items() if k != 'where'} for r in requests if isinstance(r, dict)])
+    ws.reported_waiting = True
+    n = held_changes(ws)
+    phrase = waiting_phrase(stale).replace('from your earlier message', 'that was out of date')
+    return (f'Asked the requests of {phrase} again, on the documents as they are now. This turn\'s plan now '
+            f'holds {n} change{"s" if n != 1 else ""}: tell the user what changed from the earlier card, if '
+            'anything. What you stage next is added, and drop_planned takes any out. Nothing is written until '
             'the user approves.')
 
 

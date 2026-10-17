@@ -22,7 +22,8 @@ _DOC = {'type': 'string', 'description': 'Document id or exact name (see project
 RESUME_PLAN = fn(
     'resume_plan',
     'Copy the plan still waiting on its card from an earlier message into this turn\'s plan, so you can add to it '
-    'and drop from it and the card holds both. Call it before staging anything.', {}, [])
+    'and drop from it and the card holds both. After an approval refused as out of date, it asks that plan\'s '
+    'requests again on the documents as they are now. Call it before staging anything.', {}, [])
 
 
 def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = False) -> Dict[str, Dict[str, Any]]:
