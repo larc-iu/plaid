@@ -29,6 +29,7 @@ import {
   SelectItem,
 } from '@ui/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readCldfDataset } from '../../import/cldf/readDataset';
 import {
@@ -54,7 +55,10 @@ const OFF = '__off__';
 
 export const ImportCldfProject = () => {
   useDocumentTitle('Import CLDF');
-  const { client } = useAuth();
+  const { client: session } = useAuth();
+  // The run's own client, so a write made elsewhere in the tab meanwhile is
+  // neither stamped with its document version nor filed under its operation.
+  const client = useClientApart(session);
   const [dataset, setDataset] = useState(null);
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');

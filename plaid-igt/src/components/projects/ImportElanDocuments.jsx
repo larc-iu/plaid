@@ -39,6 +39,7 @@ import {
   SelectItem,
 } from '@ui/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';
 import { priorImports } from '../../import/resume';
@@ -73,7 +74,10 @@ const NEW_FIELD = '__new__';
 
 export const ImportElanDocuments = () => {
   useDocumentTitle('Add ELAN documents');
-  const { client } = useAuth();
+  const { client: session } = useAuth();
+  // The run's own client, so a write made elsewhere in the tab meanwhile is
+  // neither stamped with its document version nor filed under its operation.
+  const client = useClientApart(session);
   const { projectId } = useParams();
   const fileInputRef = useRef(null);
   const [project, setProject] = useState(null);

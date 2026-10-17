@@ -28,6 +28,7 @@ import {
 } from './ImportPanels';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
@@ -85,7 +86,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const fmt = FORMATS[format];
   const flextext = format === 'flextext';
   useDocumentTitle(fmt.pageTitle);
-  const { client, user } = useAuth();
+  const { client: session, user } = useAuth();
+  // The run's own client, so a write made elsewhere in the tab meanwhile is
+  // neither stamped with its document version nor filed under its operation.
+  const client = useClientApart(session);
   // {sourceName, fileCount, ir, build, analysisWssAvailable}
   const [parsed, setParsed] = useState(null);
   const [projectName, setProjectName] = useState('');

@@ -13,6 +13,8 @@ vi.mock('@ui/hooks/useManagedProject.js', () => ({
 
 const auth = vi.hoisted(() => ({ value: null }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth.value }));
+// The wizard's own client is the stand-in itself.
+vi.mock('@/hooks/useClientApart', () => ({ useClientApart: (client) => client }));
 
 const { ProjectSetup } = await import('./ProjectSetup.jsx');
 const { ImportElanDocuments } = await import('./ImportElanDocuments.jsx');

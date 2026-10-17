@@ -9,6 +9,7 @@ import { MergePanel } from './MergePanel.jsx';
 import { ReanalyzePanel } from './ReanalyzePanel.jsx';
 import { RespellPanel } from './RespellPanel.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { useClientApart } from '@/hooks/useClientApart';
 
 // The Bulk Edit workbench: pick an operation, describe the change, preview
 // every match as a checkbox row (grouped by document, each row a link into
@@ -35,8 +36,11 @@ const OP_IDS = OPERATIONS.map((o) => o.id);
 // the left, the chosen activity (with its own title and explainer) on the
 // right. The activity rides in `?op=` next to `?tab=bulk`, so a reload or a
 // shared link lands on the same one.
-export const ProjectBulkEdit = ({ project, projectId, client }) => {
+export const ProjectBulkEdit = ({ project, projectId, client: session }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
+  // Bulk Edit's own client: a run sends each document at the version its
+  // preview read (strict mode), which no other write of the tab may carry.
+  const client = useClientApart(session);
   const [op, setOp, opHref] = useTabParam(OP_IDS, 'respell', { param: 'op' });
 
   if (!layerInfo.primaryTokenLayer) {

@@ -21,6 +21,7 @@ import {
 } from './ImportPanels';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
@@ -35,7 +36,10 @@ import { NATIVE_IMPORT_KIND } from '@/domain/importFinish';
 
 export const ImportNativeProject = () => {
   useDocumentTitle('Import archive');
-  const { client } = useAuth();
+  const { client: session } = useAuth();
+  // The run's own client, so a write made elsewhere in the tab meanwhile is
+  // neither stamped with its document version nor filed under its operation.
+  const client = useClientApart(session);
   const [archive, setArchive] = useState(null);
   const [projectName, setProjectName] = useState('');
 

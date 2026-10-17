@@ -32,6 +32,7 @@ import {
 } from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
 import { readImportState } from '../../domain/igtConfig';
@@ -52,7 +53,10 @@ import { countOf } from '@ui/lib/plural.js';
 
 export const ImportElanProject = () => {
   useDocumentTitle('Import ELAN');
-  const { client } = useAuth();
+  const { client: session } = useAuth();
+  // The run's own client, so a write made elsewhere in the tab meanwhile is
+  // neither stamped with its document version nor filed under its operation.
+  const client = useClientApart(session);
   const fileInputRef = useRef(null);
   const [projectName, setProjectName] = useState('');
   // Every warning the run raises, in order, kept on screen while it happens
