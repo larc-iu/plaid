@@ -7,8 +7,10 @@
 // Needs the plaid-agent Python env: PLAID_AGENT_PYTHON, else the env's python
 // under the usual mamba roots (the lookup bb uses). `agentUnavailable()` says
 // why it cannot run, for a skip. The service is pointed at PLAID_CORE_URL
-// (default :8085), the variable fixtureProject.js reads, so a run against a
-// private core has to set it.
+// (default :8085), the variable fixtureProject.js reads. The private-core
+// runner (its shim reads FINAL_CORE) reroutes only node's fetch, never a
+// child process, so under it the service refuses to start unless
+// PLAID_CORE_URL names a core other than :8085.
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -18,7 +20,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
+const DEV_CORE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):8085(\/|$)/;
+
+// The core the service dials. Under the private-core runner a missing or
+// :8085 PLAID_CORE_URL would send it to the dev core, so that throws.
+function coreUrl() {
+  const url = process.env.PLAID_CORE_URL;
+  if (process.env.FINAL_CORE && (!url || DEV_CORE.test(url)))
+    throw new Error(
+      `FINAL_CORE is ${process.env.FINAL_CORE} but PLAID_CORE_URL is ${url || 'unset'}: ` +
+        'set PLAID_CORE_URL to the private core so the assistant does not dial :8085',
+    );
+  return url || 'http://localhost:8085';
+}
 const PYTHONPATH = [
   path.join(REPO, 'plaid-agent', 'src'),
   path.join(REPO, 'plaid-client-py', 'src'),
@@ -119,6 +133,7 @@ function startFakeModel(script = []) {
 // `stop()`, which ends the process and the model, and `log()`, the service's
 // output so far, for a failure message.
 export async function startIgtAssistant({ token, projectId, serviceId, script = [] }) {
+  const core = coreUrl();
   const { server, port } = await startFakeModel(script);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plaid-e2e-agent-'));
   fs.writeFileSync(path.join(dir, '.token'), token);
@@ -130,7 +145,7 @@ export async function startIgtAssistant({ token, projectId, serviceId, script = 
       'plaid_agent.igt.service',
       projectId,
       '--url',
-      CORE_URL,
+      core,
       '--model',
       'openai/e2e-fake',
       '--api-base',
