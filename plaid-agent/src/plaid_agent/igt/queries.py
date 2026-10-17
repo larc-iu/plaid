@@ -105,6 +105,19 @@ def _spread_fetch(c: Corpus, where: List[Any], find: List[str], doc_var: str, li
     return rows, picked.per_doc, picked.documents
 
 
+def ignored_values(c: Corpus) -> List[str]:
+    """The word forms of the project the ignored-tokens rule leaves out (a
+    punctuation token ud made, an imported `,`), which igt reads as text."""
+    return sorted({v for v, _n in c.group([c.word('?pt')], ['?pt.value']) if v and c.ignored(v)})
+
+
+def shown_word(c: Corpus, var: str, skip: List[str]) -> List[Any]:
+    """The clause that holds ``var`` to a word igt shows: none of ``skip``
+    (``ignored_values``), so a search and a sequence read the text as where
+    the punctuation has no token (REV8-PUNCT-4)."""
+    return [['not', c.word(var, value=skip)]] if skip else []
+
+
 def _spread_note(shown: List[str], docs: int) -> List[str]:
     if docs > RENDER_DOC_BUDGET:
         return [f'  (hits in {docs} documents; a few from each of {RENDER_DOC_BUDGET} of them are shown. '
@@ -120,7 +133,7 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
     c = ws.corpus
     spec = rx(pattern, regex=regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
-        where = [c.word('?t', value=spec)]
+        where = [c.word('?t', value=spec)] + shown_word(c, '?t', ignored_values(c))
         total = c.word_count(where)
         rows, per_doc, docs = _spread_fetch(c, where, ['?t'], '?t', limit, 2)
         return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None
@@ -1099,9 +1112,6 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
 
 # --- sequence_search ----------------------------------------------------------------
 
-_PUNCT_FILLER = ['rep', 0, 2, ['token', {'value': {'regex': r'^[\p{P}\p{S}]+$'}}]]
-
-
 def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, regex: bool, limit: int):
     """[(doc, sentence, [matched word ids])] for the first match in each of
     the shown sentences, and the number of matching sentences."""
@@ -1118,12 +1128,16 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
         extra += more
         shared += both
         token_cons.append(cons)
+    # A word igt leaves out (punctuation with a token of its own) is never
+    # an element, and between two adjacent ones it is skipped, as text with
+    # no token (REV8-PUNCT-4).
+    skip = ignored_values(c)
     where: List[Any] = []
     if adjacent:
         seq: List[Any] = ['seq', {'layer': c.W}]
         for i, cons in enumerate(token_cons):
-            if i:
-                seq.append(_PUNCT_FILLER)
+            if i and skip:
+                seq.append(['rep', 0, PUNCT_RUN, ['token', {'value': skip}]])
             seq.append(['token', cons, 'as', wvars[i]])
         where.append(seq)
     else:
@@ -1132,6 +1146,8 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
             if i:
                 where.append(['precedes*', wvars[i - 1], wvars[i]])
     where += extra
+    for v in wvars:
+        where += shown_word(c, v, skip)
     where += [c.sent('?sent')] + [['within', v, '?sent'] for v in wvars]
     total = c.count(where, ['?sent'])
     order = [['?sent.doc'], ['?sent.begin']] + [[f'{v}.begin'] for v in wvars]
