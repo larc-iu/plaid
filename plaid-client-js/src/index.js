@@ -5111,10 +5111,16 @@ function constraintMethods(client, kind) {
      * data. Writes nothing.
      * @param {string} layerId - The layer ID
      * @param {LayerConstraint[]} constraints - The list to check
+     * @param {{limit?: number}} [options] - `limit`: how many violations to list (default 100)
      * @returns {Promise<{violations: ConstraintViolation[], violationCount: number}>}
      */
-    checkConstraints: (layerId, constraints) =>
-      client._request("POST", `${base(layerId)}/check`, { body: { constraints } }),
+    checkConstraints: (layerId, constraints, options) =>
+      client._request("POST", `${base(layerId)}/check`, {
+        body: {
+          constraints,
+          ...(options?.limit != null ? { limit: options.limit } : {}),
+        },
+      }),
     /**
      * Apply the remedies of the given constraints' remediable types
      * (coextensive, single-span, single-link, same-ancestor) to every

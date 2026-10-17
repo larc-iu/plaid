@@ -1703,7 +1703,7 @@ client.relation_layers.set_constraints(deps_layer_id, "ud", [
 ])
 ----
 
-`check_constraints` lists what a list would break, without writing anything.
+`check_constraints` lists what a list would break, without writing anything: the first 100 violations, or as many as `limit` asks, and `violation-count` counts them all.
 `repair_constraints` fixes what can be fixed and lists the rest, and a writer may run it on a single document by passing `document`.
 An app uses this when a writer opens a document whose layer does not hold its rules yet.
 

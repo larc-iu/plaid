@@ -1186,12 +1186,14 @@
                 (array-map) vs)))
 
 (defn violation-body
-  "`{:error :violations :violation-count}` for the violations `vs`."
-  [tx vs]
-  (let [vs (vec (dedupe-violations vs))]
-    {:error (phrase tx (first vs))
-     :violations (mapv wire (take max-listed vs))
-     :violation-count (count vs)}))
+  "`{:error :violations :violation-count}` for the violations `vs`, the first
+  `limit` of them listed (`max-listed` when not told)."
+  ([tx vs] (violation-body tx vs max-listed))
+  ([tx vs limit]
+   (let [vs (vec (dedupe-violations vs))]
+     {:error (phrase tx (first vs))
+      :violations (mapv wire (take limit vs))
+      :violation-count (count vs)})))
 
 (defn refusal
   "The ex-info a refused write throws: 422, with the violations in its data

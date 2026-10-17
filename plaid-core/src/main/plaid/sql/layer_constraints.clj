@@ -96,15 +96,17 @@
 
 (defn check-constraints
   "The violations `constraints` would meet in the layer's stored data, as
-  `{:violations :violation-count}`. Writes nothing."
-  [db kind id constraints]
-  (let [row (layer-row! db kind id)
-        cs (lc/validate-list db kind row constraints)
-        layer (lc/layer-record-by-id db kind id)
-        vs (lc/check-layer db layer nil cs)]
-    (if (seq vs)
-      (select-keys (lc/violation-body db vs) [:violations :violation-count])
-      {:violations [] :violation-count 0})))
+  `{:violations :violation-count}`, the first `limit` listed (`lc/max-listed`
+  when not told). Writes nothing."
+  ([db kind id constraints] (check-constraints db kind id constraints nil))
+  ([db kind id constraints limit]
+   (let [row (layer-row! db kind id)
+         cs (lc/validate-list db kind row constraints)
+         layer (lc/layer-record-by-id db kind id)
+         vs (lc/check-layer db layer nil cs)]
+     (if (seq vs)
+       (select-keys (lc/violation-body db vs (or limit lc/max-listed)) [:violations :violation-count])
+       {:violations [] :violation-count 0}))))
 
 (def refused-values-shown
   "How many refused values `refused-values` lists when not told."

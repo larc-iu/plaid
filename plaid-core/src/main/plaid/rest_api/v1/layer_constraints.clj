@@ -75,12 +75,14 @@
      ["/check"
       {:conflicting true
        :post {:summary (str "List the violations the given constraints would meet in this layer's stored data. "
-                            "Writes nothing. Body {constraints}. Answers {violations, violation-count}.")
+                            "Writes nothing. Body {constraints, limit?}. Answers {violations, violation-count}, "
+                            "the first `limit` violations listed (default 100).")
               :middleware maintainer
-              :parameters {:body [:map [:constraints constraint-list]]}
-              :handler (fn [{{{:keys [constraints]} :body} :parameters db :db :as request}]
+              :parameters {:body [:map [:constraints constraint-list]
+                                  [:limit {:optional true} [:int {:min 1}]]]}
+              :handler (fn [{{{:keys [constraints limit]} :body} :parameters db :db :as request}]
                          (try
-                           {:status 200 :body (slc/check-constraints db kind (id-of request) constraints)}
+                           {:status 200 :body (slc/check-constraints db kind (id-of request) constraints limit)}
                            (catch clojure.lang.ExceptionInfo e
                              (if-let [code (:code (ex-data e))]
                                {:status code :body {:error (ex-message e)}}

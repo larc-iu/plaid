@@ -948,6 +948,79 @@ describe('units holding more than one annotation', () => {
     expect(bigClient.documents.get).toHaveBeenCalledTimes(1);
   });
 
+  // REV8-APPS-2: core lists 100 units unless asked for more, so past 100 the
+  // ignored ones it did not list were counted (125 units, 57 reachable, 72
+  // shown). Every unit is listed and read then.
+  it('counts no unit on an ignored token past the 100 core lists', async () => {
+    const body = Array.from({ length: 75 }, (_, i) => `w${i} .`).join(' ');
+    const words = [];
+    let at = 0;
+    for (const piece of body.split(' ')) {
+      words.push({ id: `w-${words.length}`, begin: at, end: at + piece.length });
+      at += piece.length + 1;
+    }
+    const big = {
+      id: 'd-1',
+      name: 'Text 1',
+      textLayers: [
+        {
+          id: 'tl-1',
+          config: { plaid: { role: 'baseline' } },
+          text: { body },
+          tokenLayers: [
+            {
+              id: 'sl',
+              config: { plaid: { role: 'sentence' } },
+              tokens: [{ id: 's-1', begin: 0, end: body.length }],
+            },
+            {
+              id: 'wl-1',
+              config: {
+                plaid: { role: 'word' },
+                igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } },
+              },
+              tokens: words,
+              spanLayers: [
+                {
+                  id: 'g',
+                  spans: words.flatMap((w) => [
+                    { id: `${w.id}-a`, value: 'a', tokens: [w.id] },
+                    { id: `${w.id}-b`, value: 'b', tokens: [w.id] },
+                  ]),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    // Punctuation last, so the 100 listed hold 75 words and 25 periods.
+    const units = [...words.filter((_, i) => i % 2 === 0), ...words.filter((_, i) => i % 2)];
+    const bigClient = {
+      documents: { get: vi.fn(async () => structuredClone(big)) },
+      spanLayers: {
+        checkConstraints: vi.fn(async (_id, _rules, options) => ({
+          violations: units.slice(0, options?.limit ?? 100).map((w) => ({
+            constraint: 'single-span',
+            document: 'd-1',
+            at: w.id,
+            ids: [`${w.id}-a`, `${w.id}-b`],
+          })),
+          violationCount: units.length,
+        })),
+      },
+    };
+    const { findDoubles } = await import('@/domain/doubles');
+    const out = await findDoubles(bigClient, 'g');
+    expect(out.count).toBe(75);
+    expect(out.hidden).toBe(75);
+    expect(bigClient.spanLayers.checkConstraints).toHaveBeenLastCalledWith(
+      'g',
+      [{ type: 'single-span' }],
+      { limit: 150 },
+    );
+  });
+
   // A unit over several words whose first is ignored is shown at the first
   // word that is not.
   it('lists a unit over an ignored word and another at the other word', async () => {

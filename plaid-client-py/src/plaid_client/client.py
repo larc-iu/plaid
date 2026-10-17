@@ -135,16 +135,19 @@ class _ConstraintMethods:
         return self._request('DELETE', f'{self._constraints_path(layer_id)}/{namespace}',
                              audit_message=audit_message, **kwargs)
 
-    def check_constraints(self, layer_id: str, constraints: list) -> Any:
+    def check_constraints(self, layer_id: str, constraints: list, limit: int = None) -> Any:
         """The violations the given constraints would meet in this layer's
         stored data, as ``{'violations', 'violation_count'}``. Writes nothing.
 
         Args:
             layer_id: The layer ID
             constraints: The list to check
+            limit: How many violations to list (default 100)
         """
-        return self._request('POST', f'{self._constraints_path(layer_id)}/check',
-                             body={'constraints': constraints})
+        body = {'constraints': constraints}
+        if limit is not None:
+            body['limit'] = limit
+        return self._request('POST', f'{self._constraints_path(layer_id)}/check', body=body)
 
     def repair_constraints(self, layer_id: str, constraints: list, audit_message=None,
                            document: str = None) -> Any:

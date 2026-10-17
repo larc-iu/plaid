@@ -67,6 +67,13 @@ def test_check_and_repair_post_the_list(bundle, kind):
     assert repair['body']['constraints'][0]['token-layer'] == 'S'
 
 
+@pytest.mark.parametrize('bundle', BUNDLES)
+def test_check_sends_a_limit_when_given_one(bundle):
+    [check] = _queued(lambda b: getattr(b, bundle).check_constraints(
+        'L1', [{'type': 'single-span'}], limit=250))
+    assert check['body'] == {'constraints': [{'type': 'single-span'}], 'limit': 250}
+
+
 def test_values_are_never_recased():
     [op] = _queued(lambda b: b.span_layers.set_constraints(
         'L1', 'igt', [{'type': 'value-set', 'values': ['snake_case', '1SG']}]))

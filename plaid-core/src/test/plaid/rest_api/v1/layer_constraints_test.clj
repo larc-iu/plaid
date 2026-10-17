@@ -105,7 +105,17 @@
     (let [r (put admin-request "span" lemma "igt" {:constraints [{:type "value-set" :values ["x" "y" "z"]}]})]
       (assert-status 422 r)
       (is (= 120 (-> r :body :violation-count)))
-      (is (= 100 (count (-> r :body :violations)))))))
+      (is (= 100 (count (-> r :body :violations)))))
+    (testing "check lists as many as asked, the count the same"
+      (let [check (fn [body] (call admin-request :post (str "/api/v1/span-layers/" lemma "/constraints/check")
+                                   (merge {:constraints [{:type "value-set" :values ["x" "y" "z"]}]} body)))
+            all (check {:limit 120})
+            few (check {:limit 3})]
+        (assert-status 200 all)
+        (is (= [120 120] [(-> all :body :violation-count) (count (-> all :body :violations))]))
+        (is (= [120 3] [(-> few :body :violation-count) (count (-> few :body :violations))]))
+        (is (= 100 (count (-> (check {}) :body :violations))))
+        (assert-status 400 (check {:limit 0}))))))
 
 (deftest compare-and-set-and-delete
   (let [{:keys [lemma]} (setup!)

@@ -79,7 +79,14 @@ const rowOf = (v, raw, layerId) => {
  * Every document holding a unit core lists is read once.
  */
 export const findDoubles = async (client, layerId, { limit = SHOWN_DOUBLES } = {}) => {
-  const answer = await client.spanLayers.checkConstraints(layerId, [{ type: 'single-span' }]);
+  const rules = [{ type: 'single-span' }];
+  let answer = await client.spanLayers.checkConstraints(layerId, rules);
+  // Core lists 100 units unless asked for more. Which of the rest are on
+  // ignored tokens is known only from their tokens, so past 100 every unit
+  // is listed and read (REV8-APPS-2: 125 units, 57 reachable, counted 72).
+  if (countOf(answer) > (answer?.violations?.length ?? 0)) {
+    answer = await client.spanLayers.checkConstraints(layerId, rules, { limit: countOf(answer) });
+  }
   const found = (answer?.violations || []).filter(
     (v) => v.constraint === 'single-span' && v.document && v.at,
   );
@@ -103,7 +110,7 @@ export const findDoubles = async (client, layerId, { limit = SHOWN_DOUBLES } = {
       (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0) ||
       (a.begin ?? 0) - (b.begin ?? 0),
   );
-  // Core lists at most 100 units: those past it are counted as it counts
-  // them, since which tokens they are on is not known here.
+  // Units written between the two asks are past the second list: counted
+  // as core counts them.
   return { count: count + Math.max(0, countOf(answer) - found.length), hidden, rows };
 };

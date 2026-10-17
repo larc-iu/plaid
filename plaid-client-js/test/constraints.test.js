@@ -57,6 +57,13 @@ for (const [bundle, kind] of Object.entries(BUNDLES)) {
     assert.ok(repair.path.startsWith(`/api/v1/${kind}/L1/constraints/repair`));
     assert.deepEqual(repair.body.constraints[0]["token-layer"], "S");
   });
+
+  test(`${bundle}.checkConstraints sends a limit when given one`, () => {
+    const [check] = queued((b) => {
+      b[bundle].checkConstraints("L1", [{ type: "single-span" }], { limit: 250 });
+    });
+    assert.deepEqual(check.body, { constraints: [{ type: "single-span" }], limit: 250 });
+  });
 }
 
 test("values are never re-cased", () => {
