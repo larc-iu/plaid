@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildRawDoc, resetIds, makeIgtDoc } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
+import { followedForms } from './soleMorphemeForms.js';
 
 beforeEach(() => resetIds());
 
@@ -63,5 +64,49 @@ describe('a Baseline save respells a sole morpheme spelled as its word', () => {
     expect(updates.map((w) => w.args[0])).toEqual([
       [{ id: 'm-2', metadata: [{ op: 'set', path: ['form'], value: 'chat' }] }],
     ]);
+  });
+
+  it('leaves the form when a space typed in the word leaves it one word with whitespace', async () => {
+    const server = segmentServer(RAW());
+    const doc = makeIgtDoc({ raw: structuredClone(server.stored), client: server.client });
+    // a space inside "cat": "the c at sat dog"
+    const gaps = [{ start: 5, end: 5, value: ' ' }];
+    expect(
+      await doc.editBaselineText({ base: 'the cat sat dog', digest: server.digest, gaps }),
+    ).toBe(true);
+    while (doc.isSaving) await new Promise((r) => setTimeout(r, 0));
+    expect(server.body).toBe('the c at sat dog');
+    const w2 = server.stored.textLayers[0].tokenLayers
+      .find((l) => l.id === 'wordL')
+      .tokens.find((t) => t.id === 'w-2');
+    expect([w2.begin, w2.end]).toEqual([4, 8]);
+    expect(morph(server.stored, 'm-2').metadata.form).toBe('cat');
+    expect(morph(doc._raw, 'm-2').metadata.form).toBe('cat');
+    const updates = server.sent
+      .flatMap((r) => (r.kind === 'batch' ? r.ops : [r]))
+      .filter((w) => w.kind === 'tokens.bulkUpdate');
+    expect(updates).toEqual([]);
+  });
+});
+
+describe('followedForms', () => {
+  const info = (body) => ({
+    primaryTokenLayer: { tokens: [{ id: 'w', begin: 0, end: [...body].length }] },
+    morphemeTokenLayer: {
+      tokens: [{ id: 'm', begin: 0, end: [...body].length, metadata: { form: 'pumpkin' } }],
+    },
+  });
+  const before = new Map([['w', { morphemeId: 'm', form: 'pumpkin' }]]);
+
+  it('follows a word respelled without whitespace', () => {
+    expect(followedForms(before, info('pumpkins'), 'pumpkins')).toEqual([
+      { id: 'm', form: 'pumpkins' },
+    ]);
+  });
+
+  it('writes nothing when the new spelling holds whitespace', () => {
+    for (const body of ['pum pkin', 'pum\tpkin', 'pum\u00a0pkin', 'pum\u3000pkin', 'pum\npkin']) {
+      expect(followedForms(before, info(body), body)).toEqual([]);
+    }
   });
 });

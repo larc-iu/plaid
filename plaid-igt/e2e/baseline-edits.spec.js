@@ -190,7 +190,7 @@ test('letters typed at the end of a word join it, and a word typed after a space
   const s = await stored(doc);
   expect(s.words).toContain('unos');
   expect(s.words).not.toContain('tres cuatro');
-  expect(s.morphemes).toEqual(expect.arrayContaining(['dos:DOS', 'tres:TRES', 'uno:UNO']));
+  expect(s.morphemes).toEqual(expect.arrayContaining(['dos:DOS', 'tres:TRES', 'unos:UNO']));
   await showsStored(page, doc);
 });
 

@@ -3,6 +3,8 @@
 // one-morpheme word was given as itself is the word, not a value of its own.
 // A morpheme with no `form` key reads the word's text already and needs
 // nothing. Every igt morpheme has its word's extent (mutations/morphemes.js).
+// A new spelling that holds whitespace is not followed: a morpheme form never
+// holds a space, so the form keeps its old spelling.
 
 import { cpSlice } from '@larc-iu/plaid-client';
 
@@ -39,7 +41,7 @@ export function soleForms(info, body) {
  * The form writes that make each of `before` (`soleForms` of the document as
  * it was) follow its word on `info` and `body`, the document after the save:
  * `{ id, form }` for each word that reads otherwise now and still has that
- * one morpheme, spelled as before.
+ * one morpheme, spelled as before, and whose new text holds no whitespace.
  */
 export function followedForms(before, info, body) {
   if (!before?.size) return [];
@@ -49,7 +51,7 @@ export function followedForms(before, info, body) {
     const was = before.get(w.id);
     if (!was) continue;
     const text = cpSlice(body, w.begin, w.end);
-    if (text === was.form || text === '') continue;
+    if (text === was.form || text === '' || /\s/u.test(text)) continue;
     const ms = by.get(`${w.begin}:${w.end}`);
     if (ms?.length !== 1 || ms[0].id !== was.morphemeId || ms[0].metadata?.form !== was.form) {
       continue;
