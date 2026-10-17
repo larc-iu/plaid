@@ -22,6 +22,7 @@ from ..core import rules, work
 from ..core.bidi import qname, qrx, qv
 from ..core.history import doc_label
 from ..core.keep import is_keep
+from ..core.project import word_ref
 from ..core.trace import plural
 from .plan import KIND, SCOPES, entity_of
 from .project import FEATURES
@@ -228,7 +229,7 @@ def _replace(ws, op, found, taken) -> Dict[str, Any]:
     n = max(0, found['count'] - len(taken))
     accepted = found['counted']
     card = copy.deepcopy(found.get('card'))
-    for doc_id, _s, w, field, span in taken:
+    for doc_id, sentence, w, field, span in taken:
         meta = w.relation_metadata if field == 'deprel' else (span.metadata if span is not None else None)
         if work.protected(meta):
             accepted -= 1
@@ -236,6 +237,11 @@ def _replace(ws, op, found, taken) -> Dict[str, Any]:
             continue
         old = (w.deprel if field == 'deprel' else (span.value if span is not None else '')) or ''
         _less(card, doc_id, old, rep(old))
+        # Nor is it in the sample, which shows what approval writes.
+        line = f'{op["field"]} {qv(old)} → {qv(rep(old))}'
+        card['sample'] = [r for r in card.get('sample') or []
+                          if not ((r.get('where') or {}).get('document_id') == doc_id
+                                  and (r.get('where') or {}).get('ref') == word_ref(sentence, w) and r.get('label') == line)]
     out = {**op, FOUND: found, 'count': n, work.COUNTED: max(0, accepted)}
     if card is not None:
         card['total'] = n

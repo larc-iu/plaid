@@ -21,6 +21,7 @@ from ..core.bidi import qname, qrx, qv
 from ..core.limits import SAMPLE_LINES
 from ..core.provenance import unmark
 from ..core.history import doc_label
+from ..core.project import word_ref
 from ..core.plan import MANY, by_document
 from ..core.replace import replacer
 from .corpus import Corpus, rx
@@ -202,7 +203,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
           # document leaves it standing.
           'matched': matched(replace_ops(found, field)),
           CARD: _card(field, pattern, replacement, bool(regex), bool(whole), bool(case_sensitive),
-                      found, names)}
+                      found, names, lambda ch: _sample_row(ws, field, ch))}
     full = rules.too_many(KIND, ws.ops, len(found), docs)
     if full:
         raise ToolError(full)
@@ -232,18 +233,18 @@ CARD = 'card'
 
 
 def _card(field: str, pattern: str, replacement: str, regex: bool, whole: bool, case_sensitive: bool,
-          found: List[Dict[str, Any]], names: Dict[str, str]) -> Dict[str, Any]:
+          found: List[Dict[str, Any]], names: Dict[str, str],
+          describe: Callable[[Dict[str, Any]], Dict[str, Any]]) -> Dict[str, Any]:
     """The card row's ``rule``, as igt's corpus-wide rules have it
     (:func:`core.rules.card`): the total, the count in each document, how it
-    matches and every distinct change it makes. No sample: a match read from
-    the query has no word reference to place it at."""
+    matches, every distinct change it makes, and a sample, those replacing a
+    person's work first, each row made by ``describe``."""
     kind = 'set_deprel' if field == 'deprel' else 'set_span'
     out = rules.card({'tool': 'replace_in_field', 'counts': {kind: len(found)},
                       'args': {'field': field, 'pattern': pattern, 'replacement': replacement,
                                'regex': regex, 'whole': whole, 'case_sensitive': case_sensitive}},
                      found, lambda ch: ch.get('document_id'), lambda d: names.get(d, d),
-                     lambda ch: {}, lambda ch: 0)
-    out['sample'] = []
+                     describe, lambda ch: int(work.protected(ch.get('metadata'))))
     out['mode'] = rules.match_mode(pattern, regex, whole, case_sensitive)
     rows, more = rules.transitions(found, lambda ch: (ch['old'], ch['new']),
                                    rules.surprises(pattern, regex, whole, case_sensitive))
@@ -251,6 +252,25 @@ def _card(field: str, pattern: str, replacement: str, regex: bool, whole: bool, 
     out[rules.TRANSITIONS_MORE] = more
     out[rules.UNIT] = ['dependency', 'dependencies'] if field == 'deprel' else ['value', 'values']
     return out
+
+
+def _sample_row(ws: Workspace, field: str, ch: Dict[str, Any]) -> Dict[str, Any]:
+    """The card row of one change a replacement found, placed at its word as
+    any change's row is. The query names the value, not the word's place, so
+    the document is read for it: only a sample's, at most
+    :data:`SAMPLE_LINES` documents."""
+    from .changes import describe_change
+    [op] = replace_ops([ch], field)
+    did = ch.get('document_id')
+    if did:
+        doc = ws.doc(did)
+        for sentence in doc.sentences:
+            w = next((w for w in sentence.words
+                      if (w.relation_id == ch['id'] if field == 'deprel' else w.id == ch.get('token_id'))), None)
+            if w is not None:
+                op['ref'] = word_ref(sentence, w)
+                break
+    return describe_change(ws, op)
 
 
 def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],

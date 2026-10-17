@@ -243,3 +243,32 @@ def test_umr_another_attribute_on_a_matched_node_leaves_the_plan_standing():
     [attrs] = [w['metadata'] for b in client.batches for _k, a in b for w in (a if isinstance(a, list) else [])
                if isinstance(w, dict) and w.get('id') == 'mc-b']
     assert 'polarity' in str(attrs) and 'state' in str(attrs) and 'performance' not in str(attrs)
+
+
+# --- ud: a replacement's sample ---------------------------------------------------------
+
+def _refs(rule):
+    return [(c['where']['document_id'], c['where'].get('ref'), c['label']) for c in rule['sample']]
+
+
+def test_ud_a_replacement_row_has_a_sample_placed_at_its_words():
+    """Its rows came from the query, which names no word's place, so the
+    row had none (FX-I-RULES judgment call 7): the sample's documents are
+    read to place each at its word, as a confirm's are."""
+    from test_scope_reach import UD1, _ud_scope_plan
+    client, ws, _op = _ud_scope_plan(UD1 + [('sp-z1', 'mar', 'uw-5', 'ud2')])
+    rule = next(c['rule'] for c in ws.plan_payload()['changes'] if c.get('rule'))
+    assert rule['total'] == 3
+    assert _refs(rule) == [('ud1', 's1.w1', 'lemma "mar" → "mare"'), ('ud1', 's1.w4', 'lemma "mar" → "mare"'),
+                           ('ud2', 's2.w1', 'lemma "mar" → "mare"')], _refs(rule)
+    assert all(c['where']['kind'] == 'token' and c['where'].get('surface') for c in rule['sample'])
+
+
+def test_ud_a_value_the_plan_keeps_leaves_the_replacements_sample():
+    from test_scope_reach import UD1, _ud_scope_plan
+    client, ws, _op = _ud_scope_plan(UD1 + [('sp-z1', 'mar', 'uw-5', 'ud2')])
+    out = ud_call(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'lemma', 'value': 'mar'})
+    assert out.startswith('Kept'), out
+    rule = next(c['rule'] for c in ws.plan_payload()['changes'] if c.get('rule'))
+    assert rule['total'] == 2
+    assert [r[:2] for r in _refs(rule)] == [('ud1', 's1.w1'), ('ud2', 's2.w1')], _refs(rule)
