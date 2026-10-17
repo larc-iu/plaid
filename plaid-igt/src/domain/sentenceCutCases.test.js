@@ -124,38 +124,4 @@ describe('the sentence cut of Tokenize new text', () => {
     expect(problems.slice(0, 5)).toEqual([]);
     expect(checked).toBeGreaterThan(500);
   });
-
-  // REV8-PUNCT-1: a word made only of punctuation that a save types over is
-  // gone, and the text is read as with no token there: where every gap of a
-  // save inserts or types over exactly such a word, a letter it typed is
-  // free for a new word exactly where core leaves it in no word.
-  it('frees what is typed over a punctuation word, as core deletes it', () => {
-    const problems = [];
-    let checked = 0;
-    for (const c of cases) {
-      const chars = [...c.base];
-      const punct = (b, e) => isPunctOnly(chars.slice(b, e), c.ignored);
-      const over = (g) => c.words.some(([b, e]) => b === g.start && e === g.end && punct(b, e));
-      if (!c.gaps.some((g) => g.value && over(g))) continue;
-      if (!c.gaps.every((g) => g.start === g.end || over(g))) continue;
-      const layout = newTextLayout({
-        base: c.base,
-        gaps: c.gaps,
-        words: c.words.map(span),
-        sentences: c.sentences.map(span),
-        ignored: c.ignored ?? null,
-      });
-      if (!layout) continue;
-      const { body, typed, covered } = layout;
-      for (let x = 0; x < body.length; x++) {
-        if (!typed[x] || isSpace(body[x])) continue;
-        checked += 1;
-        const inWord = c.core.words.some(([b, e]) => b <= x && x < e);
-        if (inWord !== Boolean(covered[x]))
-          problems.push({ base: c.base, gaps: c.gaps, x, inWord });
-      }
-    }
-    expect(problems.slice(0, 5)).toEqual([]);
-    expect(checked).toBeGreaterThan(50);
-  });
 });

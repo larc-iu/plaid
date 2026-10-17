@@ -10,8 +10,7 @@ body the edit makes, before the server has placed the existing words on it,
 and kept off every position an existing word may end up over: its own text,
 all the text a change types when the change reaches inside a word or takes one
 whole, and text typed against a word's edge with no whitespace between (none
-for a word made only of punctuation, and nothing for one the change types over
-or into, which the server deletes). Each
+for a word made only of punctuation). Each
 gap is first trimmed of the text its value shares with what it replaces at
 either end, as the server reads it (plaid-core's ``trim-gap``). What
 is left, where the edit typed something, is cut by the built-in tokenizer
@@ -234,21 +233,12 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
     # punctuation rule skips, a character the project's rule calls
     # letter-like being a letter, whichever rule is in force).
     takes = bytearray(n)
-
-    def typed_over(b: int, e: int) -> bool:
-        # whether a gap types text over or into old [b, e) (plaid-core
-        # ``typed-over-punct``): a word made only of punctuation that one
-        # does is gone on the server, and nothing is kept off it
-        return any(v and (s < e and b < t if s < t else b < s < e) for s, t, v in srt)
-
     for w in words or []:
         wb, we = (w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1])
         if not wb < we:
             continue
         lo, hi = start_of(wb), end_of(we)
         punct = all(is_text_punctuation(c, ignored) for c in old[wb:we])
-        if punct and typed_over(wb, we):
-            continue
         for x in range(max(0, lo), min(n, hi)):
             covered[x] = 1
             # (text a gap typed inside it, which the server may give it, does)

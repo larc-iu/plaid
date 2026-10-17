@@ -12,8 +12,6 @@
 // - the text typed against a word's edge with no whitespace between, which
 //   the server gives that word, unless the word is made only of punctuation
 //   (a token over `(` or `.`), which takes none.
-// A word made only of punctuation that a gap types text over or into is
-// gone on the server, and nothing is kept off it.
 // Each gap is first trimmed of the text its value shares with what it
 // replaces at either end, as the server reads it (plaid-core's `trim-gap`,
 // plaid-ui editLog's `trimGaps`): a selection `two` typed over as
@@ -153,12 +151,6 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
   };
 
   const covered = new Uint8Array(n);
-  // Whether a gap types text over or into old [b, e) (plaid-core
-  // `apply-plain-gaps`, `typed-over?`).
-  const typedOver = (b, e) =>
-    sorted.some(
-      (g) => g.value && (g.start < g.end ? g.start < e && b < g.end : b < g.start && g.start < e),
-    );
   // What typed text against it with no whitespace between goes to: all that
   // is covered but the text of a word made only of punctuation, which takes
   // none (plaid-core `apply-plain-gaps`).
@@ -168,7 +160,6 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
     const lo = startOf(w.begin);
     const hi = endOf(w.end);
     const punct = isPunctOnly(old.slice(w.begin, w.end), ignored);
-    if (punct && typedOver(w.begin, w.end)) continue;
     for (let x = Math.max(0, lo); x < Math.min(n, hi); x++) {
       covered[x] = 1;
       // (text a gap typed inside it, which the server may give it, does)

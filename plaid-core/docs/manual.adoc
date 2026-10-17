@@ -890,7 +890,6 @@ PATCH /texts/9cfafcc6
 Tokens follow the text the way a person would expect.
 Letters typed inside a word or at its end become part of the word, and a word is deleted only when all of its letters are.
 A word made only of punctuation and symbols, such as a token over `(` or `.`, takes no text typed against it, so the letters typed there are the same words as where the punctuation has no token: in `ab (cd)` with a token over `(`, `x` typed after `(` makes `xcd`, and `x` typed after a closing `.` is in no word.
-Such a word typed over, or with text typed inside it, is deleted with what is on it, and the text typed reads as where the punctuation has no token: in `ab, cd` with a token over `,`, the comma typed over as `x` gives the word `abx`.
 This holds for words only: a row made only of punctuation, such as a pause `...` in a text with no words, takes text as any row does.
 An emoji and the zero morph `∅` count as letters here.
 So does a character a word layer's `igt.ignoredTokens` rule calls a letter: under the punctuation rule a character it lists as letter-like, such as an apostrophe a project spells words with, and under an explicit list every punctuation character but the listed ones.

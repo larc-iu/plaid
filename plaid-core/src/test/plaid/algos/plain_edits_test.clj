@@ -55,11 +55,11 @@
 
 (defn- edit [s ops]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-edits body tokens ops #{:s} #{:w} {:children #{:m}}) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (ta/plain-edits body tokens ops #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (defn- save [s new]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-body body new tokens #{:s} #{:w} {:children #{:m}}) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (ta/plain-body body new tokens #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (deftest an-edit-inside-a-word-or-at-its-edge-grows-it
   (testing "inside"
@@ -849,9 +849,7 @@
     (is (= ["xa\nxa\ncat xa end" "xa" "xa" "cat" nil "xa" "end"] (save "|ba|\n/|xa|\n/|cat| |xa| |xa| |end|" "xa\nxa\ncat xa end")))
     (is (= ["x a bb" "x" "a" "bb"] (save "|a| |a| |b|" "x a bb")))
     (is (= ["na oke kan tak ma" "na" "kan" "tak" "ma"] (save "|na| |kon| |tok| |ma|" "na oke kan tak ma")))
-    ;; (a word made only of punctuation typed over is gone, and what is
-    ;; typed there goes where it goes with no token there, REV8-PUNCT-1)
-    (is (= ["你好嗎。我很好！" "你" "好" "嗎" "。" "我" "很" "好！" nil] (save "|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！")))))
+    (is (= ["你好嗎。我很好！" "你" "好" "嗎" "。" "我" "很" "好" "！"] (save "|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！")))))
 
 (deftest an-edit-that-only-deletes-or-only-types-is-taken-as-made
   ;; REV2-F-TEXT-CORE R1: a delete across a word boundary carries all it
@@ -939,12 +937,9 @@
 (deftest a-word-typed-over-beside-its-twin-keeps-its-token
   ;; REV3-F-TEXT-CORE G2: the diff deletes `你` and types `好` after the next
   ;; `好`; the same text is `你` typed over as `好`, which keeps every word
-  ;; but the `。` typed over as `！`: a word made only of punctuation does
-  ;; not survive that, and the `！` goes to the word before as where the
-  ;; `。` has no token (REV8-PUNCT-1)
-  (is (= ["我好好吗！" "我" "好" "好" "吗！" nil] (save "|我||你||好||吗||。|" "我好好吗！")))
-  (is (= ["我好好吗！" "我" "好" "好" "吗！" nil] (edit "|我||你||好||吗||。|" [(rep 0 5 "我好好吗！")])))
-  (is (= ["我你你吗！" "我" "你" "你" "吗！" nil] (save "|我||你||好||吗||。|" "我你你吗！")))
+  (is (= ["我好好吗！" "我" "好" "好" "吗" "！"] (save "|我||你||好||吗||。|" "我好好吗！")))
+  (is (= ["我好好吗！" "我" "好" "好" "吗" "！"] (edit "|我||你||好||吗||。|" [(rep 0 5 "我好好吗！")])))
+  (is (= ["我你你吗！" "我" "你" "你" "吗" "！"] (save "|我||你||好||吗||。|" "我你你吗！")))
   (testing "spaced text was already right"
     (is (= ["x cd cd y." "x" "cd" "cd" "y."] (save "|x| |ab| |cd| |y|" "x cd cd y.")))))
 
@@ -1136,54 +1131,6 @@
       (is (= (mapv nel lf) (edit s [op-nel])) (pr-str s op))
       (is (= (mapv nel lf) (save s (ta/edit-ops-body [op-nel] (:body (doc s))))) (pr-str s op)))))
 
-(defn- words-of
-  "The texts of the `:w` tokens of `r` in order, leaving out those `ll`
-  (letter-like, as `ignored-letter-like` gives it) reads as made only of
-  punctuation: what igt shows."
-  ([r] (words-of r #{}))
-  ([r ll]
-   (let [body (:text/body (:text r))]
-     (vec (keep (fn [{:token/keys [begin end] :as t}]
-                  (when (and (= :w (:token/layer t)) (not (@#'ta/punct-only? (.toArray (.codePoints ^String body)) ll t)))
-                    (cp/cp-subs body begin end)))
-                (sort-by :token/begin (:tokens r)))))))
-
-(deftest a-punctuation-token-typed-over-reads-as-no-token-there
-  ;; REV8-PUNCT-1 (Luke's igt-unchanged rule): ud's Tokenize gives `,` a
-  ;; word token. A selection of it typed over kept the token on the new
-  ;; text, so `ab, cd` with `,` typed over as `x` gave igt the words `ab`
-  ;; `x` `cd` (and `x` carried ud's lemma `,`), where with no token there it
-  ;; gives `abx` `cd`. The token is now gone, with what is under it, and
-  ;; the words are those of the text with no token there, on both paths.
-  (let [toks (fn [body spans]
-               (into [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
-                     (mapcat (fn [i [b e]] [{:token/id [:w i] :token/layer :w :token/begin b :token/end e}
-                                            {:token/id [:m i] :token/layer :m :token/begin b :token/end e}])
-                             (range) spans)))
-        opts {:children #{:m}}]
-    (doseq [[id body plain punct op want]
-            [["R1" "ab, cd" [[0 2] [4 6]] [[2 3]] (rep 2 1 "x") ["abx" "cd"]]
-             ["R3" "ab. cd" [[0 2] [4 6]] [[2 3]] (rep 2 1 "‼") ["ab‼" "cd"]]
-             ["R5" "Ana, kuti (mo) ok." [[0 3] [5 9] [11 13] [15 17]] [[3 4] [10 11] [13 14] [17 18]] (rep 10 1 "x") ["Ana" "kuti" "xmo" "ok"]]
-             ["R7" "ab cd." [[0 2] [3 5]] [[5 6]] (rep 5 1 "!") ["ab" "cd!"]]
-             ["R9" "ab, cd" [[0 2] [4 6]] [[2 3]] (rep 2 1 ";") ["ab;" "cd"]]
-             ["two words" "ab? cd" [[0 2] [4 6]] [[2 3]] (rep 2 1 "x y") ["abx" "cd"]]
-             ["into a run" "ab ... cd" [[0 2] [7 9]] [[3 6]] (ins 4 "x") ["ab" "cd"]]
-             ["over part of it" "ab ?! cd" [[0 2] [6 8]] [[3 5]] (rep 4 1 "x") ["ab" "cd"]]
-             ["with a word" "ab, cd" [[0 2] [4 6]] [[2 3]] (rep 1 2 "x") ["ax" "cd"]]]
-            :let [new (ta/edit-ops-body [op] body)]
-            [path f] [[:edits #(ta/plain-edits body % [op] #{:s} #{:w} opts)]
-                      [:body #(ta/plain-body body new % #{:s} #{:w} opts)]]]
-      (let [without (f (toks body plain))
-            with (f (toks body (sort (concat plain punct))))]
-        (is (= want (words-of without)) (str id " " path " with no token"))
-        (is (= want (words-of with)) (str id " " path " with punctuation tokens"))
-        (is (= (:text/body (:text without)) (:text/body (:text with))))
-        ;; the morphemes under the punctuation went with it
-        (is (= (count (filter #(= :w (:token/layer %)) (:tokens with)))
-               (count (filter #(= :m (:token/layer %)) (:tokens with))))
-            (str id " " path))))))
-
 (deftest the-punctuation-rule-is-for-words-not-rows
   ;; REV8-PUNCT-2: in a text with no words the rows decide, and a pause
   ;; row `...` took no text typed against it, which was then in no row.
@@ -1240,3 +1187,18 @@
     (is (= ["ab'x" "cd"] (sents (ta/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))
     (is (= ["ab'" "xcd"] (sents (ta/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w}))))
     (is (= ["ab." "xcd"] (sents (ta/plain-edits "ab.cd" (tokens "ab.cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))))
+
+(deftest a-punctuation-word-typed-over-keeps-its-token
+  ;; Luke 2026-10-17: a word made only of punctuation typed over keeps its
+  ;; token, as any word typed over does, on both paths (the rule of
+  ;; 6f1485d1a that deleted it is withdrawn)
+  (let [body "ab, cd"
+        tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 6}
+                {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end 2}
+                {:token/id [:w 1] :token/layer :w :token/begin 2 :token/end 3}
+                {:token/id [:w 2] :token/layer :w :token/begin 4 :token/end 6}]
+        op (rep 2 1 "x")]
+    (doseq [r [(ta/plain-edits body tokens [op] #{:s} #{:w})
+               (ta/plain-body body "abx cd" tokens #{:s} #{:w})]]
+      (is (= [[0 2] [2 3] [4 6]]
+             (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))))))

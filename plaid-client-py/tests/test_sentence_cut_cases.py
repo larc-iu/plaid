@@ -98,38 +98,3 @@ def test_a_letter_typed_against_a_punctuation_word_is_free_where_core_leaves_it_
                 problems.append((c['base'], c['gaps'], x, in_word))
     assert problems[:5] == []
     assert checked > 500
-
-
-def test_what_is_typed_over_a_punctuation_word_is_free_as_core_deletes_it():
-    # REV8-PUNCT-1: a word made only of punctuation that a save types over is
-    # gone, and the text is read as with no token there: where every gap of a
-    # save inserts or types over exactly such a word, a letter it typed is
-    # free for a new word exactly where core leaves it in no word.
-    problems = []
-    checked = 0
-    for c in CASES:
-        ignored = c.get('ignored')
-        base = c['base']
-
-        def over(g):
-            return any(b == g['start'] and e == g['end'] and all(is_text_punctuation(ch, ignored) for ch in base[b:e])
-                       for b, e in c['words'])
-        if not any(g['value'] and over(g) for g in c['gaps']):
-            continue
-        if not all(g['start'] == g['end'] or over(g) for g in c['gaps']):
-            continue
-        words = [{'begin': b, 'end': e} for b, e in c['words']]
-        sentences = [{'begin': b, 'end': e} for b, e in c['sentences']]
-        layout = new_text_layout(base, c['gaps'], words, sentences, ignored)
-        if layout is None:
-            continue
-        body, typed, covered, _ = layout
-        for x in range(len(body)):
-            if not typed[x] or is_js_space(body[x]):
-                continue
-            checked += 1
-            in_word = any(b <= x < e for b, e in c['core']['words'])
-            if in_word != bool(covered[x]):
-                problems.append((base, c['gaps'], x, in_word))
-    assert problems[:5] == []
-    assert checked > 50

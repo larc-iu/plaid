@@ -296,27 +296,13 @@
                                                      (when (extents [b e]) [[b e] [(+ (gap-new g) off) (+ (gap-new g) off len)]]))
                                                    (:keeps g))))
                           gaps))
-        holds-keep? (fn [{:token/keys [begin end]}] (some (fn [[[b e] _]] (and (<= begin b) (<= e end))) keep-want))
-        ;; a word made only of punctuation that a gap types text over or
-        ;; into is gone with the tokens under it, as where the punctuation
-        ;; has no token (REV8-PUNCT-1)
-        over-punct (let [ws (filterv (fn [{:token/keys [layer begin end] :as t}]
-                                       (and (= :w layer) (< begin end) (@#'ta/punct-only? o #{} t)
-                                            (some (fn [{a :start b :end v :value}]
-                                                    (and (seq v) (if (< a b) (and (< a end) (< begin b)) (< begin a end))))
-                                                  (keep #(@#'ta/trim-gap o %) gaps))))
-                                     tokens)]
-                     (into #{} (comp (filter (fn [{:token/keys [layer begin end]}]
-                                               (and (#{:w :m} layer)
-                                                    (some #(and (<= (:token/begin %) begin) (<= end (:token/end %))) ws))))
-                                     (map :token/id))
-                           tokens))]
+        holds-keep? (fn [{:token/keys [begin end]}] (some (fn [[[b e] _]] (and (<= begin b) (<= e end))) keep-want))]
     (when (not= expected new-body) (bad! "body " (pr-str new-body) " not " (pr-str expected)))
     (when (= expected new-body)
       ;; each word typed over as a word of its own is on it
       (doseq [{:token/keys [id layer begin end]} tokens
               :let [want (keep-want [begin end])]
-              :when (and want (not (over-punct id))
+              :when (and want
                          ;; a row over a sentence follows it (REV3)
                          (not (and (#{:a :ss} layer)
                                    (some #(and (= :s (:token/layer %))
@@ -325,10 +311,8 @@
         (let [now (by-id id)]
           (when (or (gone id) (not= want [(:token/begin now) (:token/end now)]))
             (bad! id " typed over as a word of its own is not on it: " (pr-str (when-not (gone id) (some-> now text-of)))))))
-      (doseq [id over-punct :when (not (gone id))]
-        (bad! id " made only of punctuation and typed over, kept"))
       (doseq [{:token/keys [id layer begin end] :as t} tokens
-              :when (and (plain layer) (< begin end) (not (keep-want [begin end])) (not (over-punct id))
+              :when (and (plain layer) (< begin end) (not (keep-want [begin end]))
                          ;; a token over a sentence follows it (REV3)
                          (or (= :s layer) (not (#{:a :ss} layer))
                              (not-any? #(and (= :s (:token/layer %))
