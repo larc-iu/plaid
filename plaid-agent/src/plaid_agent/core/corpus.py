@@ -152,6 +152,17 @@ def _bound(clauses: List[Any]) -> List[str]:
     return list(dict.fromkeys(out))
 
 
+def _variables(clauses: Any) -> List[str]:
+    """Every variable the clauses name (``?t``, never a path ``?t.value``)."""
+    if isinstance(clauses, str):
+        return [clauses] if clauses.startswith('?') and '.' not in clauses else []
+    if isinstance(clauses, dict):
+        return [v for x in clauses.values() for v in _variables(x)]
+    if isinstance(clauses, list):
+        return [v for x in clauses for v in _variables(x)]
+    return []
+
+
 class Corpus(Clipping):
     """The query engine bound to one workspace (its client, its project).
 
@@ -224,8 +235,22 @@ class Corpus(Clipping):
         return res if isinstance(res, dict) else {}
 
     def count(self, where: List[Any], find: List[str]) -> int:
-        """Distinct tuples of ``find`` (never inflated by joins)."""
-        return int(self.run({'find': find, 'where': where, 'return': 'count'}).get('count') or 0)
+        """Distinct tuples of ``find`` (never inflated by joins).
+
+        The engine stops a count at 100,000 and says ``truncated``. When
+        ``find`` names every variable the clauses use, an aggregate with no
+        group counts the same tuples without that cap and is asked instead.
+        Otherwise it would count every variable's binding, so the capped
+        number stands and the read is marked clipped."""
+        res = self.run({'find': find, 'where': where, 'return': 'count'})
+        if res.get('truncated'):
+            if set(_variables(where)) <= set(find):
+                whole = self.run({'where': where, 'return': {'group': [], 'aggregates': [['count']]}})
+                rows = whole.get('results') or []
+                if rows and rows[0] and not whole.get('truncated'):
+                    return int(rows[0][-1] or 0)
+            self.note_truncation(res)
+        return int(res.get('count') or 0)
 
     def entities(self, where: List[Any], find: List[str], limit: int, order_by=None,
                  sample: bool = False) -> List[list]:
