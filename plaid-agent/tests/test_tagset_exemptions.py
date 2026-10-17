@@ -9,9 +9,8 @@ import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB, MGLOSS
 from live import live_client, seed  # noqa: F401 - fixture
 
-from plaid_agent.igt.tagsets import refusal_words
 from plaid_agent.igt.toolkit import call_tool
-from plaid_client import PlaidAPIError
+from page_write import PageRefused
 from test_tagset_tools import declare_igt_rules, igt_config, layer, run, ws_of
 
 
@@ -63,9 +62,9 @@ def test_a_close_a_persons_value_breaks_is_still_refused_by_core(proj):
     ws = ws_of(proj)
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
     assert 'Core will refuse this approval' in out and 'Morph Gloss (1 stored value: "Ali" (1))' in out, out
-    with pytest.raises(PlaidAPIError) as e:
+    with pytest.raises(PageRefused) as e:
         run(proj, ws)
-    words = refusal_words(e.value)
+    words = str(e.value)
     assert 'Ali' in words and 'XIMP' not in words and 'XMACH' not in words, words
 
 
@@ -74,7 +73,9 @@ def test_a_field_whose_layer_lost_its_list_is_read_from_core_and_holds_up_no_oth
     holds no list (another client removed its rules) and a person wrote QQ.
     check says core does not hold the list instead of calling QQ a value core
     let stay, and a change to another tagset neither warns about Morph Gloss
-    nor declares on it, so approval goes through."""
+    nor declares the list on it, so approval goes through. The page's heal
+    after it puts back what the values allow there, one annotation a morpheme
+    and no list."""
     ws = ws_of(proj)
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed', 'add': ['Ali']}})
     run(proj, ws)
@@ -92,4 +93,4 @@ def test_a_field_whose_layer_lost_its_list_is_read_from_core_and_holds_up_no_oth
     assert 'Core will refuse' not in out, out
     run(proj, ws)
     assert igt_config(proj)['tagsets']['POS']['mode'] == 'closed'
-    assert not (layer(proj, MGLOSS).get('constraints') or {}).get('igt')
+    assert (layer(proj, MGLOSS).get('constraints') or {}).get('igt') == [{'type': 'single-span'}]

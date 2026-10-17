@@ -9,13 +9,13 @@ from pathlib import Path
 import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
 from live import _Session, _skip_or_fail, core_db, live_client, seed  # noqa: F401 - fixture
+from page_write import page_write
 
 from plaid_agent.core.conversation import (ConversationStore, assistant_item, build_meta, proposed_changes,
                                            settle_plan, user_item)
 from plaid_agent.core.service import audit_label
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.service import AssistantService
-from plaid_agent.igt.tagsets import write_settings
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import Workspace
 
@@ -38,9 +38,9 @@ def test_an_applied_tagset_plan_is_linked_to_its_operation(proj, tmp_path):
     plan['proposed'], plan['proposed_count'] = proposed_changes(plan['ops'], *AssistantService.proposed_keys)
     service = 'igt:assist:fake'
     # The page's write, as plaid-ui planOperation names it.
-    with proj.client.operation(audit_label(plan['summary']), kind='assistant-plan',
-                               ref=f'conv:c1/plan:{plan["id"]}/service:{service}'):
-        write_settings(proj.client, ws.project, ws.ops)
+    page_write(proj.client, proj.project_id, ws.ops,
+               {'message': audit_label(plan['summary']), 'kind': 'assistant-plan',
+                'ref': f'conv:c1/plan:{plan["id"]}/service:{service}'})
     store = ConversationStore(proj.client, _Session.user, proj.project_id, 'igt')
     item = assistant_item('Planned.', plan, [], [], '', 'fake/model', service=service)
     conv = {'messages': [{'role': 'user', 'content': 'add NOM'}, {'role': 'assistant', 'content': 'Planned.'}],

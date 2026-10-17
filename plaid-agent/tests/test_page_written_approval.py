@@ -9,18 +9,18 @@ as planned by any other route take the approval's own path, and a discard of
 them is allowed, unless a ready preflight marked the plan: a discard of a
 marked plan whose settings read as planned records it applied (H16 review,
 REV-AGENT-1 to -3, -5, R2-1). Against a live core,
-with the app's write in Python (``write_settings``)."""
+with igt's own write under node (``page_write``)."""
 
 import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
 from live import _Session, live_client, seed  # noqa: F401 - fixture
+from page_write import page_write
 from test_service_flow import Helper, _service
 from test_tagset_tools import _user
 
 from plaid_agent.core.conversation import (ConversationStore, assistant_item, build_meta, replace_undecided,
                                            user_item)
 from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tagsets import write_settings
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import Workspace
 
@@ -67,9 +67,9 @@ def _item(store, conv_id='c1'):
 def _page_write(s, ws, plan, conv_id='c1'):
     """The page's write, under the plan's own operation as plaid-ui
     ``planOperation`` opens it."""
-    with s.client.operation(f'Assistant: {plan.get("summary") or ""}', kind='assistant-plan',
-                            ref=f'conv:{conv_id}/plan:{plan["id"]}/service:igt:assist:fake'):
-        write_settings(s.client, ws.project, ws.ops)
+    page_write(s.client, s.project_id, ws.ops,
+               {'message': f'Assistant: {plan.get("summary") or ""}', 'kind': 'assistant-plan',
+                'ref': f'conv:{conv_id}/plan:{plan["id"]}/service:igt:assist:fake'})
 
 
 def _ready(h):
@@ -168,7 +168,7 @@ def test_a_reviewed_approvers_approval_is_recorded_as_a_contribution(proj):
     proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [_Session.user], 'roles': []})
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
-    write_settings(proj.client, ws.project, ws.ops)
+    page_write(proj.client, proj.project_id, ws.ops)
     assert _applied(_ask(proj, plan, wrote_first=True, as_human=True))
     item, _ = _item(store)
     assert item['status'] == 'applied' and item.get('contributed') is True and item.get('as_human') is False, item
@@ -179,7 +179,7 @@ def test_a_reviewed_approvers_approval_is_recorded_as_a_contribution(proj):
 def test_settings_written_by_hand_leave_the_plan_discardable(proj):
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
-    write_settings(proj.client, ws.project, ws.ops)  # by hand, no plan, no approval
+    page_write(proj.client, proj.project_id, ws.ops)  # by hand, no plan, no approval
     h = _ask(proj, plan, op='discard')
     assert h.done[0]['kind'] == 'done', h.done
     assert _item(store)[0]['status'] == 'discarded'
@@ -189,7 +189,7 @@ def test_without_wrote_first_a_discarded_plan_is_not_applied(proj):
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ask(proj, plan, op='discard').done[0]['kind'] == 'done'
-    write_settings(proj.client, ws.project, ws.ops)
+    page_write(proj.client, proj.project_id, ws.ops)
     h = _ask(proj, plan, request_id='r10')
     assert h.errors == ['The plan was discarded']
     assert _item(store)[0]['status'] == 'discarded'
@@ -208,7 +208,7 @@ def test_settings_written_to_another_value_are_not_applied(proj):
     store = _seed(proj, plan)
     other = Workspace(proj.client, load_project(proj.client, proj.project_id))
     call_tool(other, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM', 'ACC']}})
-    write_settings(proj.client, other.project, other.ops)
+    page_write(proj.client, proj.project_id, other.ops)
     h = _ask(proj, plan, wrote_first=True)
     assert not _applied(h) and _item(store)[0]['status'] != 'applied', (h.errors, h.done)
 
@@ -243,7 +243,7 @@ def test_a_marked_plan_whose_settings_moved_is_discarded(proj):
     assert _ready(_ask(proj, plan, preflight=True))
     other = Workspace(proj.client, load_project(proj.client, proj.project_id))
     call_tool(other, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM', 'ACC']}})
-    write_settings(proj.client, other.project, other.ops)
+    page_write(proj.client, proj.project_id, other.ops)
     assert _ask(proj, plan, op='discard', request_id='r10').done[0]['kind'] == 'done'
     assert _item(store)[0]['status'] == 'discarded'
 
@@ -266,7 +266,7 @@ def test_a_failed_write_takes_the_mark_off_so_a_later_hand_write_leaves_it_disca
     # The page's write threw: it says so.
     assert _ask(proj, plan, op='unmark', request_id='r10').done[0]['kind'] == 'done'
     assert 'page_writing' not in _item(store)[0]['plan']
-    write_settings(proj.client, ws.project, ws.ops)  # later, by hand
+    page_write(proj.client, proj.project_id, ws.ops)  # later, by hand
     assert _ask(proj, plan, op='discard', request_id='r11').done[0]['kind'] == 'done'
     assert _item(store)[0]['status'] == 'discarded'
 
@@ -313,7 +313,7 @@ def test_a_marked_plan_whose_page_never_wrote_is_discarded_after_a_hand_write(pr
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True))
-    write_settings(proj.client, ws.project, ws.ops)  # by hand, no operation of the plan
+    page_write(proj.client, proj.project_id, ws.ops)  # by hand, no operation of the plan
     h = _ask(proj, plan, op='discard', request_id='r10')
     assert h.done[0]['kind'] == 'done', h.done
     assert _item(store)[0]['status'] == 'discarded'
@@ -332,7 +332,7 @@ def test_a_plain_approval_over_settings_already_in_force_says_nothing_was_writte
     from plaid_agent.core.service import IN_FORCE
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
-    write_settings(proj.client, ws.project, ws.ops)  # by hand
+    page_write(proj.client, proj.project_id, ws.ops)  # by hand
     assert _ready(_ask(proj, plan, preflight=True))
     h = _ask(proj, plan, request_id='r10')  # the page found nothing to write
     assert _applied(h), (h.errors, h.done)

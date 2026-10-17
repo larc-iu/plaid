@@ -3,14 +3,15 @@ field's layer does not hold what its settings asked for before the plan (a
 closed list the stored values break, rules a script left). igt's settings
 save, Add to tagset and an approved plan write the change all the same, the
 field stays out of force, and Validation names the values in the way. The
-assistant says so, and ``write_settings`` (the app's write in Python) writes
-it the same way: declared in the batch only for a field in force, nothing
+assistant says so, and igt's own write of the plan (``page_write``) writes it
+the same way: declared in the batch only for a field in force, nothing
 repaired, then the plan's own fields put in force as far as their values
 allow. Against a live core."""
 
 import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB, MGLOSS, GLOSS
 from live import live_client, seed  # noqa: F401 - fixture
+from page_write import PageRefused
 
 from plaid_agent.igt.toolkit import call_tool
 from plaid_client.workflows.igt.tagsets import field_constraints
@@ -87,8 +88,7 @@ def test_a_field_in_force_is_still_refused_whole(proj):
     ws = ws_of(proj)
     out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
     assert 'Core will refuse this approval' in out, out
-    from plaid_client import PlaidAPIError
-    with pytest.raises(PlaidAPIError):
+    with pytest.raises(PageRefused):
         run(proj, ws)
     assert rules(proj, MGLOSS) == field_constraints(layer(proj, MGLOSS)['config'], {'igt': igt_config(proj)})
 
@@ -201,7 +201,7 @@ def test_a_generated_plan_keeps_the_invariant(live_client, seed_n):
         try:
             run(s, ws)
             refused = False
-        except PlaidAPIError as e:
+        except PageRefused as e:
             assert e.status == 422, tag
             refused = True
         assert refused == expect_refused, tag

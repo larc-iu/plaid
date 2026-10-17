@@ -9,14 +9,14 @@ that writes the configuration, and stored values that break it refuse that batch
 import pytest
 from fixtures import project_raw, document_raw, lexicon_raw, VOCAB, MGLOSS, GLOSS, FakeClient
 from live import live_client, seed  # noqa: F401 - fixture
+from page_write import PageRefused, page_write
 
 from plaid_agent.core.plan import PlanError, PlanOutOfDate
 from plaid_agent.core.tools import ToolError
 from plaid_agent.igt import toolkit
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tagsets import HELP, refusal_words, write_settings
-from plaid_client import PlaidAPIError
+from plaid_agent.igt.tagsets import HELP
 from plaid_client.workflows.igt.tagsets import field_constraints
 from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.workspace import Workspace
@@ -85,7 +85,7 @@ def ws_of(s):
 
 def run(s, ws):
     """The app's write with the user's session, then the approval, which reads it back."""
-    write_settings(s.client, ws.project, ws.ops)
+    page_write(s.client, s.project_id, ws.ops)
     return execute_plan(s.client, ws.ops, source='test', label='tagsets', project=ws.project)
 
 
@@ -111,9 +111,9 @@ def test_closing_a_list_the_data_breaks_is_refused_whole(proj):
     assert ('Core will refuse this approval, writing nothing, while these stored values break the closed list: '
             'Morph Gloss (1 stored value: "Ali" (1)).') in out, out
     assert 'Ask the user whether they mean mixed' in out
-    with pytest.raises(PlaidAPIError) as e:
+    with pytest.raises(PageRefused) as e:
         run(proj, ws)
-    assert 'not in the closed tagset: Ali' in refusal_words(e.value)
+    assert '1 value in Morph Gloss is not in the tagset: Ali.' in str(e.value)
     assert igt_config(proj)['tagsets']['Leipzig']['mode'] == 'mixed'
 
 
@@ -162,9 +162,12 @@ def test_a_tagset_changed_since_the_plan_refuses_it(proj):
     tagsets = igt_config(proj)['tagsets']
     proj.client.projects.set_config(proj.project_id, 'igt', 'tagsets',
                                     {**tagsets, 'Leipzig': {**tagsets['Leipzig'], 'mode': 'suggest'}})
-    with pytest.raises(PlanOutOfDate) as e:
+    with pytest.raises(PageRefused) as e:
         run(proj, ws)
-    assert 'the tagset "Leipzig" changed since this plan was made' in str(e.value)
+    assert 'The tagset settings this plan changes were changed since it was made' in str(e.value)
+    with pytest.raises(PlanOutOfDate) as e:
+        execute_plan(proj.client, ws.ops, source='test', label='tagsets', project=ws.project)
+    assert 'changed some other way' in str(e.value)
 
 
 def test_a_lexicon_keeps_its_own_tagsets(proj):
@@ -250,7 +253,7 @@ def test_a_maintainer_who_is_no_admin_may_and_a_writer_may_not(proj):
         out = call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['DAT']}})
         assert ('Only a maintainer' not in out) == may, (email, out)
         if may:
-            write_settings(c, ws.project, ws.ops)
+            page_write(c, proj.project_id, ws.ops)
             assert execute_plan(c, ws.ops, source='test', label='t', project=ws.project)['tagset changes'] == 1
 
 

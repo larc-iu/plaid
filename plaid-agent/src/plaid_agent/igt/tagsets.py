@@ -25,7 +25,6 @@ from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_const
 
 from ..core.bidi import qv
 from ..core.tools import ToolError
-from .vocab import CORE_VOCAB_FIELDS
 
 PROJECT = 'project'
 SPAN, METADATA, ENTRY_FIELD = 'span', 'metadata', 'entry_field'
@@ -692,14 +691,12 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
 # with the user's own session when they approve (plaid-igt
 # `domain/tagsetPlan.js`), and only then sends the approval. The executor writes
 # nothing: it reads the settings and records the plan applied when they read as
-# planned (`verify_settings`). `check_settings` and `queue_settings` are the
-# app's write in Python, for scripts and tests (`write_settings`).
+# planned (`verify_settings`).
 
 SETTINGS_APART = ('Tagset changes are settings, a plan of their own: this plan already holds other changes. '
                   'Finish this plan with the user first (approve or discard), then plan the other.')
 
 IGT = 'igt'
-REMEDIABLE = frozenset(('coextensive', 'single-span', 'single-link', 'same-ancestor'))
 SETTINGS_KINDS = ('set_tagset', 'assign_tagset')
 
 
@@ -758,38 +755,6 @@ def _reference(cfg, layers, entry_fields, op) -> Optional[str]:
     return (name.strip() or None) if isinstance(name, str) else None
 
 
-def check_settings(client, project, ops) -> List[str]:
-    """Why the plan's tagset changes can no longer apply as staged: a tagset
-    or a field's tagset changed since, to something other than what the plan
-    makes it (a change already made reads as done, igt's ``stateOf``). Empty
-    when they can."""
-    reasons = []
-    for owner in dict.fromkeys(op['owner'] for op in settings_ops(ops)):
-        cfg, layers, entry_fields = _live(client, project, owner)
-        raw = _igt(cfg).get('tagsets')
-        raw = raw if isinstance(raw, dict) else {}
-        for op in settings_ops(ops):
-            if op['owner'] != owner or _state(cfg, layers, entry_fields, op) != 'moved':
-                continue
-            if op['kind'] == 'set_tagset':
-                now = _comparable(_norm(raw[op['was']], op['was'])) if op['was'] in raw else None
-                if now == _comparable(op.get('before')) and op['was'] != op['name'] and op['name'] in raw:
-                    reasons.append(f'a tagset named {qv(op["name"])} was made since this plan was')
-                else:
-                    reasons.append(f'the tagset {qv(op["was"])} changed since this plan was made')
-            else:
-                reasons.append(f'the tagset of a field this plan changes ({op["label"].split(":")[0]}) changed '
-                               'since this plan was made')
-        # A field pointed at a tagset its owner will not have once the plan's
-        # own tagset changes are written: renamed or deleted since.
-        mine = [op for op in settings_ops(ops) if op['owner'] == owner]
-        new, _, _ = _after(cfg, mine)
-        for op in mine:
-            if op['kind'] == 'assign_tagset' and op.get('after') is not None and op['after'] not in new:
-                reasons.append(f'the tagset {qv(op["after"])} this plan assigns no longer exists')
-    return reasons
-
-
 def _canonical(rules) -> str:
     return json.dumps(rules or [], sort_keys=True)
 
@@ -817,253 +782,33 @@ def _after(cfg, ops):
             return assigns[(kind, key)]
         return renames.get(name, name)
 
-    return new, final, assigns
+    return new, final
 
 
 def _field_rules(cfg, layers, ops) -> List[dict]:
     """Each igt annotation field of the project as the plan's ``ops`` leave
     it, as igt's settings save reads it (``rulesChange`` and ``savedRules``
-    in plaid-igt ``domain/igtConstraints.js``): {id, old (the tagset name as
-    stored), tagset (as written), wanted (its rules after), stored (its
+    in plaid-igt ``domain/igtConstraints.js``): {id, tagset (as written),
+    wanted (its rules after), stored (its
     layer's igt rules), changes (the plan changes its rules), in_force (its
     layer holds what its settings asked for before the plan)}."""
     ops = [op for op in ops if op['owner'] == PROJECT]
-    new, final, _ = _after(cfg, ops)
+    new, final = _after(cfg, ops)
     igt = _igt(cfg)
     after_cfg = {**cfg, IGT: {**igt, 'tagsets': new}}
     out = []
     for sl in layers:
         lcfg = _igt(sl.get('config'))
         old = lcfg.get('tagset') if isinstance(lcfg.get('tagset'), str) else None
-        old_name = (old or '').strip() or None
-        name = final(SPAN, sl['id'], old_name)
+        name = final(SPAN, sl['id'], (old or '').strip() or None)
         layer_after = {**(sl.get('config') or {}), IGT: {**lcfg, 'tagset': name}}
         wanted = field_constraints(layer_after, after_cfg)
         before = field_constraints(sl.get('config') or {}, cfg)
         stored = (sl.get('constraints') or {}).get(IGT)
-        out.append({'id': sl['id'], 'raw': lcfg.get('tagset', ABSENT), 'old': old, 'old_name': old_name, 'tagset': name,
-                    'wanted': wanted,
-                    'stored': stored, 'changes': _canonical(wanted) != _canonical(before),
+        out.append({'id': sl['id'], 'tagset': name, 'wanted': wanted, 'stored': stored,
+                    'changes': _canonical(wanted) != _canonical(before),
                     'in_force': _canonical(stored) == _canonical(before)})
     return out
-
-
-TAGSETS_CHANGED = 'Tagsets changed elsewhere. Reload and redo your change.'
-
-
-ABSENT = object()
-
-
-def _queue_stated(b, api: str, owner_id: str, key: str, read) -> None:
-    """Queue a write that changes nothing and states that igt cell ``key``
-    still holds ``read`` (``ABSENT``: no such key, None: a stored JSON null):
-    core writes nothing for it and refuses the batch (409) when the cell
-    changed since (igt's ``queueStated``)."""
-    if read is ABSENT:
-        b.add(lambda batch: getattr(batch, api).delete_config(owner_id, IGT, key, expected=None))
-    else:
-        b.add(lambda batch: getattr(batch, api).set_config(owner_id, IGT, key, read, expected=read))
-
-
-def queue_settings(client, b, project, ops) -> List[str]:
-    """Queue on the batcher ``b`` every write the plan's tagset changes make.
-    A field's rules go in the batch only when the plan changes them and the
-    field was in force, so a list in force that stored values break refuses
-    the batch. A field out of force is left to the heal after it, and nothing
-    is repaired (igt's ``queueFieldDeclarations``). Returns the ids of the
-    fields whose rules the plan changes, in force or not."""
-    changed: List[str] = []
-    for owner in dict.fromkeys(op['owner'] for op in settings_ops(ops)):
-        mine = [op for op in settings_ops(ops) if op['owner'] == owner]
-        cfg, layers, entry_fields = _live(client, project, owner)
-        igt = _igt(cfg)
-        raw = igt.get('tagsets') if isinstance(igt.get('tagsets'), dict) else None
-        new, final, assigns = _after(cfg, mine)
-
-        owner_api = 'projects' if owner == PROJECT else 'vocab_layers'
-        owner_id = project.id if owner == PROJECT else owner
-        if new != (raw or {}):
-            # Bound now: the batch runs after the loop moved to the last owner.
-            b.add(lambda batch, a=owner_api, i=owner_id, v=new, e=raw: getattr(batch, a).set_config(
-                i, IGT, 'tagsets', v, expected=e))
-        else:
-            # The tagsets as read, stated: changed since, they refuse the batch.
-            _queue_stated(b, owner_api, owner_id, 'tagsets', igt.get('tagsets', ABSENT))
-        # A plan that renames or deletes a tagset states every field
-        # reference it leaves as read, so a field pointed at that tagset
-        # since refuses it (igt's ``queueOwner``).
-        removes_name = any(name not in new for name in (raw or {}))
-        if owner != PROJECT:
-            fields = {k: dict(s) if isinstance(s, dict) else s for k, s in entry_fields.items()}
-            # A core field the config never named takes its default spec, as
-            # the app's field editor writes it, to carry a tagset.
-            for (kind, k), name in assigns.items():
-                if kind == ENTRY_FIELD and name and k not in fields:
-                    fields[k] = {'inline': next((f['inline'] for f in CORE_VOCAB_FIELDS if f['name'] == k), False)}
-            for k in list(fields):
-                spec = fields[k] if isinstance(fields[k], dict) else {}
-                old = (spec['tagset'].strip() or None) if isinstance(spec.get('tagset'), str) else None
-                name = final(ENTRY_FIELD, k, old)
-                if name != old:
-                    spec = {**spec, 'tagset': name} if name else {x: y for x, y in spec.items() if x != 'tagset'}
-                    fields[k] = spec
-            if fields != entry_fields:
-                b.add(lambda batch, i=owner_id, v=fields, e=igt.get('fields'): batch.vocab_layers.set_config(
-                    i, IGT, 'fields', v, expected=e))
-            elif removes_name:
-                _queue_stated(b, 'vocab_layers', owner_id, 'fields', igt.get('fields', ABSENT))
-            continue
-
-        meta = igt.get('documentMetadata')
-        if isinstance(meta, list):
-            new_meta = []
-            for m in meta:
-                if not isinstance(m, dict) or not m.get('name'):
-                    new_meta.append(m)
-                    continue
-                old = (m['tagset'].strip() or None) if isinstance(m.get('tagset'), str) else None
-                name = final(METADATA, m['name'], old)
-                if name == old:
-                    # Left as stored, a null, "" or padded name too, as
-                    # igt's ``queueOwner`` leaves it (REV8-AGENT R8A-2).
-                    new_meta.append(m)
-                    continue
-                m = dict(m)
-                if name:
-                    m['tagset'] = name
-                else:
-                    m.pop('tagset', None)
-                new_meta.append(m)
-            if new_meta != meta:
-                b.add(lambda batch, i=owner_id, v=new_meta, e=meta: batch.projects.set_config(
-                    i, IGT, 'documentMetadata', v, expected=e))
-            elif removes_name:
-                _queue_stated(b, 'projects', owner_id, 'documentMetadata', meta)
-        elif removes_name:
-            _queue_stated(b, 'projects', owner_id, 'documentMetadata', igt.get('documentMetadata', ABSENT))
-
-        for r in _field_rules(cfg, layers, mine):
-            if r['tagset'] != r['old_name']:
-                if r['tagset']:
-                    b.add(lambda batch, i=r['id'], v=r['tagset'], e=r['old']: batch.span_layers.set_config(
-                        i, IGT, 'tagset', v, expected=e))
-                else:
-                    b.add(lambda batch, i=r['id'], e=r['old']: batch.span_layers.delete_config(
-                        i, IGT, 'tagset', expected=e))
-            elif removes_name:
-                _queue_stated(b, 'span_layers', r['id'], 'tagset', r['raw'])
-            if not r['changes']:
-                continue
-            changed.append(r['id'])
-            if not r['in_force'] or _canonical(r['wanted']) == _canonical(r['stored']):
-                continue
-            b.add(lambda batch, i=r['id'], w=r['wanted'], e=r['stored']: batch.span_layers.set_constraints(
-                i, IGT, w, expected=e))
-    return changed
-
-
-def heal_fields(client, project_id: str, layer_ids) -> List[dict]:
-    """Put in force on each field of ``layer_ids`` what its settings want as
-    far as the stored values allow, changing no annotation (igt's
-    ``declareIgtRules`` with ``repair: false``): a closed list the values
-    break is not declared, and a list the field holds stays, and one span a
-    token is declared only where no token holds two. A field naming a tagset
-    the project does not have wants no list, so a list it holds is taken
-    off, as igt's ``wantedConstraints`` has it. Returns the fields left
-    out of force, as {id, refused (core's answer for the list, or None),
-    doubled (the tokens holding two, or 0)}."""
-    from plaid_client import PlaidAPIError
-    p = client.projects.get(project_id)
-    cfg = p.get('config') or {}
-    out = []
-    for sl in _span_layers(p):
-        if sl['id'] not in layer_ids:
-            continue
-        wanted = field_constraints(sl.get('config') or {}, cfg)
-        stored = (sl.get('constraints') or {}).get(IGT)
-        if _canonical(wanted) == _canonical(stored):
-            continue
-        held = [c for c in stored or [] if c.get('type') == 'value-set']
-        held_keys = {_canonical([c]) for c in stored or []}
-        rules, refused, doubled = [], None, 0
-        for c in wanted:
-            if _canonical([c]) in held_keys:
-                rules.append(c)
-            elif c['type'] == 'value-set':
-                answer = client.span_layers.refused_values(sl['id'], c, limit=SHOWN)
-                if answer['count']:
-                    refused = answer
-                    rules.extend(held)
-                else:
-                    rules.append(c)
-            elif c['type'] in REMEDIABLE:
-                found = client.span_layers.check_constraints(sl['id'], [c])
-                n = found.get('violation_count') or found.get('violation-count') or len(found.get('violations') or [])
-                if n:
-                    doubled = n
-                else:
-                    rules.append(c)
-            else:
-                rules.append(c)
-        if _canonical(rules) != _canonical(stored):
-            try:
-                client.span_layers.set_constraints(sl['id'], IGT, rules, expected=stored)
-            except PlaidAPIError as e:
-                # Moved since the read, or a value written since breaks it:
-                # the next heal decides.
-                if e.status not in (409, 422):
-                    raise
-        if refused or doubled:
-            out.append({'id': sl['id'], 'refused': refused, 'doubled': doubled})
-    return out
-
-
-class _Queue:
-    """The batcher ``queue_settings`` takes, over one batch of ``client``."""
-
-    def __init__(self):
-        self.calls = []
-
-    def add(self, fn) -> None:
-        self.calls.append(fn)
-
-
-def write_settings(client, project, ops) -> List[dict]:
-    """Write the plan's tagset changes as the app does on approval: refused
-    when what they change moved, one atomic batch otherwise, then the fields
-    whose rules the plan changes put in force as far as their values allow
-    (the adapter's ``afterWrite``, in the caller's operation). Returns the
-    fields of the plan left out of force (``heal_fields``)."""
-    from plaid_client import PlaidAPIError
-    from plaid_agent.core.plan import PlanOutOfDate
-    reasons = check_settings(client, project, ops)
-    if reasons:
-        raise PlanOutOfDate(reasons)
-    owners = list(dict.fromkeys(op['owner'] for op in settings_ops(ops)))
-    lives = {o: _live(client, project, o) for o in owners}
-    if all(_state(*lives[op['owner']], op) == 'after' for op in settings_ops(ops)):
-        # Already as the plan leaves them: nothing to write (igt's
-        # ``writeTagsetPlan``).
-        return []
-
-    def tagsets_now():
-        return {o: _igt(_live(client, project, o)[0]).get('tagsets') for o in owners}
-
-    read = tagsets_now()
-    q = _Queue()
-    changed = queue_settings(client, q, project, ops)
-    if q.calls:
-        try:
-            with client.batched() as batch:
-                for fn in q.calls:
-                    fn(batch)
-        except PlaidAPIError as e:
-            # A 409 for tagsets changed since they were read says so (igt's
-            # ``tagsetsChangedError``).
-            if e.status == 409 and tagsets_now() != read:
-                raise PlanOutOfDate([TAGSETS_CHANGED]) from e
-            raise
-    return heal_fields(client, project.id, set(changed)) if changed else []
 
 
 def _state(cfg, layers, entry_fields, op) -> str:
@@ -1103,20 +848,3 @@ def verify_settings(client, project, ops) -> Dict[str, int]:
         raise PlanError('The tagset changes were not written: the app writes them, with your own sign-in, '
                         'when the plan is approved there. Approve it from the app', 0, len(ops))
     raise PlanOutOfDate(['the tagset settings this plan changes were changed some other way since it was made'])
-
-
-def refusal_words(error) -> Optional[str]:
-    """What to tell the user when core refused the batch because stored
-    values break a closed list, or None for any other refusal
-    (plaid-igt ``tagsetRefusal``)."""
-    from plaid_client.constraints import violations_of
-    vs = violations_of(error)
-    if not vs or not all(v.get('constraint') == 'value-set' for v in vs):
-        return None
-    data = getattr(error, 'response_data', None) or {}
-    n = data.get('violation-count') or data.get('violation_count') or len(vs)
-    fields = list(dict.fromkeys(v.get('layer_name') for v in vs if v.get('layer_name')))
-    values = list(dict.fromkeys(v.get('value') for v in vs if isinstance(v.get('value'), str)))
-    shown = ', '.join(values[:5]) + (', …' if len(values) > 5 else '')
-    return (f'Nothing in the last batch was written: {n} stored value{"s" if n != 1 else ""} in '
-            f'{", ".join(fields)} {"are" if n != 1 else "is"} not in the closed tagset: {shown}.')
