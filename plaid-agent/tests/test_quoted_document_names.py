@@ -112,3 +112,38 @@ def test_ud_reads_print_the_name_escaped_and_without_an_id(monkeypatch):
     assert for_model(ws.render(ws.doc('ud1'))).startswith('Document "Viaje \\"2\\"" (')
     out = for_model(t_search(ws, field='lemma', pattern='zzz', document='ud1'))
     assert out == 'No lemma matches "zzz" in "Viaje \\"2\\"".', out
+
+
+def test_a_query_cell_quotes_a_document_name_escaped():
+    # REV8-AGENT R8A-3: the query renderer all three apps share.
+    from plaid_agent.core.query import cell
+    assert cell({'id': 'd2', 'name': QUOTED}, {}, {}) == 'document "French \\"3\\""'
+    assert cell({'id': 'd1', 'name': 'Text 1'}, {}, {}) == 'document "Text 1"'
+
+
+def test_umr_overview_lists_names_escaped():
+    from plaid_agent.umr.tools import t_project_overview
+    from umr_fixtures import document_raw as umr_doc, umr_client, umr_ws
+    docs = {}
+    for i, name in (('u1', QUOTED), ('u2', '"Draft"')):
+        raw = umr_doc()
+        raw['id'], raw['name'] = i, name
+        docs[i] = raw
+    out = for_model(t_project_overview(umr_ws(umr_client(documents=docs))))
+    listed = out.split('Documents (2):\n')[1].splitlines()
+    assert sorted(listed) == sorted(['  "French \\"3\\""', '  "\\"Draft\\""']), out
+
+
+@pytest.mark.parametrize('refs', ['"French \\"3\\"" s1.w1, "French \\"3\\"" s1.w2',
+                                  '"French \\"3\\"" s1.w1 and s1.w2', ['"French \\"3\\"" s1.w1', 's1.w2']])
+def test_igt_reads_references_copied_with_an_escaped_name(refs):
+    # REV8-AGENT R8A-4: a list copied from a read, whose name holds a quote.
+    w = _ws()
+    out = run(w, 'set_field', {'document': QUOTED, 'refs': refs, 'field': 'Gloss', 'value': 'q'})
+    assert out.startswith('Planned 2 changes'), out
+
+
+def test_igt_reads_a_reference_after_a_name_ending_in_a_backslash():
+    from plaid_agent.igt.workspace import _refs
+    assert _refs('"a\\" s1.w1, "a\\" s1.w2') == ['s1.w1', 's1.w2']
+    assert _refs('"Text 1" s1.w1, "Text 1" s1.w2') == ['s1.w1', 's1.w2']

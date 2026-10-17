@@ -17,6 +17,7 @@ import re
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .args import clamp_limit
+from .bidi import plain_quote
 from .limits import READ_LIMITS
 from .tools import ToolError, truncate
 
@@ -302,7 +303,7 @@ def cell(entity: Any, refs: Dict[str, str], layer_names: Dict[str, str]) -> str:
         return (ref or f'token {eid[:8]}') + f' "{entity.get("value", "")}"' \
             + ('' if ref else f' [{layer}] {entity.get("begin")}-{entity.get("end")}')
     if 'name' in entity and 'text_layers' not in entity:
-        return f'document "{entity.get("name")}"'
+        return f'document {plain_quote(entity.get("name"))}'
     if 'source' in entity:
         return f'relation "{entity.get("value")}"'
     return json.dumps(entity, ensure_ascii=False)[:120]

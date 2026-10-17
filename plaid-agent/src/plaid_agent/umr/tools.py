@@ -404,7 +404,7 @@ def t_project_overview(ws: Workspace) -> str:
         pass
     out.append(f'Documents ({len(docs)}):')
     for d in docs[:OVERVIEW_DOCS]:
-        out.append(f'  "{d.get("name")}"')
+        out.append(f'  {plain_quote(d.get("name"))}')
     if len(docs) > OVERVIEW_DOCS:
         out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
     return '\n'.join(out)

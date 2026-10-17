@@ -1464,11 +1464,14 @@ def op_target(op: Dict[str, Any]):
 # Where a reference starts among several in a string: an "s" that does not
 # end a word ("words 3" and "Analysis 2" hold none), then its number.
 _REF_START = re.compile(r'(?<![^\W_])s\d+', re.I)
-# The document name a read tool prints before a reference.
-_DOC_PREFIX = re.compile(r'^\s*(?:"[^"]*"|“[^”]*”)\s+(?=s\s*\d)', re.I)
+# The document name a read tool prints before a reference, an inner quote
+# escaped (core.bidi.escape_name: "French \"3\""), and read plain when it
+# reads no other way (a name ending in a backslash, "a\").
+_QUOTED_NAME = r'(?:"(?:[^"\\]|\\.)*"|"[^"]*"|“[^”]*”)'
+_DOC_PREFIX = re.compile(r'^\s*' + _QUOTED_NAME + r'\s+(?=s\s*\d)', re.I)
 # What separates one reference from the next in a list written as a string,
 # with the next one's document name when the list was copied from a read.
-_SEPARATOR = re.compile(r'(?:[,;+&|]|\b(?:and|or)\b)\s*(?:"[^"]*"|“[^”]*”)?\s*$|\s+$', re.I)
+_SEPARATOR = re.compile(r'(?:[,;+&|]|\b(?:and|or)\b)\s*' + _QUOTED_NAME + r'?\s*$|\s+$', re.I)
 
 
 def _refs(refs) -> List[str]:
