@@ -42,7 +42,7 @@ test("glosses from the project's layers show under the words and export", async 
 
   await page.goto(`/#/projects/${projectId}/documents/${documentId}/export`);
   const out = page.locator('pre, textarea').first();
-  await expect(out).toContainText('Morphemes: Lindsay lef t in order to eat lunch .');
+  await expect(out).toContainText('Morphemes: Lindsay lef -t in order to eat lunch .');
   await expect(out).toContainText('Morpheme Gloss (en): Lindsay leave PST in order to eat lunch _');
   await expect(out).toContainText('Sentence Gloss (en): Lindsay went off to have lunch.');
 });
