@@ -1606,12 +1606,20 @@ def _cache_project_ids(client, project, vocab_id: str, requester: Optional[str])
     a plan's change of their type is written on: the plan's own, and every
     other project using that lexicon which ``requester`` can write (a
     maintainer, a writer, or an administrator), as the app's
-    ``cacheProjectIds``. A project they only read keeps what it holds."""
+    ``cacheProjectIds``. A project they only read keeps what it holds. A
+    delegated token, the deployed service's, may not list projects (403) and
+    reaches no other project to write, so it writes the plan's own."""
     out = [project.id]
     if requester is None:
         return out
+    try:
+        listed = client.projects.list() or []
+    except PlaidAPIError as e:
+        if getattr(e, 'status', None) == 403:
+            return out
+        raise
     admin = None
-    for p in client.projects.list() or []:
+    for p in listed:
         pid = p.get('id')
         if pid == project.id or not any(v.get('id') == vocab_id for v in p.get('vocabs') or []):
             continue

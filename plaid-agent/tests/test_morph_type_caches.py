@@ -123,3 +123,21 @@ def test_a_restored_document_takes_the_types_its_entries_go_by_now():
                       'as_of': '2026-01-01T00:00:00Z', 'label': ''}],
                  source='s', label='l', project=load_project(c, 'p1'))
     assert _written(c) == [('m-1b', [{'op': 'set', 'path': ['morphType'], 'value': 'enclitic'}])]
+
+
+def test_a_token_that_cannot_list_projects_writes_the_plans_own_project():
+    """The deployed service holds only a delegated token, which core refuses
+    the project list (403). The plan's own project still takes the type, and
+    the plan, written in full, is not reported partly applied (H17-ASSIST-1)."""
+    from plaid_client import PlaidAPIError
+
+    c = _client('enclitic')
+
+    def refused(*_a, **_k):
+        raise PlaidAPIError('HTTP 403 This token reaches only the projects it was issued for.', status=403)
+    c.projects.list = refused
+    out = execute_plan(c, [{'kind': 'set_entry_field', 'item_id': 'vi-head', 'field': 'morphType',
+                            'value': 'enclitic', 'label': ''}],
+                       source='s', label='l', project=load_project(c, 'p1'), requester='u@x')
+    assert not out.get('partial')
+    assert _written(c) == [('m-1b', [{'op': 'set', 'path': ['morphType'], 'value': 'enclitic'}])]
