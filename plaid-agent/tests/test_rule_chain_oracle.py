@@ -6,7 +6,7 @@ named on a value beating every rule. One function finds them
 (``igt.bulk.sync_rules`` over ``resolve_rule``), at staging, after any change
 to the plan, and as approval finds them.
 
-The oracle: random plans of chained rules, keeps, named changes and drops,
+The oracle: random plans of chained rules, keeps and named changes,
 staged in random order on a private core and approved through the service.
 What approval writes is computed from the final plan's ops alone, as the
 values that end other than stored, and the card's count, plan_status, the
@@ -118,18 +118,16 @@ def _step(rng, ws):
         p, r, whole = rng.choice(RULES)
         return 'replace_in_field', {'field': 'Gloss', 'pattern': p, 'replacement': r, 'whole': whole,
                                     'case_sensitive': True}
-    if roll < 0.85:
-        ref = rng.choice(REFS)
-        doc = ws.doc('Text 1')
-        s, w = (int(x[1:]) for x in ref.split('.'))
-        word = doc.sentences[s - 1].words[w - 1]
-        stored = word.fields['Gloss'].value
-        # Half the time what it holds: a keep, or a change taken back.
-        value = stored if rng.random() < 0.5 else rng.choice(VALUES)
-        if rng.random() < 0.3:
-            return 'set_field', {'document': 'Text 1', 'refs': [ref], 'values': {'Gloss': value}}
-        return 'set_field', {'document': 'Text 1', 'refs': [ref], 'field': 'Gloss', 'value': value}
-    return 'drop_planned', {'indexes': [rng.randint(1, len(ws.ops))]}
+    ref = rng.choice(REFS)
+    doc = ws.doc('Text 1')
+    s, w = (int(x[1:]) for x in ref.split('.'))
+    word = doc.sentences[s - 1].words[w - 1]
+    stored = word.fields['Gloss'].value
+    # Half the time what it holds: a keep, or a change taken back.
+    value = stored if rng.random() < 0.5 else rng.choice(VALUES)
+    if rng.random() < 0.3:
+        return 'set_field', {'document': 'Text 1', 'refs': [ref], 'values': {'Gloss': value}}
+    return 'set_field', {'document': 'Text 1', 'refs': [ref], 'field': 'Gloss', 'value': value}
 
 
 def run_case(c, seed_no):
@@ -172,7 +170,7 @@ def run_case(c, seed_no):
         s.delete()
 
 
-def test_rules_keeps_named_changes_and_drops_count_and_approve_as_one(live_client):
+def test_rules_keeps_and_named_changes_count_and_approve_as_one(live_client):
     n = int(os.environ.get('RULE_ORACLE_CASES') or 12)
     start = int(os.environ.get('RULE_ORACLE_START') or 0)
     outcomes, violations = [], []

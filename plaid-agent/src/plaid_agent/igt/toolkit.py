@@ -14,8 +14,7 @@ from typing import Any, Dict
 
 from ..core import toolkit, webtools
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
-from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
-    plan_status as t_plan_status
+from ..core.plan import discard_plan as t_discard_plan, plan_status as t_plan_status
 from ..core.tools import fn, limit_arg
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
@@ -275,7 +274,6 @@ TOOLS = [
          'metadata': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
         ['name', 'text']),
     _SHARED['discard_plan'],
-    _SHARED['drop_planned'],
     _fn('confirm',
         'PLAN: mark annotations awaiting review as verified, after checking them: machine-made ones (other services, '
         'earlier assistant plans; ~ in reads) and contributors\' work (^ in reads); see worklist kind="unverified" / '
@@ -349,7 +347,7 @@ _IMPL = {
     'check_consistency': t_check_consistency, 'recent_changes': t_recent_changes, 'plan_status': t_plan_status,
     'comments': t_comments, 'add_comment': t_add_comment, 'restore_document': t_restore_document,
     'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
-    'confirm': t_confirm, 'discard_analysis': t_discard_analysis, 'drop_planned': t_drop_planned,
+    'confirm': t_confirm, 'discard_analysis': t_discard_analysis,
     'add_sense': t_add_sense, 'move_sense': t_move_sense, 'make_sense_of': t_make_sense_of,
     'free_sense': t_free_sense, 'promote_example': t_promote_example, 'remove_example': t_remove_example,
     'order_homographs': t_order_homographs,

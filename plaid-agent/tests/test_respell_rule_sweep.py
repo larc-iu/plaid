@@ -1,7 +1,6 @@
 """A sweep over igt's respelling rule (R6, test_respell_rule.py): random plans
 of one to four respell_all calls over two documents, with and without morpheme
-forms and headwords, held to one document or not, some dropped, then text
-typed before the words or over a word the plan respells, approved through the
+forms and headwords, held to one document or not, then text typed before the words or over a word the plan respells, approved through the
 service on a live private core, against an independent model: each
 respelling applied in plan order to the spelling the ones before it leave.
 
@@ -97,7 +96,7 @@ def _applied(docs, plan):
 
 
 def _plan_of(docs, requests):
-    """The plan the requests make, asked in order from scratch: a respelling
+    """The plan the calls make, in order: a respelling
     that finds nothing is not staged, and one asked again moves last when it
     finds something there, else stays where it is."""
     plan = []
@@ -158,15 +157,6 @@ def test_respellings_compose_as_asked_in_order(live_client, case):
             asked.append(spec)
         plan = _plan_of(docs, asked)
         assert staged() == expected(plan), (case, asked, staged())
-        if len(plan) > 1 and rng.random() < 0.3:
-            # A drop takes every ask of the change and asks the rest again
-            # from scratch, those that found nothing then included.
-            at = rng.randrange(len(plan))
-            out = call_tool(ws, 'drop_planned', {'indexes': [at + 1]})
-            assert not out.startswith('Error'), out
-            asked = [a for a in asked if a != plan[at]]
-            plan = _plan_of(docs, asked)
-            assert staged() == expected(plan), (case, asked, staged())
         want, heads = _model(docs, plan)
         before, _ = _read(c, s.project_id)
         edit = rng.choice(['none', 'before', 'over']) if ws.ops else 'none'

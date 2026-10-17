@@ -1,10 +1,9 @@
 """The REV5-AGENT review's sweep, kept as an oracle: random igt plans heavy
-on rules asked again, values set back to stored or to what the rules bring,
-drops of rules asked again and resume_plan mid-sequence, approved through
-the service on a live core. The model replays the instructions in plan order:
-a rule asked again leaves its old place and applies last (staying put only
-when, so placed, it would change nothing), a keep holds its value out of
-every rule, a dropped instruction leaves no trace. Every count must equal the
+on rules asked again and values set back to stored or to what the rules
+bring, approved through the service on a live core. The model replays the
+instructions in plan order: a rule asked again leaves its old place and
+applies last (staying put only when, so placed, it would change nothing), and
+a keep holds its value out of every rule. Every count must equal the
 net changes, with no refusal and no restamp. ``RULE_REASK_CASES`` (10 by
 default), ``RULE_REASK_START``, ``RULE_REASK_MIX`` (again or plain) and
 ``RULE_REASK_OUT`` (a file each case is written to)."""
@@ -17,7 +16,7 @@ import pytest
 
 from live import live_client, seed  # noqa: F401
 from rule_plan_model import (DOCS, FIELDS, LET, VALS, approve, as_applied, make_doc, parse_int_sum, project,
-                             resumed, values_of)
+                             values_of)
 from fixtures import lexicon_raw, VOCAB
 from plaid_agent.core.conversation import proposed_changes
 from plaid_agent.core import rules as core_rules
@@ -161,48 +160,8 @@ def run_case(c, case):
         targets = list(stored)
         asked_specs = []
         nsteps = rng.randint(4, 10)
-        acts = ['replace', 'form', 'again', 'set', 'set_back', 'values', 'drop', 'resume']
-        w = {'again': [4, 1.5, 3, 2, 1.5, 1, 1.5, 0.7], 'plain': [4, 2, 1, 3, 1, 1.5, 1, 0.7]}[MIX]
-        did_resume = False
-        def rebuild():
-            """The model asked the plan's requests again, in order: a drop
-            asks every remaining one again from scratch (Luke 2026-10-16).
-            Which requests a drop takes is not under test here."""
-            m = Model(stored, forms)
-            for rec in ws.requests:
-                a, gone = rec['args'], set()
-                for k in rec.get('without') or ():
-                    k = json.loads(k)
-                    if k[0] == 'value' and isinstance(k[1], list) and k[1][-1] in idmap:
-                        gone.add(idmap[k[1][-1]])
-                if rec['tool'] in ('replace_in_field', 'set_field_for_form'):
-                    spec = ({'tool': 'replace_in_field', 'field': a['field'], 'pattern': a['pattern'],
-                             'replacement': a.get('replacement') or '', 'whole': bool(a.get('whole')),
-                             'document': a.get('document')} if rec['tool'] == 'replace_in_field' else
-                            {'tool': 'set_field_for_form', 'field': a['field'], 'form': a['form'], 'value': a['value'],
-                             'only_empty': bool(a.get('only_empty', True)), 'document': None})
-                    if m.rule(spec) == 'moved' and m.same:
-                        m.entries = m.before
-                elif rec['tool'] == 'set_field':
-                    pairs = list(a['values'].items()) if a.get('values') else [(a['field'], a['value'])]
-                    for ref in a['refs']:
-                        for field, v in pairs:
-                            t = (a['document'], ref, field)
-                            if t in stored and t not in gone:
-                                m.set_field(t, v)
-            # Where asking again moves a rule or leaves it is not under test
-            # after a drop: the plan's order is taken where it ends the same.
-            cr = code_rules()
-            slots = [i for i, e in enumerate(m.entries) if e['k'] == 'rule']
-            if sorted(cr) == sorted(m.entries[i]['key'] for i in slots):
-                by = {m.entries[i]['key']: m.entries[i] for i in slots}
-                cand = list(m.entries)
-                for i, k in zip(slots, cr):
-                    cand[i] = by[k]
-                if m.replay(cand)[0] == m.replay()[0]:
-                    m.entries = cand
-            return m
-
+        acts = ['replace', 'form', 'again', 'set', 'set_back', 'values']
+        w = {'again': [4, 1.5, 3, 2, 1.5, 1], 'plain': [4, 2, 1, 3, 1, 1.5]}[MIX]
         def spec_of(op):
             a = op['args']
             if op['tool'] == 'replace_in_field':
@@ -230,10 +189,6 @@ def run_case(c, case):
             act = rng.choices(acts, w)[0]
             if act == 'again' and not asked_specs:
                 act = 'replace'
-            if act in ('drop', 'resume') and not ws.ops:
-                act = 'replace'
-            if act == 'resume' and did_resume:
-                act = 'set'
             out, args, mres = None, None, None
             if act in ('replace', 'form', 'again'):
                 if act == 'again':
@@ -297,15 +252,6 @@ def run_case(c, case):
                 if not out.startswith('Error'):
                     for t in pick:
                         model.set_field(t, v1 if t[2] == 'Gloss' else v2)
-            elif act == 'drop':
-                i = rng.randint(1, len(ws.ops))
-                args = {'indexes': [i]}
-                out = call_tool(ws, 'drop_planned', args)
-                model = rebuild()
-            elif act == 'resume':
-                ws = resumed(c, s.project_id, ws)
-                did_resume = True
-                args, out = {}, 'resumed'
             # rules the code dropped as finding nothing go from the model too
             cr = code_rules()
             mr = [e['key'] for e in model.entries if e['k'] == 'rule']

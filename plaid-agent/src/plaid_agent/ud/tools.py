@@ -15,14 +15,13 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import uuid7
 
-from ..core import docload, keep, opkind, work
+from ..core import docload, keep, opkind
 from ..core.keep import is_keep
 from ..core.bidi import qname, qv
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label, doc_labels, plain_quote
 from ..core.plan import MANY, by_document, confirm_preview
-from ..core.requests import Replaying
 from ..core.workspace import BaseWorkspace
 from ..core.provenance import unmark
 from ..core.refs import clip, read_ref
@@ -59,7 +58,7 @@ _DOC_CACHE = docload.DocCache()
 
 # --- the workspace ------------------------------------------------------------
 
-class Workspace(Replaying, BaseWorkspace):
+class Workspace(BaseWorkspace):
     """One turn's view of a treebank project: what it has loaded and the plan
     it is proposing."""
 
@@ -116,20 +115,9 @@ class Workspace(Replaying, BaseWorkspace):
 
     def __init__(self, client, project: UdProject, on_progress=None):
         super().__init__(client, project, on_progress)
-        # A drop asks the plan's remaining requests again (core/requests.py).
-        self.init_requests()
         # What each replacement of the plan found, by its target, so a value
         # two of them change is counted once, on the later (settle.py).
         self.replace_found: Dict[tuple, List[Dict[str, Any]]] = {}
-
-    def call_tool(self, tool: str, args: Dict[str, Any]) -> str:
-        from .toolkit import call_tool
-        return call_tool(self, tool, args)
-
-    # A scope's card and what it found before the plan's named values were
-    # taken out of it (``settle``), and the counts and line those settle.
-    REQUEST_BOOKKEEPING = ('card', 'found')
-    REQUEST_SETTLED = ('count', 'per_field', 'label', 'matched', work.COUNTED, 'contributed_count')
 
     def make_corpus(self):
         from .corpus import Corpus
@@ -228,7 +216,7 @@ class Workspace(Replaying, BaseWorkspace):
                     'and ask for the restore afterwards.')
         return ('This plan restores a document, and a restore rewrites every layer of '
                 'it, so nothing else can share the plan. Apply it on its own, then '
-                'plan the rest against what it restored (plan_status, drop_planned).')
+                'plan the rest against what it restored.')
 
     def clash_message(self, victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
         """Reshaping a token deletes and remakes its words, so the words it
@@ -239,7 +227,7 @@ class Workspace(Replaying, BaseWorkspace):
             return ('This plan both reshapes a token and writes to one of its words, and the '
                     'reshape deletes that word'
                     + (f' and makes {forms} in its place' if forms else '') + '. '
-                    + PLANNED_WORDS_LATER + ' Or keep one of the two (plan_status, drop_planned).')
+                    + PLANNED_WORDS_LATER + ' Or keep one of the two (discard_plan and stage the rest again).')
         return super().clash_message(victim, killer)
 
     def refuse_reshape_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
@@ -260,7 +248,7 @@ class Workspace(Replaying, BaseWorkspace):
             if any(prev.get('kind') in RESHAPES_TOKEN
                    and words & set(prev.get('existing_word_ids') or []) for prev in planned):
                 raise ToolError('This plan already reshapes this token. Keep one of the two '
-                                '(plan_status, drop_planned), or plan them in separate turns.')
+                                '(discard_plan and stage the rest again), or plan them in separate turns.')
             # A split deletes no word: each keeps its id and its values, so a
             # scope over the document finds them as it would without it.
             other = SCOPE_KINDS if kind not in SPLITS_KEEP_WORDS else ()
@@ -270,7 +258,7 @@ class Workspace(Replaying, BaseWorkspace):
         if any(prev.get('kind') in other and docs_of_op(prev) & reach for prev in planned):
             raise ToolError('This plan both reshapes a token and changes every matching word of '
                             'its document, and the reshape deletes some of them. Keep one of the '
-                            'two (plan_status, drop_planned), or plan them in separate turns.')
+                            'two (discard_plan and stage the rest again), or plan them in separate turns.')
 
     def refuse_scope_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """Two changes that cover a whole document, reaching one document,
@@ -292,17 +280,13 @@ class Workspace(Replaying, BaseWorkspace):
                 continue
             raise ToolError(
                 f'{prev.get("label") or prev.get("kind")} already covers a document this change '
-                'covers, and one of the two throws values away. Keep one of them (plan_status, '
-                'drop_planned), or plan them in separate turns.')
+                'covers, and one of the two throws values away. Keep one of them '
+                '(discard_plan and stage the rest again), or plan them in separate turns.')
 
     def plan_view(self) -> List[Dict[str, Any]]:
         from .settle import settle_scopes
         settle_scopes(self)
         return self.ops
-
-    def keep_holds(self, op: Dict[str, Any]) -> bool:
-        from .settle import keep_holds
-        return keep_holds(self, op)
 
     def plan_payload(self) -> Optional[Dict[str, Any]]:
         if not self.ops:
@@ -450,7 +434,7 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
         if op.get('kind') in REWRITES_DOCUMENT and doc.id in docs_of_op(op):
             raise ToolError(f'This plan already parses {doc_label(ws, doc.id, qname)}, and a parse rewrites the '
                             f'document from scratch, so this change would be thrown away. Plan '
-                            f'the parse on its own, or drop it first (plan_status, drop_planned).')
+                            f'the parse on its own, or discard_plan and plan this without it.')
 
 
 def _no_restore_planned(ws: Workspace) -> None:
@@ -470,8 +454,7 @@ def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
         if op.get('kind') in RESHAPES_DOCUMENT and op.get('document_id') == doc.id:
             raise ToolError(f'This plan already moves a sentence boundary in {doc_label(ws, doc.id, qname)}, and '
                             f'that renumbers the sentences every other reference names. Apply it '
-                            f'on its own, then plan the rest against the new numbering '
-                            f'(plan_status, drop_planned).')
+                            f'on its own, then plan the rest against the new numbering.')
 
 
 def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
@@ -483,8 +466,7 @@ def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
     if any(doc.id in docs_of_op(op) for op in ws.ops):
         raise ToolError(f'This plan already changes {doc_label(ws, doc.id, qname)}, and moving a sentence boundary '
                         f'renumbers the sentences every other reference names, so it has to be a '
-                        f'plan of its own. Apply what is planned, then move the boundary '
-                        f'(plan_status, drop_planned).')
+                        f'plan of its own. Apply what is planned, then move the boundary.')
 
 
 def _guards(ws: Workspace, doc: UdDoc) -> None:
@@ -653,9 +635,6 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         sp = w.fields.get(field)
         old = sp.value if sp else ''
         ref = word_ref(ws.sentence_of(doc, w), w)
-        # Asked whatever comes of it, so a drop of the change it names takes
-        # this ask too (REV8-PLAN-1).
-        ws.asks_value(('span', layer_id, w.id, None), [doc.id], [field])
         mine = [op for op in ws.ops if ws.op_target(op) == ('span', layer_id, w.id, None)]
         if old == value:
             # What the word holds already. Planning it again would restate it
@@ -760,7 +739,7 @@ def _same_form_left(ws: Workspace, doc: UdDoc, words: List[Word], holds=lambda o
         return ''
     more = f', and {len(notes) - 3} more sentences' if len(notes) > 3 else ''
     return (' Not in this plan: ' + '; '.join(notes[:3]) + more + '. If the user named the word by its form '
-            'alone, they did not say which: drop this change and ask them.')
+            'alone, they did not say which: discard_plan and ask them.')
 
 
 def _pairs(bundle: str) -> Dict[str, str]:
@@ -838,7 +817,6 @@ def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
     for key, value in want.items():
         sp = w.feature_span(key)
         stored = (normalize_feature(sp.value) or (None, None))[1] if sp is not None else None
-        ws.asks_value(('span', layer_id, w.id, key), [doc.id], [FEATURES])
         if (value or None) == stored:
             # Back to what is stored: drop the planned change rather than
             # stage a write of the span's own value, which an approved plan
@@ -1440,7 +1418,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
         names = ', '.join(listed.get(i, i) for i in clash)
         raise ToolError(f'This plan already changes {names}, and a parse rewrites a document from '
                         f'scratch, so those changes would be thrown away. Plan the parse on its own, '
-                        f'or drop the other changes first (plan_status, drop_planned).')
+                        f'or discard_plan and plan it alone.')
     lang = (language or ws.project.language or '').strip()
     if not lang:
         raise ToolError('Give language: the project does not record one, and the parser needs to '

@@ -669,7 +669,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         words = frozenset(op.get('existing_word_ids') or [])
         if words & seen_reshapes:
             raise ValueError('this plan reshapes the same token twice; keep the one you want '
-                             '(plan_status, drop_planned)')
+                             '(discard_plan and stage the rest again)')
         seen_reshapes |= words
     # A sentence boundary moving renumbers every sentence after it, and every
     # reference in this plan is positional: s7.w2 means a different word once

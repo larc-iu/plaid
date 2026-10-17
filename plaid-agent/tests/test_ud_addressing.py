@@ -92,7 +92,7 @@ def test_a_word_the_reshape_deletes_says_what_comes_in_its_place(ws):
                    'deletes that word and makes "Vamos" + "a" + "el" + "mar" in its place. A plan cannot '
                    'write to words it is still making: once the user approves this plan they are ordinary '
                    'words, so annotate them in the next plan. Or keep one of the two '
-                   '(plan_status, drop_planned).')
+                   '(discard_plan and stage the rest again).')
     assert [op['kind'] for op in ws.ops] == ['set_words']
 
 
@@ -165,7 +165,7 @@ def test_a_form_the_sentence_holds_twice_needs_its_number(ws):
     assert not ws.ops
     assert run(ws, 'set_field', document='Linea', refs=['s3.la#2'], field='upos', value='DET') \
         == ('Planned upos = "DET" on 1 word(s): s3.w4 Not in this plan: s3 also has "la" at w1. If the user '
-            'named the word by its form alone, they did not say which: drop this change and ask them.')
+            'named the word by its form alone, they did not say which: discard_plan and ask them.')
     out = run(ws, 'set_field', document='Linea', refs=['s3.la#3'], field='upos', value='DET')
     assert out.startswith('Error: s3.la#3: s3 has 2 word(s) spelled "la", so there is no #3.')
     out = run(ws, 'set_field', document='Linea', refs=['s3.perro'], field='upos', value='NOUN')

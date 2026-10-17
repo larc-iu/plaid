@@ -240,12 +240,9 @@ def test_the_sweep_actually_covers_the_read_tools():
 # every name here is a tool body the sweep does not actually run.
 NEVER_ANSWERS = {
     # run_code and code_help: the sandbox worker binary is not on every machine.
-    # drop_planned and resume_plan: there is nothing to drop from an empty plan
-    # and no plan waiting to resume, and staging one here would make this a
-    # test about the plan tools.
-    'igt': {'run_code', 'code_help', 'drop_planned', 'resume_plan'},
-    'ud': {'run_code', 'code_help', 'drop_planned', 'resume_plan'},
-    'umr': {'run_code', 'code_help', 'drop_planned', 'resume_plan'},
+    'igt': {'run_code', 'code_help'},
+    'ud': {'run_code', 'code_help'},
+    'umr': {'run_code', 'code_help'},
 }
 
 

@@ -377,9 +377,9 @@ def test_entry_gloss_singles_out_a_homograph():
     assert w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'gham', 'label': 'Rename entry "gam#2" (net) → "gham"'}
     merge = {'keep_form': 'gam', 'keep_gloss': 'fish', 'remove_form': 'gam', 'remove_gloss': 'net'}
     # The link and the rename planned above both write to the entry the merge
-    # removes, so the merge refuses until they are dropped.
+    # removes, so the merge refuses until the plan is discarded.
     assert 'writes to something this plan deletes' in call_tool(w, 'merge_entries', merge)
-    call_tool(w, 'drop_planned', {'indexes': [1, 2]})
+    call_tool(w, 'discard_plan', {})
     call_tool(w, 'merge_entries', merge)
     assert w.ops[-1]['kind'] == 'merge_entries' and (w.ops[-1]['keep_id'], w.ops[-1]['remove_id']) == ('vi-gam', 'vi-gam2')
     out = call_tool(w, 'delete_entry', {'entry_form': 'gam', 'entry_gloss': 'boat'})
@@ -455,22 +455,6 @@ def test_stale_documents_refuse_a_plan_made_against_older_data():
     assert 'recorded without a version' in out[0] and 'cannot identify' in out[1]
     out = stale_documents(c, [{'id': 'nope', 'name': 'Gone', 'version': 1}])
     assert len(out) == 1 and 'could not be read' in out[0]
-
-
-def test_drop_planned_keeps_the_rest_and_takes_links_to_dropped_entries_along():
-    w = ws()
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2', 's1.w3'], 'field': 'Gloss', 'value': 'x'})
-    out = call_tool(w, 'create_entry', {'form': 'akun', 'fields': {'gloss': 'see'}})
-    key = out.split('entry_id: ')[1].split()[0]
-    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3'], 'entry_id': key})
-    call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w3'], 'orthography': 'IPA', 'value': 'akuna'})
-    assert [o['kind'] for o in w.ops] == ['set_span', 'set_span', 'create_entry', 'link', 'set_orthography']
-    assert 'No planned change numbered 9' in call_tool(w, 'drop_planned', {'indexes': [9]})
-    out = call_tool(w, 'drop_planned', {'indexes': [1, 3]})
-    assert out.startswith('Dropped 2 planned changes. Links to the dropped new entries were dropped with them.')
-    assert [o['kind'] for o in w.ops] == ['set_span', 'set_orthography'] and w.ops[0]['token_id'] == 'w-3'
-    assert w.new_entries == {} and '2 planned changes' in out
-    assert 'Dropped 1' in call_tool(w, 'drop_planned', {'indexes': 2}) and len(w.ops) == 1
 
 
 def test_citations_resolve_to_interlinear_examples():
@@ -868,11 +852,11 @@ def test_a_bulk_answer_counts_its_changes_by_document(monkeypatch):
     assert [(name, n) for _d, name, n in row['rule']['documents']] == [('Elicited: LLEC Wordlist', 3), ('Text 1', 1)]
 
 
-def test_dropping_a_new_entry_takes_a_multi_word_expression_on_it_along():
-    """drop_planned took a word's own link to a dropped new entry along, but
-    not a multi-word expression's, which approval then failed on after the
-    first batch had landed. And approval refuses such a link up front, before
-    anything is written, however the plan came to hold it."""
+def test_approval_refuses_a_multi_word_expression_on_a_new_entry_it_does_not_create():
+    """A multi-word expression's link to a new entry the plan does not
+    create failed approval after the first batch had landed. Approval refuses
+    such a link up front, before anything is written, however the plan came to
+    hold it."""
     import pytest
     from plaid_agent.igt.plan import execute_plan
     w = ws()
@@ -881,8 +865,6 @@ def test_dropping_a_new_entry_takes_a_multi_word_expression_on_it_along():
     call_tool(w, 'link_phrase', {'document': 'd1', 'refs': ['s1.w1', 's1.w2'], 'entry_id': key})
     assert [o['kind'] for o in w.ops] == ['create_entry', 'link_phrase']
     orphan = dict(w.ops[1])
-    out = call_tool(w, 'drop_planned', {'indexes': [1]})
-    assert 'Links to the dropped new entries were dropped with them' in out and w.ops == []
     c = FakeClient()
     with pytest.raises(ValueError, match='does not create'):
         execute_plan(c, [orphan], source='s', label='l')

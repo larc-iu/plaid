@@ -134,14 +134,6 @@ def test_a_morpheme_later_than_the_first_starts_with_no_link():
     assert w.plan_payload()['changes'][-1]['change'] == 'link "-di"'
 
 
-def test_dropping_the_analysis_drops_the_links_to_its_morphemes():
-    w = fake_ws(FakeClient())
-    _segment_and_link(w)
-    out = call_tool(w, 'drop_planned', {'indexes': [1]})
-    assert 'Links to the morphemes of a dropped analysis were dropped with it.' in out
-    assert w.ops == []
-
-
 def test_a_new_analysis_keeps_a_link_to_the_same_morpheme_and_drops_one_it_no_longer_has():
     w = fake_ws(FakeClient())
     _segment_and_link(w)

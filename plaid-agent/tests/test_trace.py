@@ -131,11 +131,11 @@ def test_the_summary_counts_searches_apart_from_other_reads():
 def test_the_summary_counts_the_changes_planned_not_the_calls():
     """The step line said "7 planned changes" (calls) over a card listing 9
     (changes). One call can stage many changes, a refused call none, and a
-    drop takes some away."""
+    later change on the same target takes one away."""
     steps = [trace_step(TRACER, 'a', 'set_field', {'field': 'Gloss'}, planned=7),
              trace_step(TRACER, 'b', 'set_field', {'field': 'Gloss'}),  # refused
              trace_step(TRACER, 'c', 'set_field', {'field': 'Gloss'}, planned=3),
-             trace_step(TRACER, 'd', 'drop_planned', {'indexes': [1]}, planned=-1)]
+             trace_step(TRACER, 'd', 'set_field', {'field': 'Gloss'}, planned=-1)]
     assert summarize_steps(steps) == '9 planned changes · 4 steps'
     assert summarize_steps(steps[1:2]) == '1 step'
 

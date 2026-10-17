@@ -64,8 +64,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     # CI runs Python 3.11, which refuses a backslash inside an f-string
     # expression, so the slug is made first.
     slug = re.sub(r'\s+', '_', form)
-    # Numbered by the plan's requests, not by the entries it holds now, so a
-    # drop that asks the requests again gives each the key it was given.
+    # Numbered by the entries this turn made, so a key is never given twice.
     ws.entry_no += 1
     key = f'new:{v["id"]}:{slug}#{ws.entry_no}'
     # The entry every later tool in the turn resolves against and the op that
@@ -268,7 +267,7 @@ def _refuse_doomed_entry(ws: Workspace, item: dict, what: str):
     """
     if item['id'] in ws.doomed_entries():
         raise ToolError(f'{ws.entry_name(item)} is deleted or merged away by this same plan, so it cannot '
-                        f'{what}. Drop that change with drop_planned, or work on the entry that survives.')
+                        f'{what}. Leave that change out (discard_plan and stage the rest again), or work on the entry that survives.')
 
 
 def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
@@ -277,7 +276,7 @@ def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
     itself after the user has approved it."""
     if any(op.get('kind') == 'merge_entries' and op.get('keep_id') == item['id'] for op in ws.ops):
         raise ToolError(f'{ws.entry_name(item)} is what another change in this plan merges into, so it cannot '
-                        f'{what}. Drop that merge with drop_planned, or merge into an entry that stays.')
+                        f'{what}. Leave that merge out (discard_plan and stage the rest again), or merge into an entry that stays.')
 
 
 def t_add_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,

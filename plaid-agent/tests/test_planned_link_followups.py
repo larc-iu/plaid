@@ -218,15 +218,6 @@ def test_a_merge_does_not_move_a_link_onto_a_morpheme_an_analysis_deletes():
     assert _own_links_on(c, 'm-1b') == []
 
 
-def test_dropping_the_link_gives_the_merge_its_move_back():
-    w = fake_ws(FakeClient())
-    call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-gam'))
-    call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-erg'})
-    call_tool(w, 'drop_planned', {'indexes': [1]})
-    [merged] = w.plan_payload()['ops']
-    assert [l['link_id'] for l in merged['links']] == ['l-2'] and 'move 1 link' in merged['label']
-
-
 def test_approval_settles_a_plan_built_before_the_staging_rule():
     """The ops as a plan stored before this change carries them."""
     link = {'kind': 'link', 'token_id': 'm-1b', 'item_id': 'vi-gam', 'existing_link_id': 'l-2', 'label': 'x'}
@@ -361,16 +352,13 @@ def test_set_field_for_form_reads_the_planned_chain():
     w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'set_field_for_form', {'form': 'd', 'field': 'Morph Gloss', 'value': 'DAT'})
-    # Staged as a row of its own, so dropping it takes its value back.
+    # Staged as a row of its own.
     assert [op['kind'] for op in w.ops] == ['set_analysis', 'bulk_scope'], out
     assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', 'DAT', None]
     # The stored "Ali" of s1.w1 is on its way out, and the planned one
     # already has a value, so only_empty leaves it.
     call_tool(w, 'set_field_for_form', {'form': 'Ali', 'field': 'Morph Gloss', 'value': 'ALI'})
     assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', 'DAT', None]
-    call_tool(w, 'drop_planned', {'indexes': [2]})
-    assert [op['kind'] for op in w.ops] == ['set_analysis']
-    assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', None, None]
 
 
 def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_rewrites():

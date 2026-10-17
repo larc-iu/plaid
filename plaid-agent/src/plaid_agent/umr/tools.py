@@ -29,12 +29,11 @@ from plaid_client.workflows.umr.inventory import (ATTRIBUTE_RELATIONS, ATTRIBUTE
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
-from ..core.requests import Replaying
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
 from .plan import (GRAPH_KINDS, KIND, attr_line, attrs_scope_held, attrs_scope_targets, graphs_of_op, holds,
                    replacing_phrase, sentence_graph_key)
-from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject, attrs_change,
+from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, attrs_change,
                       gloss_headers, group_of, load_document, node_ref, place_attributes,
                       numbering, render_document, render_document_graph, resolve)
 
@@ -59,7 +58,7 @@ def _closed_value_problem(rel, value) -> Optional[str]:
     return attribute_value_problem(rel, value)
 
 
-class Workspace(Replaying, BaseWorkspace):
+class Workspace(BaseWorkspace):
     """One turn's view of a UMR project: what it has loaded and the plan it is
     proposing."""
 
@@ -134,18 +133,6 @@ class Workspace(Replaying, BaseWorkspace):
             raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on '
                             f'the document.')
         return thing.id
-
-    def __init__(self, client, project: UmrProject, on_progress=None):
-        super().__init__(client, project, on_progress)
-        # A drop asks the plan's remaining requests again (core/requests.py).
-        self.init_requests()
-
-    def call_tool(self, tool: str, args: Dict[str, Any]) -> str:
-        from .toolkit import call_tool
-        return call_tool(self, tool, args)
-
-    # Each call's tag (``_staged``), new on every call, and a scope's card.
-    REQUEST_BOOKKEEPING = ('staging', 'card')
 
     def make_corpus(self):
         from .corpus import Corpus
@@ -359,12 +346,12 @@ class Workspace(Replaying, BaseWorkspace):
                 continue
             if graphs_of_op(prev) & graphs:
                 raise ToolError('This plan already replaces the graph of this sentence. Keep one '
-                                'of the two (plan_status, drop_planned), or plan them in separate '
+                                'of the two (discard_plan and stage the rest again), or plan them in separate '
                                 'turns.')
             if prev.get('kind') in GRAPH_KINDS and sentence_graph_key(prev) in graphs:
                 raise ToolError(f'This plan already changes {self._where(prev)}, and that change '
                                 f'was worked out against the graph this one replaces. Keep one of '
-                                f'the two (plan_status, drop_planned), or plan them in separate '
+                                f'the two (discard_plan and stage the rest again), or plan them in separate '
                                 f'turns.')
 
     def _where(self, op: Dict[str, Any]) -> str:
@@ -478,7 +465,7 @@ def _no_graph_planned(ws: Workspace, doc: UmrDoc, s: Sentence) -> None:
     if any(op.get('graph_of') == key for op in ws.ops):
         raise ToolError(f'This plan already replaces the graph of s{s.number} in {plain_quote(doc.name)}, and '
                         f'this change was worked out against the graph it replaces. Keep one of '
-                        f'the two (plan_status, drop_planned), or plan them in separate turns.')
+                        f'the two (discard_plan and stage the rest again), or plan them in separate turns.')
 
 
 def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str = None,
@@ -543,8 +530,7 @@ def _named_roles_missing(asked: str, text: str, removed: Iterable[str] = ()) -> 
     listed = ', '.join(missing[:-1]) + (' and ' if len(missing) > 1 else '') + missing[-1]
     return (f' The user\'s message names {listed}, and this graph has no '
             f'{"such role" if len(missing) == 1 else "such roles"}. If {"it is" if len(missing) == 1 else "they are"} '
-            f'meant for this graph, drop this change (drop_planned, or discard_plan when it is all the plan '
-            f'holds) and plan the graph again with {"it" if len(missing) == 1 else "them"}.')
+            f'meant for this graph, discard_plan and plan the graph again with {"it" if len(missing) == 1 else "them"}.')
 
 
 def _additions(ops: List[Dict[str, Any]]) -> str:

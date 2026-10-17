@@ -327,13 +327,11 @@ def test_a_graph_is_refused_on_a_sentence_the_plan_already_changes(ws):
 
 # --- the plan itself ---------------------------------------------------------------
 
-def test_the_plan_can_be_read_back_and_trimmed(ws):
+def test_the_plan_can_be_read_back_and_discarded(ws):
     run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='s2r')
     run(ws, 'set_attributes', document='Story', sentence=1, var='s1b', line=':aspect state')
     assert run(ws, 'plan_status').startswith('2 planned changes')
-    assert 'Dropped 1' in run(ws, 'drop_planned', indexes=[1])
-    assert len(ws.ops) == 1
-    assert 'Discarded 1' in run(ws, 'discard_plan')
+    assert 'Discarded 2' in run(ws, 'discard_plan')
 
 
 def test_the_plan_card_places_every_change(ws):
@@ -505,7 +503,7 @@ def test_apply_penman_says_which_roles_the_user_wrote_out_are_missing(ws):
                                      ':aspect performance\n    :ARG2 (s1h / house :refer-number plural))')
     out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
     assert " The user's message names :place, and this graph has no such role. If it is meant for this " \
-           "graph, drop this change" in out, out
+           "graph, discard_plan and plan the graph again with it." in out, out
     ws.ops.clear()
     out = run(ws, 'apply_penman', document='Story', sentence=1, text=text.replace(':ARG2', ':place'))
     assert "user's message" not in out, out

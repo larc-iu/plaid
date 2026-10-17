@@ -1,9 +1,8 @@
 """Every count counts what approval would write, never a keep (Luke's
 ruling for FX-C, 2026-10-16, after REV2-AGENT): the card's rows and group
-headers, plan_status, drop_planned, the applied message, the History label,
-the research record and the trace. A ud discard or replacement drops the
-values the plan keeps or changes by name from its count, as igt's rules do.
-Dropping a corpus-wide change drops the keeps made against it, and a plan
+headers, plan_status, the applied message, the History label, the research
+record and the trace. A ud discard or replacement drops the values the plan
+keeps or changes by name from its count, as igt's rules do, and a plan
 holding only keeps reads as no changes."""
 
 from plaid_agent.core.conversation import ConversationStore, proposed_changes
@@ -91,9 +90,6 @@ def test_ud_a_replacement_row_counts_without_its_kept_value():
     assert plan_changes(payload['ops']) == 1
     # The stored op keeps what the preview found, without the card.
     assert payload['ops'][0]['found']['count'] == 2 and 'card' not in payload['ops'][0]['found']
-    # Dropping the keep counts the value back in.
-    assert ud_call(ws, 'drop_planned', {'indexes': [2]}).startswith('Stopped keeping 1 value')
-    assert ws.plan_payload()['changes'][0]['rule']['total'] == 2
 
 
 def test_ud_a_change_by_name_is_counted_once_not_also_in_the_discard():
@@ -121,31 +117,12 @@ def test_the_research_record_counts_no_keep_in_either_app():
     assert total == plan_changes(ops) == 1 and not any(r[0] == 'keep' for r in rows)
 
 
-# --- REV2-AGENT-4: plan_status, drop_planned, a stale keep ---------------------------
+# --- REV2-AGENT-4: plan_status ----------------------------------------------------------
 
-def test_plan_status_and_drop_planned_tell_a_keep_from_a_change():
+def test_plan_status_tells_a_keep_from_a_change():
     _client, w = _keep_igt()
     status = call_igt(w, 'plan_status', {})
     assert status.startswith('1 planned change and 1 kept value (nothing is written'), status
-    out = call_igt(w, 'drop_planned', {'indexes': [2]})
-    assert out.startswith('Stopped keeping 1 value: the corpus-wide change in the plan now includes it.'), out
-    assert [o['kind'] for o in w.ops] == ['bulk_scope']
-    assert w.plan_payload()['ops'][0]['count'] == 2
-
-
-def test_dropping_the_change_drops_the_keeps_made_against_it_in_both_apps():
-    _client, w = _keep_igt()
-    out = call_igt(w, 'drop_planned', {'indexes': [1]})
-    assert out.startswith('Dropped 1 planned change. 1 value kept out of it went with it'), out
-    assert w.ops == []
-    ws = _ud()
-    _keep_ud(ws)
-    out = ud_call(ws, 'drop_planned', {'indexes': [1]})
-    assert out.startswith('Dropped 1 entry that changed nothing. 1 value kept out of it went with it'), out
-    assert ws.ops == []
-    # Set again, nothing is taken back: there was only a keep.
-    assert ud_call(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'upos',
-                                     'value': 'NOUN'}).startswith('Nothing to change')
 
 
 def test_a_plan_of_only_kept_values_reads_as_no_changes():

@@ -55,7 +55,7 @@ class Tracer:
 # META in one app and READ in the other, so the same tool counted as a look at
 # the data in one Assistant tab and not in the other.
 META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'query_help',
-                        'discard_plan', 'drop_planned', 'resume_plan', 'read_guideline'})
+                        'discard_plan', 'read_guideline'})
 
 # The reads the summary calls searches: a look for a pattern across the data.
 # Every other READ (a count, a worklist, a check, a run of code) is a read. An
@@ -481,10 +481,6 @@ SHARED_DESCRIBE: Dict[str, Callable[[Dict[str, Any]], str]] = {
     'read_url': lambda a: f'Read the web page {a.get("url")}',
     'plan_status': lambda a: 'Reviewed the plan so far',
     'discard_plan': lambda a: 'Discarded the plan so far',
-    'drop_planned': lambda a: (f'Dropped {plural(count(a, "indexes"), "planned change")}' if a.get('indexes')
-                               else 'Dropped planned changes' + (f' to {a["field"]}' if a.get('field') else '')
-                               + in_doc(a)),
-    'resume_plan': lambda a: 'Took over the plan from an earlier message',
 }
 
 SHARED_PROGRESS: Dict[str, Callable[[Dict[str, Any]], str]] = {
@@ -508,6 +504,4 @@ SHARED_PROGRESS: Dict[str, Callable[[Dict[str, Any]], str]] = {
     'read_url': lambda a: f'Reading {a.get("url", "")}…',
     'plan_status': lambda a: 'Reviewing the plan so far…',
     'discard_plan': lambda a: 'Discarding the plan so far…',
-    'drop_planned': lambda a: 'Dropping planned changes…',
-    'resume_plan': lambda a: 'Taking over the plan from an earlier message…',
 }

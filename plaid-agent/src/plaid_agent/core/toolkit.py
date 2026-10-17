@@ -12,19 +12,10 @@ whichever assistant it is.
 from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
 from . import filetools, guidelines, sandbox, webtools
-from .plan import resume_plan
 from .reach import route
 from .tools import ToolError, fn, limit_arg, refused, run_tool, tools_for as offered_tools
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
-
-# Plans are core's, so every app offers it, beside drop_planned.
-RESUME_PLAN = fn(
-    'resume_plan',
-    'Copy the plan still waiting on its card from an earlier message into this turn\'s plan, so you can add to it '
-    'and drop from it and the card holds both. After an approval refused as out of date, it asks that plan\'s '
-    'requests again on the documents as they are now. Call it before staging anything.', {}, [])
-
 
 def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = False) -> Dict[str, Dict[str, Any]]:
     """The schemas of the shared tools, by name, for an app to place in its
@@ -60,16 +51,9 @@ def shared_schemas(*, ref: str, comment_field: bool = False, restore: bool = Fal
             'What people have written to each other: in the whole project (no document), in one document, '
             f'or on one thing in it ({on}). These are notes between annotators, never annotation. Oldest first.',
             comment_props, []),
-        'plan_status': fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
+        'plan_status': fn('plan_status', 'Every change planned so far in this turn, or the plan from an earlier '
+                          'message that is still waiting on its card.', {}, []),
         'discard_plan': fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
-        'drop_planned': fn(
-            'drop_planned',
-            'Drop some of the planned changes, by their numbers from plan_status, or every change to one field, '
-            'in one document, or both. The rest stay.',
-            {'indexes': {'type': 'array', 'items': {'type': 'integer'}},
-             'field': {'type': 'string', 'description': 'Drop every planned change that writes this field.'},
-             'document': {'type': 'string', 'description': 'Drop every planned change in this document (id or '
-                                                           'exact name).'}}, []),
         'query_help': fn(
             'query_help',
             'The Plaid query language that `query` takes, and this project\'s layer names. Call it once before '
@@ -98,17 +82,13 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
           rewrite: Optional[Callable[[Callable, Dict[str, Any]], Dict[str, Any]]] = None) -> Kit:
     """An app's whole tool table and the dispatch behind it, from the tools it
     declares. Core's own tools are added in one order for every app:
-    resume_plan after drop_planned, then the guidelines (``manual`` says what they are about), the web (``web`` what
+    the guidelines (``manual`` says what they are about), the web (``web`` what
     to look up), attached files, the sandbox (``code`` what it reads, ``code_functions`` any host
     function of the app's own, its implementations the app's, in ``impl``). ``impl`` gains core's.
 
     ``rewrite(fn, args)`` is the app's last word on a call's arguments before
     the tool runs."""
-    tools = list(tools)
-    at = next((i + 1 for i, t in enumerate(tools) if t['function']['name'] == 'drop_planned'), len(tools))
-    tools.insert(at, RESUME_PLAN)
-    impl['resume_plan'] = resume_plan
-    tools = (tools + guidelines.schemas(manual) + guidelines.write_schemas() + webtools.schemas(web)
+    tools = (list(tools) + guidelines.schemas(manual) + guidelines.write_schemas() + webtools.schemas(web)
              + filetools.schemas() + sandbox.schemas(code, code_functions))
     impl.update({'read_guideline': guidelines.t_read_guideline, 'add_guideline': guidelines.t_add_guideline,
                  'revise_guideline': guidelines.t_revise_guideline,
@@ -138,12 +118,6 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.
         after = (lambda out: out + ws.superseded_note()) if name in write else None
-        # Each planning call is a request the plan is made from, which an
-        # app may keep to ask again (``request_begin``, ``request_end``).
-        asked = ws.request_begin(name, args) if name in write else None
-        out = run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after)
-        if asked is not None:
-            ws.request_end(asked, out)
-        return out
+        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after)
 
     return Kit(tools, write, tools_for, call_tool)

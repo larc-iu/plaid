@@ -58,7 +58,6 @@ import importlib.metadata
 import json
 import os
 import re
-import sys
 import time
 import traceback
 from datetime import timedelta
@@ -98,7 +97,7 @@ from .opkind import ROW
 from .plan import (EXPANSION, HELD_FROM, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError,
                    PlanMovedOn, PlanOutOfDate, RecordFull, ScopeMoved, documents_to_lock, expanding,
                    forget_held, holding, may_have_written, nothing_landed, outcome_unknown, plan_changes, stamp_of,
-                   stale_plan, waiting_plan, writing)
+                   waiting_plan, writing)
 from .conversation import WROTE
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -1349,9 +1348,6 @@ class BaseAssistantService(BaseService):
                 # The plan an earlier message staged that still waits on its card,
                 # which this turn's own plan replaces (see `turn_ending`).
                 ws.waiting = waiting_plan(conv['display'])
-                # A plan approval refused as out of date, which resume_plan asks again.
-                ws.stale = stale_plan(conv['display'])
-                ws.load_plan_state = lambda plan_id: store.plan_state(conv_id, plan_id)
                 transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []),
                                              ws.FILE_ROUTES)
                 # The other projects the user added to the conversation, read from their
@@ -1479,15 +1475,6 @@ class BaseAssistantService(BaseService):
         if plan:
             plan['proposed'], plan['proposed_count'] = proposed_changes(plan.get('ops') or [],
                                                                         *self.proposed_keys)
-            # A resumed plan keeps the versions its changes were staged at.
-            plan['documents'] = ws.with_carried_pins(plan.get('documents') or [])
-            # The live plan, for a later turn to resume, stored before the
-            # card that names it.
-            try:
-                if not store.keep_plan(conv_id, plan['id'], ws.plan_state()):
-                    print(f'Plan {plan["id"]} is too large to store for resume_plan', file=sys.stderr)
-            except Exception:  # noqa: BLE001 - the plan stands, resume_plan says it is not available
-                traceback.print_exc()
         item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),

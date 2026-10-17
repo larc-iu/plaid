@@ -96,7 +96,7 @@ UD_TOOLS, UD_TABLE = _write_tools('ud')
 # A tool that only ever takes changes OUT of the plan. It is a write tool by
 # the table's reckoning (its description starts with PLAN:), and refusing it
 # beside a restore would leave the model no way to drop the restore.
-TAKES_AWAY = {'discard_plan', 'drop_planned'}
+TAKES_AWAY = {'discard_plan'}
 
 
 @pytest.mark.parametrize('tool', IGT_TOOLS, ids=IGT_TOOLS)

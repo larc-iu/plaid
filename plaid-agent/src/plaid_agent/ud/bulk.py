@@ -330,5 +330,4 @@ def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
         if kind in rewriting and kind not in SPLITS_KEEP_WORDS and docs_of_op(op) & reach:
             what = _REWRITES.get(kind, 'rewrites')
             raise ToolError(f'This plan already {what} a document this replacement reaches, and that '
-                            f'rewrites what the replacement would change. Apply one, then plan the other '
-                            f'(plan_status, drop_planned).')
+                            f'rewrites what the replacement would change. Apply one, then plan the other.')

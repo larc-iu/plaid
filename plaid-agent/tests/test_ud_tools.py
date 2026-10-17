@@ -319,7 +319,7 @@ def test_a_confirmation_and_a_discard_of_one_document_refuse_each_other(ws):
     card, and the confirmations were dropped afterwards."""
     assert 'confirming' in run(ws, 'confirm', document='Viaje')
     out = run(ws, 'discard_predictions', document='Viaje')
-    assert 'throws values away' in out and 'drop_planned' in out
+    assert 'throws values away' in out and 'discard_plan and stage the rest again' in out
     assert [op['kind'] for op in ws.ops] == ['confirm_scope']
     # And the other way round.
     ws.ops.clear()
@@ -527,12 +527,10 @@ def test_discarding_a_whole_document_is_one_scope_op_that_clears_at_approval(ws)
 
 # --- the plan -------------------------------------------------------------------
 
-def test_plan_status_numbers_the_changes_and_drop_removes_one(ws):
+def test_plan_status_numbers_the_changes(ws):
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='VERB')
     assert '1. lemma = "correr" (s2.w1)' in run(ws, 'plan_status')
-    assert run(ws, 'drop_planned', indexes=[1]).startswith('Dropped 1 planned change.\n1 planned change ')
-    assert 'No planned change numbered 5' in run(ws, 'drop_planned', indexes=[5])
 
 
 def test_the_payload_carries_the_document_version_it_was_read_at(ws):
@@ -1189,17 +1187,12 @@ def test_a_discard_leaves_a_machine_lemma_that_a_vouched_arc_hangs_on():
     assert ws.ops == []
 
 
-def test_a_head_or_an_index_that_is_not_a_number_reads_as_english(ws):
+def test_a_head_that_is_not_a_number_reads_as_english(ws):
     # `isdigit` is true of "²" and of the digits inside "--1", so int() got
     # them and answered the model with its own error text.
     for bad in ('--1', '²', '1.0', 1.5):
         out = run(ws, 'set_head', document='Viaje', ref='s1.w4', head=bad, deprel='obj')
         assert 'is not a head' in out and 'invalid literal' not in out
-    run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
-    assert 'whole numbers' in run(ws, 'drop_planned', indexes=['a'])
-    # A fraction is refused, not truncated onto change 1.
-    assert 'whole numbers' in run(ws, 'drop_planned', indexes=[1.5])
-    assert len(ws.ops) == 1
 
 
 # --- corpus-wide changes -----------------------------------------------------------
@@ -1708,7 +1701,7 @@ def test_a_change_by_reference_says_which_words_of_the_same_form_it_leaves(ws):
     s.words[4].form = 'MAR'  # "Vamos a el mar MAR": two words "mar" in s1, told apart by case only
     out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'upos', 'value': 'X'})
     assert out.endswith(' Not in this plan: s1 also has "mar" at w5. If the user named the word by its form '
-                        'alone, they did not say which: drop this change and ask them.'), out
+                        'alone, they did not say which: discard_plan and ask them.'), out
     out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4', 's1.w5'], 'field': 'upos',
                                       'value': 'X'})
     assert 'Not in this plan' not in out, out

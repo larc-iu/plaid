@@ -1055,10 +1055,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
 
     def claimed_nothing(text: str) -> bool:
         """The reply says it planned, and this turn planned nothing: no plan
-        call went through, none was resumed, and no card from an earlier
-        message still waits (the reply may be about that one)."""
-        return (not made and not held_changes(ws)
-                and not getattr(ws, 'waiting', None) and not getattr(ws, 'resumed', False)
+        call went through and no card from an earlier message still waits
+        (the reply may be about that one)."""
+        return (not made and not held_changes(ws) and not getattr(ws, 'waiting', None)
                 and claims_a_plan(text))
 
     def keep_the_plan(e: Exception) -> None:

@@ -733,7 +733,7 @@ class Tally:
         if self.waiting_unsaid and getattr(ws, 'reported_waiting', False):
             from .plan import keep_waiting, waiting_phrase
             out += (f' It replaces {waiting_phrase(ws.waiting)}, which the user can no longer approve. '
-                    + keep_waiting('these'))
+                    + keep_waiting())
         return out
 
     def note(self, ws) -> None:

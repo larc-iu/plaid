@@ -25,8 +25,7 @@ from .shape import t_set_words, t_split_token
 from ..core.history import add_comment as t_add_comment, comments as t_comments
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
                     t_frequency_list, t_search, t_worklist)
-from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
-    plan_status as t_plan_status
+from ..core.plan import discard_plan as t_discard_plan, plan_status as t_plan_status
 from ..core.tools import list_documents as t_list_documents, read_document as t_read_document
 from .tools import (FIELDS, t_confirm, t_del_relation,
                     t_discard_predictions, t_project_overview, t_run_parse,
@@ -219,7 +218,6 @@ TOOLS = [
         ['document', 'as_of']),
     _SHARED['plan_status'],
     _SHARED['discard_plan'],
-    _SHARED['drop_planned'],
 ]
 
 TOOLS += [
@@ -312,7 +310,6 @@ _IMPL = {
     'discard_predictions': t_discard_predictions,
     'plan_status': t_plan_status,
     'discard_plan': t_discard_plan,
-    'drop_planned': t_drop_planned,
 }
 
 _IMPL['run_parse'] = t_run_parse

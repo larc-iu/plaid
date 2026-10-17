@@ -65,8 +65,8 @@ _BEFORE = {'merge': ('merge_entries', {'keep_form': 'gam#1', 'remove_form': 'gam
 
 
 @pytest.mark.parametrize('before', sorted(_BEFORE))
-@pytest.mark.parametrize('then', ['drop', 'reask', 'keep'])
-def test_a_change_before_a_respelling_dropped_asked_again_or_kept_leaves_the_plan_whole(live_client, before, then):
+@pytest.mark.parametrize('then', ['reask', 'keep'])
+def test_a_change_before_a_respelling_asked_again_or_kept_leaves_the_plan_whole(live_client, before, then):
     # The respelling found again reads only the corpus-wide changes before
     # it, never itself: it was refused as "a corpus-wide change that reaches
     # this document", the entry dropped all the same, and the turn's plan
@@ -82,9 +82,7 @@ def test_a_change_before_a_respelling_dropped_asked_again_or_kept_leaves_the_pla
         assert not out.startswith('Error'), out
         out = call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'gam', 'replacement': 'gham', 'whole': True})
         assert not out.startswith('Error'), out
-        if then == 'drop':
-            out = call_tool(ws, 'drop_planned', {'indexes': [1]})
-        elif then == 'reask':
+        if then == 'reask':
             if not tool.endswith(('_field', '_form')):
                 pytest.skip('a merge or a delete asked again is refused: its entry is gone already')
             out = call_tool(ws, tool, args)

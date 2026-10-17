@@ -16,7 +16,6 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 """
 
 import base64
-import copy
 import json
 import logging
 import unicodedata
@@ -1433,12 +1432,13 @@ def holding(client, document_ids: Iterable[str]):
         logger.warning('The lock on document %s lapsed after the last write: %s', e.document_id, e)
 
 
-# --- the plan, as the model reads and edits it --------------------------------
+# --- the plan, as the model reads it -------------------------------------------
 # A plan is a list of labelled changes nobody has agreed to yet, so the model
-# needs to see it, throw it away and take one line out of it. None of that
-# depends on what the changes are, so it is written once here. An app whose
-# plan carries more than `ops` (entries created alongside it, say) overrides
-# what it has to and calls back here.
+# needs to see it and throw it away. None of that depends on what the changes
+# are, so it is written once here. An app whose plan carries more than `ops`
+# (entries created alongside it, say) overrides what it has to and calls back
+# here. A plan is never changed after the turn that staged it (Luke
+# 2026-10-17): a later message plans again, and its plan replaces the card.
 
 #: How many of the plan's entries plan_status lists.
 PLAN_STATUS_LINES = 200
@@ -1448,13 +1448,22 @@ PLAN_STATUS_LINES = 200
 WAITING_SUMMARY_MAX = 160
 
 
+def _waiting_row(change: Dict[str, Any]) -> str:
+    """One row of a waiting card as plan_status lists it: its label, and a
+    rule's tool and arguments, which are what staging it again takes."""
+    rule = change.get('rule') if isinstance(change.get('rule'), dict) else None
+    if rule is None:
+        return str(change.get('label') or '')
+    args = json.dumps(rule.get('args') or {}, ensure_ascii=False, sort_keys=True, default=str)
+    return f'{change.get("label") or ""} ({rule.get("tool")} {args})'
+
+
 def waiting_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
     """The plan an earlier message staged that is still waiting on its card,
-    as ``{'count', 'summary', 'id', 'documents'}``, or None. The test is the
-    one a new plan's turn uses to mark it replaced
-    (`conversation.replace_undecided`): a plan with no status that no
-    approval was interrupted on. ``id`` and ``documents`` are what
-    resume_plan reads its stored state by and carries its pins from."""
+    as ``{'count', 'summary', 'rows'}``, or None. The test is the one a new
+    plan's turn uses to mark it replaced (`conversation.replace_undecided`):
+    a plan with no status that no approval was interrupted on. ``rows`` are
+    its card's rows as plan_status lists them."""
     waiting = [d for d in display or () if isinstance(d, dict) and isinstance(d.get('plan'), dict)
                and d.get('status') is None and not d.get('interrupted')]
     if not waiting:
@@ -1466,18 +1475,8 @@ def waiting_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
     summary = str(plan.get('summary') or '').strip()
     if len(summary) > WAITING_SUMMARY_MAX:
         summary = summary[:WAITING_SUMMARY_MAX - 1].rstrip() + '…'
-    return {'count': count, 'summary': summary, 'id': plan.get('id'),
-            'documents': [d for d in plan.get('documents') or () if isinstance(d, dict)]}
-
-
-def stale_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
-    """The plan of the last card when approval refused it as out of date
-    (status ``stale``), in :func:`waiting_plan`'s shape, or None. resume_plan
-    asks its requests again on the data as it is now (H17-ASSIST-9)."""
-    cards = [d for d in display or () if isinstance(d, dict) and isinstance(d.get('plan'), dict)]
-    if not cards or cards[-1].get('status') != 'stale':
-        return None
-    return waiting_plan([{**cards[-1], 'status': None, 'interrupted': None}])
+    rows = [_waiting_row(c) for c in plan.get('changes') or () if isinstance(c, dict)]
+    return {'count': count, 'summary': summary, 'rows': rows}
 
 
 def waiting_phrase(waiting: Dict[str, Any], the: str = 'the') -> str:
@@ -1487,26 +1486,35 @@ def waiting_phrase(waiting: Dict[str, Any], the: str = 'the') -> str:
     return f'{the} plan of {n} change{"s" if n != 1 else ""}{summary} from your earlier message'
 
 
-def keep_waiting(this: str = 'this') -> str:
+def keep_waiting() -> str:
     """How to keep a waiting plan's changes once this turn has staged."""
-    return f'To keep those changes, discard_plan, call resume_plan, then stage {this} again.'
+    return ('To keep those changes, discard_plan and ask the user to approve that plan first, or plan them again '
+            'in this turn.')
+
+
+def _numbered(rows: List[str]) -> List[str]:
+    out = [f'  {i}. {row}' for i, row in enumerate(rows[:PLAN_STATUS_LINES], start=1)]
+    if len(rows) > PLAN_STATUS_LINES:
+        out.append(f'  ... {len(rows) - PLAN_STATUS_LINES} more')
+    return out
 
 
 def plan_status(ws) -> str:
-    """The plan's entries, numbered as drop_planned takes them, each as the
-    card will show it (``ws.plan_view()``).
+    """The plan's entries, each as the card will show it
+    (``ws.plan_view()``).
 
     Each turn stages a plan of its own, which replaces the one still waiting
     from an earlier message, so that one is named too: a model told only
     "nothing is planned" said the waiting card was cleared, and one that
     added 19 changes told the user the card held the 114 before them as well
-    (2026-10-12 survey)."""
+    (2026-10-12 survey). With nothing staged, the waiting card's rows are
+    listed, read only, so the model can plan a corrected version in full."""
     waiting = getattr(ws, 'waiting', None)
     if not ws.ops:
         if waiting:
-            return (f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting on '
-                    'its card for the user to approve or discard. Staging anything now replaces it. To keep its '
-                    'changes, call resume_plan first.')
+            return '\n'.join([f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting '
+                              'on its card for the user to approve or discard. Staging anything now replaces it. '
+                              "Its changes, not part of this turn's plan:"] + _numbered(waiting.get('rows') or []))
         return 'Nothing is planned yet.'
     ops = ws.plan_view()
     n = len(ops)
@@ -1519,17 +1527,10 @@ def plan_status(ws) -> str:
         entries = '' if n == held + kept else f' in {_n(n, "numbered entry", "numbered entries")}'
         top = (f'{held_phrase(ops)}{entries} (nothing is written until the user approves them as one '
                 'plan):')
-    out = [top]
-    for i, op in enumerate(ops[:PLAN_STATUS_LINES], start=1):
-        where = f' ({op["ref"]})' if op.get('ref') else ''
-        out.append(f'  {i}. {op.get("label")}{where}')
-    if n > PLAN_STATUS_LINES:
-        out.append(f'  ... {n - PLAN_STATUS_LINES} more')
-    if waiting and getattr(ws, 'resumed', False):
-        out.append(f'This plan holds the changes of {waiting_phrase(waiting)} (resume_plan) and replaces its card.')
-    elif waiting:
+    out = [top] + _numbered([op.get('label') + (f' ({op["ref"]})' if op.get('ref') else '') for op in ops])
+    if waiting:
         out.append(f'This plan replaces {waiting_phrase(waiting)}: only what is listed here can be approved. '
-                   + keep_waiting("this turn's changes"))
+                   + keep_waiting())
     return '\n'.join(out)
 
 
@@ -1538,222 +1539,16 @@ def discard_plan(ws) -> str:
     held = held_phrase(ws.plan_view()) if n else ''
     ws.ops.clear()
     ws.after_discard()
-    # What was resumed went with the rest, so the waiting card is replaced
-    # again by whatever is staged next, and resume_plan may be called again.
-    ws.forget_resumed()
+    # The waiting card is replaced again by whatever is staged next.
+    ws.reported_waiting = False
     said = f'Discarded {held}.' if n else 'Nothing was planned.'
     waiting = getattr(ws, 'waiting', None)
     if waiting:
         said = said if n else 'Nothing was planned in this turn.'
         # Only the user discards a card (2026-10-12 survey: "the plan was
-        # cleared" while it could still be approved).
-        # The next step is said too: a model that read "only the user can
-        # discard it" as "the card is safe" staged again and looped
-        # (2026-10-13 survey).
+        # cleared" while it could still be approved). The next step is said
+        # too: a model that read "only the user can discard it" as "the card
+        # is safe" staged again and looped (2026-10-13 survey).
         said += (f' {waiting_phrase(waiting, "The")} is still waiting on its card: only the user can '
-                 'discard it there. To keep its changes, call resume_plan now, before staging anything.')
+                 'discard it there. Staging anything in this turn replaces it.')
     return said
-
-
-def resume_plan(ws) -> str:
-    """Copy the plan still waiting from an earlier message into this turn's
-    plan (``ws.resume``), so the turn can add to it and drop from it and the
-    card then holds both. Only before this turn stages anything: the
-    waiting changes go first, and a model that rebuilt 336 of 420 changes by
-    staging them again sent 11 KB of code to do it (2026-10-12 survey)."""
-    from .tools import ToolError
-    waiting = getattr(ws, 'waiting', None)
-    if getattr(ws, 'resumed', False) and ws.ops:
-        raise ToolError('This turn already resumed the plan from your earlier message. plan_status lists it.')
-    if not waiting:
-        if getattr(ws, 'stale', None):
-            return _ask_stale_again(ws, ws.stale)
-        raise ToolError('No plan from an earlier message is waiting on its card.')
-    if ws.ops:
-        n = held_changes(ws)
-        raise ToolError(f'This turn has already planned {n} change{"s" if n != 1 else ""}, and resume_plan only '
-                        'starts a plan. discard_plan, call resume_plan, then stage them again.')
-    if any(d.get(HELD_FROM) is not None for d in waiting.get('documents') or ()):
-        raise ToolError('An approval of that plan was under way, so it cannot be resumed. Stage its changes again.')
-    load = getattr(ws, 'load_plan_state', None)
-    state = load(waiting['id']) if load is not None and waiting.get('id') else None
-    if state is None:
-        raise ToolError('Resume is not available for that plan. Stage its changes again.')
-    ws.resume(state, waiting.get('documents') or [])
-    n = held_changes(ws)
-    return (f'Took over {n} change{"s" if n != 1 else ""} from {waiting_phrase(waiting)}. This turn\'s plan now '
-            'holds them: what you stage next is added, and drop_planned takes any out. Nothing is written until '
-            'the user approves.')
-
-
-def _ask_stale_again(ws, stale: Dict[str, Any]) -> str:
-    """resume_plan on a plan approval refused as out of date: its requests
-    asked again, in order, over the documents as they are now, so the plan is
-    what asking them from scratch makes today (ruled by Luke 2026-10-17). Its
-    pins are this turn's, not the old plan's."""
-    from .tools import ToolError
-    if ws.ops:
-        n = held_changes(ws)
-        raise ToolError(f'This turn has already planned {n} change{"s" if n != 1 else ""}, and resume_plan only '
-                        'starts a plan. discard_plan, call resume_plan, then stage them again.')
-    load = getattr(ws, 'load_plan_state', None)
-    state = load(stale['id']) if load is not None and stale.get('id') else None
-    requests = state.get('requests') if isinstance(state, dict) else None
-    if not isinstance(requests, list) or not requests or not hasattr(ws, 'replay'):
-        raise ToolError('Resume is not available for that plan. Stage its changes again.')
-    ws.refuse_read_only()
-    ws.empty_plan = copy.deepcopy(ws.snapshot())
-    # Where each was asked is read again as it is asked now.
-    ws.replay([{k: v for k, v in r.items() if k != 'where'} for r in requests if isinstance(r, dict)])
-    ws.reported_waiting = True
-    n = held_changes(ws)
-    phrase = waiting_phrase(stale).replace('from your earlier message', 'that was out of date')
-    return (f'Asked the requests of {phrase} again, on the documents as they are now. This turn\'s plan now '
-            f'holds {n} change{"s" if n != 1 else ""}: tell the user what changed from the earlier card, if '
-            'anything. What you stage next is added, and drop_planned takes any out. Nothing is written until '
-            'the user approves.')
-
-
-def carried_pins(fresh: List[Dict[str, Any]], older: List[Dict[str, Any]], keep: Optional[set]
-                 ) -> List[Dict[str, Any]]:
-    """A plan's document records with the records of a resumed plan carried
-    in: ``fresh`` are this turn's, ``older`` the resumed plan's, ``keep`` the
-    documents its changes still in the plan land in (None: all of them).
-
-    Where a document is in both, the older version is kept, so approval
-    refuses an edit made since the earlier turn staged its changes. The
-    sentences both pin are checked together, the older print winning, and a
-    document either pins whole is pinned whole. A record reached by rules
-    alone is checked by their digests, so the other record stands."""
-    out = {d['id']: d for d in fresh if d.get('id')}
-    order = [d['id'] for d in fresh if d.get('id')]
-    for o in older:
-        did = o.get('id')
-        if not did or (keep is not None and did not in keep):
-            continue
-        f = out.get(did)
-        if f is None:
-            order.append(did)
-            out[did] = o
-        elif o.get('rule'):
-            continue
-        elif f.get('rule'):
-            out[did] = o
-        else:
-            merged = {**f, 'version': o.get('version')}
-            merged.pop('sentences', None)
-            if o.get('sentences') and f.get('sentences'):
-                prints = {s.get('id'): s for s in f['sentences']}
-                prints.update({s.get('id'): s for s in o['sentences']})
-                merged['sentences'] = list(prints.values())
-            out[did] = merged
-    return [out[did] for did in order]
-
-
-def drop_planned(ws, indexes=None, field=None, document=None) -> str:
-    """Drop some planned changes, keeping the rest: by their plan_status
-    numbers, or every one that writes ``field``, lands in ``document``, or
-    both (``ws.op_fields``, ``ws.op_documents``). What a dropped change took
-    with it (``ws.after_drop``) is said, and the plan is listed again so its
-    new numbers are in front of the model."""
-    from .args import whole
-    from .tools import ToolError
-    waiting = getattr(ws, 'waiting', None)
-    if waiting and not ws.ops and not getattr(ws, 'resumed', False):
-        # A model told only "0 are planned" went to discard_plan and asked
-        # the user, the earlier card then approved whole (2026-10-13 survey).
-        raise ToolError(f'Nothing is planned in this turn. {waiting_phrase(waiting, "The")} is still waiting on '
-                        'its card: call resume_plan first to take it into this turn, then drop_planned.')
-    # Each corpus-wide change counted as approval writes it, so what is
-    # dropped is said in the card's numbers.
-    ws.plan_view()
-    kept = 0
-    if field is not None or document is not None:
-        if indexes not in (None, []):
-            raise ToolError('Give indexes, or field and document, not both.')
-        drop, kept = _matching(ws, field, document)
-    else:
-        if isinstance(indexes, (int, str)):
-            indexes = [indexes]
-        try:
-            drop = {whole(i, 'indexes') for i in (indexes or [])}
-        except (TypeError, ValueError):
-            raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
-        if not drop:
-            raise ToolError('Give indexes (the numbers plan_status shows, as a list), or a field or a document.')
-        bad = sorted(i for i in drop if not 1 <= i <= len(ws.ops))
-        if bad:
-            raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
-                            f'{len(ws.ops)} are planned (see plan_status).')
-    dropped = [ws.ops[i - 1] for i in sorted(drop)]
-    ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
-    ws.dropped_elsewhere = 0
-    note = ws.after_drop(dropped, field, document)
-    # The app kept every entry in part, and its note says what went.
-    in_part = not dropped and bool(note)
-    # A value kept out of a corpus-wide change goes with the last change it
-    # was kept out of: on its own it would read as a change that writes
-    # nothing (Luke 2026-10-16).
-    stale = ws.stale_keeps() if any(not is_keep(op) for op in dropped) else []
-    if stale:
-        ws.take_back(stale)
-        note += (f' {_n(len(stale), "value", "values")} kept out of it went with it: nothing in the plan would '
-                 f'change {"it" if len(stale) == 1 else "them"} now.')
-    if kept:
-        note += (f' {kept} change{"s" if kept != 1 else ""} that also reach{"" if kept != 1 else "es"} other '
-                 f'documents {"were" if kept != 1 else "was"} kept: drop {"them" if kept != 1 else "it"} by number '
-                 f'if {"they" if kept != 1 else "it"} should go.')
-    changes, keeps = plan_changes(dropped), kept_values(dropped)
-    if in_part:
-        return note.lstrip() + '\n' + plan_status(ws)
-    if not dropped:
-        # Every match also reaches another document (REV4-AGENT-5).
-        said = 'Nothing dropped.'
-    elif keeps and not changes and len(dropped) == keeps:
-        said = (f'Stopped keeping {_n(keeps, "value", "values")}: the corpus-wide change in the plan now '
-                f'includes {"it" if keeps == 1 else "them"}.')
-    elif not changes and not keeps and ws.dropped_elsewhere:
-        said = f'Dropped {_n(len(dropped), "entry", "entries")}.'
-    elif not changes and not keeps:
-        said = f'Dropped {_n(len(dropped), "entry that changed", "entries that changed")} nothing.'
-    else:
-        said = f'Dropped {held_phrase(dropped)}.'
-    return said + note + '\n' + plan_status(ws)
-
-
-def _matching(ws, field, document) -> tuple:
-    """The plan_status numbers of the planned changes that write ``field``
-    and land in ``document`` (either may be None), and how many changes
-    matched but also reach other documents, which a document alone does not
-    drop."""
-    from .tools import ToolError
-    if field is not None and (not isinstance(field, str) or not field.strip()):
-        raise ToolError('field must be a field\'s name, as text.')
-    doc_id = ws.resolve_document_id(document) if document is not None else None
-    want = field.strip().casefold() if field is not None else None
-    drop, kept = set(), 0
-    for i, op in enumerate(ws.ops, start=1):
-        if want is not None and want not in {f.casefold() for f in ws.op_fields(op)}:
-            continue
-        if doc_id is not None:
-            docs = ws.op_documents(op)
-            if doc_id not in docs:
-                continue
-            if len(docs) > 1:
-                kept += 1
-                continue
-        drop.add(i)
-    if not drop and not kept:
-        what = ' and'.join(([f' writes {field}'] if field is not None else [])
-                           + ([f' is in {_doc_name(ws, doc_id)}'] if doc_id is not None else []))
-        fields = sorted({f for op in ws.ops for f in ws.op_fields(op)}, key=str.casefold)
-        raise ToolError(f'No planned change{what}.'
-                        + (f' The plan writes {", ".join(fields)}.' if field is not None and fields else '')
-                        + ' See plan_status.')
-    return drop, kept
-
-
-def _doc_name(ws, doc_id: str) -> str:
-    from .bidi import qname
-    from .history import doc_label
-    return doc_label(ws, doc_id, qname)

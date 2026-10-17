@@ -111,20 +111,6 @@ def test_a_rule_rewrites_an_earlier_planned_value_and_a_later_one_wins():
     assert [c['args'][2] for c in client.payloads('spans.create')] == ['mine']
 
 
-def test_dropping_an_earlier_rule_finds_the_later_ones_again():
-    store = {'sp-g1': 'X', 'sp-x2': 'Y'}
-    client, w = _ws(store)
-    _replace(w, 'X', 'Y', whole=True)
-    _replace(w, 'Y', 'Z', whole=True)
-    assert w.ops[1]['count'] == 2
-    call_tool(w, 'drop_planned', {'indexes': [1]})
-    [rule] = w.ops
-    assert rule['count'] == 1 and '1 value in 1 document' in rule['label']
-    _plan, helper = _approved(client, w)
-    assert not helper.errors, helper.errors
-    assert dict(client.updates('spans')) == {'sp-x2': 'Z'}
-
-
 def test_an_approved_rule_writes_every_value_verified_under_one_operation():
     store = {sid: 'VASP' for sid in SPANS}
     client, w = _ws(store)

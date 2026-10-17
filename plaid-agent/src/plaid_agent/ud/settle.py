@@ -92,14 +92,6 @@ def value_place(ws, op: Dict[str, Any], cache: Optional[dict] = None) -> Optiona
     return doc.id, sentence, w, field, span
 
 
-def keep_holds(ws, op: Dict[str, Any]) -> bool:
-    """Whether a scope of the plan would still change what the keep ``op``
-    holds out of it."""
-    from .plan import scope_taking
-    place = value_place(ws, op)
-    return place is not None and scope_taking(ws.ops, *place) is not None
-
-
 def _found(op: Dict[str, Any]) -> Dict[str, Any]:
     if op.get(FOUND) is not None:
         return op[FOUND]

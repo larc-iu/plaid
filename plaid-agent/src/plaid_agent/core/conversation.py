@@ -71,9 +71,8 @@ MESSAGE_ROOM = 16 * 1024
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 #: The kinds of value stored beside a conversation, under
 #: ``<app>:assistant:<project>:<kind>:<conv>:``: attached and fetched files,
-#: each model call's round, the instructions (core/rounds.py), and the live
-#: state of the plan the last turn staged (:meth:`ConversationStore.keep_plan`).
-BESIDE = ('file', 'round', 'prompt', 'plan')
+#: each model call's round and the instructions (core/rounds.py).
+BESIDE = ('file', 'round', 'prompt')
 TITLE_MAX = 60
 
 
@@ -110,10 +109,6 @@ def conv_key(app: str, project_id: str, conv_id: str) -> str:
 
 def meta_key(app: str, project_id: str, conv_id: str) -> str:
     return f'{app}:assistant:{project_id}:meta:{conv_id}'
-
-
-def plan_prefix(app: str, project_id: str, conv_id: str) -> str:
-    return f'{app}:assistant:{project_id}:plan:{conv_id}:'
 
 
 def now_iso(at: Optional[datetime] = None) -> str:
@@ -260,38 +255,6 @@ class ConversationStore:
             out += [e['key'] for e in (self.client.user_data.list(self.user_id, prefix=prefix, page_size=1000) or [])
                     if isinstance(e, dict) and e.get('key')]
         return out
-
-    def keep_plan(self, conv_id: str, plan_id: str, state: Dict[str, Any]) -> bool:
-        """Store the live state of the plan ``plan_id`` (``BaseWorkspace
-        .plan_state``) beside the conversation, for a later turn to resume, and
-        delete the state of every earlier plan: only the plan staged last can
-        wait on its card. False, storing nothing, when the state is over what
-        one stored value may weigh: it is a value of its own, never counted
-        against the record. The state goes under ``metadata``, which the
-        clients pass through without recasing its keys, since it holds maps
-        keyed by ids."""
-        from .files import value_budget
-        prefix = plan_prefix(self.app, self.project_id, conv_id)
-        key = prefix + plan_id
-        value = {'metadata': state}
-        fits = _bytes(value) + len(key) <= value_budget(self.client)
-        if fits:
-            _patiently(lambda: self.client.user_data.put(self.user_id, key, value))
-        for e in self.client.user_data.list(self.user_id, prefix=prefix, page_size=1000) or []:
-            other = e.get('key') if isinstance(e, dict) else None
-            if other and other != key:
-                try:
-                    self.client.user_data.delete(self.user_id, other)
-                except PlaidAPIError as err:
-                    if err.status != 404:
-                        raise
-        return fits
-
-    def plan_state(self, conv_id: str, plan_id: str) -> Optional[Dict[str, Any]]:
-        """What :meth:`keep_plan` stored for ``plan_id``, or None."""
-        value = self.read(plan_prefix(self.app, self.project_id, conv_id) + plan_id)
-        state = value.get('metadata') if isinstance(value, dict) else None
-        return state if isinstance(state, dict) else None
 
     def write(self, conv_id: str, change: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]],
               meta_of: Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]],

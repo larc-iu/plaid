@@ -1,14 +1,14 @@
 """A named change a rule rewrites, on a live core (FX-E-AGENT, REV4-AGENT-2 to
 4): a form rule reads the form on the value's own word, a rule asked again
-applies last unless it then finds nothing, and dropping a rule takes back
-what it changed in the plan's analyses. The fake-client cases are in
+applies last unless it then finds nothing, and a rule reaches the plan's
+analyses. The fake-client cases are in
 ``test_rule_chain.py``, the generated sweep in ``test_rule_plan_model.py``."""
 
 import json
 
 from fixtures import GLOSS, MGLOSS, MORPH_LAYER, SENT_LAYER, TEXT_LAYER, VOCAB, WORD_LAYER, lexicon_raw
 from live import live_client, seed  # noqa: F401
-from rule_plan_model import approve, project, resumed
+from rule_plan_model import approve, project
 
 from plaid_agent.core.plan import plan_changes
 from plaid_agent.igt.project import load_project
@@ -119,54 +119,6 @@ def test_a_rule_asked_again_that_then_finds_nothing_stays_where_it_was(live_clie
         s.delete()
 
 
-def test_dropping_a_form_rule_takes_back_its_values_in_planned_analyses(live_client):
-    c = live_client
-    s, ws = _seeded(c, [_doc('d0', 'Doc A', [('kas', '', [('kas', '')]), ('ka', '', [('ka', '')])])], 'undo')
-    try:
-        call_tool(ws, 'set_analysis', {'document': 'Doc A', 'ref': 's1.w1',
-                                       'morphemes': [{'form': 'ka'}, {'form': 's'}]})
-        analysis = ws.ops[0]
-        out = call_tool(ws, 'set_field_for_form', {'form': 'ka', 'field': 'Morph Gloss', 'value': 'DO'})
-        assert out.endswith(' 1 value in analyses this plan already holds, changed there.'), out
-        assert ws.ops[0] != analysis
-        out = call_tool(ws, 'drop_planned', {'indexes': [2]})
-        assert out.startswith('Dropped 1 planned change. 1 value in planned analyses changed with it.'), out
-        assert ws.ops == [analysis]
-    finally:
-        s.delete()
-
-
-def test_a_rule_asked_again_after_resume_over_a_cycle_approves_untouched(live_client):
-    # REV5-AGENT-3: "C" -> "B", "B" -> "C" (values go back to stored),
-    # resume_plan, then "B" -> "C" again. Nobody writes; approval writes the
-    # one net change and refuses nothing. The values are a person's, and the
-    # resumed turn never reads Doc B.
-    c = live_client
-    docs = [_doc('d0', 'Doc A', [('ka', 'B', []), ('to', 'C', []), ('mi', '', [])]),
-            _doc('d1', 'Doc B', [('ka', 'C', []), ('to', 'C', [])])]
-    for d in docs:
-        for sp in d['text_layers'][0]['token_layers'][1]['span_layers'][0]['spans']:
-            sp.pop('metadata')
-    s, ws = _seeded(c, docs, 'resume cycle again')
-    try:
-        def rep(p, r):
-            return call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': p, 'replacement': r,
-                                                      'whole': True})
-        rep('C', 'B')
-        rep('B', 'C')
-        ws = resumed(c, s.project_id, ws)
-        assert ws.resolve_document_id('Doc B') not in ws._docs
-        rep('B', 'C')
-        assert plan_changes(ws.plan_payload()['ops']) == 1
-        _p, h, _ = approve(c, s.project_id, ws)
-        assert not h.errors and h.done[0].get('applied') == 1, (h.errors, h.done)
-        assert [v for v, _m in _glosses(c, s.project_id)] == ['C', 'C', '']
-        assert [v for v, _m in _glosses(c, s.project_id, 'Doc B')] == ['C', 'C']
-    finally:
-        s.delete()
-
-
-_KA = [('ka', '', [('ka', '')]), ('kan', '', [('ka', ''), ('n', '')]), ('kan', '', [('ka', ''), ('n', '')])]
 _ANA = {'document': 'Doc A', 'ref': 's1.w2', 'morphemes': [{'form': 'ka'}, {'form': 'n'}]}
 
 
@@ -179,74 +131,7 @@ def _analysis(ws):
     return [next((f['value'] for f in m.get('fields') or []), '') for m in op['morphemes']]
 
 
-def _morph_glosses(c, pid):
-    doc = Workspace(c, load_project(c, pid)).doc('Doc A')
-    return [[m.fields['Morph Gloss'].value if 'Morph Gloss' in m.fields else '' for m in w.morphemes]
-            for s in doc.sentences for w in s.words]
-
-
-def _analysis_case(c, name, steps, analysis, stored, said=None):
-    s, ws = _seeded(c, [_doc('d0', 'Doc A', _KA)], name)
-    try:
-        call_tool(ws, 'set_analysis', _ANA)
-        out = None
-        for tool, args in steps:
-            out = call_tool(ws, tool, args)
-        if said is not None:
-            assert said in out, out
-        assert _analysis(ws) == analysis, (_analysis(ws), out)
-        _p, h, _ = approve(c, s.project_id, ws)
-        assert not h.errors, h.errors
-        assert _morph_glosses(c, s.project_id) == stored
-    finally:
-        s.delete()
-
-
-def test_dropping_a_form_rule_asked_again_takes_back_only_what_its_last_copy_set(live_client):
-    # REV5-AGENT-1: "X" on every ka, "Y", "X" again, then drop "X": the
-    # analysis's ka holds "Y", as the card's "Y" row says.
-    _analysis_case(live_client, 'undo re-ask',
-                   [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('ka', 'Y')),
-                    ('set_field_for_form', _form('ka', 'X')), ('drop_planned', {'indexes': [3]})],
-                   ['Y', ''], [['Y'], ['Y', ''], ['Y', '']],
-                   said='1 value in planned analyses changed with it.')
-
-
-def test_dropping_a_form_rule_asked_again_without_a_change_between_takes_its_value_back(live_client):
-    _analysis_case(live_client, 'undo re-ask twice',
-                   [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('ka', 'X')),
-                    ('drop_planned', {'indexes': [2]})],
-                   ['', ''], [[''], ['', ''], ['', '']])
-
-
-def test_dropping_a_form_rule_takes_back_its_value_whatever_else_changed_the_analysis(live_client):
-    # REV5-AGENT-2, the three shapes: a form rule on the other morpheme
-    # before or after it, and a value named on the other morpheme.
-    _analysis_case(live_client, 'undo, rule before',
-                   [('set_field_for_form', _form('n', 'X', True)), ('set_field_for_form', _form('ka', 'Q')),
-                    ('drop_planned', {'indexes': [2]})],
-                   ['Q', ''], [['Q'], ['Q', ''], ['Q', '']])
-    _analysis_case(live_client, 'undo, rule after',
-                   [('set_field_for_form', _form('ka', 'X')), ('set_field_for_form', _form('n', 'Z')),
-                    ('drop_planned', {'indexes': [2]})],
-                   ['', 'Z'], [[''], ['', 'Z'], ['', 'Z']])
-    _analysis_case(live_client, 'undo, named after',
-                   [('set_field_for_form', _form('ka', 'X')),
-                    ('set_field', {'document': 'Doc A', 'refs': ['s1.w2.m2'], 'field': 'Morph Gloss', 'value': 'Q'}),
-                    ('drop_planned', {'indexes': [2]})],
-                   ['', 'Q'], [[''], ['', 'Q'], ['', '']])
-
-
-def test_dropping_a_form_rule_leaves_a_value_named_over_its_own(live_client):
-    _analysis_case(live_client, 'undo, named over it',
-                   [('set_field_for_form', _form('ka', 'X')),
-                    ('set_field', {'document': 'Doc A', 'refs': ['s1.w2.m1'], 'field': 'Morph Gloss', 'value': 'Q'}),
-                    ('drop_planned', {'indexes': [2]})],
-                   ['Q', ''], [[''], ['Q', ''], ['', '']],
-                   said='Dropped 2 planned changes.\n')
-
-
-def test_a_form_rule_that_reaches_only_a_planned_analysis_is_staged_and_its_drop_takes_the_value_back(live_client):
+def test_a_form_rule_that_reaches_only_a_planned_analysis_is_staged(live_client):
     c = live_client
     s, ws = _seeded(c, [_doc('d0', 'Doc A', [('ka', '', [('ka', '')]), ('kan', '', [('kan', '')])])], 'only analysis')
     try:
@@ -255,8 +140,5 @@ def test_a_form_rule_that_reaches_only_a_planned_analysis_is_staged_and_its_drop
         assert out.startswith('Planned 0 changes') and out.endswith(
             ' 1 value in analyses this plan already holds, changed there.'), out
         assert _analysis(ws) == ['', 'X'] and len(ws.ops) == 2
-        out = call_tool(ws, 'drop_planned', {'indexes': [2]})
-        assert out.startswith('Dropped 1 entry. 1 value in planned analyses changed with it.'), out
-        assert _analysis(ws) == ['', ''] and len(ws.ops) == 1
     finally:
         s.delete()

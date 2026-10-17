@@ -97,16 +97,6 @@ def test_a_respelling_that_spells_back_writes_nothing_there(live_client, doc_a):
     assert _read(c, s)[:3] == ('tö gam taö', ['tö', 'gam', 'taö'], ['tö', 'ga', 'm', 'taö'])
 
 
-def test_dropping_the_first_respelling_finds_the_second_over_what_is_stored(live_client, doc_a):
-    c, (s, ws) = live_client, doc_a
-    _ok(call_tool(ws, 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'lexicon': False}))
-    _ok(call_tool(ws, 'respell_all', {'pattern': 'o', 'replacement': 'ö', 'lexicon': False}))
-    _ok(call_tool(ws, 'drop_planned', {'indexes': [1]}))
-    _p, h, _ = approve(c, s.project_id, ws)
-    assert not h.errors, h.errors
-    assert _read(c, s)[0] == 'tö gam taö'
-
-
 @pytest.mark.parametrize('first', ['respelling', 'split'])
 def test_a_plan_reshaping_a_document_it_respells_is_refused_in_either_order(doc_a, first):
     _s, ws = doc_a

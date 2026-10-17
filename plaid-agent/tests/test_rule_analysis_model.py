@@ -1,9 +1,8 @@
 """The REV5-AGENT review's analysis sweep, kept as an oracle: one planned
-analysis, then form rules on its morphemes, values named on them, rules asked
-again and drops (``RULE_ANALYSIS_REPLACE=1`` adds whole-value replacements),
+analysis, then form rules on its morphemes, values named on them and rules
+asked again (``RULE_ANALYSIS_REPLACE=1`` adds whole-value replacements),
 approved on a live core. The model replays the plan's instructions in order,
-the analysis first: a rule asked again applies last, a dropped one leaves no
-trace in the analysis or anywhere else. ``RULE_ANALYSIS_CASES`` (10 by
+the analysis first: a rule asked again applies last. ``RULE_ANALYSIS_CASES`` (10 by
 default), ``RULE_ANALYSIS_START`` and ``RULE_ANALYSIS_OUT``."""
 import json
 import os
@@ -14,7 +13,6 @@ import pytest
 from live import live_client, seed  # noqa: F401
 from rule_plan_model import approve, as_applied, make_doc, project, values_of
 from fixtures import lexicon_raw, VOCAB
-from plaid_agent.core import rules as core_rules
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.workspace import Workspace
 from plaid_agent.igt.toolkit import call_tool
@@ -59,8 +57,7 @@ def replay(stored, forms, entries):
 
 
 def build(stored, forms, calls):
-    """The plan the requests ``calls`` make asked in order from scratch: a
-    rule goes last when, applied there, it changes a value, and otherwise
+    """The plan the calls ``calls`` make, in order: a rule goes last when, applied there, it changes a value, and otherwise
     stays where it was (asked again) or is not staged (a first ask)."""
     entries = []
     for call in calls:
@@ -86,13 +83,12 @@ def run_case(c, case):
         assert set(stored) == set(forms), stored
         out = call_tool(ws, 'set_analysis', {'document': 'Doc A', 'ref': 's1.w2',
                                              'morphemes': [{'form': 'ka'}, {'form': 'n'}]})
-        # Every request, in order: a drop asks the rest again from scratch,
-        # one answered "Nothing to change" too (Luke 2026-10-16).
+        # Every call, in order, one answered "Nothing to change" too.
         calls = [('ana',)]
         log.append(['ana', out[:200]])
         asked = []
         for step in range(rng.randint(3, 7)):
-            act = rng.choices(['rule', 'again', 'named', 'drop'], [4, 2, 2, 2])[0]
+            act = rng.choices(['rule', 'again', 'named'], [4, 2, 2])[0]
             if act == 'again' and not asked:
                 act = 'rule'
             if act == 'rule' or act == 'again':
@@ -118,24 +114,12 @@ def run_case(c, case):
                 if not out.startswith('Error'):
                     calls.append(('rule', spec))
                 log.append([act, args, out[:300]])
-            elif act == 'named':
+            else:
                 t = rng.choice(['s1.w2.m1', 's1.w2.m2'])
                 v = rng.choice(['P', 'Q', ''])
                 out = call_tool(ws, 'set_field', {'document': 'Doc A', 'refs': [t], 'field': 'Morph Gloss', 'value': v})
                 calls.append(('named', t, v))
                 log.append([act, t, v, out[:200]])
-            else:
-                rule_ix = [i for i, op in enumerate(ws.ops, start=1) if core_rules.is_rule(op)]
-                if not rule_ix:
-                    continue
-                i = rng.choice(rule_ix)
-                a = ws.ops[i - 1]['args']
-                spec = ({'tool': 'set_field_for_form', 'form': a['form'], 'value': a['value'],
-                         'only_empty': bool(a.get('only_empty', True))} if ws.ops[i - 1]['tool'] == 'set_field_for_form'
-                        else {'tool': 'replace_in_field', 'pattern': a['pattern'], 'replacement': a['replacement']})
-                out = call_tool(ws, 'drop_planned', {'indexes': [i]})
-                calls = [e for e in calls if not (e[0] == 'rule' and e[1] == spec)]
-                log.append([act, spec, out[:300]])
         ana = next((op for op in ws.ops if op.get('kind') == 'set_analysis'), None)
         res['ana'] = [[f['value'] for f in m['fields']] for m in ana['morphemes']] if ana else None
         entries = build(stored, forms, calls)

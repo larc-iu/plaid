@@ -1,20 +1,16 @@
 """A second oracle for igt plans, written by the REV4-AGENT review and kept
 as its sweep (``test_rule_plan_model.py``): random plans of rules, keeps,
-named changes, ``values=``, drops and resume on a live private core,
+named changes and ``values=`` on a live private core,
 approved through the service, against an independent model of what the user
 asked for, run step by step over the tool calls."""
 import re
 
 from fixtures import GLOSS, MGLOSS, project_raw, TEXT_LAYER, SENT_LAYER, WORD_LAYER, MORPH_LAYER
 from live import _Session
-from test_resume_plan import _stored
 from test_service_flow import Helper
 from plaid_agent.core.agent import ModelConfig
 from plaid_agent.core.conversation import ConversationStore, assistant_item, build_meta, user_item
-from plaid_agent.igt.project import load_project
 from plaid_agent.igt.service import AssistantService
-from plaid_agent.igt.workspace import Workspace
-from plaid_agent.igt.toolkit import call_tool
 
 VALS = ['A', 'B', 'C', 'AB', '']
 LET = ['A', 'B', 'C', 'D']
@@ -213,15 +209,3 @@ def approve(c, project_id, ws, tag='x'):
                          'delegated_projects': [project_id], 'conversation_id': 'c1', 'op': 'approve',
                          'plan_id': p['id']}, h)
     return p, h, store
-
-
-def resumed(c, project_id, w1):
-    payload = w1.plan_payload()
-    w2 = Workspace(c, load_project(c, project_id))
-    w2.waiting = {'count': len(w1.ops), 'summary': payload['summary'], 'id': payload['id'],
-                  'documents': payload['documents']}
-    state = _stored(w1.plan_state())
-    w2.load_plan_state = lambda plan_id: state if plan_id == payload['id'] else None
-    out = call_tool(w2, 'resume_plan', {})
-    assert out.startswith('Took over'), out
-    return w2

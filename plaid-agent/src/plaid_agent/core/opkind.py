@@ -449,11 +449,11 @@ def delete_clash(reg: Mapping[str, OpKind], planned: Sequence[Dict[str, Any]],
 def clash_message(victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
     """What to tell the model when one change in a plan writes to what another
     deletes. Refused as the plan is built, in either order, so the model can
-    drop one of the two and stage the rest now."""
+    keep one of the two and stage the rest now."""
     def name(op):
         return (op or {}).get('label') or (op or {}).get('kind') or 'a change'
     return (f'{name(victim)} writes to something this plan deletes ({name(killer)}). '
-            'Keep one of the two (plan_status, drop_planned), or plan them in separate turns.')
+            'Keep one of the two (discard_plan and stage the rest again), or plan them in separate turns.')
 
 
 def named_beats_scope(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]], notes: Optional[List[str]] = None,

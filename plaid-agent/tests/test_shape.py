@@ -215,7 +215,7 @@ def test_a_change_and_a_certain_delete_of_its_subject_refuse_each_other_at_stagi
     w = ws()
     assert 'Planned' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
-    assert 'writes to something this plan deletes' in out and 'drop_planned' in out
+    assert 'writes to something this plan deletes' in out and 'discard_plan' in out
     assert [o['kind'] for o in w.ops] == ['set_span']
     # The delete first, then the change.
     w2 = ws()

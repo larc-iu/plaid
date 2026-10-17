@@ -91,9 +91,6 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                 old = obj.fields.get(f.name)
                 what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
                 target = ('span', f.layer_id, obj.id)
-                # The request asks for this value whatever comes of it, so a
-                # drop of the change it names takes this ask too (REV8-PLAN-1).
-                ws.asks_value(target, [doc.id], [f.name])
                 mine = [op for op in ws.ops if ws.op_target(op) == target]
                 if (old.value if old else '') == val:
                     # What it holds already. Planning it again would restate it
@@ -257,9 +254,7 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
         if note:
             notes.append(f'{r}{note}' if len(items) > 1 else note)
     ws.add_ops(staged)
-    from .bulk import drop_emptied
-    emptied = drop_emptied(ws)
-    return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '') + emptied
+    return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '')
 
 
 # A word's BOUNDARIES change (a split, a merge, a delete, a text edit over it)
@@ -465,7 +460,7 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
             for w in sentence.words:
                 if w.id in reshaped and w.begin < end and begin < w.end:
                     raise ToolError(f'{where}: this plan already splits, merges or deletes this word. Plan the '
-                                    'respelling on its own once that is applied (plan_status, drop_planned).')
+                                    'respelling on its own once that is applied.')
     no_scope_reaches(ws, doc.id if doc is not None else None, where, placed=True)
 
 
@@ -476,7 +471,7 @@ def refuse_shape_and_respell(ws: Workspace, words, where: str) -> None:
         for b, e in ws.planned_respells(w.text_id):
             if b < w.end and w.begin < e:
                 raise ToolError(f'{where}: this plan already respells this word. Plan the split, merge or '
-                                'delete on its own once that is applied (plan_status, drop_planned).')
+                                'delete on its own once that is applied.')
 
 
 def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
@@ -506,7 +501,7 @@ def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str, placed: b
         what = ('reaches this document' if scope_reaches(ws, doc_id)
                 else 'rewrites text, which nothing that reshapes words can share a plan with')
         raise ToolError(f'{where}: this plan already holds a corpus-wide change that {what}. '
-                        'Apply it first, then plan this (plan_status, drop_planned).')
+                        'Apply it first, then plan this.')
 
 
 def _entry_named(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss):
@@ -553,7 +548,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             raise ToolError(f'{ref}: link words (sN.wN) or morphemes (sN.wN.mN), not sentences')
         if _planned_phrase_over(ws, obj.id):
             raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
-                            'link inside one, so drop that plan first if you meant to replace it')
+                            'link inside one, so discard_plan first if you meant to replace it')
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:
             back.append((ref, ws.op_target({'kind': 'link', 'token_id': obj.id})))
             continue
@@ -1163,9 +1158,7 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
     ws.add_ops(staged)
     if not staged:
         return 'Nothing to discard: no machine-made, unconfirmed analysis there.'
-    from .bulk import drop_emptied
-    emptied = drop_emptied(ws)
-    return ws.planned_note(len(staged)) + emptied
+    return ws.planned_note(len(staged))
 
 
 def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] = None,

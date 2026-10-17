@@ -113,7 +113,7 @@ def test_a_confirmation_by_ref_and_a_delete_of_its_word_refuse_each_other():
     w = ws()
     assert 'Planned' in call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
-    assert 'writes to something this plan deletes' in out and 'drop_planned' in out
+    assert 'writes to something this plan deletes' in out and 'discard_plan' in out
     assert [o['kind'] for o in w.ops] == ['confirm']
     # The delete first, then the confirmation.
     w2 = ws()

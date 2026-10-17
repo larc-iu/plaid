@@ -312,7 +312,6 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
     sets one there, even if it finds nothing stored.
     """
     key = ('rule', tool, rules.fingerprint_args(args))
-    ws.rule_asked = key
     # The plan's rules as they stand and as they count, so this one reads
     # what they leave and the answer can say which it leaves with nothing.
     settle_rules(ws)
@@ -375,8 +374,8 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
             # It matched only values the plan keeps as they are: said, so
             # "no match" never stands over a value that matches (REV2-AGENT-6).
             out = (f'Nothing to change: the plan keeps every one of the {what} that match ({held}) as it is. '
-                   f'Drop {"that keep" if held == 1 else "those keeps"} (drop_planned) for this change to reach '
-                   f'{"it" if held == 1 else "them"}.')
+                   f'For this change to reach {"it" if held == 1 else "them"}, discard_plan and stage it again '
+                   f'without {"that keep" if held == 1 else "those keeps"}.')
         if args.get('where'):
             out = _condition_left_none(ws, tool, args, what) or out
         return out + left_for_analysis(left)
@@ -447,8 +446,8 @@ def _stays(ws: Workspace, key: tuple, was_at: int, unit) -> str:
         return out + ' and writes nothing now.'
     what = ('that keep' if held == 1 else 'those keeps') if not named else \
         ('that change' if named == 1 else 'those changes') if not held else 'those keeps and changes'
-    return (out + ' and writes nothing now: ' + ' and '.join(why) + f'. Drop {what} (drop_planned) for this change '
-            f'to reach {"it" if held + named == 1 else "them"}.')
+    return (out + ' and writes nothing now: ' + ' and '.join(why) + f'. For this change to reach '
+            f'{"it" if held + named == 1 else "them"}, discard_plan and stage it again without {what}.')
 
 
 def _the(n: int, unit) -> str:
@@ -464,15 +463,14 @@ def _writes(ws: Workspace, op: Dict[str, Any]) -> int:
 
 def _emptied(ws: Workspace, key: tuple, counted: Dict[tuple, int]) -> str:
     """The rules a rule asked again leaves with nothing to change, as it
-    moves after them, named with the way to drop them (REV5-AGENT-5), a
-    rule over planned analyses only included (REV6-AGENT-7)."""
+    moves after them (REV5-AGENT-5), a rule over planned analyses only
+    included (REV6-AGENT-7)."""
     out = ''
     for i, o in enumerate(ws.ops, start=1):
         t = rules.target(o) if rules.is_rule(o) else None
         if t is None or t == key or o.get('head') is None or not counted.get(t) or _writes(ws, o):
             continue
-        out += (f' {o.get("change") or o.get("tool")} now changes nothing (entry {i}): drop it (drop_planned) if it '
-                'should go.')
+        out += f' {o.get("change") or o.get("tool")} now changes nothing (entry {i}), and approval writes nothing for it.'
     return out
 
 
@@ -767,7 +765,7 @@ def _basis(earlier: List[tuple], kept: set, removed: frozenset = frozenset()) ->
                        sorted(removed)], default=str)
 
 
-def sync_rules(ws: Workspace, drop_empty: bool = False) -> int:
+def sync_rules(ws: Workspace) -> None:
     """THE way the plan's rules are found, at staging, after any change to
     the plan, and as approval finds them (``igt.plan.resolve_scopes``):
     each rule in plan order, over the stored values as only the rules BEFORE
@@ -778,60 +776,17 @@ def sync_rules(ws: Workspace, drop_empty: bool = False) -> int:
     A rule is found again when what it was found over changed (the rules
     before it, the values the plan keeps, an earlier rule found again), so
     this may be called after anything that changes the plan, however the op
-    list changed: a keep staged, superseded inside a batch or dropped, a
-    rule dropped, a change named on a kept value. ``drop_empty`` drops a
-    rule that now finds nothing at all, rewrites no named value and sets
-    nothing in a planned analysis. Each planned analysis is worked out again
-    from the requests left (:func:`settle_analyses`). Gives how many it
-    dropped."""
-    dropped = 0
-    for _ in range(len(ws.ops) + 2):
-        _find_rules(ws)
-        used = settle_named(ws)
-        # A named value that now writes nothing is kept, which the rules
-        # read as stored: found again once more over it.
-        if _find_rules(ws):
-            used = settle_named(ws)
-        settle_analyses(ws)
-        empty = inert_rules(ws, used) if drop_empty else []
-        if not empty:
-            break
-        # Nothing left for it to change: a row of no changes says nothing.
-        gone = {id(op) for op in empty}
-        ws.ops[:] = [op for op in ws.ops if id(op) not in gone]
-        for op in empty:
-            ws.rule_found.pop(rules.target(op), None)
-            ws.rule_basis.pop(rules.target(op), None)
-        ws._gone_at = -1
-        dropped += len(empty)
-    return dropped
-
-
-def inert_rules(ws: Workspace, used: set) -> List[Dict[str, Any]]:
-    """The rules of the plan that, asked where they stand, would write
-    nothing: nothing they find is theirs to write given the changes before
-    them (``rule_keep``), they rewrite no value named before them (``used``,
-    :func:`settle_named`) and set nothing in a planned analysis. Asked from
-    scratch, none would be staged."""
-    out = []
-    for i, op in enumerate(ws.ops):
-        if not rules.is_rule(op) or op.get('head') is None:
-            continue
-        t = rules.target(op)
-        if t in used or ws.analysis_hits.get(t):
-            continue
-        found = ws.rule_found.get(t) or []
-        if found:
-            # The changes asked before it: an analysis set again stands where
-            # the earlier one stood, but was asked after the rule.
-            seq = op.get(SEQ) or 0
-            before = [o for j, o in enumerate(ws.ops)
-                      if (o.get(SEQ) < seq if o.get(SEQ) is not None else j < i)]
-            keep = rule_keep(ws, before)
-            if any(keep(o) for o in found):
-                continue
-        out.append(op)
-    return out
+    list changed: a keep staged, superseded inside a batch, a change named on
+    a kept value. Each planned analysis is worked out again from what the
+    plan holds (:func:`settle_analyses`). A rule left with nothing to change
+    stays on the card, writing nothing."""
+    _find_rules(ws)
+    settle_named(ws)
+    # A named value that now writes nothing is kept, which the rules read as
+    # stored: found again once more over it.
+    if _find_rules(ws):
+        settle_named(ws)
+    settle_analyses(ws)
 
 
 def _find_rules(ws: Workspace) -> bool:
@@ -891,8 +846,8 @@ def _rewritten(n: int, back: int = 0) -> str:
 # A value the plan names (set_field, set_orthography) before a rule is read
 # through that rule, as if the rule had been asked first. What the model asked
 # is kept on the op (``ASKED``) once a rule rewrites it, and the value is
-# worked out again from it after every change to the plan, so a dropped rule
-# takes its rewrite with it (REV4-AGENT-2). One that ends on the value stored
+# worked out again from it after every change to the plan, so a rule asked
+# again takes its rewrite with it (REV4-AGENT-2). One that ends on the value stored
 # writes nothing: it stands in the plan as a keep, which beats every rule on
 # that value and counts as no change (REV4-AGENT-1, Eline 2026-10-07).
 
@@ -1197,7 +1152,8 @@ def clear_of_reshapes(ops: List[Dict[str, Any]], docs, what: str) -> None:
     for op in ops:
         if op.get('kind') in RESHAPES and (op.get('doc') in reach or not op.get('doc')):
             raise ToolError(f'This plan already reshapes text or words in a document this {what} '
-                            'reaches. Apply one, then plan the other (plan_status, drop_planned).')
+                            'reaches. Let the user approve one, then plan the other, or discard_plan and plan '
+                            'this alone.')
 
 
 def _names_morpheme_forms(ws: Workspace, field: str) -> bool:
@@ -1311,8 +1267,7 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
 # since (:data:`NAMED_EDITS`), and each rule of the plan that reaches planned
 # analyses (:data:`ANALYSIS_TOOLS`) staged after it. A rule reaches the
 # analyses the plan held when it was asked. Whatever leaves the plan, the
-# analyses are worked out again from what is left, so the plan after a drop is
-# the plan the remaining requests make from scratch (Luke 2026-10-16).
+# analyses are worked out again from what is left.
 
 #: On a planned analysis that a later request changed: its morphemes as the
 #: request gave them. One no later request changed holds them as given.
@@ -1522,19 +1477,6 @@ def values_changed(before: Dict[tuple, Any], after: Dict[tuple, Any]) -> int:
     return sum(1 for k in keys if (before.get(k) or '') != (after.get(k) or ''))
 
 
-def drop_emptied(ws: Workspace) -> str:
-    """Drop each rule a change to the plan's analyses left with nothing to
-    change (an analysis set again or discarded: asked from scratch, the rule
-    would not be staged), and say so, or ''."""
-    if not any(rules.is_rule(o) for o in ws.ops):
-        return ''
-    n = sync_rules(ws, drop_empty=True)
-    if not n:
-        return ''
-    return (f' {n} corpus-wide change{"s" if n != 1 else ""} that now find{"" if n != 1 else "s"} nothing to '
-            f'change {"were" if n != 1 else "was"} dropped from the plan.')
-
-
 def name_on_analysis(ws: Workspace, analysis: Dict[str, Any], index: int, what: str, value) -> int:
     """Name ``value`` for ``what`` (a layer id, :data:`FORM` or
     :data:`TYPE`) on morpheme ``index`` (0-based) of the planned analysis
@@ -1613,9 +1555,7 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         if not first_note and note:
             first_note = note.strip()
     ws.add_ops(staged)
-    emptied = drop_emptied(ws)
-    return (_bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
-            + emptied)
+    return _bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
 
 
 # --- lexicon and document operations ----------------------------------------------

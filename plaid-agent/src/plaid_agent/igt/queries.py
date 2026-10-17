@@ -1489,7 +1489,7 @@ def respell_guard(ws: Workspace, words: List[Dict[str, Any]], earlier_words: Dic
         for b, e in at.get(op['text_id'], ()):
             if (b, e) != (op['begin'], op['end']) and b < op['end'] and op['begin'] < e:
                 raise ToolError(f'{_place_of(op)}: overlaps a respelling already planned for {b}-{e} in the same '
-                                'text. Apply one, then plan the other (plan_status, drop_planned).')
+                                'text. Apply one, then plan the other.')
 
 
 def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int, earlier=()):

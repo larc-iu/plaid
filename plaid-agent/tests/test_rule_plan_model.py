@@ -16,11 +16,10 @@ import pytest
 
 from live import live_client, seed  # noqa: F401
 from rule_plan_model import (DOCS, FIELDS, LET, VALS, Model, approve, as_applied, make_doc, parse_int_sum, project,
-                             resumed, values_of)
+                             values_of)
 from fixtures import lexicon_raw, VOCAB
 from plaid_agent.core.conversation import proposed_changes
 from plaid_agent.core import rules as core_rules
-from plaid_agent.core.keep import is_keep
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.service import AssistantService
 from plaid_agent.igt.workspace import Workspace
@@ -57,26 +56,15 @@ def run_case(c, case):
         ws = Workspace(c, load_project(c, s.project_id))
         got = values_of(ws)
         assert got == stored, ('seed mismatch', got, stored)
-        idmap = {}
-        for d in ws.documents():
-            doc = ws.doc(d['id'])
-            for si, sn in enumerate(doc.sentences, start=1):
-                for wi, w in enumerate(sn.words, start=1):
-                    idmap[w.id] = (doc.name, f's{si}.w{wi}', 'Gloss')
-                    for mi, m in enumerate(w.morphemes, start=1):
-                        idmap[m.id] = (doc.name, f's{si}.w{wi}.m{mi}', 'Morph Gloss')
         doc_ids = {d['name']: d['id'] for d in ws.documents()}
         model = Model(stored, forms)
         rule_specs = {}  # spec key -> model spec
         targets = list(stored)
         nsteps = rng.randint(3, 8)
-        acts = ['replace', 'form', 'set', 'values', 'drop_idx', 'drop_field', 'drop_doc', 'resume']
-        w = [WEIGHTS.get(a, d) for a, d in zip(acts, [4, 2, 3, 1.5, 1, 0.6, 0.6, 0.8])]
-        resumed_once = False
+        acts = ['replace', 'form', 'set', 'values']
+        w = [WEIGHTS.get(a, d) for a, d in zip(acts, [4, 2, 3, 1.5])]
         for step in range(nsteps):
             act = rng.choices(acts, w)[0]
-            if act == 'resume' and (resumed_once or not ws.ops):
-                act = 'replace'
             out = None
             if act == 'replace':
                 field = rng.choice(list(FIELDS))
@@ -129,48 +117,6 @@ def run_case(c, case):
                 if not out.startswith('Error'):
                     for t in pick:
                         model.set_field(t, v1 if t[2] == 'Gloss' else v2)
-            elif act.startswith('drop'):
-                if not ws.ops:
-                    log.append([step, act, 'skip', ''])
-                    continue
-                if act == 'drop_idx':
-                    args = {'indexes': [rng.randint(1, len(ws.ops))]}
-                elif act == 'drop_field':
-                    args = {'field': rng.choice(list(FIELDS))}
-                else:
-                    args = {'document': rng.choice(DOCS)}
-                out = call_tool(ws, 'drop_planned', args)
-                # A drop asks every remaining request again from scratch
-                # (Luke 2026-10-16): the model does the same with the
-                # requests the plan kept (which to drop is not under test).
-                model = Model(stored, forms)
-                for rec in ws.requests:
-                    a, gone = rec['args'], set()
-                    for k in rec.get('without') or ():
-                        k = json.loads(k)
-                        if k[0] == 'value' and isinstance(k[1], list) and k[1][-1] in idmap:
-                            gone.add(idmap[k[1][-1]])
-                    if rec['tool'] in ('replace_in_field', 'set_field_for_form'):
-                        spec = ({'tool': 'replace_in_field', 'field': a['field'], 'pattern': a['pattern'],
-                                 'replacement': a.get('replacement') or '', 'whole': bool(a.get('whole')),
-                                 'document': a.get('document')} if rec['tool'] == 'replace_in_field' else
-                                {'tool': 'set_field_for_form', 'field': a['field'], 'form': a['form'],
-                                 'value': a['value'], 'only_empty': bool(a.get('only_empty', True)), 'document': None})
-                        sk = json.dumps(spec, sort_keys=True)
-                        model.entries = [e for e in model.entries
-                                         if not (e[0] == 'rule' and json.dumps(e[1], sort_keys=True) == sk)]
-                        model.entries.append(('rule', spec))
-                    elif rec['tool'] == 'set_field':
-                        pairs = list(a['values'].items()) if a.get('values') else [(a['field'], a['value'])]
-                        for ref in a['refs']:
-                            for field, v in pairs:
-                                t = (a['document'], ref, field)
-                                if t in stored and t not in gone:
-                                    model.set_field(t, v)
-            elif act == 'resume':
-                ws = resumed(c, s.project_id, ws)
-                resumed_once = True
-                args, out = {}, 'resumed'
             if act in ('replace', 'form'):
                 # A rule that finds nothing is not staged.
                 if not out.startswith('Error') and not out.startswith('Nothing to change'):
@@ -181,21 +127,13 @@ def run_case(c, case):
                                          if not (e[0] == 'rule' and json.dumps(e[1], sort_keys=True) == sk)]
                     rule_specs[sk] = spec
                     model.entries.append(('rule', spec))
-            # Sync model with what the plan still holds after a drop or an
-            # emptied rule (what to drop is not under test here).
+            # Sync model with the rules the plan still holds.
             ops_rules = []
             for op in ws.ops:
                 if core_rules.is_rule(op) and op.get('head') is not None:
                     a = op['args']
                     ops_rules.append(a)
-            live_targets = set()
-            for op in ws.ops:
-                if op.get('kind') == 'set_span' and op.get('token_id') in idmap:
-                    live_targets.add(('named', idmap[op['token_id']]))
-                if is_keep(op) and op.get('token_id') in idmap:
-                    # A named change a rule set back to what is stored stands as a keep.
-                    live_targets.add(('named' if op.get('asked') else 'keep', idmap[op['token_id']]))
-            if act.startswith('drop') or act in ('replace', 'form'):
+            if act in ('replace', 'form'):
                 # rules: keep model rules whose args are still present (count by order)
                 remaining = []
                 pool = list(ops_rules)
@@ -223,8 +161,6 @@ def run_case(c, case):
                         remaining.append(e)
                     else:
                         rule_specs.pop(json.dumps(sp, sort_keys=True), None)
-                if act.startswith('drop'):
-                    remaining = [e for e in remaining if e[0] == 'rule' or (e[0], e[1]) in live_targets]
                 model.entries = remaining
             log.append([step, act, args, (out or '')[:400]])
         # --- the plan as the user sees it
