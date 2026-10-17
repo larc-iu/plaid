@@ -83,6 +83,7 @@ export const TokenVisualizer = ({
     [wordTokens, sortedMorphemes],
   );
   const wordById = useMemo(() => new Map(wordTokens.map((w) => [w.id, w])), [wordTokens]);
+  const idByKey = useMemo(() => new Map(wordTokens.map((w) => [String(w.id), w.id])), [wordTokens]);
   const sentenceBegins = useMemo(
     () => new Set(sentenceTokens.map((s) => s.begin)),
     [sentenceTokens],
@@ -384,34 +385,53 @@ export const TokenVisualizer = ({
     });
   }, [wordTokens, originalText, text, originalCps, textCps]);
 
-  if (!text) {
-    return <p className="py-8 text-center text-muted-foreground">No text.</p>;
-  }
-
-  if (wordTokens.length === 0) {
-    return (
-      <div>
-        <div
-          ref={textContainerRef}
-          dir={textDirection}
-          className={`${classes.container} ${classes.rawText}`}
-          onMouseUp={handleTextSelection}
-        >
-          {text}
-        </div>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          No tokens. Tokenize the text, or select text to create a token.
-        </p>
-      </div>
-    );
-  }
-
   const displayOf = (word) => (word.begin === word.end ? '∅' : sliceText(word.begin, word.end));
   const isMwtWord = (word) => (morphemesByWord.get(word.id) || []).length > 1;
 
+  // A token's id as the server knows it, from its badge's `data-word-id`.
+  const idOfBadge = (el) => idByKey.get(el?.dataset?.wordId);
+  const badgeAt = (target) => target?.closest?.('[data-word-id]') ?? null;
+  // The badges carry no handlers of their own: the container hears every
+  // badge's click and pointer, so a hover or an open panel never draws the
+  // badges again (REV8-APPS note: 10,000 of them took 600 ms a hover).
+  const onBadgeClick = (e) => {
+    const badge = badgeAt(e.target);
+    const id = idOfBadge(badge);
+    if (id === undefined) return;
+    // Alt+click hands over to Annotate, the mirror of Alt+click on a word
+    // there. It must not also toggle the sentence boundary on the way
+    // out, which is what a plain click here does.
+    const sentenceId = badge.dataset.sentence;
+    if (onOpenInAnnotate && sentenceId && e.altKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      onOpenInAnnotate(sentenceId);
+      return;
+    }
+    const word = wordById.get(id);
+    if (word) toggleSentence(word);
+  };
+  // No panel while the text is dirty: the badges are relocated previews, and
+  // editing is blocked until the text is saved.
+  const onBadgeOver = (e) => {
+    if (isTextDirty) return;
+    const badge = badgeAt(e.target);
+    if (!badge || badge.contains(e.relatedTarget)) return;
+    const id = idOfBadge(badge);
+    if (id !== undefined) requestOpen(id);
+  };
+  const onBadgeOut = (e) => {
+    if (isTextDirty) return;
+    const badge = badgeAt(e.target);
+    if (!badge || badge.contains(e.relatedTarget)) return;
+    requestClose();
+  };
+
+  const toggleTitle = onSentenceToggle ? 'Click to toggle the sentence boundary.' : null;
+  const handOffTitle = onOpenInAnnotate ? 'Alt+click to annotate this sentence.' : null;
+
   const renderWordBadge = (word) => {
     const sentenceToken = sentenceTokenAt(word.begin);
-    const canHandOff = Boolean(onOpenInAnnotate && sentenceToken);
     // A plain span: the one panel is anchored to the badge it opened from.
     // A popover around every badge cost seconds on a long document.
     return (
@@ -423,30 +443,7 @@ export const TokenVisualizer = ({
         data-sent-start={sentenceInitialWordIds.has(word.id)}
         data-sentence={sentenceToken?.id}
         data-word-id={word.id}
-        title={
-          [
-            onSentenceToggle && 'Click to toggle the sentence boundary.',
-            canHandOff && 'Alt+click to annotate this sentence.',
-          ]
-            .filter(Boolean)
-            .join(' ') || undefined
-        }
-        onClick={(e) => {
-          // Alt+click hands over to Annotate, the mirror of Alt+click on a word
-          // there. It must not also toggle the sentence boundary on the way
-          // out, which is what a plain click here does.
-          if (canHandOff && e.altKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            onOpenInAnnotate(sentenceToken.id);
-            return;
-          }
-          toggleSentence(word);
-        }}
-        // No panel while the text is dirty: the badges are relocated
-        // previews, and editing is blocked until the text is saved.
-        onMouseEnter={isTextDirty ? undefined : () => requestOpen(word.id)}
-        onMouseLeave={isTextDirty ? undefined : requestClose}
+        title={[toggleTitle, sentenceToken && handOffTitle].filter(Boolean).join(' ') || undefined}
       >
         {displayOf(word)}
       </span>
@@ -665,6 +662,45 @@ export const TokenVisualizer = ({
     return blocks;
   };
 
+  // The badges are drawn again only when what they show changes, never for a
+  // hover or the panel.
+  const blocks = useMemo(
+    () => (text && wordTokens.length ? renderText() : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      adjustedWords,
+      textCps,
+      sentenceTokenAt,
+      sentenceInitialWordIds,
+      morphemesByWord,
+      flashSentenceId,
+      toggleTitle,
+      handOffTitle,
+    ],
+  );
+
+  if (!text) {
+    return <p className="py-8 text-center text-muted-foreground">No text.</p>;
+  }
+
+  if (wordTokens.length === 0) {
+    return (
+      <div>
+        <div
+          ref={textContainerRef}
+          dir={textDirection}
+          className={`${classes.container} ${classes.rawText}`}
+          onMouseUp={handleTextSelection}
+        >
+          {text}
+        </div>
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          No tokens. Tokenize the text, or select text to create a token.
+        </p>
+      </div>
+    );
+  }
+
   // Only what works here: a read-only document keeps the hand-off to Annotate.
   const hint = [
     onSentenceToggle && 'Click a token to toggle its sentence boundary.',
@@ -687,8 +723,11 @@ export const TokenVisualizer = ({
         dir={textDirection}
         className={classes.container}
         onMouseUp={handleTextSelection}
+        onClick={onBadgeClick}
+        onMouseOver={onBadgeOver}
+        onMouseOut={onBadgeOut}
       >
-        {renderText()}
+        {blocks}
       </div>
       {renderPanel()}
       {hint && <p className="mt-3 text-xs text-muted-foreground">{hint}</p>}
