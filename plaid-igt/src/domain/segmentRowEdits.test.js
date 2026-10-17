@@ -95,6 +95,37 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     expect(glosses(doc._raw)).toEqual(['one:G1', 'two!:G2', 'three:G3']);
   });
 
+  it("a word's sole morpheme spelled as the word follows its new spelling (Luke, H17)", async () => {
+    const raw = RAW();
+    layer(raw, 'morphL').tokens.find((t) => t.id === 'm-2').metadata = { form: 'two' };
+    layer(raw, 'morphL').tokens.find((t) => t.id === 'm-3').metadata = { form: 'thr' };
+    const server = segmentServer(raw);
+    const doc = open(server);
+    await doc.editAlignment('a-2', {
+      text: 'two!',
+      timeBegin: 1,
+      timeEnd: 2,
+      edits: { over: 'two', gaps: [{ start: 3, end: 3, value: '!' }] },
+    });
+    await idle(doc);
+    expect(layer(server.stored, 'morphL').tokens.find((t) => t.id === 'm-2').metadata.form).toBe(
+      'two!',
+    );
+    expect(layer(doc._raw, 'morphL').tokens.find((t) => t.id === 'm-2').metadata.form).toBe('two!');
+    // a form unlike its word, and a word the edit left, are not written
+    await doc.editAlignment('a-3', {
+      text: 'three!',
+      timeBegin: 2,
+      timeEnd: 3,
+      edits: { over: 'three', gaps: [{ start: 5, end: 5, value: '!' }] },
+    });
+    await idle(doc);
+    expect(layer(server.stored, 'morphL').tokens.find((t) => t.id === 'm-3').metadata.form).toBe(
+      'thr',
+    );
+    expect(layer(server.stored, 'morphL').tokens.find((t) => t.id === 'm-1').metadata).toEqual({});
+  });
+
   it('text typed at the front of a row is inside its segment', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);

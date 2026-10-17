@@ -62,6 +62,7 @@ import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js'
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { countSplitLoss, countTextDeleteLoss, dropRelations } from '@ui/domain/annotationLoss.js';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
+import { soleForms } from '../soleMorphemeForms.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
@@ -1444,6 +1445,9 @@ export const alignmentMutations = {
         .then((results) => Object.assign(results, { at }));
     };
     let sent = made({ gaps, extent, seedLength, words });
+    // The sole morphemes spelled as their word before the edit, which follow
+    // the words it respells (Luke, H17, as a Baseline save).
+    const forms = soleForms(this.layerInfo, this.body);
     this._applyRawPatch(show(sent));
     const state = {
       planned,
@@ -1492,6 +1496,7 @@ export const alignmentMutations = {
         this._writes.reloadWhenDrained = true;
       } else {
         this._showRowAnswer(textId, segmentId, sent, answer);
+        await this._followSoleForms(forms);
       }
       await this._rememberSpeaker(speaker);
     };
