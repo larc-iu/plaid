@@ -89,3 +89,24 @@ describe("a cell's name and place in the Tab order", () => {
     await upos.unmount();
   });
 });
+
+describe('an empty lemma', () => {
+  it("shows the word's form as a placeholder, never as a filled value", async () => {
+    const { container, unmount } = await mount({ value: '' });
+    const input = all(container, 'input')[0];
+    expect(input.value).toBe('');
+    expect(input.getAttribute('placeholder')).toBe('dogs');
+    expect(input.className).toContain('editable-field--empty');
+    expect(input.className).not.toContain('editable-field--filled');
+    expect(input.dataset.orig).toBe('');
+    await unmount();
+  });
+
+  it('shows a stored lemma as its value, with no placeholder over it', async () => {
+    const { container, unmount } = await mount({ value: 'dog' });
+    const input = all(container, 'input')[0];
+    expect(input.value).toBe('dog');
+    expect(input.className).toContain('editable-field--filled');
+    await unmount();
+  });
+});

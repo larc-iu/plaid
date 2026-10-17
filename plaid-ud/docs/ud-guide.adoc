@@ -174,7 +174,7 @@ Each word has cells for:
 |===
 | Column | Meaning
 
-| **Lemma** | The word's dictionary form.
+| **Lemma** | The word's dictionary form. An empty cell shows the word's form in grey, which is not stored until you type it.
 | **XPOS** | Language-specific part-of-speech tag.
 | **UPOS** | Universal part-of-speech tag.
 | **Features** | Morphological features, as `Key=Value` pairs (e.g. `Case=Nom`, `Number=Sing`).

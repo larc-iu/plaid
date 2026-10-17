@@ -254,6 +254,12 @@
   font-style: normal;
 }
 
+.editable-field::placeholder {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+  opacity: 1;
+}
+
 /* Unreviewed material (provenance convention), in the two hues the apps share:
    violet for a machine's, amber for a contributor's. Editing the cell verifies
    it, which clears this styling; so does accepting it. The pattern is

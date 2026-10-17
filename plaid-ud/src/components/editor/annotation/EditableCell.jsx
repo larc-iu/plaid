@@ -371,14 +371,15 @@ export const EditableCell = React.memo(
       selectOnArrival();
     };
 
-    const displayValue =
-      localValue || (field === 'lemma' && !value && !isReadOnly ? tokenForm : '');
+    const displayValue = localValue;
+    // An empty lemma shows the word's form as a grey placeholder, never as a
+    // value: a cell reads filled only when something is stored, as the export
+    // and Search read it.
+    const placeholder = field === 'lemma' && !isReadOnly ? tokenForm || undefined : undefined;
     // What the cell shows when nobody has typed in it. The review gestures
     // compare the live input against this to tell an untouched cell from an
-    // edited one, and an empty lemma shows the token's form rather than an
-    // empty box: comparing against the SAVED value instead meant Ctrl/Cmd
-    // +Backspace was never claimed from a lemma cell that had no lemma yet.
-    const restingValue = value || (field === 'lemma' && !isReadOnly ? tokenForm : '');
+    // edited one.
+    const restingValue = value || '';
     const hasContent = displayValue && displayValue.trim() !== '';
     const fieldClass =
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
@@ -479,6 +480,7 @@ export const EditableCell = React.memo(
           // can tell an untouched cell from one with unsaved typing in it and
           // leave the browser's delete-a-word alone in the second case.
           data-orig={restingValue}
+          placeholder={placeholder}
           options={
             precedent
               ? precedent.map((row) => ({ value: row.value, label: row.value }))
@@ -644,6 +646,7 @@ export const EditableCell = React.memo(
         spellCheck={false}
         dir="auto"
         data-orig={restingValue}
+        placeholder={placeholder}
         value={displayValue}
         onChange={handleChange}
         onBlur={handleBlur}
