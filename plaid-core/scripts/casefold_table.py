@@ -1,10 +1,16 @@
-"""Write, or check, the case folding table core and plaid-ui compare document
-names by: every code point whose Python `str.casefold` differs from itself,
-with what it folds to. Names are one name when NFC(casefold(NFC(name))) agree,
-as the assistant compares them (Luke, 2026-10-16, ruling 5).
+"""Write, or check, the Unicode tables core and plaid-ui share, so both read
+one Unicode version (core's Java and the assistant's Python, 15.0):
 
-    python scripts/casefold_table.py          # rewrite both tables
-    python scripts/casefold_table.py --check  # exit 1 if either differs
+- the case folding table document names are compared by: every code point
+  whose Python `str.casefold` differs from itself, with what it folds to.
+  Names are one name when NFC(casefold(NFC(name))) agree, as the assistant
+  compares them (Luke, 2026-10-16, ruling 5). plaid-ui also gets the code
+  points this Unicode version leaves unassigned, which its fold leaves as
+  they are, as core's NFC does, where the browser's own NFC may know them
+  (REV8-CORE-5).
+
+    python scripts/casefold_table.py          # rewrite the tables
+    python scripts/casefold_table.py --check  # exit 1 if any differs
 
 Run from plaid-core with the assistant's Python, whose Unicode version the
 tables then follow.
@@ -30,6 +36,20 @@ def lines():
     return out
 
 
+def unassigned():
+    """Ranges `lo-hi` (hex) of the code points this Unicode version leaves
+    unassigned, surrogates aside."""
+    out = []
+    for cp in range(0x110000):
+        if 0xD800 <= cp <= 0xDFFF or unicodedata.category(chr(cp)) != 'Cn':
+            continue
+        if out and out[-1][1] == cp - 1:
+            out[-1][1] = cp
+        else:
+            out.append([cp, cp])
+    return [f'{lo:X}-{hi:X}' for lo, hi in out]
+
+
 def core_text():
     head = (f'# Python str.casefold, Unicode {unicodedata.unidata_version}: a code point, then what it folds to.\n'
             '# Written by scripts/casefold_table.py, do not edit.\n')
@@ -40,7 +60,11 @@ def ui_text():
     return ('// Python str.casefold, Unicode ' + unicodedata.unidata_version + ', as core folds document names\n'
             '// (plaid-core/resources/casefold.txt): each line a code point, then what it\n'
             '// folds to, in hex. Written by plaid-core/scripts/casefold_table.py, do not edit.\n'
-            'export const CASE_FOLD_TABLE = `\n' + '\n'.join(lines()) + '\n`;\n')
+            'export const CASE_FOLD_TABLE = `\n' + '\n'.join(lines()) + '\n`;\n'
+            '\n'
+            '// The code points Unicode ' + unicodedata.unidata_version + ' leaves unassigned, as ranges in hex: core\'s\n'
+            '// NFC leaves each as it is, whatever a newer Unicode makes of it.\n'
+            'export const UNASSIGNED_TABLE = `\n' + '\n'.join(unassigned()) + '\n`;\n')
 
 
 def main():
@@ -50,7 +74,7 @@ def main():
         if bad:
             print('out of date:', *bad)
             sys.exit(1)
-        print('both tables match str.casefold')
+        print('every table matches this Python')
         return
     for p, t in want.items():
         p.write_text(t, encoding='utf-8')

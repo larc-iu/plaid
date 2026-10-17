@@ -41,6 +41,20 @@ describe('foldDocumentName', () => {
     expect(freeDocumentName('kir', ['kır'])).toBe('kir');
     expect(freeDocumentName('KIR', ['kir'])).toBe('KIR (2)');
   });
+
+  // REV8-CORE-5: core composes by Unicode 15, where Tulu-Tigalari and Kirat
+  // Rai are not yet encoded, and this browser by Unicode 16, which composes
+  // \u{113C2}\u{113C2} to \u{113C5}. Core takes both as two names, and so
+  // does the fold.
+  it("composes by core's Unicode version", () => {
+    expect(foldDocumentName('x\u{113c2}\u{113c2}')).toBe('x\u{113c2}\u{113c2}');
+    expect(foldDocumentName('x\u{113c5}')).toBe('x\u{113c5}');
+    expect(freeDocumentName('x\u{113c5}', ['x\u{113c2}\u{113c2}'])).toBe('x\u{113c5}');
+    expect(foldDocumentName('\u{16d67}\u{16d67}')).toBe('\u{16d67}\u{16d67}');
+    // A letter core knows still composes beside one it does not.
+    expect(foldDocumentName('E\u0301\u{113c2}e\u0301')).toBe('\u00e9\u{113c2}\u00e9');
+    expect(foldDocumentName('a\u{113c2}\u0323\u0301')).toBe('a\u{113c2}\u0323\u0301');
+  });
 });
 
 describe('nameTakenMessage', () => {
