@@ -154,8 +154,11 @@ def test_a_transcription_lands_stamped_machine_made_and_never_confirmed(monkeypa
 
     # The text gained both segments, and each got an alignment token stamped
     # machine-made with the model's own scores in provDetail.
-    [(text_id, edits)] = service.client.payloads('texts.update')
+    [update] = service.client.payloads('texts.update')
+    (text_id, edits) = update['args']
     assert text_id == 'text-1'
+    # The document has no word layer, so the update names none.
+    assert update['kwargs'] == {'tokenize_layer': None}
     assert [op['value'] for op in edits] == ['evler geliyor', ' kedi uyuyor']
 
     [ops] = [ops for ops in service.client.payloads('tokens.bulk_create')
@@ -232,21 +235,21 @@ def test_a_second_run_over_the_same_times_adds_nothing_and_says_so(monkeypatch):
     assert service.client.payloads('texts.update') == []
 
 
-@pytest.mark.parametrize('tokenize, words', [(None, ['evler', 'geliyor', 'kedi', 'uyuyor']), (False, [])])
-def test_the_transcribed_text_gets_the_words_of_tokenize_new_text(monkeypatch, tokenize, words):
-    """The word layer, found by its role, is handed to the processor, so the
-    text gets its words in the same batch, unless the project has the setting
-    off."""
+@pytest.mark.parametrize('tokenize, layer', [(None, 'word-layer'), (False, None)])
+def test_the_transcribed_text_gets_the_words_of_tokenize_new_text(monkeypatch, tokenize, layer):
+    """The word layer, found by its role, is named on the text update, so the
+    server makes the text's words, unless the project has the setting off.
+    The service writes no word of its own."""
     _media(monkeypatch)
     module, _ = load_whisper()
     service = _service(module, documents=[_with_word_layer(_document(), tokenize)])
     helper = servicetest.run(service, REQUEST)
     assert helper.errors == []
-    [(_, edits)] = service.client.payloads('texts.update')
-    body = ''.join(op['value'] for op in edits)
+    [update] = service.client.payloads('texts.update')
+    assert update['kwargs'] == {'tokenize_layer': layer}
     made = [op for ops in service.client.payloads('tokens.bulk_create') for op in ops
             if op['token_layer_id'] == 'word-layer']
-    assert [body[op['begin']:op['end']] for op in made] == words
+    assert made == []
 
 
 # --- the lock ----------------------------------------------------------------
