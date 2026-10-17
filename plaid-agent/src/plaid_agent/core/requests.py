@@ -308,15 +308,19 @@ class Replaying:
         self.requests.append(rec)
 
     def _request_where(self, rec: Dict[str, Any], notes: Dict[str, List[set]],
-                       by_key: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[List[str]]]:
-        """Where each entry ``rec`` stands for is (documents, fields): as the
-        plan holds it now, as the tool noted it, and as it was when asked
-        before (an entry the plan no longer shows keeps where it was)."""
+                       by_key: Dict[str, List[Dict[str, Any]]]) -> List[list]:
+        """Where each entry ``rec`` stands for is, ``[key, documents,
+        fields]``: as the plan holds it now, as the tool noted it, and as it
+        was when asked before (an entry the plan no longer shows keeps where
+        it was). A list and not a map by key: a key is the op itself, and a
+        merge of an entry with 1,365 links made one of 694,290 characters,
+        which core refuses as a JSON member name (over 50,000), so the plan
+        was never stored and could not be resumed (H17-ASSIST-7)."""
         owns = [k for k in rec['owns'] if not self.is_rule_key(k)]
         if not owns:
-            return {}
+            return []
         at: Dict[str, List[set]] = {k: [set(), set()] for k in owns}
-        for k, (docs, fields) in (rec.get('where') or {}).items():
+        for k, docs, fields in rec.get('where') or ():
             if k in at:
                 at[k][0].update(docs)
                 at[k][1].update(fields)
@@ -328,7 +332,7 @@ class Replaying:
             for op in by_key.get(k) or ():
                 at[k][0].update(self.op_documents(op))
                 at[k][1].update(self.op_fields(op))
-        return {k: [sorted(d), sorted(f)] for k, (d, f) in at.items()}
+        return [[k, sorted(d), sorted(f)] for k, (d, f) in at.items()]
 
     def add_op(self, op: Dict[str, Any]) -> None:
         op = self.held_out(op)
@@ -416,7 +420,7 @@ class Replaying:
         want = field.strip().casefold() if field is not None else None
         out = set()
         for rec in self.requests:
-            for k, (docs, fields) in (rec.get('where') or {}).items():
+            for k, docs, fields in rec.get('where') or ():
                 if k in live or self.is_rule_key(k):
                     continue
                 if doc_id is not None and set(docs) != {doc_id}:

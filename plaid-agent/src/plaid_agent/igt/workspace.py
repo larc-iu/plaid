@@ -125,8 +125,9 @@ TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE))
 PIN_LOAD_MAX = 50
 
 #: The form of :meth:`Workspace.plan_state`. A plan stored in another form is
-#: not resumed. 4: requests stand for what they asked (REV8-PLAN).
-PLAN_STATE_FORMAT = 4
+#: not resumed. 4: requests stand for what they asked (REV8-PLAN). 5: a
+#: request's ``where`` is a list (H17-ASSIST-7).
+PLAN_STATE_FORMAT = 5
 
 # The keys of a change that name the entry it writes a link to: a link's
 # entry, and the entry a merge moves every link onto.
