@@ -385,6 +385,27 @@ export const STRIPS = {
   'text.blankLine': coveredBy('token.sentence', 'the rebuilt baseline has no blank lines'),
 
   // ---- tokens ----
+  // An export reads a word the exported project's rule skips as the text it
+  // covers (ruling 29), so the word and its morphemes are not in the file.
+  'token.ignoredWord': (s, ctx) => {
+    const rule = wordLayer(ctx.source)?.config?.igt?.ignoredTokens ?? null;
+    for (const d of docs(s)) {
+      const body = [...(baselineOf(d)?.body ?? '')];
+      const gone = new Set(
+        tokensIn(d, 'word')
+          .filter((w) => isTokenIgnored(body.slice(w.begin, w.end).join(''), rule))
+          .map((w) => `${w.begin}-${w.end}`),
+      );
+      if (!gone.size) continue;
+      removeTokens(
+        s,
+        d,
+        (t) =>
+          (t.layer === 'token:word' || t.layer === 'token:morpheme') &&
+          gone.has(`${t.begin}-${t.end}`),
+      );
+    }
+  },
   'token.orthographyValue': (s) => {
     for (const d of docs(s)) {
       for (const t of tokensIn(d, 'word')) omitKeys(t.metadata, (k) => k.startsWith('orthog:'));

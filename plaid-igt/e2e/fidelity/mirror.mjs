@@ -26,7 +26,8 @@
 // Set PLAID_FIDELITY_CORE_URL and PLAID_FIDELITY_TOKEN to run against a core
 // already started with `node e2e/fidelity/core.mjs` (see core.mjs).
 
-import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
+import { PLAID_NAMESPACE, PROV, isProtected } from '@larc-iu/plaid-client';
+import { hasOwnContent } from '@ui/domain/annotationLoss.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import {
@@ -207,7 +208,14 @@ function entities(raw, keepLayer = () => true) {
       if (!keepLayer(kl)) continue;
       const live = new Set((kl.tokens || []).map((t) => t.id));
       for (const t of kl.tokens || []) {
-        out.set(t.id, { kind: 'token', layer: kl.name, v: `${t.begin}-${t.end}` });
+        out.set(t.id, {
+          kind: 'token',
+          layer: kl.name,
+          v: `${t.begin}-${t.end}`,
+          // Content of its own: a segmentation, an orthography line, other
+          // metadata, or a stamp a person verified or contributed.
+          content: hasOwnContent(t) || (PROV.key in (t.metadata || {}) && isProtected(t.metadata)),
+        });
       }
       for (const sl of kl.spanLayers || []) {
         for (const s of sl.spans || []) {
@@ -266,12 +274,16 @@ const differences = (shown, stored) => {
   return out;
 };
 
-// What the server deleted: spans and relations, and links.
-const deleted = (before, after, skip = () => false) => {
+// What the server deleted: spans and relations, the tokens with content of
+// their own where the question counts them (`tokens`), and links.
+const deleted = (before, after, skip = () => false, tokens = false) => {
   const a = entities(before);
   const b = entities(after);
   let annotations = 0;
-  for (const [id, e] of a) if (!b.has(id) && e.kind !== 'token' && !skip(e)) annotations += 1;
+  for (const [id, e] of a) {
+    if (b.has(id) || skip(e)) continue;
+    if (e.kind !== 'token' || (tokens && e.content)) annotations += 1;
+  }
   const la = linksOf(before);
   const lb = linksOf(after);
   return { annotations, links: [...la.keys()].filter((id) => !lb.has(id)).length };
@@ -296,13 +308,15 @@ const typeInBaseline = (d, passage, start, end, value) => {
   });
 };
 
-// Each: what the editor asks first (or null), the mutation, and what of the
+// Each: what the editor asks first (or null), the mutation, what of the
 // deleted entities the question leaves out by design (a merge's joined field
-// values are combined, not lost).
+// values are combined, not lost), and whether the question counts a deleted
+// token with content of its own (a word's delete does, e9ef69e7a).
 const SCENARIOS = {
   'delete a word': {
     ask: (d) => countAnnotationLossForWord(d.layerInfo, d.vocabularies, word(d, 'today')),
     run: (d) => d.deleteToken(word(d, 'today').id),
+    tokens: true,
   },
   'merge two words': {
     ask: (d) =>
@@ -369,7 +383,7 @@ try {
     problems.push(...differences(entities(doc.raw, igtLayer), entities(after, igtLayer)));
     problems.push(...differences(shownLinks(doc), linksOf(after)).map((p) => `link ${p}`));
     if (asked) {
-      const lost = deleted(before, after, scenario.joined);
+      const lost = deleted(before, after, scenario.joined, scenario.tokens);
       if (asked.annotations !== lost.annotations || asked.links !== lost.links) {
         problems.push(
           `asked about ${asked.annotations} annotations and ${asked.links} links, ` +

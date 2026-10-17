@@ -472,7 +472,7 @@ export default {
         wl.config ??= {};
         wl.config.igt = {
           ...wl.config.igt,
-          ignoredTokens: { type: 'unicodePunctuation', whitelist: [] },
+          ignoredTokens: { type: 'unicodePunctuation', whitelist: [], blacklist: [] },
         };
       },
     },
@@ -492,7 +492,7 @@ export default {
       },
     },
     {
-      keys: ['token.ignoredWord', 'token.morphemeFormEmpty', 'token.morphemeFormAbsent'],
+      keys: ['token.morphemeFormEmpty', 'token.morphemeFormAbsent'],
       // A word with no morpheme stays unanalyzed (token.unanalyzedWord).
       // A morpheme with no form takes its word's
       // text. A word whose morphemes are all empty keeps only its first,

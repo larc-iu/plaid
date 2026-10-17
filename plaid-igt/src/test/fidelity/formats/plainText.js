@@ -187,7 +187,7 @@ export default {
       carried: true,
       where: "each sentence's text on its word line, as one cell",
     },
-    'document.duplicateName': {
+    'document.sameFileName': {
       carried: true,
       where:
         'each file\'s header holds the name as it is. In a zip the second file is named "name (2).txt".',

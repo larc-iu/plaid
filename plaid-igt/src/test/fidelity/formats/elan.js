@@ -89,7 +89,7 @@ export default {
   // A round trip's other question: does a project that has been through one
   // stop changing? ELAN's does not, for one reason, known and tolerated
   // (user, 2026-09-17: ELAN round-trip nits do not matter): two documents of
-  // one name trade places every pass, as document.duplicateName describes. A
+  // one file name trade places every pass, as document.sameFileName describes. A
   // morpheme form spelling its own joint used to be a second reason, and is
   // not: it loses the joint on the FIRST pass (token.morphemeForm) and is
   // then stable.
@@ -346,11 +346,11 @@ export default {
     'document.media': carried,
     'document.noText': carried,
     'document.untokenized': carried,
-    // Each document keeps the documentName its .eaf gives it, shared or not (user, 2026-09-17:
+    // Each document keeps the documentName its .eaf gives it (user, 2026-09-17:
     // "whatever's reasonable", after the import renamed them "<name> (n)" in file-read order).
-    'document.duplicateName': {
+    'document.sameFileName': {
       carried: 'changed',
-      how: 'Both documents come back under the one name, but which of them holds what can swap: the export writes the second as "<name> (2).eaf", and a batch is imported in the order the files are listed in, where "<name> (2).eaf" sorts before "<name>.eaf".',
+      how: 'Both documents come back under their own names, but in another order: the export writes the second as "<file name> (2).eaf", and a batch is imported in the order the files are listed in, where "<file name> (2).eaf" sorts before "<file name>.eaf".',
     },
     'document.nameSpecialChars': carried,
     'document.metadataLang': {
@@ -388,7 +388,11 @@ export default {
       carried: 'changed',
       how: 'The same words come back in the same order, each over the same text, with offsets re-derived against the rebuilt baseline as token.sentence describes.',
     },
-    'token.ignoredWord': carried,
+    'token.ignoredWord': {
+      carried: false,
+      kind: 'inherent',
+      why: 'The export reads a word the project skips as the text it covers, as every export but the native archive does (ruling 29), so it comes back as text no word covers (token.untokenizedText), with no morpheme.',
+    },
     'token.untokenizedText': {
       carried: 'changed',
       how: 'The text comes back inside its sentence, outside every word, under the whitespace rule token.sentence describes.',

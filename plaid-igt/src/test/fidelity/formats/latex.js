@@ -301,7 +301,7 @@ export default {
       carried: true,
       where: "each sentence's text on the word line, one column per whitespace-separated run",
     },
-    'document.duplicateName': {
+    'document.sameFileName': {
       carried: true,
       where:
         'each chapter heading holds the name as it is. The files are numbered by their place in the book, so the two never collide.',

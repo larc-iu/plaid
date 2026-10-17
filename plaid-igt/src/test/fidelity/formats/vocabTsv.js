@@ -197,7 +197,7 @@ export default {
     'document.media': NOT_A_VOCABULARY,
     'document.noText': NOT_A_VOCABULARY,
     'document.untokenized': NOT_A_VOCABULARY,
-    'document.duplicateName': NOT_A_VOCABULARY,
+    'document.sameFileName': NOT_A_VOCABULARY,
     'document.nameSpecialChars': NOT_A_VOCABULARY,
     'document.metadataLang': NOT_A_VOCABULARY,
     'document.partlyAligned': NOT_A_VOCABULARY,

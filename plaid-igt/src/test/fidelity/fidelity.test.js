@@ -235,7 +235,7 @@ const TABLES = {
   },
   documents: {
     id: notData('identity'),
-    name: covers('document.duplicateName', 'document.nameSpecialChars'),
+    name: covers('document.sameFileName', 'document.nameSpecialChars'),
     project_id: notData('ownership'),
     version: notData('optimistic-concurrency counter'),
     created_at: notData('bookkeeping'),

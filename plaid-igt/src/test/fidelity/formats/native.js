@@ -171,7 +171,7 @@ export default {
     'document.media': carried,
     'document.noText': carried,
     'document.untokenized': carried,
-    'document.duplicateName': carried,
+    'document.sameFileName': carried,
     'document.nameSpecialChars': carried,
     'document.metadataLang': carried,
     'document.partlyAligned': carried,

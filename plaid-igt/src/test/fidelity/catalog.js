@@ -25,6 +25,7 @@
 // detector that is true of everything.
 
 import { provState } from '@larc-iu/plaid-client';
+import { sanitizeFilename } from '@ui/lib/download.js';
 import { fieldNameLang } from '../../domain/fieldNames.js';
 import { hasLanguageIdentity, isTokenIgnored } from '../../domain/igtConfig.js';
 import { CORE_VOCAB_FIELDS, RESERVED_ITEM_KEYS } from '../../domain/vocabFields.js';
@@ -737,9 +738,9 @@ export const FEATURES = [
       ),
   },
   {
-    key: 'document.duplicateName',
-    what: 'two documents with the same name',
-    detect: (s) => docs(s).length - new Set(docs(s).map((d) => d.name)).size,
+    key: 'document.sameFileName',
+    what: 'two documents whose names make one file name (“Notes” and “Notes?”)',
+    detect: (s) => docs(s).length - new Set(docs(s).map((d) => sanitizeFilename(d.name))).size,
   },
   {
     key: 'document.nameSpecialChars',

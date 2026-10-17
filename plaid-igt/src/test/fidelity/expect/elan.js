@@ -16,6 +16,7 @@
 // Where the list's prose leaves a choice open, the comment on the step says
 // which reading is taken and why.
 
+import { sanitizeFilename } from '@ui/lib/download.js';
 import {
   baselineOf,
   byBegin,
@@ -173,7 +174,7 @@ const schemaSteps = [
       if (!wl) return;
       wl.config ??= {};
       wl.config.igt ??= {};
-      wl.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+      wl.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [], blacklist: [] };
     },
   },
   {
@@ -224,18 +225,19 @@ const schemaSteps = [
 
 const documentSteps = [
   {
-    keys: ['document.duplicateName'],
+    keys: ['document.sameFileName'],
     // A batch is imported in the order the files are listed in, and two
-    // documents of one name go out as "<name>.eaf" and "<name> (2).eaf", which
-    // sort the other way round: the documents come back in that order, so which
-    // of the two holds what can swap.
+    // documents of one file name go out as "<file name>.eaf" and
+    // "<file name> (2).eaf", which sort the other way round: the documents come
+    // back in that order.
     apply(expected) {
       const list = docs(expected);
       const used = new Set();
       const fileOf = new Map();
       for (const d of list) {
-        let candidate = `${d.name}.eaf`;
-        for (let n = 2; used.has(candidate); n++) candidate = `${d.name} (${n}).eaf`;
+        const stem = sanitizeFilename(d.name);
+        let candidate = `${stem}.eaf`;
+        for (let n = 2; used.has(candidate); n++) candidate = `${stem} (${n}).eaf`;
         used.add(candidate);
         fileOf.set(d, candidate);
       }

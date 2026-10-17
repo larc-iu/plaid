@@ -397,7 +397,7 @@ export default {
       why: 'The export writes the document’s ContributionTable row and its MediaTable row, but the import builds documents from example rows only, so a document with no sentences does not come back, and its metadata and recording go with it.',
     },
     'document.untokenized': carried,
-    'document.duplicateName': carried,
+    'document.sameFileName': carried,
     'document.nameSpecialChars': carried,
     'document.metadataLang': carried,
     'document.partlyAligned': NO_SEGMENTS,
@@ -429,10 +429,9 @@ export default {
       how: 'Each word comes back, in order, over its own characters, with offsets shifted as token.sentence describes. The export writes the text of each word beside its analysis (Surface_Word), and the import places the word there. Several words in one run each come back over their own characters (token.wordsInOneRun).',
     },
     'token.ignoredWord': {
-      carried: 'changed',
-      how: 'A word the imported project skips comes back unanalyzed, with no morpheme, as it was. That project has the default rule (layers.ignoredTokensPunctuation), so this holds for a word made only of punctuation. A word only the exported project skipped, by a blacklist or a letter-like character, comes back analyzed as token.unanalyzedWord describes. It is placed like any other word, as token.word describes.',
-      ruling:
-        'user, 2026-09-17: a word made only of punctuation comes back from CLDF unanalyzed, as it was, rather than as one morpheme or split at its hyphens',
+      carried: false,
+      kind: 'inherent',
+      why: 'The export reads a word the project skips as the text it covers, as every export but the native archive does (ruling 29), so it comes back as text no word covers (token.untokenizedText), with no morpheme.',
     },
     'token.untokenizedText': {
       carried: 'changed',

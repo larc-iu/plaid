@@ -433,9 +433,10 @@ export default {
       carried: 'changed',
       how: 'Each sentence is a <phrase> whose whole text, trimmed, is one <word><item type="punct">, since no word covers any of it.',
     },
-    'document.duplicateName': {
+    'document.sameFileName': {
       carried: true,
-      where: 'flextext two <interlinear-text> elements with the same <item type="title">',
+      where:
+        'flextext one <interlinear-text> each, in the one file, each with its own <item type="title">',
     },
     'document.nameSpecialChars': {
       carried: true,
