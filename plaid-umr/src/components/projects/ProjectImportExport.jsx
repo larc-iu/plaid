@@ -9,8 +9,7 @@ import { ProjectTabs } from './ProjectTabs.jsx';
 import { prepareImport } from './prepareUmrImport.js';
 
 const exportDocuments = async ({ client, project, projectId, onProgress }) => {
-  const entries =
-    (await exportProjectUmr(client, projectId, getUmrLayerInfo(project), { onProgress })) || [];
+  const entries = (await exportProjectUmr(client, projectId, project, { onProgress })) || [];
   return { documents: entries.length, entries, skipped: [] };
 };
 

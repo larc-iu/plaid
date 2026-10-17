@@ -210,7 +210,7 @@ test('the project export names every document with a problem, and writes none', 
     },
     documents: { get: async (id) => (id === 'a' ? good : bad) },
   };
-  await assert.rejects(exportProjectUmr(client, 'p'), (e) => {
+  await assert.rejects(exportProjectUmr(client, 'p', null), (e) => {
     assert.ok(e instanceof UnwritableUmrError);
     assert.deepEqual(
       e.problems.map((p) => [p.document, p.sentence, p.var]),
@@ -283,4 +283,28 @@ test('metadata or gloss items that are not lists are refused, not thrown on', ()
     assert.equal(problems.length, 1, JSON.stringify(over));
     assert.throws(() => serializeUmrFile({ sentences: [sentence(over)] }), UnwritableUmrError);
   }
+});
+
+// H17-UMR-2: the project export wrote every line an import stored, whatever
+// the project's Gloss lines said, so a document's file in the .zip was not
+// the file its Export tab writes.
+test("the project export writes the project's Gloss lines, as the Export tab does", async () => {
+  const withGloss = FILE.replace('Words: the dog\n', 'Words: the dog\nWord Gloss (en): DEF dog\n');
+  const raw = rawFromPlan(planImport(parseUmrFile(withGloss).sentences, []));
+  // Saved Gloss lines that name no line an import stored.
+  const project = {
+    id: 'p',
+    config: { umr: { ilg: [{ header: 'pos', lang: null, source: 'layer:x' }] } },
+  };
+  const client = {
+    projects: { listDocuments: async () => [{ id: 'a', name: 'Good' }] },
+    documents: { get: async () => raw },
+  };
+  const [file] = await exportProjectUmr(client, 'p', project);
+  const tab = new UmrDocument({ raw, project }).toUmr();
+  assert.doesNotMatch(tab, /Word Gloss/);
+  assert.equal(file.text, tab);
+  // With no saved lines both write what the import stored.
+  const [plain] = await exportProjectUmr(client, 'p', { id: 'p', config: {} });
+  assert.match(plain.text, /Word Gloss \(en\):/);
 });
