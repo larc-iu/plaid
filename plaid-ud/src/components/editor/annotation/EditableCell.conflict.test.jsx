@@ -405,22 +405,28 @@ describe('the toast for a refused cell edit', () => {
     await run.view.unmount();
   });
 
-  it('says the value is kept when the conflict was elsewhere in the document', async () => {
-    const run = await lostTo({
-      field: 'lemma',
-      before: 'sit',
-      typed: 'sitC',
-      winner: 'sit',
-      refusal: conflict409,
+  // The toast names the field as its row does, as igt's does (REV8-APPS-5).
+  for (const [field, name, before, typed] of [
+    ['lemma', 'Lemma', 'sit', 'sitC'],
+    ['xpos', 'XPOS', 'NN', 'NNC'],
+    ['upos', 'UPOS', 'VERB', 'NOUN'],
+  ]) {
+    it(`says the value is kept when the conflict was elsewhere in the document (${field})`, async () => {
+      const run = await lostTo({
+        field,
+        before,
+        typed,
+        winner: before,
+        refusal: conflict409,
+      });
+      expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+      expect(feedback.notifyError).toHaveBeenCalledWith(
+        'Changed elsewhere. Your value is in its cell, not saved.',
+        `Failed to update ${name}`,
+      );
+      await run.view.unmount();
     });
-    expect(run.input.value).toBe('sitC');
-    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
-    expect(feedback.notifyError).toHaveBeenCalledWith(
-      'Changed elsewhere. Your value is in its cell, not saved.',
-      'Failed to update lemma',
-    );
-    await run.view.unmount();
-  });
+  }
 });
 
 // REV-cell-engine F2: a focused cell nobody typed in follows the stored value,

@@ -52,6 +52,7 @@ import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { readIgnoredTokensOf } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
+import { fieldName } from '../utils/fieldNames.js';
 
 // The lemma a new word starts with is a copy of its form, made by a rule and
 // by no person, so a parser may replace it (provenance write contract rule 1).
@@ -1320,7 +1321,7 @@ export class ConlluDocument extends DocumentModel {
       }
     }
 
-    const label = `Failed to update ${field}`;
+    const label = `Failed to update ${fieldName(field)}`;
     if (!this._canWrite(label)) return false;
     if (field === 'features') {
       // Adding a name the token already carries overwrites that value rather

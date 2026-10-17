@@ -15,9 +15,9 @@ import { isImeKey } from '@ui/lib/chords.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { useConflictCell } from '@ui/hooks/useConflictCell.js';
 import { ConflictNote } from '@ui/components/shared/conflict-note.jsx';
+import { fieldName } from '../../../utils/fieldNames.js';
 
 // Editable cell component for annotation fields
-const FIELD_NAMES = { lemma: 'Lemma', xpos: 'XPOS', upos: 'UPOS' };
 
 export const EditableCell = React.memo(
   ({
@@ -242,7 +242,7 @@ export const EditableCell = React.memo(
           newValue,
           taken?.saved ?? (value || ''),
           () => onUpdate(tokenId, field, newValue || null),
-          { field },
+          { field: fieldName(field) },
         );
       } else {
         // Revert to original if unchanged
@@ -412,10 +412,10 @@ export const EditableCell = React.memo(
     //
     // Machine-origin record for the tooltip + the producer's distribution (when
     // one was recorded in provDetail) for ranking the dropdown.
-    const cellTitle = provCellTitle(`Edit ${FIELD_NAMES[field] ?? field}`, provMeta);
+    const cellTitle = provCellTitle(`Edit ${fieldName(field)}`, provMeta);
     // The name a screen reader gives the cell: its row and its word, as igt's
     // grid says "Gloss for dog". The tooltip stays a description.
-    const cellName = `${FIELD_NAMES[field] ?? field} for ${tokenForm ?? ''}`.trim();
+    const cellName = `${fieldName(field)} for ${tokenForm ?? ''}`.trim();
     const fieldProbs = readFieldProbs(provMeta, field);
 
     // Read-only (viewer access or time travel): render the value as static text,
