@@ -15,6 +15,7 @@ import pytest
 
 from plaid_agent.core import agent
 from plaid_agent.core.agent import written_call, written_call_note
+from plaid_agent.core.conversation import DROPPED
 
 from test_nothing_planned import APPS, _reply, _run
 
@@ -176,6 +177,59 @@ def test_code_run_in_an_earlier_turn_is_shown_code(monkeypatch):
     monkeypatch.setattr(agent, '_complete', complete)
     out = agent.run_turn(agent.ModelConfig(model='stub'), kit, ws, 'system', transcript)
     assert len(sent) == 1 and out.text == SHOWN
+
+
+# REV8-AGENT R8A-5 and R8A-6 (parent 2026-10-17): a call that went through in
+# an earlier turn, shown again, is the reply restating it, and shown code is
+# matched whatever its spacing.
+
+def _earlier(name, args, answer):
+    return [{'role': 'user', 'content': 'gloss s1.w1 as X'},
+            {'role': 'assistant', 'content': None, 'tool_calls': [
+                {'id': 'p1', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(args)}}]},
+            {'role': 'tool', 'tool_call_id': 'p1', 'content': answer},
+            {'role': 'assistant', 'content': 'Planned. Approve the card.'},
+            {'role': 'user', 'content': 'What exactly did you call?'}]
+
+
+CALLED = 'I called:\n\n```python\nset_field(document="Text 1", refs=["s1.w1"], field="Gloss", value="X")\n```'
+
+
+@pytest.mark.parametrize('answer, nudged', [('Planned: Gloss of s1.w1 to "X".', False),
+                                            ('Error: No document "Nope".', True),
+                                            (DROPPED, True)])
+def test_a_call_that_went_through_in_an_earlier_turn_restated(monkeypatch, answer, nudged):
+    ws, kit, plan, _read = APPS['igt']()
+    name, args = plan
+    sent = []
+
+    def complete(cfg, kwargs, on_text, cancelled=None, on_thinking=None):
+        sent.append(kwargs)
+        return _reply(text=CALLED if len(sent) == 1 else 'ok')
+
+    monkeypatch.setattr(agent, '_complete', complete)
+    out = agent.run_turn(agent.ModelConfig(model='stub'), kit, ws, 'system', _earlier(name, args, answer))
+    note = {'role': 'user', 'content': written_call_note('set_field')}
+    assert (note in out.messages) is nudged and len(sent) == 1 + nudged
+
+
+def test_went_through_reads_the_transcript():
+    msgs = [{'role': 'assistant', 'tool_calls': [
+                {'id': 'a', 'function': {'name': 'set_field', 'arguments': '{}'}},
+                {'id': 'b', 'function': {'name': 'set_head', 'arguments': '{}'}},
+                {'id': 'c', 'function': {'name': 'query', 'arguments': '{}'}},
+                {'id': 'd', 'function': {'name': 'run_code', 'arguments': '{}'}}]},
+            {'role': 'tool', 'tool_call_id': 'a', 'content': 'Planned 1 change'},
+            {'role': 'tool', 'tool_call_id': 'b', 'content': 'Error: s9 has no word 4'},
+            {'role': 'tool', 'tool_call_id': 'c', 'content': DROPPED}]
+    assert agent.went_through(msgs) == {'set_field'}
+
+
+def test_shown_code_is_matched_whatever_its_spacing():
+    ran = 'rows=query({"find":[["?w","word"]]})\nprint(len(rows))'
+    shown = 'I counted with:\n\n```python\nrows = query({"find": [["?w", "word"]]})\nprint(len(rows))\n```'
+    assert written_call(shown, NAMES, code=[ran]) is None
+    assert written_call(shown, NAMES) == 'query'
 
 
 # R7A-8 (parent 2026-10-16): a staged plan survives any model-call failure

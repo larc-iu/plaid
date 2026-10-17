@@ -28,6 +28,7 @@ from plaid_client import ServiceCancelled
 from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
 from .bidi import for_model
+from .conversation import DROPPED
 from .filetools import vouches
 from .limits import cuts
 from .rounds import call_record, new_round
@@ -584,7 +585,9 @@ def _call_shapes(names: Iterable[str]) -> List[re.Pattern]:
 
 
 def _squashed(text: str) -> str:
-    return ' '.join(text.split())
+    # Code shown is often spaced otherwise than it ran (`rows=query(...)`
+    # ran, `rows = query(...)` shown), so no whitespace counts (R8A-6).
+    return ''.join(text.split())
 
 
 def written_call(text: Optional[str], names: Iterable[str], ran: Iterable[str] = (),
@@ -592,11 +595,11 @@ def written_call(text: Optional[str], names: Iterable[str], ran: Iterable[str] =
     """The tool ``text`` writes out as a call rather than calling it, or None.
     ``names`` are the tools the turn offers.
 
-    A call of a tool in ``ran`` (the tools whose calls went through this
-    turn) is the reply restating what it did, not a call that did not run.
-    A line of code that ran (``code``, the code of the conversation's
-    run_code calls) is shown code: the sandbox's ``query(q)`` shares the
-    query tool's name."""
+    A call of a tool in ``ran`` (the tools whose calls went through in this
+    conversation, this turn or an earlier one) is the reply restating what
+    it did, not a call that did not run. A line of code that ran (``code``,
+    the code of the conversation's run_code calls) is shown code, whatever
+    its spacing: the sandbox's ``query(q)`` shares the query tool's name."""
     ran = set(ran)
     code = [_squashed(c) for c in code if c]
     text = text or ''
@@ -627,6 +630,26 @@ def run_code_of(messages: Iterable[Dict[str, Any]]) -> List[str]:
                 continue
             if isinstance(args, dict) and isinstance(args.get('code'), str):
                 out.append(args['code'])
+    return out
+
+
+def went_through(messages: Iterable[Dict[str, Any]]) -> set:
+    """The tools whose calls in ``messages`` (a transcript) went through:
+    answered, and not with a refusal. The transcript keeps the answer's text
+    only, so an answer beginning "Error" counts as refused, and one pruned
+    from the record as unknown: such a call is not counted, and a reply that
+    writes it out is told it did not run (REV8-AGENT R8A-5)."""
+    answered = {m.get('tool_call_id'): m.get('content') for m in messages
+                if m.get('role') == 'tool'}
+    out = set()
+    for m in messages:
+        if m.get('role') != 'assistant':
+            continue
+        for c in m.get('tool_calls') or []:
+            text = answered.get(c.get('id'))
+            name = (c.get('function') or {}).get('name')
+            if name and isinstance(text, str) and text != DROPPED and not text.startswith('Error'):
+                out.add(name)
     return out
 
 
@@ -1021,9 +1044,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     # and whether it was told a call it wrote as text did not run.
     nudged = False
     wrote_once = False
-    # The tools whose calls went through this turn: a reply that writes one
-    # out is restating it (REV7-AGENT R7A-1).
-    ran: set = set()
+    # The tools whose calls went through, in earlier turns and this one: a
+    # reply that writes one out is restating it (REV7-AGENT R7A-1, R8A-5).
+    ran: set = went_through(history)
 
     def claimed_nothing(text: str) -> bool:
         """The reply says it planned, and this turn planned nothing: no plan
