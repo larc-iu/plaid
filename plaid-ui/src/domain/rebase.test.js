@@ -97,6 +97,31 @@ describe('an edit refused because the document moved on', () => {
     expect(untouched(addGlossOnDog, base, gone)).toBe(false);
   });
 
+  // Luke, H17: a pure offset shift counts as unchanged. Text typed before the
+  // word moves it and every word after it, and the value lands.
+  it('goes again when text typed before the word only moved it, and is refused when its letters changed too', () => {
+    const shift = (body, by, widths = [3, 3, 4, 4]) => {
+      const now = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF')] });
+      let at = by;
+      words(now).forEach((w, i) => {
+        w.begin = at;
+        w.end = at + widths[i];
+        at = w.end + 1;
+      });
+      now.textLayers[0].text.body = body;
+      return now;
+    };
+    expect(untouched(addGlossOnDog, base, shift('Xx the dog runs home', 3))).toBe(true);
+    expect(untouched(addGlossOnDog, base, shift('Xx the hog runs home', 3))).toBe(false);
+    expect(untouched(addGlossOnDog, base, shift('Xx the dogs runs home', 3, [3, 4, 4, 4]))).toBe(
+      false,
+    );
+    // A value on the word itself given meanwhile is still a conflict.
+    const both = shift('Xx the dog runs home', 3);
+    glossLayer(both).spans.push(gloss('s9', 't2', 'HOUND'));
+    expect(untouched(addGlossOnDog, base, both)).toBe(false);
+  });
+
   it('is refused when the word was respelled where it stands, and goes past another word respelled', () => {
     const respell = (body) => {
       const now = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF')] });

@@ -39,7 +39,8 @@
 //   on (a relation's two ends, split into two sentences since).
 // So a second value on the same word is a conflict, and so is any change to
 // the word itself, while a value on another word, or anything in a layer the
-// edit does not write, is not.
+// edit does not write, is not. By entity, a token that only moved (text typed
+// before it, its width and letters kept) is no change (Luke, H17).
 
 //
 // Imports nothing but a sibling with no imports (plaid-ud's node suite reaches
@@ -146,7 +147,7 @@ export function footprintOf(before, after) {
   const anchors = [];
   const tokenOf = (id) => {
     const e = b.get(id) ?? a.get(id);
-    return e && e.begin !== null && e.end !== null ? e : null;
+    return e && e.begin !== null && e.end !== null ? { id, e } : null;
   };
   for (const id of changed) {
     const e = b.get(id);
@@ -154,7 +155,7 @@ export function footprintOf(before, after) {
     for (const s of e.strings) {
       const named = b.get(s) ?? a.get(s);
       for (const t of [tokenOf(s), ...(named?.strings ?? []).map(tokenOf)]) {
-        if (t) anchors.push({ layer: t.layer, begin: t.begin, end: t.end });
+        if (t) anchors.push({ id: t.id, layer: t.e.layer, begin: t.e.begin, end: t.e.end });
       }
     }
   }
@@ -376,6 +377,19 @@ function nestsIn(layer, outer, ...indexes) {
 const recut = (was, is) =>
   was && was.begin !== null && (!is || is.begin !== was.begin || is.end !== was.end);
 
+// A token that was there before and has only moved since: text added or
+// removed before it shifted it, with its width and every other field kept.
+// Read as unchanged by the rule by entity (Luke, H17: a value given to a word
+// lands when only its offsets moved). The letters under it are compared at
+// its new place (`respelled`).
+const shifted = (was, is) => {
+  if (!was || !is || was.begin === null || is.begin === null) return false;
+  const by = is.begin - was.begin;
+  if (by === 0 || is.end - was.end !== by) return false;
+  const rest = (e) => JSON.stringify({ ...e.own, begin: null, end: null }, canonical);
+  return rest(was) === rest(is);
+};
+
 // Whether `was` is a text (a row holding text in a string field) that `is`
 // changed inside one of `stretches`, the tokens placed in it, at the same
 // offsets. Offsets count code points.
@@ -389,7 +403,10 @@ function respelled(was, is, stretches, a, b) {
     const ys = [...y];
     for (const s of stretches) {
       if ((a.get(s.layer) ?? b.get(s.layer))?.layer !== was.layer) continue;
-      if (xs.slice(s.begin, s.end).join('') !== ys.slice(s.begin, s.end).join('')) return true;
+      // Where the token stands now, when only its offsets moved.
+      const now = s.id ? b.get(s.id) : null;
+      const at = shifted(a.get(s.id), now) ? now : s;
+      if (xs.slice(s.begin, s.end).join('') !== ys.slice(at.begin, at.end).join('')) return true;
     }
   }
   return false;
@@ -403,9 +420,11 @@ export function untouched(footprint, before, now) {
   const b = indexEntities(now);
   const holders = holdersOf(a, b);
   for (const id of changedIds(a, b)) {
-    if (footprint.names.has(id)) return false;
     const was = a.get(id);
+    const moved = shifted(was, b.get(id));
+    if (footprint.names.has(id) && !moved) return false;
     if (
+      !moved &&
       recut(was, b.get(id)) &&
       [...footprint.spans, ...footprint.anchors].some(
         (s) => shares(was, s) && nestsIn(s.layer, was.layer, a, b),
