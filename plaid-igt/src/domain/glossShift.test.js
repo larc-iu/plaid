@@ -24,6 +24,7 @@ const base = () => {
       { id: 's-2', begin: 8, end: 18 },
     ],
   });
+  raw.textLayers[0].text.digest = 'd-0';
   layer(raw, 'wordL').parentTokenLayer = 'sentL';
   layer(raw, 'morphL').parentTokenLayer = 'wordL';
   return raw;
@@ -42,6 +43,7 @@ const typedAtFront = (typed, body = BODY) => {
   const now = base();
   const n = [...typed].length;
   now.textLayers[0].text.body = typed + body;
+  now.textLayers[0].text.digest = `d-${typed}${body}`;
   for (const id of ['wordL', 'morphL', 'sentL']) {
     for (const t of layer(now, id).tokens) {
       if (t.id === 's-1') t.end += n;

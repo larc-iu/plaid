@@ -390,24 +390,23 @@ const shifted = (was, is) => {
   return rest(was) === rest(is);
 };
 
-// Whether `was` is a text (a row holding text in a string field) that `is`
-// changed inside one of `stretches`, the tokens placed in it, at the same
-// offsets. Offsets count code points.
+// Whether `was` is a text (a row whose `body` is the text tokens are placed
+// in) that `is` changed inside one of `stretches`, the tokens placed in it:
+// at the same offsets, or where the token stands now when only its offsets
+// moved. Offsets count code points. Only the body is read: a text's other
+// fields (its digest) change with any edit and hold no letters.
 function respelled(was, is, stretches, a, b) {
   if (!was || !is || stretches.length === 0) return false;
-  for (const k of Object.keys(was.own)) {
-    const x = was.own[k];
-    const y = is.own[k];
-    if (typeof x !== 'string' || typeof y !== 'string' || x === y) continue;
-    const xs = [...x];
-    const ys = [...y];
-    for (const s of stretches) {
-      if ((a.get(s.layer) ?? b.get(s.layer))?.layer !== was.layer) continue;
-      // Where the token stands now, when only its offsets moved.
-      const now = s.id ? b.get(s.id) : null;
-      const at = shifted(a.get(s.id), now) ? now : s;
-      if (xs.slice(s.begin, s.end).join('') !== ys.slice(at.begin, at.end).join('')) return true;
-    }
+  const x = was.own.body;
+  const y = is.own.body;
+  if (typeof x !== 'string' || typeof y !== 'string' || x === y) return false;
+  const xs = [...x];
+  const ys = [...y];
+  for (const s of stretches) {
+    if ((a.get(s.layer) ?? b.get(s.layer))?.layer !== was.layer) continue;
+    const now = s.id ? b.get(s.id) : null;
+    const at = shifted(a.get(s.id), now) ? now : s;
+    if (xs.slice(s.begin, s.end).join('') !== ys.slice(at.begin, at.end).join('')) return true;
   }
   return false;
 }

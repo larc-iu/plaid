@@ -15,7 +15,7 @@ const doc = ({ glosses = [], words, other = [], otherSpans = [], version = 1 } =
   textLayers: [
     {
       id: 'tl',
-      text: { id: 'tx', document: 'd1', body: 'the dog runs home' },
+      text: { id: 'tx', document: 'd1', body: 'the dog runs home', digest: 'd-0' },
       tokenLayers: [
         {
           id: 'words',
@@ -109,6 +109,8 @@ describe('an edit refused because the document moved on', () => {
         at = w.end + 1;
       });
       now.textLayers[0].text.body = body;
+      // The server's digest of the text changes with any edit.
+      now.textLayers[0].text.digest = `d-${body}`;
       return now;
     };
     expect(untouched(addGlossOnDog, base, shift('Xx the dog runs home', 3))).toBe(true);
@@ -126,6 +128,7 @@ describe('an edit refused because the document moved on', () => {
     const respell = (body) => {
       const now = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF')] });
       now.textLayers[0].text.body = body;
+      now.textLayers[0].text.digest = `d-${body}`;
       return now;
     };
     expect(untouched(addGlossOnDog, base, respell('the hog runs home'))).toBe(false);
