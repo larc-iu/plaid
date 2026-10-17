@@ -15,7 +15,7 @@ import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { toUmrSentences } from '../src/domain/sentenceGraph.js';
+import { isRecordToken, toUmrSentences } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
@@ -75,7 +75,7 @@ const added = (raw, i) => {
   const s = role(raw, 'sentence').tokens[i];
   const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
   nodes.tokens = nodes.tokens.filter(
-    (t) => !(t.metadata?.umr && t.begin >= s.begin && t.begin < s.end),
+    (t) => !(isRecordToken(t) && t.begin >= s.begin && t.begin < s.end),
   );
 };
 

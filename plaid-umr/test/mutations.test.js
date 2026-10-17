@@ -74,7 +74,8 @@ test('setAnchor makes the new pieces before the span takes them', async () => {
   const s1 = doc.sentence(1);
   const node = s1.nodes.find((n) => n.aligned);
   const other = s1.words.find((w) => !node.wordIds.includes(w.id));
-  const oldPieceIds = node.pieces.map((p) => p.id);
+  // Its pieces and its hold.
+  const oldPieceIds = node.tokenIds;
   assert.equal(await doc.setAnchor(node.id, [other.id]), true);
   assert.deepEqual(doc.node(node.id).wordIds, [other.id]);
   const names = calls.map((c) => c.name);
@@ -120,8 +121,11 @@ test('deleteEdge takes the nodes only that edge reached, and spares a re-entrant
   const landslide = byVar(doc, 's1l');
   const country = byVar(doc, 's1c');
   const placeEdge = landslide.out.find((e) => e.target === country.id);
-  const doomed = doc.exclusiveDescendants(placeEdge.id).map((n) => n.var);
+  const doomedNodes = doc.exclusiveDescendants(placeEdge.id);
+  const doomed = doomedNodes.map((n) => n.var);
   assert.deepEqual(doomed.sort(), ['s1c', 's1n']);
+  // Their anchors and holds.
+  const tokens = doomedNodes.flatMap((n) => n.tokenIds);
   const deleted = await doc.deleteEdge(placeEdge.id);
   assert.equal(deleted, 2);
   assert.equal(byVar(doc, 's1c'), undefined);
@@ -131,7 +135,8 @@ test('deleteEdge takes the nodes only that edge reached, and spares a re-entrant
     false,
   );
   const del = calls.find((c) => c.name === 'tokens.bulkDelete');
-  assert.equal(del.args[0].length, 2);
+  assert.deepEqual(del.args[0], tokens);
+  assert.ok(tokens.length > 2);
 });
 
 // A document read at a past time is a snapshot: a write through it would put

@@ -100,10 +100,11 @@ test('a node added under a parent sends the ids of its anchor, itself and its ed
   assertSentAsShown(sent, shown, 'createNode');
   assert.deepEqual(
     sent.map((s) => s.what),
-    ['tokens.bulkCreate', 'spans.create', 'relations.create'],
+    // Its word's piece and its hold, the node on them, its edge.
+    ['tokens.bulkCreate', 'tokens.bulkCreate', 'spans.create', 'relations.create'],
   );
-  assert.equal(sent[1].id, shownAs.nodeId);
-  assert.equal(sent[2].id, shownAs.edgeId);
+  assert.equal(sent[2].id, shownAs.nodeId);
+  assert.equal(sent[3].id, shownAs.edgeId);
 });
 
 test('an edge sends the id it is shown under', async () => {

@@ -11,6 +11,8 @@
 // sentence and was left on the new text by the split. Core moves a record
 // along instead, but nothing else would show the reader taking a record to
 // the graph it describes.
+import { isRecordToken } from '../src/domain/sentenceGraph.js';
+
 const role = (raw, r) => raw.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === r);
 
 export function insertSentenceAtStart(raw, text = 'Yeni cümle .', { recordCut = false } = {}) {
@@ -24,7 +26,7 @@ export function insertSentenceAtStart(raw, text = 'Yeni cümle .', { recordCut =
   const record = recordCut
     ? layer.tokenLayers
         .flatMap((l) => l.tokens)
-        .find((t) => t.metadata?.umr && t.begin === first.begin && t.end === first.end)
+        .find((t) => isRecordToken(t) && t.begin === first.begin && t.end === first.end)
     : null;
   layer.tokenLayers.forEach((l) =>
     l.tokens.forEach((t) => {

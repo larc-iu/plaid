@@ -11,6 +11,7 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
+import { isRecordToken } from '../src/domain/sentenceGraph.js';
 
 const SEP = '#'.repeat(80);
 const block = (n) => `${SEP}
@@ -33,7 +34,7 @@ s${n}a: 1-1
 const nodeLayer = (raw) => raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
 const records = (raw) =>
   nodeLayer(raw)
-    .tokens.filter((t) => t.metadata?.umr)
+    .tokens.filter(isRecordToken)
     .sort((a, b) => a.begin - b.begin);
 
 // What the server holds after the calls, as it would store them: rows under
@@ -157,7 +158,7 @@ test('a sentence with no record gets one over the sentence, in the same request'
   const made = calls
     .filter((c) => c.name === 'tokens.bulkCreate')
     .flatMap((c) => c.args[0])
-    .filter((t) => t.metadata?.umr);
+    .filter(isRecordToken);
   assert.equal(made.length, 1);
   assert.deepEqual(made[0].metadata, { umr: { triples: [tripleId] } });
   assert.deepEqual([made[0].begin, made[0].end], [sentence.begin, sentence.end]);

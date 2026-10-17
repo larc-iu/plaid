@@ -12,6 +12,7 @@ import { DOC_CONSTANTS } from './format/inventory.js';
 import {
   buildDocumentGraph,
   fileNumbersItsSentences,
+  holdFor,
   KEPT_VARIABLE,
   wordForFile,
 } from './sentenceGraph.js';
@@ -161,6 +162,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       text: textId,
       begin: p.begin,
       end: p.end,
+      ...(p.metadata ? { metadata: p.metadata } : {}),
     }));
     const pieceIds = pieceOps.map((p) => p.id);
     // The sentence tokens by number, for the unaligned nodes to record.
@@ -419,8 +421,8 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       }),
     ),
   );
-  const addPiece = (begin, end) => {
-    pieces.push({ begin, end });
+  const addPiece = (begin, end, metadata = null) => {
+    pieces.push(metadata ? { begin, end, metadata } : { begin, end });
     return pieces.length - 1;
   };
 
@@ -526,8 +528,17 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         // A node the file aligns to no word stands over its whole sentence,
         // which is what keeps it alive through an edit to the text around it
         // (UmrDocument.piecesFor). Its record is what says it is unaligned.
+        // An aligned one gets its hold (sentenceGraph.js `holdFor`), which keeps
+        // it when another app deletes its words' text.
         const unaligned = !pieceIndexes.length;
         if (unaligned) pieceIndexes.push(addPiece(begin, end));
+        else {
+          const hold = holdFor(
+            pieceIndexes.map((k) => pieces[k]),
+            { end },
+          );
+          pieceIndexes.push(addPiece(hold.begin, hold.end, hold.metadata));
+        }
         const attrs = [];
         node.children.forEach((child, order) => {
           if (child.kind === 'node') {

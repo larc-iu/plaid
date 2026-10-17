@@ -85,7 +85,7 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
             for node in s.nodes:
                 where = f'{tag}{node_ref(s, node)}'
                 refs[node.id] = where
-                for piece in node.pieces:
+                for piece in node.pieces + node.holds:
                     refs.setdefault(piece.id, f'{where} anchor')
                 for e in node.out:
                     target = doc.nodes_by_id.get(e.target)

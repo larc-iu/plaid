@@ -7,6 +7,7 @@ import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { isRecordToken } from '../src/domain/sentenceGraph.js';
 import {
   copyTextOnly,
   CopyKeptGraphs,
@@ -52,8 +53,9 @@ const FILE =
 const REPORT = { version: 4, at: '2026-09-28T05:22:03Z', against: { id: 'd2', name: 'lunch' } };
 
 // The sentences' records: the tokens of the node layer that carry metadata.
-const recordsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter((t) => t.metadata?.umr);
-const anchorsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter((t) => !t.metadata?.umr);
+const recordsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter(isRecordToken);
+// The anchors, holds among them.
+const anchorsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter((t) => !isRecordToken(t));
 
 function annotatedRaw() {
   const raw = rawFromPlan(planImport(parseUmrFile(FILE).sentences, []));

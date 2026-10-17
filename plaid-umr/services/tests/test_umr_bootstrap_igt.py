@@ -72,6 +72,16 @@ def _ops(client, kind):
     return [op for payload in client.payloads(kind) for op in payload]
 
 
+def _anchors(client):
+    """The anchor pieces the run made, the aligned nodes' holds aside."""
+    return [a for a in _ops(client, 'tokens.bulk_create') if not (a.get('metadata') or {}).get('umr')]
+
+
+def _holds(client):
+    return [a for a in _ops(client, 'tokens.bulk_create')
+            if (a.get('metadata') or {}).get('umr') == {'hold': True}]
+
+
 # --- reading a gloss ------------------------------------------------------------
 
 def test_a_gloss_is_read_into_its_lexical_part_and_its_attributes():
@@ -178,8 +188,10 @@ def test_the_skeleton_is_one_anchored_node_per_glossed_or_linked_word():
     assert (result['drafted'], result['skipped'], result['failed']) == (1, 0, 0)
     assert result['notice']['level'] == 'success'
 
-    anchors = _ops(service.client, 'tokens.bulk_create')
+    anchors = _anchors(service.client)
     assert [(a['begin'], a['end']) for a in anchors] == [(4, 7), (8, 13)]
+    # Each node aligned to its word holds to the rest of its sentence too.
+    assert [(a['begin'], a['end']) for a in _holds(service.client)] == [(4, 14), (8, 14)]
     nodes = _ops(service.client, 'spans.bulk_create')
     assert [n['value'] for n in nodes] == ['dog', 'bark']
     dog, bark = [n['metadata']['umr'] for n in nodes]

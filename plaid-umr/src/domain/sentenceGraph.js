@@ -20,12 +20,28 @@
 //            itself: the records of the sentences whose blocks write it list
 //            it (`triples` below), and every writer puts it there as it makes
 //            it
+//   hold   = a token in the UMR node layer under an aligned node beside its
+//            word pieces, metadata.umr = { hold: true }, from where the node's
+//            first piece begins to the end of its sentence (`holdFor`). It is
+//            what keeps the node when another app deletes its words' text:
+//            core deletes a token whose whole text goes and a span left with
+//            no token, so the node, its edges and its document-level
+//            relations went with the word (H17-UMR-1). Kept by its hold, the
+//            node is read as standing over it, aligned to no word, and
+//            reconcile makes it an ordinary unaligned node (ruling
+//            umr-igt-deleted-word). Every reader leaves holds out of
+//            `pieces` while the node has a piece of its own, and every
+//            delete of a node takes them (`tokenIds`). It begins where the
+//            node's words do, not at the sentence's start, because core
+//            places a span at its first token for the same-sentence rule
+//            (a relation across two sentences of a split is deleted)
 //   record = a token in the UMR node layer that carries metadata.umr (an
-//            anchor carries none) = { snt?, text?, ilg?, meta?, rawGraph?,
-//            rawAlignment?, held?, triples? }: what a sentence's file block
-//            said beyond its graph. The raw pair holds a graph the parser
-//            could not read, kept as text so nothing is lost, `held` the
-//            document-level relations this sentence's block wrote that name
+//            anchor carries none, a hold only `hold`) = { snt?, text?, ilg?,
+//            meta?, rawGraph?, rawAlignment?, held?, triples? }: what a
+//            sentence's file block said beyond its graph. The raw pair holds
+//            a graph the parser could not read, kept as text so nothing is
+//            lost, `held` the document-level relations this sentence's block
+//            wrote that name
 //            a node of such a graph, by name: [{ source, rel, target, group
 //            }], made real when the graph is mended, and `triples` the ids of
 //            the triples between two constants the block writes. A record
@@ -63,16 +79,35 @@ const byBegin = (a, b) => a.begin - b.begin || a.end - b.end;
  * test_umr_words_mirror.py.
  */
 export function wordsUnder(pieces, words) {
+  const own = pieces.filter((p) => !isHoldToken(p));
   return [...words]
     .sort(byBegin)
-    .filter((w) => pieces.some((p) => overlaps(p, w)))
+    .filter((w) => own.some((p) => overlaps(p, w)))
     .map((w) => w.id);
+}
+
+/** Whether a token of the UMR node layer is an aligned node's hold (see the top). */
+export const isHoldToken = (token) => token?.metadata?.[UMR_NAMESPACE]?.hold === true;
+
+/**
+ * The hold of a node aligned to `pieces` of `sentence`: from where the first
+ * piece begins to the sentence's end, or null for a node aligned to nothing,
+ * which stands over its sentence already.
+ */
+export function holdFor(pieces, sentence) {
+  const text = pieces.filter((p) => p.end > p.begin && !isHoldToken(p));
+  if (!text.length) return null;
+  return {
+    begin: Math.min(...text.map((p) => p.begin)),
+    end: sentence.end,
+    metadata: { [UMR_NAMESPACE]: { hold: true } },
+  };
 }
 
 /** Whether a token of the UMR node layer is a sentence's record, not an anchor. */
 export const isRecordToken = (token) => {
   const meta = token?.metadata?.[UMR_NAMESPACE];
-  return !!meta && typeof meta === 'object';
+  return !!meta && typeof meta === 'object' && meta.hold !== true;
 };
 
 // What a record says of the sentence it describes (the file's number, its
@@ -185,12 +220,22 @@ function recordsFollowTheirGraphs(sentences, slice, tokensById) {
   });
 }
 
-// A raw span's anchor pieces, as token objects, in text order.
-const anchorPieces = (span, tokensById) =>
-  (span.tokens || [])
+// A raw span's tokens, as token objects, in text order: its anchor pieces
+// (`pieces`), its holds apart (`holdIds`), and the ids of all of them, which
+// is what deleting the node deletes (`tokenIds`). A node its holds alone keep,
+// its words' text deleted, stands over them.
+const anchorPieces = (span, tokensById) => {
+  const all = (span.tokens || [])
     .map((id) => tokensById.get(id))
     .filter(Boolean)
     .sort(byBegin);
+  const own = all.filter((t) => !isHoldToken(t));
+  return {
+    pieces: own.length ? own : all,
+    holdIds: own.length ? all.filter(isHoldToken).map((t) => t.id) : [],
+    tokenIds: all.map((t) => t.id),
+  };
+};
 
 /**
  * Every sentence of the document with its words, gloss lines, nodes, edges
@@ -296,7 +341,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   const constants = [];
   spans.forEach((span) => {
     const meta = umrMeta(span);
-    const pieces = anchorPieces(span, nodeTokensById);
+    const { pieces, holdIds, tokenIds } = anchorPieces(span, nodeTokensById);
     const node = {
       id: span.id,
       var: meta.var || null,
@@ -305,6 +350,8 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       constant: meta.constant === true,
       root: meta.root === true,
       pieces,
+      holdIds,
+      tokenIds,
       // Aligned to words: no sentence record, and a word under the anchor.
       // Reading the anchor's width alone was only true while an unaligned
       // node stood on a point of text, which a deletion across that point
@@ -313,7 +360,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       // drawn aligned while the export wrote `0-0`. Reconcile makes it an
       // ordinary unaligned node (umrReconcile.js), and a view that does not
       // reconcile (a past state, a reader) reads it as one already.
-      aligned: !meta.sentence && pieces.some((p) => p.end > p.begin && overWord(p)),
+      // A node only its hold keeps is aligned to nothing.
+      aligned:
+        !meta.sentence && pieces.some((p) => !isHoldToken(p) && p.end > p.begin && overWord(p)),
       metadata: span.metadata || null,
       sentence: null,
       chain: null,

@@ -9,6 +9,12 @@ this reads, so there is one answer to every question the shape raises:
   node aligned to NO word stands over the whole of its sentence, so what says a
   node is unaligned is its ``umr.sentence`` record and never the anchor's width
   (ruled 2026-09-19);
+* a node aligned to words also stands on a HOLD, a token of the node layer
+  with ``umr.hold`` from where its words begin to the end of its sentence
+  (``holdFor``), which keeps the node when another app deletes its words'
+  text. A hold is never a piece while the node has a piece of its own, and a
+  node its hold alone keeps stands over it, aligned to no word. Deleting a
+  node deletes its holds with its pieces (``piece_ids``);
 * a CONSTANT (``author``, ``document-creation-time``) belongs to no sentence:
   its anchor is a zero-width token at offset 0, which would otherwise fall in
   the first sentence;
@@ -105,10 +111,12 @@ def group_of(rel: str) -> str:
 @dataclass
 class Piece:
     """One contiguous anchor of a node: a token on the node layer, covering the
-    whole sentence where the node is aligned to no word."""
+    whole sentence where the node is aligned to no word. ``hold`` for an
+    aligned node's hold."""
     id: str
     begin: int
     end: int
+    hold: bool = False
 
 
 @dataclass
@@ -168,6 +176,8 @@ class Node:
     root: bool = False
     metadata: Optional[dict] = None
     pieces: List[Piece] = dc_field(default_factory=list)
+    #: Its holds, while it has a piece of its own (see the top).
+    holds: List[Piece] = dc_field(default_factory=list)
     sentence: Optional[int] = None
     #: The sentence token this node RECORDS, carried by exactly the nodes
     #: aligned to no word. Not the sentence it stands in (``sentence``).
@@ -193,7 +203,9 @@ class Node:
 
     @property
     def piece_ids(self) -> List[str]:
-        return [p.id for p in self.pieces]
+        """Every token the node stands on, its holds included: what deleting it
+        deletes."""
+        return [p.id for p in self.pieces + self.holds]
 
     def attr_line(self) -> str:
         return ' '.join(f'{a.get("rel")} {a.get("value")}' for a in self.attrs)
@@ -456,10 +468,17 @@ def _tokens_of(layer) -> List[dict]:
 _NUMBERED = re.compile(r'^s([0-9]+)([^\W\d_].*)$')
 
 
+def is_hold_token(token: dict) -> bool:
+    """Whether a token of the UMR node layer is an aligned node's hold
+    (``isHoldToken``)."""
+    umr = (token.get('metadata') or {}).get('umr')
+    return isinstance(umr, dict) and umr.get('hold') is True
+
+
 def is_record_token(token: dict) -> bool:
     """Whether a token of the UMR node layer is a sentence's record, not an
     anchor (``isRecordToken``)."""
-    return isinstance((token.get('metadata') or {}).get('umr'), dict)
+    return isinstance((token.get('metadata') or {}).get('umr'), dict) and not is_hold_token(token)
 
 
 def _record_fields(holder: Optional[dict], begin: int, end: int, body: str) -> dict:
@@ -658,10 +677,12 @@ def read_document(raw: dict, layers: UmrLayers,
     constants: List[Node] = []
     for span in (layers.concept_layer or {}).get('spans') or []:
         meta = umr_metadata(span)
-        pieces = sorted((Piece(id=t['id'], begin=t['begin'], end=t['end'])
-                         for t in (node_tokens.get(tid) for tid in span.get('tokens') or [])
-                         if t is not None),
-                        key=lambda p: (p.begin, p.end))
+        every = sorted((Piece(id=t['id'], begin=t['begin'], end=t['end'], hold=is_hold_token(t))
+                        for t in (node_tokens.get(tid) for tid in span.get('tokens') or [])
+                        if t is not None),
+                       key=lambda p: (p.begin, p.end))
+        own = [p for p in every if not p.hold]
+        pieces = own or every
         node = Node(
             id=span['id'], var=meta.get('var') or '',
             concept=span.get('value') if span.get('value') is not None else '',
@@ -670,8 +691,10 @@ def read_document(raw: dict, layers: UmrLayers,
             # The WHOLE metadata, not just the `umr` half: the flat provenance
             # keys beside it are what says whether a person made this node.
             metadata=span.get('metadata'), pieces=pieces,
+            holds=[p for p in every if p.hold] if own else [],
             sentence_token=meta.get('sentence') or None)
-        node.over_word = any(p.end > p.begin and _over_word(p) for p in pieces)
+        # A node only its hold keeps is aligned to nothing.
+        node.over_word = any(not p.hold and p.end > p.begin and _over_word(p) for p in pieces)
         nodes_by_id[span['id']] = node
         if node.constant:
             constants.append(node)

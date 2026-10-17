@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { toUmrSentences } from '../src/domain/sentenceGraph.js';
+import { isRecordToken, toUmrSentences } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import {
   clearSentences,
@@ -174,7 +174,7 @@ const records = (raw) =>
 
 const recordTokenOf = (raw, sentence) =>
   layersOf(raw)
-    .nodes.tokens.filter((t) => t.metadata?.umr)
+    .nodes.tokens.filter(isRecordToken)
     .find((t) => t.begin >= sentence.begin && t.begin < sentence.end);
 
 test('text typed at a sentence start, an open, then its old text deleted, keeps the record', async () => {
@@ -211,6 +211,13 @@ test('a record left over part of its sentence is put back over its share, and su
   assert.deepEqual([record.begin, record.end], [second.begin, second.end]);
   deleteText(raw, second.begin, firstWord.end + 1);
   assert.deepEqual(records(raw), before);
+  // The node aligned to the word whose text went is kept, by its hold, and
+  // the open makes it an unaligned node, which leaves the records as they are.
+  assert.match(
+    new UmrDocument({ raw: structuredClone(raw) }).describeReconcile(await openInUmr(raw)),
+    /lost its word/,
+  );
+  assert.deepEqual(records(raw), before);
   assert.ok(await openWritesNothing(raw));
 });
 
@@ -221,7 +228,7 @@ test('records waiting in a joined sentence each keep their begin and cover up to
   mergeSentence(raw, 3);
   // Both records shortened at their ends, as text deleted there would.
   recordTokenOf(raw, second).end = second.begin + 2;
-  const waiting = layersOf(raw).nodes.tokens.find((t) => t.metadata?.umr && t.begin === at);
+  const waiting = layersOf(raw).nodes.tokens.find((t) => isRecordToken(t) && t.begin === at);
   waiting.end = at + 2;
   await openInUmr(raw);
   assert.deepEqual(

@@ -169,6 +169,16 @@ def _ops(client, kind):
     return [op for payload in client.payloads(kind) for op in payload]
 
 
+def _anchors(client):
+    """The anchor pieces the run made, the aligned nodes' holds aside."""
+    return [a for a in _ops(client, 'tokens.bulk_create') if not (a.get('metadata') or {}).get('umr')]
+
+
+def _holds(client):
+    return [a for a in _ops(client, 'tokens.bulk_create')
+            if (a.get('metadata') or {}).get('umr') == {'hold': True}]
+
+
 # --- the prompt --------------------------------------------------------------
 
 def test_the_prompt_names_the_numbered_words_and_the_projects_gloss_field():
@@ -211,8 +221,10 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
     assert 'stopped' not in result
 
     # Three anchors, one per node, in the order the graph was written.
-    anchors = _ops(service.client, 'tokens.bulk_create')
+    anchors = _anchors(service.client)
     assert [(a['begin'], a['end']) for a in anchors] == [(8, 13), (4, 7), (0, 14)]
+    # And a hold for each node aligned to words, to the end of its sentence.
+    assert [(a['begin'], a['end']) for a in _holds(service.client)] == [(8, 14), (4, 14)]
     assert {a['token_layer_id'] for a in anchors} == {'nodeL'}
     assert {a['text'] for a in anchors} == {'text-1'}
 
@@ -221,7 +233,11 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
     assert {n['span_layer_id'] for n in nodes} == {'conceptL'}
     # Each node takes its own anchor, by a ref to the id the anchor op makes:
     # anchors, nodes and relations go in one batch.
-    assert [n['tokens'] for n in nodes] == [[{'$ref': 0, 'index': k}] for k in range(3)]
+    # Each on its piece, an aligned one on its hold too, after the pieces.
+    assert [n['tokens'] for n in nodes] == [
+        [{'$ref': 0, 'index': 0}, {'$ref': 0, 'index': 3}],
+        [{'$ref': 0, 'index': 1}, {'$ref': 0, 'index': 4}],
+        [{'$ref': 0, 'index': 2}]]
 
     umr_meta = [n['metadata']['umr'] for n in nodes]
     # The project's variable rule, re-generated: the model's v1/v2/v3 are gone.
@@ -291,10 +307,12 @@ def test_a_discontiguous_alignment_becomes_one_anchor_per_run_of_words():
     service = _service(model=_Model([reply]))
     servicetest.run(service, REQUEST)
 
-    anchors = _ops(service.client, 'tokens.bulk_create')
+    anchors = _anchors(service.client)
     assert [(a['begin'], a['end']) for a in anchors] == [(0, 3), (8, 13)]
     [node] = _ops(service.client, 'spans.bulk_create')
-    assert node['tokens'] == [{'$ref': 0, 'index': 0}, {'$ref': 0, 'index': 1}]
+    # The two runs and its hold.
+    assert node['tokens'] == [{'$ref': 0, 'index': 0}, {'$ref': 0, 'index': 1},
+                              {'$ref': 0, 'index': 2}]
 
 
 def test_the_scope_of_one_sentence_drafts_only_that_sentence():
@@ -575,7 +593,7 @@ def test_an_edit_to_another_sentence_while_the_model_ran_does_not_stop_the_draft
     assert (result['drafted'], result['changed']) == (1, 0)
     assert result['notice']['title'] == 'Drafted 1 sentence'
     assert 'sticky' not in result['notice']
-    assert [p['begin'] for p in _ops(service.client, 'tokens.bulk_create')] == [8, 4, 0]
+    assert [p['begin'] for p in _anchors(service.client)] == [8, 4, 0]
     # Every write is stamped with the version the plan was checked against.
     assert {version for kind, _, version in service.client.stamps} == {8}
     assert service.client.kinds[-1] == 'unlock'
@@ -602,8 +620,10 @@ def test_a_text_edit_in_an_earlier_sentence_moves_the_draft_with_its_sentence():
     service, result = _moved(_document(**TWO), after, model=_Model([RUN_REPLY]),
                              scope='sentence', sentence=2)
     assert (result['drafted'], result['changed']) == (1, 0)
-    pieces = [(p['begin'], p['end']) for p in _ops(service.client, 'tokens.bulk_create')]
+    pieces = [(p['begin'], p['end']) for p in _anchors(service.client)]
     assert pieces == [(18, 22), (15, 17)]
+    # The holds move with the sentence too.
+    assert [(p['begin'], p['end']) for p in _holds(service.client)] == [(18, 23), (15, 23)]
     nodes = _ops(service.client, 'spans.bulk_create')
     assert [n['metadata']['umr']['words'] for n in nodes] == [['w5'], ['w4']]
 
@@ -967,7 +987,7 @@ def test_every_phase_says_what_it_is_doing_and_the_bar_only_moves_forward():
         'Reading the document…',
         'Drafting sentence 1 (1 of 1)…',
         'Writing 1 graph…',
-        'Writing 3 anchors…',
+        'Writing 5 anchors…',
         'Writing 3 nodes…',
         'Writing 2 relations…',
         'Drafted 1 sentence',
@@ -1010,7 +1030,7 @@ def test_a_stop_that_lands_in_the_writes_is_ignored_and_the_run_finishes():
     and the final report are one critical block, so a stop half way through
     finishes the graph rather than leaving anchors with no nodes."""
     service = _service()
-    helper = servicetest.Helper(stop_when=lambda pct, msg: msg.startswith('Writing 3 anchors'))
+    helper = servicetest.Helper(stop_when=lambda pct, msg: msg.startswith('Writing 5 anchors'))
     servicetest.run(service, REQUEST, helper)
 
     assert helper.cancelled, 'the stop never landed, so this proves nothing'

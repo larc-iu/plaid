@@ -17,7 +17,7 @@ import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { toUmrSentences } from '../src/domain/sentenceGraph.js';
+import { isRecordToken, toUmrSentences } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
@@ -94,7 +94,7 @@ function applyPatches(raw, calls) {
 const recordTokens = (raw) =>
   raw.textLayers[0].tokenLayers
     .find((l) => l.config?.umr?.nodes)
-    .tokens.filter((t) => t.metadata?.umr)
+    .tokens.filter(isRecordToken)
     .sort((a, b) => a.begin - b.begin);
 
 test('a sentence typed in before the first leaves every record with its sentence', async () => {

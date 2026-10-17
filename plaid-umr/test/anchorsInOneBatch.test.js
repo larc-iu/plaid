@@ -75,9 +75,10 @@ test('a node add under a parent is one request: its anchor, the node on it and i
   assert.ok(calls.some((c) => c.name === 'tokens.bulkCreate'));
   const span = calls.find((c) => c.name === 'spans.create');
   const edge = calls.find((c) => c.name === 'relations.create');
-  // The ids the batch made, filled in where the refs were.
-  assert.equal(span.args[1].length, 1);
-  assert.match(span.args[1][0], /^new/);
+  // The ids the batch made, filled in where the refs were: its word's piece
+  // and its hold.
+  assert.equal(span.args[1].length, 2);
+  assert.ok(span.args[1].every((id) => /^new/.test(id)));
   assert.equal(edge.args[2], result.nodeId);
   assert.match(result.nodeId, /^new/);
   release();
@@ -103,7 +104,8 @@ test('a re-anchor is one request, the node taking its new anchors by ref', async
   const s1 = doc.sentence(1);
   const node = s1.nodes.find((n) => n.wordIds?.length);
   const other = s1.words.find((w) => !node.wordIds.includes(w.id));
-  const oldPieces = node.pieces.map((p) => p.id);
+  // Its pieces and its hold go.
+  const oldPieces = node.tokenIds;
   assert.ok(await doc.setAnchor(node.id, [...node.wordIds, other.id]));
   assert.deepEqual(
     requests.map((r) => r.name),

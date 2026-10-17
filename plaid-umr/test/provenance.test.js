@@ -400,10 +400,13 @@ test("discarding a sentence's draft removes its drafted nodes and relations and 
     doc.sentence(2).triples.every((t) => doc.node(t.source) && doc.node(t.target)),
     'no triple is left hanging',
   );
-  // The anchors go in one bulk delete, whose cascade takes the spans and
-  // every relation on them.
+  // The anchors and holds go in one bulk delete, whose cascade takes the
+  // spans and every relation on them.
   const deleted = calls.find((c) => c.name === 'tokens.bulkDelete').args[0];
-  assert.equal(deleted.length, plan.nodes.flatMap((n) => n.pieces).length);
+  assert.deepEqual(
+    deleted,
+    plan.nodes.flatMap((n) => n.tokenIds),
+  );
   // Nothing is left to discard.
   assert.equal(doc.canDiscardSentence(1), false);
   const before = calls.length;

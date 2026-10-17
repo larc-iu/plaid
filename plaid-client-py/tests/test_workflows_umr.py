@@ -426,7 +426,14 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
         'relations.bulk_create']
     [spans] = client.payloads('spans.bulk_create')
     assert [s['value'] for s in spans] == ['dog', 'bark-01']
-    assert [s['tokens'] for s in spans] == [[{'$ref': 1, 'index': 0}], [{'$ref': 1, 'index': 1}]]
+    # Each on its piece and its hold.
+    assert [s['tokens'] for s in spans] == [[{'$ref': 1, 'index': 0}, {'$ref': 1, 'index': 1}],
+                                            [{'$ref': 1, 'index': 2}, {'$ref': 1, 'index': 3}]]
+    [anchors] = client.payloads('tokens.bulk_create')
+    sentence_end = doc.sentences[0].end
+    assert [(t['begin'], t['end'], t.get('metadata')) for t in anchors] == [
+        (4, 7, None), (4, sentence_end, {'umr': {'hold': True}}),
+        (8, 14, None), (8, sentence_end, {'umr': {'hold': True}})]
     # The provenance stamp is FLAT and the app's own half sits beside it.
     # provDetail records what was drafted, per item.
     # An aligned node records the words it stands on (words_under).
@@ -532,8 +539,9 @@ def test_a_redraft_that_adds_a_node_writes_it_and_its_edge_from_the_kept_one():
     [batch] = client.batches
     assert [kind for kind, _ in batch] == ['tokens.bulk_create', 'spans.bulk_create',
                                           'relations.bulk_create']
-    [[piece]] = client.payloads('tokens.bulk_create')
+    [[piece, hold]] = client.payloads('tokens.bulk_create')
     assert (piece['begin'], piece['end']) == (0, 3)
+    assert (hold['begin'], hold['metadata']) == (0, {'umr': {'hold': True}})
     [[edge]] = client.payloads('relations.bulk_create')
     assert edge['source'] == 'c-b' and edge['value'] == ':mod'
 
@@ -604,10 +612,11 @@ def test_a_redraft_gives_a_new_node_its_own_anchor_where_a_kept_node_stands(exte
     write_graphs(client, resolve_layers(raw), [plan], {'prov': 'inferred'})
     [batch] = client.batches
     assert 'tokens.bulk_delete' not in [kind for kind, _ in batch]
-    [[piece]] = client.payloads('tokens.bulk_create')
+    [[piece, hold]] = client.payloads('tokens.bulk_create')
     assert (piece['begin'], piece['end']) == extent
+    assert hold['metadata'] == {'umr': {'hold': True}}
     [[span]] = client.payloads('spans.bulk_create')
-    assert span['tokens'] == [{'$ref': 0, 'index': 0}]
+    assert span['tokens'] == [{'$ref': 0, 'index': 0}, {'$ref': 0, 'index': 1}]
 
 
 def test_a_drafted_node_aligned_to_no_word_records_its_sentence_and_no_words():
@@ -652,7 +661,8 @@ def _many_plans(count):
     for i in range(count):
         old = [_types.SimpleNamespace(piece_ids=[f'old-{i}-a']),
                _types.SimpleNamespace(piece_ids=[f'old-{i}-b'])]
-        sentence = _types.SimpleNamespace(index=i + 1, nodes=old, words=[], redraftable=True)
+        sentence = _types.SimpleNamespace(index=i + 1, end=i * 20 + 10, nodes=old, words=[],
+                                          redraftable=True)
         plans.append({'sentence': sentence, 'pieces': [(i * 20, i * 20 + 3), (i * 20 + 4, i * 20 + 9)],
                       'nodes': [{'concept': 'dog', 'meta': {'var': f's{i}d'}, 'piece_indexes': [0]},
                                 {'concept': 'bark-01', 'meta': {'var': f's{i}b'},
@@ -686,8 +696,9 @@ def test_a_long_draft_goes_in_batches_the_server_takes_each_holding_whole_senten
         assert sorted(gone) == sorted(f'old-{i}-{x}' for i in here for x in 'ab')
         assert len(edges) == len(here)
         for s in spans:
-            [ref] = s['tokens']
-            assert ref.op == 1
+            # Its piece and its hold.
+            assert len(s['tokens']) == 2
+            assert all(ref.op == 1 for ref in s['tokens'])
         for e in edges:
             assert e['source'].op == e['target'].op == 2
         seen += here

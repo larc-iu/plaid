@@ -246,6 +246,19 @@ def _sentence_writes(layers: UmrLayers, plan: dict, frag: dict) -> dict:
     pieces = [{'token_layer_id': layers.node_layer['id'],
                'text': layers.text_id, 'begin': begin, 'end': end}
               for begin, end in plan['pieces']]
+    # An aligned node's hold, after the plan's pieces (``holdFor`` in
+    # plaid-umr's sentenceGraph.js): from where its words begin to the end of
+    # its sentence, which keeps it when another app deletes its words' text.
+    for node_op, indexes in nodes:
+        if 'sentence' in node_op['metadata'][UMR_NAMESPACE]:
+            continue
+        text = [plan['pieces'][i] for i in indexes if plan['pieces'][i][1] > plan['pieces'][i][0]]
+        if not text:
+            continue
+        indexes.append(len(pieces))
+        pieces.append({'token_layer_id': layers.node_layer['id'], 'text': layers.text_id,
+                       'begin': min(b for b, _ in text), 'end': plan['sentence'].end,
+                       'metadata': {UMR_NAMESPACE: {'hold': True}}})
     doomed = [pid for node in plan['sentence'].nodes for pid in node.piece_ids]
     refs = sum(len(indexes) for _, indexes in nodes) + 2 * len(edges)
     size = (len(json.dumps([doomed, pieces, [n for n, _ in nodes], [e for e, _, _ in edges]]))
@@ -318,8 +331,11 @@ def _keep_stored(plan: dict, unit: dict, taken=()) -> dict:
     sentence = plan['sentence']
     if not isinstance(sentence, Sentence) or not sentence.nodes:
         return unit
-    pieces = [tuple(p) for p in plan['pieces']]
-    planned = [(op, indexes, sorted(pieces[i] for i in indexes)) for op, indexes in unit['nodes']]
+    # A node is matched by its pieces, its hold aside.
+    pieces = [(p['begin'], p['end']) for p in unit['pieces']]
+    held = {i for i, p in enumerate(unit['pieces']) if 'metadata' in p}
+    planned = [(op, indexes, sorted(pieces[i] for i in indexes if i not in held))
+               for op, indexes in unit['nodes']]
     stored = list(sentence.nodes)
     ranges = {n.id: sorted((p.begin, p.end) for p in n.pieces) for n in stored}
     match: Dict[int, Node] = {}   # planned node index -> the stored node it keeps
@@ -358,8 +374,8 @@ def _keep_stored(plan: dict, unit: dict, taken=()) -> dict:
     kept_ids = {n.id for n in match.values()}
     kept_pieces = {p.id for n in match.values() for p in n.pieces}
     doomed_nodes = [n for n in stored if n.id not in kept_ids]
-    doomed_pieces = list(dict.fromkeys(p.id for n in doomed_nodes for p in n.pieces
-                                       if p.id not in kept_pieces))
+    doomed_pieces = list(dict.fromkeys(pid for n in doomed_nodes for pid in n.piece_ids
+                                       if pid not in kept_pieces))
     # A node with an anchor a kept node stands on too is not taken by the
     # anchors' delete, so it is deleted itself.
     node_deletes = [n.id for n in doomed_nodes if any(p.id in kept_pieces for p in n.pieces)]

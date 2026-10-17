@@ -15,6 +15,7 @@ import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { twoWriterCore } from './twoWriterCore.js';
 import { mergeSentence } from './igtEdits.js';
+import { isRecordToken } from '../src/domain/sentenceGraph.js';
 
 const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -248,7 +249,8 @@ test("another person's open that only fits records of other sentences does not r
   // Another page writes one record's metadata, as an open's repair would.
   const other = core.client('c');
   const record = b.doc.layerInfo.nodeTokenLayer.tokens.find(
-    (t) => t.metadata?.umr && t.begin >= b.doc.sentence(4).begin && t.begin < b.doc.sentence(4).end,
+    (t) =>
+      isRecordToken(t) && t.begin >= b.doc.sentence(4).begin && t.begin < b.doc.sentence(4).end,
   );
   assert.ok(record);
   await other.tokens.patchMetadata(record.id, [{ op: 'set', path: ['umr', 'note'], value: 'x' }]);
@@ -256,7 +258,8 @@ test("another person's open that only fits records of other sentences does not r
   assert.deepEqual(refusals(a), []);
   // The same, in A's own sentence: refused.
   const own = b.doc.layerInfo.nodeTokenLayer.tokens.find(
-    (t) => t.metadata?.umr && t.begin >= b.doc.sentence(1).begin && t.begin < b.doc.sentence(1).end,
+    (t) =>
+      isRecordToken(t) && t.begin >= b.doc.sentence(1).begin && t.begin < b.doc.sentence(1).end,
   );
   await other.tokens.patchMetadata(own.id, [{ op: 'set', path: ['umr', 'note'], value: 'y' }]);
   assert.equal(await a.doc.setConcept(leaf(a.doc, 1).id, 'mine-again'), false);

@@ -325,7 +325,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
             deletes.append({
                 'kind': 'delete_node', 'document_id': did, 'ref': f's{sentence.number}.{node.var}',
                 'span_id': node.id, 'var': node.var,
-                'token_ids': [p.id for p in node.pieces],
+                'token_ids': node.piece_ids,
                 'relation_ids': sorted(set(edges + triples)),
                 'label': label})
     # An edge into or out of a deleted node goes with it (the server's

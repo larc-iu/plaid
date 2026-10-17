@@ -12,7 +12,12 @@ export function rawFromPlan(plan) {
   const wordTokens = plan.sentences.flatMap((s) =>
     s.words.map((w) => ({ id: id(), begin: w.begin, end: w.end })),
   );
-  const pieceTokens = plan.pieces.map((p) => ({ id: id(), begin: p.begin, end: p.end }));
+  const pieceTokens = plan.pieces.map((p) => ({
+    id: id(),
+    begin: p.begin,
+    end: p.end,
+    ...(p.metadata ? { metadata: structuredClone(p.metadata) } : {}),
+  }));
   // Each sentence's record, a token of the node layer over the sentence
   // (umrImport.js), listing the triples between two constants its block
   // writes by their ids.

@@ -33,6 +33,7 @@ import {
   keptVariables,
   KEPT_VARIABLE,
   wordsUnder,
+  holdFor,
 } from './sentenceGraph.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import { editScopes, resendableBySentence } from './umrRebase.js';
@@ -556,7 +557,7 @@ export class UmrDocument extends DocumentModel {
     const group = this._client.operationGroup;
     if (group?.depth === 1) group.message = describeUmrReconcile(tally);
     try {
-      const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
+      const tokenIds = remove.flatMap((id) => this.node(id).tokenIds);
       // Every metadata change of one node in one patch.
       const metaOf = new Map();
       const change = (id, changes) => metaOf.set(id, { ...metaOf.get(id), ...changes });
@@ -584,7 +585,8 @@ export class UmrDocument extends DocumentModel {
         resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
           b.tokens.update(pieceId, begin, end);
           if (extra) {
-            b.spans.setTokens(nodeId, [pieceId]);
+            // Its hold stays: it is what keeps the node if its text goes.
+            b.spans.setTokens(nodeId, [pieceId, ...this.node(nodeId).holdIds]);
             b.tokens.bulkDelete(extra);
           }
         });
@@ -685,7 +687,9 @@ export class UmrDocument extends DocumentModel {
   // start before, and core deletes a zero-width token a deletion spans, so
   // joining two sentences by deleting across the boundary took the node with
   // it. What says the node is aligned to nothing is its sentence record, not
-  // the anchor (sentenceGraph.js).
+  // the anchor (sentenceGraph.js). A node aligned to words also gets its hold
+  // (`holdFor`), the last piece, which keeps it when another app deletes its
+  // words' text.
   piecesFor(sentence, wordIds) {
     const chosen = sentence.words
       .filter((w) => wordIds.includes(w.id))
@@ -701,7 +705,8 @@ export class UmrDocument extends DocumentModel {
         pieces.push({ begin: w.begin, end: w.end, lastIndex: w.index });
       }
     });
-    return pieces.map(({ begin, end }) => ({ begin, end }));
+    const own = pieces.map(({ begin, end }) => ({ begin, end }));
+    return [...own, holdFor(own, sentence)].filter(Boolean);
   }
 
   // Nodes that only the edge keeps reachable from the sentence's roots: what
@@ -829,7 +834,12 @@ export class UmrDocument extends DocumentModel {
 
   // New anchor tokens for `pieces`, under pending ids.
   _pendingPieces(pieces) {
-    return pieces.map((p) => ({ id: pendingId(), begin: p.begin, end: p.end }));
+    return pieces.map((p) => ({
+      id: pendingId(),
+      begin: p.begin,
+      end: p.end,
+      ...(p.metadata ? { metadata: p.metadata } : {}),
+    }));
   }
 
   // Queue the creation of `tokens` (from `_pendingPieces`) on batch `b`, so a
@@ -846,6 +856,7 @@ export class UmrDocument extends DocumentModel {
         text: info.textLayer.text.id,
         begin: t.begin,
         end: t.end,
+        ...(t.metadata ? { metadata: t.metadata } : {}),
       })),
     );
     const op = b.ref().$ref;
@@ -1294,7 +1305,7 @@ export class UmrDocument extends DocumentModel {
         ? this.piecesFor(sentence, wordIds)
         : [unalignedStretch(node.pieces, sentence)],
     );
-    const oldIds = node.pieces.map((p) => p.id);
+    const oldIds = node.tokenIds;
     const words = sentence.words.filter((w) => wordIds.includes(w.id)).map((w) => w.text);
     // The sentence an unaligned node records (see _reconcile), set when it
     // loses its words and dropped when it gains some.
@@ -1571,7 +1582,7 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to delete the edge';
     if (!this._canWrite(label)) return false;
     const doomed = subtree ? this.exclusiveDescendants(edge.id) : [];
-    const tokenIds = doomed.flatMap((n) => n.pieces.map((p) => p.id));
+    const tokenIds = doomed.flatMap((n) => n.tokenIds);
     const spanIds = doomed.map((n) => n.id);
     // Named BEFORE the patch, which takes the doomed nodes and with them the
     // target's variable: the label printed its id. What goes with the target
@@ -1678,7 +1689,7 @@ export class UmrDocument extends DocumentModel {
     if (!this._canWrite(label)) return false;
     const below = subtree ? this.orphanedBy(node.id) : [];
     const doomed = [node, ...below];
-    const tokenIds = doomed.flatMap((n) => n.pieces.map((p) => p.id));
+    const tokenIds = doomed.flatMap((n) => n.tokenIds);
     const spanIds = doomed.map((n) => n.id);
     this._applyRawPatch((next, infoNext) => this._dropSpans(infoNext, spanIds));
     return this._queueWrite(
@@ -1904,7 +1915,7 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to discard the drafted graph';
     if (!this._canWrite(label)) return Promise.resolve(false);
     const spanIds = nodes.map((n) => n.id);
-    const tokenIds = nodes.flatMap((n) => n.pieces.map((p) => p.id));
+    const tokenIds = nodes.flatMap((n) => n.tokenIds);
     const relationIds = new Set(explicit.map((r) => r.id));
     this._applyRawPatch((next, infoNext) => {
       const L = this._layers(infoNext);
@@ -2624,7 +2635,7 @@ export class UmrDocument extends DocumentModel {
       idByVar.set(r.to, r.nodeId);
     }
     // Deletes next, so a variable given to a new node is free.
-    const deletedTokens = plan.delete.flatMap((id) => this.node(id).pieces.map((p) => p.id));
+    const deletedTokens = plan.delete.flatMap((id) => this.node(id).tokenIds);
     plan.delete.forEach((id) => {
       const n = this.node(id);
       if (n) idByVar.delete(n.var);
@@ -2701,7 +2712,11 @@ export class UmrDocument extends DocumentModel {
       if (plan.root === c.var) meta.root = true;
       const node = {
         id: pendingId(),
-        pieces: this._pendingPieces(words.length ? words : this.piecesFor(sentence, [])),
+        pieces: this._pendingPieces(
+          words.length
+            ? [...words, holdFor(words, sentence)].filter(Boolean)
+            : this.piecesFor(sentence, []),
+        ),
         value: c.concept,
         metadata: { ...stamp, [UMR_NAMESPACE]: meta },
       };
@@ -2811,6 +2826,7 @@ export class UmrDocument extends DocumentModel {
               text: info.textLayer.text.id,
               begin: p.begin,
               end: p.end,
+              ...(p.metadata ? { metadata: p.metadata } : {}),
             })),
           );
           const pieceOp = b.ref().$ref;
