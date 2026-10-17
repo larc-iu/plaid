@@ -128,13 +128,13 @@ async function createFormFor(page, tokenId) {
 
 test('B11-01/02/03 + B5-03/01: unicode-punctuation rule with a `?` whitelist', async ({ page }) => {
   await openAnalyze(page);
-  // Ignored tokens: inert column, hover title, no opener, no healed morpheme.
+  // Ignored tokens read as the text they cover (ruling 29): no opener, no
+  // healed morpheme, and the two side by side are one stretch of text no word
+  // covers.
   for (const k of ['dots', 'dollar']) {
     await expect(opener(page, ids.w[W[k]])).toHaveCount(0);
-    await expect(
-      page.locator(`[title="${BODY.split(' ')[W[k]]}: excluded from annotation"]`),
-    ).toHaveCount(1);
   }
+  await expect(page.locator('[title="... $: not part of any word"]')).toHaveCount(1);
   // Whitelisted `?` and the emoji are annotatable: opener + a morpheme form cell.
   for (const k of ['q', 'emoji']) {
     await expect(opener(page, ids.w[W[k]])).toHaveCount(1);
