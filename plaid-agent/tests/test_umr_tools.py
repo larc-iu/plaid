@@ -564,3 +564,26 @@ def test_find_nodes_by_role_counts_the_role_itself_apart_too():
     lines = out.splitlines()
     assert lines[1].startswith('1 of the 2 are ":ARG0" itself, shown first'), out
     assert lines[2].startswith('"Story" s2.s2r'), out
+
+
+def test_run_code_passes_on_a_warning_its_plan_calls_were_staged_with(ws):
+    """plan() answers the code, and code that never printed it never saw
+    "this REMOVES :aspect performance": 33 aspects went on approval (bench
+    q38-2). The run's closing note says a staged call warned, and what."""
+    out = run(ws, 'run_code', code="plan('set_attributes', document='Story', sentence=1, var='s1d', "
+                                   "line=':polarity -')")
+    assert ('plan() was called 1 time and staged. The plan now holds 1 change. 1 staged call came '
+            'with a warning (it said: The line leaves out :refer-number singular, so this REMOVES it.') in out, out
+    ws.ops.clear()
+    out = run(ws, 'run_code', code="plan('set_attributes', document='Story', sentence=1, var='s1d', "
+                                   "line=':refer-number plural')")
+    assert 'warning' not in out, out
+
+
+def test_apply_penman_does_not_say_a_role_it_removes_is_missing(ws):
+    """Asked to remove :ARG0, the graph without it is what the user asked for
+    (bench q38-2: "names :temporal" after every removal of :temporal)."""
+    ws.asked = 'Remove the :ARG0 of bark-01.'
+    text = '(s1b / bark-01\n    :aspect performance)'
+    out = run(ws, 'apply_penman', document='Story', sentence=1, text=text)
+    assert out.startswith('Planned') and "user's message" not in out, out

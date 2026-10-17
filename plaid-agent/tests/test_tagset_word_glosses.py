@@ -21,11 +21,20 @@ def _ws():
     return fake_ws(client)
 
 
-def test_the_check_says_the_word_glosses_before_any_staging():
-    out = call_tool(_ws(), 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
-    assert ('3 of the 3 unlisted parts of Morph Gloss are word glosses. Closing the list with add_used would '
-            'list them as tags: ask the user whether they mean mixed (tags enforced, word glosses free) before '
-            'planning a close.') in out, out
+def test_the_check_says_the_word_glosses_of_a_closed_list_however_it_was_closed():
+    """A closed list refuses every word gloss it does not list, with add_used
+    or without (bench q38-2: a plain close read the add_used line as not its
+    own). A list that is not closed holds no word gloss back, and the check
+    says nothing of them (the line showed on a list the plan had just made
+    mixed)."""
+    w = _ws()
+    hint = ('3 of the 3 unlisted parts of Morph Gloss are word glosses. A closed list refuses every word gloss '
+            'it does not list: ask the user whether they mean mixed (tags enforced, word glosses free).')
+    out = call_tool(w, 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
+    assert 'word glosses. A closed list' not in out, out
+    call_tool(w, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
+    out = call_tool(w, 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
+    assert hint in out, out
 
 
 def test_closing_with_every_part_in_use_stages_nothing_when_most_are_word_glosses():

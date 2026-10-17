@@ -12,7 +12,7 @@ for what a UMR project is shaped like and why the model never handles an id.
 import copy
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ..core import docload, fingerprint as fp, opkind
 from ..core.bidi import plain_quote, qv
@@ -496,21 +496,29 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
     return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.number} in {plain_quote(doc.name)} '
             f'({what}).' + _additions(diff.ops) + _removals(diff.ops) + kept
-            + _named_roles_missing(getattr(ws, 'asked', ''), text))
+            + ws.warned(_named_roles_missing(getattr(ws, 'asked', ''), text, _stored_roles(doc, s))))
 
 
 # A relation written out with its colon, in a message or a graph.
 _WRITTEN_RELATION = re.compile(r'(?<![\w:-])(:[A-Za-z][A-Za-z0-9-]*)')
 
 
-def _named_roles_missing(asked: str, text: str) -> str:
+def _stored_roles(doc: UmrDoc, s: Sentence) -> set:
+    """The roles sentence ``s``'s graph holds as stored: one the new graph
+    lacks is one the plan removes."""
+    return {e.role for n in doc.nodes_by_id.values() if n.sentence == s.index for e in n.out}
+
+
+def _named_roles_missing(asked: str, text: str, removed: Iterable[str] = ()) -> str:
     """The roles the user's message writes out (":experiencer") that the
     graph does not have, said after the plan. Told to use :experiencer and
     :stimulus, models drafted :ARG0 and :ARG1, and a reminder to check the
-    roles in general did not stop them."""
+    roles in general did not stop them. A role the plan removes is one the
+    user asked to remove, and is not said (bench q38-2: "names :temporal"
+    after every removal of :temporal edges)."""
     named = [r for r in dict.fromkeys(_WRITTEN_RELATION.findall(asked or ''))
              if is_known_relation(r) and not unknown_relation_problem(r) and r not in ATTRIBUTE_RELATIONS]
-    written = set(_WRITTEN_RELATION.findall(text or ''))
+    written = set(_WRITTEN_RELATION.findall(text or '')) | set(removed)
     missing = [r for r in named if r not in written and f'{r}-of' not in written]
     if not missing:
         return ''
@@ -634,7 +642,7 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     # What changes, as the card says it, so a line that drops an attribute the
     # model did not write says so.
     return (f'Planned the attributes of {node.var} in s{s.number}: {shown} '
-            f'({attrs_change(node.attrs, placed)}).' + _dropped(node.attrs, placed))
+            f'({attrs_change(node.attrs, placed)}).' + ws.warned(_dropped(node.attrs, placed)))
 
 
 def _dropped(before: List[Dict[str, Any]], after: List[Dict[str, Any]]) -> str:

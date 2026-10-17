@@ -233,7 +233,7 @@ def test_corpus_stats_says_how_many_segments_it_left_out_for_ending_before_they_
 
 def test_the_tagsets_check_counts_one_unlisted_part_in_the_singular():
     """It said "1 unlisted parts" (FX-C-WIRE)."""
-    def check(*values):
+    def check(*values, closed=False):
         client = FakeClient()
         raw = client._documents['d1']
         for tl in raw['text_layers'][0]['token_layers']:
@@ -241,10 +241,13 @@ def test_the_tagsets_check_counts_one_unlisted_part_in_the_singular():
                 if sl['id'] == 'sl-mgloss':
                     sl['spans'] += [{'id': f'sp-x{i}', 'value': v, 'tokens': [t]}
                                     for i, (v, t) in enumerate(values)]
-        return call_tool(fake_ws(client), 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
+        w = fake_ws(client)
+        if closed:
+            call_tool(w, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'mode': 'closed'}})
+        return call_tool(w, 'tagsets', {'action': 'check', 'tagset': 'Leipzig'})
     out = check(('DAT', 'm-2'))
     assert 'Morph Gloss: 3 values, 1 unlisted part.' in out, out
-    # The fixture's one word gloss, "Ali", is the only part a close would add.
-    out = check()
-    assert ('The one unlisted part of Morph Gloss is a word gloss. Closing the list with add_used would list it '
-            'as tags') in out, out
+    # The fixture's one word gloss, "Ali", is the only part a closed list
+    # would refuse.
+    out = check(closed=True)
+    assert ('The one unlisted part of Morph Gloss is a word gloss. A closed list refuses every word gloss') in out, out

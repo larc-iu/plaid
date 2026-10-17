@@ -662,12 +662,18 @@ class Tally:
         self.plans = 0
         self.refused = 0
         self.first_refusal = ''
+        # plan() calls that staged with a warning (``Workspace.warned``).
+        self.warned = 0
+        self.first_warning = ''
+        self.ws = None
         # Whether a plan from an earlier message waited unmentioned as the run began.
         self.waiting_unsaid = False
 
     def wrap(self, api: Dict[str, Callable]) -> Dict[str, Callable]:
         def counted(name, f):
             def call(*args, **kwargs):
+                warnings = getattr(self.ws, 'warnings', None)
+                before = len(warnings) if isinstance(warnings, list) else 0
                 answer = f(*args, **kwargs)
                 if name == 'load':
                     key = answer.get('id') if isinstance(answer, dict) and answer.get('id') else repr(args)
@@ -684,6 +690,11 @@ class Tally:
                     if isinstance(answer, str) and answer.startswith('Error:'):
                         self.refused += 1
                         self.first_refusal = self.first_refusal or answer[len('Error:'):].strip()
+                    else:
+                        warnings = getattr(self.ws, 'warnings', None)
+                        if isinstance(warnings, list) and len(warnings) > before:
+                            self.warned += 1
+                            self.first_warning = self.first_warning or warnings[before]
                 return answer
             return call
         return {name: counted(name, f) if name in ('load', 'query', 'file_rows', 'plan') or name in self.counted
@@ -708,6 +719,14 @@ class Tally:
             what = (f': {n - self.refused} staged, {self.refused} refused '
                     f'({"the first" if self.refused > 1 else "it"} said: {first})')
         out = f'\n\n{calls}{what}. The plan now holds {held} change{"s" if held != 1 else ""}.'
+        # A change staged with a warning reads as staged, and code that never
+        # prints plan()'s answer never sees the warning: 33 umr aspects were
+        # removed on approval that way (bench q38-2).
+        if self.warned:
+            first = self.first_warning if len(self.first_warning) <= 300 else self.first_warning[:297] + '...'
+            out += (f' {self.warned} staged call{"s" if self.warned != 1 else ""} came with a warning '
+                    f'({"the first" if self.warned > 1 else "it"} said: {first}) Act on it before you report '
+                    f'the plan.')
         # The note that this turn's plan replaces the one still waiting is said
         # once, by the first staging, and here that was a plan() call whose
         # answer the code may never have printed.
@@ -744,6 +763,7 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
     tally = Tally(counted)
+    tally.ws = ws
     tally.waiting_unsaid = bool(getattr(ws, 'waiting', None)) and not getattr(ws, 'reported_waiting', False)
     try:
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally,

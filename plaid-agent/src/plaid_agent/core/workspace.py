@@ -1082,6 +1082,17 @@ class BaseWorkspace:
     def request_end(self, asked: Any, answer: str) -> None:
         """The planning call :meth:`request_begin` began has answered."""
 
+    def warned(self, text: str) -> str:
+        """``text``, a warning a planning tool adds to its answer (a change
+        that removes what the user may not have asked to remove, a role the
+        user named that the plan leaves out), recorded so a run_code whose
+        plan() answers go unprinted still hears of it (``sandbox.Tally``)."""
+        if text and text.strip():
+            if not isinstance(getattr(self, 'warnings', None), list):
+                self.warnings = []
+            self.warnings.append(text.strip())
+        return text
+
     def superseded_note(self) -> str:
         """The earlier changes this turn superseded that nothing has reported
         yet, and '' when there are none.

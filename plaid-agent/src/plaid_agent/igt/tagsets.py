@@ -344,16 +344,17 @@ def _check(ws, name: str, field: Optional[str], lexicon: Optional[str]) -> str:
             lines.append(f'  Closed in the settings, but core does not hold the list on {f["name"]}: writes to it '
                          'are not checked against it. It takes force there with the next settings change once no '
                          'stored value core would refuse breaks it.')
-        # Said before any staging: a close that adds every part in use would
-        # list the word glosses as tags (the edit refuses that in one call).
-        every = _unlisted(attested, {**t, 'mode': CLOSED})
+        # A closed list refuses every word gloss it does not list, however it
+        # was closed (with add_used or not), so most unlisted parts being word
+        # glosses means the user is asked first. A list that is not closed
+        # (mixed, open) holds no word gloss back, and nothing is said.
+        every = _unlisted(attested, t) if t['mode'] == CLOSED else []
         words_n = sum(1 for r in every if r[2])
         if every and words_n * 2 > len(every):
             said = (f'The one unlisted part of {f["name"]} is a word gloss' if len(every) == 1 else
                     f'{words_n} of the {len(every)} unlisted parts of {f["name"]} are word glosses')
-            lines.append(f'  {said}. Closing the list with add_used would list '
-                         f'{"it" if len(every) == 1 else "them"} as tags: ask the user whether they mean mixed (tags '
-                         'enforced, word glosses free) before planning a close.')
+            lines.append(f'  {said}. A closed list refuses every word gloss it does not list: ask the user '
+                         'whether they mean mixed (tags enforced, word glosses free).')
         r = _core_refused(ws, f, t)
         stay = sum(n for _, n in _refused(attested, t)) - r['count']
         if r['count']:
@@ -540,8 +541,9 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
                             'enforced, word glosses free). Then call again, listing in add the values they want '
                             'listed.')
         if words:
-            notes.append(f'{words} of them are ordinary word glosses, which make a tag list a word list: say so '
-                         'to the user, and ask before planning it unless they asked for exactly that.')
+            notes.append(ws.warned(f'{words} of them are ordinary word glosses, which make a tag list a word list: '
+                                   'say so to the user, and ask before planning it unless they asked for exactly '
+                                   'that.'))
         joined = [v for v in added[before:] if any(ch in v for ch in '.:')]
         if joined and not t['delimiters']:
             notes.append(f'The tagset has no delimiters, so values such as {qv(joined[0])} are listed whole. '
@@ -667,13 +669,14 @@ def _planned(ws, owner: str, notes: List[str]) -> str:
                      and all(is_lexical_part(p) for p in _parts(v['value'], rule.get('delimiters') or '')))
         breaks.append(f'{name} ({_refused_line(answer)})')
     if breaks:
-        out += (' Core will refuse this approval, writing nothing, while these stored values break the closed '
-                'list: ' + '; '.join(breaks) + '. Tell the user. Add them to the list, leave it open, or drop '
-                'this and plan changes to them first (a plan of their own).')
+        warning = (' Core will refuse this approval, writing nothing, while these stored values break the closed '
+                   'list: ' + '; '.join(breaks) + '. Tell the user. Add them to the list, leave it open, or drop '
+                   'this and plan changes to them first (a plan of their own).')
         if words * 2 > refused_n:
-            out += (f' {words} of them are ordinary word glosses: a closed list would have to list every word '
-                    'gloss. Ask the user whether they mean mixed (tags enforced, word glosses free) before '
-                    'planning more.')
+            warning += (f' {words} of them are ordinary word glosses: a closed list would have to list every word '
+                        'gloss. Ask the user whether they mean mixed (tags enforced, word glosses free) before '
+                        'planning more.')
+        out += ws.warned(warning)
     elif stays:
         out += (' Approval writes it. ' + '. '.join(stays)
                 + '. The list takes force there once they are listed or changed (a plan of their own), and igt '
