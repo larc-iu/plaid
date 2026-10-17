@@ -744,6 +744,8 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     What each change targeted and proposed stays, small, as ``proposed``
     (`proposed_changes`, written when the plan was staged), since a plan that
     wrote nothing is in no log.
+    A rule row loses its ``sample``: the rule, its counts and its documents
+    stay.
     A plan the page writes itself (``page_writes``, see
     `BaseAssistantService.page_wrote`) keeps its ``ops``: they are small, and
     an approval whose page wrote after a discard or a newer plan landed reads
@@ -756,6 +758,14 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     if not plan or item.get('status') is None:
         return item
     changes = plan.get('changes') if isinstance(plan.get('changes'), list) else []
+    # A rule row's sample (eight changes shown, each with its place) was three
+    # quarters of the row, and twelve replaced cards kept theirs (bench q38-2):
+    # once settled, the rule, its counts and its documents say what it was.
+    if any(isinstance(c, dict) and isinstance(c.get('rule'), dict) and 'sample' in c['rule'] for c in changes):
+        changes = [{**c, 'rule': {k: v for k, v in c['rule'].items() if k != 'sample'}}
+                   if isinstance(c, dict) and isinstance(c.get('rule'), dict) else c for c in changes]
+        plan = {**plan, 'changes': changes}
+        item = {**item, 'plan': plan}
     rest = [(i, c) for i, c in enumerate(changes) if i >= SETTLED_ROWS_MAX]
     ruled = [{'row': i, **c} for i, c in rest if isinstance(c, dict) and c.get('rule') is not None]
     rows = len(changes) - len(ruled)

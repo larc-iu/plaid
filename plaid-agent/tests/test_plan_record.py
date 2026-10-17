@@ -384,3 +384,20 @@ def test_a_contributors_approval_is_recorded_on_the_item(spec, monkeypatch):
                          'op': 'approve', **{'plan_id': plan['id']}}, Helper(request_id='r9'))
     item = _stored(spec, client)
     assert item['status'] == 'applied' and item['contributed'] is True and item['as_human'] is False
+
+
+def test_a_settled_rule_row_keeps_its_rule_and_loses_its_sample():
+    """A rule row's sample was three quarters of it, and twelve replaced
+    cards kept theirs (bench q38-2). Settled, the rule, its counts and its
+    documents stay. An undecided card keeps its sample: it is still shown."""
+    rule = {'tool': 'replace_in_field', 'args': {'pattern': 'RL'}, 'total': 65, 'kinds': {'set_span': 65},
+            'documents': [['d1', 'Text', 65]], 'documents_more': [0, 0],
+            'sample': [{'label': f's{i}', 'where': {'document_id': 'd1', 'sentence': i}} for i in range(8)]}
+    item = _item([{'kind': 'set_span', 'token_id': T1, 'value': 'a'}], status=None)
+    item['plan'] = {**item['plan'], 'changes': [{'label': 'RL → REAL', 'rule': rule}]}
+    assert compact_plan(item) is item
+    for status in ('replaced', 'applied', 'discarded', 'stale'):
+        plan = compact_plan({**item, 'status': status})['plan']
+        assert plan['changes'] == [{'label': 'RL → REAL', 'rule': {k: v for k, v in rule.items() if k != 'sample'}}]
+        done = compact_plan({**item, 'status': status})
+        assert compact_plan(done) is done
