@@ -21,6 +21,7 @@
 import { cpLength, utf16ToCp } from '@larc-iu/plaid-client';
 import {
   isTokenIgnored,
+  isWordSpace,
   shouldTokenizeCharacter,
 } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 
@@ -47,8 +48,8 @@ export function basicTokenize(text, locale = 'und') {
     // UAX #29), and a token never does.
     let b = 0;
     let e = cps.length;
-    while (b < e && /\s/.test(cps[b])) b += 1;
-    while (e > b && /\s/.test(cps[e - 1])) e -= 1;
+    while (b < e && isWordSpace(cps[b])) b += 1;
+    while (e > b && isWordSpace(cps[e - 1])) e -= 1;
     if (e > b) ranges.push([cp + b, cp + e]);
     cp += cps.length;
   }
@@ -119,7 +120,7 @@ export function gapTokenize(text, sentenceRanges, tokens, locale = 'und', ignore
   const fill = (begin, end) => {
     // Most gaps are the space between two words: nothing to segment there.
     let i = begin;
-    while (i < end && /\s/.test(cps[i])) i += 1;
+    while (i < end && isWordSpace(cps[i])) i += 1;
     if (i >= end) return;
     const ranges = basicTokenize(cps.slice(begin, end).join(''), locale).map(([b, e]) => [
       begin + b,
@@ -150,7 +151,8 @@ function igtWords(cps, begin, end, ignoredTokens) {
   const words = [];
   let start = null;
   for (let i = begin; i <= end; i += 1) {
-    const breaks = i === end || /\s/.test(cps[i]) || shouldTokenizeCharacter(cps[i], ignoredTokens);
+    const breaks =
+      i === end || isWordSpace(cps[i]) || shouldTokenizeCharacter(cps[i], ignoredTokens);
     if (breaks) {
       if (start !== null) words.push([start, i]);
       start = null;
@@ -172,12 +174,12 @@ function asIgtReads(cps, begin, end, ranges, ignoredTokens) {
   for (const [b, e] of ranges) {
     let i = b;
     while (i < e) {
-      if (inWord[i - begin] || /\s/.test(cps[i])) {
+      if (inWord[i - begin] || isWordSpace(cps[i])) {
         i += 1;
         continue;
       }
       let j = i;
-      while (j < e && !inWord[j - begin] && !/\s/.test(cps[j])) j += 1;
+      while (j < e && !inWord[j - begin] && !isWordSpace(cps[j])) j += 1;
       if (ignored(i, j)) out.push([i, j]);
       else for (let k = i; k < j; k += 1) if (ignored(k, k + 1)) out.push([k, k + 1]);
       i = j;

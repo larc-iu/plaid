@@ -12,6 +12,8 @@
 // - the text typed against a word's edge with no whitespace between, which
 //   the server gives that word, unless the word is made only of punctuation
 //   (a token over `(` or `.`), which takes none.
+// A word made only of punctuation that a gap types text over or into is
+// gone on the server, and nothing is kept off it.
 // Each gap is first trimmed of the text its value shares with what it
 // replaces at either end, as the server reads it (plaid-core's `trim-gap`,
 // plaid-ui editLog's `trimGaps`): a selection `two` typed over as
@@ -28,28 +30,19 @@
 // scripts each stretch is judged on its own: `我用 Plaid 写` gives `Plaid`
 // a word, and `我用Plaid写`, one stretch, gets none.
 
-import { isIgnoredCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
+import { isTextPunctuation, isWordSpace } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { tokenizeText } from '../utils/tokenizationUtils.js';
 import { isTokenIgnored } from './igtConfig.js';
 import { isSpacelessScript } from './spacelessScripts.js';
 
-const isSpace = (c) => /\s/u.test(c);
+// Whitespace, NEL included (plaid-core `space?`).
+const isSpace = isWordSpace;
 const isLineBreak = (c) => /[\n\r\u0085\u2028\u2029]/u.test(c);
-// Whitespace to the head rule: also NEL, which ends a line there though
-// JavaScript's `\s` leaves it out (plaid-core `blank?`).
-const isBlank = (c) => isSpace(c) || c === '\u0085';
-const isPunct = (c) => !/[\p{L}\p{M}\p{N}]/u.test(c);
-// Punctuation to core's text rule (plaid-core `punct?`): what igt's
-// punctuation rule skips, a character the project's rule calls letter-like
-// being a letter, whichever rule the project has in force (plaid-core
-// `ignored-letter-like`). A word made only of it takes no text typed against
-// it.
-const punctuationRule = (ignored) =>
-  Object.freeze({
-    type: 'unicodePunctuation',
-    whitelist: ignored?.type === 'unicodePunctuation' ? ignored.whitelist || [] : [],
-  });
-const isPunctOnly = (cs, rule) => cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, rule));
+// Punctuation to core's text rule (plaid-core `punct?`), under the project's
+// rule. A word made only of it takes no text typed against it, and text typed
+// right after it goes to the sentence after.
+const isPunctOnly = (cs, ignored) =>
+  cs.length > 0 && cs.every((c) => isTextPunctuation(c, ignored));
 
 /** Whether a stretch holds a letter of a script written without spaces. */
 export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpacelessScript);
@@ -160,7 +153,12 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
   };
 
   const covered = new Uint8Array(n);
-  const rule = punctuationRule(ignored);
+  // Whether a gap types text over or into old [b, e) (plaid-core
+  // `apply-plain-gaps`, `typed-over?`).
+  const typedOver = (b, e) =>
+    sorted.some(
+      (g) => g.value && (g.start < g.end ? g.start < e && b < g.end : b < g.start && g.start < e),
+    );
   // What typed text against it with no whitespace between goes to: all that
   // is covered but the text of a word made only of punctuation, which takes
   // none (plaid-core `apply-plain-gaps`).
@@ -169,7 +167,8 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
     if (!(w.begin < w.end)) continue;
     const lo = startOf(w.begin);
     const hi = endOf(w.end);
-    const punct = isPunctOnly(old.slice(w.begin, w.end), rule);
+    const punct = isPunctOnly(old.slice(w.begin, w.end), ignored);
+    if (punct && typedOver(w.begin, w.end)) continue;
     for (let x = Math.max(0, lo); x < Math.min(n, hi); x++) {
       covered[x] = 1;
       // (text a gap typed inside it, which the server may give it, does)
@@ -209,7 +208,9 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
     const { start: a, end: b, value } = sorted[j];
     if (a !== b || a > p || !(a > 0 && a < old.length)) return false;
     if (Array.from(value ?? '').some(isLineBreak)) return false;
-    if (!isSpace(old[a - 1])) return a === p && !isSpace(old[a]) && isPunct(old[a - 1]);
+    if (!isSpace(old[a - 1])) {
+      return a === p && !isSpace(old[a]) && isTextPunctuation(old[a - 1], ignored);
+    }
     return nextLetter[j] !== null && p <= nextLetter[j] && noBegin(a, p);
   };
   // Where the sentence beginning at `p` begins when `toNext(j, p)`.
@@ -248,8 +249,8 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
   // letter before its last line break, is a sentence of its own: the first
   // sentence begins at the first letter after that line (plaid-core
   // `apply-plain-gaps`, `head-end`). "A letter" is anything but whitespace
-  // or NEL, so a line of only no-break or ideographic spaces (an indent) or
-  // of NEL is not one.
+  // (NEL included), so a line of only no-break or ideographic spaces (an
+  // indent) or of NEL is not one.
   // Not where a word the save typed over with the line
   // ends inside it, which core keeps on its own text.
   const first = (sentences || []).find((s) => s.begin === 0);
@@ -257,7 +258,7 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
     const inGap = (x) => sorted.some((g) => g.start <= x && x < g.end);
     let q = -1;
     for (let x = 0; x < Math.min(first.end, old.length); x++) {
-      if (!isBlank(old[x]) && !inGap(x)) {
+      if (!isSpace(old[x]) && !inGap(x)) {
         q = x;
         break;
       }
@@ -271,7 +272,7 @@ export function newTextLayout({ base, gaps, words, sentences = [], ignored = nul
           break;
         }
       }
-      const letter = k > 0 && body.slice(0, k).some((c) => !isBlank(c));
+      const letter = k > 0 && body.slice(0, k).some((c) => !isSpace(c));
       const typedOver = (words || []).some(
         (w) =>
           w.begin < w.end &&

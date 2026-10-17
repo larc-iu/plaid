@@ -9,7 +9,9 @@ The project turns it off on the word layer (``config.igt.tokenizeNewText`` is
 body the edit makes, before the server has placed the existing words on it,
 and kept off every position an existing word may end up over: its own text,
 all the text a change types when the change reaches inside a word or takes one
-whole, and text typed against a word's edge with no whitespace between. Each
+whole, and text typed against a word's edge with no whitespace between (none
+for a word made only of punctuation, and nothing for one the change types over
+or into, which the server deletes). Each
 gap is first trimmed of the text its value shares with what it replaces at
 either end, as the server reads it (plaid-core's ``trim-gap``). What
 is left, where the edit typed something, is cut by the built-in tokenizer
@@ -23,11 +25,10 @@ case table and compares.
 """
 
 import re
-import unicodedata
 from bisect import bisect_right
 from typing import Any, List, Optional, Sequence, Tuple
 
-from .ignored import is_letter_like, is_punct_char, is_token_ignored
+from .ignored import is_text_punctuation, is_token_ignored
 from .spaceless_scripts import SPACELESS_SCRIPTS
 
 # The editor's isUnicodePunctuation character class, verbatim (without
@@ -55,10 +56,11 @@ def _is_break_char(c: str, cfg) -> bool:
     return punct
 
 
-# JavaScript's ``\s`` (and what its ``trim`` strips), which the editor's
-# tokenizer reads. Python's ``str.isspace`` differs at the edges: it takes the
-# information separators U+001C to U+001F and U+0085, and not U+FEFF.
-_JS_SPACE = frozenset('\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006'
+# JavaScript's ``\s`` (what its ``trim`` strips) and NEL (U+0085), which the
+# editor's tokenizer reads as whitespace (plaid-ui ``isWordSpace``, plaid-core
+# ``space?``). Python's ``str.isspace`` differs at the edges: it takes the
+# information separators U+001C to U+001F, and not U+FEFF.
+_JS_SPACE = frozenset('\t\n\v\f\r \u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006'
                       '\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')
 
 
@@ -66,20 +68,10 @@ def _is_line_break(c: str) -> bool:
     return c in "\n\r\u0085\u2028\u2029"
 
 
-def _is_punct(c: str) -> bool:
-    """Neither a letter, a mark nor a number."""
-    return unicodedata.category(c)[0] not in 'LMN'
-
-
 def is_js_space(c: str) -> bool:
-    """Whitespace as the editor's tokenizer reads it (JavaScript's)."""
+    """Whitespace as the editor's tokenizer reads it (JavaScript's ``\\s``
+    and NEL)."""
     return c in _JS_SPACE
-
-
-def _is_head_blank(c: str) -> bool:
-    """Whitespace to the head rule: also NEL, which ends a line there though
-    JavaScript's ``\\s`` leaves it out (plaid-core ``blank?``)."""
-    return c in _JS_SPACE or c == "\u0085"
 
 
 def _blank(text: str, b: int, e: int) -> bool:
@@ -242,12 +234,21 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
     # punctuation rule skips, a character the project's rule calls
     # letter-like being a letter, whichever rule is in force).
     takes = bytearray(n)
+
+    def typed_over(b: int, e: int) -> bool:
+        # whether a gap types text over or into old [b, e) (plaid-core
+        # ``typed-over-punct``): a word made only of punctuation that one
+        # does is gone on the server, and nothing is kept off it
+        return any(v and (s < e and b < t if s < t else b < s < e) for s, t, v in srt)
+
     for w in words or []:
         wb, we = (w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1])
         if not wb < we:
             continue
         lo, hi = start_of(wb), end_of(we)
-        punct = all(is_punct_char(c) and not is_letter_like(c, ignored) for c in old[wb:we])
+        punct = all(is_text_punctuation(c, ignored) for c in old[wb:we])
+        if punct and typed_over(wb, we):
+            continue
         for x in range(max(0, lo), min(n, hi)):
             covered[x] = 1
             # (text a gap typed inside it, which the server may give it, does)
@@ -296,7 +297,7 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
         if any(_is_line_break(c) for c in value):
             return False
         if not is_js_space(old[a - 1]):
-            return a == p and not is_js_space(old[a]) and _is_punct(old[a - 1])
+            return a == p and not is_js_space(old[a]) and is_text_punctuation(old[a - 1], ignored)
         return letters[j] is not None and p <= letters[j] and no_begin(a, p)
 
     def run_at(j: int, p: int) -> int:
@@ -337,11 +338,11 @@ def new_text_layout(base: str, gaps: Sequence[Any], words: Sequence[Any], senten
     if first is not None:
         first_end = first['end'] if isinstance(first, dict) else first[1]
         q = next((x for x in range(min(first_end, len(old)))
-                  if not _is_head_blank(old[x]) and not any(s <= x < e for s, e, _ in srt)), -1)
+                  if not is_js_space(old[x]) and not any(s <= x < e for s, e, _ in srt)), -1)
         if q >= 0:
             p = start_of(q)
             k = next((x + 1 for x in range(p - 1, -1, -1) if _is_line_break(body[x])), -1)
-            letter = k > 0 and any(not _is_head_blank(c) for c in body[:k])
+            letter = k > 0 and any(not is_js_space(c) for c in body[:k])
             spans = [(w['begin'], w['end']) if isinstance(w, dict) else (w[0], w[1]) for w in words or []]
             typed_over = any(wb < we and any(s <= wb and we <= e and v for s, e, v in srt) and end_of(we) <= k
                              for wb, we in spans)

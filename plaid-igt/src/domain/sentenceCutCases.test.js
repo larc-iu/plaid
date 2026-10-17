@@ -13,7 +13,7 @@
 // plaid-client-py's test_sentence_cut_cases.py does the same for the Python
 // twin.
 import { describe, it, expect } from 'vitest';
-import { isIgnoredCharacter } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
+import { isTextPunctuation, isWordSpace } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { readRepoFile } from '../test/builtinHash.js';
 import { newTextLayout, newTextWords } from './newTextWords.js';
 
@@ -21,14 +21,11 @@ const { cases } = JSON.parse(
   readRepoFile('plaid-core/src/test/plaid/algos/sentence_cut_cases.json'),
 );
 const span = ([begin, end]) => ({ begin, end });
-const isSpace = (c) => /\s/u.test(c);
+const isSpace = isWordSpace;
 const sentenceOf = (cuts, x) => cuts.filter((b) => b <= x).length;
-// Punctuation to core's rule: igt's punctuation rule with the case's
-// letter-like characters (`ignored`, FX-I-FOLLOW) as letters.
-const isPunctOnly = (cs, ignored) => {
-  const rule = { type: 'unicodePunctuation', whitelist: ignored?.whitelist || [] };
-  return cs.length > 0 && cs.every((c) => isIgnoredCharacter(c, rule));
-};
+// Punctuation to core's rule under the case's rule (`ignored`).
+const isPunctOnly = (cs, ignored) =>
+  cs.length > 0 && cs.every((c) => isTextPunctuation(c, ignored));
 
 describe('the sentence cut of Tokenize new text', () => {
   it('agrees with core on the shared table', () => {
@@ -126,5 +123,39 @@ describe('the sentence cut of Tokenize new text', () => {
     }
     expect(problems.slice(0, 5)).toEqual([]);
     expect(checked).toBeGreaterThan(500);
+  });
+
+  // REV8-PUNCT-1: a word made only of punctuation that a save types over is
+  // gone, and the text is read as with no token there: where every gap of a
+  // save inserts or types over exactly such a word, a letter it typed is
+  // free for a new word exactly where core leaves it in no word.
+  it('frees what is typed over a punctuation word, as core deletes it', () => {
+    const problems = [];
+    let checked = 0;
+    for (const c of cases) {
+      const chars = [...c.base];
+      const punct = (b, e) => isPunctOnly(chars.slice(b, e), c.ignored);
+      const over = (g) => c.words.some(([b, e]) => b === g.start && e === g.end && punct(b, e));
+      if (!c.gaps.some((g) => g.value && over(g))) continue;
+      if (!c.gaps.every((g) => g.start === g.end || over(g))) continue;
+      const layout = newTextLayout({
+        base: c.base,
+        gaps: c.gaps,
+        words: c.words.map(span),
+        sentences: c.sentences.map(span),
+        ignored: c.ignored ?? null,
+      });
+      if (!layout) continue;
+      const { body, typed, covered } = layout;
+      for (let x = 0; x < body.length; x++) {
+        if (!typed[x] || isSpace(body[x])) continue;
+        checked += 1;
+        const inWord = c.core.words.some(([b, e]) => b <= x && x < e);
+        if (inWord !== Boolean(covered[x]))
+          problems.push({ base: c.base, gaps: c.gaps, x, inWord });
+      }
+    }
+    expect(problems.slice(0, 5)).toEqual([]);
+    expect(checked).toBeGreaterThan(50);
   });
 });

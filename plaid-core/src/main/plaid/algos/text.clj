@@ -483,10 +483,10 @@
 
 (defn- word-letter?
   "Whether code point `c` is part of a word's text: a letter, a digit, a
-  combining mark or one of `letter-like` (see `layer-roles`), not
-  punctuation."
+  combining mark or one `letter-like` holds (a set or a predicate of code
+  points, see `layer-roles`), not punctuation."
   [letter-like c]
-  (or (Character/isLetterOrDigit (int c)) (combining-mark? c) (contains? letter-like (int c))))
+  (or (Character/isLetterOrDigit (int c)) (combining-mark? c) (boolean (letter-like (int c)))))
 
 (defn- leading-marks
   "How many code points at the start of `s` are combining marks."
@@ -811,37 +811,20 @@
 
 (defn- space?
   "Whether code point `c` separates words, as the apps' tokenizers take it
-  (JavaScript's `\\s`): Java's whitespace, and also the no-break spaces
-  (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as letters, but not
-  the information separators (U+001C to U+001F), which only Java counts."
+  (JavaScript's `\\s` and U+0085, NEL): Java's whitespace, and also the
+  no-break spaces (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as
+  letters, and NEL, a line break that neither Java nor JavaScript counts as
+  whitespace (REV6-TEXT-3, REV8-CORE-4), but not the information separators
+  (U+001C to U+001F), which only Java counts."
   [c]
   (let [c (int c)]
     (and (not (<= 0x1C c 0x1F))
-         (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF)))))
+         (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF) (= c 0x85)))))
 
 (defn- line-break?
   "Whether code point `c` ends a line."
   [c]
   (contains? #{0x0A 0x0D 0x85 0x2028 0x2029} (int c)))
-
-(defn- blank?
-  "Whether code point `c` is whitespace to the head rule (see `head-end` in
-  `apply-plain-gaps`): `space?`, and also U+0085 (NEL), which ends a line
-  there though neither Java nor JavaScript counts it as whitespace
-  (REV6-TEXT-3)."
-  [c]
-  (or (space? c) (= 0x85 (int c))))
-
-(defn- separator?
-  "Whether code point `c` parts what stands either side of it, as
-  punctuation or a symbol does: not a letter, a mark or a number."
-  [c]
-  (let [t (Character/getType (int c))]
-    (not (contains? #{Character/UPPERCASE_LETTER Character/LOWERCASE_LETTER Character/TITLECASE_LETTER
-                      Character/MODIFIER_LETTER Character/OTHER_LETTER Character/NON_SPACING_MARK
-                      Character/ENCLOSING_MARK Character/COMBINING_SPACING_MARK Character/DECIMAL_DIGIT_NUMBER
-                      Character/LETTER_NUMBER Character/OTHER_NUMBER}
-                    (byte t)))))
 
 ;; Punctuation and symbols (Unicode P and S) and pictographs, read from the
 ;; table igt and plaid-client-py read (`resources/punctuation_classes.txt`,
@@ -879,15 +862,17 @@
   "Whether code point `c` is punctuation to the text rules: a character
   igt's ignore rule skips (plaid-ui `isIgnoredCharacter`), Unicode
   punctuation or a symbol, but not a pictograph, not U+2205, the zero
-  morph, and not one of `letter-like`, the code points the project's rule
-  calls letter-like (the word layer's `igt.ignoredTokens` exceptions, see
-  `layer-roles`)."
+  morph, and not one `letter-like` holds, the code points the project's
+  rule calls letters (see `ignored-letter-like`). Typed right after it,
+  with no whitespace, text goes to the sentence after (see
+  `typed-to-next?`), and a word token made only of it takes no text typed
+  against it (see `apply-plain-gaps`)."
   [letter-like c]
   (let [c (int c)]
     (and (in-ranges? (punct-classes "punct") c)
          (not (in-ranges? (punct-classes "picto") c))
          (not= c 0x2205)
-         (not (contains? letter-like c)))))
+         (not (letter-like c)))))
 
 (defn- punct-only?
   "Whether token `t` over code points `o` is made only of punctuation (see
@@ -902,12 +887,75 @@
   keeps a long run of one repeated letter from costing a scan per place."
   64)
 
+(defn- punct-words
+  "The ids of the word tokens of `tokens` (on a layer in `word-layers`)
+  made only of punctuation (see `punct-only?`, `letter-like` as there) for
+  which `pick?` holds, and of the tokens on a layer in `children` inside
+  one of them."
+  ([^ints o tokens word-layers children letter-like]
+   (punct-words o tokens word-layers children letter-like (constantly true)))
+  ([^ints o tokens word-layers children letter-like pick?]
+   (let [word-layers (set word-layers)
+         children (set children)
+         words (filterv #(and (< (:token/begin %) (:token/end %))
+                              (contains? word-layers (:token/layer %))
+                              (punct-only? o letter-like %)
+                              (pick? %))
+                        tokens)]
+     (if (empty? words)
+       #{}
+       (let [spans (mapv (juxt :token/begin :token/end) words)]
+         (into (into #{} (map :token/id) words)
+               (comp (filter (fn [{:token/keys [layer begin end]}]
+                               (and (contains? children layer)
+                                    (some (fn [[b e]] (and (<= b begin) (<= end e))) spans))))
+                     (map :token/id))
+               tokens))))))
+
+(defn- typed-over-punct
+  "The ids of the word tokens made only of punctuation that one of `gaps`
+  (`{:start :end :value}` over the code points `o`, in order, never
+  touching) types text over or into, and of the tokens under them (see
+  `punct-words`). Such a word is gone with what is under it, and the edit
+  is the same edit on that punctuation with no token: ud's `,` in `ab, cd`
+  typed over as `x` gives the word `abx`, as where the comma has no token
+  (REV8-PUNCT-1). A gap that only deletes shrinks it instead, and text
+  typed against its edge stays apart from it (see `apply-plain-gaps`)."
+  [^ints o tokens gaps word-layers children letter-like]
+  (let [gaps (vec gaps)
+        starts (long-array (map :start gaps))
+        ;; the last gap starting before x, or -1
+        before (fn [x] (loop [lo 0 hi (count gaps)]
+                         (if (< lo hi)
+                           (let [m (quot (+ lo hi) 2)]
+                             (if (< (aget starts m) (long x)) (recur (inc m) hi) (recur lo m)))
+                           (dec lo))))
+        typed-over? (fn [{:token/keys [begin end]}]
+                      (loop [g (before end)]
+                        (when (>= g 0)
+                          (let [{a :start b :end v :value} (gaps g)]
+                            (cond
+                              (< a b) (when (< begin b) (or (seq v) (recur (dec g))))
+                              (< begin a) (or (seq v) (recur (dec g)))
+                              :else nil)))))]
+    (punct-words o tokens word-layers children letter-like typed-over?)))
+
+(defn- reading-tokens
+  "`tokens` less the words made only of punctuation and the tokens under
+  them (see `punct-words`), which is what a save is read by: where the
+  edit's place and shape are told from the tokens, such a word counts as
+  the punctuation with no token does, so a text reads alike with and
+  without ud's punctuation tokens (REV8-PUNCT-1)."
+  [^String old tokens word-layers opts]
+  (let [ids (punct-words (.toArray (.codePoints old)) tokens word-layers (:children opts) (:letter-like opts))]
+    (if (empty? ids) tokens (filterv #(not (ids (:token/id %))) tokens))))
+
 (defn- typed-to-next?
   "Whether text `v` (code points) inserted at `a` in `o` goes to the token of
   a partition beginning there (see `apply-plain-gaps`): typed past whitespace
-  on the next letter's line, or right after punctuation with no whitespace,
-  and holding no line break."
-  [^ints o a ^ints v]
+  on the next letter's line, or right after punctuation (see `punct?`,
+  `letter-like` as there) with no whitespace, and holding no line break."
+  [^ints o a ^ints v letter-like]
   (let [n (alength o)]
     (boolean
      (and (pos? a) (< a n)
@@ -917,7 +965,7 @@
                               (not (space? (aget o x))) true
                               (line-break? (aget o x)) false
                               :else (recur (inc x))))
-            (and (not (space? (aget o a))) (separator? (aget o (dec a)))))))))
+            (and (not (space? (aget o a))) (punct? (or letter-like #{}) (aget o (dec a)))))))))
 
 (defn- slide-cost
   "How many of `tokens` an edit at this place would disturb. It cuts a token
@@ -951,10 +999,10 @@
   two ways to delete a word at the edge of a token over several words (a
   UMR node), the one taking the space on the far side wins.
 
-  A token made only of punctuation (see `punct-only?`, `letter-like` as
-  there) takes no text typed against it, so an insert at its edge disturbs
-  nothing there."
-  [^ints o tokens partitioning letter-like edit]
+  A word token (one on a layer in `word-layers`) made only of punctuation
+  (see `punct-only?`, `letter-like` as there) takes no text typed against
+  it, so an insert at its edge disturbs nothing there."
+  [^ints o tokens partitioning word-layers letter-like edit]
   (let [n (alength o)
         ;; The edge of the text and a space both only separate, so a word
         ;; that comes to stand at the start of the text keeps its place.
@@ -1013,7 +1061,7 @@
             ;; one beginning there when it is typed past whitespace on the
             ;; next letter's line, or right after punctuation with no
             ;; whitespace, and else into the one ending there (see `apply-plain-gaps`).
-            to-next? (typed-to-next? o a v)
+            to-next? (typed-to-next? o a v letter-like)
             met (if (or new-after? new-before? (= :apart (at (dec a))) (= :apart (at a)))
                   #{}
                   (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
@@ -1032,9 +1080,9 @@
                                                      (= end a) (not to-next?)
                                                      (= begin a) (or (zero? a) to-next? new-before?)
                                                      :else false)
-                              ;; a token made only of punctuation takes no
+                              ;; a word made only of punctuation takes no
                               ;; text typed against it (see `apply-plain-gaps`)
-                              (punct-only? o letter-like t) false
+                              (and (contains? word-layers layer) (punct-only? o letter-like t)) false
                               (= end a) new-after?
                               (= begin a) new-before?
                               :else false))
@@ -1711,12 +1759,14 @@
   nearest, so an edit already at such a place stays there. Edits that touch
   stay together, since they are one gap (see `plain-body-gaps`). The
   reconstructed string is unchanged. `partitioning` is the set of the
-  tokens' layers that are partitions, `letter-like` the code points the
-  text's layers call letter-like (see `slide-cost`)."
+  tokens' layers that are partitions, `word-layers` the words' layers and
+  `letter-like` the code points the text's layers call letter-like (see
+  `slide-cost`)."
   ([ops old tokens] (slide-to-tokens ops old tokens #{}))
-  ([ops old tokens partitioning] (slide-to-tokens ops old tokens partitioning nil))
-  ([ops old tokens partitioning letter-like]
+  ([ops old tokens partitioning] (slide-to-tokens ops old tokens partitioning nil nil))
+  ([ops old tokens partitioning word-layers letter-like]
    (let [partitioning (set partitioning)
+         word-layers (set word-layers)
          edits (vec (ops->edits ops))
          ^ints o (.toArray (.codePoints ^String old))
          n (alength o)
@@ -1730,7 +1780,7 @@
          next-start? (fn [near-e e]
                        (and (= :insert (:kind e))
                             (some #(and (partitioning (:token/layer %)) (= (:at e) (:token/begin %))) near-e)
-                            (typed-to-next? o (:at e) (.toArray (.codePoints ^String (:value e))))))
+                            (typed-to-next? o (:at e) (.toArray (.codePoints ^String (:value e))) letter-like)))
          moved (reduce
                 (fn [moved e]
                   (let [i (count moved)
@@ -1749,7 +1799,7 @@
                             (let [places (slide-places o e lo hi)
                                   near-e (near (reduce min (map start-of places))
                                                (reduce max (map reach-of places)))
-                                  cost #(slide-cost o near-e partitioning letter-like %)
+                                  cost #(slide-cost o near-e partitioning word-layers letter-like %)
                                   here (cost e)
                                   ;; an insert that can stand right after (or
                                   ;; before) a delete of exactly one token's text
@@ -2444,8 +2494,8 @@
   inserted there, or nil."
   [^ints o old-tokens kept heads ^ints nw partitioning follower? held typed-at]
   (let [n (alength nw)
-        lead (fn [^ints cs b e] (loop [x b] (if (and (< x e) (blank? (aget cs x))) (recur (inc x)) x)))
-        tail (fn [^ints cs b e] (loop [x e] (if (and (> x b) (blank? (aget cs (dec x)))) (recur (dec x)) x)))
+        lead (fn [^ints cs b e] (loop [x b] (if (and (< x e) (space? (aget cs x))) (recur (inc x)) x)))
+        tail (fn [^ints cs b e] (loop [x e] (if (and (> x b) (space? (aget cs (dec x)))) (recur (dec x)) x)))
         was (into {} (map (juxt :token/id identity)) old-tokens)
         now (into {} (map (juxt :token/id identity)) kept)
         parts (filter #(partitioning (:token/layer %)) old-tokens)
@@ -2481,9 +2531,9 @@
                       new-letters? (< lb le)
                       e (fn [x to] [x {:to to :over (if letters? [ob oe] [begin end])
                                        :now [nb ne]}])]
-                  {:begins (cond-> [(e begin (if (or (blank? (aget o begin)) (not new-letters?)) nb lb))]
+                  {:begins (cond-> [(e begin (if (or (space? (aget o begin)) (not new-letters?)) nb lb))]
                              (and letters? (not= ob begin)) (conj (e ob (if new-letters? lb nb))))
-                   :ends (cond-> [(e end (if (or (blank? (aget o (dec end))) (not new-letters?)) ne le))]
+                   :ends (cond-> [(e end (if (or (space? (aget o (dec end))) (not new-letters?)) ne le))]
                            (and letters? (not= oe end)) (conj (e oe (if new-letters? le ne))))}))
         begin-at (agreed (mapcat :begins edges))
         ;; each sentence's first letter, in the old text
@@ -2493,7 +2543,7 @@
         ;; where an end on whitespace sits in the whitespace before a
         ;; sentence's first letter: that letter's old place, or nil
         before-letter (fn [end]
-                        (when (and (< 0 end) (blank? (aget o (dec end))))
+                        (when (and (< 0 end) (space? (aget o (dec end))))
                           (let [x (lead o end (alength o))]
                             (when (first-letters x) x))))
         end-at (agreed (mapcat :ends edges))
@@ -2504,7 +2554,7 @@
         ;; where a begin on whitespace sits in the whitespace after a
         ;; sentence's last letter: that letter's old end, or nil
         after-letter (fn [begin]
-                       (when (and (< begin (alength o)) (blank? (aget o begin)))
+                       (when (and (< begin (alength o)) (space? (aget o begin)))
                          (let [y (tail o 0 begin)]
                            (when (last-letters y) y))))
         ;; where an edge goes: a row over the whole of the sentence there
@@ -2518,8 +2568,8 @@
                   (when-let [[x y] (typed-at (if begin? begin end))]
                     (let [[x y] (reduce (fn [[x y] [nb ne]] [(max x nb) (min y ne)]) [x y] now)
                           [x y] (if begin?
-                                  [(if (blank? (aget o begin)) x (lead nw x y)) y]
-                                  [x (if (blank? (aget o (dec end))) y (tail nw x y))])]
+                                  [(if (space? (aget o begin)) x (lead nw x y)) y]
+                                  [x (if (space? (aget o (dec end))) y (tail nw x y))])]
                       (when (and (< x y) (<= x plain y))
                         (if begin? (min x plain) (max y plain)))))))
         ;; each follower, where its edges go: `:b` `:e`, what it holds,
@@ -2849,7 +2899,12 @@
         ;; layer in `word-layers`, else every token on no partition. The
         ;; others (sentences, time-alignment segments) follow them.
          decides? (word-token? wide partitioning word-layers)
-         deciders (filterv decides? wide)
+         punct-word? (fn [t] (and (contains? word-layers (:token/layer t)) (punct-only? o letter-like t)))
+         ;; the words made only of punctuation that a gap types over or
+         ;; into, and the tokens under them, which are gone, and no word of
+         ;; the text reads them (see `typed-over-punct`)
+         over (typed-over-punct o wide gaps word-layers children letter-like)
+         deciders (filterv #(and (decides? %) (not (over (:token/id %)))) wide)
          decider-layers (into #{} (map :token/layer) deciders)
         ;; the tokens whose text is one of a gap's words typed over (see
         ;; `cut-at-words`), a word's: old extent to [gap offset length]. Its
@@ -2870,7 +2925,7 @@
                          ;; the punctuation has no token (REV7-IGT-1). A
                          ;; character the layer's rule calls letter-like is
                          ;; a letter here.
-                         :let [punct-word? (punct-only? o letter-like t)]]
+                         :let [punct-word? (punct-word? t)]]
                    (let [g (at-or-before end)]
                      (when (>= g 0)
                        (let [{:keys [a b]} (info g)]
@@ -2889,7 +2944,8 @@
                            (when (and (= begin a) (< a end) (not punct-word?)) (mark! g :after)))))))
                 ;; A gap that is exactly a token's text (a word, a sentence
                 ;; with its separator, a segment) is that token typed over.
-                 (doseq [{:token/keys [begin end]} wide]
+                 (doseq [{:token/keys [begin end id]} wide
+                         :when (not (over id))]
                    (let [g (at-or-before begin)]
                      (when (>= g 0)
                        (let [{:keys [a b]} (info g)]
@@ -2922,7 +2978,7 @@
                                 (or (and (flag? g :before) (flag? g :after))
                                     (sentence-starts a)))
                        (or (:side (gaps g))
-                           (when (and (part-starts a) (not (line? g)) (separator? (aget o (dec a)))) :after)))))
+                           (when (and (part-starts a) (not (line? g)) (punct? (or letter-like #{}) (aget o (dec a)))) :after)))))
          new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
         ;; [the letters the tokens ending at the gap take, the letters those
         ;; beginning after it take], the same for every layer, so that a
@@ -3007,70 +3063,72 @@
                       (if (and (> h s) (no-begin? layer (:a (info (dec h))) x))
                         (recur (dec h))
                         (new-at h)))))
-         placed (mapv (fn [{:token/keys [begin end layer] :as t}]
-                        (if-let [[g off len] (keep-at [begin end])]
+         placed (mapv (fn [{:token/keys [begin end layer id] :as t}]
+                        (if (over id)
+                          (assoc t ::gone true)
+                          (if-let [[g off len] (keep-at [begin end])]
                           ;; one of the gap's words typed over: it goes on
                           ;; its new word
-                          (assoc t :token/begin (+ (new-at g) off) :token/end (+ (new-at g) off len))
-                          (let [gb (at-or-before begin)
-                                {:keys [a b n]} (when (>= gb 0) (info gb))
+                            (assoc t :token/begin (+ (new-at g) off) :token/end (+ (new-at g) off len))
+                            (let [gb (at-or-before begin)
+                                  {:keys [a b n]} (when (>= gb 0) (info gb))
                               ;; the gap's words typed over that the token
                               ;; holds: an edge of it inside the gap, or at
                               ;; the edge of one of them, goes to their edge
                               ;; (a sentence keeps its word, a node its words)
-                                inner (fn [g] (filter (fn [[kb ke]] (and (<= begin kb) (<= ke end) (keep-at [kb ke]))) (:keeps (gaps g))))
-                                nb (cond
-                                     (neg? gb) begin
+                                  inner (fn [g] (filter (fn [[kb ke]] (and (<= begin kb) (<= ke end) (keep-at [kb ke]))) (:keeps (gaps g))))
+                                  nb (cond
+                                       (neg? gb) begin
                                      ;; a sentence beginning in the whitespace
                                      ;; after text typed there begins at it
-                                     (and (partitioning layer) (to-next? gb layer begin)) (run-at gb layer begin)
-                                     (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
-                                     (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
+                                       (and (partitioning layer) (to-next? gb layer begin)) (run-at gb layer begin)
+                                       (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
+                                       (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
                                   ;; right before it
-                                     (and (< a begin) (<= begin b))
-                                     (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
-                                     (= a begin)
-                                     (cond
+                                       (and (< a begin) (<= begin b))
+                                       (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
+                                       (= a begin)
+                                       (cond
                                      ;; the text typed where two words meet
                                      ;; goes whole to the side the caret said
-                                       (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
-                                       (and (= a b) (or (partitioning layer) (row? layer)) (= :before (side-of gb))) (+ (new-at gb) n)
-                                       (= a b) (- (+ (new-at gb) n) (given-after gb))
-                                       (>= end b) (+ (new-at gb) (given-before gb))
-                                       :else nil)
-                                     :else (+ begin (aget shift (inc gb))))
-                                ge (at-or-before end)
-                                {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
-                                ne (cond
-                                     (neg? ge) end
+                                         (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
+                                         (and (= a b) (or (partitioning layer) (row? layer)) (= :before (side-of gb))) (+ (new-at gb) n)
+                                         (= a b) (- (+ (new-at gb) n) (given-after gb))
+                                         (>= end b) (+ (new-at gb) (given-before gb))
+                                         :else nil)
+                                       :else (+ begin (aget shift (inc gb))))
+                                  ge (at-or-before end)
+                                  {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
+                                  ne (cond
+                                       (neg? ge) end
                                      ;; and the one before it ends there
-                                     (and (partitioning layer) (< begin a2) (to-next? ge layer end)) (run-at ge layer end)
-                                     (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
-                                     (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
+                                       (and (partitioning layer) (< begin a2) (to-next? ge layer end)) (run-at ge layer end)
+                                       (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
+                                       (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole
-                                     (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
-                                     (or (= a2 end) (and (< a2 end) (< end b2)))
-                                     (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
-                                     (and (< a2 end) (= end b2))
-                                     (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
-                                     :else (+ end (aget shift (inc ge))))]
-                            (if (and nb ne (< nb ne))
+                                       (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
+                                       (or (= a2 end) (and (< a2 end) (< end b2)))
+                                       (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
+                                       (and (< a2 end) (= end b2))
+                                       (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
+                                       :else (+ end (aget shift (inc ge))))]
+                              (if (and nb ne (< nb ne))
                            ;; off whitespace it did not have at that edge
-                              (let [nb (if (ws? (aget o begin))
-                                         nb
-                                         (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
-                                    ne (if (ws? (aget o (dec end)))
-                                         ne
-                                         (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
+                                (let [nb (if (ws? (aget o begin))
+                                           nb
+                                           (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
+                                      ne (if (ws? (aget o (dec end)))
+                                           ne
+                                           (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
                                 ;; one left with only whitespace, that had
                                 ;; letters, is gone
-                                (if (and (< nb ne)
-                                         (not (and (every? #(ws? (aget nw %)) (range nb ne))
-                                                   (some #(not (ws? (aget o %))) (range begin end)))))
-                                  (assoc t :token/begin nb :token/end ne)
-                                  (assoc t ::gone true)))
-                              (assoc t ::gone true)))))
+                                  (if (and (< nb ne)
+                                           (not (and (every? #(ws? (aget nw %)) (range nb ne))
+                                                     (some #(not (ws? (aget o %))) (range begin end)))))
+                                    (assoc t :token/begin nb :token/end ne)
+                                    (assoc t ::gone true)))
+                                (assoc t ::gone true))))))
                       wide)
          {placed :placed made :made}
          (if split-on-space
@@ -3096,7 +3154,7 @@
          kept (filterv (complement ::gone) placed)
          was-token (let [m (into {} (map (juxt :token/id identity)) wide)] #(m (:token/id %)))
         ;; A line typed before the text's first sentence, one holding a
-        ;; letter (anything but whitespace, as `blank?` reads it, so not a
+        ;; letter (anything but whitespace, as `space?` reads it, so not a
         ;; line of only no-break or ideographic spaces or of NEL) before its
         ;; last line break, is a sentence of its own
         ;; (`:heads`): the new text before the first sentence's first letter
@@ -3107,14 +3165,14 @@
          head-end (when-let [{:token/keys [end]} (first firsts)]
                     (let [in-gap? (fn [i] (let [g (at-or-before i)]
                                             (and (>= g 0) (< i (:b (info g))) (<= (:a (info g)) i))))
-                          q (first (filter #(and (not (blank? (aget o %))) (not (in-gap? %))) (range 0 end)))]
+                          q (first (filter #(and (not (space? (aget o %))) (not (in-gap? %))) (range 0 end)))]
                       (when q
                         (let [p (+ q (aget shift (inc (at-or-before q))))
                               p (if (neg? (at-or-before q)) q p)
                               prefix (String. nw 0 (int p))
                               m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" prefix))]
                           (when (and m (.anyMatch (.codePoints ^String m)
-                                                  (reify java.util.function.IntPredicate (test [_ c] (not (blank? c))))))
+                                                  (reify java.util.function.IntPredicate (test [_ c] (not (space? c))))))
                             (let [k (cp/cp-count m)]
                              ;; not over a whole word the edit kept (one typed
                              ;; over with the line)
@@ -3268,7 +3326,7 @@
   ([old new tokens partitioning word-layers align?] (body-diff-gaps old new tokens partitioning word-layers align? nil))
   ([^String old ^String new tokens partitioning word-layers align? letter-like]
    (-> (diff old new)
-       (slide-to-tokens old tokens partitioning letter-like)
+       (slide-to-tokens old tokens partitioning word-layers letter-like)
        (normalize-deletes old tokens)
        (cond-> align? (align-to-words old tokens (body-word-layers tokens partitioning word-layers) letter-like))
        ops->edits
@@ -3320,10 +3378,14 @@
   and `apply-plain-gaps` of them, the aligned reading (`plain-body-gaps`) or
   the diff as it stands, as `pick-reading` chooses."
   [^String old ^String new tokens partitioning word-layers opts]
-  (pick-reading old tokens
-                (plain-body-gaps old new tokens partitioning word-layers (:letter-like opts))
-                (delay (body-diff-gaps old new tokens partitioning word-layers false (:letter-like opts)))
-                partitioning word-layers opts))
+  ;; read without the words made only of punctuation (see
+  ;; `reading-tokens`), and applied to every token
+  (let [rt (reading-tokens old tokens word-layers opts)
+        [gaps result] (pick-reading old rt
+                                    (plain-body-gaps old new rt partitioning word-layers (:letter-like opts))
+                                    (delay (body-diff-gaps old new rt partitioning word-layers false (:letter-like opts)))
+                                    partitioning word-layers opts)]
+    [gaps (if (identical? rt tokens) result (apply-plain-gaps old tokens gaps partitioning word-layers opts))]))
 
 (defn plain-body
   "`apply-plain-gaps` for a whole-body save of `old` as `new`, as
@@ -3357,6 +3419,10 @@
   ([^String old ops tokens partitioning word-layers opts]
    (let [^ints o (.toArray (.codePoints old))
          n (alength o)
+         gaps (compose-edits ops old)
+         ;; the edit is read without the words made only of punctuation
+         ;; (see `reading-tokens`)
+         tokens (reading-tokens old tokens word-layers opts)
          ;; the words' old extents, by begin, and the longest
          words (vec (sort (word-extents tokens partitioning word-layers)))
          begins (long-array (map first words))
@@ -3373,16 +3439,26 @@
                               k))))
          ;; how many runs of text with no whitespace [a, b) of `cs` holds
          runs (fn [^ints cs a b] (count (filter (fn [[_ _ w?]] (not w?)) (cp-runs cs a b))))
-         gaps (compose-edits ops old)
+         ;; whether old [a, b) holds text in no word but whitespace (the
+         ;; punctuation of `吗。` with a token on `吗` alone, or a word made
+         ;; only of punctuation, which the edit is read without): such text
+         ;; counts as a word there, so a text reads alike whether its
+         ;; punctuation has a token or none (REV8-PUNCT-1)
+         in-word (let [arr (boolean-array n)]
+                   (doseq [[b e] words] (java.util.Arrays/fill arr (int b) (int e) true))
+                   arr)
+         bare? (fn [a b] (some #(and (not (aget in-word %)) (not (space? (aget o %)))) (range a b)))
          k (count gaps)
          ;; a gap that both deletes and types, over two words or more, or
-         ;; over one and holding or typing words with whitespace between
+         ;; over one and holding or typing words with whitespace between,
+         ;; or over at most one and text in no word (see `bare?`)
          multi? (fn [{:keys [start end ^String value]}]
                   (let [w (over start end)
                         ^ints v (.toArray (.codePoints value))]
                     (and (< start end) (pos? (alength v))
                          (or (<= 2 w)
-                             (and (= 1 w) (or (<= 2 (runs o start end)) (<= 2 (runs v 0 (alength v)))))))))
+                             (and (= 1 w) (or (<= 2 (runs o start end)) (<= 2 (runs v 0 (alength v)))))
+                             (and (<= w 1) (bare? start end))))))
          word? (word-token? tokens partitioning word-layers)
          ;; a word for `foreign?` below: a token of a word layer, where the
          ;; text has one. In a text whose word layer holds no token yet the
@@ -3565,18 +3641,37 @@
                   layers)
      :exclusive (into #{} (comp (filter #(= "non-overlapping" (:overlap-mode %))) (map :id)) layers)
      :split-on-space (boolean (some :split-on-space layers))
-     :letter-like (into #{} (mapcat :letter-like) layers)}))
+     :letter-like (let [ls (remove #(and (set? %) (empty? %)) (keep :letter-like layers))]
+                    (cond (empty? ls) #{}
+                          (every? set? ls) (into #{} cat ls)
+                          :else (fn [c] (boolean (some #(% c) ls)))))}))
+
+(defn- single-code-points
+  "The code points of the entries of `xs` that are one code point long."
+  [xs]
+  (into #{} (keep (fn [x] (when (and (string? x) (= 1 (.codePointCount ^String x 0 (count x))))
+                            (.codePointAt ^String x 0))))
+        xs))
 
 (defn ignored-letter-like
   "The code points a word layer's ignored-tokens rule (`config.igt.ignoredTokens`,
-  plaid-igt's) calls letter-like: under the punctuation rule
-  (`unicodePunctuation`), each exception of one code point. An exception
-  longer than that matches nothing, as in igt (plaid-ui `isLetterLike`).
-  Under any other rule, or none, nothing."
+  plaid-igt's) calls letters, which are then no punctuation to the text
+  rules (see `punct?`), as a set or a predicate of code points:
+  - under the punctuation rule (`unicodePunctuation`), each exception of
+    one code point. An exception longer than that matches nothing, as in
+    igt (plaid-ui `isLetterLike`).
+  - under an explicit list (`blacklist`), every punctuation character but
+    the entries of one code point, since igt breaks a word only at those and
+    reads the rest as letters (plaid-ui `shouldTokenizeCharacter`). An empty
+    list makes every one a letter.
+  - under no rule, nothing: the default punctuation rule holds."
   [config]
-  (let [rule (get-in config ["igt" "ignoredTokens"])]
-    (if (and (map? rule) (= "unicodePunctuation" (get rule "type")) (sequential? (get rule "whitelist")))
-      (into #{} (keep (fn [x] (when (and (string? x) (= 1 (.codePointCount ^String x 0 (count x))))
-                                (.codePointAt ^String x 0))))
-            (get rule "whitelist"))
-      #{})))
+  (let [rule (get-in config ["igt" "ignoredTokens"])
+        type (when (map? rule) (get rule "type"))]
+    (cond
+      (and (= "unicodePunctuation" type) (sequential? (get rule "whitelist")))
+      (single-code-points (get rule "whitelist"))
+      (= "blacklist" type)
+      (let [listed (single-code-points (when (sequential? (get rule "blacklist")) (get rule "blacklist")))]
+        (fn [c] (and (in-ranges? (punct-classes "punct") c) (not (contains? listed (int c))))))
+      :else #{})))

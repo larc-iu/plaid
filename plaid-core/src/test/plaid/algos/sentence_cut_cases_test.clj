@@ -15,7 +15,10 @@
   as ud's Tokenize leaves one, which no word takes, and FX-I-FOLLOW's 150
   such saves in a project whose ignored-tokens rule (`ignored`, as igt
   stores it) lists `'`, `’` and `-` as letter-like, typed against words made
-  only of those, which take it) with what core makes of each on the edits
+  only of those, which take it, and FX-J-PUNCT's 240 saves typing over,
+  into and against ud's punctuation tokens under the four kinds of rule
+  (default, letter-like, an explicit list, an empty one) and 60 with NEL
+  for every line break) with what core makes of each on the edits
   path, the body and the sentence begins and words after the save.
   igt's \"Tokenize new text\" (plaid-igt `newTextWords.js`) and its Python
   twin (plaid-client-py `new_words.py`) read where core puts a sentence

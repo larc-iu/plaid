@@ -11,7 +11,11 @@
  */
 
 import { cpSlice, cpLength, utf16ToCp } from '@larc-iu/plaid-client';
-import { isUnicodePunctuation, shouldTokenizeCharacter } from '@ui/domain/igtWordBreaks.js';
+import {
+  isUnicodePunctuation,
+  isWordSpace,
+  shouldTokenizeCharacter,
+} from '@ui/domain/igtWordBreaks.js';
 import {
   findBaselineTextLayer,
   findWordTokenLayer,
@@ -22,13 +26,12 @@ import {
 export { isUnicodePunctuation };
 
 /**
- * Check if a character is whitespace
+ * Check if a character is whitespace: JavaScript's `\s` and NEL (shared
+ * with plaid-ud's gap fill, plaid-ui igtWordBreaks.js)
  * @param {string} char - Single character to check
  * @returns {boolean} True if character is whitespace
  */
-function isWhitespace(char) {
-  return /\s/.test(char);
-}
+const isWhitespace = isWordSpace;
 
 /**
  * Find ranges of text that are not covered by existing tokens
