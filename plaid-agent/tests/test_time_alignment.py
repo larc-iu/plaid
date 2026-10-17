@@ -166,15 +166,15 @@ def test_recordings_all_of_unknown_length_say_so(monkeypatch):
 
 
 def test_a_length_stored_after_the_document_was_parsed_is_read_on_the_next_turn(proj):
-    """H16-REVIEW-5: core's backfill stores a length without a new version,
+    """H16-REVIEW-5: a length can be stored without a new version,
     and a parse is kept for its version, so the length is never taken from
     the parse. The kept parse is made to hold no length, as one made before
-    the backfill would."""
+    a length was stored would."""
     c = proj.client
     ws = Workspace(c, load_project(c, proj.project_id))
     doc = ws.doc(proj.ids['d1'])
     assert doc.media_duration == pytest.approx(3.5)
-    doc.media_duration = None  # the kept parse, as before the backfill
+    doc.media_duration = None  # the kept parse, as before the length was stored
     ws2 = Workspace(c, load_project(c, proj.project_id))
     assert ws2.doc(proj.ids['d1']) is doc, 'the parse is kept across turns'
     out = for_model(call_tool(ws2, 'read_document', {'document': 'Text 1'}))

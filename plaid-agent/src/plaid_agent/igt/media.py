@@ -21,8 +21,8 @@ def recording_of(ws, doc_id: str) -> Tuple[bool, Optional[float]]:
     """Whether a document has a recording, and its length in seconds as core
     stored it (None when core could not read it). One light read of the
     document a turn, never the parsed document: a parse is kept while the
-    document's version stands, and core's backfill stores a length without
-    moving the version (H16-REVIEW-5)."""
+    document's version stands, and a length can be stored without moving the
+    version (the 2026-10 one-off backfill did, H16-REVIEW-5)."""
     memo = ws.recordings
     if doc_id not in memo:
         raw = ws.client.documents.get(doc_id) or {}

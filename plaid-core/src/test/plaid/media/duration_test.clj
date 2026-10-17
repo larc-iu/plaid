@@ -1,15 +1,12 @@
 (ns plaid.media.duration-test
   "A recording's length, read from its header at upload and stored: the
   header readers on synthetic files, then the length through the routes that
-  write and read it (upload, read, as-of read, copy, delete) and the one-off
-  backfill for files uploaded before."
+  write and read it (upload, read, as-of read, copy, delete)."
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]]
-            [next.jdbc :as jdbc]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     rest-handler with-admin with-test-users db
                                     admin-request with-clean-db parse-response-body]]
-            [plaid.media.backfill :as backfill]
             [plaid.media.duration :as duration]
             [plaid.server.config :as config]
             [plaid.test-helpers :refer [delete-tree! create-test-project create-test-document]])
@@ -163,58 +160,6 @@
           (when (some body [:document/media-url :media-url])
             (is (nil? (length-of body)))))))))
 
-(deftest the-backfill-stores-what-was-uploaded-before-and-only-that
-  (with-media-dir
-    (fn [tmp]
-      (let [pid (create-test-project admin-request "Backfill project")
-            old (create-test-document admin-request pid "Uploaded before")
-            new (create-test-document admin-request pid "Uploaded since")
-            media-dir (.toFile (.resolve tmp "media"))]
-        (is (= 201 (:status (upload! old "old.wav" (wav-bytes 2.0)))))
-        (is (= 201 (:status (upload! new "new.wav" (wav-bytes 1.0)))))
-        ;; As a core before 2026-10-15 left it: the file, no length.
-        (jdbc/execute! db ["DELETE FROM document_media WHERE document_id = ?" (str old)])
-        (Files/write (.toPath (File. media-dir (str (random-uuid) ".wav")))
-                     ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
-        (Files/write (.toPath (File. media-dir (str (random-uuid) ".webm")))
-                     (byte-array 10) (make-array java.nio.file.OpenOption 0))
-        (Files/write (.toPath (File. media-dir (str old ".12345.upload")))
-                     ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
-        (Files/write (.toPath (File. media-dir (str old ".678.copy")))
-                     ^bytes (wav-bytes 1.0) (make-array java.nio.file.OpenOption 0))
-        (with-open [conn (jdbc/get-connection db)]
-          (testing "a dry run counts and writes nothing"
-            (let [counts (backfill/backfill! conn media-dir false)]
-              (is (= {:files 4 :already-stored 1 :to-store 1 :no-document 2 :unknown-format {} :unreadable {}}
-                     (dissoc counts :seconds)))
-              (is (nil? (duration/stored db old)))))
-          (testing "--apply stores the missing length, and a second run finds nothing"
-            (is (= 1 (:stored (backfill/backfill! conn media-dir true))))
-            (is (near? (duration/stored db old) 2.0))
-            (is (near? (duration/stored db new) 1.0))
-            (is (= 0 (:stored (backfill/backfill! conn media-dir true))))))))))
-
-(deftest the-backfill-counts-a-file-it-reads-but-cannot-time-as-unreadable
-  ;; A WAV, MP3, MP4 or FLAC whose header gives no length is a damaged or
-  ;; unusual file, not a format core never reads.
-  (with-media-dir
-    (fn [tmp]
-      (let [pid (create-test-project admin-request "Unreadable project")
-            bad (create-test-document admin-request pid "Bad WAV")
-            odd (create-test-document admin-request pid "WebM")
-            media-dir (.toFile (.resolve tmp "media"))]
-        (is (= 201 (:status (upload! bad "bad.wav" (wav-bytes 1.0)))))
-        (jdbc/execute! db ["DELETE FROM document_media WHERE document_id = ?" (str bad)])
-        (Files/write (.toPath (File. media-dir (str bad ".wav")))
-                     (byte-array 64) (make-array java.nio.file.OpenOption 0))
-        (Files/write (.toPath (File. media-dir (str odd ".webm")))
-                     (byte-array 64) (make-array java.nio.file.OpenOption 0))
-        (with-open [conn (jdbc/get-connection db)]
-          (let [counts (backfill/backfill! conn media-dir false)]
-            (is (= {"wav" 1} (:unreadable counts)))
-            (is (= {"webm" 1} (:unknown-format counts)))
-            (is (= 0 (:to-store counts)))))))))
-
 (deftest an-m4v-upload-gets-its-length
   (with-media-dir
     (fn [tmp]
@@ -228,35 +173,6 @@
         (let [body (read-doc did)]
           (is (= [(str did ".x-m4v")] (vec (.list (.toFile (.resolve tmp "media"))))))
           (is (near? (length-of body) 12.345)))))))
-
-(deftest the-backfill-stores-no-length-for-a-file-replaced-while-it-was-read
-  (with-media-dir
-    (fn [tmp]
-      (let [pid (create-test-project admin-request "Backfill race project")
-            did (create-test-document admin-request pid "Replaced")
-            media-dir (.toFile (.resolve tmp "media"))
-            read-header duration/seconds
-            replaced (atom false)]
-        (is (= 201 (:status (upload! did "old.wav" (wav-bytes 99.0)))))
-        (jdbc/execute! db ["DELETE FROM document_media WHERE document_id = ?" (str did)])
-        ;; While the backfill reads the WAV's header, the recording is
-        ;; deleted and a WebM, a format of no stored length, takes its place.
-        (with-redefs [duration/seconds
-                      (fn [f ext]
-                        (let [secs (read-header f ext)]
-                          (when (compare-and-set! replaced false true)
-                            (is (= 204 (:status (rest-handler (admin-request :delete (str "/api/v1/documents/" did "/media"))))))
-                            (is (= 201 (:status (upload! did "new.webm"
-                                                         (bytes-of (byte-array (map unchecked-byte [0x1A 0x45 0xDF 0xA3]))
-                                                                   (byte-array 4000)))))))
-                          secs))]
-          (with-open [conn (jdbc/get-connection db)]
-            (let [counts (backfill/backfill! conn media-dir true)]
-              (is @replaced)
-              (is (= 0 (:stored counts)))
-              (is (= 1 (:changed counts))))))
-        (is (nil? (duration/stored db did)))
-        (is (nil? (length-of (read-doc did))))))))
 
 (deftest a-staged-upload-or-copy-is-not-the-recording
   ;; REV-UI-2: while an upload or a copy is staged in the media directory as

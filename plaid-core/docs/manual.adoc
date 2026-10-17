@@ -823,17 +823,6 @@ Beside it, `media-duration` (`mediaDuration`, `media_duration`) is the recording
 The length is read for WAV, MP4, M4A, M4V, MOV, FLAC and MP3.
 A recording in another format, such as WebM or Ogg, has no `media-duration`.
 
-A server upgraded from a version before the length was stored can store it for recordings uploaded before, with the server running:
-
-[source,bash]
-----
-java -cp plaid.jar clojure.main -m plaid.media.backfill --db data/plaid.db           # counts only
-java -cp plaid.jar clojure.main -m plaid.media.backfill --db data/plaid.db --apply
-----
-
-Running it again stores nothing new.
-A recording replaced while the tool reads it gets no length from it, and is counted as `changed`.
-
 == Texts
 
 For each **text layer**, each document may have at most one **text**, which consists of a single string.
