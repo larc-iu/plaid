@@ -1094,13 +1094,12 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                     start_id, end_id = td["id"]
                     count = end_id - start_id + 1
                     wb, we = td["start_char"], td["end_char"]
-                    # Persist the MWT surface form on the word token's
-                    # metadata so the exporter can round-trip it. (1:1 words
-                    # leave metadata clean; the body substring is canonical.)
+                    # A multi-word token's word always stores its surface
+                    # form, as the app's own split does: the exporter reads a
+                    # missing form as FORM `_` on the range line. (1:1 words
+                    # leave metadata clean, the body substring is canonical.)
                     # Unstamped, as substrate.
-                    word_meta = {}
-                    if td.get("text") and td["text"] != body[wb:we]:
-                        word_meta["form"] = td["text"]
+                    word_meta = {"form": td.get("text") or body[wb:we]}
                     if td.get("misc"):
                         word_meta["misc"] = td["misc"]
                     unit.words.append(make_bulk_token(

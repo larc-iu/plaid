@@ -236,9 +236,9 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
 
 
 def test_a_multiword_token_keeps_its_surface_form_and_no_stamp():
-    """A multi-word token's word carries the round-trip data (its form and
-    misc) but, being substrate, no provenance. Its syntactic words are
-    stamped."""
+    """A multi-word token's word carries the round-trip data (its form, even
+    when it equals the text under it, and misc) but, being substrate, no
+    provenance. Its syntactic words are stamped."""
     body = 'del perro'
     rows = [
         {'id': (1, 2), 'text': 'del', 'misc': 'SpaceAfter=Yes',
@@ -255,7 +255,7 @@ def test_a_multiword_token_keeps_its_surface_form_and_no_stamp():
 
     words = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL')
     assert [(op['begin'], op['end']) for op in words] == [(0, 3), (4, 9)]
-    assert words[0]['metadata'] == {'misc': 'SpaceAfter=Yes'}
+    assert words[0]['metadata'] == {'form': 'del', 'misc': 'SpaceAfter=Yes'}
     assert 'metadata' not in words[1]
 
     morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
