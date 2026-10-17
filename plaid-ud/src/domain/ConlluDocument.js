@@ -2216,6 +2216,11 @@ const UD_WRITES = [
   'discardTokens',
 ];
 const SKIPS_STAND_INS = new Set(['confirmTokens', 'discardTokens']);
+// A grid value on a word, which leaves the word as it is: refused because the
+// document moved on, it goes again by itself past another user's value on
+// another word, as igt's glosses do (DocumentModel.resendsByEntity). Arcs keep
+// the rule by layer.
+const BY_ENTITY = new Set(['updateAnnotation', 'deleteFeature']);
 
 const namesStandIn = (arg) => {
   if (isVirtualWordId(arg)) return true;
@@ -2243,6 +2248,7 @@ for (const name of UD_WRITES) {
     } else if (args.some(namesStandIn)) {
       return refuse(this, 'Reopen the document to annotate this word.');
     }
+    if (BY_ENTITY.has(name)) return this.resendsByEntity(() => write.apply(this, args));
     return write.apply(this, args);
   };
 }

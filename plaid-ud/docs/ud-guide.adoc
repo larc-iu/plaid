@@ -276,6 +276,7 @@ If the connection drops, saves are retried until the server answers, and the pag
 While a script or a service has the document locked, the page reads **In use elsewhere, waiting**, and your edits are saved once it is done.
 
 Two people can have one document open, but neither sees the other's edits as they are made.
+Values in cells of different words are all saved.
 When someone else changed the same cell first, the cell shows their value with yours under it: **Yours: X · Enter to keep yours**.
 **Enter** saves yours, and **Escape** or typing another value drops it.
 Other conflicting edits are refused with a message, and the page shows the latest version so you can redo your edit.
