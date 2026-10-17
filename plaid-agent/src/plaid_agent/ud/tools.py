@@ -650,6 +650,9 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         sp = w.fields.get(field)
         old = sp.value if sp else ''
         ref = word_ref(ws.sentence_of(doc, w), w)
+        # Asked whatever comes of it, so a drop of the change it names takes
+        # this ask too (REV8-PLAN-1).
+        ws.asks_value(('span', layer_id, w.id, None), [doc.id], [field])
         mine = [op for op in ws.ops if ws.op_target(op) == ('span', layer_id, w.id, None)]
         if old == value:
             # What the word holds already. Planning it again would restate it
@@ -832,6 +835,7 @@ def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
     for key, value in want.items():
         sp = w.feature_span(key)
         stored = (normalize_feature(sp.value) or (None, None))[1] if sp is not None else None
+        ws.asks_value(('span', layer_id, w.id, key), [doc.id], [FEATURES])
         if (value or None) == stored:
             # Back to what is stored: drop the planned change rather than
             # stage a write of the span's own value, which an approved plan

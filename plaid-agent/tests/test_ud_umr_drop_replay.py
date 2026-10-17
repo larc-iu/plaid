@@ -309,7 +309,18 @@ class Case:
             assert hit, (tool, args, want)
             return hit[0]
         if not changed:
-            return NONE
+            # A request is identified by what it asked (REV8-PLAN): one that
+            # changed nothing in the plan stands for the entry it would stage
+            # asked alone over the stored data (a value asked twice, a
+            # relation removed twice), and for none when it asks for what is
+            # stored.
+            alone = self.app.workspace()
+            out = self.app.call(alone, tool, copy.deepcopy(args))
+            if is_err(out) or not alone.ops:
+                return NONE
+            keys = sorted({hkey(alone, o) for o in alone.ops})
+            assert len(keys) == 1, (tool, args, keys)
+            return keys[0]
         assert len(changed) == 1, (tool, args, changed)
         return changed[0]
 
@@ -330,7 +341,9 @@ class Case:
                 self.call(*req)
             return None
         if r < 0.78:
-            asked = [e for e in self.log if self.app.scope_tool(e[0], e[1])]
+            # Any request asked again word for word: a scope, a value, a
+            # relation (REV8-PLAN-1).
+            asked = self.log
             if asked:
                 e = self.rng.choice(asked)
                 self.call(e[0], copy.deepcopy(e[1]))
@@ -506,20 +519,22 @@ def test_ud_a_keep_a_later_scope_still_takes_goes_when_its_own_scope_is_dropped(
     assert payload(ws) == payload(scratch)
 
 
-def test_ud_a_value_asked_twice_comes_back_from_its_second_ask_when_dropped(monkeypatch):
-    """The second ask planned nothing (the plan wrote that value already):
-    it stands for no entry, so it remains, and asked from scratch it plans
-    the value (Luke 2026-10-16: every remaining request, one answered
-    "Nothing to change" included). As in igt."""
+def test_ud_a_value_asked_twice_goes_whole_with_its_entry(monkeypatch):
+    """The second ask planned nothing (the plan wrote that value already),
+    yet it asked for that value: a request is identified by what it asked
+    (REV8-PLAN-1), so dropping the change takes both asks, and the plan is
+    empty, as a scope asked twice goes whole."""
     from plaid_agent.ud.toolkit import call_tool
     client, project, new_ws = _ud_ws(monkeypatch)
     ask = ('set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'andar'})
+    other = ('set_field', {'document': 'Viaje', 'refs': ['s1.w2'], 'field': 'lemma', 'value': 'mar'})
     ws = new_ws()
-    _ask(call_tool, ws, ask, ask)
+    _ask(call_tool, ws, ask, other, ask)
     out = call_tool(ws, 'drop_planned', {'indexes': [1]})
-    assert 'back in it' in out, out
+    assert 'back in it' not in out, out
+    assert [r['args'] for r in ws.requests] == [other[1]]
     scratch = new_ws()
-    _ask(call_tool, scratch, ask)
+    _ask(call_tool, scratch, other)
     assert payload(ws) == payload(scratch)
 
 
@@ -555,7 +570,7 @@ def test_ud_a_drop_after_resume_asks_the_resumed_requests_again(monkeypatch):
     assert [o['kind'] for o in w2.ops] == ['replace_scope']
 
 
-def test_umr_a_relation_removed_twice_comes_back_from_its_second_ask_when_dropped():
+def test_umr_a_relation_removed_twice_goes_whole_with_its_entry():
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.toolkit import call_tool
     from plaid_agent.umr.tools import Workspace
@@ -566,5 +581,6 @@ def test_umr_a_relation_removed_twice_comes_back_from_its_second_ask_when_droppe
     _ask(call_tool, ws, ask, keep_, ask)
     call_tool(ws, 'drop_planned', {'indexes': [1]})
     scratch = Workspace(client, load_project(client, umr_fx.PID))
-    _ask(call_tool, scratch, keep_, ask)
+    _ask(call_tool, scratch, keep_)
     assert payload(ws) == payload(scratch)
+

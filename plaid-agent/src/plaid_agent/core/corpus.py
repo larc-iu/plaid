@@ -14,6 +14,7 @@ full of it. So every read records whether it was cut, and every report that
 states a tally says so when one was.
 """
 
+import json
 import math
 import re
 from contextlib import contextmanager
@@ -213,7 +214,11 @@ class Corpus(Clipping):
         if 'where' in body:
             body['where'] = self._held(body['where'])
         try:
-            res = self.ws.client.query(body)
+            # A drop asks the plan's requests again over the reads each made
+            # when first asked (core.requests), so it costs no queries.
+            reuse = getattr(self.ws, 'reused_read', None)
+            res = (reuse(json.dumps(body, sort_keys=True, default=str), lambda: self.ws.client.query(body))
+                   if reuse is not None else self.ws.client.query(body))
         except Exception as e:  # noqa: BLE001 - the model gets the engine's own message
             raise query_refused(e)
         return res if isinstance(res, dict) else {}

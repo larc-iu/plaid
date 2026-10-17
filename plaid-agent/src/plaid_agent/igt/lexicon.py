@@ -18,7 +18,7 @@ from ..core.tools import ToolError
 from .project import word_ref
 from .reads import _example_line
 from .lexview import entry_line, morph_type
-from .vocab import (FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCOPE_SENSE, SENSE_ORDER_KEY, all_examples,
+from .vocab import (PARENT_KEY, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCOPE_SENSE, SENSE_ORDER_KEY, all_examples,
                     descendants_of, field_by_name, homograph_group, homograph_of,
                     is_reserved_field_name, next_sense_order, parent_of, plan_homograph_order,
                     plan_sense_set_number, ref_ids, vocab_field_summary, with_example_added,
@@ -68,7 +68,6 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     # drop that asks the requests again gives each the key it was given.
     ws.entry_no += 1
     key = f'new:{v["id"]}:{slug}#{ws.entry_no}'
-    what = (f'new sense of {view.label(parent["id"])} ' if parent is not None else 'new entry ')
     # The entry every later tool in the turn resolves against and the op that
     # creates it are one change or none. Written first and staged after, a
     # refused op left a phantom entry in the turn's lexicon: the model linked
@@ -76,8 +75,15 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     with ws.staging():
         ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
         ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
-                   **labelled(v['name'], what + entry_line({'form': form, 'metadata': metadata}, view))})
+                   **_new_entry_label(v, view, form, metadata)})
     return ws.planned_note(1) + f'\nentry_id: {key}  (use it to link this entry in the same plan)'
+
+
+def _new_entry_label(v: dict, view, form: str, metadata: dict) -> Dict[str, Any]:
+    """The card's row of a new entry or sense, with the fields it holds now."""
+    parent = (metadata or {}).get(PARENT_KEY)
+    what = f'new sense of {view.label(parent)} ' if parent else 'new entry '
+    return labelled(v['name'], what + entry_line({'form': form, 'metadata': metadata}, view))
 
 
 # Which tool owns each reserved key, for the refusal when one is set as a field.
@@ -182,6 +188,9 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
             for op in ws.ops:
                 if op.get('kind') == 'create_entry' and op.get('key') == target:
                     op['metadata'] = dict(e['metadata'])
+                    # The card shows the values approval writes (REV8-PLAN-4).
+                    if vocab:
+                        op.update(_new_entry_label(vocab, ws.view(vocab), op['form'], op['metadata']))
         return ws.planned_note(0) + ' (updated the pending new entry)'
     view = ws.view(vocab) if vocab else None
     if view is not None and f['scope'] == SCOPE_ENTRY and view.is_sense(target['id']):

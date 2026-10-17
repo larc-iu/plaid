@@ -279,6 +279,10 @@ class Case:
         field = args.get('field')
         narrowed = {entry_key(o) for o in ops if o.get('kind') == 'set_analysis' and field
                     and field.casefold() in {f.casefold() for f in self.ws.op_fields(o)}}
+        # Which entries the drop names, read before it: a drop puts aside the
+        # documents only the dropped requests read, and a change placed by
+        # its ids is found in the documents loaded.
+        named = [o for o in ops if 'indexes' not in args and self._matches(o, args)]
         out = call_tool(self.ws, 'drop_planned', args)
         self.trace.append(['drop_planned', args, str(out)[:400]])
         if is_err(out):
@@ -287,7 +291,7 @@ class Case:
             gone = {entry_key(ops[i - 1]) for i in args['indexes']}
         else:
             left = {entry_key(o) for o in self.ws.ops}
-            gone = {entry_key(o) for o in ops if entry_key(o) not in left and self._matches(o, args)}
+            gone = {entry_key(o) for o in named if entry_key(o) not in left}
         # Every ask of a dropped rule goes with it, one answered "Nothing to
         # change" too: they ask for one rule.
         asks = {(e[0], json.dumps(e[1], sort_keys=True)) for e in self.log if e[2] in gone and e[2][0] == 'rule'}

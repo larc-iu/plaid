@@ -91,6 +91,9 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
                 old = obj.fields.get(f.name)
                 what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
                 target = ('span', f.layer_id, obj.id)
+                # The request asks for this value whatever comes of it, so a
+                # drop of the change it names takes this ask too (REV8-PLAN-1).
+                ws.asks_value(target, [doc.id], [f.name])
                 mine = [op for op in ws.ops if ws.op_target(op) == target]
                 if (old.value if old else '') == val:
                     # What it holds already. Planning it again would restate it
