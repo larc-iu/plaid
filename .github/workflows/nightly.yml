@@ -30,6 +30,7 @@ jobs:
   # Cheap gate: skip the suite on nights where master hasn't moved.
   check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       recent: ${{ steps.check.outputs.recent }}
     steps:
@@ -50,6 +51,9 @@ jobs:
 
   test:
     needs: check
+    # About 30 minutes with the fidelity round trips. A suite that hangs is
+    # stopped here rather than at GitHub's 6 hours.
+    timeout-minutes: 90
     if: needs.check.outputs.recent == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
