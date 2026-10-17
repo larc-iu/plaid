@@ -50,9 +50,9 @@ describe('tokenizeText punctuation handling', () => {
   });
 });
 
-// The token-boundary rule is a curated one, not \p{P}, and the curation was
-// never written down — which is how two wrong code points sat in it unnoticed.
-// These pin the parts that a plausible "cleanup" would silently change.
+// The token-boundary rule is not \p{P} alone: it is generated
+// (tools/punctuationClasses.mjs) as \p{P} and 24 Latin-1 symbols. These pin
+// the parts that a plausible "cleanup" would silently change.
 describe('isUnicodePunctuation', () => {
   it('breaks on ordinary punctuation', () => {
     for (const c of ['.', ',', '!', '?', ';', ':', '-', '(', ')', '«', '¿', '।']) {
@@ -64,6 +64,15 @@ describe('isUnicodePunctuation', () => {
     // 24 characters hang on this. "=" is the clitic marker, so losing it would
     // change how every document tokenizes.
     for (const c of ['=', '+', '<', '>', '$', '^', '`', '|', '~', '¢', '£', '¥']) {
+      expect(isUnicodePunctuation(c)).toBe(true);
+    }
+  });
+
+  it('breaks on all of \\p{P} at the pinned Unicode, the class being generated', () => {
+    // U+061D Arabic End of Text Mark (Unicode 14), U+111CD Sharada Sutra Mark
+    // and U+11F43 Kawi Danda (Unicode 15) were missing from the old
+    // hand-kept snapshot.
+    for (const c of ['\u061D', '\u{111CD}', '\u{11F43}']) {
       expect(isUnicodePunctuation(c)).toBe(true);
     }
   });
