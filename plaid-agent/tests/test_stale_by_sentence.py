@@ -284,3 +284,20 @@ def test_a_plan_reaching_too_many_sentences_is_pinned_to_the_whole_document(spec
     plan, _store = _plan(spec, spec['client']())
     [doc] = plan['documents']
     assert 'sentences' not in doc and doc['version'] is not None
+
+
+def test_a_umr_triple_is_pinned_to_its_nodes_sentences():
+    """A document-level triple (with a constant made for it) was pinned to the
+    whole document, so an igt edit anywhere in it refused the plan: twice of
+    twice in a shared project (H17-ASSIST-8). It depends on its nodes'
+    sentences alone (ruled by Luke 2026-10-17)."""
+    spec = _umr()
+    client = spec['client']()
+    plan, store = _plan(spec, client, ('add_triple', {'document': 'Story', 'a': 'document-creation-time',
+                                                      'rel': ':after', 'b': 's1b'}))
+    [doc] = plan['documents']
+    assert [s['id'] for s in doc['sentences']] == ['ms-1']
+    _edit(client, spec, spec['other'])
+    helper = _approve(spec, client, plan)
+    assert not helper.errors, helper.errors
+    assert helper.done[0]['kind'] == 'applied'

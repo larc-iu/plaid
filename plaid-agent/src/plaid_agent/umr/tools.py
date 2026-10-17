@@ -77,6 +77,24 @@ class Workspace(Replaying, BaseWorkspace):
     def render(self, doc, **kw) -> str:
         return render_document(doc, self.project, doc.gloss, **kw)
 
+    def op_sentences(self, op: Dict[str, Any], doc) -> Optional[set]:
+        """A document-level triple depends on the sentences of its two
+        nodes, and a constant (author, document-creation-time) on none, so an
+        igt edit elsewhere in the document lets a plan of triples through
+        (H17-ASSIST-8, ruled by Luke 2026-10-17). A triple between two
+        constants pins the document."""
+        if op.get('kind') == 'create_node' and op.get('constant'):
+            return set()
+        if op.get('kind') in ('create_triple', 'delete_triple'):
+            constants = {n.id for n in doc.constants}
+            index = self.sentence_index(doc)
+            found: set = set()
+            for key in ('source_span_id', 'target_span_id'):
+                if op.get(key) and op[key] not in constants:
+                    found |= index.get(op[key], set())
+            return found or None
+        return super().op_sentences(op, doc)
+
     def sentence_position(self, doc, item) -> Optional[int]:
         """``s5`` is the sentence the app shows as 5: in a document numbered
         by its file, the file's snt5, wherever it stands."""
@@ -946,6 +964,8 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
                         f'{plain_quote(doc.name)}. document_graph lists what is there.')
     op: Dict[str, Any] = {
         'kind': 'delete_triple', 'document_id': doc.id, 'relation_id': found.id,
+        # Its ends, for the sentences it is pinned to (Workspace.op_sentences).
+        'source_span_id': source['node'].id, 'target_span_id': target['node'].id,
         'label': f'remove ({source["var"]} {found.rel} {target["var"]})'}
     anchor = _later_end(source['node'], target['node'])
     if anchor is not None and anchor.sentence:
