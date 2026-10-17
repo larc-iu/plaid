@@ -37,6 +37,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - Operation kinds and references are recorded since 2026-09-29. Older operations are classed by what they wrote (see `units.jsonl`).
 - A create writes one audit row per entity, its metadata in it, since 2026-10-10. Before that a bulk create of tokens, relations or vocab links wrote two rows for an entity with metadata, an insert and then an update carrying the metadata, so `counts` and `writes` of an older bulk create count such an entity twice. A single create and a bulk create of spans always wrote one.
 - Telemetry (`telemetry.jsonl`) is recorded only in projects that switched it on.
+- A plan is not edited after the turn that staged it since 2026-10-17, so a correction reads as a replaced plan and a new one, each with its own `proposed`. Before that `drop_planned` could take changes out of the plan being built, and from 2026-10-13 `resume_plan` carried a waiting plan into a later turn, where it could be added to and dropped from: such a card keeps only its final rows, and how the user steered it is in the tool steps.
 
 ## Files
 

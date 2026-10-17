@@ -384,7 +384,10 @@ The modules below are `igt/` unless they say otherwise.
   as one change, `SPAN_KIND` (the kind that sets one value on one token, which
   is the only one a second tool in the same turn reads a planned value out of),
   its query helper, the refusals only it owes, and its own words for a change
-  the plan deletes out from under.
+  the plan deletes out from under. A plan is what one turn stages, and it is
+  fixed once the turn ends: within the turn a later change on the same target
+  wins and `discard_plan` starts over, and a later message plans again, its
+  plan replacing the card that still waits (Luke 2026-10-17).
 - `core/toolkit.py`: the schemas of the tools every app offers (the history,
   the comments, the plan so far, the query language) and the tail of every
   tool table: the guideline, web, file and sandbox tools, which tools plan,
@@ -423,9 +426,7 @@ The modules below are `igt/` unless they say otherwise.
   documents and lexicons, what a plan payload holds, and the helpers every tool
   module needs to read a reference. `lexview.py` is a lexicon as one turn reads
   it: the sense tree, the numbers a user is shown, and the line an entry prints
-  as. `requests.py` keeps the planning calls a plan was made from, so a drop
-  asks every remaining one again from scratch, in order, a call answered
-  "Nothing to change" included (Luke 2026-10-16).
+  as.
 - `toolkit.py`: the tool table and the dispatch behind it. Every tool is
   declared once beside the function that implements it, in `reads.py` (reading
   a document, an entry, or the change history), `tools.py` (the plan tools that
@@ -452,10 +453,9 @@ The modules below are `igt/` unless they say otherwise.
   `recent_changes` (the audit log, read in widening windows from the most
   recent week, each entry with the `as_of` instant a restore takes),
   `comments` (what people have written to each other, anchored to the
-  document, a sentence, a word, a morpheme, or a value), `plan_status`,
-  `drop_planned` (by number, field or document, and by field a planned analysis
-  keeps its morphemes and loses only that field's values), `resume_plan` (the plan an
-  earlier message left waiting, carried into this turn's), and
+  document, a sentence, a word, a morpheme, or a value), `plan_status` (this
+  turn's plan, or with nothing staged the rows of the plan an earlier message
+  left waiting), and
   `app_guide` (the app's user guide, `plaid-igt/docs/igt-guide.adoc`, a part
   at a time by name, for "how do I ..." questions; `guide.py`, with a copy in
   the package that `bb sample-prompts` refreshes), and
