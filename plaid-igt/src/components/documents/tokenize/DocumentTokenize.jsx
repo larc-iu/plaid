@@ -383,19 +383,11 @@ export function DocumentTokenize() {
         title={
           ops.pendingStructural?.kind === 'merge'
             ? 'Merge words?'
-            : ops.pendingStructural?.kind === 'create'
-              ? 'Make word?'
-              : ops.pendingStructural?.kind === 'sentence-split'
-                ? 'Split sentence?'
-                : 'Split word?'
+            : ops.pendingStructural?.kind === 'sentence-split'
+              ? 'Split sentence?'
+              : 'Split word?'
         }
-        confirmLabel={
-          ops.pendingStructural?.kind === 'merge'
-            ? 'Merge'
-            : ops.pendingStructural?.kind === 'create'
-              ? 'Make word'
-              : 'Split'
-        }
+        confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge' : 'Split'}
         onConfirm={() => ops.confirmPendingStructural()}
       >
         {ops.pendingStructural?.kind === 'sentence-split' ? (
@@ -405,18 +397,13 @@ export function DocumentTokenize() {
           </p>
         ) : (
           <p>
-            {{ merge: 'Merging', create: 'Making a word of' }[ops.pendingStructural?.kind] ??
-              'Splitting'}{' '}
+            {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
             <strong>“{ops.pendingStructural?.label}”</strong>
             <LossWords
               loss={ops.pendingStructural}
-              under={
-                { merge: 'these words', create: 'the punctuation in it' }[
-                  ops.pendingStructural?.kind
-                ] ?? 'this word'
-              }
+              under={ops.pendingStructural?.kind === 'merge' ? 'these words' : 'this word'}
             />
-            {ops.pendingStructural?.kind !== 'create' && ' Word-level annotations are unchanged.'}
+            {' Word-level annotations are unchanged.'}
           </p>
         )}
       </ConfirmDeleteDialog>

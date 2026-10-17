@@ -13,8 +13,7 @@ import {
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
-import { countDeleteLoss, hasLoss } from '@ui/domain/annotationLoss.js';
-import { absorbedTokens, mergeAbsorbs } from '../../../domain/mutations/tokens.js';
+import { hasLoss } from '@ui/domain/annotationLoss.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
@@ -138,8 +137,9 @@ export const useTokenOperations = () => {
   const mergeTokens = async (tokenIds) => {
     const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
     const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((t) => ids.includes(t.id));
-    const absorbed = mergeAbsorbs(doc.layerInfo, doc.body || '', words);
-    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words, absorbed);
+    // Only what igt shows: a punctuation token the merge takes in (ud's, say)
+    // is text to igt, and goes as untokenized punctuation would (REV8-PUNCT-3).
+    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words);
     if (!hasLoss(loss)) return run(() => doc.mergeTokens(ids));
     setPendingStructural({
       kind: 'merge',
@@ -154,13 +154,11 @@ export const useTokenOperations = () => {
     const p = pendingStructural;
     setPendingStructural(null);
     return run(() =>
-      p.kind === 'create'
-        ? doc.createToken(p.payload.begin, p.payload.end)
-        : p.kind === 'split'
-          ? doc.splitToken(p.payload.tokenId, p.payload.splitOffset)
-          : p.kind === 'sentence-split'
-            ? doc.splitSentence(p.payload.charPos)
-            : doc.mergeTokens(p.payload.ids),
+      p.kind === 'split'
+        ? doc.splitToken(p.payload.tokenId, p.payload.splitOffset)
+        : p.kind === 'sentence-split'
+          ? doc.splitSentence(p.payload.charPos)
+          : doc.mergeTokens(p.payload.ids),
     );
   };
   const cancelPendingStructural = () => setPendingStructural(null);
@@ -204,26 +202,9 @@ export const useTokenOperations = () => {
       const actualStart = piece.begin + selectionStart;
       const actualEnd = actualStart + selectionLength;
       // Punctuation tokens in the selection (ud's, say) read as text here and
-      // give way to the word. What another app put on them goes with them.
-      const absorbed = absorbedTokens(doc.layerInfo, doc.body || '', actualStart, actualEnd);
-      const loss = absorbed.length
-        ? countDeleteLoss(
-            doc.layerInfo.primaryTextLayer?.tokenLayers || [],
-            absorbed.map((t) => t.id),
-            {
-              vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
-            },
-          )
-        : null;
-      if (loss && hasLoss(loss)) {
-        setPendingStructural({
-          kind: 'create',
-          payload: { begin: actualStart, end: actualEnd },
-          label: cpSlice(doc.body || '', actualStart, actualEnd),
-          ...loss,
-        });
-        return;
-      }
+      // give way to the word, with what another app put on them, as
+      // untokenized punctuation would: igt asks only about what it shows
+      // (REV8-PUNCT-3).
       await run(() => doc.createToken(actualStart, actualEnd));
     } catch (error) {
       console.error('Create token from selection:', error);

@@ -95,19 +95,16 @@ describe("a merge across ud's punctuation token", () => {
     expect(punct.client.calls.find((c) => c.kind === 'tokens.bulkDelete').args[0]).toEqual(['p-1']);
   });
 
-  it('counts the annotations on the token it takes in, and none on plain text', () => {
+  // REV8-PUNCT-3: the question counts only what igt shows, as Baseline's and
+  // Clear tokens' do. ud's lemma on the comma is text to igt.
+  it('counts none of what is on the token it takes in, as on plain text', () => {
     const plain = buildMerge(false);
     const punct = buildMerge(true);
     const merged = (doc) => doc.layerInfo.primaryTokenLayer.tokens.filter((t) => t.id !== 'p-1');
     const lossOf = (doc) =>
-      countSubWordAnnotationLoss(
-        doc.layerInfo,
-        doc.vocabularies,
-        merged(doc),
-        mergeAbsorbs(doc.layerInfo, doc.body, merged(doc)),
-      );
+      countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, merged(doc));
     expect(lossOf(plain).annotations).toBe(0);
-    expect(lossOf(punct).annotations).toBe(1);
+    expect(lossOf(punct).annotations).toBe(0);
   });
 });
 
