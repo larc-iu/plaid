@@ -154,7 +154,7 @@ const writesOn = (raw, { mint, claim }) => {
       });
     }
   };
-  return {
+  const on = {
     'texts.update': (textId, ops, auditMessage, { base } = {}) => {
       checkBase(base);
       const text = textOf(raw);
@@ -242,7 +242,12 @@ const writesOn = (raw, { mint, claim }) => {
       token.metadata = metadata;
       return {};
     },
+    'tokens.bulkUpdate': (list) => {
+      for (const e of list) if (e.metadata) on['tokens.patchMetadata'](e.id, e.metadata);
+      return { count: list.length };
+    },
   };
+  return on;
 };
 
 // What the audit log says of `ops` ([kind, args] pairs), naming the tokens.
@@ -408,6 +413,7 @@ export function segmentServer(raw) {
       'tokens.delete',
       'tokens.bulkCreate',
       'tokens.patchMetadata',
+      'tokens.bulkUpdate',
     ];
     client.batched = async (fn) => {
       const ops = [];

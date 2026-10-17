@@ -30,6 +30,10 @@ import { readIgnoredTokens, readTokenizeNewText } from '../igtConfig.js';
 import { newTextWords } from '../newTextWords.js';
 import { underKeys } from './alignment.js';
 import { VAD_METADATA_KEY } from '../media/speechDetectionKey.js';
+import { followedForms, soleForms } from '../soleMorphemeForms.js';
+
+// How many morpheme forms one bulk token update writes.
+const FORM_CHUNK = 500;
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
@@ -214,6 +218,9 @@ export const documentMutations = {
       keys: null,
       sentUnder: null,
       landed: false,
+      // The sole morphemes spelled as their word before the edit
+      // (`_followSoleForms`), read at the first send.
+      forms: null,
     };
     Object.assign(outcome, { landed: false, conflict: false });
     return this._queueWrite('Failed to save baseline text', async () => {
@@ -231,7 +238,9 @@ export const documentMutations = {
 
   // The send of `editBaselineText`.
   async _saveBaselineEdit(textId, plan) {
+    plan.forms ??= soleForms(this.layerInfo, this.body);
     if (await this._sendBaselineEdit(textId, plan)) await this._reloadInSend();
+    await this._followSoleForms(plan.forms);
     // An edit that took every sentence with it leaves a text with none, so
     // the partition is seeded again, one sentence per line.
     const body = this.body;
@@ -242,6 +251,29 @@ export const documentMutations = {
       );
       await this._reloadInSend();
     }
+  },
+
+  // A word with one morpheme whose form spelled the whole word, respelled by
+  // the edit, gets its morpheme's form respelled with it (Luke, H17), after
+  // the edit and in the same operation. `before` is `soleForms` of the
+  // document as it was.
+  async _followSoleForms(before) {
+    const writes = followedForms(before, this.layerInfo, this.body);
+    if (!writes.length) return;
+    for (let i = 0; i < writes.length; i += FORM_CHUNK) {
+      await this._client.tokens.bulkUpdate(
+        writes.slice(i, i + FORM_CHUNK).map(({ id, form }) => ({
+          id,
+          metadata: [{ op: 'set', path: ['form'], value: form }],
+        })),
+      );
+    }
+    const forms = new Map(writes.map(({ id, form }) => [id, form]));
+    this._applyRawPatch((next, infoNext) => {
+      for (const m of infoNext.morphemeTokenLayer?.tokens || []) {
+        if (forms.has(m.id)) m.metadata = { ...m.metadata, form: forms.get(m.id) };
+      }
+    });
   },
 
   // The edit half of `editBaselineText`, from inside its send. A text with no
