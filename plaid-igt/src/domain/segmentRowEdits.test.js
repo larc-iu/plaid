@@ -182,6 +182,72 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
   });
 });
 
+// A segment a FLEx import makes covers its sentence with the line break that
+// ends it. The row shows that text, and an edit of it keeps the break: only
+// whitespace typed at the row's ends is trimmed, never the segment's own
+// (H17-IGT-EDIT-1).
+describe('a row keeps the whitespace its segment ends in', () => {
+  const lines = () =>
+    segmentServer(
+      buildRawDoc({
+        body: 'one\ntwo\n',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+        ],
+        alignmentTokens: [seg('a-1', 0, 4, 0, 1), seg('a-2', 4, 8, 1, 2)],
+      }),
+    );
+
+  it('a letter typed at the end of the words keeps the line break after them', async () => {
+    const server = lines();
+    const doc = open(server);
+    await doc.editAlignment('a-1', {
+      text: 'onex',
+      timeBegin: 0,
+      timeEnd: 1,
+      edits: { over: 'one\n', gaps: [{ start: 3, end: 3, value: 'x' }] },
+    });
+    await idle(doc);
+    expect(textWrites(server)[0].args[1]).toEqual([{ type: 'insert', index: 3, value: 'x' }]);
+    expect(server.body).toBe('onex\ntwo\n');
+    expect(textOf(server.stored, 'a-1')).toBe('onex\n');
+    expect(textOf(server.stored, 'a-2')).toBe('two\n');
+    expect(doc.body).toBe(server.body);
+  });
+
+  it('a letter typed inside a word keeps it, and so does an edit read from the text', async () => {
+    const server = lines();
+    const doc = open(server);
+    await doc.editAlignment('a-1', {
+      text: 'oxne',
+      timeBegin: 0,
+      timeEnd: 1,
+      edits: { over: 'one\n', gaps: [{ start: 1, end: 1, value: 'x' }] },
+    });
+    await idle(doc);
+    expect(server.body).toBe('oxne\ntwo\n');
+    await doc.editAlignment('a-2', { text: 'twoy', timeBegin: 1, timeEnd: 2 });
+    await idle(doc);
+    expect(server.body).toBe('oxne\ntwoy\n');
+    expect(textOf(server.stored, 'a-2')).toBe('twoy\n');
+  });
+
+  it('spaces typed after the line break are not saved', async () => {
+    const server = lines();
+    const doc = open(server);
+    await doc.editAlignment('a-1', {
+      text: 'one',
+      timeBegin: 0,
+      timeEnd: 1,
+      edits: { over: 'one\n', gaps: [{ start: 4, end: 4, value: '  ' }] },
+    });
+    await idle(doc);
+    expect(textWrites(server)).toHaveLength(0);
+    expect(server.body).toBe('one\ntwo\n');
+  });
+});
+
 describe('rows written together (L2)', () => {
   // A Baseline delete of the space between two rows leaves their segments
   // touching. Text typed at the front of the second row says it was typed on

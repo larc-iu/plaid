@@ -261,41 +261,66 @@ const planCreate = (info, trimmed, timeBegin) => {
   };
 };
 
-// The edits that make `trimmed` of `over`, a segment's text, as gaps of it
-// (plaid-client `composeTextEdits`). `edits` are the ones typed in its row,
-// `{ over, gaps }` (plaid-ui's editLog), taken when they were made over this
-// text and make it once the spaces at its ends are trimmed off, which are then
-// deleted by gaps of their own. Otherwise, the one change between the two.
-const rowGaps = (over, trimmed, edits = null) => {
+// The whitespace at the front and at the end of `text`.
+const endsOf = (text) => {
+  const rest = text.trimStart();
+  return {
+    lead: text.slice(0, text.length - rest.length),
+    trail: rest.slice(rest.trimEnd().length),
+  };
+};
+
+// A row's text `trimmed` with the whitespace its segment's text `over` has at
+// its ends, as the segment holds it after the edit: a row keeps the line break
+// a sentence's segment ends in (H17-IGT-EDIT-1).
+const rowText = (over, trimmed) => {
+  const { lead, trail } = endsOf(over);
+  return lead + trimmed + trail;
+};
+
+// The edits that make `next` (`rowText`) of `over`, a segment's text, as gaps
+// of it (plaid-client `composeTextEdits`). `edits` are the ones typed in its
+// row, `{ over, gaps }` (plaid-ui's editLog), taken when they were made over
+// this text and make `next` once the whitespace at its ends is `over`'s again:
+// whitespace typed at the row's ends is deleted by gaps of its own, and the
+// segment's own is kept. Otherwise, the one change between the two.
+const rowGaps = (over, next, edits = null) => {
   if (edits?.over === over && Array.isArray(edits.gaps)) {
     const ops = gapsToOps(edits.gaps);
     const typed = applyTextOps(over, ops);
-    if (typed.trim() === trimmed) {
-      const lead = cpLength(typed) - cpLength(typed.trimStart());
-      const trail = cpLength(typed) - cpLength(typed.trimEnd());
-      if (trail) ops.push({ type: 'delete', index: cpLength(typed) - trail, value: trail });
-      if (lead) ops.push({ type: 'delete', index: 0, value: lead });
+    if (typed.trim() === next.trim()) {
+      const had = endsOf(typed);
+      const keep = endsOf(over);
+      if (had.trail !== keep.trail) {
+        const at = cpLength(typed) - cpLength(had.trail);
+        if (had.trail) ops.push({ type: 'delete', index: at, value: cpLength(had.trail) });
+        if (keep.trail) ops.push({ type: 'insert', index: at, value: keep.trail });
+      }
+      if (had.lead !== keep.lead) {
+        if (had.lead) ops.push({ type: 'delete', index: 0, value: cpLength(had.lead) });
+        if (keep.lead) ops.push({ type: 'insert', index: 0, value: keep.lead });
+      }
       return composeTextEdits(over, ops);
     }
   }
-  const change = inferEdit(over, null, trimmed, null);
+  const change = inferEdit(over, null, next, null);
   return change ? composeTextEdits(over, [change]) : [];
 };
 
-// `segment`'s text changed by `gaps` (of its text) into `trimmed`, and the
+// `segment`'s text changed by `gaps` (of its text) into `next`, and the
 // segment over the new text. `{ error }` when the new time or extent would
 // break the order or overlap another segment, else `{ gaps }`, the edits in
 // the body, `extent`, the segment's new one, and `seedLength` as `planCreate`
 // has it. Text typed at the row's front or end says so (`side`), so where the
 // row is written against another with no space between, the text rules give
 // it to this row's word, and never to the other row's.
-const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
+const planEdit = (info, segment, gaps, next, timeBegin) => {
   const alignmentTokens = info.alignmentTokenLayer.tokens || [];
   const tokenBegin = segment.begin;
   const tokenEnd = segment.end;
-  const newAlignmentEnd = tokenBegin + cpLength(trimmed);
+  const newAlignmentEnd = tokenBegin + cpLength(next);
   const body = bodyOf(info);
-  const newTextLength = cpLength(body) - (tokenEnd - tokenBegin) + cpLength(trimmed);
+  const newTextLength = cpLength(body) - (tokenEnd - tokenBegin) + cpLength(next);
 
   const inversion = findTemporalInversion(alignmentTokens, tokenBegin, timeBegin, segment.id);
   if (inversion) {
@@ -307,7 +332,7 @@ const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
   // Overlap check in POST-edit coordinates: the edit shifts every later token
   // by (newLen - oldLen). Without projecting, growing the text past the next
   // token reads as a false overlap.
-  const editDelta = cpLength(trimmed) - (tokenEnd - tokenBegin);
+  const editDelta = cpLength(next) - (tokenEnd - tokenBegin);
   const projectedTokens = alignmentTokens.map((t) =>
     t.id !== segment.id && t.begin >= tokenEnd
       ? { ...t, begin: t.begin + editDelta, end: t.end + editDelta }
@@ -603,7 +628,8 @@ export const alignmentMutations = {
 
     // What the edit changes, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    const gaps = rowGaps(over, trimmed, edits);
+    const next = rowText(over, trimmed);
+    const gaps = rowGaps(over, next, edits);
     const mine = alignmentMeta(timeBegin, timeEnd, speaker);
     const was = existingAlignment.metadata;
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker }, existingAlignment);
@@ -618,7 +644,7 @@ export const alignmentMutations = {
         ? true
         : this.updateAlignmentSpeaker(existingAlignmentId, s);
     }
-    const plan = planEdit(info, existingAlignment, gaps, trimmed, timeBegin);
+    const plan = planEdit(info, existingAlignment, gaps, next, timeBegin);
     if (plan.error) {
       this.setError(plan.error);
       return false;
@@ -633,10 +659,10 @@ export const alignmentMutations = {
     const replan = (fresh, updated) => {
       const refusal = timed ? this._recordingRefusal(seen, updated, 'Segment edit') : null;
       if (refusal) return { refusal };
-      const found = segmentConflict(fresh, existingAlignmentId, over, trimmed);
+      const found = segmentConflict(fresh, existingAlignmentId, over, next);
       if (!found.segment || found.conflict || found.landed) return found;
       if (!replannedMetadata(mine, was, found.segment.metadata)) {
-        return { conflict: { stored: over, mine: trimmed } };
+        return { conflict: { stored: over, mine: next } };
       }
       const patch = rowPatch(mine, was, this.editStamp(found.segment.metadata));
       // The segment as this write would leave it, held to the cross-talk rule
@@ -648,9 +674,9 @@ export const alignmentMutations = {
         { timeBegin: after.timeBegin ?? 0, timeEnd: after.timeEnd ?? 0, speaker: after.speaker },
         found.segment,
       );
-      const again = overlap ? null : planEdit(fresh, found.segment, gaps, trimmed, timeBegin);
+      const again = overlap ? null : planEdit(fresh, found.segment, gaps, next, timeBegin);
       return !again || again.error
-        ? { conflict: { stored: over, mine: trimmed } }
+        ? { conflict: { stored: over, mine: next } }
         : { plan: { ...again, patch } };
     };
 
@@ -658,7 +684,7 @@ export const alignmentMutations = {
       textId,
       segmentId: existingAlignmentId,
       ...plan,
-      typed: trimmed,
+      typed: next,
       patch: rowPatch(mine, was, this.editStamp(was)),
       speaker,
       replan,
