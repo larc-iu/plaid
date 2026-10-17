@@ -201,3 +201,21 @@ def test_the_note_says_the_next_reply_replaces_the_first():
     answer, and opened "I've now staged" (bench q38-2)."""
     assert 'repeat in it everything the one above answered' in NOTHING_PLANNED
     assert 'not mention this note or that the changes were staged only now' in NOTHING_PLANNED
+
+
+@pytest.mark.parametrize('app', sorted(APPS))
+def test_a_plan_discarded_this_turn_is_nothing_planned(monkeypatch, app):
+    """A turn that planned, then emptied the plan with discard_plan, holds
+    nothing: a reply claiming a plan is sent back (bench build-q38-3,
+    ud-ru-split-two r3 turn 2)."""
+    ws, kit, plan, _read = APPS[app]()
+    first = "I've staged the plan. Approve to apply."
+    out, sent = _run(monkeypatch, ws, kit, [
+        _reply(plan),
+        _reply(('discard_plan', {})),
+        _reply(text=first),
+        _reply(text='Nothing is planned.'),
+    ])
+    assert len(sent) == 4
+    assert sent[3]['messages'][-1] == {'role': 'user', 'content': NOTHING_PLANNED}
+    assert out.text == 'Nothing is planned.'

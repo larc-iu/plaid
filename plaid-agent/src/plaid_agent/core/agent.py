@@ -1054,11 +1054,10 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
     ran: set = went_through(history)
 
     def claimed_nothing(text: str) -> bool:
-        """The reply says it planned, and this turn planned nothing: no plan
-        call went through and no card from an earlier message still waits
-        (the reply may be about that one)."""
-        return (not made and not held_changes(ws) and not getattr(ws, 'waiting', None)
-                and claims_a_plan(text))
+        """The reply says it planned, and the plan holds nothing now (none
+        went through, or discard_plan emptied it) and no card from an
+        earlier message still waits (the reply may be about that one)."""
+        return not held_changes(ws) and not getattr(ws, 'waiting', None) and claims_a_plan(text)
 
     def keep_the_plan(e: Exception) -> None:
         """After a model call failed with ``e``: re-raises it when nothing
