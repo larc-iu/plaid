@@ -323,12 +323,29 @@
         (newer? [:and [:= :project_id project-id] [:= :document_id nil]])
         (newer? [:= :project_id nil]))))
 
+(declare ^:private save!*)
+
 (defn- save!
   "The write of `update-body` and `edit-body`: `change` as `save-plan` takes
   it, worked out ahead of the write lock and again under it when a write
   that could change what it read has committed meanwhile (see
   `update-body`). The answer carries the operation's id and ts as `:op`, so
   the route can read what it wrote (see `reshape`)."
+  [db eid change base user-id description]
+  (if (and (map? change) (sequential? (:edits change)) (empty? (:edits change)))
+    ;; An empty edits list changes nothing, so it writes nothing: no
+    ;; operation, no audit row and no version bump (REV8-CORE-8). It is
+    ;; still answered as the save would be: 404 for no text, 409 for a
+    ;; stale `base`.
+    (let [pre (psc/fetch-by-id db :texts eid)]
+      (cond
+        (nil? pre) {:success false :code 404 :error (psc/err-msg-not-found "Text" eid)}
+        (and base (not= base (digest/text-digest (:body pre))))
+        {:success false :code 409 :error text-changed :text-changed true}
+        :else {:success true :extra eid :op {:id nil :ts nil :document nil :body (:body pre)}}))
+    (save!* db eid change base user-id description)))
+
+(defn- save!*
   [db eid change base user-id description]
   (let [pre (psc/fetch-by-id db :texts eid)
         project (when pre (project-id db eid))

@@ -132,12 +132,47 @@
 (deftest a-restating-edit-bumps-the-version-and-reads-as-a-body-save
   (let [{:keys [text doc]} (setup "a b")
         v (-> (get-document admin-request doc) :body :document/version)
-        res (edit-text text {:edits [] :base (digest/text-digest "a b")} "?audit-message=Fixed%20a%20typo")]
+        res (edit-text text {:edits [{:type "replace" :index 0 :length 1 :value "a"}] :base (digest/text-digest "a b")}
+                       "?audit-message=Fixed%20a%20typo")]
     (assert-ok res)
     (is (= (inc v) (-> (get-document admin-request doc) :body :document/version)))
     (let [op (psc/q1 db {:select [:op_type :description] :from [:operations]
                          :where [:= :document_id (str doc)] :order-by [[:ts :desc]] :limit 1})]
       (is (= {:op_type "text/update-body" :description "Fixed a typo"} (select-keys op [:op_type :description]))))))
+
+(deftest an-empty-edits-list-writes-nothing
+  ;; REV8-CORE-8: it answered 200, bumped the version and wrote an
+  ;; operation for a save that changes nothing. It is still answered as a
+  ;; save: the text and its digest, 409 on a stale base, 404 for no text.
+  (let [{:keys [text doc]} (setup "a b")
+        v (-> (get-document admin-request doc) :body :document/version)
+        ops #(:n (psc/q1 db {:select [[[:count :*] :n]] :from [:operations] :where [:= :document_id (str doc)]}))
+        n (ops)
+        res (edit-text text {:edits [] :base (digest/text-digest "a b")})]
+    (assert-ok res)
+    (is (= "a b" (-> res :body :text/body)))
+    (is (= (digest/text-digest "a b") (-> res :body :text/digest)))
+    (is (= {:tokens [] :spans [] :vocab-links [] :deleted {:tokens [] :spans [] :relations [] :vocab-links []}}
+           (select-keys (-> res :body :reshape) [:tokens :spans :vocab-links :deleted]))
+        (pr-str (-> res :body :reshape)))
+    (assert-ok (edit-text text {:edits []}))
+    (is (= v (-> (get-document admin-request doc) :body :document/version)))
+    (is (= n (ops)))
+    (let [stale (edit-text text {:edits [] :base (digest/text-digest "x")})]
+      (assert-status 409 stale)
+      (is (true? (-> stale :body :text-changed))))))
+
+(deftest a-null-among-ops-sent-as-the-body-is-refused
+  ;; REV8-CORE-2: `{body: [op, null, op]}` stopped at the null, dropped the
+  ;; ops after it and answered 200, as the edits path did before REV7
+  (let [{:keys [text doc]} (setup "a b")
+        v (-> (get-document admin-request doc) :body :document/version)]
+    (doseq [ops [[(ins 0 "A") nil (ins 0 "B")] [nil (ins 0 "A")] [(ins 0 "A") nil] [nil]]]
+      (let [res (edit-text text {:body ops})]
+        (assert-bad-request res)
+        (is (str/starts-with? (str (:error (:body res))) "Malformed text edit operation: null.") (pr-str ops))))
+    (is (= "a b" (-> (get-text admin-request text) :body :text/body)))
+    (is (= v (-> (get-document admin-request doc) :body :document/version)))))
 
 (deftest a-stale-document-version-is-honored
   (let [{:keys [text doc]} (setup "a b")

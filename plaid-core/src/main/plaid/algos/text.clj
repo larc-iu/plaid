@@ -2048,7 +2048,7 @@
   applied a run of such ops at a time: one op out of that order among the
   7,000 a long line retyped gave cost a minute applied in turn."
   [ops text tokens]
-  (let [ops (vec (take-while some? ops))
+  (let [ops (vec ops)
         ^String body (:text/body text)
         ^ints o (.toArray (.codePoints body))
         n (alength o)

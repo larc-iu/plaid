@@ -875,7 +875,8 @@ An editor that knows where the cursor was sends `edits` instead, which say exact
 ----
 
 Indices count code points, and each edit applies to the body as the edits before it left it.
-An edit of another shape, a `null` among them, or one that reaches past the body is refused with 400, and nothing is written.
+An edit of another shape, a `null` among them, or one that reaches past the body is refused with 400, and nothing is written, whether the edits come as `edits` or as a list under `body`.
+An empty `edits` list writes nothing: the answer is the text as stored, and the document's version stays as it was.
 The message names the edit in JSON, its keys in the order `type`, `index`, `length`, `value`, `side` and then any others, as both clients name it when they refuse it first.
 Send `base`, the `digest` of the body the edits were made on, and the edits apply only if the stored body is still that body.
 Otherwise the answer is 409 with `text-changed: true`, and nothing is written.
