@@ -538,6 +538,39 @@ def test_a_redraft_that_adds_a_node_writes_it_and_its_edge_from_the_kept_one():
     assert edge['source'] == 'c-b' and edge['value'] == ':mod'
 
 
+@pytest.mark.parametrize('extent', [(4, 7), (0, 17)])
+def test_a_redraft_gives_a_new_node_its_own_anchor_where_a_kept_node_stands(extent):
+    """REV8-APPS-1 (data loss): a new node over a kept node's word, or a new
+    unaligned node beside a kept one, gets its own anchor token as a fresh
+    write gives it. The canvas's Delete deletes a node's anchor tokens, so
+    a shared anchor took the kept node with it."""
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    doc = _read(raw)
+    [plan] = _stored_plan(doc)
+    if extent != (4, 7):
+        # The kept dog node stands on the whole sentence, unaligned.
+        node_layer = next(t for tl in raw['text_layers'] for t in tl['token_layers']
+                          if any(tok['id'] == 'n2' for tok in t.get('tokens') or []))
+        tok = next(t for t in node_layer['tokens'] if t['id'] == 'n2')
+        tok['begin'], tok['end'] = extent
+        doc = _read(raw)
+        [plan] = _stored_plan(doc)
+        plan['pieces'][1] = extent
+    plan['pieces'].append(extent)
+    plan['nodes'].append({'concept': 'person', 'meta': {'var': 's1p', 'attrs': []},
+                          'piece_indexes': [len(plan['pieces']) - 1]})
+    plan['edges'].append({'source': 0, 'target': 2, 'role': ':mod', 'order': 1})
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), [plan], {'prov': 'inferred'})
+    [batch] = client.batches
+    assert 'tokens.bulk_delete' not in [kind for kind, _ in batch]
+    [[piece]] = client.payloads('tokens.bulk_create')
+    assert (piece['begin'], piece['end']) == extent
+    [[span]] = client.payloads('spans.bulk_create')
+    assert span['tokens'] == [{'$ref': 0, 'index': 0}]
+
+
 def test_a_drafted_node_aligned_to_no_word_records_its_sentence_and_no_words():
     from plaid_client.testing import FakeClient
     raw = _without_triples(_document())

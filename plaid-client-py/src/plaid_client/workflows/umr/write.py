@@ -275,8 +275,9 @@ def _keep_stored(plan: dict, unit: dict) -> dict:
     kept and its concept or metadata updated. An edge between two kept nodes
     with the role and metadata the plan gives is kept, one whose role or
     metadata changes is updated, and what the plan lacks is deleted. Only
-    what is left is created: a new node on the stored anchors over its words
-    where there are such, else on new ones."""
+    what is left is created, each new node on anchors of its own as a fresh
+    write gives it, never on a kept node's (REV8-APPS-1: the canvas's Delete
+    deletes a node's anchors, so a shared one took both nodes)."""
     sentence = plan['sentence']
     if not isinstance(sentence, Sentence) or not sentence.nodes:
         return unit
@@ -312,8 +313,7 @@ def _keep_stored(plan: dict, unit: dict) -> dict:
                         'metadata': _restamp(n.metadata, op['metadata'])})
 
     kept_ids = {n.id for n in match.values()}
-    kept_pieces = {p.id: (p.begin, p.end) for n in match.values() for p in n.pieces}
-    piece_at = {at: pid for pid, at in kept_pieces.items()}
+    kept_pieces = {p.id for n in match.values() for p in n.pieces}
     doomed_nodes = [n for n in stored if n.id not in kept_ids]
     doomed_pieces = list(dict.fromkeys(p.id for n in doomed_nodes for p in n.pieces
                                        if p.id not in kept_pieces))
@@ -330,9 +330,6 @@ def _keep_stored(plan: dict, unit: dict) -> dict:
             continue
         anchors = []
         for i in indexes:
-            if pieces[i] in piece_at:
-                anchors.append(piece_at[pieces[i]])
-                continue
             if i not in new_piece_of:
                 new_piece_of[i] = len(new_pieces)
                 new_pieces.append(unit['pieces'][i])
