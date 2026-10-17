@@ -219,7 +219,10 @@ function createParser(src) {
 
   function parseRule() {
     const kw = next(); // 'rule'
-    const name = expect(TT.IDENT, 'a rule name').value;
+    const nameTok = expect(TT.IDENT, 'a rule name');
+    const name = nameTok.value;
+    // `rule` is what the parser calls a rule written without a name.
+    if (name === 'rule') fail("A rule cannot be named 'rule'", nameTok);
     if (at(TT.LPAREN)) {
       // `rule r (lex from "file.lex")`: lexicon files.
       throw new GrewUnsupportedError(

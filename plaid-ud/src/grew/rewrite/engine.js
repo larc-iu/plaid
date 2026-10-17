@@ -25,7 +25,7 @@ import { firstMatch } from './match.js';
 import { applyCommands } from './commands.js';
 
 // A rule as a refusal names it: "The rule" for one written without a name,
-// which the parser calls `rule`, a keyword no rule can be named.
+// which the parser calls `rule`, a name the parser refuses for a named one.
 const ruleNamed = (name) => (name === 'rule' ? 'The rule' : `Rule '${name}'`);
 
 const MAX_APPLICATIONS = 1000;

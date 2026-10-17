@@ -213,6 +213,7 @@ test('errors: unknown command, missing commands, duplicate names, unsupported ke
     'rule r { pattern { X [] } commands { del_node X } } rule r { pattern { X [] } commands { del_node X } }',
     /declared twice/,
   );
+  parseErr('rule rule { pattern { X [] } commands { del_node X } }', /cannot be named 'rule'/);
   parseErr('pattern { X [] } commands { add_edge X -> Y }', /needs a label/);
   parseErr('strat main { Onf(a, b) }', /exactly one/);
   assert.throws(
