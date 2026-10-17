@@ -352,6 +352,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (focusedId && !nodesById.has(focusedId)) setFocusedId(null);
   }, [focusedId, nodesById, sentence, setFocusedId]);
 
+  // Focus back into the box when a refused apply brings it back.
+  const boxFocusRef = useRef(false);
+  useEffect(() => {
+    if (!textMode || !boxFocusRef.current) return;
+    boxFocusRef.current = false;
+    sectionRef.current?.querySelector('.umr-penman-text')?.focus();
+  });
+
   // Focus back from text mode (leaveTextMode). A node the document has and
   // this block has not drawn yet is waited for. With none, or once it has
   // gone (a refused apply taken back), focus rests in the block.
@@ -1770,9 +1778,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 if (ok !== false || textModeRef.current) return;
                 setUnapplied(text);
                 setTextMode(true);
-                requestAnimationFrame(() =>
-                  sectionRef.current?.querySelector('.umr-penman-text')?.focus(),
-                );
+                // Focused once the box is shown again (the effect below): a
+                // frame can come before React draws it, and a hidden box
+                // takes no focus, which left it on the page's body.
+                refocusRef.current = null;
+                boxFocusRef.current = true;
               });
               leaveTextMode();
             }}

@@ -285,11 +285,27 @@ describe('SentenceBlock text mode', () => {
     // Out of sight while the apply is on its way, and kept, so a refusal
     // brings back the same box with its undo history (L1-TEXT).
     expect(typedIn.closest('[hidden]')).not.toBeNull();
+    // A frame can come before React draws the answer: the box takes focus
+    // once it is shown, not when the answer comes (REV8-APPS note: focus was
+    // left on the body).
+    // A browser does not focus a hidden element, so each focus is recorded
+    // with whether the box was shown at the time.
+    const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    const focused = [];
+    const focus = vi.spyOn(HTMLTextAreaElement.prototype, 'focus').mockImplementation(function () {
+      focused.push(!this.closest('[hidden]'));
+    });
     await r.step(() => settle(outcome));
+    frame.mockRestore();
+    focus.mockRestore();
     const box = r.container.querySelector('textarea');
     if (outcome === false) {
       expect(box).toBe(typedIn);
       expect(box.closest('[hidden]')).toBeNull();
+      expect(focused).toEqual([true]);
       expect(box.value).toBe(typed);
       // Still typed and not applied, so Apply is offered again.
       expect(button(r.container, 'Apply').disabled).toBe(false);
