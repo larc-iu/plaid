@@ -894,7 +894,7 @@ class TextsResource(_MetadataMethods, _Resource):
 
     def create(self, text_layer_id: str, document_id: str, body: str,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None,
-               token_edges: list | None = None) -> Any:
+               token_edges: list | None = None, tokenize_layer: str | None = None) -> Any:
         """Create a new text in a document's text layer.
 
         A text is a container for one long string in ``body`` for a given layer.
@@ -913,11 +913,14 @@ class TextsResource(_MetadataMethods, _Resource):
                 made next on this text begin and end. The body is stored
                 composed, except a character one of them falls inside, which
                 stays as sent (see ``compose_text``).
+            tokenize_layer: Optional. A word layer of the text: the body gets
+                words on it, cut by the server ("Tokenize new text").
         """
         return self._request('POST', '/api/v1/texts',
                              body=_body_of(id=_UNSET if id is None else id, text_layer_id=text_layer_id, document_id=document_id,
                                            body=body,
                                            token_edges=_UNSET if token_edges is None else list(token_edges),
+                                           tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer,
                                            metadata=metadata), audit_message=audit_message)
 
     def get(self, text_id: str) -> Any:
@@ -937,7 +940,7 @@ class TextsResource(_MetadataMethods, _Resource):
         return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
 
     def update(self, text_id: str, body: Any, audit_message=None, *, base: str | None = None,
-               versioned: bool | None = None) -> Any:
+               versioned: bool | None = None, tokenize_layer: str | None = None) -> Any:
         """Update a text's ``body``.
 
         A diff is computed and token indices are updated so that tokens
@@ -953,14 +956,19 @@ class TextsResource(_MetadataMethods, _Resource):
                 otherwise, and strict mode does not stamp it unless ``versioned``
                 is True (a batch whose later writes are stamped needs its first
                 write stamped too).
+            tokenize_layer: Optional. A word layer of the text: the text the
+                save types gets words on it, made by the server after it
+                places the old tokens ("Tokenize new text"), and they come in
+                the answer's ``reshape``.
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}',
-                             body=_body_of(body=body, base=_UNSET if base is None else base),
+                             body=_body_of(body=body, base=_UNSET if base is None else base,
+                                           tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer),
                              audit_message=audit_message,
                              versioned=(base is None) if versioned is None else versioned)
 
     def edit(self, text_id: str, edits: list, audit_message=None, *, base: str | None = None,
-             versioned: bool | None = None) -> Any:
+             versioned: bool | None = None, tokenize_layer: str | None = None) -> Any:
         """Change a text's body by the edits made at the caret.
 
         ``edits`` are edit directives as ``update`` takes them (code-point
@@ -978,9 +986,14 @@ class TextsResource(_MetadataMethods, _Resource):
                 The edit then applies only to that body, and is refused with
                 409 and ``text_changed`` otherwise, and strict mode does not
                 stamp it.
+            tokenize_layer: Optional. A word layer of the text: the text the
+                save types gets words on it, made by the server after it
+                places the old tokens ("Tokenize new text"), and they come in
+                the answer's ``reshape``.
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}',
-                             body=_body_of(edits=edits, base=_UNSET if base is None else base),
+                             body=_body_of(edits=edits, base=_UNSET if base is None else base,
+                                           tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer),
                              audit_message=audit_message,
                              versioned=(base is None) if versioned is None else versioned)
 

@@ -929,6 +929,21 @@ A whole `body` save reads its change from the difference between the two bodies 
 The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
 An editor can update its own copy of the document from it instead of reading the document again.
 
+=== New words for typed text
+
+A save, in any of its forms, and a new text may name a word layer of the text as `tokenize-layer`.
+The text the save types then gets words on that layer, made after the old tokens are placed by the rules above, so a new word never lands where an old one now stands.
+A stretch no token of the layer covers is cut into words at whitespace and at punctuation, inside each sentence (each token of a `partitioning` layer).
+Punctuation here is the built-in tokenizer's break class, read from the same Unicode 16 table, under the layer's `igt.ignoredTokens` rule: a character the rule calls letter-like is part of a word, and under an explicit list only the listed characters part words.
+A word holding no typed character is not made, and neither is one the rule ignores or one holding a letter of a script written without spaces between words, such as Han, kana or Thai.
+The new words come in the answer's `reshape.tokens` with their `layer` and `text`.
+
+[,js]
+----
+PATCH /texts/9cfafcc6
+{ edits: [ { type: "insert", index: 11, value: " Rex runs." } ], base: "b31c09…", "tokenize-layer": "5b0a…" }
+----
+
 [,js]
 ----
 { id: "9cfafcc6", body: "Fido barks!", digest: "b31c09…",

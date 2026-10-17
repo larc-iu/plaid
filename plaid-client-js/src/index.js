@@ -1728,10 +1728,12 @@ class PlaidClient {
        * @param {string} body - The request body
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        * @param {string} [auditMessage]
-       * @param {{id?: string, tokenEdges?: number[]}} [options] - `id`: the new text's id, a UUIDv7
-       *   this client minted. `tokenEdges`: the code-point offsets where the tokens made next on
-       *   this text begin and end. The body is stored composed, except a character one of them
-       *   falls inside, which stays as sent (see composeText).
+       * @param {{id?: string, tokenEdges?: number[], tokenizeLayer?: string}} [options] - `id`: the
+       *   new text's id, a UUIDv7 this client minted. `tokenEdges`: the code-point offsets where
+       *   the tokens made next on this text begin and end. The body is stored composed, except a
+       *   character one of them falls inside, which stays as sent (see composeText).
+       *   `tokenizeLayer`: a word layer of the text, which gets the body's words, cut by the
+       *   server ("Tokenize new text").
        * @returns {Promise<Created>}
        */
       create: (
@@ -1740,7 +1742,7 @@ class PlaidClient {
         body,
         metadata,
         auditMessage,
-        { id, tokenEdges } = {},
+        { id, tokenEdges, tokenizeLayer } = {},
       ) =>
         this._request("POST", "/api/v1/texts", {
           auditMessage,
@@ -1750,6 +1752,7 @@ class PlaidClient {
             "document-id": documentId,
             body,
             "token-edges": tokenEdges,
+            "tokenize-layer": tokenizeLayer,
             metadata,
           }),
         }),
@@ -1786,13 +1789,16 @@ class PlaidClient {
        * @param {string} textId - The text ID
        * @param {any} body - The request body
        * @param {string} [auditMessage]
-       * @param {{base?: string, versioned?: boolean}} [options]
+       * `tokenizeLayer`: a word layer of the text, whose words the server makes for the text the
+       * update types, after it places the old tokens ("Tokenize new text"). They come in the
+       * answer's `reshape`.
+       * @param {{base?: string, versioned?: boolean, tokenizeLayer?: string}} [options]
        * @returns {Promise<PlaidText & {reshape: TextReshape}>}
        */
-      update: (textId, body, auditMessage, { base, versioned } = {}) =>
+      update: (textId, body, auditMessage, { base, versioned, tokenizeLayer } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
           auditMessage,
-          body: bodyOf({ body, base }),
+          body: bodyOf({ body, base, "tokenize-layer": tokenizeLayer }),
           versioned: versioned ?? (base === undefined || base === null),
         }),
       /**
@@ -1806,17 +1812,17 @@ class PlaidClient {
        * `base`, the digest of the body the edits were made on, the edit
        * applies only to that body and is refused with 409 and `text-changed`
        * otherwise, and strict mode does not stamp it unless `versioned` is
-       * true. See composeTextEdits and gapsToOps.
+       * true. `tokenizeLayer` is as `update` takes it. See composeTextEdits and gapsToOps.
        * @param {string} textId - The text ID
        * @param {Array<object>} edits - The edit directives
        * @param {string} [auditMessage]
-       * @param {{base?: string, versioned?: boolean}} [options]
+       * @param {{base?: string, versioned?: boolean, tokenizeLayer?: string}} [options]
        * @returns {Promise<PlaidText & {reshape: TextReshape}>}
        */
-      edit: (textId, edits, auditMessage, { base, versioned } = {}) =>
+      edit: (textId, edits, auditMessage, { base, versioned, tokenizeLayer } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
           auditMessage,
-          body: bodyOf({ edits, base }),
+          body: bodyOf({ edits, base, "tokenize-layer": tokenizeLayer }),
           versioned: versioned ?? (base === undefined || base === null),
         }),
     };

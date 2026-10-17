@@ -108,25 +108,25 @@
   save's response, the write's, and the connection each plan read from."
   ([ctx write at] (save-with-write ctx write at #(update-text admin-request (:text %) new-body)))
   ([ctx write at save]
-  (let [plan-save @#'st/save-plan
-        calls (atom [])
-        write-res (atom nil)
-        writing? (atom false)
-        run-write! #(do (reset! writing? true)
-                        (reset! write-res (write ctx))
-                        (reset! writing? false))]
-    (with-redefs [st/save-plan (fn [db eid body base]
-                                 (if @writing?
-                                   (plan-save db eid body base)
-                                   (let [first? (empty? @calls)
-                                         _ (swap! calls conj (instance? java.sql.Connection db))
-                                         _ (when (and first? (= at :before)) (run-write!))
-                                         r (try (plan-save db eid body base)
-                                                (finally (when (and first? (= at :after)) (run-write!))))]
-                                     r)))]
-      {:save (save ctx)
-       :write @write-res
-       :calls @calls}))))
+   (let [plan-save @#'st/save-plan
+         calls (atom [])
+         write-res (atom nil)
+         writing? (atom false)
+         run-write! #(do (reset! writing? true)
+                         (reset! write-res (write ctx))
+                         (reset! writing? false))]
+     (with-redefs [st/save-plan (fn [db eid body base tk]
+                                  (if @writing?
+                                    (plan-save db eid body base tk)
+                                    (let [first? (empty? @calls)
+                                          _ (swap! calls conj (instance? java.sql.Connection db))
+                                          _ (when (and first? (= at :before)) (run-write!))
+                                          r (try (plan-save db eid body base tk)
+                                                 (finally (when (and first? (= at :after)) (run-write!))))]
+                                      r)))]
+       {:save (save ctx)
+        :write @write-res
+        :calls @calls}))))
 
 (deftest a-write-between-the-reads-and-the-lock-makes-the-save-work-it-out-again
   (doseq [[k write] writes
@@ -174,9 +174,9 @@
         ctx (setup "Batch")
         plan-save @#'st/save-plan
         calls (atom [])
-        res (with-redefs [st/save-plan (fn [db eid body base]
+        res (with-redefs [st/save-plan (fn [db eid body base tk]
                                          (swap! calls conj (instance? java.sql.Connection db))
-                                         (plan-save db eid body base))]
+                                         (plan-save db eid body base tk))]
               (api-call admin-request {:method :post :path "/api/v1/batch"
                                        :body [{:path (str "/api/v1/tokens/" (nth (:nodes ctx) 1))
                                                :method "patch" :body {:begin 4 :end 11}}

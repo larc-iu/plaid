@@ -72,6 +72,30 @@
   [db text-layer-id]
   (:project_id (psc/fetch-by-id db :text_layers text-layer-id)))
 
+(defn- tokenize-spec
+  "What \"Tokenize new text\" on token layer `layer-id` reads, for a text of
+  text layer `text-layer-id`: the layer, its ignored-tokens rule
+  (`config.igt.ignoredTokens`) and the text layer's partition layers (the
+  sentences), which no new word crosses. Throws a 400 when `layer-id` is not
+  a token layer of that text layer."
+  [db text-layer-id layer-id]
+  (let [rows (psc/q db {:select [:id :overlap_mode :config]
+                        :from [:token_layers]
+                        :where [:= :text_layer_id text-layer-id]})
+        row (some #(when (= (str layer-id) (str (:id %))) %) rows)]
+    (when-not row
+      (throw (ex-info (str "Token layer " layer-id " is not a token layer of this text's layer.")
+                      {:code 400 :id layer-id})))
+    {:layer (:id row)
+     :rule (get-in (some-> (:config row) psc/parse-config) ["igt" "ignoredTokens"])
+     :partitions (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) rows)}))
+
+(defn- tokenize-words
+  "The words `spec` (see `tokenize-spec`) makes on `body`, for a save that
+  typed `typed` and left `tokens` on it (see `ta/new-words`)."
+  [{:keys [layer rule partitions]} body typed tokens]
+  (ta/new-words body typed tokens layer partitions rule))
+
 ;; ============================================================
 ;; Create
 ;; ============================================================
@@ -86,7 +110,9 @@
   enforces this; we pre-check for a clean 409).
 
   `:text/id` names the new text's id (a client's UUIDv7), else the server
-  mints one. `:text/edges`, optional, are the code-point offsets where the
+  mints one. `:text/tokenize-layer`, optional, a token layer of the text's
+  layer, gets the words of \"Tokenize new text\" over the whole body (see
+  `plaid.algos.text/new-words`). `:text/edges`, optional, are the code-point offsets where the
   tokens the caller makes next begin and end: a character one of them falls
   inside stays decomposed (see `canonical/compose`), so a body written with
   a mark of its own token (an archive of such a text) keeps its offsets.
@@ -113,7 +139,8 @@
       (storable/assert-storable! "Text body" body-str)
       (psc/claim-ids! tx :texts "text" [(:text/id attrs)])
       (let [doc-row (psc/fetch-by-id tx :documents document)
-            txtl-row (psc/fetch-by-id tx :text_layers layer)]
+            txtl-row (psc/fetch-by-id tx :text_layers layer)
+            stored (:text (canonical/compose body-str (:text/edges attrs)))]
         (when (nil? doc-row)
           (throw (ex-info (psc/err-msg-not-found "Document" document)
                           {:id document :code 400})))
@@ -139,7 +166,7 @@
                         {:id new-id
                          ;; stored composed, as all text is, except a
                          ;; character the tokens to come will cut (`:text/edges`)
-                         :body (:text (canonical/compose body-str (:text/edges attrs)))
+                         :body stored
                          :document_id document
                          :text_layer_id layer})
           (catch Exception e
@@ -149,6 +176,10 @@
               (throw (ex-info (str "Text already exists for document " document)
                               {:document document :code 409}))
               (throw e))))
+        (when-let [spec (some->> (:text/tokenize-layer attrs) (tokenize-spec tx layer))]
+          (doseq [{:token/keys [begin end]} (tokenize-words spec stored [[0 (cp/cp-count stored)]] [])]
+            (crud/insert! tx :tokens {:id (psc/new-uuid) :text_id new-id :token_layer_id (:layer spec)
+                                      :document_id document :begin begin :end_ end})))
         (when (seq metadata-map)
           (metadata/insert-metadata! tx "text" new-id metadata-map))
         new-id)))))
@@ -174,12 +205,15 @@
   is not the stored body's digest.
 
   `change` is a new body (a string), ops applied as sent (a vector), or
-  `{:edits ops}`, ops from the caret (see `edit-body`)."
-  [db eid change base]
+  `{:edits ops}`, ops from the caret (see `edit-body`). With
+  `tokenize-layer`, a token layer of the text, the text the save types gets
+  the words of \"Tokenize new text\" on it (see `ta/new-words`)."
+  [db eid change base tokenize-layer]
   (when-let [text-row (psc/fetch-by-id db :texts eid)]
     (when (and base (not= base (digest/text-digest (:body text-row))))
       (throw (ex-info text-changed {:code 409 :id eid :text-changed true})))
     (let [old-body (:body text-row)
+          tokenize (when tokenize-layer (tokenize-spec db (:text_layer_id text-row) tokenize-layer))
           edits (when (map? change) (vec (:edits change)))
           ;; A whole new body is composed before it is diffed, so a body sent
           ;; decomposed differs from the stored one only where it was changed.
@@ -222,11 +256,13 @@
                                layer-rows))
           opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers :letter-like])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
-          {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}
+          [gaps {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}]
           (cond
-            edits (ta/plain-edits old-body tokens edits partitioning deciders opts)
-            (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops tokens partitioning deciders opts)
-            :else (ta/apply-text-edits (vec new-body-or-ops) text-map tokens))
+            edits (let [gaps (ta/plain-edit-gaps old-body edits tokens partitioning deciders opts)]
+                    [gaps (ta/apply-plain-gaps old-body tokens gaps partitioning deciders opts)])
+            (string? new-body-or-ops) (ta/plain-body-read old-body new-body-or-ops tokens partitioning deciders opts)
+            :else [(when tokenize (ta/compose-edits (vec new-body-or-ops) old-body))
+                   (ta/apply-text-edits (vec new-body-or-ops) text-map tokens)])
           sent-body (:text/body new-text)
           ;; The steps above only move edits between equivalent places, so
           ;; a diffed body comes out as sent, and edits as they make the body
@@ -239,6 +275,12 @@
           ;; covered as well as a whole new body.
           _ (storable/assert-storable! "Text body" sent-body)
           deleted-set (set deleted-ids)
+          ;; "Tokenize new text": the words of the text the save typed, made
+          ;; on the tokens as the save leaves them (see `ta/new-words`).
+          sent-made (cond-> (vec sent-made)
+                      tokenize (into (tokenize-words tokenize sent-body (ta/typed-ranges gaps)
+                                                     (concat (remove #(deleted-set (:token/id %)) sent-tokens)
+                                                             sent-heads sent-made))))
           ;; The body is stored composed. Text an edit inserted that composes
           ;; with a letter beside it becomes one character with it, except
           ;; where a token edge falls between them: there the character stays
@@ -331,7 +373,7 @@
   that could change what it read has committed meanwhile (see
   `update-body`). The answer carries the operation's id and ts as `:op`, so
   the route can read what it wrote (see `reshape`)."
-  [db eid change base user-id description]
+  [db eid change base tokenize-layer user-id description]
   (if (and (map? change) (sequential? (:edits change)) (empty? (:edits change)))
     ;; An empty edits list changes nothing, so it writes nothing: no
     ;; operation, no audit row and no version bump (REV8-CORE-8). It is
@@ -343,10 +385,10 @@
         (and base (not= base (digest/text-digest (:body pre))))
         {:success false :code 409 :error text-changed :text-changed true}
         :else {:success true :extra eid :op {:id nil :ts nil :document nil :body (:body pre)}}))
-    (save!* db eid change base user-id description)))
+    (save!* db eid change base tokenize-layer user-id description)))
 
 (defn- save!*
-  [db eid change base user-id description]
+  [db eid change base tokenize-layer user-id description]
   (let [pre (psc/fetch-by-id db :texts eid)
         project (when pre (project-id db eid))
         valid? (or (string? change)
@@ -358,7 +400,7 @@
                 (let [ts (last-op-ts db)]
                   ;; A save the plan refuses is refused again under the lock,
                   ;; where the error becomes the answer.
-                  (when-let [plan (try (save-plan db eid change base)
+                  (when-let [plan (try (save-plan db eid change base tokenize-layer)
                                        (catch Exception _ nil))]
                     {:ts ts :plan plan})))
         op (volatile! nil)
@@ -381,7 +423,7 @@
          (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors heads]}
                (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
                      (:plan ahead))
-                   (save-plan tx eid change base)
+                   (save-plan tx eid change base tokenize-layer)
                    (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
                multi-delete! token/multi-delete!
                compensate-partition-layers! token/compensate-partition-layers!]
@@ -398,7 +440,8 @@
            (crud/update-by-id! tx :texts eid {:body new-body})
            (vswap! op assoc :body new-body)
            ;; 4. The tokens the save makes (a sentence over a line typed before
-           ;; the first one, the parts of a split word), then the
+           ;; the first one, the parts of a split word, the new words of
+           ;; \"Tokenize new text\"), then the
            ;; partitioning-mode gap-fill on the surviving tokens.
            (doseq [{:token/keys [id layer begin end]} heads]
              (crud/insert! tx :tokens {:id id :text_id eid :token_layer_id layer
@@ -418,6 +461,9 @@
   that `plaid.algos.text/apply-text-edits` accepts, applied as sent. With
   `base`, the save applies only when it is the digest of the stored body
   (see `plaid.util.digest`), and answers 409 with `:text-changed` otherwise.
+  With `tokenize-layer`, a token layer of the text, the text the save types
+  gets the words of \"Tokenize new text\" on that layer, made after the old
+  tokens are placed (see `plaid.algos.text/new-words`).
 
   The diff and the token arithmetic (`save-plan`) run BEFORE the write lock,
   on what the database holds then, which at 50,000 words takes seconds.
@@ -434,15 +480,17 @@
        through spans/relations/vocab_links).
     2. Tokens whose extent shifts get their new extent.
     3. The texts row's body is updated.
-    4. Partitioning-mode token layers get gap-filled by
+    4. The tokens the save makes are inserted, and partitioning-mode
+       token layers get gap-filled by
        plaid.sql.token/compensate-partition-layers! — the LAST step so
        it sees the final post-edit token positions.
   The audit rows and the document version bump come with them.
 
   Returns {:success true :extra <text-id> :op {:id :ts :document}}."
   ([db eid new-body-or-ops user-id] (update-body db eid new-body-or-ops user-id nil))
-  ([db eid new-body-or-ops user-id base]
-   (save! db eid new-body-or-ops base user-id "Update body of text ")))
+  ([db eid new-body-or-ops user-id base] (update-body db eid new-body-or-ops user-id base nil))
+  ([db eid new-body-or-ops user-id base tokenize-layer]
+   (save! db eid new-body-or-ops base tokenize-layer user-id "Update body of text ")))
 
 (defn edit-body
   "Change the textual content of `eid` by `edits`, ops made at the caret
@@ -458,8 +506,8 @@
   it the edit applies to whatever is stored, for a caller that holds the
   document's lock. Same operation type as `update-body`, so History and
   restore read it as a body save. Returns what `update-body` returns."
-  [db eid {:keys [edits base]} user-id]
-  (save! db eid {:edits edits} base user-id "Edit body of text "))
+  [db eid {:keys [edits base tokenize-layer]} user-id]
+  (save! db eid {:edits edits} base tokenize-layer user-id "Edit body of text "))
 
 (defn reshape
   "What a body save wrote besides the body, for the apps to patch a read

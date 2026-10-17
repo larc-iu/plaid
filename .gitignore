@@ -43,6 +43,8 @@ dist-artifacts/
 !/plaid-core/resources/casefold.txt
 # the punctuation table the text rules read (plaid-igt/tools/punctuationClasses.mjs)
 !/plaid-core/resources/punctuation_classes.txt
+# the scripts written without spaces, which Tokenize new text reads (plaid-igt/tools/spacelessScripts.mjs)
+!/plaid-core/resources/spaceless_scripts.txt
 mutations.ednl
 Gemfile.lock
 .aider*

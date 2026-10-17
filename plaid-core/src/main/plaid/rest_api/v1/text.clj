@@ -36,6 +36,7 @@
                              "\n<body>document-id</body>: the text's associated document."
                              "\n<body>body</body>: the string which is the content of this text."
                              "\n<body>id</body>: optional, the new text's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a text since deleted, is refused with 409 and <body>id-taken</body>."
+                             "\n<body>tokenize-layer</body>: optional, a token layer of the text's layer: the body gets words on it as the built-in tokenizer cuts them, at whitespace and at the break characters of the layer's ignored-tokens rule (<body>config.igt.ignoredTokens</body>), leaving out a word that rule ignores and one holding a letter of a script written without spaces between words."
                              "\n<body>token-edges</body>: optional, the code-point offsets where the tokens the client makes next on this text begin and end. The body is stored composed (NFC), except a character one of these falls inside, which stays as sent, so a mark that is a token of its own keeps its place.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
@@ -47,12 +48,14 @@
                                    [:document-id :uuid]
                                    [:body string?]
                                    [:token-edges {:optional true} [:vector :int]]
+                                   [:tokenize-layer {:optional true} :uuid]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [id text-layer-id document-id body token-edges metadata]} :body} :parameters db :db user-id :user/id}]
+               :handler (fn [{{{:keys [id text-layer-id document-id body token-edges tokenize-layer metadata]} :body} :parameters db :db user-id :user/id}]
                           (let [attrs (cond-> {:text/layer text-layer-id
                                                :text/document document-id
                                                :text/body body}
                                         (some? id) (assoc :text/id id)
+                                        (some? tokenize-layer) (assoc :text/tokenize-layer tokenize-layer)
                                         (seq token-edges) (assoc :text/edges token-edges))
                                 result (txt/create db attrs user-id metadata)]
                             (if (:success result)
@@ -111,7 +114,13 @@
                                "the tokens whose extent the update changed (<body>id</body>, <body>begin</body>, "
                                "<body>end</body>), the spans and vocabulary links whose token lists it changed "
                                "(<body>id</body>, <body>tokens</body>), and under <body>deleted</body> the ids of "
-                               "the tokens, spans, relations and vocabulary links it deleted.")
+                               "the tokens, spans, relations and vocabulary links it deleted."
+                               "\n\n"
+                               "<body>tokenize-layer</body>, optional with either form, a token layer of the text's "
+                               "layer: the text the update types gets words on it, made after the old tokens are "
+                               "placed, inside the sentences, where no token of that layer stands, as the built-in "
+                               "tokenizer cuts them (see the text create). They come in <body>reshape</body> with "
+                               "their <body>layer</body> and <body>text</body>.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]
@@ -122,7 +131,7 @@
                               :body any?}
                  :handler (fn [{{{:keys [text-id]} :path params :body} :parameters db :db user-id :user/id}]
                             (let [doc-id (:text/document (txt/get db text-id))
-                                  {:keys [body edits base]} (when (map? params) params)
+                                  {:keys [body edits base tokenize-layer]} (when (map? params) params)
                                   {:keys [success code error op text-changed]}
                                   (cond
                                     (not (map? params))
@@ -131,10 +140,12 @@
                                     {:code 400 :error "Send either body or edits, not both."}
                                     (and (some? base) (not (string? base)))
                                     {:code 400 :error "base must be a string."}
+                                    (and (some? tokenize-layer) (not (parse-uuid (str tokenize-layer))))
+                                    {:code 400 :error "tokenize-layer must be a token layer id."}
                                     (contains? params :edits)
-                                    (txt/edit-body db text-id {:edits edits :base base} user-id)
+                                    (txt/edit-body db text-id {:edits edits :base base :tokenize-layer tokenize-layer} user-id)
                                     :else
-                                    (txt/update-body db text-id body user-id base))]
+                                    (txt/update-body db text-id body user-id base tokenize-layer))]
                               (cond
                                 success
                                 (prm/assoc-document-version-in-header

@@ -820,24 +820,26 @@
   [c]
   (contains? #{0x0A 0x0D 0x85 0x2028 0x2029} (int c)))
 
-;; Punctuation and symbols (Unicode P and S) and pictographs, read from the
-;; table igt and plaid-client-py read (`resources/punctuation_classes.txt`,
-;; written by plaid-igt's `tools/punctuationClasses.mjs` with plaid-ui's
-;; `punctuationClasses.js`), never from Java's own Unicode tables, which are
-;; a version behind igt's (Java 21 has Unicode 15, the table 16).
+;; Punctuation and symbols (Unicode P and S), pictographs and the built-in
+;; tokenizer's break class, read from the table igt and plaid-client-py read
+;; (`resources/punctuation_classes.txt`, written by plaid-igt's
+;; `tools/punctuationClasses.mjs` with plaid-ui's `punctuationClasses.js`),
+;; and the scripts written without spaces (`resources/spaceless_scripts.txt`,
+;; plaid-igt's `tools/spacelessScripts.mjs`), never from Java's own Unicode
+;; tables, which are a version behind igt's (Java 21 has Unicode 15, the
+;; tables 16).
 (def ^:private punct-classes
-  "`{\"punct\" ranges \"picto\" ranges}`, each an int array of inclusive
-  `[first last]` code-point pairs in order."
-  (with-open [r (io/reader (io/resource "punctuation_classes.txt") :encoding "UTF-8")]
-    (into {}
-          (comp (remove #(or (str/blank? %) (str/starts-with? % "#")))
-                (map (fn [line]
-                       (let [[k & ranges] (str/split (str/trim line) #" +")]
-                         [k (int-array (mapcat (fn [r]
-                                                 (let [[a b] (map #(Integer/parseInt % 16) (str/split r #"-"))]
-                                                   [a (or b a)]))
-                                               ranges))]))))
-          (line-seq r))))
+  "`{\"punct\" ranges \"picto\" ranges \"break\" ranges \"spaceless\" ranges}`,
+  each an int array of inclusive `[first last]` code-point pairs in order."
+  (into {}
+        (for [file ["punctuation_classes.txt" "spaceless_scripts.txt"]
+              line (with-open [r (io/reader (io/resource file) :encoding "UTF-8")] (vec (line-seq r)))
+              :when (not (or (str/blank? line) (str/starts-with? line "#")))]
+          (let [[k & ranges] (str/split (str/trim line) #" +")]
+            [k (int-array (mapcat (fn [r]
+                                    (let [[a b] (map #(Integer/parseInt % 16) (str/split r #"-"))]
+                                      [a (or b a)]))
+                                  ranges))]))))
 
 (defn- in-ranges?
   "Whether code point `c` lies in `ranges`, an int array of inclusive
@@ -3581,3 +3583,96 @@
       (let [listed (single-code-points (when (sequential? (get rule "blacklist")) (get rule "blacklist")))]
         (fn [c] (and (in-ranges? (punct-classes "punct") c) (not (contains? listed (int c))))))
       :else #{})))
+
+;; ---------------------------------------------------------------------------
+;; Tokenize new text
+;;
+;; A save naming a word layer (`tokenize-layer` on the text routes) gets
+;; words for the text it types, after the old tokens are placed, so no new
+;; word lands where an old one now stands. The cut is igt's built-in
+;; tokenizer's (plaid-igt `tokenizationUtils.js`, which the Tokenize tab runs):
+;; a word is a run of code points that are neither whitespace nor a break
+;; character under the layer's ignored-tokens rule.
+
+(defn- breaks?
+  "Whether code point `c` ends a word to the built-in tokenizer under the
+  ignored-tokens rule `rule` (`config.igt.ignoredTokens`, plaid-ui
+  `shouldTokenizeCharacter`): the break class, less the letter-like
+  characters under the punctuation rule, or the entries of an explicit list."
+  [rule c]
+  (let [type (when (map? rule) (get rule "type"))
+        listed (fn [k] (contains? (single-code-points (when (sequential? (get rule k)) (get rule k))) (int c)))]
+    (cond
+      (= "blacklist" type) (listed "blacklist")
+      (= "unicodePunctuation" type) (and (in-ranges? (punct-classes "break") c) (not (listed "whitelist")))
+      :else (in-ranges? (punct-classes "break") c))))
+
+(defn- ignored-word?
+  "Whether a word spelled `cps` (code points) is one igt ignores under
+  `rule` (plaid-ui `isTokenIgnored`): under the punctuation rule, all of it
+  punctuation, no pictograph, no zero morph and nothing letter-like, and
+  under an explicit list, an entry of it."
+  [rule cps]
+  (let [type (when (map? rule) (get rule "type"))]
+    (cond
+      (= "unicodePunctuation" type)
+      (let [letter-like (single-code-points (when (sequential? (get rule "whitelist")) (get rule "whitelist")))]
+        (every? (fn [c] (and (in-ranges? (punct-classes "punct") c)
+                             (not (in-ranges? (punct-classes "picto") c))
+                             (not= c 0x2205)
+                             (not (letter-like c))))
+                cps))
+      (= "blacklist" type)
+      (let [s (String. (int-array cps) 0 (count cps))]
+        (boolean (some #{s} (when (sequential? (get rule "blacklist")) (get rule "blacklist")))))
+      :else false)))
+
+(defn typed-ranges
+  "Where in the body `gaps` (old-body order, never touching, see
+  `compose-edits`) make their values stand, as `[begin end]` code points of
+  the new body."
+  [gaps]
+  (loop [gaps gaps shift 0 out []]
+    (if-let [{:keys [start end value]} (first gaps)]
+      (let [n (cp/cp-count value)
+            b (+ start shift)]
+        (recur (rest gaps) (+ shift (- n (- end start))) (cond-> out (pos? n) (conj [b (+ b n)]))))
+      out)))
+
+(defn new-words
+  "The words \"Tokenize new text\" makes on layer `layer` for a save that made
+  `body` and typed `typed` (`[begin end]` ranges of it), with `tokens` (each
+  `{:token/layer :token/begin :token/end}`) standing on it after the save:
+  each stretch no token of `layer` covers, cut at every token begin of the
+  `partitions` layers (the sentences), is cut into words at whitespace and
+  at the break class under `rule`, the layer's ignored-tokens rule (see
+  `breaks?`). A word is made when it holds a typed code point, is not one
+  igt ignores (see `ignored-word?`), and holds no letter of a script written
+  without spaces between words (Han, kana, Thai and the like), whose words
+  are the user's to cut. Returns `[{:token/layer :token/begin :token/end}]`
+  in order."
+  [^String body typed tokens layer partitions rule]
+  (let [^ints o (.toArray (.codePoints body))
+        n (alength o)
+        covered (boolean-array n)
+        typed? (boolean-array n)
+        cut (boolean-array (inc n))
+        partitions (set partitions)]
+    (doseq [[b e] typed, x (range (max 0 b) (min n e))] (aset typed? x true))
+    (doseq [{:token/keys [begin end] l :token/layer} tokens]
+      (cond
+        (= l layer) (doseq [x (range (max 0 begin) (min n end))] (aset covered x true))
+        (partitions l) (when (< 0 begin n) (aset cut begin true))))
+    (let [stop? (fn [x] (or (aget covered x) (space? (aget o x)) (breaks? rule (aget o x))))]
+      (loop [x 0 out []]
+        (cond
+          (>= x n) out
+          (stop? x) (recur (inc x) out)
+          :else
+          (let [y (loop [y (inc x)] (if (and (< y n) (not (stop? y)) (not (aget cut y))) (recur (inc y)) y))
+                cps (map #(aget o %) (range x y))]
+            (recur y (cond-> out
+                       (and (some #(aget typed? %) (range x y))
+                            (not (ignored-word? rule cps))
+                            (not-any? #(in-ranges? (punct-classes "spaceless") %) cps))
+                       (conj {:token/layer layer :token/begin x :token/end y})))))))))
