@@ -156,6 +156,25 @@ def test_a_drop_by_field_takes_a_value_an_analysis_had_taken_out(live_client):
         s.delete()
 
 
+def test_a_respelling_in_one_document_and_an_analysis_in_another_are_refused_at_staging_both_ways(live_client):
+    # REV8-PLAN-5: approval reads an analysis as reaching every document, so
+    # staging refuses it in either order, rather than approval after the card.
+    c = live_client
+    wa = [('gam', 'G', [('gam', 'K')]), ('to', '', [('to', '')])]
+    wb = [('gam', 'H', [('gam', '')]), ('mi', 'K', [('mi', 'K')])]
+    respell = ('respell_all', {'pattern': 'gam', 'replacement': 'gham', 'whole': True, 'document': 'Doc A'})
+    analysis = ('set_analysis', {'document': 'Doc B', 'ref': 's1.w2', 'morphemes': [{'form': 'm'}, {'form': 'i'}]})
+    s, ws = _seeded(c, 'respell and analysis', wa, wb)
+    try:
+        _ask(ws, respell)
+        assert call_tool(ws, *analysis).startswith('Error: Doc B: this plan already holds a corpus-wide change')
+        ws = _fresh(c, s)
+        _ask(ws, analysis)
+        assert call_tool(ws, *respell).startswith('Error: This plan already reshapes text or words')
+    finally:
+        s.delete()
+
+
 def test_a_value_another_user_wrote_after_planning_still_refuses_approval_after_a_drop(live_client):
     # REV8-PLAN-6: a drop asks the requests again over the reads they made,
     # so the rule still shows the 2 values it found, and approval refuses the

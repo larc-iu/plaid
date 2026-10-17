@@ -453,7 +453,8 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and op['begin'] < end:
             raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
                             'respell it in a separate plan')
-    no_scope_reaches(ws, next((d.id for d in ws._docs.values() if d.text_id == text_id), None), where)
+    no_scope_reaches(ws, next((d.id for d in ws._docs.values() if d.text_id == text_id), None), where,
+                     placed=True)
 
 
 def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
@@ -469,13 +470,20 @@ def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
     no_scope_reaches(ws, doc.id, where or ws.doc_label(doc.id))
 
 
-def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str) -> None:
+def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str, placed: bool = False) -> None:
     """A corpus-wide change stored as one op (bulk.scope_reaches) is resolved
     to words only at approval, so nothing that reshapes a document it reaches
-    can share its plan: the two would meet for the first time in the batch."""
+    can share its plan: the two would meet for the first time in the batch.
+
+    Approval (``plan.validate_ops``) reads a reshape that names no document
+    as one in every document, and only a respelling names its own
+    (``placed``), so any other reshape is refused here while such a change is
+    planned anywhere, as approval would refuse it (REV8-PLAN-5)."""
     from .bulk import scope_reaches
-    if scope_reaches(ws, doc_id):
-        raise ToolError(f'{where}: this plan already holds a corpus-wide change that reaches this document. '
+    if scope_reaches(ws, doc_id if placed else None):
+        what = ('reaches this document' if scope_reaches(ws, doc_id)
+                else 'rewrites text, which nothing that reshapes words can share a plan with')
+        raise ToolError(f'{where}: this plan already holds a corpus-wide change that {what}. '
                         'Apply it first, then plan this (plan_status, drop_planned).')
 
 
