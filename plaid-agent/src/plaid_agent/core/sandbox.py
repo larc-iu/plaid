@@ -39,6 +39,11 @@ WALL_SECONDS = 900.0               # the host-side backstop for one call, host f
 MEMORY_BYTES = 1024 * 1024 * 1024
 MAX_SUSPENSIONS = 500_000          # host calls one run may make: a walk over a large corpus is thousands
 TURN_EXEC_SECONDS = 600.0          # interpreter time over a whole turn's calls, which share one worker
+# What the worker pool is opened with besides its backstop: nothing, so it
+# holds as many workers as the machine has CPUs and a turn that finds them all
+# held waits for one. The test suite bounds both (tests/conftest.py), so a test
+# that keeps a worker fails at once rather than hanging a later one.
+POOL_OPTIONS: Dict[str, Any] = {}
 MODULES = ('re', 'json', 'math', 'collections', 'itertools', 'functools', 'datetime', 'unicodedata')
 
 NAMES = ('run_code', 'code_help')
@@ -265,7 +270,7 @@ def _pool():
     with _lock:
         if _state['pool'] is None:
             from pydantic_monty import Monty
-            pool = Monty(request_timeout=WALL_SECONDS)
+            pool = Monty(request_timeout=WALL_SECONDS, **POOL_OPTIONS)
             pool.__enter__()
             atexit.register(lambda: pool.__exit__(None, None, None))
             _state['pool'] = pool
