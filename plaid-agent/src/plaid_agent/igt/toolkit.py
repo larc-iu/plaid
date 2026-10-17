@@ -440,8 +440,9 @@ TOOLS += [
     _fn('respell_all',
         'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '
         'word\'s analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of '
-        'those words (morpheme_forms=false to leave them) and into lexicon headwords (lexicon=false to leave them; '
-        'the pattern is applied to every entry, not only linked ones). Patterns apply within words only.',
+        'those words (morpheme_forms=false to leave them). Lexicon headwords are left as they are unless lexicon=true '
+        '(then the pattern is applied to every entry, not only linked ones: ask the user first, a lexicon can be '
+        'shared). Patterns apply within words only.',
         {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
          'whole': {'type': 'boolean', 'description': 'Match the whole word only.'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
          'lexicon': {'type': 'boolean'}}, ['pattern', 'replacement']),

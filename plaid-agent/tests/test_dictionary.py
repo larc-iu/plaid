@@ -604,7 +604,7 @@ def test_a_form_shared_with_a_doomed_entry_still_names_the_one_that_survives():
 def test_a_respelling_does_not_rename_an_entry_the_plan_removes():
     w = dict_ws()
     call_tool(w, 'delete_entry', {'entry_form': 'phika'})
-    call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'e'})
+    call_tool(w, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'e'})
     from plaid_agent.igt.bulk import planned_changes
     assert [o['item_id'] for o in planned_changes(w) if o['kind'] == 'rename_entry'] == \
         ['d-kwatha', 'd-boil', 'd-simmer', 'd-ferment', 'd-nyumba']

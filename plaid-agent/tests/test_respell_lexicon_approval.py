@@ -26,7 +26,7 @@ def test_a_respelling_after_a_merge_renames_only_the_entry_that_stays(live_clien
         ws = Workspace(c, load_project(c, s.project_id))
         out = call_tool(ws, 'merge_entries', {'keep_form': 'gam#1', 'remove_form': 'gam#2'})
         assert not out.startswith('Error'), out
-        out = call_tool(ws, 'respell_all', {'pattern': 'gam', 'replacement': 'gham', 'whole': True})
+        out = call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'gam', 'replacement': 'gham', 'whole': True})
         assert not out.startswith('Error'), out
         _p, h, _ = approve(c, s.project_id, ws)
         assert not h.errors, h.errors
@@ -45,7 +45,7 @@ def test_a_merge_planned_after_the_respelling_is_found_the_same_at_approval(live
              {VOCAB: lexicon_raw()}, name='respell before merge')
     try:
         ws = Workspace(c, load_project(c, s.project_id))
-        out = call_tool(ws, 'respell_all', {'pattern': 'gam', 'replacement': 'gham', 'whole': True})
+        out = call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'gam', 'replacement': 'gham', 'whole': True})
         assert not out.startswith('Error'), out
         out = call_tool(ws, 'merge_entries', {'keep_form': 'gam#1', 'remove_form': 'gam#2'})
         assert not out.startswith('Error'), out
@@ -80,7 +80,7 @@ def test_a_change_before_a_respelling_dropped_asked_again_or_kept_leaves_the_pla
         tool, args = _BEFORE[before]
         out = call_tool(ws, tool, args)
         assert not out.startswith('Error'), out
-        out = call_tool(ws, 'respell_all', {'pattern': 'gam', 'replacement': 'gham', 'whole': True})
+        out = call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'gam', 'replacement': 'gham', 'whole': True})
         assert not out.startswith('Error'), out
         if then == 'drop':
             out = call_tool(ws, 'drop_planned', {'indexes': [1]})

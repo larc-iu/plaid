@@ -129,7 +129,7 @@ def test_bulk_plans():
     call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': r'(A)(li)', 'replacement': r'\2\1',
                                        'regex': True, 'whole': True})
     assert changes(w1)[-1]['value'] == 'liA'
-    out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
+    out = call_tool(w, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'})
     # 4 words (case-insensitive, like search) + the stored morpheme forms of those words
     # (Ali, Gam, ar) + every lexicon headword the pattern hits (Ali, gam, gam), as Bulk Edit does.
     assert 'Planned 10 changes' in out and '(4 words, 3 morpheme forms, 3 lexicon headwords.)' in out

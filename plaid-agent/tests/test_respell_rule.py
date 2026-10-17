@@ -71,8 +71,8 @@ def test_two_respellings_of_one_document_compose_in_plan_order(live_client, doc_
     # that reaches this document", so an orthography migration of two
     # letters took two plans.
     c, (s, ws) = live_client, doc_a
-    _ok(call_tool(ws, 'respell_all', {'pattern': 'a', 'replacement': 'ä'}))
-    out = _ok(call_tool(ws, 'respell_all', {'pattern': 'o', 'replacement': 'ö'}))
+    _ok(call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'}))
+    out = _ok(call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'o', 'replacement': 'ö'}))
     # "tao" is read as the first leaves it.
     assert 'respell "tao" → "täö"' in out, out
     _p, h, _ = approve(c, s.project_id, ws)
@@ -110,7 +110,7 @@ def test_dropping_the_first_respelling_finds_the_second_over_what_is_stored(live
 @pytest.mark.parametrize('first', ['respelling', 'split'])
 def test_a_plan_reshaping_a_document_it_respells_is_refused_in_either_order(doc_a, first):
     _s, ws = doc_a
-    respell = ('respell_all', {'pattern': 'a', 'replacement': 'ä'})
+    respell = ('respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'})
     split = ('split_word', {'document': 'Doc A', 'ref': 's1.w1', 'at': '1'})
     calls = [respell, split] if first == 'respelling' else [split, respell]
     _ok(call_tool(ws, *calls[0]))
@@ -136,3 +136,13 @@ def test_the_guards_read_the_plan_being_applied_at_approval(doc_a):
     with pytest.raises(ToolError, match='overlaps a respelling already planned'):
         queries.respell_guard(ws, [word], {'x': other})
     queries.respell_guard(ws, [word], {'x': dict(word)})
+
+
+def test_headwords_are_left_alone_unless_asked(live_client, doc_a):
+    """igt's Respell screen leaves lexicon entries alone by default, since a
+    lexicon can be shared (ruling 22), and so does respell_all (H17-ASSIST-10)."""
+    _s, ws = doc_a
+    out = _ok(call_tool(ws, 'respell_all', {'pattern': 'gam', 'replacement': 'gham', 'whole': True}))
+    assert '0 lexicon headwords' in out, out
+    out = _ok(call_tool(ws, 'respell_all', {'pattern': 'gam', 'replacement': 'gham', 'whole': True, 'lexicon': True}))
+    assert '0 lexicon headwords' not in out, out

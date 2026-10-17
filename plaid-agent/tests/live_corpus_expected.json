@@ -635,7 +635,7 @@
    }
   ]
  },
- "proj respell_all {\"pattern\": \"a\", \"replacement\": \"ä\"}": {
+ "proj respell_all {\"lexicon\": true, \"pattern\": \"a\", \"replacement\": \"ä\"}": {
   "answer": "Planned 10 changes in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 10 changes in 1 numbered entry). Describe the plan to the user in your reply. 3 of them replace work a person made or accepted, and the card says so.\nMatches anywhere in the value, ignoring case.\nIn 1 document: \"Text 1\" 7.\nFor example:\n  Text 1 s1.w1: respell \"Ali-di\" → \"Äli-di\"\n  Text 1 s1.w1.m1 (in \"Ali-di\"): morpheme form \"Ali\" → \"Äli\"\n  Text 1 s1.w2: respell \"gam\" → \"gäm\"\n  Text 1 s1.w3: respell \"akuna\" → \"äkunä\"\n  Text 1 s2.w1.m1 (in \"Gam-ar\"): morpheme form \"Gam\" → \"Gäm\"\n  Text 1 s2.w1.m2 (in \"Gam-ar\"): morpheme form \"ar\" → \"är\"\n  Lexicon: rename entry \"Ali\" → \"Äli\"\n  Lexicon: rename entry \"gam\" → \"gäm\"\n  … 2 more\nStored as a rule, found again when the user approves.\n(4 words, 3 morpheme forms, 3 lexicon headwords.)",
   "ops": [
    {

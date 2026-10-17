@@ -1211,13 +1211,15 @@ def _names_morpheme_forms(ws: Workspace, field: str) -> bool:
 
 def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = False,
                   whole: bool = False, document: Optional[str] = None,
-                  case_sensitive: bool = False, morpheme_forms: bool = True, lexicon: bool = True) -> str:
+                  case_sensitive: bool = False, morpheme_forms: bool = True, lexicon: bool = False) -> str:
     """PLAN: change the baseline spelling of every word matching a pattern
     (orthography migration). Each word is replaced whole, so its analysis,
     glosses, and links survive. Patterns apply within a word, never across
     word boundaries. As in the editor's Bulk Edit, the replacement is carried
-    into the stored morpheme forms of the respelled words and into every
-    lexicon headword it matches, unless switched off. Ignoring case, the
+    into the stored morpheme forms of the respelled words unless switched
+    off, and with ``lexicon`` into every lexicon headword it matches: off by
+    default, as igt's Respell screen (ruling 22), since a lexicon can be
+    shared. Ignoring case, the
     replacement takes each match's capitals ("Ali" → "Äli" for a → ä).
     Staged as one rule."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))

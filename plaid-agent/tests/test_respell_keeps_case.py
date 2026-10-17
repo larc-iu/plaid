@@ -90,7 +90,7 @@ def doc_a(live_client):
 
 def test_the_card_and_approval_keep_the_matched_capitals(live_client, doc_a):
     c, (s, ws) = live_client, doc_a
-    out = call_tool(ws, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
+    out = call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'})
     assert not out.startswith('Error'), out
     assert 'respell "Ali" → "Äli"' in out and 'morpheme form "ALI" → "ÄLI"' in out, out
     assert 'rename entry "Ali" → "Äli"' in out and '"äli"' not in out and '"äLI"' not in out, out
