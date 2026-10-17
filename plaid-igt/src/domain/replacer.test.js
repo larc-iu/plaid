@@ -113,6 +113,28 @@ describe('buildReplacer', () => {
     }
   });
 
+  // REV8-CORE-1: a class holding a composed letter and a mark was decomposed
+  // whole, so it held the bare letter: [á\x{301}] → X wrote a as X, and
+  // [óú\x{301}] → nothing deleted every o. A class keeps its composed
+  // letters, as core's search does.
+  it('never rewrites a base letter the pattern does not name', () => {
+    expect(
+      run('[\u00e1\\x{301}]', 'regex', 'X', ['a', '\u00e0', 'ma', 'm\u00e0', 'm\u00e1', '\u1ea5'])
+        .out,
+    ).toEqual([null, null, null, null, 'mX', '\u00e2X']);
+    expect(
+      run('[\u00f3\u00fa\\x{301}]', 'regex', '', ['o', '\u00f2', 'm\u00e1', '\u00f3 \u00fa']).out,
+    ).toEqual([null, null, 'ma', ' ']);
+    expect(run('[^\u00e1\\x{301}]', 'regex', 'X', ['ma', 'm\u00e1']).out).toEqual([
+      'XX',
+      'X\u00e1',
+    ]);
+    expect(run('\u00e9+\\x{301}', 'regex', 'X', ['e\u0301\u0301', 'e\u0301']).out).toEqual([
+      'X',
+      null,
+    ]);
+  });
+
   // Luke, 2026-10-08: exact compares canonically equivalent text as equal.
   it('matches an exact value however its accents are encoded', () => {
     expect(

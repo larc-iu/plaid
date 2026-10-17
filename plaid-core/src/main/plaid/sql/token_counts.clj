@@ -61,7 +61,7 @@
         composed (when-not (identical? nfc-src src)
                    (try (clauses/compile-regex nfc-src) (catch Exception _ nil)))
         decomposed (when (canonical/names-mark? src)
-                     (try (clauses/compile-regex (canonical/nfd src)) (catch Exception _ nil)))
+                     (try (clauses/compile-regex (canonical/decompose-pattern src)) (catch Exception _ nil)))
         found? (fn [^Pattern p ^String s] (.find (.matcher p s)))]
     (fn [^String s]
       (boolean

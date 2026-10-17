@@ -237,8 +237,9 @@ Text is compared as a reader would see it.
 A pattern or an equality matches text that differs only in how its characters are composed, so `pʰá` typed with a precomposed `á` finds it stored as `a` plus an accent.
 Two marks typed in either order count as the same text too.
 A pattern that names a combining mark also finds it inside a precomposed letter, so a pattern of only the acute accent (U+0301) finds the accent in `á`.
-A pattern names a mark when it holds one, writes one as an escape (`\x{301}`, `\u0301`) or a class range between two, or asks for the mark category (`\p{M}`, `\p{Mn}`, `\p{Mc}`, `\p{Me}`) on its own or in a class of nothing but marks.
+A pattern names a mark when it holds one, writes one as an escape (`\x{301}`, `\u0301`, `\N{COMBINING ACUTE ACCENT}`) or a class range between two, or asks for the mark category (`\p{M}`, `\p{Mn}`, `\p{Mc}`, `\p{Me}`) on its own, in a class of nothing but marks, or as `[^\P{M}]`.
 A pattern that names none never looks inside a letter, so `a` does not find `á`, and neither does `a.`, `a\w` or `a[\p{L}\p{M}]`.
+A precomposed letter in a class stays that letter when the pattern looks inside letters: `[á\x{301}]` finds `á` and the accent in `ấ`, never a plain `a`, and `[^á\x{301}]` finds the `a` of `ma` but not the one in `á`.
 
 === Value variables
 

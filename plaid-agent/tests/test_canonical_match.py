@@ -5,7 +5,7 @@ the place the match covers, mapped back onto the stored value by code point,
 with the replacement as typed.
 """
 
-from plaid_agent.core.java_regex import matcher, names_mark
+from plaid_agent.core.java_regex import decompose_pattern, matcher, names_mark
 from plaid_agent.core.replace import replacer
 
 from test_igt_rules import _replace, _ws
@@ -26,6 +26,55 @@ NAMES_MARK_CASES = [
     ('[a-]', False), (r'\x{zz}', False), (r'[^\p{Me}]', False), (r'\x{110000}', False), (r'\x{1F600}', False),
     (r'[\p{L}\p{M}]', False), (r'\b', False), (r'\W', False), (r'a\w', False), (r'[^\x{301}]', True),
     (r'[\x{2ff}-\x{370}]', False),
+    # REV8-CORE-6
+    (r'\N{COMBINING ACUTE ACCENT}', True), (r'\N{combining acute accent}', True),
+    (r'[\N{COMBINING GRAVE ACCENT}a]', True), (r'\N{LATIN SMALL LETTER A WITH ACUTE}', False),
+    (r'\N{NO SUCH NAME}', False), (r'[^\P{M}]', True), (r'[^\P{Mn}]', True), (r'[^\P{M}a]', False),
+    (r'[\P{M}]', False), (r'\P{M}', False), (r'[^\P{M}\p{M}]', False),
+]
+
+#: (pattern, as it matches a value in NFD), shared word for word with core's
+#: plaid.util.names-mark-test and plaid-ui's javaRegex.test.js (REV8-CORE-1).
+DECOMPOSED_CASES = [
+    ('\u00e1', 'a\u0301'),
+    ('x\u00e1y', 'xa\u0301y'),
+    ('[\u00e1\\x{301}]', '(?:a\u0301|[\u00e1\\x{301}])'),
+    ('[\u00f3\u00fa\u0301]', '(?:o\u0301|u\u0301|[\u00f3\u00fa\u0301])'),
+    ('[^\u00e1\\x{301}]', '(?:(?!a\u0301)[^\u00e1\\x{301}])'),
+    ('[^\u00e1]+', '(?:(?!a\u0301)[^\u00e1])+'),
+    ('[^\u00e1&&b]', '[^a\u0301&&b]'),
+    ('[x[^\u00e1]]', '[x[^a\u0301]]'),
+    ('[^x[\u00e1]]', '[^x[a\u0301]]'),
+    ('[[\u00e1]\u00e9]', '(?:e\u0301|[[\u00e1]\u00e9])'),
+    ('[\u00e1\u00e1]', '(?:a\u0301|[\u00e1\u00e1])'),
+    ('[\u1ea5\u00e2]', '(?:a\u0302\u0301|a\u0302|[\u1ea5\u00e2])'),
+    ('[\\x{e1}b]', '(?:a\u0301|[\\x{e1}b])'),
+    ('[\\u00e1]', '(?:a\u0301|[\\u00e1])'),
+    ('[\\\u00e1]', '(?:a\u0301|[\\\u00e1])'),
+    ('[\u00e0-\u00fa]', '[\u00e0-\u00fa]'),
+    ('[a-\u00fa\u00e9]', '(?:e\u0301|[a-\u00fa\u00e9])'),
+    ('[\u00e1&&\\p{L}]', '[\u00e1&&\\p{L}]'),
+    ('[\u00e1-]', '(?:a\u0301|[\u00e1-])'),
+    ('[\\Q\u00e1]\\E]', '(?:a\u0301|[\\Q\u00e1]\\E])'),
+    ('[\u00e1]+', '(?:a\u0301|[\u00e1])+'),
+    ('\u00e9+', '(?:e\u0301)+'),
+    ('\u00e9{2}', '(?:e\u0301){2}'),
+    ('\u00e9*?', '(?:e\u0301)*?'),
+    ('a\u00e9?', 'a(?:e\u0301)?'),
+    ('(\u00e9)+', '(e\u0301)+'),
+    ('\u00e9{x', 'e\u0301{x'),
+    ('\\x{e9}+', '\\x{e9}+'),
+    ('\\\u00e9', '\\\u00e9'),
+    ('\\p{L}\u00e9', '\\p{L}e\u0301'),
+    ('\\Q\u00e9\\E+', '\\Q\\E(?:\\Qe\u0301\\E)+'),
+    ('\\Q\u00e1\u00e9\\E', '\\Qa\u0301e\u0301\\E'),
+    ('\\Q\u00e1', '\\Qa\u0301'),
+    ('\u1ea1\u0301', 'a\u0323\u0301'),
+    ('\u00e1\u0323', 'a\u0323\u0301'),
+    ('[]\u00e1]', '(?:a\u0301|[]\u00e1])'),
+    ('[^]\u00e1]', '(?:(?!a\u0301)[^]\u00e1])'),
+    ('[x[]\u00e1]]', '[x[]\u00e1]]'),
+    ('[^x[\u00fa-\u1ea5\u00e1]]', '[^x[\u00fa-\u1ea5a\u0301]]'),
 ]
 
 
@@ -79,6 +128,27 @@ def test_names_mark_reads_a_pattern_as_core_does():
     assert rep('(.)\u0301', r'\1\u0302', 'p\u02b0\u00e1', regex=True) == 'p\u02b0\u00e2'
     # A letter matches inside a decomposed one as stored, as it always has.
     assert matcher('a.', literal=False)('p\u02b0a\u0301')
+
+
+def test_decompose_pattern_keeps_class_letters_as_core_does():
+    for pattern, want in DECOMPOSED_CASES:
+        assert decompose_pattern(pattern) == want, pattern
+
+
+def test_a_mark_pattern_never_finds_a_base_letter_it_does_not_name():
+    # REV8-CORE-1: `[á\x{301}]` was decomposed as a whole, so it held a
+    # plain a: it found a and ma, and `[óú\x{301}]` replaced by nothing
+    # deleted every o.
+    values = ['\u00e1', '\u00e0', 'a', '\u1ea5', 'e', '\u00e9', '\u1ea3', 'o', 'ma']
+    for p in (r'[\u00e1\x{301}]', '[\u00e1\u0301]', r'[\u00f3\u00fa\x{301}]'):
+        m = matcher(p, literal=False)
+        assert [v for v in values if m(v)] == ['\u00e1', '\u1ea5', '\u00e9'], p
+    assert rep(r'[\u00e1\x{301}]', 'X', 'a \u00e0 ma m\u00e0 m\u00e1', regex=True) == 'a \u00e0 ma m\u00e0 mX'
+    assert rep(r'[\u00f3\u00fa\x{301}]', '', 'o \u00f2 m\u00e1 \u00f3', regex=True) == 'o \u00f2 ma '
+    m = matcher(r'^[^\u00e1\x{301}]+$', literal=False)
+    assert [v for v in values if m(v)] == [v for v in values if v != '\u00e1']
+    m = matcher(r'^\u00e9+$|^\x{301}$', literal=False)
+    assert [v for v in values if m(v)] == ['\u00e9']
 
 
 def test_a_replacement_rewrites_the_place_it_matched_and_keeps_the_rest_as_stored():

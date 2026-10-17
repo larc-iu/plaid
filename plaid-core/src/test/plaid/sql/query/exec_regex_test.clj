@@ -257,6 +257,34 @@
     (testing "and a composed pattern still finds both spellings of the letter"
       (is (= #{nfd nfc} (values [["span" "?s" {"layer" sl "value" {"regex" "\u00e1$"}}]]))))))
 
+;; REV8-CORE-1: a pattern naming a mark was matched decomposed as a whole, so
+;; a composed letter in a class became its base letter there: `[á\x{301}]`
+;; found a plain a, and igt's Find and Replace with `[óú\x{301}]` deleted
+;; every o. A class keeps its composed letters, and a negated class is
+;; decomposed, so neither ever finds a base letter the pattern does not name.
+(deftest regex-mark-pattern-never-finds-a-base-letter-it-does-not-name
+  (let [pid  (h/create-test-project admin-request "RxClassMark")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "gloss"))
+        doc  (h/create-test-document admin-request pid "d")
+        vals ["\u00e1" "\u00e0" "a" "\u1ea5" "e" "\u00e9" "\u1ea3" "o" "ma"]
+        text (id (h/create-text admin-request txtl doc (apply str (repeat (count vals) "x"))))
+        found (fn [rx] (values [["span" "?s" {"layer" sl "value" {"regex" rx}}]]))]
+    (doseq [[i v] (map-indexed vector vals)]
+      (h/create-span admin-request sl [(id (h/create-token admin-request tokl text i (inc i)))] v))
+    (testing "a composed letter in a class stays that letter"
+      (doseq [rx ["[\u00e1\\x{301}]" "[\u00e1\u0301]" "[\u00f3\u00fa\\x{301}]"]]
+        (is (= #{"\u00e1" "\u00e9" "\u1ea5"} (found rx)) rx))
+      (is (= #{"\u00e1"} (found "^[\u00e1\\x{301}]$"))))
+    (testing "a negated class is decomposed, so it never finds the a of \u00e1"
+      (is (= (disj (set vals) "\u00e1") (found "^[^\u00e1\\x{301}]+$"))))
+    (testing "a composed letter under a quantifier is the whole letter"
+      (is (= #{"\u00e9"} (found "^\u00e9+$|^\\x{301}$"))))
+    (testing "a mark named by its name, or as the negation of its negation (REV8-CORE-6)"
+      (is (= #{"\u00e1" "\u00e9" "\u1ea5"} (found "\\N{COMBINING ACUTE ACCENT}")))
+      (is (= #{"\u00e1" "\u00e0" "\u00e9" "\u1ea5" "\u1ea3"} (found "[^\\P{M}]"))))))
+
 (deftest equality-matches-canonically-equivalent-text
   ;; Luke, 2026-10-08: igt Search's "is exactly" and Bulk Edit's exact match
   ;; find composed and decomposed spellings of the same text, as a regex

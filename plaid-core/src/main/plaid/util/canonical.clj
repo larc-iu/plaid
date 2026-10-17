@@ -5,6 +5,7 @@
   request. For the query language, text that is canonically equivalent, such
   as `pʰá` typed composed and decomposed (a + U+0301), is the same text to a
   search, an equality as much as a regular expression."
+  (:require [clojure.string])
   (:import [java.text Normalizer Normalizer$Form]
            [java.util BitSet]))
 
@@ -345,14 +346,25 @@
         (when (<= (.compareTo v (BigInteger/valueOf 0x10FFFF)) 0)
           [(.intValue v) end])))))
 
+(defn- name-escape
+  "At `i` a backslash then `N{name}`: `[code-point next-index]` for a name
+  Java knows, or nil."
+  [^ints cps ^long i]
+  (when (== (at cps (+ i 2)) (int \{))
+    (let [j (index-of cps "}" (+ i 3))]
+      (when (pos? j)
+        (try [(Character/codePointOf (String. cps (int (+ i 3)) (int (- j (+ i 3))))) (inc j)]
+             (catch IllegalArgumentException _ nil))))))
+
 (defn- ascii-alnum? [^long cp]
   (or (<= (int \0) cp (int \9)) (<= (int \a) cp (int \z)) (<= (int \A) cp (int \Z))))
 
 (defn names-mark?
   "Whether a Java pattern names a combining mark: it holds one, an escape of
-  one (`\\x{301}`, `\\u0301`), a class range between
-  two, or a mark property (`\\p{M}`, `\\p{Mn}`, `\\pM`) on its own or in a
-  class of nothing but mark properties. Such a pattern also reaches inside
+  one (`\\x{301}`, `\\u0301`, `\\N{COMBINING ACUTE ACCENT}`), a class range
+  between two, or a mark property (`\\p{M}`, `\\p{Mn}`, `\\pM`) on its own or
+  in a class of nothing but mark properties, or a negated class of nothing but
+  negated ones (`[^\\P{M}]`). Such a pattern also reaches inside
   composed letters (REV7-CORE-4), as one typed with the mark does. `.`, `\\w`
   or `[\\p{L}\\p{M}]` match a mark too, but name none, so `a.` never finds the
   a inside á. The same scan as plaid-agent's `java_regex.names_mark` and
@@ -364,7 +376,8 @@
             bs (int \\)
             range-dash? (fn [^long i] (and (== (at cps i) (int \-))
                                            (not (#{-1 (int \])} (at cps (inc i))))))]
-        ;; classes: a vector of [negated mark-property other] per open class
+        ;; classes: a vector of [negated mark-property other not-mark-property]
+        ;; per open class
         (loop [i 0, classes [], start nil, dash false]
           (if (>= i n)
             false
@@ -379,8 +392,10 @@
                       (let [j (index-of cps "\\E" (+ i 2))]
                         (recur (if (neg? j) n (+ j 2)) (if (seq classes) (assoc-in classes [(dec (count classes)) 2] true) classes) nil false))
 
-                      (and (or (== e (int \x)) (== e (int \u))) (hex-escape cps i))
-                      (let [[cp nxt] (hex-escape cps i)]
+                      (or (and (or (== e (int \x)) (== e (int \u))) (hex-escape cps i))
+                          (and (== e (int \N)) (name-escape cps i)))
+                      (let [[cp nxt] (or (and (or (== e (int \x)) (== e (int \u))) (hex-escape cps i))
+                                         (name-escape cps i))]
                         (if (empty? classes)
                           (if (mark? cp) true (recur (long nxt) classes nil false))
                           (let [classes (assoc-in classes [(dec (count classes)) 2] true)]
@@ -390,18 +405,19 @@
                               (mark? cp) true
                               :else (recur (long nxt) classes nil false)))))
 
-                      (== e (int \p))
+                      (or (== e (int \p)) (== e (int \P)))
                       (let [[name nxt] (if (== (at cps (+ i 2)) (int \{))
                                          (let [j (index-of cps "}" (+ i 3))]
                                            (if (pos? j)
                                              [(String. cps (int (+ i 3)) (int (- j (+ i 3)))) (inc j)]
                                              ["" n]))
-                                         [(if (< (+ i 2) n) (String. cps (int (+ i 2)) 1) "") (+ i 3)])]
+                                         [(if (< (+ i 2) n) (String. cps (int (+ i 2)) 1) "") (+ i 3)])
+                            negated (== e (int \P))]
                         (cond
                           (not (mark-property? name))
                           (recur (long nxt) (if (seq classes) (assoc-in classes [(dec (count classes)) 2] true) classes) nil false)
-                          (empty? classes) true
-                          :else (recur (long nxt) (assoc-in classes [(dec (count classes)) 1] true) nil false)))
+                          (empty? classes) (if negated (recur (long nxt) classes nil false) true)
+                          :else (recur (long nxt) (assoc-in classes [(dec (count classes)) (if negated 3 1)] true) nil false)))
 
                       :else
                       (let [cp (when-not (ascii-alnum? e) e)]
@@ -417,12 +433,15 @@
 
                 (== c (int \[))
                 (let [neg? (== (at cps (inc i)) (int \^))]
-                  (recur (if neg? (+ i 2) (inc i)) (conj classes [neg? false false]) nil false))
+                  (recur (if neg? (+ i 2) (inc i)) (conj classes [neg? false false false]) nil false))
 
                 (and (== c (int \])) (seq classes))
-                (let [[negated marks other] (peek classes)
+                (let [[negated marks other not-marks] (peek classes)
                       classes (pop classes)]
-                  (if (and marks (not other) (not negated))
+                  (if (and (not other)
+                           (if negated
+                             (and not-marks (not marks))
+                             (and marks (not not-marks))))
                     true
                     (recur (inc i) (if (seq classes) (assoc-in classes [(dec (count classes)) 2] true) classes) nil false)))
 
@@ -439,3 +458,220 @@
                     (range-dash? (inc i)) (recur (inc i) classes c false)
                     (mark? c) true
                     :else (recur (inc i) classes nil false))))))))))
+
+;; ============================================================
+;; A pattern decomposed
+;; ============================================================
+
+(defn- quantifier-at?
+  "Whether a quantifier starts at `i`: `*`, `+`, `?`, or `{` and a digit."
+  [^ints cps ^long i]
+  (let [c (at cps i)]
+    (or (== c (int \*)) (== c (int \+)) (== c (int \?))
+        (and (== c (int \{)) (<= (int \0) (at cps (inc i)) (int \9))))))
+
+(defn- cp-str ^String [^long cp] (String. (Character/toChars (int cp))))
+
+(defn- decomposes? [^long cp] (let [s (cp-str cp)] (not= s (nfd s))))
+
+(defn- escape-end
+  "The index after the escape at `i` (a backslash): through the braces of
+  `\\x{..}`, `\\p{..}`, `\\P{..}` and `\\N{..}`, the digits of `\\xhh` and
+  `\\uhhhh`, else the one character after the backslash."
+  ^long [^ints cps ^long i]
+  (let [n (alength cps)
+        e (at cps (inc i))]
+    (cond
+      (and (or (== e (int \x)) (== e (int \u))) (hex-escape cps i)) (second (hex-escape cps i))
+      (and (or (== e (int \p)) (== e (int \P)) (== e (int \N)) (== e (int \x))) (== (at cps (+ i 2)) (int \{)))
+      (let [j (index-of cps "}" (+ i 3))] (if (neg? j) n (inc j)))
+      :else (min n (+ i 2)))))
+
+(defn- class-start
+  "The index of the first member of the class opening at `i`: after the `[`
+  and a `^`, and after a `]` there, which Java reads as itself."
+  ^long [^ints cps ^long i]
+  (let [k (if (== (at cps (inc i)) (int \^)) (+ i 2) (inc i))]
+    (if (== (at cps k) (int \])) (inc k) k)))
+
+(defn- class-end
+  "The index after the `]` that closes the class opening at `i`, or the
+  pattern's length when none does."
+  ^long [^ints cps ^long i]
+  (let [n (alength cps)]
+    (loop [k (class-start cps i), depth 1]
+      (cond
+        (>= k n) n
+        (and (== (aget cps k) (int \\)) (== (at cps (inc k)) (int \Q)))
+        (let [j (index-of cps "\\E" (+ k 2))] (if (neg? j) n (recur (+ j 2) depth)))
+        (== (aget cps k) (int \\)) (recur (escape-end cps k) depth)
+        (== (aget cps k) (int \[)) (recur (class-start cps k) (inc depth))
+        (== (aget cps k) (int \])) (if (== depth 1) (inc k) (recur (inc k) (dec depth)))
+        :else (recur (inc k) depth)))))
+
+(defn- nfd-class
+  "The class at `[i, j)` with every character in it decomposed, escapes and
+  the two ends of a range as written."
+  ^String [^ints cps ^long i ^long j]
+  (let [sb (StringBuilder.)]
+    (loop [k i]
+      (if (>= k j)
+        (.toString sb)
+        (let [c (aget cps k)]
+          (cond
+            (and (== c (int \\)) (== (at cps (inc k)) (int \Q)))
+            (let [e (index-of cps "\\E" (+ k 2))
+                  end (if (or (neg? e) (>= e j)) j e)]
+              (.append sb "\\Q")
+              (.append sb (nfd (cps->str cps (+ k 2) end)))
+              (if (< end j)
+                (do (.append sb "\\E") (recur (+ end 2)))
+                (recur j)))
+            (== c (int \\))
+            (let [e (min j (escape-end cps k))]
+              (.append sb (cps->str cps k e))
+              (recur e))
+            ;; a range: its ends stay as written
+            (and (== (at cps (inc k)) (int \-)) (< (+ k 2) j)
+                 (not (#{(int \]) (int \[) (int \\)} (aget cps (+ k 2)))))
+            (do (.append sb (cps->str cps k (+ k 3))) (recur (+ k 3)))
+            (and (== (at cps (inc k)) (int \-)) (< (+ k 2) j) (== (aget cps (+ k 2)) (int \\)))
+            (do (.append sb (cps->str cps k (+ k 2))) (recur (+ k 2)))
+            :else (do (.append sb (nfd (cp-str c))) (recur (inc k)))))))))
+
+(defn- class-parts
+  "The class at `[i, j)` as it matches a value in NFD: as written, but for a
+  negated class inside it, which is decomposed. Also the composed letters it
+  holds as members of its own (not a range's end, nor in a class with `&&`),
+  each decomposed, or nil when there are none, and whether it holds a class
+  or `&&`: `[pulled text nested]`."
+  [^ints cps ^long i ^long j]
+  (let [negated (== (at cps (inc i)) (int \^))
+        sb (StringBuilder. (if negated "[^" "["))
+        close (if (and (< (inc i) j) (== (aget cps (dec j)) (int \]))) (dec j) j)
+        pulled (java.util.ArrayList.)]
+    (loop [k (if negated (+ i 2) (inc i)), expect-dash false, after-dash false, no-pull false, nested false]
+      (if (>= k close)
+        (do (when (< close j) (.append sb "]"))
+            [(when-not (or no-pull (.isEmpty pulled)) (vec pulled)) (.toString sb) (or nested no-pull)])
+        (let [c (aget cps k)
+              member (fn [cp ^long nxt]
+                       (let [start? (and (== (at cps nxt) (int \-))
+                                         (not (#{-1 (int \])} (at cps (inc nxt)))))]
+                         (when (and cp (not start?) (not after-dash) (decomposes? cp))
+                           (.add pulled (nfd (cp-str cp))))
+                         start?))]
+          (cond
+            (and (== c (int \\)) (== (at cps (inc k)) (int \Q)))
+            (let [e (index-of cps "\\E" (+ k 2))
+                  end (if (or (neg? e) (>= e close)) close e)
+                  nxt (if (< end close) (+ end 2) close)]
+              (doseq [q (range (+ k 2) end)]
+                (when (decomposes? (aget cps q)) (.add pulled (nfd (cp-str (aget cps q))))))
+              (.append sb (cps->str cps k nxt))
+              (recur (long nxt) false false no-pull nested))
+
+            (== c (int \\))
+            (let [e (min close (escape-end cps k))
+                  x (at cps (inc k))
+                  cp (cond
+                       (and (or (== x (int \x)) (== x (int \u))) (hex-escape cps k)) (first (hex-escape cps k))
+                       (or (== x -1) (ascii-alnum? x)) nil
+                       :else x)]
+              (.append sb (cps->str cps k e))
+              (if cp
+                (recur e (member cp e) false no-pull nested)
+                (recur e false false no-pull nested)))
+
+            (== c (int \[))
+            (let [e (min close (class-end cps k))]
+              (.append sb (if (== (at cps (inc k)) (int \^))
+                            (nfd-class cps k e)
+                            (second (class-parts cps k e))))
+              (recur e false false no-pull true))
+
+            (and (== c (int \&)) (== (at cps (inc k)) (int \&)))
+            (do (.append sb "&&") (recur (+ k 2) false false true nested))
+
+            (and (== c (int \-)) expect-dash)
+            (do (.append sb "-") (recur (inc k) false true no-pull nested))
+
+            :else
+            (do (.appendCodePoint sb c)
+                (recur (inc k) (member c (inc k)) false no-pull nested))))))))
+
+(defn decompose-pattern
+  "The Java pattern `src` as REGEXP matches it against a value in NFD, when
+  `names-mark?` says so: decomposed (NFD) outside its character classes, so a
+  mark it names finds the mark inside a composed letter. A composed letter
+  under a quantifier is decomposed as a group (`é+` is `(?:e\\u0301)+`).
+  A class keeps its composed letters (REV8-CORE-1): `[á\\x{301}]` holds á and
+  the acute, never a plain a, and is `(?:a\\u0301|[á\\x{301}])`, so it finds
+  á whole and the acute inside `ấ`, but not the a of `ma`. A negated class
+  is preceded by a lookahead for its composed letters decomposed, so
+  `[^á\\x{301}]` is `(?:(?!a\\u0301)[^á\\x{301}])`: it finds the a of `ma`, never
+  the a of á. A negated class holding a class or `&&`, and every negated
+  class inside a class, is decomposed whole. An escape stays as written. The
+  same rewriting as plaid-agent's `java_regex.decompose_pattern` and
+  plaid-ui's `decomposePattern`, which the clients apply to the pattern
+  typed."
+  ^String [^String src]
+  (let [^ints cps (.toArray (.codePoints src))
+        n (alength cps)
+        out (StringBuilder.)
+        run (StringBuilder.)
+        bs (int \\)
+        flush! (fn [] (.append out (nfd (.toString run))) (.setLength run 0))]
+    (loop [i 0]
+      (if (>= i n)
+        (do (flush!) (.toString out))
+        (let [c (aget cps i)]
+          (cond
+            ;; \Q..\E: its text is literal
+            (and (== c bs) (== (at cps (inc i)) (int \Q)))
+            (let [j (index-of cps "\\E" (+ i 2))
+                  end (if (neg? j) n j)
+                  nxt (if (neg? j) n (+ j 2))
+                  last-cp (when (< (+ i 2) end) (aget cps (dec end)))]
+              (flush!)
+              (if (and last-cp (quantifier-at? cps nxt) (decomposes? last-cp))
+                (.append out (str "\\Q" (nfd (cps->str cps (+ i 2) (dec end))) "\\E(?:\\Q"
+                                  (nfd (cp-str last-cp)) "\\E)"))
+                (.append out (str "\\Q" (nfd (cps->str cps (+ i 2) end)) (if (neg? j) "" "\\E"))))
+              (recur (long nxt)))
+
+            ;; any other escape stays as written
+            (== c bs)
+            (let [e (escape-end cps i)]
+              (flush!)
+              (.append out (cps->str cps i e))
+              (recur e))
+
+            (== c (int \[))
+            (let [e (class-end cps i)
+                  [pulled text nested] (class-parts cps i e)
+                  alts (when pulled
+                         (clojure.string/join "|" (sort-by #(- (.codePointCount ^String % 0 (count %))) (distinct pulled))))]
+              (flush!)
+              (.append out ^String (cond
+                                     (not (== (at cps (inc i)) (int \^))) (if alts (str "(?:" alts "|" text ")") text)
+                                     nested (nfd-class cps i e)
+                                     alts (str "(?:(?!" alts ")" text ")")
+                                     :else text))
+              (recur e))
+
+            ;; a composed letter under a quantifier is decomposed as a group
+            (and (quantifier-at? cps i) (pos? (.length run)))
+            (let [k (.offsetByCodePoints run (.length run) -1)
+                  last-s (.substring run k)
+                  d (nfd last-s)]
+              (when-not (= d last-s)
+                (.setLength run k)
+                (flush!)
+                (.append out (str "(?:" d ")")))
+              (.appendCodePoint run c)
+              (recur (inc i)))
+
+            :else
+            (do (.appendCodePoint run c)
+                (recur (inc i)))))))))

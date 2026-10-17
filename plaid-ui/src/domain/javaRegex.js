@@ -49,6 +49,7 @@
 // Java release.
 
 import FOLDS from './javaCaseFolds.js';
+import { MARK_NAMES } from './markNames.js';
 
 /** The server refuses a longer pattern (plaid.query.clauses/regex-max-len). */
 export const SERVER_PATTERN_MAX = 4096;
@@ -891,6 +892,18 @@ const MARK_PROPERTIES = new Set([
   'spacingmark',
   'enclosingmark',
 ]);
+let markNames = null;
+// Whether `\N{name}` names a combining mark: the name of one, any case, as
+// Java reads the name (MARK_NAMES, written from core's Unicode version).
+const markName = (name) => {
+  if (!markNames) markNames = new Set(MARK_NAMES.split('\n').filter(Boolean));
+  // Java trims what String.trim does (up to U+0020) and ignores case.
+  let a = 0;
+  let b = name.length;
+  while (a < b && name.charCodeAt(a) <= 0x20) a += 1;
+  while (b > a && name.charCodeAt(b - 1) <= 0x20) b -= 1;
+  return markNames.has(name.slice(a, b).toUpperCase());
+};
 const HEX = /^[0-9a-fA-F]+$/;
 const ASCII_ALNUM = /^[0-9a-zA-Z]$/;
 
@@ -937,9 +950,10 @@ const hexEscape = (cps, i) => {
 
 /**
  * Whether a Java pattern names a combining mark: it holds one, an escape of
- * one (`\x{301}`, `\u0301`), a class range between
- * two, or a mark property (`\p{M}`, `\p{Mn}`, `\pM`) on its own or in a class
- * of nothing but mark properties. The server's REGEXP also matches such a
+ * one (`\x{301}`, `\u0301`, `\N{COMBINING ACUTE ACCENT}`), a class range
+ * between two, or a mark property (`\p{M}`, `\p{Mn}`, `\pM`) on its own or in
+ * a class of nothing but mark properties, or a negated class of nothing but
+ * negated ones (`[^\P{M}]`). The server's REGEXP also matches such a
  * pattern with pattern and value decomposed, so it reaches inside composed
  * letters (REV7-CORE-4), as one typed with the mark does. `.`, `\w` or
  * `[\p{L}\p{M}]` match a mark too, but name none, so `a.` never finds the a
@@ -951,7 +965,9 @@ export function namesMark(src) {
   const cps = Array.from(String(src ?? ''));
   if (cps.some((c) => MARK.test(c))) return true;
   const n = cps.length;
-  const classes = []; // per open class: [negated, holds a mark property, holds anything else]
+  // per open class: [negated, holds a mark property, holds anything else,
+  // holds a negated mark property]
+  const classes = [];
   const rangeDash = (i) => cps[i] === '-' && i + 1 < n && cps[i + 1] !== ']';
   let start = null; // in a class, the code point a range may start from
   let dash = false; // in a class, a range's dash was read after `start`
@@ -968,7 +984,18 @@ export function namesMark(src) {
         i = j < 0 ? n : j + 2;
       } else if ((e === 'x' || e === 'u') && (hit = hexEscape(cps, i))) {
         [cp, i] = hit;
-      } else if (e === 'p') {
+      } else if (e === 'N' && cps[i + 2] === '{' && indexIn(cps, '}', i + 3) > 0) {
+        const j = indexIn(cps, '}', i + 3);
+        if (markName(cps.slice(i + 3, j).join(''))) {
+          // A mark by its name: a code point no letter is, so in a class it
+          // may stand for any mark there.
+          cp = 0x301;
+          i = j + 1;
+        } else {
+          cp = null;
+          i += 2;
+        }
+      } else if (e === 'p' || e === 'P') {
         let name;
         if (cps[i + 2] === '{') {
           const j = indexIn(cps, '}', i + 3);
@@ -984,8 +1011,11 @@ export function namesMark(src) {
           i += 3;
         }
         if (markProperty(name)) {
-          if (classes.length === 0) return true;
-          classes[classes.length - 1][1] = true;
+          if (classes.length === 0) {
+            if (e === 'P') continue;
+            return true;
+          }
+          classes[classes.length - 1][e === 'p' ? 1 : 3] = true;
           start = null;
           dash = false;
           continue;
@@ -997,14 +1027,14 @@ export function namesMark(src) {
     } else if (c === '[') {
       i += 1;
       const negated = cps[i] === '^';
-      classes.push([negated, false, false]);
+      classes.push([negated, false, false, false]);
       if (negated) i += 1;
       start = null;
       dash = false;
       continue;
     } else if (c === ']' && classes.length > 0) {
-      const [negated, marks, other] = classes.pop();
-      if (marks && !other && !negated) return true;
+      const [negated, marks, other, notMarks] = classes.pop();
+      if (!other && (negated ? notMarks && !marks : marks && !notMarks)) return true;
       i += 1;
       start = null;
       dash = false;
@@ -1037,4 +1067,248 @@ export function namesMark(src) {
     }
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// A pattern decomposed
+
+const nfdOf = (s) => s.normalize('NFD');
+const decomposes = (c) => nfdOf(c) !== c;
+const DIGITS = /^[0-9]$/;
+
+// Whether a quantifier starts at `i`: `*`, `+`, `?`, or `{` and a digit.
+const quantifierAt = (cps, i) =>
+  cps[i] === '*' ||
+  cps[i] === '+' ||
+  cps[i] === '?' ||
+  (cps[i] === '{' && DIGITS.test(cps[i + 1] ?? ''));
+
+// The index after the escape at `i` (a backslash): through the braces of
+// \x{..}, \p{..}, \P{..} and \N{..}, the digits of \xhh and \uhhhh, else the
+// one character after the backslash.
+const escapeEnd = (cps, i) => {
+  const e = cps[i + 1];
+  let hit;
+  if ((e === 'x' || e === 'u') && (hit = hexEscape(cps, i))) return hit[1];
+  if ((e === 'p' || e === 'P' || e === 'N' || e === 'x') && cps[i + 2] === '{') {
+    const j = indexIn(cps, '}', i + 3);
+    return j < 0 ? cps.length : j + 1;
+  }
+  return Math.min(cps.length, i + 2);
+};
+
+// The index of the first member of the class opening at `i`: after the `[`
+// and a `^`, and after a `]` there, which Java reads as itself.
+const classStart = (cps, i) => {
+  const k = cps[i + 1] === '^' ? i + 2 : i + 1;
+  return cps[k] === ']' ? k + 1 : k;
+};
+
+// The index after the `]` that closes the class opening at `i`, or the
+// pattern's length when none does.
+const classEnd = (cps, i) => {
+  const n = cps.length;
+  let k = classStart(cps, i);
+  let depth = 1;
+  while (k < n) {
+    const c = cps[k];
+    if (c === '\\' && cps[k + 1] === 'Q') {
+      const j = indexIn(cps, '\\E', k + 2);
+      if (j < 0) return n;
+      k = j + 2;
+    } else if (c === '\\') {
+      k = escapeEnd(cps, k);
+    } else if (c === '[') {
+      depth += 1;
+      k = classStart(cps, k);
+    } else if (c === ']') {
+      if (depth === 1) return k + 1;
+      depth -= 1;
+      k += 1;
+    } else {
+      k += 1;
+    }
+  }
+  return n;
+};
+
+const slice = (cps, i, j) => cps.slice(i, j).join('');
+
+// The class at [i, j) with every character in it decomposed, escapes and the
+// two ends of a range as written.
+const nfdClass = (cps, i, j) => {
+  let out = '';
+  let k = i;
+  while (k < j) {
+    const c = cps[k];
+    if (c === '\\' && cps[k + 1] === 'Q') {
+      const e = indexIn(cps, '\\E', k + 2);
+      const end = e < 0 || e >= j ? j : e;
+      out += `\\Q${nfdOf(slice(cps, k + 2, end))}`;
+      if (end < j) {
+        out += '\\E';
+        k = end + 2;
+      } else {
+        k = j;
+      }
+    } else if (c === '\\') {
+      const e = Math.min(j, escapeEnd(cps, k));
+      out += slice(cps, k, e);
+      k = e;
+    } else if (cps[k + 1] === '-' && k + 2 < j && !'][\\'.includes(cps[k + 2])) {
+      // a range: its ends stay as written
+      out += slice(cps, k, k + 3);
+      k += 3;
+    } else if (cps[k + 1] === '-' && k + 2 < j && cps[k + 2] === '\\') {
+      out += slice(cps, k, k + 2);
+      k += 2;
+    } else {
+      out += nfdOf(c);
+      k += 1;
+    }
+  }
+  return out;
+};
+
+// The class at [i, j) as it matches a value in NFD: as written, but for a
+// negated class inside it, which is decomposed. Also the composed letters it
+// holds as members of its own (not a range's end, nor in a class with `&&`),
+// each decomposed, or null when there are none, and whether it holds a class
+// or `&&`: [pulled, text, nested].
+const classParts = (cps, i, j) => {
+  const neg = cps[i + 1] === '^';
+  let out = neg ? '[^' : '[';
+  const close = i + 1 < j && cps[j - 1] === ']' ? j - 1 : j;
+  const pulled = [];
+  let k = neg ? i + 2 : i + 1;
+  let expectDash = false;
+  let afterDash = false;
+  let noPull = false;
+  let nested = false;
+  const member = (c, nxt) => {
+    const start = cps[nxt] === '-' && nxt + 1 < cps.length && cps[nxt + 1] !== ']';
+    if (c !== null && !start && !afterDash && decomposes(c)) pulled.push(nfdOf(c));
+    return start;
+  };
+  while (k < close) {
+    const c = cps[k];
+    if (c === '\\' && cps[k + 1] === 'Q') {
+      const e = indexIn(cps, '\\E', k + 2);
+      const end = e < 0 || e >= close ? close : e;
+      const nxt = end < close ? end + 2 : close;
+      for (const q of cps.slice(k + 2, end)) if (decomposes(q)) pulled.push(nfdOf(q));
+      out += slice(cps, k, nxt);
+      k = nxt;
+      expectDash = false;
+      afterDash = false;
+    } else if (c === '\\') {
+      const e = Math.min(close, escapeEnd(cps, k));
+      const x = cps[k + 1];
+      let hit;
+      let cp;
+      if ((x === 'x' || x === 'u') && (hit = hexEscape(cps, k))) cp = String.fromCodePoint(hit[0]);
+      else if (x === undefined || ASCII_ALNUM.test(x)) cp = null;
+      else cp = x;
+      out += slice(cps, k, e);
+      expectDash = cp !== null ? member(cp, e) : false;
+      afterDash = false;
+      k = e;
+    } else if (c === '[') {
+      const e = Math.min(close, classEnd(cps, k));
+      out += cps[k + 1] === '^' ? nfdClass(cps, k, e) : classParts(cps, k, e)[1];
+      k = e;
+      expectDash = false;
+      afterDash = false;
+      nested = true;
+    } else if (c === '&' && cps[k + 1] === '&') {
+      out += '&&';
+      k += 2;
+      expectDash = false;
+      afterDash = false;
+      noPull = true;
+    } else if (c === '-' && expectDash) {
+      out += '-';
+      k += 1;
+      expectDash = false;
+      afterDash = true;
+    } else {
+      out += c;
+      expectDash = member(c, k + 1);
+      afterDash = false;
+      k += 1;
+    }
+  }
+  if (close < j) out += ']';
+  return [noPull || pulled.length === 0 ? null : pulled, out, nested || noPull];
+};
+
+/**
+ * The Java pattern `src` as it matches a value in NFD when namesMark says
+ * so: decomposed (NFD) outside its character classes, so a mark it names
+ * finds the mark inside a composed letter. A composed letter under a
+ * quantifier is decomposed as a group (`é+` is `(?:e\u0301)+`). A class keeps
+ * its composed letters (REV8-CORE-1): `[á\x{301}]` holds á and the acute,
+ * never a plain a, and is `(?:a\u0301|[á\x{301}])`, so it finds á whole and
+ * the acute inside `ấ`, but not the a of `ma`. A negated class is preceded
+ * by a lookahead for its composed letters decomposed, so `[^á\x{301}]` is
+ * `(?:(?!a\u0301)[^á\x{301}])`: it finds the a of `ma`, never the a of á. A
+ * negated class holding a class or `&&`, and every negated class inside a
+ * class, is decomposed whole. An escape stays as written. The same rewriting as core's
+ * `plaid.util.canonical/decompose-pattern` and plaid-agent's
+ * `java_regex.decompose_pattern`. Apply it to the pattern typed, then
+ * translate.
+ */
+export function decomposePattern(src) {
+  const cps = Array.from(String(src ?? ''));
+  const n = cps.length;
+  let out = '';
+  let run = [];
+  const flush = () => {
+    if (run.length) out += nfdOf(run.join(''));
+    run = [];
+  };
+  let i = 0;
+  while (i < n) {
+    const c = cps[i];
+    if (c === '\\' && cps[i + 1] === 'Q') {
+      const j = indexIn(cps, '\\E', i + 2);
+      const end = j < 0 ? n : j;
+      const nxt = j < 0 ? n : j + 2;
+      const body = cps.slice(i + 2, end);
+      flush();
+      const last = body.length ? body[body.length - 1] : null;
+      if (last !== null && quantifierAt(cps, nxt) && decomposes(last)) {
+        out += `\\Q${nfdOf(body.slice(0, -1).join(''))}\\E(?:\\Q${nfdOf(last)}\\E)`;
+      } else {
+        out += `\\Q${nfdOf(body.join(''))}${j < 0 ? '' : '\\E'}`;
+      }
+      i = nxt;
+    } else if (c === '\\') {
+      const e = escapeEnd(cps, i);
+      flush();
+      out += slice(cps, i, e);
+      i = e;
+    } else if (c === '[') {
+      const e = classEnd(cps, i);
+      flush();
+      const [pulled, text, nested] = classParts(cps, i, e);
+      const alts = pulled
+        ? [...new Set(pulled)].sort((a, b) => Array.from(b).length - Array.from(a).length).join('|')
+        : null;
+      if (cps[i + 1] !== '^') out += alts ? `(?:${alts}|${text})` : text;
+      else if (nested) out += nfdClass(cps, i, e);
+      else out += alts ? `(?:(?!${alts})${text})` : text;
+      i = e;
+    } else {
+      if (run.length && quantifierAt(cps, i) && decomposes(run[run.length - 1])) {
+        const last = run.pop();
+        flush();
+        out += `(?:${nfdOf(last)})`;
+      }
+      run.push(c);
+      i += 1;
+    }
+  }
+  flush();
+  return out;
 }

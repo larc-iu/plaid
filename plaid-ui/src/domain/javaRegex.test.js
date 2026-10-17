@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import FOLDS from './javaCaseFolds.js';
-import { namesMark, translatePattern, SERVER_PATTERN_MAX } from './javaRegex.js';
+import { decomposePattern, namesMark, translatePattern, SERVER_PATTERN_MAX } from './javaRegex.js';
 
 // Java's Unicode \w (UNICODE_CHARACTER_CLASS), as the server reads it.
 const W = '[\\x{200c}\\x{200d}\\p{IsAlphabetic}\\p{M}\\p{Nd}\\p{Pc}]';
@@ -545,7 +545,72 @@ const NAMES_MARK_CASES = [
   ['a\\w', false],
   ['[^\\x{301}]', true],
   ['[\\x{2ff}-\\x{370}]', false],
+  // REV8-CORE-6
+  ['\\N{COMBINING ACUTE ACCENT}', true],
+  ['\\N{combining acute accent}', true],
+  ['[\\N{COMBINING GRAVE ACCENT}a]', true],
+  ['\\N{LATIN SMALL LETTER A WITH ACUTE}', false],
+  ['\\N{NO SUCH NAME}', false],
+  ['[^\\P{M}]', true],
+  ['[^\\P{Mn}]', true],
+  ['[^\\P{M}a]', false],
+  ['[\\P{M}]', false],
+  ['\\P{M}', false],
+  ['[^\\P{M}\\p{M}]', false],
 ];
+
+// How a pattern naming a mark is matched against a value in NFD (REV8-CORE-1).
+// The same table as core's plaid.util.names-mark-test and plaid-agent's
+// tests/test_canonical_match.py.
+const DECOMPOSED_CASES = [
+  ['\u00e1', 'a\u0301'],
+  ['x\u00e1y', 'xa\u0301y'],
+  ['[\u00e1\\x{301}]', '(?:a\u0301|[\u00e1\\x{301}])'],
+  ['[\u00f3\u00fa\u0301]', '(?:o\u0301|u\u0301|[\u00f3\u00fa\u0301])'],
+  ['[^\u00e1\\x{301}]', '(?:(?!a\u0301)[^\u00e1\\x{301}])'],
+  ['[^\u00e1]+', '(?:(?!a\u0301)[^\u00e1])+'],
+  ['[^\u00e1&&b]', '[^a\u0301&&b]'],
+  ['[x[^\u00e1]]', '[x[^a\u0301]]'],
+  ['[^x[\u00e1]]', '[^x[a\u0301]]'],
+  ['[[\u00e1]\u00e9]', '(?:e\u0301|[[\u00e1]\u00e9])'],
+  ['[\u00e1\u00e1]', '(?:a\u0301|[\u00e1\u00e1])'],
+  ['[\u1ea5\u00e2]', '(?:a\u0302\u0301|a\u0302|[\u1ea5\u00e2])'],
+  ['[\\x{e1}b]', '(?:a\u0301|[\\x{e1}b])'],
+  ['[\\u00e1]', '(?:a\u0301|[\\u00e1])'],
+  ['[\\\u00e1]', '(?:a\u0301|[\\\u00e1])'],
+  ['[\u00e0-\u00fa]', '[\u00e0-\u00fa]'],
+  ['[a-\u00fa\u00e9]', '(?:e\u0301|[a-\u00fa\u00e9])'],
+  ['[\u00e1&&\\p{L}]', '[\u00e1&&\\p{L}]'],
+  ['[\u00e1-]', '(?:a\u0301|[\u00e1-])'],
+  ['[\\Q\u00e1]\\E]', '(?:a\u0301|[\\Q\u00e1]\\E])'],
+  ['[\u00e1]+', '(?:a\u0301|[\u00e1])+'],
+  ['\u00e9+', '(?:e\u0301)+'],
+  ['\u00e9{2}', '(?:e\u0301){2}'],
+  ['\u00e9*?', '(?:e\u0301)*?'],
+  ['a\u00e9?', 'a(?:e\u0301)?'],
+  ['(\u00e9)+', '(e\u0301)+'],
+  ['\u00e9{x', 'e\u0301{x'],
+  ['\\x{e9}+', '\\x{e9}+'],
+  ['\\\u00e9', '\\\u00e9'],
+  ['\\p{L}\u00e9', '\\p{L}e\u0301'],
+  ['\\Q\u00e9\\E+', '\\Q\\E(?:\\Qe\u0301\\E)+'],
+  ['\\Q\u00e1\u00e9\\E', '\\Qa\u0301e\u0301\\E'],
+  ['\\Q\u00e1', '\\Qa\u0301'],
+  ['\u1ea1\u0301', 'a\u0323\u0301'],
+  ['\u00e1\u0323', 'a\u0323\u0301'],
+  ['[]\u00e1]', '(?:a\u0301|[]\u00e1])'],
+  ['[^]\u00e1]', '(?:(?!a\u0301)[^]\u00e1])'],
+  ['[x[]\u00e1]]', '[x[]\u00e1]]'],
+  ['[^x[\u00fa-\u1ea5\u00e1]]', '[^x[\u00fa-\u1ea5a\u0301]]'],
+];
+
+describe('decomposePattern', () => {
+  it('keeps the composed letters of a class, as core does', () => {
+    for (const [pattern, want] of DECOMPOSED_CASES) {
+      expect([pattern, decomposePattern(pattern)]).toEqual([pattern, want]);
+    }
+  });
+});
 
 describe('namesMark', () => {
   it('reads a pattern as core does', () => {

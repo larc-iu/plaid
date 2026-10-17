@@ -18,7 +18,7 @@
 // comes back composed, as the server stores it. `exact` compares canonically
 // equivalent text as equal, as the server's equality does.
 
-import { namesMark, translatePattern } from '@ui/domain/javaRegex.js';
+import { decomposePattern, namesMark, translatePattern } from '@ui/domain/javaRegex.js';
 
 /**
  * Fill a value that is not there. The three search match types all skip an
@@ -167,10 +167,11 @@ export function buildReplacer(find, matchType, replacement) {
     const composed = nfc(find) === find ? typed : translatePattern(nfc(find), options);
     re = composed.error ? raw : new RegExp(composed.source, 'gu');
     // A pattern naming a mark (typed, by escape or by \p{M}) also matches
-    // with pattern and value decomposed, as the server's search decides of
-    // the pattern it is sent (Luke, 2026-10-16, REV7-CORE-4).
+    // decomposed with the value decomposed, as the server's search decides
+    // of the pattern it is sent (Luke, 2026-10-16, REV7-CORE-4). A class
+    // keeps its composed letters there (REV8-CORE-1).
     if (namesMark(typed.server)) {
-      const d = translatePattern(nfd(find), options);
+      const d = translatePattern(options.literal ? nfd(find) : decomposePattern(find), options);
       if (!d.error) decomposed = new RegExp(d.source, 'gu');
     }
   }

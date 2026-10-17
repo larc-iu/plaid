@@ -896,11 +896,35 @@ def _hex_escape(src: str, i: int):
     return int(digits, 16), end
 
 
+_TRIMMED = ''.join(chr(c) for c in range(0x21))
+
+
+def _name_escape(src: str, i: int):
+    """At ``src[i]`` a backslash then ``N{name}``: the code point and the
+    index after the escape for a name Java knows (its character's name, any
+    case, without an alias), or None."""
+    if src[i + 2:i + 3] != '{':
+        return None
+    j = src.find('}', i + 3)
+    if j < 0:
+        return None
+    # Java trims what String.trim does (up to U+0020) and ignores case.
+    name = src[i + 3:j].strip(_TRIMMED).upper()
+    try:
+        ch = unicodedata.lookup(name)
+    except KeyError:
+        return None
+    if len(ch) != 1 or unicodedata.name(ch, '') != name:
+        return None
+    return ord(ch), j + 1
+
+
 def names_mark(src: str) -> bool:
     """Whether a Java pattern names a combining mark: it holds one, an escape
-    of one (``\\x{301}``, ``\\u0301``), a class
-    range between two, or a mark property (``\\p{M}``, ``\\p{Mn}``,
-    ``\\pM``) on its own or in a class of nothing but mark properties. Such
+    of one (``\\x{301}``, ``\\u0301``, ``\\N{COMBINING ACUTE ACCENT}``), a
+    class range between two, or a mark property (``\\p{M}``, ``\\p{Mn}``,
+    ``\\pM``) on its own or in a class of nothing but mark properties, or a
+    negated class of nothing but negated ones (``[^\\P{M}]``). Such
     a pattern also reaches inside composed letters (REV7-CORE-4), as one
     typed with the mark does. ``.``, ``\\w`` or ``[\\p{L}\\p{M}]`` match a
     mark too, but name none, so ``a.`` never finds the a inside á. The same
@@ -910,7 +934,8 @@ def names_mark(src: str) -> bool:
     if holds_mark(src):
         return True
     i, n = 0, len(src)
-    classes = []      # per open class: [negated, holds a mark property, holds anything else]
+    classes = []      # per open class: [negated, holds a mark property, holds anything else,
+                      # holds a negated mark property]
     start = None      # in a class, the code point a range may start from
     dash = False      # in a class, a range's dash was read after `start`
     while i < n:
@@ -925,7 +950,9 @@ def names_mark(src: str) -> bool:
                 i = n if j < 0 else j + 2
             elif e in 'xu' and (hit := _hex_escape(src, i)) is not None:
                 cp, i = hit
-            elif e == 'p':
+            elif e == 'N' and (hit := _name_escape(src, i)) is not None:
+                cp, i = hit
+            elif e in 'pP':
                 if src[i + 2:i + 3] == '{':
                     j = src.find('}', i + 3)
                     name, i = (src[i + 3:j], j + 1) if j > 0 else ('', n)
@@ -933,8 +960,10 @@ def names_mark(src: str) -> bool:
                     name, i = src[i + 2:i + 3], i + 3
                 if _mark_property(name):
                     if not classes:
+                        if e == 'P':
+                            continue
                         return True
-                    classes[-1][1] = True
+                    classes[-1][1 if e == 'p' else 3] = True
                     start, dash = None, False
                     continue
             else:
@@ -945,14 +974,14 @@ def names_mark(src: str) -> bool:
         elif c == '[':
             i += 1
             negated = src[i:i + 1] == '^'
-            classes.append([negated, False, False])
+            classes.append([negated, False, False, False])
             if negated:
                 i += 1
             start, dash = None, False
             continue
         elif c == ']' and classes:
-            negated, marks, other = classes.pop()
-            if marks and not other and not negated:
+            negated, marks, other, not_marks = classes.pop()
+            if not other and ((not_marks and not marks) if negated else (marks and not not_marks)):
                 return True
             i += 1
             start, dash = None, False
@@ -984,11 +1013,13 @@ def names_mark(src: str) -> bool:
 
 
 def compile_decomposed(pattern: str, **kw):
-    """``pattern`` in NFD, compiled, when the pattern sent to the server for
-    it names a combining mark (:func:`names_mark`), else None (and None
-    when decomposing makes it a pattern that cannot be used). The server's REGEXP also matches such a pattern with pattern
-    and value in NFD, so a tone mark searched for on its own, typed or by
-    escape, finds it inside a composed letter (Luke, 2026-10-16)."""
+    """``pattern`` decomposed (:func:`decompose_pattern`, in NFD outside its
+    classes), compiled, when the pattern sent to the server for it names a
+    combining mark (:func:`names_mark`), else None (and None when
+    decomposing makes it a pattern that cannot be used). The server's REGEXP
+    also matches such a pattern decomposed with the value in NFD, so a tone
+    mark searched for on its own, typed or by escape, finds it inside a
+    composed letter (Luke, 2026-10-16)."""
     try:
         sent = translate(pattern, **kw).server
     except PatternError:
@@ -996,9 +1027,233 @@ def compile_decomposed(pattern: str, **kw):
     if not names_mark(sent):
         return None
     try:
-        return compile_local(nfd(pattern), **kw)
+        return compile_local(nfd(pattern) if kw.get('literal') else decompose_pattern(pattern), **kw)
     except PatternError:
         return None
+
+
+def _quantifier_at(src: str, i: int) -> bool:
+    """Whether a quantifier starts at ``src[i]``: ``*``, ``+``, ``?``, or
+    ``{`` and a digit."""
+    c = src[i:i + 1]
+    return c in ('*', '+', '?') or (c == '{' and src[i + 1:i + 2] in tuple('0123456789'))
+
+
+def _decomposes(c: str) -> bool:
+    return nfd(c) != c
+
+
+def _escape_end(src: str, i: int) -> int:
+    r"""The index after the escape at ``src[i]`` (a backslash): through the
+    braces of ``\x{..}``, ``\p{..}``, ``\P{..}`` and ``\N{..}``, the digits
+    of ``\xhh`` and ``\uhhhh``, else the one character after the
+    backslash."""
+    n = len(src)
+    e = src[i + 1:i + 2]
+    if e in ('x', 'u') and (hit := _hex_escape(src, i)) is not None:
+        return hit[1]
+    if e in ('p', 'P', 'N', 'x') and src[i + 2:i + 3] == '{':
+        j = src.find('}', i + 3)
+        return n if j < 0 else j + 1
+    return min(n, i + 2)
+
+
+def _class_start(src: str, i: int) -> int:
+    """The index of the first member of the class opening at ``src[i]``:
+    after the ``[`` and a ``^``, and after a ``]`` there, which Java reads as
+    itself."""
+    k = i + 2 if src[i + 1:i + 2] == '^' else i + 1
+    return k + 1 if src[k:k + 1] == ']' else k
+
+
+def _class_end(src: str, i: int) -> int:
+    """The index after the ``]`` that closes the class opening at ``src[i]``,
+    or ``len(src)`` when none does."""
+    n = len(src)
+    k = _class_start(src, i)
+    depth = 1
+    while k < n:
+        c = src[k]
+        if c == '\\' and src[k + 1:k + 2] == 'Q':
+            j = src.find('\\E', k + 2)
+            if j < 0:
+                return n
+            k = j + 2
+        elif c == '\\':
+            k = _escape_end(src, k)
+        elif c == '[':
+            depth += 1
+            k = _class_start(src, k)
+        elif c == ']':
+            if depth == 1:
+                return k + 1
+            depth -= 1
+            k += 1
+        else:
+            k += 1
+    return n
+
+
+def _nfd_class(src: str, i: int, j: int) -> str:
+    """The class at ``src[i:j]`` with every character in it decomposed,
+    escapes and the two ends of a range as written."""
+    out = []
+    k = i
+    while k < j:
+        c = src[k]
+        if c == '\\' and src[k + 1:k + 2] == 'Q':
+            e = src.find('\\E', k + 2)
+            end = j if e < 0 or e >= j else e
+            out.append('\\Q' + nfd(src[k + 2:end]))
+            if end < j:
+                out.append('\\E')
+                k = end + 2
+            else:
+                k = j
+        elif c == '\\':
+            e = min(j, _escape_end(src, k))
+            out.append(src[k:e])
+            k = e
+        elif src[k + 1:k + 2] == '-' and k + 2 < j and src[k + 2] not in '][\\':
+            # a range: its ends stay as written
+            out.append(src[k:k + 3])
+            k += 3
+        elif src[k + 1:k + 2] == '-' and k + 2 < j and src[k + 2] == '\\':
+            out.append(src[k:k + 2])
+            k += 2
+        else:
+            out.append(nfd(c))
+            k += 1
+    return ''.join(out)
+
+
+def _class_parts(src: str, i: int, j: int):
+    """The class at ``src[i:j]`` as it matches a value in NFD: as written, but
+    for a negated class inside it, which is decomposed. Also the composed
+    letters it holds as members of its own (not a range's end, nor in a class
+    with ``&&``), each decomposed, or None when there are none, and whether
+    it holds a class or ``&&``: ``(pulled, text, nested)``."""
+    neg = src[i + 1:i + 2] == '^'
+    out = ['[^' if neg else '[']
+    close = j - 1 if i + 1 < j and src[j - 1] == ']' else j
+    pulled: List[str] = []
+    k = i + 2 if neg else i + 1
+    expect_dash = after_dash = no_pull = nested = False
+
+    def member(c, nxt):
+        start = src[nxt:nxt + 1] == '-' and src[nxt + 1:nxt + 2] not in ('', ']')
+        if c is not None and not start and not after_dash and _decomposes(c):
+            pulled.append(nfd(c))
+        return start
+
+    while k < close:
+        c = src[k]
+        if c == '\\' and src[k + 1:k + 2] == 'Q':
+            e = src.find('\\E', k + 2)
+            end = close if e < 0 or e >= close else e
+            nxt = end + 2 if end < close else close
+            pulled.extend(nfd(q) for q in src[k + 2:end] if _decomposes(q))
+            out.append(src[k:nxt])
+            k, expect_dash, after_dash = nxt, False, False
+        elif c == '\\':
+            e = min(close, _escape_end(src, k))
+            x = src[k + 1:k + 2]
+            if x in ('x', 'u') and (hit := _hex_escape(src, k)) is not None:
+                cp = chr(hit[0])
+            elif x == '' or x in _ASCII_ALNUM:
+                cp = None
+            else:
+                cp = x
+            out.append(src[k:e])
+            if cp is not None:
+                expect_dash = member(cp, e)
+            else:
+                expect_dash = False
+            after_dash = False
+            k = e
+        elif c == '[':
+            e = min(close, _class_end(src, k))
+            out.append(_nfd_class(src, k, e) if src[k + 1:k + 2] == '^' else _class_parts(src, k, e)[1])
+            k, expect_dash, after_dash, nested = e, False, False, True
+        elif c == '&' and src[k + 1:k + 2] == '&':
+            out.append('&&')
+            k, expect_dash, after_dash, no_pull = k + 2, False, False, True
+        elif c == '-' and expect_dash:
+            out.append('-')
+            k, expect_dash, after_dash = k + 1, False, True
+        else:
+            out.append(c)
+            expect_dash = member(c, k + 1)
+            after_dash = False
+            k += 1
+    if close < j:
+        out.append(']')
+    return (None if no_pull or not pulled else pulled), ''.join(out), nested or no_pull
+
+
+def decompose_pattern(src: str) -> str:
+    r"""The Java pattern ``src`` as it matches a value in NFD when
+    :func:`names_mark` says so: decomposed (NFD) outside its character
+    classes, so a mark it names finds the mark inside a composed letter. A
+    composed letter under a quantifier is decomposed as a group (``é+`` is
+    ``(?:é)+``). A class keeps its composed letters (REV8-CORE-1):
+    ``[á\x{301}]`` holds á and the acute, never a plain a, and is
+    ``(?:á|[á\x{301}])``, so it finds á whole and the acute inside
+    ``ấ``, but not the a of ``ma``. A negated class is preceded by a
+    lookahead for its composed letters decomposed, so ``[^á\x{301}]`` is
+    ``(?:(?!a\u0301)[^á\x{301}])``: it finds the a of ``ma``, never the a of
+    á. A negated class holding a class or ``&&``, and every negated class
+    inside a class, is decomposed whole. An escape stays as written. The same rewriting as core's
+    ``plaid.util.canonical/decompose-pattern`` and plaid-ui's
+    ``decomposePattern``."""
+    out: List[str] = []
+    run: List[str] = []
+
+    def flush():
+        if run:
+            out.append(nfd(''.join(run)))
+            run.clear()
+
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == '\\' and src[i + 1:i + 2] == 'Q':
+            j = src.find('\\E', i + 2)
+            end, nxt = (n, n) if j < 0 else (j, j + 2)
+            body = src[i + 2:end]
+            flush()
+            last = body[-1:]
+            if last and _quantifier_at(src, nxt) and _decomposes(last):
+                out.append('\\Q' + nfd(body[:-1]) + '\\E(?:\\Q' + nfd(last) + '\\E)')
+            else:
+                out.append('\\Q' + nfd(body) + ('' if j < 0 else '\\E'))
+            i = nxt
+        elif c == '\\':
+            e = _escape_end(src, i)
+            flush()
+            out.append(src[i:e])
+            i = e
+        elif c == '[':
+            e = _class_end(src, i)
+            flush()
+            pulled, text, nested = _class_parts(src, i, e)
+            alts = '|'.join(sorted(dict.fromkeys(pulled), key=lambda a: -len(a))) if pulled else None
+            if src[i + 1:i + 2] != '^':
+                out.append('(?:' + alts + '|' + text + ')' if alts else text)
+            elif nested:
+                out.append(_nfd_class(src, i, e))
+            else:
+                out.append('(?:(?!' + alts + ')' + text + ')' if alts else text)
+            i = e
+        else:
+            if run and _quantifier_at(src, i) and _decomposes(run[-1]):
+                last = run.pop()
+                flush()
+                out.append('(?:' + nfd(last) + ')')
+            run.append(c)
+            i += 1
+    flush()
+    return ''.join(out)
 
 
 def compile_pair(pattern: str, **kw):
