@@ -259,8 +259,10 @@ def _kept_lexicons(ws: Workspace, rep) -> str:
 
 def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     from .queries import q_respell_all, rx
+    # Ignoring case, the replacement takes each match's capitals, as the
+    # Respell screen writes it: "a" → "ä" respells "Ali" as "Äli".
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
-                    bool(a.get('case_sensitive')))
+                    bool(a.get('case_sensitive')), keep_case=True)
     spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
               case_sensitive=bool(a.get('case_sensitive')))
     earlier = getattr(ws, RULES_BEFORE, None) or []
@@ -1215,7 +1217,9 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     glosses, and links survive. Patterns apply within a word, never across
     word boundaries. As in the editor's Bulk Edit, the replacement is carried
     into the stored morpheme forms of the respelled words and into every
-    lexicon headword it matches, unless switched off. Staged as one rule."""
+    lexicon headword it matches, unless switched off. Ignoring case, the
+    replacement takes each match's capitals ("Ali" → "Äli" for a → ä).
+    Staged as one rule."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
     doc_id = ws.doc(document).id if document else None
     args = rules.normalize({'pattern': pattern, 'replacement': replacement, 'regex': regex, 'whole': whole,

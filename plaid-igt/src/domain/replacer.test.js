@@ -36,6 +36,7 @@ describe('buildReplacer', () => {
       'gaGa',
     ]);
     expect(run('цу', 'contains', 'цы', ['Цуз']).out).toEqual(['Цыз']);
+    expect(run('a', 'contains', 'ä', ['Ali', 'ALI', 'bAn']).out).toEqual(['Äli', 'ÄLI', 'bÄn']);
     expect(run('PFV', 'contains', 'pfv', ['sbj:3.PFV', 'Pfv']).out).toEqual(['sbj:3.pfv', 'pfv']);
     expect(run('ka', 'contains', 'Ga', ['kat', 'KAT']).out).toEqual(['Gat', 'GaT']);
     expect(run('ka', 'contains', '', ['Kat']).out).toEqual(['t']);

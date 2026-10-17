@@ -100,13 +100,14 @@ def _matches(compiled, s: str):
         pos = m.end() if m.end() > m.start() else m.end() + 1
 
 
-def _sub(compiled, template: str, s: str) -> str:
-    """``compiled.sub(template, s)`` over :func:`_matches`."""
+def _sub(compiled, expand, s: str) -> str:
+    """``compiled.sub(template, s)`` over :func:`_matches`, each match
+    written as ``expand`` gives it."""
     out, last = [], 0
     for m in _matches(compiled, s):
         out.append(s[last:m.start()])
         try:
-            out.append(m.expand(template))
+            out.append(expand(m))
         except IndexError:
             # As sub says it.
             raise regex.error('invalid group reference')
@@ -125,13 +126,55 @@ def _group_hint(template: str) -> str:
     return f' Write \\g<{n}> for group {n} when a digit follows it, as in \\g<{n}>{rest}.'
 
 
+def _is_upper(c: str) -> bool:
+    return c != c.lower() and c == c.upper()
+
+
+def _is_lower(c: str) -> bool:
+    return c != c.upper() and c == c.lower()
+
+
+def _has_capital(s: str) -> bool:
+    return any(_is_upper(c) for c in s)
+
+
+def match_case(matched: str, replacement: str) -> str:
+    """The replacement for one match of an any-case search, in the matched
+    text's capitals, as the app's own respelling writes it (its
+    replacer.js, matchCase): "a" to "ä" makes "Ali" "Äli", and
+    "ka" to "ga" makes "KALA" "GALA". A match whose cased letters are all
+    capitals (two or more) takes the replacement in capitals, a match that
+    starts with a capital takes it with its first small letter a capital,
+    and any other match takes it as typed."""
+    letters = [c for c in matched if _is_upper(c) or _is_lower(c)]
+    if not letters or not replacement:
+        return replacement
+    if len(letters) > 1 and all(_is_upper(c) for c in letters):
+        return replacement.upper()
+    if not _is_upper(letters[0]):
+        return replacement
+    k = next((i for i, c in enumerate(replacement) if _is_lower(c)), -1)
+    if k < 0 or _has_capital(replacement[:k]):
+        return replacement
+    return replacement[:k] + replacement[k].upper() + replacement[k + 1:]
+
+
+#: A backslash escape in a pattern, whose letters name no case (``\W``, ``\p{Lu}``).
+_ESCAPE = regex.compile(r'\\[pPN]\{[^}]*\}|\\.', regex.S)
+
+
 def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
-             case_sensitive: bool = False, error=None) -> Callable[[str], str]:
+             case_sensitive: bool = False, error=None, keep_case: bool = False) -> Callable[[str], str]:
     """A function from a stored value to its replacement.
 
     Case-insensitive by default, like search, so what search found is what the
     replacement hits. A pattern that cannot be built raises ``error``, by
     default :class:`core.tools.ToolError`, whose message reaches the model.
+
+    With ``keep_case`` an any-case match writes the replacement in the
+    match's capitals (:func:`match_case`), when neither the pattern nor the
+    replacement is typed with a capital: "PFV" to "pfv" asks for those very
+    capitals to go. A respelling asks for it, as the app's own does.
     """
     if error is None:
         from .tools import ToolError as error
@@ -147,6 +190,12 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
     # A literal replacement is text, not a template: every backslash in it
     # stands for itself.
     template = replacement if regex_mode else replacement.replace('\\', '\\\\')
+    typed = [_ESCAPE.sub('', pattern), _ESCAPE.sub('', replacement)] if regex_mode else [pattern, replacement]
+    cased = keep_case and not case_sensitive and not any(_has_capital(t) for t in typed)
+
+    def expand(m) -> str:
+        out = m.expand(template)
+        return match_case(m.group(0), out) if cased else out
 
     def apply(value: str) -> str:
         try:
@@ -156,20 +205,20 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
                 # composed, as the server stores every value.
                 d = nfd(value)
                 if decomposed.search(d) is not None:
-                    return nfc(_sub(decomposed, template, d))
+                    return nfc(_sub(decomposed, expand, d))
             n = nfc(value)
             if composed.search(n) is None:
                 # Only the text as stored matches (a mark on its own), or
                 # nothing does.
-                return _sub(compiled, template, value)
+                return _sub(compiled, expand, value)
             if n is value:
-                return _sub(composed, template, value)
+                return _sub(composed, expand, value)
             start, end = _mapper(value)
             out, last = [], 0
             for m in _matches(composed, n):
                 a, b = max(start(m.start()), last), max(end(m.end()), last)
                 out.append(value[last:a])
-                out.append(m.expand(template))
+                out.append(expand(m))
                 last = b
             out.append(value[last:])
             return ''.join(out)

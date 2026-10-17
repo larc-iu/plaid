@@ -141,8 +141,8 @@ def test_bulk_plans():
     respells = [o for o in found if o['kind'] == 'respell']
     assert respells[-1]['value'] == 'Gäm-är'
     forms = {o['morpheme_id']: o['form'] for o in found if o['kind'] == 'set_morpheme_form'}
-    assert forms == {'m-1a': 'äli', 'm-4a': 'Gäm', 'm-4b': 'är'}
-    assert {o['item_id']: o['form'] for o in found if o['kind'] == 'rename_entry'} == {'vi-ali': 'äli', 'vi-gam': 'gäm', 'vi-gam2': 'gäm'}
+    assert forms == {'m-1a': 'Äli', 'm-4a': 'Gäm', 'm-4b': 'är'}
+    assert {o['item_id']: o['form'] for o in found if o['kind'] == 'rename_entry'} == {'vi-ali': 'Äli', 'vi-gam': 'gäm', 'vi-gam2': 'gäm'}
     assert 'Planned 3 changes' in call_tool(ws(), 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True,
                                                                     'morpheme_forms': False, 'lexicon': False})
     # replace_in_field on the stored morpheme forms (derived forms are left to respell_all)
