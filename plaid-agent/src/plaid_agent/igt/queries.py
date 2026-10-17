@@ -801,16 +801,28 @@ def q_concordance_tally(ws: Workspace, where: List[Any], wvar: str, mvar: Option
     # holds may stand between, up to PUNCT_RUN tokens of it (the engine takes
     # only a bounded run), and a row naming punctuation is the same
     # occurrence again.
+    # Read one distance at a time, the next only while some occurrence's
+    # neighbour at this one is punctuation: one read with a `rep` of up to
+    # PUNCT_RUN tokens cost 6 to 10 s on Kalamang whatever the hits
+    # (H17-ASSIST-6), and most occurrences have a word right beside them.
+    # At distance k the tokens between are punctuation, so an occurrence's
+    # nearest word is counted at one distance only.
     skip = sorted({v for v, _n in c.group([c.word('?pt')], ['?pt.value']) if v and c.ignored(v)})
-    gap = [['rep', 0, PUNCT_RUN, ['token', {'value': skip}]]] if skip else []
     for label, first in (('Word before', True), ('Word after', False)):
-        pair = [['token', {}, 'as', '?nb'], *gap, ['token', {}, 'as', wvar]] if first else \
-            [['token', {}, 'as', wvar], *gap, ['token', {}, 'as', '?nb']]
         near: Counter = Counter()
-        for form, n in c.group(where + [['seq', {'layer': c.W}, *pair], c.sent('?ns'), ['within', '?nb', '?ns'],
-                                        ['within', wvar, '?ns']], ['?nb.value']):
-            if form and not c.ignored(form):
-                near[form.casefold()] += n
+        for k in range(PUNCT_RUN + 1):
+            gap = [['token', {'value': skip}]] * k
+            pair = [['token', {}, 'as', '?nb'], *gap, ['token', {}, 'as', wvar]] if first else \
+                [['token', {}, 'as', wvar], *gap, ['token', {}, 'as', '?nb']]
+            further = 0
+            for form, n in c.group(where + [['seq', {'layer': c.W}, *pair], c.sent('?ns'),
+                                            ['within', '?nb', '?ns'], ['within', wvar, '?ns']], ['?nb.value']):
+                if form and not c.ignored(form):
+                    near[form.casefold()] += n
+                elif form:
+                    further += n
+            if not further or not skip:
+                break
         edge = total - sum(near.values())
         if edge > 0:
             near['#'] += edge
