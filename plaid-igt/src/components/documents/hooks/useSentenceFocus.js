@@ -27,9 +27,12 @@ export function useSentenceFocus({ documentId, onEditor }) {
   // A character offset in the text: an assistant citation names the word it
   // cites, so the link lands on the word and not just the sentence.
   const focusWordParam = Number.parseInt(searchParams.get('focusWord') ?? '', 10);
-  const seededRef = useRef(false);
-  if (!seededRef.current && focusParam) {
-    seededRef.current = true;
+  // The sentence last handed over: a later render does not re-arm a request
+  // the island consumed, and a link to another sentence (the Comments tab's
+  // jumps, with this screen kept mounted) is handed over again.
+  const seededRef = useRef(null);
+  if (focusParam && seededRef.current !== focusParam) {
+    seededRef.current = focusParam;
     try {
       const existing = JSON.parse(sessionStorage.getItem(FOCUS_SENTENCE) || 'null');
       const sameTarget =

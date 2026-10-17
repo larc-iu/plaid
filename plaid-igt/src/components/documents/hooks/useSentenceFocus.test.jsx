@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
+import { act } from 'react';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useSentenceFocus } from './useSentenceFocus.js';
 
@@ -107,6 +108,31 @@ describe('the ?focusSentence= seed', () => {
     sessionStorage.removeItem(KEY);
     await view.rerender(<Probe {...base} focusParam="s3" onEditor={false} />);
     expect(seeded()).toBe(null);
+    await view.unmount();
+  });
+
+  it('seeds again when a link names another sentence of the same document (H17-IGT-EDIT-3)', async () => {
+    // The Comments tab's jumps keep this screen mounted: each new
+    // ?focusSentence= is handed to the island it opens.
+    const Nav = () => {
+      hook.navigate = useNavigate();
+      return null;
+    };
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/d?tab=analyze&focusSentence=s3']}>
+        <Hook {...base} />
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(seeded().sentenceId).toBe('s3');
+    sessionStorage.removeItem(KEY);
+    await act(async () => hook.navigate('/d?tab=comments&focusSentence=s3'));
+    expect(seeded()).toBe(null);
+    await act(async () => hook.navigate('/d?tab=analyze&focusSentence=s9'));
+    expect(seeded()).toEqual({ docId: 'doc-1', sentenceId: 's9', begin: null });
+    sessionStorage.removeItem(KEY);
+    await act(async () => hook.navigate('/d?tab=analyze&focusSentence=s3'));
+    expect(seeded().sentenceId).toBe('s3');
     await view.unmount();
   });
 
