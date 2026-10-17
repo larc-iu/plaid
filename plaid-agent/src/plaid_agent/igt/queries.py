@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.bidi import plain_quote, qv
 from ..core.corpus import rx, spread
+from ..core import rules
 from ..core.limits import ROW_LIMIT
 from ..core.plan import labelled
 from ..core.tools import ToolError
@@ -1373,9 +1374,90 @@ def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int,
     return q_replace_changes(ws, f, rep, rows)
 
 
-def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int):
-    """(word respell ops, morpheme form ops) for every word the pattern hits."""
-    from .tools import check_respell_overlap
+#: The key a morpheme form change a rule finds carries for the rules after
+#: it: the word the morpheme is in, so a later respelling of that word finds
+#: the form this one leaves (:func:`respelled_before`).
+OF_WORD = 'of_word'
+
+#: The key a respelling or a headword rename a rule finds carries: the
+#: spelling stored before any rule, so a later rule that sets it back is read
+#: as no change (``bulk.writes_stored``).
+STORED = 'stored'
+
+
+def respelled_before(earlier) -> Tuple[Dict[str, dict], Dict[str, dict], Dict[str, dict]]:
+    """(words, morpheme forms, headwords) the plan's earlier rules leave, each
+    by id with the change of the latest rule that makes it: a later
+    respelling reads the spelling they leave, as rules compose in plan order
+    (``bulk.resolve_rule``)."""
+    words: Dict[str, dict] = {}
+    morphs: Dict[str, dict] = {}
+    entries: Dict[str, dict] = {}
+    for found in earlier or ():
+        for op in found:
+            kind = op.get('kind')
+            if kind == 'respell' and op.get(rules.FOUND_ON):
+                words[op[rules.FOUND_ON][1]] = op
+            elif kind == 'set_morpheme_form' and op.get('morpheme_id'):
+                morphs[op['morpheme_id']] = op
+            elif kind == 'rename_entry' and op.get('item_id'):
+                entries[op['item_id']] = op
+    return words, morphs, entries
+
+
+def _place_of(op: Dict[str, Any]) -> str:
+    """The place an op's label names, without its change."""
+    at = op.get('change_at') or 0
+    return (op.get('label') or '')[:max(0, at - 2)]
+
+
+def _in_reach(c, doc_id: Optional[str]) -> bool:
+    """Whether a document is among those the reads are held to now."""
+    if c.document and doc_id != c.document:
+        return False
+    return not c.documents or doc_id in c.documents
+
+
+#: The attribute the workspace a plan is approved with holds the plan's
+#: changes under (``igt.plan.resolve_scopes``), for the guards a rule runs
+#: where it is found. A turn's workspace has none: its plan is ``ops``.
+PLAN_OPS = 'plan_ops'
+
+
+def respell_guard(ws: Workspace, words: List[Dict[str, Any]], earlier_words: Dict[str, dict]) -> None:
+    """The refusals a respelling rule owes, run where it is found, at staging
+    and at approval alike, over the offsets read then: the plan may not
+    reshape text or words in a document it respells (a respelling rewrites
+    the text, and the two would meet first in the batch), and two respellings
+    of one text never overlap. Two respelling rules of one word compose (the
+    later reads what the earlier leaves), so they meet in one range.
+
+    At approval the plan's changes are those being applied (:data:`PLAN_OPS`),
+    at staging the turn's plan."""
+    from .bulk import clear_of_reshapes
+    if not words:
+        return
+    plan = getattr(ws, PLAN_OPS, None)
+    plan = ws.ops if plan is None else plan
+    clear_of_reshapes(plan, {op.get('doc') for op in words}, 'respelling')
+    at: Dict[str, List[tuple]] = {}
+    for op in earlier_words.values():
+        at.setdefault(op['text_id'], []).append((op['begin'], op['end']))
+    for op in words:
+        for b, e in at.get(op['text_id'], ()):
+            if (b, e) != (op['begin'], op['end']) and b < op['end'] and op['begin'] < e:
+                raise ToolError(f'{_place_of(op)}: overlaps a respelling already planned for {b}-{e} in the same '
+                                'text. Apply one, then plan the other (plan_status, drop_planned).')
+
+
+def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int, earlier=()):
+    """(word respell and morpheme form ops in text order, words, morpheme
+    forms) for every word the pattern hits, read through what the plan's
+    ``earlier`` rules leave (their found changes, in plan order): a word one
+    of them respells is read as it spells it, so "a" → "ä" then "o" → "ö"
+    respells "kano" as "känö", one respelling. Offsets are read here, at
+    staging and at approval, and the digest names each word by its id
+    (``rules.FOUND_ON``), so text typed elsewhere does not move it."""
     c = ws.corpus
     rows = c.entities([c.word('?t', value=spec)], ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
     # The read caps candidates in document order: past it the later documents
@@ -1384,39 +1466,74 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
         raise ToolError(f'More than {cap:,} words match, which is more than one pass may consider. '
                         f'Narrow it (a document, a stricter pattern) and go in passes.')
     budget = _docs_of(rows)
-    words, morphs = [], []
+    before_w, before_m, _before_e = respelled_before(earlier)
+    # (word id, text, begin, end, document, place, stored spelling, spelling as the rules before leave it)
+    seen: List[tuple] = []
     for (tok,) in rows:
         if not isinstance(tok, dict) or c.ignored(tok.get('value')):
             continue
-        old = tok.get('value') or ''
+        stored = tok.get('value') or ''
+        was = before_w.get(tok['id'])
+        seen.append((tok['id'], tok['text'], tok['begin'], tok['end'], tok['document'],
+                     _place_of(was) if was else None, stored, was['value'] if was else stored))
+    have = {t[0] for t in seen}
+    # A word an earlier rule respells that the pattern did not match as stored.
+    for wid, was in before_w.items():
+        if wid not in have and _in_reach(c, was.get('doc')):
+            seen.append((wid, was['text_id'], was['begin'], was['end'], was.get('doc'), _place_of(was),
+                         was.get(STORED, ''), was['value']))
+    words, respelled = [], set()
+    for wid, text_id, begin, end, doc, place, stored, old in seen:
         new = rep(old)
         if new == old:
             continue
-        head = c.label_ref(tok['document'], tok['id'], budget)
+        head = place if place is not None else c.label_ref(doc, wid, budget)
         if not new.strip():
             raise ToolError(f'{head}: "{old}" would become empty; there is no delete-word tool')
-        check_respell_overlap(ws, tok['text'], tok['begin'], tok['end'], head)
-        words.append({'kind': 'respell', 'text_id': tok['text'], 'begin': tok['begin'], 'end': tok['end'], 'value': new,
-                      'doc': tok['document'], **labelled(head, f'respell {qv(old)} → {qv(new)}'),
-                      '_pos': (tok['document'], tok['begin'], 0, 0)})
+        respelled.add(wid)
+        words.append({'kind': 'respell', 'text_id': text_id, 'begin': begin, 'end': end, 'value': new,
+                      'doc': doc, **labelled(head, f'respell {qv(stored)} → {qv(new)}'),
+                      rules.FOUND_ON: ['word', wid], STORED: stored,
+                      '_pos': (doc, begin, 0, 0)})
+    respell_guard(ws, words, before_w)
+    morphs = []
     if morpheme_forms and c.M and words:
         mrows = c.entities([c.word('?w', value=spec), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w'),
                            ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
         if len(mrows) > cap:
             raise ToolError(f'More than {cap:,} morpheme forms match, which is more than one pass may '
                             f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
+        found: List[tuple] = []
         for m, w in mrows:
             if not (isinstance(m, dict) and isinstance(w, dict)) or c.ignored(w.get('value')):
                 continue
-            old = (m.get('metadata') or {}).get('form') or ''
+            # A word an earlier rule respells carries this one's change only
+            # if this one respells it as that rule leaves it.
+            if w['id'] in before_w and w['id'] not in respelled:
+                continue
+            ws.note_metadata(m['id'], m.get('metadata'))
+            was = before_m.get(m['id'])
+            stored = (m.get('metadata') or {}).get('form') or ''
+            found.append((m['id'], w['id'], m['document'], m['begin'], m.get('precedence') or 0,
+                          _place_of(was) if was else f'{c.label_ref(m["document"], m["id"], budget)} '
+                                                      f'(in {qv(w.get("value"))})',
+                          stored, was['form'] if was else stored))
+        have = {t[0] for t in found}
+        # A form an earlier rule left on a word this one respells.
+        for mid, was in before_m.items():
+            if mid in have or was.get(OF_WORD) not in respelled:
+                continue
+            _, md = ws.metadata_of(mid)
+            stored = ((md or {}).get('form') or '') if isinstance(md, dict) else ''
+            word = next(op for op in words if op[rules.FOUND_ON][1] == was[OF_WORD])
+            found.append((mid, was[OF_WORD], was.get('doc'), word['begin'], 0, _place_of(was), stored, was['form']))
+        for mid, wid, doc, begin, prec, head, stored, old in found:
             new = rep(old)
             if new == old or not new.strip():
                 continue
-            head = c.label_ref(m['document'], m['id'], budget)
-            ws.note_metadata(m['id'], m.get('metadata'))
-            morphs.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
-                           **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}'),
-                           '_pos': (m['document'], m['begin'], 1, m.get('precedence') or 0)})
+            morphs.append({'kind': 'set_morpheme_form', 'morpheme_id': mid, 'form': new, 'doc': doc,
+                           **labelled(head, f'morpheme form {qv(stored)} → {qv(new)}'), OF_WORD: wid,
+                           '_pos': (doc, begin, 1, prec)})
     # Interleaved: each word, then its morpheme forms.
     ordered = sorted(words + morphs, key=lambda op: op['_pos'])
     for op in ordered:
@@ -1450,7 +1567,8 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
             raise ToolError(f'{head}: "{old}" would become empty')
         ws.note_metadata(m['id'], m.get('metadata'))
         staged.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
-                       **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}')})
+                       **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}'),
+                       OF_WORD: w['id']})
     return staged
 
 

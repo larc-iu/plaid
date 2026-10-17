@@ -89,6 +89,14 @@ def target(op: Dict[str, Any]) -> tuple:
 #: its own names it here too. Only the digest reads it.
 AS_FOUND = 'as_found'
 
+#: The key a change a scope resolves to carries for the digest when what it
+#: writes to is named by a place that moves as text is typed elsewhere: a
+#: respelling's offsets into the text. It names the same thing by what is
+#: there (the word's id), so the offsets are read when the rule is found and
+#: an edit elsewhere in the text leaves the digest as it was. Only the digest
+#: reads it.
+FOUND_ON = 'found_on'
+
 
 def _fact(reg, op: Dict[str, Any], replaces: Callable[[Dict[str, Any]], int]) -> list:
     """One change as the digest reads it: what it writes to, the change as the
@@ -100,7 +108,8 @@ def _fact(reg, op: Dict[str, Any], replaces: Callable[[Dict[str, Any]], int]) ->
         change = change_of(op)
     if change is None:
         change = op.get('label') or ''
-    return [repr(opkind.target_of(reg, op)), change, int(replaces(op) or 0)]
+    on = op.get(FOUND_ON)
+    return [repr(tuple(on) if on is not None else opkind.target_of(reg, op)), change, int(replaces(op) or 0)]
 
 
 def matched(reg, ops: Iterable[Dict[str, Any]], doc_of: Callable[[Dict[str, Any]], Optional[str]],

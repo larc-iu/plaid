@@ -212,13 +212,16 @@ def _chained(ws: Workspace, f, rep, found: List[Dict[str, Any]], document: Optio
     return out
 
 
-def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
+def _lexicon_renames(ws: Workspace, rep, earlier=()) -> List[Dict[str, Any]]:
     """The headwords a respelling carries into, from the plan's own view so a
     respelling does not rename an entry a merge or a delete earlier in the
     same plan takes away: the removals before the rule in plan order
-    (``ws.rule_removed``), at staging and at approval alike. A lexicon the
-    user does not maintain is left as it is (`_kept_lexicons` says so), since
-    only a maintainer may rename."""
+    (``ws.rule_removed``), at staging and at approval alike. A headword an
+    ``earlier`` rule renames is read as it leaves it, as the words are. A
+    lexicon the user does not maintain is left as it is (`_kept_lexicons`
+    says so), since only a maintainer may rename."""
+    from .queries import STORED, respelled_before
+    _w, _m, renamed = respelled_before(earlier)
     out = []
     gone = ws.rule_removed if ws.rule_removed is not None else ws.doomed_entries()
     for v in ws.project.vocabs:
@@ -227,12 +230,13 @@ def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
         for it in ws.view(v, removed=True).items:
             if it['id'] in gone:
                 continue
-            old = it.get('form') or ''
+            stored = it.get('form') or ''
+            old = (renamed[it['id']].get('form') or '') if it['id'] in renamed else stored
             new = rep(old)
             if new == old or not new.strip():
                 continue
-            out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new,
-                        **labelled(v['name'], f'rename entry {qv(old)} → {qv(new)}')})
+            out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new, STORED: stored,
+                        **labelled(v['name'], f'rename entry {qv(stored)} → {qv(new)}')})
     return out
 
 
@@ -259,12 +263,13 @@ def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
                     bool(a.get('case_sensitive')))
     spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
               case_sensitive=bool(a.get('case_sensitive')))
-    staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms')), cap)
+    earlier = getattr(ws, RULES_BEFORE, None) or []
+    staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms')), cap, earlier)
     if n_words > cap:
         raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
                         f'Narrow it (a document, a stricter pattern) and go in passes.')
     if a.get('lexicon'):
-        staged = staged + _lexicon_renames(ws, rep)
+        staged = staged + _lexicon_renames(ws, rep, earlier)
     return staged
 
 
@@ -327,7 +332,8 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
         op, found, kept, left = _build_rule(ws, tool, args, list(unit), change + where, head + where,
                                             ws.rule_found_before(key), mode, removed_entries(ws.ops))
         docs = op['documents']
-        _clear_of_reshapes(ws, docs, values_only=_values_only(kept))
+        # A rule that rewrites the text is held clear of the plan's reshapes
+        # where it is found (igt.queries.respell_guard), at approval too.
         ws.add_op(op)
         ws.rule_found[key] = found
         keys = [rules.target(o) for o in ws.ops if rules.is_rule(o) and o.get('head') is not None]
@@ -675,6 +681,12 @@ def writes_stored(ws: Workspace, o: Dict[str, Any]) -> bool:
         return v is not None and v == (o.get('value') or '')
     if o.get('kind') == 'set_morpheme_form':
         return _was(ws, o) == _becomes(o)
+    if o.get('kind') in ('respell', 'rename_entry'):
+        # A respelling rule's own (igt.queries.STORED): rules that spell a
+        # word or a headword back as stored.
+        from .queries import STORED
+        was = o.get(STORED)
+        return was is not None and was == (o.get('value') if o['kind'] == 'respell' else o.get('form'))
     return False
 
 
@@ -1113,12 +1125,22 @@ def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier,
     # :func:`scope_reaches` reads: it reads only those before it, as when
     # the rule was staged (REV7-PLAN-1).
     was_at, ws.finding_rule = ws.finding_rule, ('rule', tool, rules.fingerprint_args(args))
+    # What the earlier rules found, for a resolver that reads more of it than
+    # the values they leave (a respelling reads the words they respell).
+    was_earlier = getattr(ws, RULES_BEFORE, None)
+    setattr(ws, RULES_BEFORE, earlier)
     try:
         with ws.resolving_rules(earlier), ws.corpus.within(args.get('document')):
             return fn(ws, dict(args), CANDIDATE_MAX)
     finally:
         ws.rule_removed = was
         ws.finding_rule = was_at
+        setattr(ws, RULES_BEFORE, was_earlier)
+
+
+#: Where :func:`resolve_rule` leaves, while a rule is found, what the plan's
+#: earlier rules found (in plan order).
+RULES_BEFORE = '_rules_before'
 
 
 def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
@@ -1163,17 +1185,16 @@ def values_rule(op: Dict[str, Any]) -> bool:
     return rules.is_rule(op) and _values_only([{'kind': k} for k in (op.get('counts') or {})])
 
 
-def _clear_of_reshapes(ws: Workspace, docs: List[str], values_only: bool = False) -> None:
-    """A corpus-wide replacement reaches every document it matched, so a plan
-    that already reshapes text or words in one of them cannot take it, unless
-    it writes values only (``values_rule``)."""
+def clear_of_reshapes(ops: List[Dict[str, Any]], docs, what: str) -> None:
+    """A corpus-wide change that rewrites the text (a respelling) reaches
+    every document it found, so a plan whose ``ops`` already reshape text or
+    words in one of them cannot take it. A rule that writes values only
+    (``values_rule``) never asks."""
     from .plan import RESHAPES
-    if values_only:
-        return
     reach = set(docs)
-    for op in ws.ops:
+    for op in ops:
         if op.get('kind') in RESHAPES and (op.get('doc') in reach or not op.get('doc')):
-            raise ToolError('This plan already reshapes text or words in a document this replacement '
+            raise ToolError(f'This plan already reshapes text or words in a document this {what} '
                             'reaches. Apply one, then plan the other (plan_status, drop_planned).')
 
 
@@ -1209,7 +1230,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                       head=f'respell {shown} as {qv(replacement)} ({mode})', what='words', mode=mode)
     key = ('rule', 'respell_all', rules.fingerprint_args(args))
     keep = rule_keep(ws, ws.ops)
-    kinds = [o['kind'] for o in ws.rule_found.get(key, []) if keep(o)]
+    kinds = [o['kind'] for o in ws.rule_found.get(key, []) if keep(o) and not writes_stored(ws, o)]
     if kinds and any(rules.is_rule(o) and rules.target(o) == key for o in ws.ops):
         out += (f'\n({kinds.count("respell")} words, {kinds.count("set_morpheme_form")} morpheme forms, '
                 f'{kinds.count("rename_entry")} lexicon headwords.)')

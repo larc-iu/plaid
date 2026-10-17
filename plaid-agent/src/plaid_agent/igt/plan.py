@@ -1379,6 +1379,9 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Option
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
     res = Resolution(client, project, requester)
     from .bulk import kept_targets
+    from .queries import PLAN_OPS
+    # The guards a rule runs where it is found read the plan being applied.
+    setattr(res.ws, PLAN_OPS, ops)
     res.kept = kept_targets(ops)
     res.removed = {id(op): removed_entries(ops[:i]) for i, op in enumerate(ops) if rules.is_rule(op)}
     keep = rule_keep(res.ws, ops, notes)
