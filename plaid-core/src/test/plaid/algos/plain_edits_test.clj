@@ -925,14 +925,20 @@
   ;; REV2-F-TEXT-CORE R3: a save of many edits over word boundaries read
   ;; each over the whole body (396 ops 42 s); REV3-F-TEXT-CORE G1: one long
   ;; token (a text in one sentence) made each read scan every token (6,000
-  ;; gaps 30 s). Idle, these take 0.6 s and 2.9 s (11.4 s with the long
-  ;; token scanned); each bound leaves room for a busy machine and still
-  ;; catches the shape.
-  (doseq [[places one? bound] [[200 false 5.0] [4000 true 8.0]]]
-    (let [{:keys [secs r body]} (big-save places one?)]
-      (is (= body (:text/body (:text r))))
-      (is (empty? (filter #(= :w (first %)) (:deleted r))) "no word with letters left is deleted")
-      (is (< secs bound) (str places (when one? " in one sentence") ": " secs " s")))))
+  ;; gaps 30 s). Idle, these take about 0.9 s and 2.6 s (11.4 s with the
+  ;; long token scanned). A CI runner under load is several times slower on
+  ;; both, so the long-token save is bounded against the small one on the
+  ;; same machine: about 3 times as slow when fine, about 20 times when it
+  ;; scans every token.
+  (let [timed (fn [places one?]
+                (let [{:keys [secs r body]} (big-save places one?)]
+                  (is (= body (:text/body (:text r))))
+                  (is (empty? (filter #(= :w (first %)) (:deleted r))) "no word with letters left is deleted")
+                  secs))
+        small (timed 200 false)
+        long-token (timed 4000 true)]
+    (is (< small 10.0) (str "200: " small " s"))
+    (is (< long-token (* 8 small)) (str "4000 in one sentence: " long-token " s, 200: " small " s"))))
 
 (deftest a-word-typed-over-beside-its-twin-keeps-its-token
   ;; REV3-F-TEXT-CORE G2: the diff deletes `你` and types `好` after the next
