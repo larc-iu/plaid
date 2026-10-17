@@ -274,3 +274,30 @@ def test_a_drop_reads_nothing_from_the_store_again(live_client):
     finally:
         s.delete()
 
+
+def _forms(c, s):
+    w = _fresh(c, s)
+    return [[m.form for m in wd.morphemes] for wd in w.doc('Doc A').sentences[0].words]
+
+
+def test_two_morpheme_form_replacements_compose_in_plan_order(live_client):
+    # FX-J-RULES' open item: the second reads the forms the first leaves,
+    # as value rules and respellings compose ("ka" → "kb" → "kc"), and a
+    # form the first changed away from the second's pattern is not changed
+    # by the second from what is stored.
+    c = live_client
+    words = [('kan', '', [('ka', ''), ('n', '')]), ('tak', '', [('ta', ''), ('k', '')])]
+    s, ws = _seeded(c, 'forms compose', words)
+    try:
+        first = ('replace_in_field', {'field': 'morpheme form', 'pattern': 'ka', 'replacement': 'kb',
+                                      'whole': True})
+        second = ('replace_in_field', {'field': 'morpheme form', 'pattern': 'kb', 'replacement': 'kc',
+                                       'whole': True})
+        third = ('replace_in_field', {'field': 'morpheme form', 'pattern': 'a', 'replacement': 'e'})
+        outs = _ask(ws, first, second, third)
+        assert not outs[1].startswith('Nothing to change'), outs[1]
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert not as_applied(h).errors, h.errors
+        assert _forms(c, s) == [['kc', 'n'], ['te', 'k']]
+    finally:
+        s.delete()

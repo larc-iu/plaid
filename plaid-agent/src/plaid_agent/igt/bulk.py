@@ -178,7 +178,7 @@ def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
               case_sensitive=bool(a.get('case_sensitive')))
     cond = a.get('where') or None
     if _names_morpheme_forms(ws, a['field']):
-        return q_morpheme_forms(ws, rep, spec, cap, cond)
+        return q_morpheme_forms(ws, rep, spec, cap, cond, getattr(ws, RULES_BEFORE, None) or [])
     f = ws.project.field(a['field'])
     found = q_replace_in_field(ws, f, rep, spec, cap, cond)
     return found + _chained(ws, f, rep, found, a.get('document'), cond)

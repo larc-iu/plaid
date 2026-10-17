@@ -1542,10 +1542,16 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
 
 
 def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
-                     cond: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                     cond: Optional[Dict[str, Any]] = None, earlier=()) -> List[Dict[str, Any]]:
     """The stored morpheme forms a replacement changes, in text order: one
     set_morpheme_form op for each whose form differs afterwards. A morpheme
-    showing its word's surface stores no form, and is respell_all's."""
+    showing its word's surface stores no form, and is respell_all's.
+
+    Each form is read as the plan's ``earlier`` rules leave it (their found
+    changes in plan order), as value rules and respellings compose: "ka" →
+    "kb" then "kb" → "kc" writes "kc", and a form an earlier rule took away
+    from this one's pattern is not changed from what is stored."""
+    _w, before, _e = respelled_before(earlier)
     c = ws.corpus
     where = [c.word('?w'), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w')
     where += target_condition(c, cond, '?m', 'Morpheme')
@@ -1555,10 +1561,13 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
                         f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
     budget = _docs_of(rows)
     staged = []
+    seen = set()
     for m, w in rows:
         if not (isinstance(m, dict) and isinstance(w, dict)):
             continue
-        old = (m.get('metadata') or {}).get('form') or ''
+        seen.add(m['id'])
+        stored = (m.get('metadata') or {}).get('form') or ''
+        old = (before[m['id']].get('form') or '') if m['id'] in before else stored
         new = rep(old)
         if new == old:
             continue
@@ -1567,8 +1576,28 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
             raise ToolError(f'{head}: "{old}" would become empty')
         ws.note_metadata(m['id'], m.get('metadata'))
         staged.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
-                       **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(old)} → {qv(new)}'),
+                       **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(stored)} → {qv(new)}'),
                        OF_WORD: w['id']})
+    # The forms an earlier rule leaves that this one changes in turn, where
+    # the stored form did not match it.
+    held = c.held_documents()
+    left = {mid: op for mid, op in before.items()
+            if mid not in seen and not (held and op.get('doc') not in held)}
+    meets = condition_holds(ws, cond, 'Morpheme', list(left)) if cond and left else None
+    for mid, op in left.items():
+        if meets is not None and mid not in meets:
+            continue
+        old = op.get('form') or ''
+        new = rep(old)
+        if new == old or not old:
+            continue
+        head = _place_of(op)
+        if not new.strip():
+            raise ToolError(f'{head}: "{old}" would become empty')
+        hit, md = ws.metadata_of(mid)
+        stored = ((md or {}).get('form') if hit else None) or old
+        staged.append({**{k: v for k, v in op.items() if k not in ('label', 'change_at')}, 'form': new,
+                       **labelled(head, f'morpheme form {qv(stored)} → {qv(new)}')})
     return staged
 
 
