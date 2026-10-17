@@ -29,7 +29,6 @@ import {
   importStamp,
   priorImports,
   settlePrior,
-  unusedName,
 } from '../resume.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
@@ -65,7 +64,8 @@ export function resolveTargets(project, build) {
  * Import one document: text, sentences, alignment, words, morphemes, spans.
  *
  * `copyName` makes it a COPY beside a document the file already produced: it
- * takes that name and carries no resume stamp, so it is the person's own
+ * takes that name, or the first free "name (2)" core gives it, and carries no
+ * resume stamp, so it is the person's own
  * document from then on and a later run of the same import neither skips,
  * replaces nor resumes it.
  */
@@ -292,9 +292,10 @@ async function runElanImportImpl({
     // A copy is only a copy of a document that is finished, or one an open
     // project keeps. One a resume left half done is redone, which is what
     // resume has always meant.
+    // Core names the copy "Name (2)" (createDocumentShell's freeName).
     const copyName =
       priorMode === 'copy' && existing && !leftover && (prior.done(existing) || projectOpen)
-        ? unusedName(doc.name, prior.names)
+        ? doc.name
         : null;
     if (!copyName) {
       const proceed = await settlePrior(client, prior, doc.id, results, {

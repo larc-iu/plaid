@@ -80,8 +80,8 @@ function stubClient({ documents = [], docMetadata = {}, docMedia = [] } = {}) {
     },
     documents: {
       // The id the client names, as core takes it.
-      create: async (projectId, name, metadata, _message, { id } = {}) => {
-        calls.push(['documents.create', name, metadata, id]);
+      create: async (projectId, name, metadata, _message, { id, freeName } = {}) => {
+        calls.push(['documents.create', name, metadata, id, freeName]);
         return { id };
       },
       get: async (id) => ({
@@ -406,13 +406,13 @@ describe('runElanImport', () => {
       docMetadata: { old: { importSource: 'old:a.eaf', importDone: true } },
     };
 
-    it('is a new document with the next free name, and the original is untouched', async () => {
+    it('is a new document core gives the next free name, and the original is untouched', async () => {
       const client = stubClient(prior);
       const res = await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'copy' });
       expect(res).toMatchObject({ imported: 0, skipped: 0, redone: 0, copied: 1 });
       expect(client.calls.some(([m]) => m === 'documents.delete')).toBe(false);
       const create = client.calls.find(([m]) => m === 'documents.create');
-      expect(create[1]).toBe('Story (3)');
+      expect([create[1], create[4]]).toEqual(['Story', true]);
     });
 
     it('carries no resume stamp, so a later run never takes it for the original', async () => {

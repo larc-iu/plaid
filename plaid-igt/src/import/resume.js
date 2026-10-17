@@ -21,7 +21,6 @@
 // the stamp and every name composed, and a file name from macOS is not.
 
 import { nameKey } from '@ui/lib/nameKey.js';
-import { freeDocumentName } from '@ui/lib/documentNames.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { sameConfig } from '@ui/domain/configCells.js';
 
@@ -86,24 +85,10 @@ export async function priorImports(client, projectId) {
     const source = stampedSource(d);
     if (source) bySource.set(nameKey(source), d);
   }
-  const names = new Set(listed.map((d) => nameKey(d.name)));
   return {
     find: (sourceId) => bySource.get(nameKey(sourceId)) ?? null,
     done: (doc) => doc?.metadata?.[DONE_KEY] === true,
-    /** Every document name in the project, composed, for naming a copy beside one. */
-    names,
   };
-}
-
-/**
- * A name not yet in `taken` (composed names), made from `base` the way a file
- * manager does it: "Story (2)", then "Story (3)". Adds the result to `taken`,
- * so a run that makes several copies never hands out one name twice.
- */
-export function unusedName(base, taken) {
-  const name = freeDocumentName(base, taken);
-  taken.add(name);
-  return name;
 }
 
 /**

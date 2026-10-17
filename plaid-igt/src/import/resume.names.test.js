@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { importStamp, priorImports, settlePrior, unusedName } from './resume.js';
+import { importStamp, priorImports, settlePrior } from './resume.js';
 
 // H12-IO-3: a file whose name is decomposed (macOS writes `é` as `e` and a
 // combining accent) was never found again. The server stores the stamp and
@@ -44,13 +44,5 @@ describe('a source named in the other Unicode spelling', () => {
     expect(await settlePrior(client, prior, NFD, results)).toBe(true);
     expect(client.deleted).toEqual(['d1']);
     expect(results.redone).toBe(1);
-  });
-
-  it('is named as a copy beside the document of that name', async () => {
-    const prior = await priorImports(
-      clientWith([{ id: 'd1', name: 'Kaf\u00e9 ni\u00f1o', metadata: {} }]),
-      'p',
-    );
-    expect(unusedName('Kafe\u0301 nin\u0303o', prior.names)).toBe('Kaf\u00e9 ni\u00f1o (2)');
   });
 });
