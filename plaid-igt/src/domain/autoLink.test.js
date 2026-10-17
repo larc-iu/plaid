@@ -51,6 +51,26 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
+  it('leaves the words the same run just copied an analysis onto, with their morphemes (H17-IGT-EDIT-2)', () => {
+    // The copy phase linked "se" to i-se2 with its glosses. The project's
+    // precedent for "se" is i-se1, which would otherwise relink it.
+    const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, 9]]));
+    const copied = { id: 'i-se2', prov: 'machine' };
+    const sentences = sentence([
+      word('w1', 'se', null, [morph('m1', 'se', copied)]),
+      word('w2', 'se', null, [morph('m2', 'se', copied)]),
+    ]);
+    const proposals = computeAutoLinkProposals({
+      sentences,
+      vocabularies: VOCABS,
+      precedent,
+      leave: ['w1'],
+    });
+    expect(proposals).toEqual([
+      { tokenId: 'm2', vocabItemId: 'i-se1', form: 'se', kind: 'morpheme' },
+    ]);
+  });
+
   it('links to a sense, not to the headword standing over it', () => {
     // A FLEx entry with several senses imports as a headword (no gloss of its
     // own) plus its senses, all sharing the form. The headword sorts first by

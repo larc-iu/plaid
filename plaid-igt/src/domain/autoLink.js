@@ -177,12 +177,18 @@ function linkTarget(entity) {
 // when the morpheme carries or just received a link the word gets none (one
 // chip, not two identical ones). A word with several morphemes may link on
 // its own alongside them.
+//
+// `leave` names words left alone with their morphemes: the ones the same
+// Auto-analyze run's copy phase just analyzed, whose links came with their
+// glosses as one analysis (H17-IGT-EDIT-2).
 export function computeAutoLinkProposals({
   sentences,
   vocabularies,
   precedent,
   ignoredCfg = null,
+  leave = [],
 }) {
+  const left = new Set(leave);
   const items = buildItemIndex(vocabularies);
   const proposals = [];
   const consider = (entity, form, kind) => {
@@ -199,7 +205,9 @@ export function computeAutoLinkProposals({
     proposals.push({ tokenId: entity.id, vocabItemId: itemId, form, kind });
   };
   const words = [];
-  for (const s of sentences || []) for (const t of s.tokens || []) words.push(t);
+  for (const s of sentences || []) {
+    for (const t of s.tokens || []) if (!left.has(t.id)) words.push(t);
+  }
   for (const t of words) {
     for (const m of t.morphemes || []) {
       const form = morphFormOf(m);

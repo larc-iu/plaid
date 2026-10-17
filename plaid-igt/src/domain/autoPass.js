@@ -99,7 +99,7 @@ export async function runBuiltinAnalysis(
     }
     checkpoint(shouldStop);
     if (link) {
-      const n = await runLinkPhase(doc, onProgress, shouldStop);
+      const n = await runLinkPhase(doc, onProgress, shouldStop, copiedWordIds);
       if (n === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
       linked = n;
     }
@@ -229,12 +229,13 @@ async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
 // names the rule and its version. The run's operation is opened once the edits
 // made before it have landed: the client holds one open operation, and an
 // edit still saving holds one, which this run's would otherwise join.
-async function runLinkPhase(doc, onProgress, shouldStop) {
+// `leave` is the words the copy phase just analyzed, which it leaves alone.
+async function runLinkPhase(doc, onProgress, shouldStop, leave = []) {
   await doc.whenSaved();
   const run = builtinRun(BUILTIN_LINK_PRECEDENT);
   return doc.client.withOperation(
     'Link to the lexicon',
-    () => linkPhase(doc, onProgress, shouldStop, run),
+    () => linkPhase(doc, onProgress, shouldStop, run, leave),
     run,
   );
 }
@@ -242,7 +243,13 @@ async function runLinkPhase(doc, onProgress, shouldStop) {
 // Number of links written, or false on mutation failure. Throws Stopped as the
 // copy phase does. The two writes below are each preceded by a checkpoint, so a
 // stop lands between them rather than inside one.
-async function linkPhase(doc, onProgress = () => {}, shouldStop = () => false, run = {}) {
+async function linkPhase(
+  doc,
+  onProgress = () => {},
+  shouldStop = () => false,
+  run = {},
+  leave = [],
+) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
   onProgress({ percent: null, message: 'Reading the lexicon…' });
@@ -253,6 +260,7 @@ async function linkPhase(doc, onProgress = () => {}, shouldStop = () => false, r
     vocabularies: doc.vocabularies,
     precedent,
     ignoredCfg,
+    leave,
   });
   const stamp = { detail: await builtinDetail(BUILTIN_LINK_PRECEDENT), ...run };
   let linked = 0;
