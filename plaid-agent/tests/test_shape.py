@@ -603,3 +603,20 @@ def test_a_split_inside_a_word_moves_no_end():
     w = ws()
     call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 'Ali'})
     assert 'space' not in w.ops[0]
+
+
+def test_a_respelling_and_a_reshape_of_one_word_never_share_a_plan():
+    """Respelling s4.w9 after merging s4.w9+w10 rewrote the old range of the
+    merged word, "silinasxwt.asxwt." (bench q38-2). Refused in either order."""
+    w = ws()
+    call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gum'})
+    assert 'already splits, merges or deletes this word' in out, out
+    w = ws()
+    call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gum'})
+    for tool, args in (('merge_words', {'refs': ['s1.w2', 's1.w3']}), ('split_word', {'ref': 's1.w2', 'at': 1}),
+                       ('delete_word', {'refs': ['s1.w2']})):
+        out = call_tool(w, tool, {'document': 'd1', **args})
+        assert 'already respells this word' in out, (tool, out)
+    # Another word of the same sentence is not held up.
+    assert 'Planned' in call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': 2})

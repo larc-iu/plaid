@@ -23,7 +23,8 @@ from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
 from .project import Sentence, Word, plain_ref, project_new_words, resolve, split_sentences, word_ref
-from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
+from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
+                    refuse_shape_and_respell)
 from .workspace import Workspace, _need, _refs
 
 
@@ -43,6 +44,8 @@ def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -
     """
     if obj.id in reshaped_subjects(ws.ops, merges_only=not merging):
         raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over')
+    if isinstance(obj, Word):
+        refuse_shape_and_respell(ws, [obj], ref)
     refuse_shape_and_analysis(ws, word_ids if word_ids is not None else obj.id, ref, analysing=False)
 
 

@@ -453,8 +453,30 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and op['begin'] < end:
             raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
                             'respell it in a separate plan')
-    no_scope_reaches(ws, next((d.id for d in ws._docs.values() if d.text_id == text_id), None), where,
-                     placed=True)
+    doc = next((d for d in ws._docs.values() if d.text_id == text_id), None)
+    # A word this plan splits, merges or deletes is cut again before the
+    # respelling lands, and the respelling replaces the range as read: a
+    # respelling of one of two merged words wrote "silinasxwt.asxwt." (bench
+    # q38-2). The two go in plans of their own, in either order (the shape
+    # tools refuse the reverse, ``refuse_shape_and_respell``).
+    reshaped = reshaped_subjects(ws.ops, WORD_SHAPE)
+    if doc is not None and reshaped:
+        for sentence in doc.sentences:
+            for w in sentence.words:
+                if w.id in reshaped and w.begin < end and begin < w.end:
+                    raise ToolError(f'{where}: this plan already splits, merges or deletes this word. Plan the '
+                                    'respelling on its own once that is applied (plan_status, drop_planned).')
+    no_scope_reaches(ws, doc.id if doc is not None else None, where, placed=True)
+
+
+def refuse_shape_and_respell(ws: Workspace, words, where: str) -> None:
+    """A split, merge or delete of a word a planned respelling covers: the
+    other order of :func:`check_respell_overlap`'s refusal."""
+    for w in words:
+        for b, e in ws.planned_respells(w.text_id):
+            if b < w.end and w.begin < e:
+                raise ToolError(f'{where}: this plan already respells this word. Plan the split, merge or '
+                                'delete on its own once that is applied (plan_status, drop_planned).')
 
 
 def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
