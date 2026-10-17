@@ -584,3 +584,20 @@ def test_umr_a_relation_removed_twice_goes_whole_with_its_entry():
     _ask(call_tool, scratch, keep_)
     assert payload(ws) == payload(scratch)
 
+
+def test_ud_a_value_two_replacements_change_is_counted_once_on_the_later_row(monkeypatch):
+    """Approval writes the later replacement there, so the earlier row and
+    the summary leave it out, as igt counts a value two rules change. Dropped,
+    the later one gives it back to the earlier."""
+    from plaid_agent.ud.toolkit import call_tool
+    client, project, new_ws = _ud_ws(monkeypatch)
+    ws = new_ws()
+    _ask(call_tool, ws, ('replace_in_field', {'field': 'upos', 'pattern': 'NOUN', 'replacement': 'PROPN',
+                                              'whole': True}),
+         ('replace_in_field', {'field': 'upos', 'pattern': 'N', 'replacement': 'X'}))
+    p = payload(ws)
+    assert [ch['rule']['total'] for ch in p['changes']] == [0, 2]
+    assert ''.join(c for c in p['summary'] if c not in '\u2068\u2069') == 'upos "N" → "X" (2 values)'
+    call_tool(ws, 'drop_planned', {'indexes': [2]})
+    p = payload(ws)
+    assert [ch['rule']['total'] for ch in p['changes']] == [1]

@@ -118,6 +118,9 @@ class Workspace(Replaying, BaseWorkspace):
         super().__init__(client, project, on_progress)
         # A drop asks the plan's remaining requests again (core/requests.py).
         self.init_requests()
+        # What each replacement of the plan found, by its target, so a value
+        # two of them change is counted once, on the later (settle.py).
+        self.replace_found: Dict[tuple, List[Dict[str, Any]]] = {}
 
     def call_tool(self, tool: str, args: Dict[str, Any]) -> str:
         from .toolkit import call_tool

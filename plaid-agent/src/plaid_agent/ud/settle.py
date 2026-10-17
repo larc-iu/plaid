@@ -125,6 +125,7 @@ def settle_scopes(ws) -> None:
         place = value_place(ws, op, cache)
         if place is not None:
             named.append((ent, place))
+    later = _later_replaced(ws, idx)
     for i in idx:
         op = ws.ops[i]
         takes = KIND[op['kind']].extra['takes']
@@ -133,12 +134,89 @@ def settle_scopes(ws) -> None:
             if ent not in taken and takes(op, *place):
                 taken[ent] = place
         found = _found(op)
-        if not taken and op.get(FOUND) is None:
+        again = [ch for ent, ch in later.get(i, ()) if ent not in taken]
+        if not taken and not again and op.get(FOUND) is None:
             continue
-        out = (_discard(ws, op, found, taken) if op['kind'] == 'discard_scope'
-               else _replace(ws, op, found, list(taken.values())))
+        if op['kind'] == 'discard_scope':
+            out = _discard(ws, op, found, taken)
+        else:
+            out = _replace(ws, op, _less_again(ws, op, found, again) if again else found, list(taken.values()))
+            out[FOUND] = found
         if out != op:
             ws.ops[i] = out
+
+
+def _later_replaced(ws, idx: List[int]) -> Dict[int, List[tuple]]:
+    """For each replacement at ``idx`` in the plan, the changes it found that
+    a later replacement of the same field finds too, as ``(entity, change)``:
+    approval writes the later one there, so the value is counted once, on the
+    later row, as igt counts a value two rules change."""
+    from .bulk import replace_ops
+    found: Dict[int, List[tuple]] = {}
+    for i in idx:
+        op = ws.ops[i]
+        if op['kind'] != 'replace_scope':
+            continue
+        chs = _replace_found(ws, op)
+        found[i] = [(entity_of(o), ch) for o, ch in zip(replace_ops(chs, op['field']), chs)]
+    out: Dict[int, List[tuple]] = {}
+    seen: Dict[str, set] = {}
+    for i in sorted(found, reverse=True):
+        field = ws.ops[i]['field']
+        mine = seen.setdefault(field, set())
+        hit = [(ent, ch) for ent, ch in found[i] if ent in mine]
+        if hit:
+            out[i] = hit
+        mine.update(ent for ent, _ch in found[i])
+    return out
+
+
+def _replace_found(ws, op: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """What the replacement ``op`` found when it was staged, or, for one
+    carried from an earlier turn, what its query finds."""
+    from .bulk import REPLACE_MAX, changes, matches, spec_of
+    from ..core import opkind
+    key = opkind.target_of(KIND, op)
+    store = getattr(ws, 'replace_found', None)
+    if store is None:
+        return []
+    if key not in store:
+        spec, rep = spec_of(op)
+        store[key] = changes(matches(ws.corpus, op['field'], spec, op.get('document_id'), REPLACE_MAX),
+                             op['field'], rep)
+    return store[key]
+
+
+def _less_again(ws, op: Dict[str, Any], found: Dict[str, Any], again: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """``found`` less the changes ``again`` a later replacement makes, which
+    its row counts: the count, the person's work among them, the card's
+    documents and changes, and its sample's rows."""
+    out = copy.deepcopy(found)
+    out['count'] = max(0, out['count'] - len(again))
+    out['counted'] = max(0, out['counted'] - sum(1 for ch in again if work.protected(ch.get('metadata'))))
+    card = out.get('card')
+    if card is not None:
+        for ch in again:
+            _less(card, ch['document_id'], ch['old'], ch['new'])
+        gone = {(ch['document_id'], _ref_of(ws, op['field'], ch), f'{op["field"]} {qv(ch["old"])} → {qv(ch["new"])}')
+                for ch in again}
+        card['sample'] = [r for r in card.get('sample') or []
+                          if ((r.get('where') or {}).get('document_id'), (r.get('where') or {}).get('ref'),
+                              r.get('label')) not in gone]
+    return out
+
+
+def _ref_of(ws, field: str, ch: Dict[str, Any]) -> Optional[str]:
+    """The word reference of a change a replacement found, in a document the
+    turn has read, else None."""
+    doc = ws._docs.get(ch.get('document_id'))
+    if doc is None:
+        return None
+    for sentence in doc.sentences:
+        for w in sentence.words:
+            if (w.relation_id == ch['id']) if field == 'deprel' else (w.id == ch.get('token_id')):
+                return word_ref(sentence, w)
+    return None
 
 
 def _discard(ws, op, found, taken: Dict[Any, tuple]) -> Dict[str, Any]:

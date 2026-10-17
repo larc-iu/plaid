@@ -208,6 +208,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     if full:
         raise ToolError(full)
     ws.add_op({**op, 'label': replace_label(ws, op, len(found), len(docs), accepted)})
+    ws.replace_found[opkind.target_of(KIND, op)] = found
     # Counted by document, never by name: two documents may share one, and
     # their counts are then told apart by id.
     labels = {did: doc_label(ws, did) for did in docs}
