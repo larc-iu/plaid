@@ -52,7 +52,8 @@ wire's key recasing):
   rename_document {document_id, name}
   set_morpheme_form {morpheme_id, form, restamp?}   (a respelling carried into a morpheme's own form, with no restamp, as in
                    Bulk Edit, or with restamp true a direct correction of one morpheme, stamped as every rewrite is)
-  split_word      {word_id, position, morpheme_ids}          (coincident morphemes deleted first, as the editor does)
+  split_word      {word_id, position, morpheme_ids, space?}  (coincident morphemes deleted first, as the editor does;
+                                                             the left part ends ``space`` before ``position``)
   merge_words     {word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
                    links: {keep_id, delete_ids}, mwe_ids}     (the collapsed expressions' links deleted, then
                    sequential merges. spans and links say what the server's layer rules join and drop in
@@ -501,6 +502,8 @@ def _apply_split_word(ctx: Context, op) -> int:
     if _stored(op.get('morpheme_ids')):
         ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(_stored(o['morpheme_ids'])))
     ctx.b.add(lambda batch, o=op: batch.tokens.split(o['word_id'], o['position'], id=ctx.b.new_id()))
+    if op.get('space'):
+        ctx.b.add(lambda batch, o=op: batch.tokens.update(o['word_id'], end=o['position'] - o['space']))
     return 1
 
 

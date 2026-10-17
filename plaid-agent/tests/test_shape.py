@@ -572,3 +572,34 @@ def test_a_text_edit_is_sent_at_its_place_so_a_twin_word_is_not_taken_for_it():
     from plaid_agent.igt.plan import _region_edits
     assert _region_edits('ab ', '', 0) == [{'type': 'delete', 'index': 0, 'value': 3}]
     assert _region_edits('cat sat', 'cot sat', 10) == [{'type': 'replace', 'index': 11, 'length': 1, 'value': 'o'}]
+
+
+def _two_word_token():
+    """w-2 "gam akuna" over a space, as a FLEx phrase import makes them."""
+    raw = document_raw()
+    words = raw['text_layers'][0]['token_layers'][1]['tokens']
+    raw['text_layers'][0]['token_layers'][1]['tokens'] = [
+        {**t, 'end': 16} if t['id'] == 'w-2' else t for t in words if t['id'] != 'w-3']
+    return raw
+
+
+@pytest.mark.parametrize('at', ['gam', 'gam ', 3, 4])
+def test_a_split_beside_a_space_leaves_it_between_the_parts(at):
+    """A cut next to whitespace goes around the run of it, as the editor's
+    split does (IgtDocument.splitToken): neither part begins or ends with a
+    space (H17-ASSIST-2)."""
+    w = ws(_two_word_token())
+    call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': at})
+    op = w.ops[0]
+    assert (op['position'], op.get('space')) == (11, 1)
+    assert op['label'].endswith('split into "gam" + "akuna"')
+    c = FakeClient(documents={'d1': _two_word_token()})
+    execute_plan(c, [op], source='s', label='l')
+    assert c.batches[0] == [('tokens.split', _split('w-2', 11, c)),
+                            ('tokens.update', {'args': ('w-2',), 'kwargs': {'end': 10}})]
+
+
+def test_a_split_inside_a_word_moves_no_end():
+    w = ws()
+    call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 'Ali'})
+    assert 'space' not in w.ops[0]

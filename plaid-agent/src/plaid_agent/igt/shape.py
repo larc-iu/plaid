@@ -168,7 +168,20 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
         n = len(left)
     if not 0 < n < len(w.surface):
         raise ToolError(f'at must be between 1 and {len(w.surface) - 1} for "{w.surface}"')
-    left, right = w.surface[:n], w.surface[n:]
+    # A cut next to whitespace (in a word made over a space, as phrase
+    # imports make them) goes around the whole run of it, as the editor's
+    # split does: the right part starts after the run and the left part ends
+    # before it, so neither begins or ends with a space. ``space`` is the
+    # run's length, counted back from the cut, so it holds wherever the word
+    # has moved to by approval.
+    end, cut = n, n
+    while end > 0 and w.surface[end - 1].isspace():
+        end -= 1
+    while cut < len(w.surface) and w.surface[cut].isspace():
+        cut += 1
+    if end == 0 or cut == len(w.surface):
+        end, cut = n, n
+    left, right = w.surface[:end], w.surface[cut:]
     morphs = [m.id for m in w.morphemes]
     note = ''
     if w.morphemes and (len(w.morphemes) > 1 or w.morphemes[0].fields or w.morphemes[0].link
@@ -178,7 +191,8 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
         note += ' (word values and link go to the left part)'
     # The word's extent as read: the cut moves with the word when an edit
     # before its sentence has moved it (core.fingerprint, `token_at`).
-    ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n,
+    ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + cut,
+               **({'space': cut - end} if cut > end else {}),
                'token_at': {'begin': w.begin, 'end': w.end}, 'morpheme_ids': morphs,
                **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(w.surface)}', f'split into {qv(left)} + {qv(right)}{note}')})
     return ws.planned_note(1)
