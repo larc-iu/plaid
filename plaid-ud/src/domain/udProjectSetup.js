@@ -54,6 +54,7 @@ import {
   getUdLayerInfo,
 } from '../utils/udLayerUtils.js';
 import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js';
+import { wordsNeedingSyntacticWord } from '../utils/udReconcile.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 
 // A space typed inside a word splits it (see the manual's "Changing a text's
@@ -322,7 +323,44 @@ export const adoptSubstrate = (client, page) =>
     // the data still breaks is left undeclared, and the rest are in force.
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
+
+    await seedBareWords(client, project.id);
   });
+
+// Every document's words get their UD word now, as an open would give them,
+// so Search, Rewrite, the export and the counts read the same words in a
+// document nobody has opened in UD yet (H17-UD-4). One batch per document. A
+// document that fails is left to its open, which seeds what is still bare.
+const SEED_CONCURRENCY = 4;
+const seedBareWords = async (client, projectId) => {
+  const docs = (await client.projects.listDocuments(projectId)) || [];
+  let next = 0;
+  const worker = async () => {
+    while (next < docs.length) {
+      const doc = docs[next++];
+      try {
+        const info = getUdLayerInfo(await client.documents.get(doc.id, true));
+        const textId = info.textLayer?.text?.id;
+        const extents = wordsNeedingSyntacticWord(info);
+        if (!info.morphemeTokenLayer?.id || !textId || extents.length === 0) continue;
+        await client.batched(async (b) => {
+          b.tokens.bulkCreate(
+            extents.map((e) => ({
+              tokenLayerId: info.morphemeTokenLayer.id,
+              text: textId,
+              begin: e.begin,
+              end: e.end,
+              precedence: 0,
+            })),
+          );
+        });
+      } catch (err) {
+        console.error(`Seeding UD words in document ${doc.id} failed:`, err);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: SEED_CONCURRENCY }, worker));
+};
 
 // Queue on batch `b` the enhanced relation layer on the Lemma layer
 // `lemmaLayerId`, made under an id minted here so its flag can name it.

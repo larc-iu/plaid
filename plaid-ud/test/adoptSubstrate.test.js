@@ -39,6 +39,7 @@ const serverClient = (calls, stored) => {
         const name = path.join('.');
         calls.push(name);
         if (name === 'projects.get') return Promise.resolve(stored());
+        if (name === 'projects.listDocuments') return Promise.resolve([]);
         const fn = args.find((a) => typeof a === 'function');
         return fn ? fn(at(['batched'])) : Promise.resolve({});
       },
@@ -103,4 +104,56 @@ test('a set-up declares the rules of every layer it makes in the batch that make
     'batched.relationLayers.setConstraints',
     'batched.relationLayers.setConstraints',
   ]);
+});
+
+// H17-UD-4: every document gets its UD words at set-up, so Search and Rewrite
+// read the same words in a document nobody has opened in UD as the export
+// does. One batch per document, and one with every word covered writes none.
+test('a set-up gives the bare words of every document their UD word, once', async () => {
+  const project = substrateOnly();
+  const bareDoc = () => {
+    // The document as the server holds it after the set-up's batch: UD's
+    // layers there, and its words without a UD word.
+    const raw = rawDocFromConllu(INPUT, 'bare');
+    raw.textLayers[0].tokenLayers[2].tokens = [];
+    return raw;
+  };
+  const fullDoc = () => rawDocFromConllu(INPUT, 'full');
+  const created = [];
+  const client = {
+    withOperation: async (_label, fn) => fn(() => {}),
+    projects: {
+      get: async () => project,
+      listDocuments: async () => [{ id: 'bare-id' }, { id: 'full-id' }],
+    },
+    documents: { get: async (id) => (id === 'bare-id' ? bareDoc() : fullDoc()) },
+    batched: async (fn) => {
+      const stub = new Proxy(
+        {},
+        {
+          get: (_t, resource) =>
+            new Proxy(
+              {},
+              {
+                get:
+                  (_u, method) =>
+                  (...args) => {
+                    if (resource === 'tokens' && method === 'bulkCreate') created.push(args[0]);
+                  },
+              },
+            ),
+        },
+      );
+      await fn(stub);
+    },
+  };
+  await adoptSubstrate(client, project);
+  assert.equal(created.length, 1, 'one batch, for the document with bare words');
+  assert.deepEqual(
+    created[0].map((r) => [r.tokenLayerId, r.begin, r.end, r.precedence]),
+    [
+      ['morpheme-layer', 0, 2, 0],
+      ['morpheme-layer', 3, 8, 0],
+    ],
+  );
 });
