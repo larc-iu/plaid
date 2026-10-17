@@ -63,6 +63,8 @@ const checkpoint = (shouldStop) => {
 //   copyContents — { segmentation, links, fields } for the copy phase
 //   onProgress   — ({percent, message}) as the phases advance
 //   shouldStop   — read at each checkpoint, true ends the run there
+//   leave        — words the link phase leaves alone with their morphemes:
+//                  the ones a copy phase run before analyzed (H17-IGT-EDIT-2)
 // Returns { copied, copiedWordIds, linked, ok, stopped }. `copiedWordIds` names
 // the words the copy phase wrote, so the dialog can tell the model step to
 // leave them. Copy runs first so the linker doesn't
@@ -86,6 +88,7 @@ export async function runBuiltinAnalysis(
     copyContents = {},
     onProgress = () => {},
     shouldStop = () => false,
+    leave = [],
   } = {},
 ) {
   let copied = 0;
@@ -99,7 +102,7 @@ export async function runBuiltinAnalysis(
     }
     checkpoint(shouldStop);
     if (link) {
-      const n = await runLinkPhase(doc, onProgress, shouldStop, copiedWordIds);
+      const n = await runLinkPhase(doc, onProgress, shouldStop, [...leave, ...copiedWordIds]);
       if (n === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
       linked = n;
     }

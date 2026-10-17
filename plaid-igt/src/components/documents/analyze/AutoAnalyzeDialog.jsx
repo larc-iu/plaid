@@ -371,6 +371,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           } = await runBuiltinAnalysis(doc, {
             link: true,
             copy: false,
+            // The words step 2 analyzed keep the links that came with them.
+            leave: copiedWordIds,
             onProgress: progress.report,
             shouldStop: () => stopRef.current,
           });

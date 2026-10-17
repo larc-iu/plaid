@@ -262,6 +262,20 @@ describe('runBuiltinAnalysis: link precedent', () => {
     expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai1']);
   });
 
+  it('leaves the words it is told to, as the dialog tells it the words its copy step analyzed (H17-IGT-EDIT-2)', async () => {
+    const server = { a: ['kai1'], b: [] };
+    const doc = makeLinkDoc(server);
+    doc.sentences[0].tokens.push({
+      id: 't-copied',
+      content: 'kai',
+      vocabItem: null,
+      morphemes: [],
+    });
+    const res = await runBuiltinAnalysis(doc, { copy: false, link: true, leave: ['t-copied'] });
+    expect(res.ok).toBe(true);
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.tokenId)).toEqual(['t-open']);
+  });
+
   it('fails the run when the project cannot be asked, rather than linking without it', async () => {
     const server = { b: ['kai2', 'kai2'] };
     const doc = makeLinkDoc(server);
