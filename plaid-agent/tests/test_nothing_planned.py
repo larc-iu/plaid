@@ -40,6 +40,10 @@ CLAIMS = [
     "The plan changes the UPOS of those three words from AUX to PUNCT. Approve to apply.",
     "I have prepared a plan to set their lemma to “le” across all three documents.",
     "I’ve staged the change.",
+    # bench build-q38-3, ud-ru-split-two r3 turns 2 and 3.
+    "The sentence split has to be planned on its own (it renumbers everything after it), so this turn's plan "
+    "holds just that one change:",
+    "A sentence split must be the only change in its plan, so this turn holds just that:",
 ]
 
 NOT_CLAIMS = [
@@ -58,6 +62,8 @@ NOT_CLAIMS = [
     "Tell me which, and I'll plan both the reattachment and the new head, and you can approve the card.",
     "If you want, I can plan it and you approve it afterwards.",
     "15 nodes in \"Kukama text 2\" have the concept ikian.",
+    "The plan holds nothing yet.",
+    "This turn holds no changes.",
     "",
 ]
 

@@ -547,6 +547,8 @@ _CLAIMED = [re.compile(p, re.I) for p in (
     r"\*\*(?:plan|planned|proposed changes?)(?: \(\d+ changes?\))?:\*\*",
     # "approve the pending split".
     r"\b(?:the|a|your) pending (?:plan|split|merge|change|changes|card|edit|edits)\b",
+    # "this turn's plan holds just that one change", "this turn holds just that".
+    r"\b(?:plan|this turn) holds\b(?! nothing| no\b)",
 )]
 _APPROVE = re.compile(r"\bapprove (?:it|the|this|that|them|to|and|when|once)\b", re.I)
 _OFFER = re.compile(r"\b(?:i['’]ll|i will|i can|i could|i would|i['’]d|shall i|should i|want me|would you like"
