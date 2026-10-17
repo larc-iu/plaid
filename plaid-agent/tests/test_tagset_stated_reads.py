@@ -118,3 +118,30 @@ def test_a_stated_read_of_a_stored_null_writes_nothing(proj):
             fn(batch)
     igt = layer(proj, TRANS)['config']['igt']
     assert 'tagset' in igt and igt['tagset'] is None
+
+
+@pytest.mark.parametrize('stored', [None, '', '  ', ' Leipzig '])
+def test_a_project_plan_leaves_document_metadata_it_does_not_change_as_stored(proj, monkeypatch, stored):
+    """REV8-AGENT R8A-2: igt's metadata screen stores "No tagset" as null, and
+    another writer may leave "" or a padded name. A plan that does not change
+    such a field's tagset leaves the list as stored, as igt's queueOwner
+    does, so a metadata field added by another maintainer between the read
+    and the batch does not refuse it."""
+    c, pid = proj.client, proj.project_id
+    meta = [{'name': 'Date', 'tagset': stored}]
+    c.projects.set_config(pid, 'igt', 'documentMetadata', meta)
+    ws = ws_of(proj)
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM2']}})
+    queue = T.queue_settings
+    raced = meta + [{'name': 'Place', 'tagset': None}]
+
+    def racing(client, b, project, ops):
+        changed = queue(client, b, project, ops)
+        c.projects.set_config(pid, 'igt', 'documentMetadata', raced)
+        return changed
+
+    monkeypatch.setattr(T, 'queue_settings', racing)
+    T.write_settings(c, ws.project, ws.ops)
+    igt = igt_config(proj)
+    assert igt['documentMetadata'] == raced
+    assert 'NOM2' in [v['value'] for v in igt['tagsets']['Leipzig']['values']]

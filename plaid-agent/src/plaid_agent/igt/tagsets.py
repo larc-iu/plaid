@@ -920,6 +920,11 @@ def queue_settings(client, b, project, ops) -> List[str]:
                     continue
                 old = (m['tagset'].strip() or None) if isinstance(m.get('tagset'), str) else None
                 name = final(METADATA, m['name'], old)
+                if name == old:
+                    # Left as stored, a null, "" or padded name too, as
+                    # igt's ``queueOwner`` leaves it (REV8-AGENT R8A-2).
+                    new_meta.append(m)
+                    continue
                 m = dict(m)
                 if name:
                     m['tagset'] = name
