@@ -665,8 +665,13 @@ WRITTEN_CALL_LABEL = 'Told the assistant that a tool call written as text did no
 
 
 #: What a turn that claimed a plan it never made is sent back with, once.
+#: The user sees only the reply that follows it, so the note says to repeat
+#: what the first one answered and not to narrate the correction: second
+#: replies lost the first's count and opened "I've now staged" (bench q38-2).
 NOTHING_PLANNED = ('(system) Nothing is planned in this turn: no plan card will show. Make the changes with '
-                   'the plan tools now, or tell the user you have not planned them.')
+                   'the plan tools now, or tell the user you have not planned them. The user sees only your '
+                   'next reply, not the one above, so repeat in it everything the one above answered, and do '
+                   'not mention this note or that the changes were staged only now.')
 #: The step that note is in the trace, and its line.
 NOTHING_PLANNED_STEP = 'nothing_planned'
 NOTHING_PLANNED_LABEL = 'Told the assistant that nothing was planned'

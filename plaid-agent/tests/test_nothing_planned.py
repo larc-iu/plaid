@@ -194,3 +194,10 @@ def test_the_rounds_keep_the_first_reply_and_the_note(monkeypatch):
     assert rnd['said'] == "I've staged it."
     assert rnd['calls'] == [{'id': step['id'], 'name': agent.NOTHING_PLANNED_STEP, 'arguments': '{}',
                              'result': NOTHING_PLANNED, 'chars': len(NOTHING_PLANNED)}]
+
+
+def test_the_note_says_the_next_reply_replaces_the_first():
+    """The second reply described only the plan and lost the first reply's
+    answer, and opened "I've now staged" (bench q38-2)."""
+    assert 'repeat in it everything the one above answered' in NOTHING_PLANNED
+    assert 'not mention this note or that the changes were staged only now' in NOTHING_PLANNED
