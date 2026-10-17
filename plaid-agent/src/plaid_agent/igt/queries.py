@@ -261,7 +261,7 @@ def _chunks(items: List[Any], n: int = 200):
 # --- project_overview --------------------------------------------------------------
 
 def q_field_fill(ws: Workspace) -> Dict[str, Dict[str, int]]:
-    """How full each field is, in four grouped reads whatever the number of
+    """How full each field is, in six grouped reads whatever the number of
     fields: ``filled`` maps a field's layer to its values that are not empty,
     ``of`` a scope (Sentence, Word, Morpheme) to its stored items. Counted
     over the whole project. Words are counted as every other read counts
@@ -272,16 +272,23 @@ def q_field_fill(ws: Workspace) -> Dict[str, Dict[str, int]]:
     layers = {f.layer_id for f in p.fields.values()}
     filled = {layer: n for layer, n in c.group([['span', '?s', {'layer': '?sl'}], ['!=', '?s.value', '']], ['?sl'])
               if layer in layers}
-    word_layers = {f.layer_id for f in p.fields_by_scope('Word')}
-    for layer, value, n in c.group([['span', '?s', {'layer': '?sl'}], ['!=', '?s.value', ''], ['covers', '?s', '?t'],
-                                    c.word('?t')], ['?sl', '?t.value']):
-        if layer in word_layers and c.ignored(value):
-            filled[layer] = filled.get(layer, 0) - n
+    # A value on an ignored token (punctuation an import glossed) is left out,
+    # as the token is, for words and morphemes alike, as corpus_stats counts.
+    for scope, token in (('Word', c.word), ('Morpheme', c.morph if c.M else None)):
+        scope_layers = {f.layer_id for f in p.fields_by_scope(scope)}
+        if not scope_layers or token is None:
+            continue
+        for layer, value, n in c.group([['span', '?s', {'layer': '?sl'}], ['!=', '?s.value', ''],
+                                        ['covers', '?s', '?t'], token('?t')], ['?sl', '?t.value']):
+            if layer in scope_layers and c.ignored(value):
+                filled[layer] = filled.get(layer, 0) - n
     scopes = {c.S: 'Sentence', c.W: 'Word', c.M: 'Morpheme'}
     of = {scopes[layer]: n for layer, n in c.group([['token', '?t', {'layer': '?tl'}]], ['?tl'])
           if layer in scopes and layer}
     if c.W:
         of['Word'] = c.word_count([c.word('?t')])
+    if c.M:
+        of['Morpheme'] = sum(n for value, n in c.group([c.morph('?m')], ['?m.value']) if not c.ignored(value))
     return {'filled': filled, 'of': of}
 
 
@@ -663,10 +670,17 @@ def q_corpus_numbers(ws: Workspace, per_doc: bool):
         for k, ids in linked.items():
             rows[k]['linked'] = len(ids)
     # field coverage
+    # A value on an ignored token is left out, as the token is (q_field_fill).
     for f in fields:
-        filled = c.group([c.span('?s', f.layer_id), ['!=', '?s.value', '']], ['?s.doc'])
-        for doc, n in filled:
-            rows[key(doc)][f'field:{f.name}'][0] += n
+        token = {'Word': c.word, 'Morpheme': c.morph if c.M else None}.get(f.scope)
+        if token is None:
+            for doc, n in c.group([c.span('?s', f.layer_id), ['!=', '?s.value', '']], ['?s.doc']):
+                rows[key(doc)][f'field:{f.name}'][0] += n
+            continue
+        for doc, value, n in c.group([c.span('?s', f.layer_id), ['!=', '?s.value', ''], ['covers', '?s', '?t'],
+                                      token('?t')], ['?s.doc', '?t.value']):
+            if not c.ignored(value):
+                rows[key(doc)][f'field:{f.name}'][0] += n
     for k, r in rows.items():
         for f in fields:
             of = r['sentences'] if f.scope == 'Sentence' else r['words'] if f.scope == 'Word' else r['morphemes']
