@@ -1,9 +1,8 @@
 (ns plaid.util.op-json
-  "A text edit op as JSON in the one form core and both clients print it in a
-  refusal (plaid-client-js `opJson`, plaid-client-py `_op_json`), byte for
-  byte: the keys type, index, length, value and side first, in that order,
-  then the others sorted by code point, and the keys of an object inside it
-  sorted the same way. A number is printed as JavaScript prints the double
+  "A text edit op as JSON in the form core prints it in a refusal (each client
+  names a refused op in its own plain JSON): the keys type, index, length,
+  value and side first, in that order, then the others sorted by code point,
+  and the keys of an object inside it sorted the same way. A number is printed as JavaScript prints the double
   nearest it (`1.0` and `1e3` as `1` and `1000`, `1e21` as `1e+21`), a string
   with only `\"`, `\\`, the control characters and a lone surrogate escaped,
   and no spaces."
@@ -105,8 +104,7 @@
     :else (js-string (str v))))
 
 (defn op-json
-  "`op` (as parsed from a request) as JSON in the one form core and both
-  clients print it."
+  "`op` (as parsed from a request) as JSON in the form core prints it."
   ^String [op]
   (if (map? op)
     (let [names (set (map key-name (keys op)))]

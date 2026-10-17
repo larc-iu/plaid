@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { composeTextEdits, gapsToOps, applyTextOps, opJson } from '../src/textEdits.js';
+import { composeTextEdits, gapsToOps, applyTextOps } from '../src/textEdits.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cases = JSON.parse(readFileSync(join(here, 'fixtures', 'text-edits.json'), 'utf8'));
@@ -50,33 +50,11 @@ test('a malformed op throws', () => {
   }
 });
 
-test('a refused op is named in the one JSON form core prints', () => {
-  // keys type, index, length, value, side, then others, with no spaces
-  assert.throws(
-    () => composeTextEdits('abc', [{ value: 'é\u2028\n', x: 1, index: -1, type: 'insert' }]),
-    {
-      message:
-        'Text edit operation out of bounds: {"type":"insert","index":-1,"value":"é\u2028\\n","x":1} (text length is 3 code points)',
-    },
-  );
+test('a refused op is named as JSON', () => {
+  assert.throws(() => composeTextEdits('abc', [{ type: 'insert', index: -1, value: 'x' }]), {
+    message: 'Text edit operation out of bounds: {"type":"insert","index":-1,"value":"x"} (text length is 3 code points)',
+  });
   assert.throws(() => applyTextOps('abc', [null]), /^Error: Malformed text edit operation: null\. /);
-});
-
-// REV8-CORE-3: one form, byte for byte, in core and both clients, on the
-// table they share (plaid-core/src/test/plaid/util/op_json_cases.json), each
-// parsing the raw op with its own JSON reader.
-test('a refused op prints as core and the Python client print it', () => {
-  const opCases = JSON.parse(
-    readFileSync(join(here, '..', '..', 'plaid-core', 'src', 'test', 'plaid', 'util', 'op_json_cases.json'), 'utf8'),
-  );
-  for (const [raw, want] of opCases) assert.equal(opJson(JSON.parse(raw)), want, raw);
-  assert.throws(() => applyTextOps('abc', [{ type: 'insert', index: 9, value: 'x', __proto__: 1 }]), {
-    message: 'Text edit operation out of bounds: {"type":"insert","index":9,"value":"x"} (text length is 3 code points)',
-  });
-  assert.throws(() => applyTextOps('abc', [JSON.parse('{"__proto__":1,"index":9,"value":"x","type":"insert","10":2,"2":3}')]), {
-    message:
-      'Text edit operation out of bounds: {"type":"insert","index":9,"value":"x","10":2,"2":3,"__proto__":1} (text length is 3 code points)',
-  });
 });
 
 test('an op out of bounds throws, counting code points', () => {

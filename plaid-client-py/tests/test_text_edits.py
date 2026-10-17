@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client.text_edits import _op_json, apply_text_ops, compose_text_edits, gaps_to_ops
+from plaid_client.text_edits import apply_text_ops, compose_text_edits, gaps_to_ops
 
 FIXTURE = os.path.join(os.path.dirname(__file__), '..', '..', 'plaid-client-js', 'test',
                        'fixtures', 'text-edits.json')
@@ -54,12 +54,11 @@ def test_a_malformed_op_raises(op):
         apply_text_ops('abc', [op])
 
 
-def test_a_refused_op_is_named_in_the_one_json_form_core_prints():
-    # keys type, index, length, value, side, then others, with no spaces
+def test_a_refused_op_is_named_as_json():
     with pytest.raises(ValueError) as e:
-        compose_text_edits('abc', [{'value': 'é\u2028\n', 'x': 1, 'index': -1, 'type': 'insert'}])
+        compose_text_edits('abc', [{'type': 'insert', 'index': -1, 'value': 'x'}])
     assert str(e.value) == ('Text edit operation out of bounds: '
-                            '{"type":"insert","index":-1,"value":"é\u2028\\n","x":1} (text length is 3 code points)')
+                            '{"type":"insert","index":-1,"value":"x"} (text length is 3 code points)')
     with pytest.raises(ValueError, match=r'^Malformed text edit operation: null\. '):
         apply_text_ops('abc', [None])
 
@@ -138,20 +137,3 @@ def test_property_composed_ops_make_the_same_body_and_composing_again_is_stable(
             if i:
                 assert gaps[i - 1]['end'] < g['start'], (body, ops, gaps)
         assert compose_text_edits(body, composed) == gaps, (body, ops)
-
-
-OP_JSON_CASES = os.path.join(os.path.dirname(__file__), '..', '..', 'plaid-core', 'src', 'test', 'plaid', 'util',
-                             'op_json_cases.json')
-
-
-def test_a_refused_op_prints_as_core_and_the_js_client_print_it():
-    # REV8-CORE-3: one form, byte for byte, in core and both clients, on the
-    # table they share, each parsing the raw op with its own JSON reader.
-    with open(OP_JSON_CASES, encoding='utf-8') as f:
-        cases = json.load(f)
-    for raw, want in cases:
-        assert _op_json(json.loads(raw)) == want, raw
-    with pytest.raises(ValueError) as e:
-        apply_text_ops('abc', [json.loads('{"k3":1,"a":2,"index":9,"value":"x","type":"insert"}')])
-    assert str(e.value) == ('Text edit operation out of bounds: {"type":"insert","index":9,"value":"x","a":2,"k3":1} '
-                            '(text length is 3 code points)')

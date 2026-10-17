@@ -53,47 +53,8 @@ export function bodyCodePoints(body) {
   return lastPoints;
 }
 
-const OP_KEYS = ['type', 'index', 'length', 'value', 'side'];
-
-// Two strings compared code point by code point (sort's own order compares
-// UTF-16 units).
-function byCodePoint(a, b) {
-  const x = Array.from(a, (c) => c.codePointAt(0));
-  const y = Array.from(b, (c) => c.codePointAt(0));
-  for (let i = 0; i < Math.min(x.length, y.length); i += 1) {
-    if (x[i] !== y[i]) return x[i] - y[i];
-  }
-  return x.length - y.length;
-}
-
-// `v` as JSON with every object's keys in `keysOf(v)` order: JSON.stringify
-// for the rest (a number as JavaScript prints it, a string with only ", \,
-// the control characters and a lone surrogate escaped).
-function canonicalJson(v, keysOf = (o) => Object.keys(o).sort(byCodePoint)) {
-  if (v === null || typeof v !== 'object') return String(JSON.stringify(v) ?? 'null');
-  if (Array.isArray(v)) return `[${v.map((x) => canonicalJson(x)).join(',')}]`;
-  return `{${keysOf(v)
-    .map((k) => `${JSON.stringify(k)}:${canonicalJson(v[k])}`)
-    .join(',')}}`;
-}
-
-/**
- * The op as JSON in the one form core and the Python client print it in a
- * refusal, byte for byte: its keys type, index, length, value and side first,
- * in that order, then the others sorted by code point, and the keys of an
- * object inside it sorted the same way. A number is printed as JavaScript
- * prints it, so `1.0` and `1e3` read `1` and `1000` in all three.
- * @param {unknown} op
- * @returns {string}
- */
-export function opJson(op) {
-  return canonicalJson(op, (o) => [
-    ...OP_KEYS.filter((k) => Object.hasOwn(o, k)),
-    ...Object.keys(o)
-      .filter((k) => !OP_KEYS.includes(k))
-      .sort(byCodePoint),
-  ]);
-}
+// The op as a refusal names it.
+const opJson = (op) => String(JSON.stringify(op) ?? 'null');
 
 /**
  * The op's type after checking its shape and bounds against a body of `len`

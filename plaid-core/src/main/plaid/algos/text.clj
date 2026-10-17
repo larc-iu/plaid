@@ -501,9 +501,7 @@
       type))
 
 (defn- op-json
-  "`op` as JSON in the one form both clients print it in their own refusals
-  (plaid-client-js `opJson`, plaid-client-py `_op_json`), byte for byte:
-  `plaid.util.op-json/op-json`."
+  "`op` as JSON in a refusal: `plaid.util.op-json/op-json`."
   [op]
   (op-json/op-json op))
 

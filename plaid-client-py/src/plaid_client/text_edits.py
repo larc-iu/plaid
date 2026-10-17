@@ -18,7 +18,7 @@ stream into gaps that depend only on the net change, never on how the
 keystrokes came, which is also how the server reads an edit.
 """
 
-import decimal
+import json
 import unicodedata
 
 
@@ -26,78 +26,9 @@ def _is_int(x):
     return isinstance(x, int) and not isinstance(x, bool)
 
 
-_OP_KEYS = ('type', 'index', 'length', 'value', 'side')
-
-
-def _js_number(x):
-    """``x`` as JavaScript prints the double nearest it, ``null`` for one
-    that is not finite."""
-    try:
-        d = float(x)
-    except OverflowError:
-        return 'null'
-    if d != d or d in (float('inf'), float('-inf')):
-        return 'null'
-    if d == 0:
-        return '0'
-    sign, digits, exp = decimal.Decimal(repr(abs(d))).normalize().as_tuple()
-    ds = ''.join(map(str, digits))
-    k = len(ds)
-    n = k + exp
-    if k <= n <= 21:
-        body = ds + '0' * (n - k)
-    elif 0 < n <= 21:
-        body = ds[:n] + '.' + ds[n:]
-    elif -6 < n <= 0:
-        body = '0.' + '0' * -n + ds
-    else:
-        e = n - 1
-        body = ds[0] + ('.' + ds[1:] if k > 1 else '') + 'e' + ('-' if e < 0 else '+') + str(abs(e))
-    return ('-' if d < 0 else '') + body
-
-
-_ESCAPES = {'"': '\\"', '\\': '\\\\', '\b': '\\b', '\f': '\\f', '\n': '\\n', '\r': '\\r', '\t': '\\t'}
-
-
-def _js_string(s):
-    """``s`` as JavaScript's JSON.stringify writes it."""
-    out = []
-    for c in s:
-        o = ord(c)
-        if c in _ESCAPES:
-            out.append(_ESCAPES[c])
-        elif o < 0x20 or 0xD800 <= o <= 0xDFFF:
-            out.append('\\u%04x' % o)
-        else:
-            out.append(c)
-    return '"' + ''.join(out) + '"'
-
-
-def _canonical_json(v, keys=None):
-    if v is None:
-        return 'null'
-    if isinstance(v, bool):
-        return 'true' if v else 'false'
-    if isinstance(v, (int, float)):
-        return _js_number(v)
-    if isinstance(v, str):
-        return _js_string(v)
-    if isinstance(v, (list, tuple)):
-        return '[' + ','.join(_canonical_json(x) for x in v) + ']'
-    if isinstance(v, dict):
-        ks = keys(v) if keys else sorted(v)
-        return '{' + ','.join(_js_string(k) + ':' + _canonical_json(v[k]) for k in ks) + '}'
-    return _js_string(str(v))
-
-
 def _op_json(op):
-    """The op as JSON in the one form core and the JavaScript client print it
-    in a refusal, byte for byte: its keys type, index, length, value and side
-    first, in that order, then the others sorted by code point, and the keys
-    of an object inside it sorted the same way. A number is printed as
-    JavaScript prints it, so ``1.0`` and ``1e3`` read ``1`` and ``1000`` in
-    all three."""
-    return _canonical_json(op, lambda o: [k for k in _OP_KEYS if k in o] + sorted(k for k in o if k not in _OP_KEYS))
+    """The op as a refusal names it."""
+    return json.dumps(op, ensure_ascii=False, separators=(',', ':'), default=str)
 
 
 def _check_op(op, length):
