@@ -1,10 +1,10 @@
 (ns plaid.algos.text
-  (:require [clojure.data.json :as json]
-            [clojure.java.io :as io]
+  (:require [clojure.java.io :as io]
             [clojure.set :as set]
             [clojure.string :as str]
             [editscript.core :as e]
-            [plaid.util.codepoint :as cp]))
+            [plaid.util.codepoint :as cp]
+            [plaid.util.op-json :as op-json]))
 
 (defn- editscript-diff
   "Use editscript to get a character-level diff and convert it into the same format used
@@ -502,16 +502,10 @@
 
 (defn- op-json
   "`op` as JSON in the one form both clients print it in their own refusals
-  (plaid-client-js `opName`, plaid-client-py `_op_json`): its keys in the
-  order type, index, length, value, side, then any others as sent, with no
-  spaces and every character but a control one as itself."
+  (plaid-client-js `opJson`, plaid-client-py `_op_json`), byte for byte:
+  `plaid.util.op-json/op-json`."
   [op]
-  (let [ks [:type :index :length :value :side]
-        m (if (map? op)
-            (apply array-map (concat (mapcat #(when (contains? op %) [% (get op %)]) ks)
-                                     (mapcat identity (apply dissoc op ks))))
-            op)]
-    (json/write-str m :escape-unicode false :escape-slash false :escape-js-separators false)))
+  (op-json/op-json op))
 
 (defn- check-op!
   "The 400s `apply-text-edit` throws, for `op` applied to a text of `len`
@@ -519,9 +513,11 @@
   [op len]
   (let [{:keys [index value length]} op
         type (op-type (:type op))]
-    (when-not (or (and (= type :insert) (int? index) (string? value))
-                  (and (= type :delete) (int? index) (int? value))
-                  (and (= type :replace) (int? index) (int? length) (string? value)))
+    ;; `integer?`: an index past a long (1e20 written out) is out of
+    ;; bounds, as both clients say, not malformed
+    (when-not (or (and (= type :insert) (integer? index) (string? value))
+                  (and (= type :delete) (integer? index) (integer? value))
+                  (and (= type :replace) (integer? index) (integer? length) (string? value)))
       (throw (ex-info (str "Malformed text edit operation: " (op-json op)
                            ". Expected {type: \"insert\", index: int, value: string},"
                            " {type: \"delete\", index: int, value: int}"
