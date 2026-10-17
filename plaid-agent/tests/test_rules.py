@@ -156,8 +156,11 @@ def test_a_settled_plan_keeps_every_rule_row_past_the_row_cap_and_compacting_aga
     once = compact_plan(item)
     plan = once['plan']
     assert 'expansion' not in plan and 'ops' not in plan
-    assert plan['changes'][:SETTLED_ROWS_MAX] == rows[:SETTLED_ROWS_MAX]
-    assert plan['changes'][SETTLED_ROWS_MAX:] == [{'row': 230, **_rule_row(230)}]
+    # A settled rule row keeps its rule without its sample (bench q38-2).
+    def unsampled(row):
+        return {**row, 'rule': {k: v for k, v in row['rule'].items() if k != 'sample'}} if 'rule' in row else row
+    assert plan['changes'][:SETTLED_ROWS_MAX] == [unsampled(r) for r in rows[:SETTLED_ROWS_MAX]]
+    assert plan['changes'][SETTLED_ROWS_MAX:] == [{'row': 230, **unsampled(_rule_row(230))}]
     assert plan['omitted'] == {'count': 49, 'writes_text': 0, 'replaces_work': 49}
     assert compact_plan(once) is once
 

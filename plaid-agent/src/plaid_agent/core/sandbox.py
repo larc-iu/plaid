@@ -720,7 +720,7 @@ class Tally:
                     f'({"the first" if self.refused > 1 else "it"} said: {first})')
         out = f'\n\n{calls}{what}. The plan now holds {held} change{"s" if held != 1 else ""}.'
         # A change staged with a warning reads as staged, and code that never
-        # prints plan()'s answer never sees the warning: 33 umr aspects were
+        # prints plan()'s answer never sees the warning: 33 aspects were
         # removed on approval that way (bench q38-2).
         if self.warned:
             first = self.first_warning if len(self.first_warning) <= 300 else self.first_warning[:297] + '...'

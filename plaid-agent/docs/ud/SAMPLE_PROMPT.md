@@ -270,7 +270,7 @@ Drop some of the planned changes, by their numbers from plan_status, or every ch
 
 ### resume_plan
 
-Copy the plan still waiting on its card from an earlier message into this turn's plan, so you can add to it and drop from it and the card holds both. Call it before staging anything.
+Copy the plan still waiting on its card from an earlier message into this turn's plan, so you can add to it and drop from it and the card holds both. After an approval refused as out of date, it asks that plan's requests again on the documents as they are now. Call it before staging anything.
 
 No parameters.
 
