@@ -188,7 +188,12 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         for v in ws.project.vocabs:
             for it in ws.lexicon(v):
                 line = entry_line(it)
-                if match(line):
+                # The line, or its headword or one field's value on its own, so
+                # an anchored pattern (^t$, a whole headword) finds the entry:
+                # matched against the whole line it never did (bench q38-2).
+                parts = [it.get('form') or ''] + [v for v in (it.get('metadata') or {}).values()
+                                                  if isinstance(v, str)]
+                if match(line) or any(match(part) for part in parts):
                     total += 1
                     if len(out) < limit:
                         out.append(f'{line} ({v["name"]})')

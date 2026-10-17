@@ -535,6 +535,10 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     # holds for that link (a link to another entry, an unlink) comes out, and
     # nothing is written, so a person's link stays theirs.
     back: List[tuple] = []
+    # Morphemes spelled otherwise than the entry (morpheme i, entry t), said
+    # as set_analysis says it: a link to the wrong entry went unseen (bench
+    # q38-2).
+    unlike: List[str] = []
     for ref in _refs(refs):
         place = _planned_place(ws, doc, ref)
         if place is not None:
@@ -554,6 +558,8 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             back.append((ref, ws.op_target({'kind': 'link', 'token_id': obj.id})))
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
+        if not isinstance(obj, Word) and _bare_form(what) != _bare_form(form):
+            unlike.append(f'{ref} {qv(what)}')
         if isinstance(obj, Word) and obj.mwes:
             inside.append(f'{ref} stays inside ' + ', '.join(f'"{l.form}"' for l in obj.mwes))
         staged.append({'kind': 'link', 'token_id': obj.id,
@@ -571,7 +577,16 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                  'planned change to that link was taken out of the plan.')
     if inside:
         note += ' (' + '; '.join(inside) + ': a word\'s own link and a multi-word expression are separate; unlink_phrase removes the latter)'
+    if unlike:
+        note += (f' {", ".join(unlike)} {"is" if len(unlike) == 1 else "are"} not spelled as the entry '
+                 f'{qv(shown)}: check that it is the entry meant.')
     return note
+
+
+def _bare_form(form: Optional[str]) -> str:
+    """A form without its affix marks and case, to tell a morpheme spelled
+    like its entry (di, -di) from one spelled otherwise."""
+    return (form or '').strip().strip('-=~').casefold()
 
 
 def _take_out(ws: Workspace, targets) -> set:

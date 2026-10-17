@@ -246,3 +246,23 @@ def test_sequence_search_reads_a_shared_name_as_either_field_and_lists_its_keys(
     out = call_tool(w, 'sequence_search', {'sequence': [{'form_regex': 'g.*'}]})
     assert out == ('Error: No condition key "form_regex". A condition takes "form", "morpheme", "type", or a field: '
                    '"Gloss (Word)", "Gloss (Morpheme)". regex is a flag on the call (regex=true), not a key.'), out
+
+
+def test_a_morpheme_linked_to_an_entry_spelled_otherwise_is_said():
+    """link_entry with morpheme i and entry t planned silently (bench q38-2).
+    A morpheme spelled as its entry, affix marks aside, is not mentioned."""
+    w = ws()
+    out = call_tool(w, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w1.m1'], 'entry_id': 'vi-gam'})
+    assert out.endswith('s1.w1.m1 "Ali" is not spelled as the entry "gam₁": check that it is the entry meant.'), out
+    out = call_tool(ws(), 'link_entry', {'document': 'Text 1', 'refs': ['s1.w1.m2'], 'entry_form': '-di'})
+    assert 'not spelled' not in out, out
+
+
+def test_an_anchored_lexicon_search_finds_a_headword_or_a_field_value():
+    """`search(pattern="^t$", where="lexicon", regex=true)` found no entry t:
+    the pattern was matched against the whole entry line (bench q38-2)."""
+    w = ws()
+    out = call_tool(w, 'search', {'pattern': '^gam$', 'where': 'lexicon', 'regex': True})
+    assert out.startswith('2 lexicon entries:'), out
+    out = call_tool(w, 'search', {'pattern': '^ERG$', 'where': 'lexicon', 'regex': True})
+    assert out.startswith('1 lexicon entries:') and '-di' in out, out

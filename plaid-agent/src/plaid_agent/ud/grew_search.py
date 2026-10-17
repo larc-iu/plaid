@@ -38,6 +38,11 @@ def _parse_error(e: GrewParseError) -> str:
         out += f' (line {e.line}, column {e.col})'
         if e.source_line is not None:
             out += f'\n  {e.source_line}\n  {" " * max(0, (e.col or 1) - 1)}^'
+    # A node's features written where a relation names it (`A < B [form="est"]`,
+    # 10 times in one bench run): the node is declared in a clause of its own.
+    if e.message == "Expected a node/edge identifier but found '['":
+        out += ('\nA node\'s features go in a clause of their own, not after a relation that names it: '
+                'declare the node, then relate it, e.g. B [form="est"]; A < B')
     return out
 
 

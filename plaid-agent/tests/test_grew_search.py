@@ -109,6 +109,14 @@ def test_the_tool_refuses_text_that_is_not_grew_with_a_caret(fake_ws):
         '  pattern { X [upos=] }', '                    ^']
 
 
+def test_features_written_after_a_relation_say_how_to_write_them(fake_ws):
+    """`A < B [form="est"]` was refused 10 times in one bench run (q38-2)
+    with only "Expected a node/edge identifier"."""
+    with pytest.raises(ToolError) as e:
+        t_grew_search(fake_ws, 'pattern { A < B [form="est"] }')
+    assert str(e.value).endswith('declare the node, then relate it, e.g. B [form="est"]; A < B'), str(e.value)
+
+
 def test_the_tool_refuses_what_the_search_tab_refuses(fake_ws):
     with pytest.raises(ToolError, match=r'^Not supported \(the Search tab refuses it too\): '
                                         r'delta/length distances above 50'):
