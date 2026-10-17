@@ -74,7 +74,7 @@ export const PICTOGRAPHIC = unpackRanges(
 );
 
 /** The built-in tokenizer's break class: \\p{P} and 24 Latin-1 symbols. */
-export const WORD_BREAK = unpackRanges(
+const WORD_BREAK = unpackRanges(
   '${packRanges(brk)}',
 );
 
