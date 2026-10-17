@@ -109,7 +109,8 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
   ]);
   expect(download.suggestedFilename()).toMatch(/\.zip$/);
 
-  // --- The zip imports again, every document under its exact name ---
+  // --- The zip imports again, every document under its exact name, which
+  // the project already holds, so with " (2)" after it ---
   await page.locator('input[type=file]').setInputFiles({
     name: download.suggestedFilename(),
     mimeType: 'application/zip',
@@ -118,6 +119,7 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
   await page.getByRole('button', { name: /^Import/ }).click();
   await expect(page.getByText(/Imported 2 of 2/)).toBeVisible({ timeout: 30_000 });
   const names = (await client.projects.listDocuments(PID)).map((d) => d.name);
-  expect(names.filter((n) => n === odd)).toHaveLength(2);
-  expect(names.filter((n) => n === id2)).toHaveLength(2);
+  for (const name of [odd, `${odd} (2)`, id2, `${id2} (2)`]) {
+    expect(names.filter((n) => n === name)).toHaveLength(1);
+  }
 });

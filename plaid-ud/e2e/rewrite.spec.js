@@ -107,9 +107,10 @@ test('a feature rewrite: preview, apply, and the rule then matches nothing', asy
   await expect(page.getByText('No sentences to change.')).toBeVisible();
   const { li } = await fetchDoc();
   expect(spanValues(li.uposLayer).filter((v) => v === 'DET')).toEqual([]);
-  // One history entry for the whole rewrite, labelled by its rules.
+  // One history entry for the whole rewrite, plain "Rewrite" for a rule
+  // written without a name.
   const audit = await S.client.documents.audit(S.docId);
-  expect(audit.some((e) => e.message === 'Rewrite: rule')).toBe(true);
+  expect(audit.some((e) => e.message === 'Rewrite')).toBe(true);
   // The five determiners plus "she".
   expect(spanValues(li.uposLayer).filter((v) => v === 'PRON')).toHaveLength(6);
 });
