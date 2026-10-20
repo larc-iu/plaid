@@ -64,7 +64,8 @@
   [doc-id times]
   (mapv (fn [t]
           {:deep (hread/get-with-layer-data-at db doc-id t)
-           :rows (hread/document-rows-at db doc-id t)
+           ;; in no order: the fold keeps rows in a map
+           :rows (some-> (hread/document-rows-at db doc-id t) (update-vals #(if (vector? %) (set %) %)))
            :restore (restore/preview db doc-id t)})
         times))
 

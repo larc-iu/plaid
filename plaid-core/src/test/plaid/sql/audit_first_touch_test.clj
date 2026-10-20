@@ -30,6 +30,12 @@
   (:op_id (psc/q1 db ["SELECT op_id FROM audit_writes WHERE target_table = 'documents'
                        AND target_id = ? AND change_type = 'insert'" (str doc-id)])))
 
+(defn- unordered
+  "`document-rows-at` with each list of rows as a set: the fold keeps them
+  in a map, so their order says nothing."
+  [rows]
+  (some-> rows (update-vals #(if (vector? %) (set %) %))))
+
 (defn- check-touch
   "Build a document, remove its untouched rows' insert rows, run `touch!`
   on the ids, and check the state at the document's making is unchanged."
@@ -39,13 +45,13 @@
           doc (:doc ids)
           made (latest-op-ts)
           deep (hread/get-with-layer-data-at db doc made)
-          rows (hread/document-rows-at db doc made)]
+          rows (unordered (hread/document-rows-at db doc made))]
       (unrec/unrecord-untouched! doc)
       (touch! ids)
       (is (seq (backfilled doc)) "the touched rows were recorded whole")
       (is (every? #(= (creating-op doc) (:op_id %)) (backfilled doc))
           "under the operation that created the document")
-      (is (= rows (hread/document-rows-at db doc made)))
+      (is (= rows (unordered (hread/document-rows-at db doc made))))
       (is (= deep (hread/get-with-layer-data-at db doc made))))))
 
 (defn- call [method path & [body]]

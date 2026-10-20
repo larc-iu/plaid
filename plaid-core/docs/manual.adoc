@@ -1945,8 +1945,10 @@ To restore, stop the service, put the database file from the backup in place of 
 
 == Upgrading
 
-Take a backup, replace `plaid.jar`, and restart the service.
+Take a backup and copy it off the machine, replace `plaid.jar`, and restart the service.
 Database migrations run on startup, and the bundled apps are part of the jar, so they upgrade with it.
+A migration that rebuilds the audit log keeps the server from answering for a few minutes and cannot be undone, which is why the copy goes off the machine first.
+The database file does not shrink after such a rebuild: to return the space, stop the service, run `sqlite3 data/plaid.db VACUUM`, and start it again.
 
 == Bringing in a class
 
