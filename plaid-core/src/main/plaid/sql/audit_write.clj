@@ -517,6 +517,65 @@
               (when (seq images)
                 (record-whole! tx t images)))))))))
 
+;; An import does not record the rows it makes in a document it created.
+;; An insert into one of the `document-tables` writes no audit row when the
+;; operation is a create (`*/create`, `*/bulk-create`, `document/copy`), its
+;; document was created by this operation or by an operation of this
+;; operation's group, and no operation outside that group (outside this
+;; operation, when it has no group) has written the document yet. Every
+;; importer makes a new document and fills it in one group, and so does a
+;; copy and an assistant plan that makes a document. Text saves, restores
+;; and reshapes are not creates, and a document someone else has written is
+;; recorded row by row from then on. The row is still noted for the layer
+;; constraints (`note!`), as an import's write.
+
+(defn- create-op?
+  [op]
+  (let [t (:type op)
+        n (if (keyword? t) (str (namespace t) "/" (name t)) (str t))]
+    (or (= n "document/copy")
+        (clojure.string/ends-with? n "/create")
+        (clojure.string/ends-with? n "/bulk-create"))))
+
+(defn- unrecorded-document?
+  "Whether the rows `op` makes in document `doc-id` go unrecorded (see
+  above). Asked once per document per operation."
+  [tx op doc-id]
+  (let [k (str doc-id)
+        cache (:unrecorded-documents op)]
+    (if (contains? @cache k)
+      (get @cache k)
+      (let [creator (when (and doc-id (create-op? op))
+                      (psc/q1 tx {:select [:aw.op_id :o.group_id]
+                                  :from [[:audit_writes :aw]]
+                                  :join [[:operations :o] [:= :o.id :aw.op_id]]
+                                  :where [:and [:= :aw.target_table "documents"]
+                                          [:= :aw.target_id k]
+                                          [:= :aw.change_type "insert"]]}))
+            group (some-> (:group-id op) str)
+            mine? (and creator
+                       (or (= (str (:op_id creator)) (str (:id op)))
+                           (and group (= group (some-> (:group_id creator) str)))))
+            answer (boolean
+                    (and mine?
+                         (nil? (psc/q1 tx {:select [1]
+                                           :from [[:audit_writes :aw]]
+                                           :join [[:operations :o] [:= :o.id :aw.op_id]]
+                                           :where [:and [:= :aw.document_id k]
+                                                   (if group
+                                                     [:or [:= :o.group_id nil] [:<> :o.group_id group]]
+                                                     [:<> :aw.op_id (str (:op_id creator))])]
+                                           :limit 1}))))]
+        (swap! cache assoc k answer)
+        answer))))
+
+(defn- unrecorded-insert?
+  [tx op target-table change-type post-image]
+  (and (= :insert (keyword (name change-type)))
+       (document-table? target-table)
+       (contains? op :unrecorded-documents)
+       (unrecorded-document? tx op (:document_id post-image))))
+
 (defn- check-ensured!
   "Refuse an `:update` or `:delete` of a row of the document tables whose
   id `ensure-recorded!` did not see in this operation (see above)."
@@ -570,13 +629,14 @@
       :else
       (do
         (check-ensured! op target-table change-type [target-id])
-        (jdbc/execute-one!
-         tx
-         (psc/format-sql
-          {:insert-into :audit_writes
-           :values [(audit-row-values op (reserve-seqs! op 1)
-                                      target-table target-id change-type
-                                      pre-image post-image)]}))
+        (when-not (unrecorded-insert? tx op target-table change-type post-image)
+          (jdbc/execute-one!
+           tx
+           (psc/format-sql
+            {:insert-into :audit_writes
+             :values [(audit-row-values op (reserve-seqs! op 1)
+                                        target-table target-id change-type
+                                        pre-image post-image)]})))
         (note! op target-table target-id change-type pre-image post-image)))))
 
 (defn record-audit-writes!
@@ -610,13 +670,16 @@
 
       :else
       (let [_ (check-ensured! op target-table change-type (map first entries))
-            start (reserve-seqs! op (count entries))
+            recorded (remove (fn [[_ _ post-image]]
+                               (unrecorded-insert? tx op target-table change-type post-image))
+                             entries)
+            start (reserve-seqs! op (count recorded))
             rows (map-indexed
                   (fn [i [target-id pre-image post-image]]
                     (audit-row-values op (+ start i)
                                       target-table target-id change-type
                                       pre-image post-image))
-                  entries)]
+                  recorded)]
         (doseq [chunk (partition-all audit-bulk-chunk-size rows)]
           (jdbc/execute-one! tx (psc/format-sql {:insert-into :audit_writes
                                                  :values (vec chunk)})))

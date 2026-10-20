@@ -604,6 +604,9 @@
                                          ;; The rows `psaw/ensure-recorded!` saw,
                                          ;; which alone this op may change.
                                          :ensured (atom #{})
+                                         ;; Per document, whether the rows this op
+                                         ;; makes in it go unrecorded.
+                                         :unrecorded-documents (atom {})
                                          :affected-documents affected-docs
                                          :type (:type op-attrs)
                                          :user (:user op-attrs)

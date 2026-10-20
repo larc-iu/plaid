@@ -163,9 +163,12 @@
                   (let [r (declare-values! sl ["A"])]
                     (assert-status 422 r)
                     (set (map :at (-> r :body :violations)))))]
-    (testing "with every row recorded, only the plan's value is refused"
+    (testing "only the plan's value is refused"
       (is (= #{(str (second (:spans planned)))} (set (map str (refused))))))
-    (is (pos? (+ (unrecord-untouched! (:doc imported)) (unrecord-untouched! (:doc planned)))))
+    ;; Both groups made their documents, so their rows were written with no
+    ;; audit row. The removal leaves the same shape.
+    (unrecord-untouched! (:doc imported))
+    (unrecord-untouched! (:doc planned))
     (is (empty? (psc/q db ["SELECT 1 FROM audit_writes WHERE target_id = ?" (str (second (:spans imported)))])))
     (testing "with no audit row, the import's value is still exempt and the plan's is not"
       (is (= #{(str (second (:spans planned)))} (set (map str (refused))))))))
