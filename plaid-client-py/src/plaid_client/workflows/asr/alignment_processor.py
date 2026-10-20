@@ -399,7 +399,7 @@ class AlignmentProcessor:
                 b.tokens.bulk_create(new_alignment_tokens)
 
             # NOTE: Do NOT update existing alignment-token positions here. The
-            # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
+            # server-side text-edit cascade (apply-text-edits + compensate-after-cascade)
             # already shifts/reindexes those tokens when texts.update runs. Applying
             # our own shifts in the same batch would double-shift them
             # (original + 2 * delta). The text-edit cascade is sufficient.

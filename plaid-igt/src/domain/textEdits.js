@@ -3,7 +3,7 @@
 // GET grows with the document (1.6s for a 420-sentence text on the dev server),
 // and the transcript flow saves on every Enter, so the refetch WAS the lag.
 //
-// The rules are transcribed from plaid-core: `plaid.algos.text/apply-text-edit`
+// The rules are transcribed from plaid-core: `plaid.algos.text/apply-text-edits`
 // (how each token's extent follows an insert or a delete, zero-width tokens
 // pinned) and `plaid.sql.token/compensate-partition-layers!` (a partitioning
 // layer with survivors is stretched back into a gapless cover of the new body).
