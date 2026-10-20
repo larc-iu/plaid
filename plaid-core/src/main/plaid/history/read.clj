@@ -146,16 +146,20 @@
 ;; ============================================================
 
 (defn- parse-image
-  "Audit image JSON → map with keyword TOP-LEVEL keys only; value
+  "The image of audit row `row` → map with keyword TOP-LEVEL keys only; value
   subtrees (the `:metadata` fold) keep STRING keys — keywordizing them
-  is lossy for keys containing '/' (the 8cc3ef3 contract)."
-  [s]
-  (when (and s (not= "" s))
-    (-> (json/read-str s)
-        (update-keys keyword))))
+  is lossy for keys containing '/' (the 8cc3ef3 contract). An image is
+  stored without the row's `:id` and `:document_id`
+  (`plaid.sql.audit-write/slim`): the id comes back from `target_id`, and
+  the document from the row's `document_id` on the tables of a document's
+  rows (never on `documents` itself, whose row has no such column)."
+  [{:keys [target_table target_id document_id post_image]}]
+  (when (and post_image (not= "" post_image))
+    (cond-> (assoc (update-keys (json/read-str post_image) keyword) :id target_id)
+      (psaw/document-table? target_table) (assoc :document_id document_id))))
 
 (def ^:private audit-cols
-  [:target_table :target_id :change_type :post_image])
+  [:target_table :target_id :change_type :post_image :document_id])
 
 (defn- q-doc-rows
   [db doc-id bound]
@@ -240,11 +244,11 @@
   folds (`:tokens`, `:metadata`, ...) appear only on synthetic rows and
   last-write-wins-merge across them."
   [rows]
-  (reduce (fn [m {:keys [target_table target_id change_type post_image]}]
+  (reduce (fn [m {:keys [target_table target_id change_type] :as row}]
             (let [k [target_table (str target_id)]]
               (if (= change_type "delete")
                 (dissoc m k)
-                (update m k clojure.core/merge (parse-image post_image)))))
+                (update m k clojure.core/merge (parse-image row)))))
           {} rows))
 
 (defn- with-unrecorded

@@ -393,6 +393,13 @@
     (apply dissoc image cols)
     image))
 
+(defn- slim
+  "An image without `:id` and `:document_id`, which every audit row keeps in
+  its columns: `target_id`, and `document_id` stamped from the image before
+  this. `plaid.history.read` puts them back."
+  [image]
+  (dissoc image :id :document_id))
+
 (defn- audit-row-values
   "Build the column-keyed value map for one audit_writes row. Shared by the
   single-row (`record-audit-write!`) and batched (`record-audit-writes!`)
@@ -409,7 +416,9 @@
    :target_table (name target-table)
    :target_id target-id
    :change_type (name change-type)
-   :post_image (some->> post-image (redact-secrets target-table) psc/write-json)
+   ;; Without the row's id and document, which the row's own columns hold
+   ;; (`target_id`, `document_id`) and the reader puts back.
+   :post_image (some->> post-image (redact-secrets target-table) slim psc/write-json)
    ;; Per-row document attribution, from the row's OWN image — not the
    ;; op's :document, which is nil for multi-document cascade ops
    ;; (project/delete, vocab/delete) and was even once plain wrong
