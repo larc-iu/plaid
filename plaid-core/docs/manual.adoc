@@ -1609,7 +1609,20 @@ Both clients offer `isReviewed` / `is_reviewed` for reading it.
 
 A machine writer may also record how confident it was.
 `provProb` is a single number between 0 and 1, the probability of the value it chose, and since it is flat a query can sort by it to put the least confident output first.
+It should be calibrated on held-out data, so that values given 70% are right about 70% of the time.
+A writer that cannot calibrate leaves `provProb` out.
 Everything else, such as the top few alternatives, goes in the open map `provDetail`.
+
+The apps draw a heavier, darker underline under a machine value whose `provProb` is below the project's confidence threshold, and its tooltip gives the percentage.
+A maintainer sets the threshold on the Services settings page, and it is stored as a number between 0 and 1:
+
+[source,json]
+----
+"config": { "plaid": { "confidence": { "threshold": 0.5 } } }
+----
+
+Without it the threshold is 0.5.
+Both clients read it with `readConfidenceThreshold` and test a value with `isDoubtful`.
 
 A machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and every one records the version of its own code in `provDetail.version`.
 These details describe the original prediction and are kept after a person edits the value.

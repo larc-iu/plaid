@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Check } from 'lucide-react';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
-import { provCellTitle, provMark } from '../../../utils/provenanceUi.js';
+import { provCellTitle, provDoubtful, provMark } from '../../../utils/provenanceUi.js';
 import { resolveColor } from '../../../utils/udVocab.js';
 import { EditableCell } from './EditableCell.jsx';
 import { FeaturesCell } from './FeaturesCell.jsx';
@@ -95,7 +95,7 @@ const Column = React.memo(
         {/* Token form (baseline). An unreviewed Form span (MWT components from
             the parser) gets the same marking as the cells. */}
         <div
-          className={`token-form${provMark(data.form?.metadata) ? ` token-form--${provMark(data.form.metadata)}` : ''}`}
+          className={`token-form${provMark(data.form?.metadata) ? ` token-form--${provMark(data.form.metadata)}` : ''}${provDoubtful(data.form?.metadata, session.confidenceThreshold) ? ' token-form--doubtful' : ''}`}
           dir="auto"
           title={
             provState(data.form?.metadata) === PROV_STATES.HUMAN

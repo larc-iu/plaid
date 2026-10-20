@@ -6,6 +6,7 @@ import {
   groupSuggestions,
   probLabel,
   provCellTitle,
+  provDoubtful,
   provMark,
 } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
@@ -384,6 +385,9 @@ export const EditableCell = React.memo(
     const fieldClass =
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
       (mark && hasContent ? ` editable-field--${mark}` : '') +
+      (mark && hasContent && provDoubtful(provMeta, session.confidenceThreshold)
+        ? ' editable-field--doubtful'
+        : '') +
       (conflict && !isReadOnly ? ' editable-field--conflict' : '') +
       (unsent && !conflict && !isReadOnly ? ' editable-field--unsent' : '');
     // The refused value, under the cell showing the stored one (ConflictNote).

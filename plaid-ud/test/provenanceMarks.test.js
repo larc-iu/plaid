@@ -54,6 +54,14 @@ test('the legend draws its samples with the shared mark classes', async () => {
   assert.match(legend, /className="plaid-prov--machine"/);
   assert.match(legend, /className="plaid-prov--contributed"/);
   assert.doesNotMatch(legend, /decoration-dotted/);
+  assert.match(legend, /className="plaid-prov--machine plaid-prov--doubtful"/);
+});
+
+test('a doubtful machine value keeps the dash and draws it heavier, in the machine violet', () => {
+  const cell = rule(rowCss, '.editable-field--machine.editable-field--doubtful');
+  assert.match(cell, /text-decoration-thickness:\s*2px/);
+  assert.match(cell, /text-decoration-color:\s*var\(--plaid-machine\)/);
+  assert.match(rule(uiCss, '.plaid-prov--doubtful'), /text-decoration-thickness:\s*2px/);
 });
 
 // Violet and amber mean provenance on every annotation surface, so colours

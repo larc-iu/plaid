@@ -31,6 +31,8 @@ export const EditorLegend = ({ project }) => {
       <Row title="Marks">
         <span className="plaid-prov--machine">machine-made</span>
         {' · '}
+        <span className="plaid-prov--machine plaid-prov--doubtful">low confidence</span>
+        {' · '}
         {reviewsSomeone && (
           <>
             <span className="plaid-prov--contributed">contributed</span>

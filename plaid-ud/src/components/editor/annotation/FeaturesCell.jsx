@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { featureRefusal, normalizeFeature } from '../../../utils/feats.js';
 import { notifyWarning } from '../../../utils/feedback.jsx';
-import { provMark } from '../../../utils/provenanceUi.js';
+import { provDoubtful, provMark } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession } from './editorSession.js';
 
@@ -42,6 +42,9 @@ export const FeaturesCell = React.memo(
     // how each one came to be there.
     const features = feats.map((feat) => feat.value);
     const featureMarks = feats.map((feat) => provMark(feat?.metadata));
+    const featureDoubts = feats.map((feat) =>
+      provDoubtful(feat?.metadata, session.confidenceThreshold),
+    );
 
     const [text, setText] = useState('');
     const [selectedPill, setSelectedPill] = useState(null); // index into features, or null
@@ -272,7 +275,7 @@ export const FeaturesCell = React.memo(
             }
           >
             <span
-              className={`feature-text${featureMarks?.[index] ? ` feature-text--${featureMarks[index]}` : ''}`}
+              className={`feature-text${featureMarks?.[index] ? ` feature-text--${featureMarks[index]}` : ''}${featureDoubts[index] ? ' feature-text--doubtful' : ''}`}
             >
               {feature}
             </span>

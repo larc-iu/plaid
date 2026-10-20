@@ -1,5 +1,5 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { provMark } from '../../../utils/provenanceUi.js';
+import { provDoubtful, provMark } from '../../../utils/provenanceUi.js';
 import { ArcLabel } from './ArcLabel.jsx';
 import { afterDeleting, arcColor, commitsLabel, stepThrough, trimLabel } from './arcLabelRules.js';
 import { useEditorSession } from './editorSession.js';
@@ -26,7 +26,7 @@ import './DependencyTree.css';
 // enters the tree's labels from the grid, goes back up to them from here.
 export const EnhancedArcs = forwardRef(
   ({ relations, tokenPositions, layout, top, minWidth, onExitDown, onExitUp }, ref) => {
-    const { onRelationUpdate, onRelationDelete, colors } = useEditorSession();
+    const { onRelationUpdate, onRelationDelete, colors, confidenceThreshold } = useEditorSession();
     const deprelColors = colors?.deprel;
     // All three handlers are null on a document that cannot be written.
     const isReadOnly = !onRelationUpdate;
@@ -105,7 +105,10 @@ export const EnhancedArcs = forwardRef(
           <path
             d={shape.d}
             style={{ stroke: color }}
-            strokeWidth={active ? 2 : 1}
+            strokeWidth={
+              (active ? 2 : 1) +
+              (mark && provDoubtful(relation.metadata, confidenceThreshold) ? 1 : 0)
+            }
             strokeDasharray={mark ? '5,4' : undefined}
             className="tree-arc-path enhanced-arc-path"
             onMouseEnter={() => setHoveredId(relation.id)}

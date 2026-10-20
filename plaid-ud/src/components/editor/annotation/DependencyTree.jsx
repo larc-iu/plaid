@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
-import { provMark } from '../../../utils/provenanceUi.js';
+import { provDoubtful, provMark } from '../../../utils/provenanceUi.js';
 import { ArcLabel } from './ArcLabel.jsx';
 import {
   afterDeleting,
@@ -79,6 +79,7 @@ export const DependencyTree = forwardRef(
       onEnhancedRelationCreate,
       onRelationSuppress,
       colors,
+      confidenceThreshold,
     } = useEditorSession();
     const deprelColors = colors?.deprel;
 
@@ -664,7 +665,10 @@ export const DependencyTree = forwardRef(
       const inferred = !!provMark(relation.metadata);
       const active = isSelected || isHovered || isFocused;
       const color = arcColor(relation, active, deprelColors);
-      const strokeWidth = active ? 2 : 1;
+      // A relation below the confidence threshold is drawn heavier, as a
+      // doubtful cell's underline is.
+      const doubtful = inferred && provDoubtful(relation.metadata, confidenceThreshold);
+      const strokeWidth = (active ? 2 : 1) + (doubtful ? 1 : 0);
       // A relation the enhanced graph leaves out is faded, arc and label both:
       // what the graph has instead, if anything, hangs under the words. Not
       // italic, which is the unreviewed mark, and not struck out,

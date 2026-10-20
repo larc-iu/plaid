@@ -290,6 +290,13 @@
   color: var(--plaid-contributed);
   text-decoration-color: var(--plaid-contributed-soft);
 }
+/* A machine value below the project's confidence threshold: the same mark,
+   heavier and darker (plaid-ui's .plaid-prov--doubtful). */
+.editable-field--machine.editable-field--doubtful,
+.token-form--machine.token-form--doubtful {
+  text-decoration-color: var(--plaid-machine);
+  text-decoration-thickness: 2px;
+}
 
 /* A cell whose edit lost to another user's: it shows the stored value, and
    the refused one hangs under it until the annotator keeps it (Enter) or lets
@@ -374,6 +381,12 @@
 }
 .feature-text--contributed {
   color: var(--plaid-contributed);
+}
+/* A feature carries no underline when it is only machine-made, so a doubtful
+   one gets the heavier dash alone. */
+.feature-text--machine.feature-text--doubtful {
+  text-decoration: underline dashed 2px var(--plaid-machine);
+  text-underline-offset: 3px;
 }
 
 .feature-delete-btn {

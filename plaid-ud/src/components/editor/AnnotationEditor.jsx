@@ -394,6 +394,7 @@ export const AnnotationEditor = () => {
   // deps are exactly what it holds: a document emits on every save, including
   // the ones that change no data, and a session rebuilt on one of those would
   // re-render every cell in the middle of an edit.
+  const confidenceThreshold = doc?.confidenceThreshold;
   const session = useMemo(
     () => ({
       isReadOnly: readOnly,
@@ -430,6 +431,8 @@ export const AnnotationEditor = () => {
       // that happens to open with a Latin loanword does not stand backwards
       // among its neighbours.
       textDirection: doc?.textDirection ?? 'ltr',
+      // Below this a machine value's mark is drawn heavier (plaid.confidence).
+      confidenceThreshold,
     }),
     [
       readOnly,
@@ -461,6 +464,7 @@ export const AnnotationEditor = () => {
       sentenceFields,
       visibleFields,
       doc,
+      confidenceThreshold,
     ],
   );
 

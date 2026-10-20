@@ -9,7 +9,8 @@
 //   XPOS  -> provDetail.xposProbs
 //   deprel-> provDetail.deprelProbs
 
-import { provState, provOrigin, PROV_STATES, PROV } from '@larc-iu/plaid-client';
+import { provState, provOrigin, PROV_STATES, PROV, isDoubtful } from '@larc-iu/plaid-client';
+import { confidenceNote } from '../../../plaid-ui/src/domain/confidence.js';
 
 const FIELD_PROBS_KEY = {
   upos: 'uposProbs',
@@ -97,6 +98,11 @@ const PROV_KEYS = Object.freeze(
   new Set([PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey]),
 );
 
+// Whether a machine value is below the project's confidence threshold
+// (session.confidenceThreshold), which draws its mark heavier: the
+// `--doubtful` modifier beside `--machine`, and a thicker dash on an arc.
+export const provDoubtful = (metadata, threshold) => isDoubtful(metadata, threshold);
+
 /** True for a reserved provenance key — what CoNLL-U export/import must not carry. */
 export const isProvKey = (key) => PROV_KEYS.has(key);
 
@@ -107,8 +113,9 @@ export function provCellTitle(base, metadata) {
   const bits = [metadata?.[PROV.sourceKey]];
   if (detail?.model) bits.push(detail.model);
   if (detail?.language) bits.push(detail.language);
-  const prob = metadata?.[PROV.probKey];
-  if (typeof prob === 'number') bits.push(`p=${prob}`);
+  // Only while nobody has reviewed it: the number is the prediction's.
+  const note = confidenceNote(metadata);
+  if (note) bits.push(note);
   const origin = provOrigin(metadata) === PROV.CONTRIBUTED ? 'contributed' : 'machine-made';
   const who =
     state === PROV_STATES.VERIFIED ? `${origin}, human-verified` : `${origin}, unverified`;

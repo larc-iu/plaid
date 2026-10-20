@@ -12,6 +12,7 @@ import {
   groupSuggestions,
   probLabel,
   provCellTitle,
+  provDoubtful,
   provMark,
   PARSER_GROUP,
   PROV_MARK_COLORS,
@@ -76,11 +77,11 @@ test('provCellTitle describes machine-made annotations and passes humans through
   assert.equal(provCellTitle('Edit upos', {}), 'Edit upos');
   assert.equal(
     provCellTitle('Edit upos', MACHINE_META),
-    'Edit upos: machine-made, unverified (service:my-parser · my-parser==2.1 · en · p=0.84)',
+    'Edit upos: machine-made, unverified (service:my-parser · my-parser==2.1 · en · 84% confident)',
   );
   assert.equal(
     provCellTitle('Edit upos', { ...MACHINE_META, provConfirmed: true }),
-    'Edit upos: machine-made, human-verified (service:my-parser · my-parser==2.1 · en · p=0.84)',
+    'Edit upos: machine-made, human-verified (service:my-parser · my-parser==2.1 · en)',
   );
   // Sparse record: just the source.
   assert.equal(
@@ -114,4 +115,11 @@ test('PROV_MARK_COLORS matches the shared palette in plaid-ui', async () => {
   const varValue = (name) => css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})`))?.[1];
   assert.equal(varValue('plaid-machine'), PROV_MARK_COLORS.machine);
   assert.equal(varValue('plaid-contributed'), PROV_MARK_COLORS.contributed);
+});
+
+test('provDoubtful marks an unverified machine value below the threshold only', () => {
+  assert.equal(provDoubtful(MACHINE_META, 0.9), true);
+  assert.equal(provDoubtful(MACHINE_META, 0.5), false);
+  assert.equal(provDoubtful({ ...MACHINE_META, provConfirmed: true }, 0.9), false);
+  assert.equal(provDoubtful({ prov: 'inferred', provSource: 'service:p' }, 0.9), false);
 });
