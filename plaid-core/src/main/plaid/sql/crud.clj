@@ -142,6 +142,7 @@
    (update-by-id! tx table id attrs {}))
   ([tx table id attrs {:keys [id-col] :or {id-col :id}}]
    (psaw/ensure-op-bound!)
+   (psaw/ensure-recorded! tx table [id])
    (let [pre (psc/fetch-by-id tx table id-col id)]
      (when (some? pre)
        (let [post (psc/execute-returning-one! tx {:update table
@@ -161,6 +162,7 @@
    (delete-by-id! tx table id {}))
   ([tx table id {:keys [id-col] :or {id-col :id}}]
    (psaw/ensure-op-bound!)
+   (psaw/ensure-recorded! tx table [id])
    (let [pre (psc/execute-returning-one! tx {:delete-from table
                                              :where [:= id-col id]
                                              :returning [:*]})]
@@ -181,6 +183,7 @@
    (merge* tx table id attrs {}))
   ([tx table id attrs {:keys [id-col not-found-kind] :or {id-col :id}}]
    (psaw/ensure-op-bound!)
+   (psaw/ensure-recorded! tx table [id])
    (let [pre (psc/fetch-by-id tx table id-col id)]
      (when (nil? pre)
        (throw (ex-info (psc/err-msg-not-found (or not-found-kind (name table)) id)
@@ -264,6 +267,7 @@
    (bulk-update-by-id! tx table pairs {}))
   ([tx table pairs {:keys [id-col] :or {id-col :id}}]
    (psaw/ensure-op-bound!)
+   (psaw/ensure-recorded! tx table (map first pairs))
    (if (empty? pairs)
      []
      (let [pairs (vec pairs)
@@ -350,6 +354,9 @@
    (delete-where! tx table where-clause {}))
   ([tx table where-clause {:keys [id-col] :or {id-col :id}}]
    (psaw/ensure-op-bound!)
+   (when (psaw/document-table? table)
+     (psaw/ensure-recorded! tx table (map id-col (psc/q tx {:select [id-col] :from [table]
+                                                            :where where-clause}))))
    (let [pres (psc/execute-returning! tx {:delete-from table
                                           :where where-clause
                                           :returning [:*]})]
@@ -364,6 +371,7 @@
   Returns the deleted pre-images. An id with no row is skipped."
   [tx table ids]
   (psaw/ensure-op-bound!)
+  (psaw/ensure-recorded! tx table ids)
   (let [index (when (seq ids) (pk-index tx table))]
     (in-chunks (fn [chunk]
                  (let [pres (psc/execute-returning!

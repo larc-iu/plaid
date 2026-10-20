@@ -601,6 +601,9 @@
                     ;; counter — no real contention.
                     (binding [psaw/*op* {:id op-id :ts ts :tx tx
                                          :seq-counter (atom 0)
+                                         ;; The rows `psaw/ensure-recorded!` saw,
+                                         ;; which alone this op may change.
+                                         :ensured (atom #{})
                                          :affected-documents affected-docs
                                          :type (:type op-attrs)
                                          :user (:user op-attrs)

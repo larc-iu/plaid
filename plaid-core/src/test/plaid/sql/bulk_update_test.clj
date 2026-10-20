@@ -13,6 +13,7 @@
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db
                                     assert-created]]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op]
@@ -132,8 +133,9 @@
   One change: it took its columns from every id given, and a column only an
   id that does not exist supplied became `CASE ELSE col END`, which SQLite
   refuses. Here the columns come from the ids that exist, as in the helper
-  now."
+  now. The hook every writer of these rows calls first comes first here too."
   [tx table pairs]
+  (psaw/ensure-recorded! tx table (map first pairs))
   (let [ids (mapv first pairs)
         id->attrs (into {} pairs)
         pres (psc/q tx {:select [:*] :from [table] :where [:in :id ids]})

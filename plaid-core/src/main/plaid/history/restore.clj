@@ -278,6 +278,7 @@
         (crud/bulk-update-by-id! tx table (vec chunk)))
       ;; A token list is rewritten in the junction table and audited as one
       ;; synthetic row on the parent carrying the new list (span/set-tokens).
+      (psaw/ensure-recorded! tx table (keep #(when (:tokens? %) (:id %)) updates))
       (doseq [u updates :when (:tokens? u)]
         (let [row (psc/fetch-by-id tx table (:id u))
               pre (crud/junction-token-ids tx table (:id u))]

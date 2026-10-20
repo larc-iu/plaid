@@ -433,6 +433,104 @@
                      nil)
    :ts (:ts op)})
 
+;; ============================================================
+;; Lazy rows: a row recorded whole before its first change
+;;
+;; A row of the five `document-tables` may have no audit row: an import
+;; does not record the rows it makes in a document it created (see
+;; `plaid.history.read`, which reads such a row live as existing since the
+;; document was made). Before anything changes or deletes one, it is
+;; recorded whole, as an `:insert` row under the operation that created its
+;; document, at that operation's `ts`, with a `seq` below every other row of
+;; that operation. A read of any time gives the same answer before and after:
+;; before, the row came live, as it still was, after, from that image.
+;;
+;; The image must be read before the change, and many changes destroy part
+;; of it first (a token list rewritten, metadata replaced, a cascade inside
+;; a DELETE), so the hook runs at each write path, before it writes:
+;; `ensure-recorded!`. The recorders below refuse an `:update` or `:delete`
+;; of these tables whose id the hook did not see in the same operation, so a
+;; path that forgets it fails at once instead of losing a row's past.
+;; ============================================================
+
+(defn- unrecorded
+  "The ids among `ids` (strings) of rows of `table` that no audit row
+  names. Read by `idx_audit_writes_target`."
+  [tx table ids]
+  (let [recorded (into #{}
+                       (map (comp str :target_id))
+                       (in-chunks #(psc/q tx {:select-distinct [:target_id] :from [:audit_writes]
+                                              :where [:and [:= :target_table table]
+                                                      [:in :target_id (vec %)]]})
+                                  ids))]
+    (remove recorded ids)))
+
+(defn- document-creators
+  "`{document-id-string {:op_id :ts}}`: the operation that created each of
+  the documents `doc-ids`, from the document's insert row."
+  [tx doc-ids]
+  (into {}
+        (map (fn [r] [(str (:target_id r)) r]))
+        (in-chunks #(psc/q tx {:select [:target_id :op_id :ts] :from [:audit_writes]
+                               :where [:and [:= :target_table "documents"]
+                                       [:in :target_id (vec %)]
+                                       [:= :change_type "insert"]]})
+                   doc-ids)))
+
+(defn- record-whole!
+  "Write the `:insert` row of each of `images` (`{id image}`) of `table`
+  under the operation that created its document (see above). Raw: no
+  `note!`, since the row is not new."
+  [tx table images]
+  (let [creators (document-creators tx (map (comp str :document_id) (vals images)))]
+    (doseq [[op-id entries] (group-by (fn [[id image]]
+                                        (or (:op_id (get creators (str (:document_id image))))
+                                            (throw (ex-info (str "No insert row for the document of "
+                                                                 table " " id)
+                                                            {:code 500 :table table :id id}))))
+                                      (sort-by (comp str key) images))]
+      (let [op {:id op-id :ts (:ts (get creators (str (:document_id (second (first entries))))))}
+            low (or (:s (psc/q1 tx {:select [[[:min :seq] :s]] :from [:audit_writes]
+                                    :where [:= :op_id op-id]}))
+                    0)
+            rows (map-indexed (fn [i [id image]]
+                                (audit-row-values op (- (min low 0) 1 i) table id :insert nil image))
+                              entries)]
+        (doseq [chunk (partition-all audit-bulk-chunk-size rows)]
+          (jdbc/execute-one! tx (psc/format-sql {:insert-into :audit_writes :values (vec chunk)})))))))
+
+(defn ensure-recorded!
+  "Call before changing or deleting the rows `ids` of `table`, or their
+  token lists or metadata: records whole each of them that no audit row
+  names (see above), and marks them all seen for the guard. A no-op for
+  any other table, outside an operation, and for ids with no row."
+  [tx table ids]
+  (let [op *op*
+        t (name table)]
+    (when (and (map? op) (document-table? t) (seq ids))
+      (let [seen (:ensured op)
+            fresh (remove #(contains? @seen [t %]) (distinct (map str ids)))]
+        (when (seq fresh)
+          (swap! seen into (map (fn [id] [t id])) fresh)
+          (when-let [ids (seq (unrecorded tx t fresh))]
+            (let [images (entity-images tx t ids)]
+              (when (seq images)
+                (record-whole! tx t images)))))))))
+
+(defn- check-ensured!
+  "Refuse an `:update` or `:delete` of a row of the document tables whose
+  id `ensure-recorded!` did not see in this operation (see above)."
+  [op target-table change-type ids]
+  (when (and (#{:update :delete} (keyword (name change-type)))
+             (document-table? target-table))
+    (let [t (name target-table)
+          seen (some-> (:ensured op) deref)]
+      (doseq [id ids]
+        (when-not (contains? seen [t (str id)])
+          (throw (ex-info (str "Audited " (name change-type) " of " t " " id
+                               " without ensure-recorded! first")
+                          {:code 500 :target t :id id})))))))
+
 (defn record-audit-write!
   "Emit an audit_writes row for `target-table`/`target-id` with the given
   change-type and post-image. `pre-image` is taken but NOT persisted (used
@@ -471,6 +569,7 @@
 
       :else
       (do
+        (check-ensured! op target-table change-type [target-id])
         (jdbc/execute-one!
          tx
          (psc/format-sql
@@ -510,7 +609,8 @@
       nil
 
       :else
-      (let [start (reserve-seqs! op (count entries))
+      (let [_ (check-ensured! op target-table change-type (map first entries))
+            start (reserve-seqs! op (count entries))
             rows (map-indexed
                   (fn [i [target-id pre-image post-image]]
                     (audit-row-values op (+ start i)

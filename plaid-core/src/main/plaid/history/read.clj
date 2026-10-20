@@ -185,9 +185,7 @@
   rare), so wholesale reconstruction is cheap and needs no extra
   scoping column. Uses the (target_table, target_id) index prefix.
 
-  One query per table, not one `IN` over all four: the target index is
-  partial, an OR of one equality per table it covers, and SQLite uses it
-  only when the query names one of those tables with `=`. The fold keys
+  One query per table, each one range of the target index. The fold keys
   entities by table, so reading the tables one after another folds the
   same as reading them interleaved."
   [db bound]

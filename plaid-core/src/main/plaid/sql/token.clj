@@ -241,6 +241,7 @@
                                          (mapv :token_id))]
                            [pid {:row row :tokens toks}])))
                   affected-parent-ids)))
+        _ (psaw/ensure-recorded! tx parent-table affected-parent-ids)
         ;; Format the EXISTS subquery via HoneySQL — only the outer
         ;; UPDATE header is the problematic part.
         [exists-sql & exists-params]
@@ -482,9 +483,11 @@
       (crud/delete-ids! tx :spans orphan-span-ids)
       (sweep-entity-metadata! tx "span" orphan-span-ids)
       ;; Span partial trim: emit synthetic audit + rewrite junctions.
+      (psaw/ensure-recorded! tx :spans (map :span-id span-trim-plan))
       (doseq [plan span-trim-plan]
         (trim-span-tokens! tx plan))
       ;; Vocab_link partial trim: emit synthetic audit + rewrite junctions.
+      (psaw/ensure-recorded! tx :vocab_links (map :vl-id vl-trim-plan))
       (doseq [plan vl-trim-plan]
         (trim-vocab-link-tokens! tx plan))
       ;; Vocab_link full-orphan delete.

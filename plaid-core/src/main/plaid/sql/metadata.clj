@@ -220,6 +220,13 @@
         (when (not= pre-image post-image)
           (psaw/record-audit-write! tx table entity-id :update pre-image post-image))))))
 
+(defn- ensure-parent-recorded!
+  "Record the entity whole before its metadata changes, when it has no
+  audit row yet (`plaid.sql.audit-write/ensure-recorded!`)."
+  [tx entity-type entity-id]
+  (when-let [table (entity-type->table entity-type)]
+    (psaw/ensure-recorded! tx table [entity-id])))
+
 (defn insert-metadata!
   "Insert k/v pairs into entity_metadata and emit a synthetic audit row
   on the parent entity (so an ETL replayer reading only audit_writes can
@@ -238,6 +245,7 @@
   ([tx entity-type entity-id m {:keys [skip-parent-audit?]}]
    (when (seq m)
      (validate-metadata-keys! m)
+     (when-not skip-parent-audit? (ensure-parent-recorded! tx entity-type entity-id))
      (let [pre (get-metadata tx entity-type entity-id)]
        (raw-insert-metadata! tx entity-type entity-id m)
        (when-not skip-parent-audit?
@@ -268,6 +276,7 @@
   synthetic parent-row audit row capturing the transition. No-op (and no
   audit row) when there was no metadata to begin with."
   [tx entity-type entity-id]
+  (ensure-parent-recorded! tx entity-type entity-id)
   (let [pre (get-metadata tx entity-type entity-id)]
     (raw-delete-metadata! tx entity-type entity-id)
     (when (seq pre)
@@ -279,6 +288,7 @@
   when pre == post)."
   [tx entity-type entity-id m]
   (when (seq m) (validate-metadata-keys! m))
+  (ensure-parent-recorded! tx entity-type entity-id)
   (let [pre (get-metadata tx entity-type entity-id)]
     (raw-delete-metadata! tx entity-type entity-id)
     (raw-insert-metadata! tx entity-type entity-id m)
@@ -437,6 +447,7 @@
   in the caller's transaction, so a failing op leaves nothing applied."
   [tx entity-type entity-id ops]
   (when (seq ops)
+    (ensure-parent-recorded! tx entity-type entity-id)
     (let [pre (get-metadata tx entity-type entity-id)
           post (apply-metadata-ops pre ops)
           touched (distinct (map #(key-str (first (:path %))) ops))]

@@ -480,6 +480,7 @@
        ;; rows. We emit one synthetic audit_writes row against :spans
        ;; (pre/post images carry the token vector) instead of auditing
        ;; each junction-row delete/insert — see docstring.
+       (psaw/ensure-recorded! tx :spans [eid])
        (let [pre-tokens (crud/junction-token-ids tx :spans eid)]
          (psc/execute! tx {:delete-from :span_tokens
                            :where [:= :span_id eid]})
