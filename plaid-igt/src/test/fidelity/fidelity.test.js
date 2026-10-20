@@ -479,6 +479,7 @@ const CONFIG_KEYS = {
   'projects plaid.review': covers('project.reviewedMembers'),
   'projects plaid.research': covers('project.researchOptIn'),
   'projects plaid.tartan': covers('project.plaidSettings'),
+  'projects plaid.confidence': covers('project.plaidSettings'),
   'textLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.preserveOnSplit': notData('written by setup on every token layer'),
@@ -518,6 +519,7 @@ const IDENTIFIERS = {
   ROLE_KEY: 'role',
   PRESERVE_ON_SPLIT_KEY: 'preserveOnSplit',
   REVIEW_KEY: 'review',
+  CONFIDENCE_KEY: 'confidence',
   IMPORT_KEY: 'import',
   TOKENIZE_NEW_TEXT_KEY: 'tokenizeNewText',
 };
