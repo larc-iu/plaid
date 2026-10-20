@@ -11,8 +11,9 @@
   1. no edit of a text whose rows did not overlap makes them overlap (so the
      save never answers 409),
   2. text typed strictly inside a row stays in that row, but for whitespace
-     at an edge that was on a letter (the plain rule moves the edge off it).
-     Text typed in the whitespace where a
+     at an edge that was on a letter (the plain rule moves the edge off it)
+     and a line typed at the start that becomes a sentence of its own (every
+     token reaching over it leaves it). Text typed in the whitespace where a
      row over whole sentences meets a sentence boundary counts as typed at
      the boundary: it is in the row exactly when it is in one of the
      sentences the row reaches (FX-E-TEXT, REV4-TEXT-1), unless the save
@@ -43,10 +44,12 @@
 
 (defn- gap-fill
   "The sentences of `r` as the save stores them: each to the next one's
-  begin, the first from 0, the last to the end of the text."
+  begin, the first from 0 (or the line made a sentence of its own, `-1`),
+  the last to the end of the text."
   [r n]
-  (let [ss (sort-by first (keep (fn [t] (when (= :s (:token/layer t)) [(:token/begin t) (:token/end t) (second (:token/id t))]))
-                                (:tokens r)))
+  (let [ss (sort-by first (concat (map (fn [h] [(:token/begin h) (:token/end h) -1]) (:heads r))
+                                  (keep (fn [t] (when (= :s (:token/layer t)) [(:token/begin t) (:token/end t) (second (:token/id t))]))
+                                        (:tokens r))))
         c (count ss)]
     (map-indexed (fn [i [b e id]] [(if (zero? i) 0 b) (if (= i (dec c)) n (max e (first (nth ss (inc i))))) id]) ss)))
 
@@ -143,7 +146,10 @@
                   :when (not (boundary-ws? i a z))
                   :let [x (new-at gi)
                         ;; whitespace at an edge on a letter before is moved off
+                        ;; (and a line made a sentence of its own at the
+                        ;; start, which every token reaching over it leaves)
                         out (remove (fn [p] (or (<= nb* p (dec ne*))
+                                                (= -1 (sentence-at p))
                                                 (and (< p nb*) (not (ws? (aget oc b))) (every? #(ws? (aget nc %)) (range p nb*)))
                                                 (and (>= p ne*) (not (ws? (aget oc (dec e)))) (every? #(ws? (aget nc %)) (range ne* (inc p))))))
                                     (range x (+ x (vlen g))))]
@@ -154,7 +160,7 @@
                   :let [x (new-at gi) vc (cps (:value g)) reach (reaches i)]
                   k (range (alength vc))
                   :let [j (sentence-at (+ x k))]
-                  :when (and (not (ws? (aget vc k))) j
+                  :when (and (not (ws? (aget vc k))) (not= -1 j)
                              (not= (contains? reach j) (and (<= nb* (+ x k)) (< (+ x k) ne*))))]
             (v! 2 (str "row " i " " [b e] "->" [nb* ne*] " " (pr-str (:value g)) " typed at " a
                        " in the whitespace at a sentence boundary, in sentence " j ", reaches " (sort reach))))

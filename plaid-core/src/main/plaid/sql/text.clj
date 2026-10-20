@@ -254,9 +254,9 @@
                                           :role (clojure.core/get plaid "role")
                                           :letter-like (ta/ignored-letter-like config)}))
                                layer-rows))
-          opts (select-keys roles [:split-on-space :children :dealt :exclusive :letter-like])
+          opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers :letter-like])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
-          [gaps {new-text :text sent-tokens :tokens deleted-ids :deleted sent-made :made}]
+          [gaps {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}]
           (cond
             edits (let [gaps (ta/plain-edit-gaps old-body edits tokens partitioning deciders opts)]
                     [gaps (ta/apply-plain-gaps old-body tokens gaps partitioning deciders opts)])
@@ -280,7 +280,7 @@
           sent-made (cond-> (vec sent-made)
                       tokenize (into (tokenize-words tokenize sent-body (ta/typed-ranges gaps)
                                                      (concat (remove #(deleted-set (:token/id %)) sent-tokens)
-                                                             sent-made))))
+                                                             sent-heads sent-made))))
           ;; The body is stored composed. Text an edit inserted that composes
           ;; with a letter beside it becomes one character with it, except
           ;; where a token edge falls between them: there the character stays
@@ -292,9 +292,10 @@
                                    sent-body
                                    (into #{} (comp (remove #(deleted-set (:token/id %)))
                                                    (mapcat (juxt :token/begin :token/end)))
-                                         (concat sent-tokens sent-made)))
+                                         (concat sent-tokens sent-heads sent-made)))
           move (fn [t] (-> t (update :token/begin at) (update :token/end at)))
           new-tokens (mapv move sent-tokens)
+          heads (mapv move sent-heads)
           made (mapv move sent-made)]
       {:new-body new-body
        ;; Code-point length: feeds compensate-partition-layers! /
@@ -313,10 +314,10 @@
                                             [id {:begin begin :end_ end}])))))
                               (sort-by (fn [[_ {:keys [begin]}]] begin))
                               vec)
-       ;; the tokens the save makes, written in this order: the parts of a
-       ;; word a typed space split, each before the tokens under it, and the
-       ;; new words of "Tokenize new text"
-       :made (mapv #(assoc % :token/id (psc/new-uuid)) made)
+       ;; the tokens the save makes, written in this order: the sentences
+       ;; made over a line typed before the first one, and the parts of a
+       ;; word a typed space split, each before the tokens under it
+       :heads (mapv #(assoc % :token/id (psc/new-uuid)) (concat heads made))
        :survivors (let [survivors (into [] (remove #(contains? deleted-set (:token/id %))) new-tokens)]
                     ;; never two tokens of a layer that forbids overlap on one
                     ;; stretch: should a rule above ever leave them, the save
@@ -419,7 +420,7 @@
          (when (nil? pre)
            (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
          (vreset! op (assoc (select-keys psaw/*op* [:id :ts]) :document (:document_id pre)))
-         (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors made]}
+         (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors heads]}
                (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
                      (:plan ahead))
                    (save-plan tx eid change base tokenize-layer)
@@ -438,13 +439,14 @@
            ;; transaction wrote, not one read after it.
            (crud/update-by-id! tx :texts eid {:body new-body})
            (vswap! op assoc :body new-body)
-           ;; 4. The tokens the save makes (the parts of a split word, the new
-           ;; words of \"Tokenize new text\"), then the partitioning-mode
-           ;; gap-fill on the surviving tokens.
-           (doseq [{:token/keys [id layer begin end]} made]
+           ;; 4. The tokens the save makes (a sentence over a line typed before
+           ;; the first one, the parts of a split word, the new words of
+           ;; \"Tokenize new text\"), then the
+           ;; partitioning-mode gap-fill on the surviving tokens.
+           (doseq [{:token/keys [id layer begin end]} heads]
              (crud/insert! tx :tokens {:id id :text_id eid :token_layer_id layer
                                        :document_id (:document_id pre) :begin begin :end_ end}))
-           (compensate-partition-layers! tx (into survivors made) new-text-length)
+           (compensate-partition-layers! tx (into survivors heads) new-text-length)
            eid))]
     (cond-> result
       (and (:success result) @op) (assoc :op @op)
@@ -548,8 +550,8 @@
                                       (of table))))
         get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))
         contains-key? (fn [m k] (or (contains? m k) (contains? m (keyword k))))]
-    ;; a token the save made (a part of a split word, a new word) comes
-    ;; with its layer and text, for a read to take it in
+    ;; a token the save made (a sentence over a line typed before the first
+    ;; one) comes with its layer and text, for a read to take it in
     {:tokens (live "tokens" (fn [id p] (cond-> {:id id :begin (get* p "begin") :end (get* p "end_")}
                                          (::inserted p)
                                          (assoc :layer (get* p "token_layer_id") :text (get* p "text_id")))))

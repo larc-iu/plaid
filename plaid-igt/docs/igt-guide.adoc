@@ -132,7 +132,7 @@ A script written without spaces between words, such as Chinese, Japanese, or Tha
 You can edit the baseline later too, and the sentences, words, and annotations already there are kept.
 A word you change keeps its analysis, and a word is deleted with its annotations only when all its text is.
 New text becomes words of its own, and text typed at either end of a sentence joins that sentence.
-A new line typed after a sentence joins that sentence, and one typed before the first sentence joins the first sentence. To make a new line a sentence, **Ctrl/Cmd+click** its first word on the Tokenize tab.
+A new line typed after a sentence joins that sentence, and one typed before the first sentence becomes a sentence of its own. To make a new line a sentence, **Ctrl/Cmd+click** its first word on the Tokenize tab.
 In most projects, typing or deleting a space does not split or merge words. Do that on the Tokenize tab.
 **Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it.
 
