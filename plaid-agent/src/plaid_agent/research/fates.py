@@ -92,6 +92,81 @@ ORDER BY w.ts, w.seq
 """
 
 
+#: The operation that created a document, in the column order of
+#: :data:`ROW_SQL` after its ``ts``.
+CREATOR_SQL = """
+SELECT w.ts, o.id, o.user_id, o.token_id, {credential}, o.group_id, o.batch_id, o.project_id,
+       g.kind, g.ref, g.message, g.user_id, g.created_at
+FROM audit_writes w
+JOIN operations o ON o.id = w.op_id
+LEFT JOIN operation_groups g ON g.id = o.group_id
+WHERE w.target_table = 'documents' AND w.target_id = ? AND w.change_type = 'insert'
+ORDER BY w.ts, w.seq
+LIMIT 1
+"""
+
+# The document tables the streams follow, each with its junction table and
+# parent column when its row keeps an ordered token list, and the
+# ``entity_metadata.entity_type`` of its rows.
+DOCUMENT_TABLES = {
+    'tokens': (None, 'token'),
+    'spans': (('span_tokens', 'span_id'), 'span'),
+    'relations': (None, 'relation'),
+    'vocab_links': (('vocab_link_tokens', 'vocab_link_id'), 'vocab-link'),
+}
+
+
+def _metadata_value(v):
+    try:
+        return json.loads(v)
+    except (TypeError, ValueError):
+        return v
+
+
+def unrecorded_rows(db, doc: str, rows: List[tuple], credential: str) -> List[tuple]:
+    """Rows, in :data:`ROW_SQL`'s columns, for the document's live rows that
+    no audit row names. Core writes no audit row for the rows a group makes
+    in a document it created (an import, a copy, an assistant plan's new
+    document), and records such a row whole, under the operation that
+    created the document, before its first change. So a live row with no
+    audit row has been as it is since then, and it is read here as core's
+    as-of read reads it: an insert by that operation, at its time, with the
+    row, its token list and its metadata as the image."""
+    recorded = {(r[2], r[3]) for r in rows}
+    creator = db.execute(CREATOR_SQL.format(credential=credential), (doc,)).fetchone()
+    if creator is None:
+        return []
+    ts, *op = creator
+    out = []
+    for table, (junction, etype) in DOCUMENT_TABLES.items():
+        cur = db.execute(f'SELECT * FROM {table} WHERE document_id = ? ORDER BY id', (doc,))
+        cols = [d[0] for d in cur.description]
+        missing = [r for r in (dict(zip(cols, row)) for row in cur) if (table, r['id']) not in recorded]
+        if not missing:
+            continue
+        tokens: Dict[str, List[str]] = defaultdict(list)
+        if junction:
+            jtable, jcol = junction
+            for parent, token in db.execute(
+                    f'SELECT j.{jcol}, j.token_id FROM {jtable} j JOIN {table} p ON p.id = j.{jcol} '
+                    f'WHERE p.document_id = ? ORDER BY j.{jcol}, j.order_idx', (doc,)):
+                tokens[parent].append(token)
+        meta: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        for entity, key, value in db.execute(
+                f'SELECT m.entity_id, m.key, m.value FROM entity_metadata m JOIN {table} p ON p.id = m.entity_id '
+                f'WHERE m.entity_type = ? AND p.document_id = ?', (etype, doc)):
+            meta[entity][key] = _metadata_value(value)
+        for r in missing:
+            image = dict(r)
+            if junction:
+                image['tokens'] = tokens.get(r['id'], [])
+            if meta.get(r['id']):
+                image['metadata'] = meta[r['id']]
+            out.append((ts, -1 - len(out), table, r['id'], 'insert', json.dumps(image, ensure_ascii=False),
+                        doc, None, *op))
+    return out
+
+
 def decoded(v):
     """A span's or a relation's value as the API gives it. The column holds
     it as JSON text, and so does the audit image ('"kai"' for kai)."""
@@ -507,7 +582,11 @@ def run(db, fates: Fates, documents: List[str], vocabs: List[str], progress=None
         projects: Optional[List[str]] = None) -> None:
     credential = credential_column(db)
     for n, doc in enumerate(documents):
-        fates.stream(db.execute(ROW_SQL.format(where='w.document_id = ?', credential=credential), (doc,)))
+        rows = db.execute(ROW_SQL.format(where='w.document_id = ?', credential=credential), (doc,)).fetchall()
+        unrecorded = unrecorded_rows(db, doc, rows, credential)
+        if unrecorded:
+            rows = sorted([*rows, *unrecorded], key=lambda r: (r[0], r[1]))
+        fates.stream(rows)
         if progress:
             progress(f'document {n + 1}/{len(documents)}')
     for vocab in vocabs:

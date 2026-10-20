@@ -36,6 +36,7 @@ The **horizon** (`manifest.horizon`) is the latest time the database holds: its 
 - User data is not in the audit log. Only the latest version of each record exists.
 - Operation kinds and references are recorded since 2026-09-29. Older operations are classed by what they wrote (see `units.jsonl`).
 - A create writes one audit row per entity, its metadata in it, since 2026-10-10. Before that a bulk create of tokens, relations or vocab links wrote two rows for an entity with metadata, an insert and then an update carrying the metadata, so `counts` and `writes` of an older bulk create count such an entity twice. A single create and a bulk create of spans always wrote one.
+- Since 2026-10-20 core writes no audit row for the tokens, spans, relations and vocab links a group makes in a document it created (an import, a document copy, an assistant plan's new document), and records such a row whole before its first change, under the operation that created the document. A migration in the same release removes the old insert rows of such rows never changed since. The extractor reads a live row with no audit row as an insert by the operation that created its document, at that operation's time, as core's history does. So such a unit counts and follows these rows as before, each written at the time the document was made rather than at the request that made it.
 - Telemetry (`telemetry.jsonl`) is recorded only in projects that switched it on.
 - A plan is not edited after the turn that staged it since 2026-10-17, so a correction reads as a replaced plan and a new one, each with its own `proposed`. Before that `drop_planned` could take changes out of the plan being built, and from 2026-10-13 `resume_plan` carried a waiting plan into a later turn, where it could be added to and dropped from: such a card keeps only its final rows, and how the user steered it is in the tool steps.
 
@@ -233,7 +234,7 @@ One row per machine unit followed. A unit is an operation group, else a batch, e
 | via_token | some of its writes were made with an API token |
 | credentials | its audit rows by the kind of credential that made them: `login` (a session from signing in with a password), `named-token` (a named API token, such as a script or a service run on its owner's token), `service` (only from 2026-10-06 to 2026-10-08: a named token holding a service connection), `delegated` (a token a service was handed to act for its requester). Empty before 2026-10-06 |
 | documents | documents it wrote |
-| counts | its audit rows by `table.change`. A created entity is one `insert` (see above for older bulk creates). An assistant plan of tagset changes, which the app writes as the plan's own operation, counts its settings rows (`projects`, `vocab_layers`, `span_layers`), which are not followed as writes |
+| counts | its audit rows by `table.change`. A created entity is one `insert` (see above for older bulk creates, and for the rows a group made in a document it created). An assistant plan of tagset changes, which the app writes as the plan's own operation, counts its settings rows (`projects`, `vocab_layers`, `span_layers`), which are not followed as writes |
 | sources | the provSource of its machine or verified writes, counted |
 | writes | its audit rows |
 
