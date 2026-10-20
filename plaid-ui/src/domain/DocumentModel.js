@@ -29,7 +29,11 @@ import {
   withTextDirection,
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
-import { isReviewed, writerPolicy } from '../../../plaid-client-js/src/provenance.js';
+import {
+  isReviewed,
+  readConfidenceThreshold,
+  writerPolicy,
+} from '../../../plaid-client-js/src/provenance.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
 import { sameConfig } from './configCells.js';
 import { DOCUMENT_DELETED, asDeletedDocument } from './permissions.js';
@@ -1463,6 +1467,11 @@ export class DocumentModel {
     const user = this._user;
     if (!user?.id || !this._project) return null;
     return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
+  }
+
+  /** Below this provProb an unreviewed machine value is marked doubtful (`plaid.confidence`). */
+  get confidenceThreshold() {
+    return readConfidenceThreshold(this._project?.config);
   }
 
   /** The writer's policy (plaid-client's writerPolicy) for the current user. */

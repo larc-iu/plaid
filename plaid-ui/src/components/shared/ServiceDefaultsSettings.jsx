@@ -5,9 +5,14 @@ import {
   servesTask,
   getParamSchema,
   buildDefaultValues,
+  CONFIDENCE_KEY,
+  PLAID_NAMESPACE,
+  readConfidenceThreshold,
 } from '@larc-iu/plaid-client';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
 import { ServiceSummary } from '../services/ServiceSummary.jsx';
@@ -29,6 +34,17 @@ import {
   selectionFromConfig,
   selectionToConfig,
 } from '../../domain/serviceDefaults.js';
+
+// The threshold as the field shows it, a whole percentage.
+const thresholdText = (config) => String(Math.round(readConfidenceThreshold(config) * 100));
+// The field's text as a stored threshold, or null when it is not a whole
+// number from 0 to 100.
+const parseThreshold = (text) => {
+  const t = text.trim();
+  if (!/^\d{1,3}$/.test(t)) return null;
+  const n = Number(t);
+  return n <= 100 ? n / 100 : null;
+};
 
 const lastSeenText = (svc) => {
   if (!svc.lastSeenAt) return 'never seen online';
@@ -240,11 +256,18 @@ export const ServiceDefaultsSettings = ({
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // The project's confidence threshold (`plaid.confidence`), shared by every
+  // app, saved with the defaults.
+  const [threshold, setThreshold] = useState('50');
+  const [thresholdDirty, setThresholdDirty] = useState(false);
+  const thresholdNow = useRef(threshold);
+  thresholdNow.current = threshold;
+  const thresholdValue = parseThreshold(threshold);
 
   // Whether anything on the page is unsaved, for a reload that must not
   // throw it away.
   const unsavedRef = useRef(false);
-  unsavedRef.current = dirty || extraDirty;
+  unsavedRef.current = dirty || extraDirty || thresholdDirty;
   // The draft as it is now, for a Save that lands after a change made while
   // it was out: that change stays unsaved.
   const draftNow = useRef(draft);
@@ -270,8 +293,10 @@ export const ServiceDefaultsSettings = ({
         if (servicesOnly) return;
         setProject(p);
         setDraft(p?.config?.[namespace]?.serviceDefaults || {});
+        setThreshold(thresholdText(p?.config));
         onProjectLoaded?.(p);
         setDirty(false);
+        setThresholdDirty(false);
       } catch (error) {
         if (!isCurrent()) return;
         notifyError(humanizeError(error), 'Failed to load the services');
@@ -310,7 +335,7 @@ export const ServiceDefaultsSettings = ({
   };
 
   const save = async () => {
-    if (!client) return;
+    if (!client || thresholdValue == null) return;
     setSaving(true);
     try {
       // Written only when changed, expecting what the page read, so a save by
@@ -331,8 +356,31 @@ export const ServiceDefaultsSettings = ({
             expectStored(project, namespace, 'serviceDefaults'),
           );
         }
+        if (thresholdDirty) {
+          b.projects.setConfig(
+            projectId,
+            PLAID_NAMESPACE,
+            CONFIDENCE_KEY,
+            { threshold: thresholdValue },
+            undefined,
+            expectStored(project, PLAID_NAMESPACE, CONFIDENCE_KEY),
+          );
+        }
         if (extraDirty) await saveExtra?.(b, project);
       });
+      if (thresholdDirty) {
+        setProject((p) => ({
+          ...p,
+          config: {
+            ...p?.config,
+            [PLAID_NAMESPACE]: {
+              ...p?.config?.[PLAID_NAMESPACE],
+              [CONFIDENCE_KEY]: { threshold: thresholdValue },
+            },
+          },
+        }));
+        setThresholdDirty(parseThreshold(thresholdNow.current) !== thresholdValue);
+      }
       if (defaultsChanged) {
         setProject((p) => ({
           ...p,
@@ -431,8 +479,42 @@ export const ServiceDefaultsSettings = ({
         </Card>
       )}
 
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle>Low confidence</CardTitle>
+          <CardDescription>
+            A machine value below this confidence gets a heavier underline.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="confidence-threshold">Threshold</Label>
+            <Input
+              id="confidence-threshold"
+              inputMode="numeric"
+              dir="ltr"
+              className="w-20"
+              value={threshold}
+              disabled={!canManage}
+              aria-invalid={thresholdValue == null}
+              onChange={(e) => {
+                setThreshold(e.target.value);
+                setThresholdDirty(true);
+              }}
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+          </div>
+          {thresholdValue == null && (
+            <p className="text-xs text-destructive-strong">Enter a whole number from 0 to 100.</p>
+          )}
+        </CardContent>
+      </Card>
+
       {canManage && (
-        <Button onClick={save} disabled={(!dirty && !extraDirty) || saving}>
+        <Button
+          onClick={save}
+          disabled={(!dirty && !extraDirty && !thresholdDirty) || thresholdValue == null || saving}
+        >
           {saving ? 'Saving…' : 'Save defaults'}
         </Button>
       )}

@@ -5,7 +5,7 @@ import { readOrthographies, readIgnoredTokens } from '@/domain/igtConfig';
 import { PRECEDENT_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { bracketPieces } from '@/domain/mwe';
 import { humanizeError } from '@/utils/feedback';
-import { provTitle } from './shared.js';
+import { provConfidence, provTitle } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { retryingText } from '@ui/lib/retrying.js';
@@ -276,8 +276,14 @@ export const chrome = {
 
   // The tooltip of a marked cell (see provStateText): its value and state,
   // with the two origins of a confirmed value told apart.
-  _cellTitle(value, state, origin) {
-    return provTitle(value, state, origin, this.doc.isContributor);
+  _cellTitle(value, state, origin, note = null) {
+    return provTitle(value, state, origin, this.doc.isContributor, note);
+  },
+
+  // A machine value's confidence against the project's threshold
+  // (provConfidence).
+  _confidence(metadata) {
+    return provConfidence(metadata, this.doc.confidenceThreshold);
   },
 
   // What a suggestion is standing on, so a person can weigh it before pressing
@@ -326,6 +332,8 @@ export const chrome = {
           <strong>Marks</strong>
           <span
             ><span class="igt-legend__prov--machine">machine-made</span> ·
+            <span class="igt-legend__prov--machine igt-legend__prov--doubtful">low confidence</span>
+            ·
             ${ctx.reviewsSomeone
               ? html`<span class="igt-legend__prov--contributed">contributed</span> · `
               : nothing}<span class="igt-legend__prov--verified">confirmed</span> · plain: a

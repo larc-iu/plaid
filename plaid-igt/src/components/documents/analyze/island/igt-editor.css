@@ -234,6 +234,9 @@
   font-style: italic;
   border-bottom: 1px dashed var(--igt-amber-soft);
 }
+.igt-legend__prov--doubtful {
+  border-bottom: 2px dashed var(--igt-violet);
+}
 .igt-legend__prov--verified {
   border-bottom: 1px solid var(--igt-violet-soft);
 }
@@ -701,6 +704,13 @@
 .igt-field--verified {
   border-bottom-style: solid;
   border-bottom-color: var(--igt-violet-soft);
+}
+/* A machine value below the project's confidence threshold: the machine
+   mark with a heavier, darker dash (plaid-ui's .plaid-prov--doubtful, drawn
+   as the field's border). */
+.igt-field--machine.igt-field--doubtful {
+  border-bottom-width: 2px;
+  border-bottom-color: var(--igt-violet);
 }
 .igt-field:disabled {
   opacity: 0.6;

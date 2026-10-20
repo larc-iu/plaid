@@ -155,6 +155,41 @@ describe('ServiceDefaultsSettings', () => {
     await unmount();
   });
 
+  it('shows the project threshold and saves a new one under plaid', async () => {
+    const get = vi.fn(async () => ({
+      id: 'p1',
+      config: { plaid: { confidence: { threshold: 0.4 } } },
+    }));
+    const client = makeClient({ projects: { get, setConfig: vi.fn(async () => {}) } });
+    const { container, step, unmount } = await mount({ client });
+    const field = container.querySelector('#confidence-threshold');
+    expect(field.value).toBe('40');
+    const type = (value) =>
+      step(() => {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(field, value);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    await type('120');
+    expect(container.textContent).toContain('Enter a whole number from 0 to 100.');
+    expect(byText(container, 'button', 'Save defaults').disabled).toBe(true);
+    await type('65');
+    await step(async () => {
+      byText(container, 'button', 'Save defaults').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).toHaveBeenCalledTimes(1);
+    expect(client.projects.setConfig).toHaveBeenCalledWith(
+      'p1',
+      'plaid',
+      'confidence',
+      { threshold: 0.65 },
+      undefined,
+      { expected: { threshold: 0.4 } },
+    );
+    await unmount();
+  });
+
   it('does not write the defaults when only the second key changed', async () => {
     const saveExtra = vi.fn();
     const { container, client, step, unmount } = await mount({ saveExtra, extraDirty: true });

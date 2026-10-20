@@ -202,6 +202,7 @@ export const grid = {
                   }),
                 prov: provDisplay(token.annotations?.[name]?.metadata),
                 provOrigin: provOrigin(token.annotations?.[name]?.metadata),
+                confidence: this._confidence(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
               })}
             </div>`,
@@ -300,6 +301,7 @@ export const grid = {
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
     // metadata; the form cell carries the unverified/verified styling.
     const prov = provDisplay(morph.metadata);
+    const confidence = prov ? this._confidence(morph.metadata) : null;
     return html`
       <div class="igt-morph-col">
         <div class="igt-morph-form ${this._rowCls('morphform')}" data-row="morphform">
@@ -307,9 +309,9 @@ export const grid = {
             html`<input
               class="igt-field igt-morph-field ${filled
                 ? 'igt-field--filled'
-                : 'igt-field--empty'} ${provClass('igt-field', prov)} ${conflict
-                ? 'igt-field--conflict'
-                : ''} ${unsent ? 'igt-field--unsent' : ''}"
+                : 'igt-field--empty'} ${provClass('igt-field', prov)} ${confidence?.doubtful
+                ? 'igt-field--doubtful'
+                : ''} ${conflict ? 'igt-field--conflict' : ''} ${unsent ? 'igt-field--unsent' : ''}"
               data-cell-key=${formKey}
               data-tier=${cellTier('mf', null)}
               data-word=${word.id}
@@ -318,7 +320,7 @@ export const grid = {
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
               aria-describedby=${this._conflictDescribedBy(formKey)}
               title=${prov
-                ? this._cellTitle(value, prov, provOrigin(morph.metadata))
+                ? this._cellTitle(value, prov, provOrigin(morph.metadata), confidence?.note)
                 : filled
                   ? value
                   : nothing}
@@ -412,6 +414,7 @@ export const grid = {
                   }),
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
                 provOrigin: provOrigin(morph.annotations?.[name]?.metadata),
+                confidence: this._confidence(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
               })}
             </div>
@@ -484,6 +487,7 @@ export const grid = {
                         : null,
                       prov: provDisplay(sentence.annotations?.[name]?.metadata),
                       provOrigin: provOrigin(sentence.annotations?.[name]?.metadata),
+                      confidence: this._confidence(sentence.annotations?.[name]?.metadata),
                       confirmSentence: sentence.id,
                       fieldName: name,
                     })}

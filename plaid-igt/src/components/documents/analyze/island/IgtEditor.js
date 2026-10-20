@@ -655,6 +655,7 @@ export class IgtEditor {
     guessTarget = null,
     prov = null,
     provOrigin: origin = null,
+    confidence = null,
     confirmWord = null,
     alternatives = null,
     confirmSentence = null,
@@ -704,9 +705,9 @@ export class IgtEditor {
             : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
             'igt-field',
             ps,
-          )} ${conflict ? 'igt-field--conflict' : ''} ${unsent
-            ? 'igt-field--unsent'
-            : ''} ${extraClass}"
+          )} ${ps && confidence?.doubtful ? 'igt-field--doubtful' : ''} ${conflict
+            ? 'igt-field--conflict'
+            : ''} ${unsent ? 'igt-field--unsent' : ''} ${extraClass}"
           data-cell-key=${key}
           data-tier=${tier}
           data-has-tagset=${tagset ? '1' : nothing}
@@ -719,7 +720,7 @@ export class IgtEditor {
           title=${violations.length
             ? this._violationText(violations, tagset)
             : ps
-              ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} to accept it as is`
+              ? `${this._cellTitle(v, ps, origin, confidence?.note)}. ${keys.words('analyze.accept')} to accept it as is`
               : nothing}
           rows="1"
           spellcheck="false"
@@ -754,7 +755,7 @@ export class IgtEditor {
     const baseTitle = g
       ? `Guess: ${g.value}${basis ? `, ${basis}` : ''}. Enter to accept it, ${keys.words('analyze.accept')} to accept the whole word, type to replace`
       : p
-        ? this._cellTitle(v, p, origin)
+        ? this._cellTitle(v, p, origin, confidence?.note)
         : filled
           ? v
           : (ariaLabel ?? null);
@@ -783,12 +784,12 @@ export class IgtEditor {
     const input = html`<input
       class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${guessCls} ${nAlts > 1
         ? 'igt-field--alts'
-        : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
-        'igt-field',
-        p,
-      )} ${conflict ? 'igt-field--conflict' : ''} ${unsent ? 'igt-field--unsent' : ''} ${smallCaps
-        ? 'igt-field--smallcaps'
-        : ''} ${extraClass}"
+        : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass('igt-field', p)} ${p &&
+      confidence?.doubtful
+        ? 'igt-field--doubtful'
+        : ''} ${conflict ? 'igt-field--conflict' : ''} ${unsent
+        ? 'igt-field--unsent'
+        : ''} ${smallCaps ? 'igt-field--smallcaps' : ''} ${extraClass}"
       data-cell-key=${key}
       data-tier=${tier}
       data-has-tagset=${tagset ? '1' : nothing}

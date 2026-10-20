@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
-import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { PROV, provState, PROV_STATES, isDoubtful } from '@larc-iu/plaid-client';
+import { confidenceNote } from '@ui/domain/confidence.js';
 import { keys } from '@/lib/keymap.js';
 import { isPendingId, settleKey, stableKey } from '@ui/domain/pendingIds.js';
 
@@ -174,6 +175,14 @@ export const provDisplay = (metadata) => {
 };
 export const provClass = (base, state) => (state ? `${base}--${state}` : '');
 
+// A machine value's confidence: whether it is below the project's threshold
+// (the heavier underline, igt-field--doubtful) and what its tooltip says of
+// it ("38% confident"), or null when it has no probability to show.
+export const provConfidence = (metadata, threshold) => ({
+  doubtful: isDoubtful(metadata, threshold),
+  note: confidenceNote(metadata),
+});
+
 // How long the confirmed word is left alone before focus moves on, and how
 // long its pulse runs. Short enough that a reviewer working at speed never
 // waits, long enough to register what changed.
@@ -186,16 +195,17 @@ export const PULSE_CLASS = 'igt-confirmed';
 // is whether the person looking is one, whose Ctrl+Enter takes machine
 // proposals only.
 const reviewHint = () => `Edit to fix, ${keys.words('analyze.accept')} to accept the whole word`;
-const provStateText = (state, origin, contributor) => {
-  if (state === PROV_STATES.MACHINE) return `machine-made, unverified. ${reviewHint()}`;
+const provStateText = (state, origin, contributor, note) => {
+  if (state === PROV_STATES.MACHINE)
+    return `machine-made, unverified${note ? `, ${note}` : ''}. ${reviewHint()}`;
   if (state === PROV_STATES.CONTRIBUTED)
     return contributor
       ? 'contributed, awaiting review'
       : `contributed, unverified. ${reviewHint()}`;
   return origin === PROV.CONTRIBUTED ? 'contributed, confirmed' : 'machine-made, confirmed';
 };
-export const provTitle = (value, state, origin, contributor) =>
-  `${value}: ${provStateText(state, origin, contributor)}`;
+export const provTitle = (value, state, origin, contributor, note = null) =>
+  `${value}: ${provStateText(state, origin, contributor, note)}`;
 
 // The CSS classes of the marked material this writer reviews (see
 // IgtDocument.reviewable): the review sweep's stops and the confirm/discard

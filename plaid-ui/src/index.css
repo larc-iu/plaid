@@ -266,6 +266,16 @@ body {
   text-underline-offset: 3px;
 }
 
+/* A machine value below the project's confidence threshold
+   (`plaid.confidence`): the same mark, heavier and darker. Goes with
+   .plaid-prov--machine. A state on the underline, which elsewhere carries
+   role, by Luke's choice (2026-10-20) over a glyph or a fainter value. An
+   app whose fields draw the underline as a border restates this there. */
+.plaid-prov--doubtful {
+  text-decoration-color: var(--plaid-machine);
+  text-decoration-thickness: 2px;
+}
+
 /* A contributor's value that no reviewer has confirmed: the same shape in
    amber. */
 .plaid-prov--contributed {

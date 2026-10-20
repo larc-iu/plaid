@@ -47,12 +47,13 @@ const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
 
 // `tagset`, when given, governs the morpheme-scope Gloss field (msl-0).
 // `contributor` mounts the editor as ANN in a project that reviews her work.
-function mount({ tagset = null, contributor = false, morphemes = undefined } = {}) {
+function mount({ tagset = null, contributor = false, morphemes = undefined, threshold } = {}) {
   const raw = buildRawDoc(morphemes === undefined ? {} : { morphemes });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const igt = tagset ? { tagsets: { Leipzig: tagset } } : {};
   const plaid = contributor ? { review: { users: [ANN.id] } } : {};
+  if (threshold !== undefined) plaid.confidence = { threshold };
   if (tagset) {
     const morphLayer = raw.textLayers[0].tokenLayers
       .flatMap((tl) => tl.spanLayers || [])
@@ -161,6 +162,28 @@ describe('a value picked from the list', () => {
     const span = glossOf(doc);
     expect(span.value).toBe('NOM');
     expect(span.metadata).toEqual({ ...MACHINE, provConfirmed: true });
+  });
+});
+
+describe('a machine value below the project threshold', () => {
+  it('gets the heavier mark and its confidence in the tooltip', async () => {
+    const { doc } = mount({ threshold: 0.9 });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
+    await settle(6);
+    const c = cell('ma:m-1:Gloss');
+    expect(c.classList.contains('igt-field--machine')).toBe(true);
+    expect(c.classList.contains('igt-field--doubtful')).toBe(true);
+    expect(c.title).toContain('machine-made, unverified, 80% confident.');
+  });
+
+  it('keeps the plain machine mark at or above it', async () => {
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
+    await settle(6);
+    const c = cell('ma:m-1:Gloss');
+    expect(c.classList.contains('igt-field--machine')).toBe(true);
+    expect(c.classList.contains('igt-field--doubtful')).toBe(false);
+    expect(c.title).toContain('80% confident');
   });
 });
 
