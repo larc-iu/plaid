@@ -506,7 +506,7 @@
   (op-json/op-json op))
 
 (defn- check-op!
-  "The 400s `apply-text-edit` throws, for `op` applied to a text of `len`
+  "The 400s `apply-text-edits` throws, for `op` applied to a text of `len`
   code points."
   [op len]
   (let [{:keys [index value length]} op
@@ -532,205 +532,6 @@
                            " (text length is " len " code points)")
                       {:code 400 :op op :text-length len})))
     type))
-
-(defn apply-text-edit
-  "Given an operation, a text and tokens, shift :token/begin and :token/end on a list
-  of tokens as appropriate. Operations are maps, with :type of :delete, :insert or
-  :replace, :index indicating the position in the string, and :value for the value
-  being inserted or the number of tokens to be deleted.
-
-  :index and the :delete :value count are **Unicode code-point** positions — the
-  same unit as the :token/begin/:token/end of the `tokens` passed in, and as the
-  ops produced by `diff`. (Slicing the body uses plaid.util.codepoint, so astral
-  text shifts correctly.)
-
-  Op examples:
-
-    {:type :insert    {:type :delete    {:type :replace
-     :index 3          :index 4          :index 4
-     :value \"is \"}   :value 3}         :length 3
-                                         :value \"new\"}
-
-  :replace swaps the :length code points at :index for :value. It differs from
-  an equivalent delete+insert in ONE way: a token that covers the whole replaced
-  range keeps it (the token is resized by the length difference) instead of
-  collapsing when the range is its entire extent. That is what a bulk
-  orthography rewrite needs — `kat` -> `cat` must keep the word token and
-  everything hanging off it (morphemes, spans, links).
-  Tokens that only partially overlap the range are handled exactly as
-  delete+insert (clipped to the outside; the replacement belongs to no token),
-  as are zero-width tokens. An empty :value is a delete; a zero :length is an
-  insert.
-
-  Text typed at a token's end stays outside it (`cat` to `cats` leaves the
-  token on `cat`), except the combining marks (Unicode Mn, Mc, Me) it starts
-  with: those belong to the letter before them, so a token ending there takes
-  them, and a zero-width token there moves past them. An accent typed as a
-  separate mark after `cafe` makes the token read `café`, as a precomposed é
-  does. A replace whose new text starts with marks is those marks inserted,
-  then the rest replacing the range.
-
-  Returns a map:
-   - :text contains the new text map
-   - :tokens contains the modified tokens that still exist
-   - :deleted contains the ids of tokens that were deleted because they had zero width
-
-  Example return map:
-
-    {:text {:text/body \"good dog\", ...}
-     :tokens ({:token/begin 0, :token/end 4, ...}, {:token/begin 5, :token/end 8, ...})
-     :deleted ()}
-  "
-  [{:keys [index value length] :as op} text tokens]
-  ;; Client-supplied edit directives reach here unvalidated (the PATCH
-  ;; body schema is `any?`), so a malformed or out-of-bounds op is a
-  ;; structured 400 (see `check-op!`), thrown inside the operation tx body
-  ;; so submit-operation* projects it cleanly.
-  (let [type (check-op! op (cp/cp-count (:text/body text)))]
-    (do
-      (case type
-        :replace
-        (cond
-          (zero? length) (apply-text-edit (insert-op index value) text tokens)
-          (= value "") (apply-text-edit (delete-op index length) text tokens)
-
-          (and (pos? index) (pos? (leading-marks value)))
-          (let [k (leading-marks value)
-                marks (cp/cp-subs value 0 k)
-                {text* :text tokens* :tokens deleted :deleted}
-                (apply-text-edit (insert-op index marks) text tokens)
-                rest-op (replace-op (+ index k) length (cp/cp-subs value k))
-                {text** :text tokens** :tokens deleted* :deleted}
-                (apply-text-edit rest-op text* tokens*)]
-            {:text text** :tokens tokens** :deleted (into deleted deleted*)})
-
-          :else
-          (let [end-index (+ index length)
-                delta (- (cp/cp-count value) length)
-                covers? (fn [{:token/keys [begin end]}]
-                          (and (< begin end) (<= begin index) (>= end end-index)))
-                ;; A zero-width token at the end of the range stands at the
-                ;; end of what is replaced, as the covering tokens' ends do.
-                ;; Delete-then-insert would pull it back to the range's
-                ;; start, which on a non-overlapping layer puts it strictly
-                ;; inside the word the range belongs to, a place the layer
-                ;; refuses and a restore of that moment cannot rebuild.
-                at-end? (fn [{:token/keys [begin end]}]
-                          (and (= begin end) (= end end-index)))
-                covering (filterv covers? tokens)
-                trailing (filterv at-end? tokens)
-                others (filterv #(not (or (covers? %) (at-end? %))) tokens)
-                ;; Everything that doesn't cover the range behaves as if the
-                ;; range were deleted and the value inserted in its place.
-                {text* :text tokens* :tokens deleted :deleted}
-                (apply-text-edit (delete-op index length) text others)
-                {text** :text tokens** :tokens}
-                (apply-text-edit (insert-op index value) text* tokens*)]
-            {:text text**
-             :tokens (-> tokens**
-                         (into (map #(update % :token/end + delta) covering))
-                         (into (map #(-> %
-                                         (update :token/begin + delta)
-                                         (update :token/end + delta))
-                                    trailing)))
-             :deleted deleted}))
-
-        ;; three cases:
-        ;; - token opens and closes before index (no changes)
-        ;; - token opens before index but closes later (expand the token)
-        ;; - token opens and closes after index (add offset to both indices)
-        ;; - a token ending at index takes the combining marks the value
-        ;;   starts with, and a zero-width one there moves past them
-        :insert
-        (let [offset (cp/cp-count value)
-              marks (if (pos? index) (leading-marks value) 0)
-              unaffected-tokens (filterv #(or (< (:token/end %) index)
-                                              (and (= (:token/end %) index) (zero? marks)))
-                                         tokens)
-              affected-tokens (filterv #(or (> (:token/end %) index)
-                                            (and (= (:token/end %) index) (pos? marks)))
-                                       tokens)]
-          {:text (update text :text/body insert-str index value)
-           :tokens (into unaffected-tokens
-                         (map (fn [{:token/keys [begin end] :as token}]
-                                (cond
-                                  (and (> index begin) (< index end))
-                                  (update token :token/end + offset)
-
-                                  (and (< begin index) (= end index))
-                                  (update token :token/end + marks)
-
-                                  (= begin end index)
-                                  (-> token
-                                      (update :token/begin + marks)
-                                      (update :token/end + marks))
-
-                                  :else
-                                  (-> token
-                                      (update :token/begin + offset)
-                                      (update :token/end + offset))))
-                              affected-tokens))
-           :deleted []})
-
-        :delete
-        (let [end-index (+ index value)
-              zero-width? (fn [{:token/keys [begin end]}] (= begin end))
-              unaffected? (fn [{:token/keys [begin end] :as token}]
-                            (if (zero-width? token)
-                              ;; Zero-width tokens are pinned at position p:
-                              ;; they're unaffected iff the deletion range
-                              ;; starts at or after p (so no characters
-                              ;; before p are touched). Mirrors the insert
-                              ;; side which keeps a zero-width token at p
-                              ;; pinned when inserting at p.
-                              (<= end index)
-                              (and (< begin index)
-                                   (<= end index))))
-              contained? (fn [{:token/keys [begin end] :as token}]
-                           (if (zero-width? token)
-                             ;; Zero-width tokens: STRICT containment on
-                             ;; both sides. A delete range that begins or
-                             ;; ends at p does NOT delete the zero-width
-                             ;; token at p (insert-symmetry).
-                             (and (< index begin)
-                                  (> end-index end))
-                             (and (>= begin index)
-                                  (<= end end-index))))
-              ;; token opens and closes within deletion range--delete it
-              deleted-tokens (filterv contained? tokens)
-              ;; token opens and closes before index (no changes)
-              unaffected-tokens (filterv unaffected? tokens)
-              affected-tokens (filterv #(not (or (contained? %) (unaffected? %))) tokens)]
-          {:text (update text :text/body delete-str index value)
-           :tokens (into unaffected-tokens
-                         (mapv (fn [{:token/keys [begin end] :as token}]
-                                 (cond
-                                   ;; token opens and closes after deletion range--token is same but indices shrink
-                                   (and (>= begin end-index)
-                                        (>= end end-index))
-                                   (-> token
-                                       (update :token/begin #(- % value))
-                                       (update :token/end #(- % value)))
-
-                                   ;; token opens before index and closes within deletion range--shrink the token
-                                   (and (< begin index)
-                                        (<= end end-index))
-                                   (-> token
-                                       (assoc :token/end index))
-
-                                   ;; token opens within deletion range and closes outside--set token/begin to index and shrink
-                                   (and (>= begin index)
-                                        (> end end-index))
-                                   (-> token
-                                       (assoc :token/begin index)
-                                       (update :token/end #(- % (- end-index (min begin index)))))
-
-                                   ;; deletion range is contained inside token
-                                   :else
-                                   (-> token
-                                       (update :token/end #(- % value)))))
-                               affected-tokens))
-           :deleted (mapv :token/id deleted-tokens)})))))
 
 ;; ---------------------------------------------------------------------------
 ;; Delete normalization
@@ -1915,8 +1716,22 @@
 
 (defn- token-edit
   "A function of one token giving what `op` (valid, its type a keyword) does
-  to it, the rules of `apply-text-edit`: the token moved or resized, or nil
-  when the op deletes it."
+  to it: the token moved or resized, or nil when the op deletes it.
+
+  An insert inside a token grows it, and text typed at a token's end stays
+  outside it (`cat` to `cats` leaves the token on `cat`), except the
+  combining marks (Unicode Mn, Mc, Me) the text starts with: those belong to
+  the letter before them, so a token ending there takes them and a
+  zero-width token there moves past them. A delete removes a token it holds
+  whole, and a zero-width token only when it stands strictly inside the
+  deleted range.
+
+  A replace is a delete and an insert, except that a token covering the whole
+  replaced range keeps it, resized (`kat` to `cat` keeps the word token and
+  everything hanging off it), and a zero-width token at the range's end
+  stays at the end. A replace whose new text starts with marks is those
+  marks inserted, then the rest replacing the range. An empty value is a
+  delete, a zero length an insert."
   [{:keys [type index value length]}]
   (let [shift (fn [t d] (-> t (update :token/begin + d) (update :token/end + d)))]
     (case type
@@ -1968,9 +1783,13 @@
               :else (some-> t del ins))))))))
 
 (defn apply-text-edits
-  "Apply `ops` one after another to `text` and `tokens`, as `apply-text-edit`
-  does each (same result, same 400s). Returns {:text :tokens :deleted}, as
-  `apply-text-edit` does, the tokens and ids in no promised order.
+  "Apply `ops` one after another to `text` and `tokens`, each by the rules
+  of `token-edit`. An op is {:type :insert :index i :value \"is \"},
+  {:type :delete :index i :value n} or {:type :replace :index i :length n
+  :value \"new\"}, its type a keyword or a string, indices and counts in
+  code points of the body as the ops before it left it. A malformed or
+  out-of-bounds op is a 400 (`check-op!`). Returns {:text :tokens :deleted},
+  the deleted tokens' ids, the tokens and ids in no promised order.
 
   Ops that each stand at or after where the one before left off (every op
   list `diff` and the steps after it give, and most a client sends) are
@@ -2094,7 +1913,7 @@
   `ops` are running-coordinate ops, applied in order (each op's index is in
   the body the ops before it left), as `apply-text-edits` takes them. Each
   is checked against that body, and a malformed or out-of-bounds one throws
-  the 400 `apply-text-edit` would. Old text an op deletes is gone even when
+  the 400 `apply-text-edits` would. Old text an op deletes is gone even when
   the same letters are typed back later, so the gaps depend only on what
   came through, never on the order or the grouping of the keystrokes. So a
   zero-width token strictly inside a stretch deleted a letter at a time is

@@ -17,12 +17,17 @@
 
 (defn- ids [tokens] (mapv :token/id tokens))
 
+(defn- apply-op
+  "`op` alone applied to `text` and `tokens`."
+  [op text tokens]
+  (ta/apply-text-edits [op] text tokens))
+
 (deftest zero-width-delete-strict-containment
   (testing "(1) zero-width at p; delete [p, q] (q > p) — token survives at p"
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/delete-op 3 2) text tokens)]
+          (apply-op (ta/delete-op 3 2) text tokens)]
       (is (= [] deleted))
       (is (= [{:token/id :zw :token/begin 3 :token/end 3}] tokens))))
 
@@ -31,7 +36,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/delete-op 1 2) text tokens)]
+          (apply-op (ta/delete-op 1 2) text tokens)]
       (is (= [] deleted))
       (is (= [{:token/id :zw :token/begin 1 :token/end 1}] tokens))))
 
@@ -40,7 +45,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/delete-op 2 2) text tokens)]
+          (apply-op (ta/delete-op 2 2) text tokens)]
       (is (= [:zw] deleted))
       (is (= [] tokens))))
 
@@ -48,7 +53,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 1 1)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/delete-op 3 2) text tokens)]
+          (apply-op (ta/delete-op 3 2) text tokens)]
       (is (= [] deleted))
       (is (= [{:token/id :zw :token/begin 1 :token/end 1}] tokens))))
 
@@ -56,7 +61,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :t 2 4)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/delete-op 1 4) text tokens)]
+          (apply-op (ta/delete-op 1 4) text tokens)]
       (is (= [:t] deleted))
       (is (= [] tokens)))))
 
@@ -65,7 +70,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/insert-op 3 "XX") text tokens)]
+          (apply-op (ta/insert-op 3 "XX") text tokens)]
       (is (= [] deleted))
       (is (= [{:token/id :zw :token/begin 3 :token/end 3}] tokens))))
 
@@ -74,7 +79,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/insert-op 1 "XX") text tokens)]
+          (apply-op (ta/insert-op 1 "XX") text tokens)]
       (is (= [] deleted))
       (is (= [{:token/id :zw :token/begin 5 :token/end 5}] tokens))))
 
@@ -82,7 +87,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :zw 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/insert-op 5 "XX") text tokens)]
+          (apply-op (ta/insert-op 5 "XX") text tokens)]
       (is (= [] deleted))
       (is (= [{:token/id :zw :token/begin 3 :token/end 3}] tokens)))))
 
@@ -96,7 +101,7 @@
                   (tok :zw3 6 6)
                   (tok :norm 3 5)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/delete-op 2 4) text tokens)]
+          (apply-op (ta/delete-op 2 4) text tokens)]
       ;; zw2 strictly contained -> deleted; norm fully inside -> deleted.
       (is (= #{:zw2 :norm} (set deleted)))
       ;; zw1 stays at p=2; zw3 stays at p but shifts left by value=4
@@ -242,7 +247,7 @@
     (let [text {:text/body "the kat sat"}
           tokens [(tok :a 0 3) (tok :b 4 7) (tok :c 8 11)]
           {:keys [text tokens deleted]}
-          (ta/apply-text-edit (ta/replace-op 4 3 "cat") text tokens)]
+          (apply-op (ta/replace-op 4 3 "cat") text tokens)]
       (is (= "the cat sat" (:text/body text)))
       (is (= [] deleted))
       (is (= #{[:a 0 3] [:b 4 7] [:c 8 11]}
@@ -252,7 +257,7 @@
     (let [text {:text/body "the kat sat"}
           tokens [(tok :a 0 3) (tok :b 4 7) (tok :c 8 11)]
           {:keys [text tokens deleted]}
-          (ta/apply-text-edit (ta/replace-op 4 3 "kitten") text tokens)]
+          (apply-op (ta/replace-op 4 3 "kitten") text tokens)]
       (is (= "the kitten sat" (:text/body text)))
       (is (= [] deleted))
       (is (= #{[:a 0 3] [:b 4 10] [:c 11 14]}
@@ -262,7 +267,7 @@
     (let [text {:text/body "ʔa"}
           tokens [(tok :g 0 1) (tok :a 1 2)]
           {:keys [text tokens deleted]}
-          (ta/apply-text-edit (ta/replace-op 0 1 "'") text tokens)]
+          (apply-op (ta/replace-op 0 1 "'") text tokens)]
       (is (= "'a" (:text/body text)))
       (is (= [] deleted))
       (is (= #{[:g 0 1] [:a 1 2]}
@@ -272,7 +277,7 @@
     (let [text {:text/body "abcdef"}
           tokens [(tok :t 0 6)]
           {:keys [text tokens]}
-          (ta/apply-text-edit (ta/replace-op 2 2 "X") text tokens)]
+          (apply-op (ta/replace-op 2 2 "X") text tokens)]
       (is (= "abXef" (:text/body text)))
       (is (= [{:token/id :t :token/begin 0 :token/end 5}] tokens))))
 
@@ -288,7 +293,7 @@
     (let [text {:text/body "ab cd"}
           tokens [(tok :x 0 2) (tok :y 3 5)]
           {:keys [text tokens deleted]}
-          (ta/apply-text-edit (ta/replace-op 1 3 "--") text tokens)]
+          (apply-op (ta/replace-op 1 3 "--") text tokens)]
       (is (= "a--d" (:text/body text)))
       (is (= [] deleted))
       (is (= #{[:x 0 1] [:y 3 4]}
@@ -298,7 +303,7 @@
     (let [text {:text/body "a bc d"}
           tokens [(tok :x 0 1) (tok :y 2 4) (tok :z 5 6)]
           {:keys [text tokens deleted]}
-          (ta/apply-text-edit (ta/replace-op 1 4 "_") text tokens)]
+          (apply-op (ta/replace-op 1 4 "_") text tokens)]
       (is (= "a_d" (:text/body text)))
       (is (= [:y] deleted))
       (is (= #{[:x 0 1] [:z 2 3]}
@@ -313,7 +318,7 @@
     (let [text {:text/body "abcd"}
           tokens [(tok :at-start 1 1) (tok :inside 2 2) (tok :at-end 3 3)]
           {:keys [tokens deleted]}
-          (ta/apply-text-edit (ta/replace-op 1 2 "XYZ") text tokens)]
+          (apply-op (ta/replace-op 1 2 "XYZ") text tokens)]
       (is (= [:inside] deleted))
       (is (= #{[:at-start 1 1] [:at-end 4 4]}
              (set (map (juxt :token/id :token/begin :token/end) tokens)))))))
@@ -323,7 +328,7 @@
     (let [text {:text/body "the kat sat"}
           tokens [(tok :b 4 7)]
           {:keys [text deleted]}
-          (ta/apply-text-edit (ta/replace-op 4 3 "") text tokens)]
+          (apply-op (ta/replace-op 4 3 "") text tokens)]
       (is (= "the  sat" (:text/body text)))
       (is (= [:b] deleted))))
 
@@ -331,7 +336,7 @@
     (let [text {:text/body "the kat sat"}
           tokens [(tok :b 4 7)]
           {:keys [text tokens]}
-          (ta/apply-text-edit (ta/replace-op 5 0 "i") text tokens)]
+          (apply-op (ta/replace-op 5 0 "i") text tokens)]
       (is (= "the kiat sat" (:text/body text)))
       (is (= [{:token/id :b :token/begin 4 :token/end 8}] tokens))))
 
@@ -339,18 +344,18 @@
     (let [text {:text/body "a😀b"}
           tokens [(tok :t 0 3)]
           {:keys [text tokens]}
-          (ta/apply-text-edit (ta/replace-op 1 1 "😺😺") text tokens)]
+          (apply-op (ta/replace-op 1 1 "😺😺") text tokens)]
       (is (= "a😺😺b" (:text/body text)))
       (is (= [{:token/id :t :token/begin 0 :token/end 4}] tokens))))
 
   (testing "string type keys and validation"
     (let [text {:text/body "abc"}]
-      (is (= "aXc" (-> (ta/apply-text-edit {:type "replace" :index 1 :length 1 :value "X"} text [])
+      (is (= "aXc" (-> (apply-op {:type "replace" :index 1 :length 1 :value "X"} text [])
                        :text :text/body)))
       (is (thrown? clojure.lang.ExceptionInfo
-                   (ta/apply-text-edit {:type :replace :index 1 :length 5 :value "X"} text [])))
+                   (apply-op {:type :replace :index 1 :length 5 :value "X"} text [])))
       (is (thrown? clojure.lang.ExceptionInfo
-                   (ta/apply-text-edit {:type :replace :index 1 :value "X"} text []))))))
+                   (apply-op {:type :replace :index 1 :value "X"} text []))))))
 
 ;; ---------------------------------------------------------------------------
 ;; A whole-body update, as update-body takes it
@@ -399,11 +404,11 @@
     (is (= #{[:word 0 5] [:zw 5 5]} (extents tokens)))
     (testing "and it follows the length the replacement changes"
       (is (= #{[:zw 6 6]}
-             (extents (:tokens (ta/apply-text-edit (ta/replace-op 4 1 "ьь")
-                                                   {:text/body old} [(tok :zw 5 5)])))))
+             (extents (:tokens (apply-op (ta/replace-op 4 1 "ьь")
+                                         {:text/body old} [(tok :zw 5 5)])))))
       (is (= #{[:zw 4 4]}
-             (extents (:tokens (ta/apply-text-edit (ta/replace-op 2 2 "х")
-                                                   {:text/body old} [(tok :zw 5 5)]))))))))
+             (extents (:tokens (apply-op (ta/replace-op 2 2 "х")
+                                         {:text/body old} [(tok :zw 5 5)]))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; A whole-body update changes only the words it changes. Editscript picks any
@@ -856,39 +861,39 @@
 (deftest a-combining-mark-typed-at-a-words-end-joins-the-word
   (testing "an explicit insert"
     (let [{:keys [text tokens deleted]}
-          (ta/apply-text-edit (ta/insert-op 4 (cps acute)) {:text/body "cafe latte"}
-                              [(tok :cafe 0 4) (tok :z 4 4) (tok :latte 5 10)])]
+          (apply-op (ta/insert-op 4 (cps acute)) {:text/body "cafe latte"}
+                    [(tok :cafe 0 4) (tok :z 4 4) (tok :latte 5 10)])]
       (is (= (cps "cafe" acute " latte") (:text/body text)))
       (is (= [] deleted))
       ;; the zero-width token at the word's end stays at its end, not between
       ;; the letter and its accent
       (is (= #{[:cafe 0 5] [:z 5 5] [:latte 6 11]} (extents tokens)))))
   (testing "only the marks join: what follows them stays outside"
-    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 4 (cps acute 0x323 "!"))
-                                               {:text/body "cafe latte"}
-                                               [(tok :cafe 0 4) (tok :latte 5 10)])]
+    (let [{:keys [tokens]} (apply-op (ta/insert-op 4 (cps acute 0x323 "!"))
+                                     {:text/body "cafe latte"}
+                                     [(tok :cafe 0 4) (tok :latte 5 10)])]
       (is (= #{[:cafe 0 6] [:latte 8 13]} (extents tokens)))))
   (testing "a token that begins there moves past the mark"
-    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 4 (cps acute)) {:text/body "cafe."}
-                                               [(tok :cafe 0 4) (tok :stop 4 5)])]
+    (let [{:keys [tokens]} (apply-op (ta/insert-op 4 (cps acute)) {:text/body "cafe."}
+                                     [(tok :cafe 0 4) (tok :stop 4 5)])]
       (is (= #{[:cafe 0 5] [:stop 5 6]} (extents tokens)))))
   (testing "spacing (Mc) and enclosing (Me) marks, and an astral one, join too"
     (doseq [[mark body end] [[0x93E (cps 0x915) 1] [0x20DD "a" 1] [0x1D167 "do" 2]]]
       (let [n (cp/cp-count body)
-            {:keys [tokens]} (ta/apply-text-edit (ta/insert-op n (cps mark)) {:text/body (str body " x")}
-                                                 [(tok :w 0 n) (tok :x (inc n) (+ n 2))])]
+            {:keys [tokens]} (apply-op (ta/insert-op n (cps mark)) {:text/body (str body " x")}
+                                       [(tok :w 0 n) (tok :x (inc n) (+ n 2))])]
         (is (= #{[:w 0 (inc end)] [:x (+ n 2) (+ n 3)]} (extents tokens)) (format "U+%04X" mark)))))
   (testing "a replace whose new text starts with a mark gives the mark to the letter before"
-    (let [{:keys [text tokens]} (ta/apply-text-edit (ta/replace-op 1 1 (cps acute "c")) {:text/body "ab"}
-                                                    [(tok :a 0 1) (tok :b 1 2)])]
+    (let [{:keys [text tokens]} (apply-op (ta/replace-op 1 1 (cps acute "c")) {:text/body "ab"}
+                                          [(tok :a 0 1) (tok :b 1 2)])]
       (is (= (cps "a" acute "c") (:text/body text)))
       (is (= #{[:a 0 2] [:b 2 3]} (extents tokens)))))
   (testing "a letter typed at a word's end still stays outside it"
-    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 3 "s") {:text/body "cat"} [(tok :cat 0 3)])]
+    (let [{:keys [tokens]} (apply-op (ta/insert-op 3 "s") {:text/body "cat"} [(tok :cat 0 3)])]
       (is (= #{[:cat 0 3]} (extents tokens)))))
   (testing "a mark at the very start of the text has no letter to join"
-    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 0 (cps acute)) {:text/body "ab"}
-                                               [(tok :z 0 0) (tok :ab 0 2)])]
+    (let [{:keys [tokens]} (apply-op (ta/insert-op 0 (cps acute)) {:text/body "ab"}
+                                     [(tok :z 0 0) (tok :ab 0 2)])]
       (is (= #{[:z 0 0] [:ab 1 3]} (extents tokens)))))
   (testing "a whole-body update"
     (let [{:keys [text tokens]} (body-edit "cafe latte" (cps "cafe" acute " latte")
@@ -1004,7 +1009,7 @@
   every token: the plain way, which the one-pass way must agree with."
   [ops text tokens]
   (reduce (fn [accum op]
-            (let [result (ta/apply-text-edit op (:text accum) (:tokens accum))]
+            (let [result (apply-op op (:text accum) (:tokens accum))]
               (-> accum
                   (assoc :text (:text result) :tokens (:tokens result))
                   (update :deleted into (:deleted result)))))

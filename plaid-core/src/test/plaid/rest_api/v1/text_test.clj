@@ -64,7 +64,7 @@
         (assert-status 409 res2)))))
 
 (deftest text-edit-op-validation
-  ;; Client-supplied edit directives reach apply-text-edit unvalidated
+  ;; Client-supplied edit directives reach apply-text-edits unvalidated
   ;; (the PATCH body schema is any?). A malformed op used to corrupt the
   ;; body being built and surface as a raw 500 NPE (tx rolled back, no
   ;; corruption — but unusable error UX); out-of-bounds indices threw
