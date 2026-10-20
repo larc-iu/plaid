@@ -5,6 +5,7 @@ import {
   provState, provOrigin, isMachine, isProtected, needsReview, verifyOnEdit, contributeOnEdit,
   serviceSource, userSource,
   REVIEW_KEY, readReview, projectRole, isReviewed, withReviewedUser, writerPolicy,
+  DEFAULT_CONFIDENCE_THRESHOLD, readConfidenceThreshold, machineProb, isDoubtful,
 } from '../src/provenance.js';
 import { mergeMetadata } from '../src/metadataOps.js';
 
@@ -210,4 +211,26 @@ test('writerPolicy for a contributor: everything contributed, reviews machine on
   assert.equal(w.reviewableState('contributed'), false);
   assert.deepEqual(w.adoptStamp('gloss:precedent', { value: 'cat' }),
     { ...CONTRIBUTED, provDetail: { value: 'cat', guess: 'gloss:precedent' } });
+});
+
+test('readConfidenceThreshold takes a number in [0, 1] and falls back to the default', () => {
+  assert.equal(readConfidenceThreshold(undefined), DEFAULT_CONFIDENCE_THRESHOLD);
+  assert.equal(readConfidenceThreshold({ plaid: { confidence: { threshold: 0.3 } } }), 0.3);
+  assert.equal(readConfidenceThreshold({ plaid: { confidence: { threshold: 0 } } }), 0);
+  assert.equal(readConfidenceThreshold({ plaid: { confidence: { threshold: 1.5 } } }), DEFAULT_CONFIDENCE_THRESHOLD);
+  assert.equal(readConfidenceThreshold({ plaid: { confidence: { threshold: '0.3' } } }), DEFAULT_CONFIDENCE_THRESHOLD);
+});
+
+test('machineProb and isDoubtful read only unreviewed machine values', () => {
+  const machine = { ...stampInferred('service:x', { prob: 0.38 }) };
+  assert.equal(machineProb(machine), 0.38);
+  assert.equal(isDoubtful(machine, 0.5), true);
+  assert.equal(isDoubtful(machine, 0.3), false);
+  assert.equal(isDoubtful({ ...machine, provProb: 0.5 }, 0.5), false);
+  // Confirmed or contributed: the number described the prediction, not the value now.
+  assert.equal(machineProb({ ...machine, provConfirmed: true }), null);
+  assert.equal(isDoubtful({ ...machine, prov: 'contributed' }, 0.5), false);
+  assert.equal(machineProb({}), null);
+  assert.equal(machineProb(stampInferred('service:x')), null);
+  assert.equal(machineProb({ ...machine, provProb: NaN }), null);
 });

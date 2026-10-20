@@ -60,7 +60,10 @@
  *     the value it chose. Flat scalars are what the query engine filters
  *     and orders on, so "review the least-confident machine output first"
  *     is an ordinary query. Omit it unless you can honestly produce a
- *     probability (a raw logprob is NOT one — put it in provDetail).
+ *     probability (a raw logprob is NOT one — put it in provDetail), and
+ *     calibrate it on held-out data, so that values stated at 70% are
+ *     right about 70% of the time. Apps mark a value below the project's
+ *     threshold (readConfidenceThreshold), one number for every producer.
  *   - provDetail: ONE open map for everything else — top-k alternatives or
  *     distributions, model name/version, raw scores. Deliberately nested
  *     (not queryable); keep it small (top-k, not whole-vocabulary dumps).
@@ -334,6 +337,55 @@ export const withReviewedUser = (review, userId, reviewed) => {
   const next = users.filter((u) => u !== userId);
   if (reviewed) next.push(userId);
   return { users: next, roles };
+};
+
+// ---- confidence: which machine values are doubtful ----
+
+/**
+ * Key of the project's confidence setting under `config.plaid`:
+ * `{ threshold: number in [0, 1] }`. A machine value whose provProb is below
+ * the threshold is DOUBTFUL, and both apps give it a heavier mark. Producers
+ * write provProb calibrated on held-out data (manual, "Provenance"), so one
+ * number serves every service on the project.
+ */
+export const CONFIDENCE_KEY = 'confidence';
+
+/** The threshold when a project sets none: below it, a calibrated value is more likely wrong than right. */
+export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
+
+/**
+ * The project's confidence threshold, or the default when it sets none or
+ * stores something that is not a number in [0, 1].
+ * @param {object|null} [config] - a project's `config`
+ * @returns {number}
+ */
+export const readConfidenceThreshold = (config) => {
+  const t = config?.plaid?.[CONFIDENCE_KEY]?.threshold;
+  return typeof t === 'number' && t >= 0 && t <= 1 ? t : DEFAULT_CONFIDENCE_THRESHOLD;
+};
+
+/**
+ * The producer's probability for a machine value nobody has reviewed, or
+ * null. Null once a person has confirmed or contributed it, since provProb
+ * describes the original prediction and not the value as it stands.
+ * @param {object|null|undefined} metadata
+ * @returns {number|null}
+ */
+export const machineProb = (metadata) => {
+  if (provState(metadata) !== PROV_STATES.MACHINE) return null;
+  const p = metadata[PROV.probKey];
+  return typeof p === 'number' && Number.isFinite(p) ? p : null;
+};
+
+/**
+ * Whether an unreviewed machine value is below the project's threshold.
+ * @param {object|null|undefined} metadata
+ * @param {number} [threshold] - readConfidenceThreshold(project.config)
+ * @returns {boolean}
+ */
+export const isDoubtful = (metadata, threshold = DEFAULT_CONFIDENCE_THRESHOLD) => {
+  const p = machineProb(metadata);
+  return p != null && p < threshold;
 };
 
 // ---- the writer's policy: what a person's writes carry ----

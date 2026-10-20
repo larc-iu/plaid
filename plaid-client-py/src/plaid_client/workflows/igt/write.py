@@ -18,7 +18,9 @@ server's per-batch op cap.
 Everything is stamped machine-made (``stamp_inferred``) with the recorded
 prediction from the provenance convention: ``provDetail.form`` on each
 morpheme (plus ``boundaries``, ``degraded`` and ``surfaceMismatch`` on the
-first), ``provDetail.value`` on each gloss span. Callers are expected to
+first), ``provDetail.value`` on each gloss span. An analysis may carry
+``probs``, one calibrated probability per segment or None, which goes on
+the morpheme and its gloss as ``provProb``. Callers are expected to
 have applied the write contract already (:func:`select_targets`).
 """
 
@@ -82,19 +84,21 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                 if not keep:
                     for m in stored:
                         b.tokens.delete(m['id'])  # cascades its spans + links
+                probs = a.get('probs') or [None] * len(a['segments'])
                 for j, segment in enumerate(a['segments']):
+                    prob = probs[j]
                     form_detail = {**detail, 'form': segment}
                     if j == 0:
                         form_detail.update({
                             'boundaries': ''.join(a['joiners']),
                             **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                             **({'degraded': True} if a['degraded'] else {})})
-                    meta = {'form': segment, **stamp_inferred(source, detail=form_detail)}
+                    meta = {'form': segment, **stamp_inferred(source, prob=prob, detail=form_detail)}
                     if j == 0 and keep:
                         mid = keep
                         b.tokens.patch_metadata(mid, metadata_ops({
                             **meta, 'morphType': a['types'][0],
-                            PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: None}))
+                            PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: prob}))
                     else:
                         if a['types'][j]:
                             meta['morphType'] = a['types'][j]
@@ -104,7 +108,8 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                     gloss = a['glosses'][j]
                     if gloss:
                         b.spans.create(gloss_layer_id, [mid], gloss,
-                                       stamp_inferred(source, detail={**detail, 'value': gloss}))
+                                       stamp_inferred(source, prob=prob,
+                                                      detail={**detail, 'value': gloss}))
         written += len(chunk)
     if on_progress:
         on_progress(len(chunks), len(chunks))

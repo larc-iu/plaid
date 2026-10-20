@@ -61,7 +61,10 @@ else it considered, in two reserved slots split along the queryability line:
   the value it chose. Flat scalars are what the query engine filters and
   orders on, so "review the least-confident machine output first" is an
   ordinary query. Omit it unless you can honestly produce a probability
-  (a raw logprob is NOT one — put it in ``provDetail``).
+  (a raw logprob is NOT one — put it in ``provDetail``), and calibrate it
+  on held-out data, so that values stated at 70% are right about 70% of
+  the time. Apps mark a value below the project's threshold
+  (``config.plaid.confidence.threshold``), one number for every producer.
 - ``provDetail``: ONE open map for everything else — top-k alternatives or
   distributions, model name/version, raw scores. Deliberately nested (not
   queryable); keep it small (top-k, not whole-vocabulary dumps).

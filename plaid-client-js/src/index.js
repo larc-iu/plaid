@@ -5254,6 +5254,11 @@ export {
   projectRole,
   isReviewed,
   withReviewedUser,
+  CONFIDENCE_KEY,
+  DEFAULT_CONFIDENCE_THRESHOLD,
+  readConfidenceThreshold,
+  machineProb,
+  isDoubtful,
   writerPolicy,
 } from "./provenance.js";
 // Metadata ops: the body of a metadata PATCH and of a bulk update entry's
