@@ -2229,12 +2229,11 @@
   - Two rows of a layer that did not overlap do not: where two edges cross,
     they meet at the one that stayed put, else at the one that keeps what
     each row holds, else every row of the layer keeps the plain placement.
-  `heads` are the sentences to be made at the start of the text (see
-  `apply-plain-gaps`), `nw` the new text's code points, `held` a function
+  `nw` is the new text's code points, `held` a function
   of an old extent `[b e]` giving the new extent of what it holds, or nil,
   and `typed-at` one of an old position giving the new extent of the text
   inserted there, or nil."
-  [^ints o old-tokens kept heads ^ints nw partitioning follower? held typed-at]
+  [^ints o old-tokens kept ^ints nw partitioning follower? held typed-at]
   (let [n (alength nw)
         lead (fn [^ints cs b e] (loop [x b] (if (and (< x e) (space? (aget cs x))) (recur (inc x)) x)))
         tail (fn [^ints cs b e] (loop [x e] (if (and (> x b) (space? (aget cs (dec x)))) (recur (dec x)) x)))
@@ -2244,12 +2243,11 @@
         ;; each surviving partition token's extent after the gap-fill
         filled (into {}
                      (mapcat (fn [[layer ts]]
-                               (let [head? (some #(= layer (:token/layer %)) heads)
-                                     live (vec (sort-by :token/begin (keep #(now (:token/id %)) ts)))
+                               (let [live (vec (sort-by :token/begin (keep #(now (:token/id %)) ts)))
                                      c (count live)]
                                  (map-indexed (fn [i t]
                                                 [(:token/id t)
-                                                 [(if (and (zero? i) (not head?)) 0 (:token/begin t))
+                                                 [(if (zero? i) 0 (:token/begin t))
                                                   (if (= i (dec c)) n (:token/begin (live (inc i))))]])
                                               live))))
                      (group-by :token/layer parts))
@@ -2515,8 +2513,7 @@
   "What `gaps` (old-body code points, in order, never touching, each
   `{:start a :end b :value v}`, see `compose-edits`) do to `old` and to
   `tokens` taken the plain way. Returns `{:text :tokens :deleted}` as
-  `apply-text-edits` does, with `:heads`, the sentences made over a line
-  typed before the first one, and with `split-on-space`, `:made`, the new
+  `apply-text-edits` does, and with `split-on-space`, `:made`, the new
   tokens of the words a typed space split (see `split-spaced-words`: only
   tokens on a layer in `word-layers` when it names one, so a text whose
   word layer holds no token has nothing split), each
@@ -2563,7 +2560,7 @@
   A zero-width token is moved as `apply-text-edits` moves it."
   ([old tokens gaps partitioning word-layers]
    (apply-plain-gaps old tokens gaps partitioning word-layers nil))
-  ([^String old tokens gaps partitioning word-layers {:keys [split-on-space children dealt exclusive head-layers letter-like]}]
+  ([^String old tokens gaps partitioning word-layers {:keys [split-on-space children dealt exclusive letter-like]}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
          partitioning (set partitioning)
@@ -2844,50 +2841,6 @@
            {:placed placed})
          zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))
          kept (filterv (complement ::gone) placed)
-         was-token (let [m (into {} (map (juxt :token/id identity)) wide)] #(m (:token/id %)))
-        ;; A line typed before the text's first sentence, one holding a
-        ;; letter (anything but whitespace, as `space?` reads it, so not a
-        ;; line of only no-break or ideographic spaces or of NEL) before its
-        ;; last line break, is a sentence of its own
-        ;; (`:heads`): the new text before the first sentence's first letter
-        ;; left, whatever the save's shape.
-         firsts (filter #(and (partitioning (:token/layer %)) (zero? (:token/begin %))
-                              (or (nil? head-layers) (contains? head-layers (:token/layer %))))
-                        wide)
-         head-end (when-let [{:token/keys [end]} (first firsts)]
-                    (let [in-gap? (fn [i] (let [g (at-or-before i)]
-                                            (and (>= g 0) (< i (:b (info g))) (<= (:a (info g)) i))))
-                          q (first (filter #(and (not (space? (aget o %))) (not (in-gap? %))) (range 0 end)))]
-                      (when q
-                        (let [p (+ q (aget shift (inc (at-or-before q))))
-                              p (if (neg? (at-or-before q)) q p)
-                              prefix (String. nw 0 (int p))
-                              m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" prefix))]
-                          (when (and m (.anyMatch (.codePoints ^String m)
-                                                  (reify java.util.function.IntPredicate (test [_ c] (not (space? c))))))
-                            (let [k (cp/cp-count m)]
-                             ;; not over a whole word the edit kept (one typed
-                             ;; over with the line)
-                              (when-not (some #(and (decider-layers (:token/layer %))
-                                                    (<= (:token/end %) k))
-                                              kept)
-                                k)))))))
-        ;; the first sentence, and any token reaching over the line (a word
-        ;; typed over at its start with it), begin at the first letter after
-        ;; the line
-         kept (if head-end
-                (mapv (fn [t] (if (and (< head-end (:token/end t))
-                                       (or (< (:token/begin t) head-end)
-                                           (some #(= (:token/id %) (:token/id t)) firsts)))
-                                (let [e (:token/end t)
-                                      b (loop [x head-end] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x))]
-                                  (assoc t :token/begin (min b (dec e))))
-                                t))
-                      kept)
-                kept)
-         heads (when head-end
-                 (mapv (fn [{:token/keys [layer]}] {:token/layer layer :token/begin 0 :token/end head-end})
-                       (filter #(some (fn [f] (= (:token/id f) (:token/id %))) firsts) kept)))
         ;; the new extent of what old [b, e) holds as its own: its old text
         ;; left and the text typed strictly inside it, or nil
          held (fn [[b e]]
@@ -2906,13 +2859,10 @@
                   (when (seq xs)
                     ;; off whitespace at an edge that had none
                     (let [x (reduce min (map first xs)) y (reduce max (map second xs))
-                          ;; and past a line made a sentence of its own, as
-                          ;; every token reaching over it
-                          x (if head-end (max x (loop [x head-end] (if (and (< x (alength nw)) (ws? (aget nw x))) (recur (inc x)) x))) x)
                           x (if (ws? (aget o b)) x (loop [x x] (if (and (< x y) (ws? (aget nw x))) (recur (inc x)) x)))
                           y (if (ws? (aget o (dec e))) y (loop [y y] (if (and (> y x) (ws? (aget nw (dec y)))) (recur (dec y)) y)))]
                       (when (< x y) [x y])))))
-         kept (follow-sentences o wide kept heads nw partitioning
+         kept (follow-sentences o wide kept nw partitioning
                                 ;; a row, also where the text has no word yet
                                 ;; and the rows decide in their place
                                 #(let [l (:token/layer %)]
@@ -2930,7 +2880,6 @@
               ;; stays at that edge, so nothing ends up inside another
               :tokens (into kept (pin-points-to-edges tokens kept made (:tokens zero-r)))
               :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))}
-       (seq heads) (assoc :heads heads)
        ;; the parts of a word split by a typed space (see `split-spaced-words`)
        (seq made) (assoc :made made)))))
 
@@ -3262,10 +3211,6 @@
     multi-word token, whose tokens as long as a word a typed space splits
     go one to each part in order (see `split-spaced-words`). Every other
     child's tokens are placed by where they stand.
-  - `:head-layers`: the partitions a line typed before the first sentence
-    is made a sentence of (see `apply-plain-gaps`): those the words are
-    nested under, else the text's one partition layer, else none. A second
-    partition (a document's one token, paragraphs) is never split.
   - `:letter-like`: the code points any layer of the text calls
     letter-like, which are letters to the punctuation rule (see `punct?`)
     on every layer of the text."
@@ -3285,12 +3230,8 @@
                                    (seen id) false
                                    :else (recur (parent-of id) (conj seen id)))))
         deciders (into #{} (remove #(under? word-layers %)) word-layers)
-        partitioning (into #{} (comp (filter #(= "partitioning" (:overlap-mode %))) (map :id)) layers)
-        heads (into #{} (filter (fn [p] (some #(under? #{p} %) deciders))) partitioning)]
+        partitioning (into #{} (comp (filter #(= "partitioning" (:overlap-mode %))) (map :id)) layers)]
     {:partitioning partitioning
-     :head-layers (cond (seq heads) heads
-                        (= 1 (count partitioning)) partitioning
-                        :else #{})
      :deciders deciders
      :children (into #{} (filter #(under? deciders %)) (keys parent-of))
      :dealt (into #{}

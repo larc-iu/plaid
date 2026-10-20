@@ -511,7 +511,7 @@
   ([old tokens ops] (run old tokens ops :apps false))
   ([old tokens ops layout split?]
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (th/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers])))))
+     (th/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive])))))
 
 (defn- exact
   "What `ops` do taken exactly as made: each net gap less the text it shares
@@ -521,7 +521,7 @@
         o (cps old)]
     (ta/apply-plain-gaps old tokens (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))
                          partitioning deciders
-                         (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
+                         (select-keys r [:split-on-space :children :dealt :exclusive]))))
 
 (defn- lost-problems
   "The words and sentences `r` deletes that `x`, the edit taken exactly as
@@ -580,14 +580,14 @@
   "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
   [old tokens ops layout]
   (let [{:keys [partitioning deciders] :as r} (roles layout false)]
-    (ta/plain-edit-gaps old ops tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
+    (ta/plain-edit-gaps old ops tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive]))))
 
 (defn- save-read
   "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has
   them (see `plain-body-read`)."
   [old new tokens layout split?]
   (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-    (ta/plain-body-read old new tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
+    (ta/plain-body-read old new tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive]))))
 
 (defn- save
   "What a whole-body save of `new` does, the layers as `layout` has them."
@@ -1001,9 +1001,7 @@
         p (into {} (map (juxt :token/id identity)) (:tokens plain))
         q (into {} (map (juxt :token/id identity)) (:tokens split))
         sentence-now (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
-                           (gap-fill (into (filterv #(= :s (:token/layer %)) (:tokens split))
-                                           (map-indexed #(assoc %2 :token/id [::head %1]) (:heads split)))
-                                     (alength nw)))
+                           (gap-fill (filterv #(= :s (:token/layer %)) (:tokens split)) (alength nw)))
         moved (into {}
                     (keep (fn [{:token/keys [id layer begin end]}]
                             (when-let [t (and (= :w layer) (p id))]
@@ -1086,14 +1084,6 @@
                                tokens))
                   inside (some (fn [[[wb we] ps]] (when (and (<= wb begin) (<= end we) (not (and (= wb begin) (= we end)))) ps)) pieces-of)
                   want (cond
-                         ;; a head made only on one side moves the first sentence
-                         (and (= :s layer) (not= (:heads plain) (:heads split))) got
-                         ;; and a token typed over with the line: one side
-                         ;; begins it before the line's end, the other after
-                         (and t got (not= (:heads plain) (:heads split))
-                              (let [he (:token/end (first (or (:heads plain) (:heads split))))]
-                                (not= (< (:token/begin got) he) (< (:token/begin t) he))))
-                         got
                          (or (nil? t) (= :s layer)) t
                          over (let [[b e] (trim-ws nw (sentence-now over))] (assoc t :token/begin b :token/end e))
                          ;; a row keeps every old letter it held and the text
@@ -1155,17 +1145,14 @@
 
 ;; ---------------------------------------------------------------- sentence starts by the caret
 
-;; REV3: a token over a sentence follows it, a node over several words keeps
-;; to its words, and a line typed before the first sentence is a sentence
-(defn- follow-checks [^String old tokens server r]
+;; REV3: a token over a sentence follows it, and a node over several words
+;; keeps to its words
+(defn- follow-checks [^String old tokens r]
   (let [o (cps old)
         nb (:text/body (:text r))
         by-id (into {} (map (juxt :token/id identity)) (:tokens r))
-        heads (:heads r)
         filled (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
-                     (gap-fill (into (filterv #(= :s (:token/layer %)) (:tokens r))
-                                     (map #(assoc % :token/id ::head) heads))
-                               (cp/cp-count nb)))
+                     (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb)))
         sents (filter #(= :s (:token/layer %)) tokens)
         words (filter #(= :w (:token/layer %)) tokens)
         out (transient [])]
@@ -1205,25 +1192,6 @@
         (conj! out (str id " begins at " (:token/begin n) ", its first word at " (:token/begin wb))))
       (when (and we (not= (:token/end we) (:token/end n)))
         (conj! out (str id " ends at " (:token/end n) ", its last word at " (:token/end we)))))
-    ;; a line typed before the first sentence (REV3 N1, REV4 R4 R5): the
-    ;; new text before the first sentence's first letter left, when it holds
-    ;; a letter before its last line break, is a sentence of its own
-    (when-let [s0 (some #(when (zero? (:token/begin %)) %) sents)]
-      (let [in-gap? (fn [i] (some #(and (<= (:start %) i) (< i (:end %))) server))
-            q (first (filter #(and (not (ws? (aget o %))) (not (in-gap? %))) (range 0 (:token/end s0))))]
-        (when q
-          (let [p (+ q (reduce + 0 (map #(- (cp/cp-count (:value %)) (- (:end %) (:start %)))
-                                        (filter #(or (< (:start %) q) (and (= (:start %) (:end %)) (<= (:start %) q))) server))))
-                prefix (cp/cp-subs nb 0 p)
-                m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" prefix))
-                k (some-> m cp/cp-count)
-                want (when (and m (re-find #"\S" m)
-                                ;; not over a word the edit kept (typed over)
-                                (not-any? #(and (= :w (:token/layer %)) (< (:token/begin %) k)) (:tokens r)))
-                       [0 k])
-                got (some-> (first heads) ((juxt :token/begin :token/end)))]
-            (when (not= want got)
-              (conj! out (str "head " (pr-str got) ", want " (pr-str want) " for " (pr-str prefix))))))))
     (persistent! out)))
 
 (deftest text-typed-where-two-sentences-meet-goes-to-the-next-past-the-whitespace
@@ -1233,8 +1201,8 @@
   ;; them too (between two letters, the one before). Right after a
   ;; sentence's last letter, the sentence before. Text holding a line break,
   ;; or with one between it and the next letter, leaves the boundary where
-  ;; it was. Edits and a whole-body save alike. A line typed before the first
-  ;; sentence is a sentence of its own. A segment over a sentence follows it,
+  ;; it was. Edits and a whole-body save alike. Text typed before the first
+  ;; sentence joins it (Luke 2026-10-20). A segment over a sentence follows it,
   ;; and a node over several words keeps to them. Sentences never begin on
   ;; whitespace they did not have. Every other rule judged as ever.
   (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true :sentence-segments true :nodes true
@@ -1310,7 +1278,7 @@
                                                 (some #(= want (:token/id %)) (:tokens r)))
                                        (str "text typed at " a " went to " got ", not " want))))))
                          server)
-                ps (into ps (follow-checks body tokens server r))]
+                ps (into ps (follow-checks body tokens r))]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
 

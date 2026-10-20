@@ -463,19 +463,21 @@
       (when (extent w)
         (is (= (extent w) (extent n)) (str "word " (extent w) " node " (extent n)))))))
 
-(deftest a-line-typed-before-the-first-sentence-is-a-sentence-of-its-own
-  ;; REV3 N1: the first sentence keeps its id and what hangs off it, and the
-  ;; answer names the sentence made
+(deftest a-line-typed-before-the-first-sentence-is-in-the-first-sentence
+  ;; Luke 2026-10-20 (Q2): the first sentence takes it and keeps its id and
+  ;; what hangs off it, and the answer names no sentence made
   (let [{:keys [text sentences]} (setup "Hi.\nThe end.")
+        sent-rows #(->> (psc/q db {:select [:id :begin :end_] :from [:tokens]
+                                   :where [:and [:= :text_id (str text)] [:= :token_layer_id (str sentences)]]})
+                        (sort-by :begin))
+        first-id (str (:id (first (sent-rows))))
         base (-> (get-text admin-request text) :body :text/digest)
         res (edit-text text {:edits [(ins 0 "Oh.\n")] :base base})
-        sents (->> (psc/q db {:select [:id :begin :end_] :from [:tokens]
-                              :where [:and [:= :text_id (str text)] [:= :token_layer_id (str sentences)]]})
-                   (sort-by :begin))]
+        sents (sent-rows)]
     (assert-ok res)
-    (is (= [[0 4] [4 16]] (map (juxt :begin :end_) sents)))
-    (is (some #(and (= (str (:id (first sents))) (str (:id %))) (= 0 (:begin %)) (some? (:layer %)))
-              (-> res :body :reshape :tokens))
+    (is (= [[0 16]] (map (juxt :begin :end_) sents)))
+    (is (= first-id (str (:id (first sents)))))
+    (is (not-any? #(some? (:layer %)) (-> res :body :reshape :tokens))
         (pr-str (-> res :body :reshape :tokens)))))
 
 (deftest an-empty-segment-at-a-growing-rows-end-stays-at-its-end
@@ -777,19 +779,23 @@
     (is (= [[0 4 "thex"] [5 10 "dogsx"] [11 15 "ran."] [16 20 "xcat"] [21 25 "sat."]] (map extent ws)))
     (is (= [[5 8 "dog"] [8 10 "sx"]] (map extent ms)))))
 
-(deftest a-head-sentence-is-made-only-on-the-words-partition
-  ;; REV-one-rule F7: a document partition of one token beside the sentences
-  ;; is never split by a line typed before the first sentence
-  (let [{:keys [text sentences]} (setup "Hi.\nThe end." :sents [[0 4] [4 12]])
-        tl (:text/layer (:body (get-text admin-request text)))
-        dl (-> (create-token-layer-opts admin-request tl "Document" {:overlap-mode "partitioning"}) :body :id)
-        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id dl :text text :begin 0 :end 12}]))
-        layer-extents (fn [l] (->> (psc/q db {:select [:begin :end_] :from [:tokens]
-                                              :where [:and [:= :text_id (str text)] [:= :token_layer_id (str l)]]})
-                                   (map (juxt :begin :end_)) sort))]
-    (assert-ok (edit-text text {:edits [(ins 0 "Oh.\n")] :base (digest/text-digest "Hi.\nThe end.")}))
-    (is (= [[0 4] [4 8] [8 16]] (layer-extents sentences)))
-    (is (= [[0 16]] (layer-extents dl)))))
+(deftest a-line-typed-before-the-first-sentence-joins-it
+  ;; Luke 2026-10-20 (Q2): no sentence is made over a line typed before the
+  ;; first sentence, which takes it, edits and a whole-body save alike, and a
+  ;; document partition of one token beside the sentences stays whole
+  (doseq [[label change] [["edits" {:edits [(ins 0 "Oh.\n")] :base (digest/text-digest "Hi.\nThe end.")}]
+                          ["a whole-body save" {:body "Oh.\nHi.\nThe end."}]]]
+    (testing label
+      (let [{:keys [text sentences]} (setup "Hi.\nThe end." :sents [[0 4] [4 12]])
+            tl (:text/layer (:body (get-text admin-request text)))
+            dl (-> (create-token-layer-opts admin-request tl "Document" {:overlap-mode "partitioning"}) :body :id)
+            _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id dl :text text :begin 0 :end 12}]))
+            layer-extents (fn [l] (->> (psc/q db {:select [:begin :end_] :from [:tokens]
+                                                  :where [:and [:= :text_id (str text)] [:= :token_layer_id (str l)]]})
+                                       (map (juxt :begin :end_)) sort))]
+        (assert-ok (edit-text text change))
+        (is (= [[0 8] [8 16]] (layer-extents sentences)))
+        (is (= [[0 16]] (layer-extents dl)))))))
 
 (deftest a-whole-body-save-never-deletes-a-word-with-a-letter-left
   ;; REV2-one-rule G1: a body save that deletes the space or the sentence

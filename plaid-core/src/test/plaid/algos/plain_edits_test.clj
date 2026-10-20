@@ -436,16 +436,19 @@
     (is (= "Ne" (at :ne)))
     (is (= "New York is big." (at :all)) "a node (overlap allowed) keeps to its words (REV4 R2)")))
 
-(deftest a-line-typed-before-the-first-sentence-is-a-sentence-of-its-own
-  ;; REV3 N1: nothing before it to join, so the core makes a sentence over it
-  ;; and the first sentence keeps its place (and its translation)
-  (let [[nb at r] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n")])]
-    (is (= "Oh.\nHi.\nThe end." nb))
-    (is (= "Hi.\n" (at [:s 0])))
-    (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (:heads r))))
-  (let [[_ at r] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\nNew ")])]
-    (is (= "New Hi.\n" (at [:s 0])) "what follows the last line break joins the sentence")
-    (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (:heads r)))))
+(deftest a-line-typed-before-the-first-sentence-joins-it
+  ;; Luke 2026-10-20 (Q2): no sentence is made over it, the first sentence
+  ;; takes it as the last takes text typed after it, and a row over the
+  ;; first sentence follows
+  (let [row {:token/id :a0 :token/layer :a :token/begin 0 :token/end 3}]
+    (doseq [[ops want-body want-row] [[[(ins 0 "Oh.\n")] "Oh.\nHi.\nThe end." "Oh.\nHi."]
+                                      [[(ins 0 "Oh.\nNew ")] "Oh.\nNew Hi.\nThe end." "Oh.\nNew Hi."]
+                                      [[(ins 0 "Oh.\n") (del 4 1)] "Oh.\ni.\nThe end." "Oh.\ni."]]]
+      (let [[nb at r] (extents-after "|Hi.|\n/|The| |end.|" [row] ops)]
+        (is (= want-body nb))
+        (is (nil? (:heads r)))
+        (is (= 2 (count (filter #(= :s (:token/layer %)) (:tokens r)))))
+        (is (= want-row (at :a0)) (pr-str ops))))))
 
 (deftest side-counts-only-where-two-words-meet
   ;; REV3 N6: `side` pointing at whitespace or at no token is no side; N7: a
@@ -512,37 +515,6 @@
     (is (= [0 4] (at :a0)))
     (is (= [4 4] (at :z)))))
 
-(deftest a-head-sentence-needs-a-line-with-letters-and-any-save-shape
-  ;; REV4 R4: whitespace alone typed at the start joins the first sentence;
-  ;; R5: the same line typed with a letter of the first word deleted, or
-  ;; after whitespace the text began with, makes the same head
-  (let [heads (fn [s ops] (:heads (nth (extents-after s [] ops) 2)))]
-    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\n")])))
-    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "  \n")])))
-    ;; REV5-TEXT-2: no-break and ideographic spaces are whitespace here too,
-    ;; so Enter after a paragraph indent of them makes no sentence
-    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u3000\n")])))
-    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u00a0\u202f\n")])))
-    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\n")])))
-    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u3000\n")])))
-    (is (nil? (heads "\u00a0\u00a0|Ana| |runs.| /|Ben| |sits.|" [(ins 2 "\n")])))
-    (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "题目\n")])))
-    ;; REV6-TEXT-3: NEL ends a line and is whitespace to this rule too, so
-    ;; Enter typed as NEL after an indent, or a line of only NEL, makes no
-    ;; sentence, and a title line ended by NEL does
-    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u0085")])))
-    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\u0085\u0085")])))
-    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u0085")])))
-    (is (nil? (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "\u3000\u0085")])))
-    (is (nil? (heads "\u0085|Hi.|\n/|The| |end.|" [(ins 1 "\n")])))
-    (is (= [{:token/layer :s :token/begin 0 :token/end 3}] (heads "\u0085|Hi.|\n/|The| |end.|" [(ins 1 "T\n")])))
-    (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads "\u3000\u3000|他们是学生。|/|他们是老师。|" [(ins 2 "题目\u0085")])))
-    (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (heads "|Hi.|\n/|The| |end.|" [(ins 0 "Oh.\n") (del 4 1)])))
-    (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads " |Hi.|\n/|The| |end.|" [(ins 1 "Oh.\n")])))
-    (let [[nb at] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n") (del 4 1)])]
-      (is (= "Oh.\ni.\nThe end." nb))
-      (is (= "i.\n" (at [:s 0]))))))
-
 (deftest side-decides-where-two-rows-meet-in-one-sentence
   ;; REV5 M1: rows `Hi.` and `Yo.` written together in ONE sentence (igt's
   ;; Media tab seeds one sentence for every row): text typed at the end of
@@ -594,16 +566,7 @@
   (testing "ud's syntactic words under shared words never decide"
     (is (= #{:w} (:deciders (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
                                              {:id :w :overlap-mode "non-overlapping" :parent :s}
-                                             {:id :x :overlap-mode "non-overlapping" :parent :w}])))))
-  (testing "a head is made only on the partition the words are under (F7)"
-    (is (= #{:s} (:head-layers (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
-                                                {:id :d :overlap-mode "partitioning"}
-                                                {:id :w :overlap-mode "non-overlapping" :parent :s}]))))
-    (is (= #{:s} (:head-layers (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
-                                                {:id :w :overlap-mode "non-overlapping"}]))))
-    (is (= #{} (:head-layers (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
-                                              {:id :d :overlap-mode "partitioning"}
-                                              {:id :w :overlap-mode "any"}]))))))
+                                             {:id :x :overlap-mode "non-overlapping" :parent :w}]))))))
 
 (deftest an-analysed-word-retyped-in-a-whole-body-save-drops-its-morphemes
   ;; REV-one-rule F4: `cow` (`co` + `w`) saved as `abc` is the word typed
@@ -873,15 +836,22 @@
         r (th/plain-edits body tokens ops #{:s} #{:w})]
     (is (= (ta/edit-ops-body ops body) (:text/body (:text r))))))
 
-(deftest a-line-typed-in-front-with-the-first-letter-changed-is-a-sentence
-  ;; REV2-F-TEXT-CORE R4: `Oh my.\nH` typed over the `h` of `hi`
+(deftest a-line-typed-in-front-with-the-first-letter-changed-reads-as-before-any-sentence
+  ;; REV2-F-TEXT-CORE R4: `Oh my.\nH` typed over the `h` of `hi`. The text
+  ;; joins the first sentence (Luke 2026-10-20, Q2), and the word the gap
+  ;; reaches into from its start holds it, as the same edit before a later
+  ;; sentence does
   (let [{:keys [body tokens]} (doc "|hi| |there.|\n/|bye|")
         r (th/plain-edits body tokens [(rep 0 1 "Oh my.\nH")] #{:s} #{:w})
         nb (:text/body (:text r))
-        w0 (some #(when (= [:w 0] (:token/id %)) %) (:tokens r))]
+        at (fn [id] (some #(when (= id (:token/id %)) (cp/cp-subs nb (:token/begin %) (:token/end %))) (:tokens r)))
+        {mid-body :body mid-tokens :tokens} (doc "|bye.|\n/|hi| |there.|")
+        mid (th/plain-edits mid-body mid-tokens [(rep 5 1 "Oh my.\nH")] #{:s} #{:w})
+        mid-nb (:text/body (:text mid))]
     (is (= "Oh my.\nHi there.\nbye" nb))
-    (is (= "Hi" (cp/cp-subs nb (:token/begin w0) (:token/end w0))))
-    (is (= [[0 7]] (mapv (juxt :token/begin :token/end) (:heads r))))))
+    (is (= "Oh my.\nHi" (at [:w 0])))
+    (is (= "Oh my.\nHi" (some #(when (= [:w 1] (:token/id %)) (cp/cp-subs mid-nb (:token/begin %) (:token/end %))) (:tokens mid))))
+    (is (nil? (:heads r)))))
 
 (defn- big-save
   "Seconds a save of `places` two-word retypes (a word's last letter and the
@@ -1012,7 +982,7 @@
                 {:token/id :r :token/layer :r :token/begin 0 :token/end 12}
                 {:token/id :p :token/layer :r :token/begin 12 :token/end 12}]
         r (th/plain-edits body tokens [(ins 9 " ") (ins 13 "So ")] (:partitioning roles) (:deciders roles)
-                          (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers]))
+                          (select-keys roles [:split-on-space :children :dealt :exclusive]))
         rows (concat (filter #(= :r (:token/layer %)) (:tokens r)) (filter #(= :r (:token/layer %)) (:made r)))]
     (is (= "Ab cd ef  gh.So  Xy." (:text/body (:text r))))
     (is (= [[0 8] [10 15] [15 15]] (sort (map (juxt :token/begin :token/end) rows))))))
@@ -1124,7 +1094,7 @@
                                                     {:id :s :overlap-mode "partitioning"}])))))
 
 (deftest a-typed-nel-parts-words-as-a-line-feed-does
-  ;; REV8-CORE-4: NEL ends a line to the sentence, head and row rules, and
+  ;; REV8-CORE-4: NEL ends a line to the sentence and row rules, and
   ;; igt's tokenizer reads it as whitespace, but a word took it: `cd` with
   ;; `<NEL>x` typed after it became the word `cd<NEL>x`, where a line feed
   ;; leaves `cd` as it was
