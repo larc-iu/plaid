@@ -10,7 +10,8 @@
 
   Split out of `plaid.sql.common` so the audit contract is one file, separate
   from the row helpers that obey it."
-  (:require [clojure.string]
+  (:require [clojure.data.json :as json]
+            [clojure.string]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]))
 
@@ -84,6 +85,72 @@
   nil)
 
 (def ^:private noted-tables #{"tokens" "spans" "relations" "vocab_links"})
+
+;; ============================================================
+;; The rows a document owns, read whole
+;;
+;; Rows of these five tables that an import made may have no audit row at
+;; all (see "Lazy rows" below). Such a row is read live, by the as-of
+;; reader and by the first write that changes it, in one shape: the row,
+;; its ordered token list under `:tokens` (spans and vocab links), its
+;; metadata under `:metadata` when it has any. It is the shape of
+;; `plaid.sql.document-rows/read-rows`, and the one the audit fold builds.
+;; ============================================================
+
+(def document-tables
+  "The tables of the rows a document owns, by name, each with the
+  `entity_metadata.entity_type` of its rows and, where the row keeps an
+  ordered token list, the junction table and its parent column."
+  {"texts" {:etype "text"}
+   "tokens" {:etype "token"}
+   "spans" {:etype "span" :junction [:span_tokens :span_id]}
+   "relations" {:etype "relation"}
+   "vocab_links" {:etype "vocab-link" :junction [:vocab_link_tokens :vocab_link_id]}})
+
+(defn document-table?
+  "Whether `table` (keyword or string) is one of `document-tables`."
+  [table]
+  (contains? document-tables (name table)))
+
+(defn- in-chunks
+  "`(f chunk)` over the distinct `xs` in chunks of `psc/bulk-chunk-size`,
+  concatenated."
+  [f xs]
+  (into [] (mapcat f) (partition-all psc/bulk-chunk-size (distinct (seq xs)))))
+
+(defn- decode-metadata-value [s]
+  (when (some? s)
+    (try (json/read-str s) (catch Exception _ s))))
+
+(defn entity-images
+  "`{id image}` for the rows among `ids` of document table `table` that
+  exist, each read whole (see above). An id with no row is left out."
+  [db table ids]
+  (let [t (keyword (name table))
+        {:keys [etype junction]} (get document-tables (name table))
+        rows (in-chunks #(psc/q db {:select [:*] :from [t] :where [:in :id (mapv str %)]}) ids)
+        found (map :id rows)
+        tokens (when junction
+                 (let [[jt jc] junction]
+                   (->> (in-chunks #(psc/q db {:select [jc :token_id :order_idx] :from [jt]
+                                               :where [:in jc (mapv str %)]})
+                                   found)
+                        (group-by jc)
+                        (into {} (map (fn [[k rs]] [k (mapv :token_id (sort-by :order_idx rs))]))))))
+        metas (->> (in-chunks #(psc/q db {:select [:entity_id :key :value] :from [:entity_metadata]
+                                          :where [:and [:= :entity_type etype]
+                                                  [:in :entity_id (mapv str %)]]})
+                              found)
+                   (reduce (fn [m r] (assoc-in m [(str (:entity_id r)) (:key r)]
+                                               (decode-metadata-value (:value r))))
+                           {}))]
+    (into {}
+          (map (fn [r]
+                 (let [m (get metas (str (:id r)))]
+                   [(:id r) (cond-> r
+                              junction (assoc :tokens (get tokens (:id r) []))
+                              (seq m) (assoc :metadata m))])))
+          rows)))
 
 (def version-mismatch
   "The one message a stale `document-version` is refused with, before the

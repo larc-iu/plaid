@@ -34,6 +34,7 @@
             [clojure.string :as str]
             [plaid.media.duration :as duration]
             [plaid.media.storage :as media]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.document-rows :as drows])
   (:import (java.time Instant ZonedDateTime)
@@ -134,6 +135,11 @@
 
 (defn- ts-clause [{:keys [lt lte]}]
   (if lt [:< :ts lt] [:<= :ts lte]))
+
+(defn- after-clause
+  "The rows `ts-clause` leaves out."
+  [{:keys [lt lte]}]
+  (if lt [:>= :ts lt] [:> :ts lte]))
 
 ;; ============================================================
 ;; Fetch + fold
@@ -243,6 +249,31 @@
                 (update m k clojure.core/merge (parse-image post_image)))))
           {} rows))
 
+(defn- with-unrecorded
+  "`folded`, the fold of `rows` (the rows of document `doc-id` up to
+  `bound`), plus every row the document owns now that no audit row names at
+  any time, read live. An import writes no audit row for the rows it makes
+  in a document it created (`plaid.sql.audit-write`, \"Lazy rows\"), and
+  such a row is recorded whole before anything changes it, so one with no
+  audit row has been as it is now since the document was created. The
+  caller adds them only when the document exists at the bound."
+  [db doc-id bound rows folded]
+  (let [recorded (into #{}
+                       (map (fn [r] [(:target_table r) (str (:target_id r))]))
+                       (concat rows
+                               (psc/q db {:select [:target_table :target_id]
+                                          :from [:audit_writes]
+                                          :where [:and [:= :document_id doc-id] (after-clause bound)]})))]
+    (reduce (fn [folded table]
+              (let [live (map :id (psc/q db {:select [:id] :from [(keyword table)]
+                                             :where [:= :document_id doc-id]}))
+                    missing (remove #(contains? recorded [table (str %)]) live)]
+                (reduce-kv (fn [m id image] (assoc m [table (str id)] image))
+                           folded
+                           (if (seq missing) (psaw/entity-images db table missing) {}))))
+            folded
+            (keys psaw/document-tables))))
+
 (defn- entities-of
   "All folded entities of `table`, coerced, as a vector."
   [folded table]
@@ -344,16 +375,18 @@
   at `ts`, or when its project has since been deleted."
   [db doc-id ts]
   (let [bound (bound-at db ts)
-        folded (fold-rows (q-doc-rows db doc-id bound))
+        rows (q-doc-rows db doc-id bound)
+        folded (fold-rows rows)
         doc-entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
                            coerce-entity)]
     (when (and doc-entity (project-live? db (:project_id doc-entity)))
-      {:document doc-entity
-       :texts (entities-of folded "texts")
-       :tokens (entities-of folded "tokens")
-       :spans (entities-of folded "spans")
-       :relations (entities-of folded "relations")
-       :vocab-links (entities-of folded "vocab_links")})))
+      (let [folded (with-unrecorded db doc-id bound rows folded)]
+        {:document doc-entity
+         :texts (entities-of folded "texts")
+         :tokens (entities-of folded "tokens")
+         :spans (entities-of folded "spans")
+         :relations (entities-of folded "relations")
+         :vocab-links (entities-of folded "vocab_links")}))))
 
 (defn get-with-layer-data-at
   "Deep document read at time `ts`. Result shape mirrors
@@ -366,9 +399,11 @@
   reflects the same logical moment by construction."
   [db doc-id ts]
   (let [bound (bound-at db ts)
-        folded (fold-rows (q-doc-rows db doc-id bound))
-        doc-entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
-                           coerce-entity)]
+        rows (q-doc-rows db doc-id bound)
+        recorded (fold-rows rows)
+        doc-entity (some-> (clojure.core/get recorded ["documents" (str doc-id)])
+                           coerce-entity)
+        folded (when doc-entity (with-unrecorded db doc-id bound rows recorded))]
     ;; A deleted project is not time-travelable (see `project-live?`): refuse
     ;; the read so reconstruction never serves a document whose project — and
     ;; thus the document itself — has been truly deleted.
