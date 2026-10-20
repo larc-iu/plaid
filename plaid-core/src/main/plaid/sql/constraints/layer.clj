@@ -963,28 +963,52 @@
            [:in :aw.target_id (mapv str ch)]]
    :order-by [[:aw.ts :desc] [:aw.seq :desc]]})
 
+(defn- document-creators
+  "`{document-id {:kind :op_type}}`: the operation that created each of the
+  documents `doc-ids`, with the kind of its group, read from the document's
+  insert row."
+  [tx doc-ids]
+  (into {}
+        (map (fn [r] [(u (:target_id r)) r]))
+        (q-chunks tx (fn [ch] {:select [:aw.target_id :og.kind :o.op_type]
+                               :from [[:audit_writes :aw]]
+                               :join [[:operations :o] [:= :o.id :aw.op_id]]
+                               :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
+                               :where [:and [:= :aw.target_table "documents"]
+                                       [:in :aw.target_id (mapv str ch)]
+                                       [:= :aw.change_type "insert"]]})
+                  doc-ids)))
+
 (defn- import-set-ids
-  "The ids among `rows` (id, value as stored) whose current value was set
-  by a write in an operation group of kind import, or by a copy or a
+  "The ids among `rows` (id, value as stored, document) whose current value
+  was set by a write in an operation group of kind import, or by a copy or a
   restore, read from the audit log: the oldest write of the newest run of
-  writes that left the value as it is. `key-of` reads what counts as the
+  writes that left the value as it is. A row with no audit row at all was
+  made by the group that created its document and has not changed since
+  (`plaid.sql.audit-write`, \"Lazy rows\"), so the operation that created
+  the document set its value. `key-of` reads what counts as the
   value off a row and off an audit image (the value, read from its JSON text
   by default: an image from a core before 2026-10-09 holds the text with
   `\\u` escapes where the row holds the letters)."
   [tx table rows & {:keys [key-of] :or {key-of (comp read-value :value)}}]
   (let [current (into {} (map (fn [r] [(u (:id r)) (key-of r)])) rows)
-        audit (q-chunks tx (partial value-history-chunk table) (keys current))]
-    (->> (group-by (comp u :target_id) audit)
-         (keep (fn [[id rs]]
-                 (let [cur (get current id)
-                       run (take-while (fn [r] (when-let [img (some-> (:post_image r) psc/read-json)]
-                                                 (= cur (key-of img))))
-                                       rs)
-                       setter (last run)]
-                   (when (or (= "import" (:kind setter))
-                             (reproducing-op-types (:op_type setter)))
-                     id))))
-         set)))
+        audit (q-chunks tx (partial value-history-chunk table) (keys current))
+        by-id (group-by (comp u :target_id) audit)
+        unrecorded (remove #(contains? by-id (u (:id %))) rows)
+        creators (when (seq unrecorded)
+                   (document-creators tx (distinct (map (comp u :document_id) unrecorded))))
+        exempt? (fn [setter] (or (= "import" (:kind setter))
+                                 (reproducing-op-types (:op_type setter))))]
+    (into (set (keep (fn [r] (when (exempt? (get creators (u (:document_id r)))) (u (:id r))))
+                     unrecorded))
+          (keep (fn [[id rs]]
+                  (let [cur (get current id)
+                        run (take-while (fn [r] (when-let [img (some-> (:post_image r) psc/read-json)]
+                                                  (= cur (key-of img))))
+                                        rs)]
+                    (when (exempt? (last run))
+                      id))))
+          by-id)))
 
 (defn- check-value-set [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)

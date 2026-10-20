@@ -6,7 +6,8 @@
   written. Here the rows are written eagerly and their insert rows deleted
   by hand, which is what the removal does, so every answer can be compared
   with the one the full log gave."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call
                                     assert-created assert-ok assert-no-content
@@ -112,3 +113,59 @@
       (is (= 1 (get-in r [:body :spans :updated]))))
     (testing "the document is as it was"
       (is (= at-made (comparable (doc/get-with-layer-data db doc)))))))
+
+;; ------------------------------------------------------------
+;; The closed-tagset exemption
+;; ------------------------------------------------------------
+
+(defn group-query
+  "A query string putting a request in a fresh operation group of `kind`, or
+  of no kind."
+  [kind]
+  (str "?group-id=" (random-uuid) "&group-message=G" (when kind (str "&group-kind=" kind))))
+
+(defn grouped
+  "`api-call` with `q` (from `group-query`) on the path."
+  [q method path body]
+  (api-call admin-request {:method method :path (str path q) :body body}))
+
+(defn grouped-document!
+  "A document made the way an importer makes one: created, then filled by
+  separate requests, all in the one group of `q`: a text, a token per
+  word and a span per token with `values`. Returns the ids."
+  [q proj tl tkl sl name values]
+  (let [doc (-> (grouped q :post "/api/v1/documents" {:project-id proj :name name}) :body :id)
+        words (map #(str "w" %) (range (count values)))
+        body (str/join " " words)
+        text (-> (grouped q :post "/api/v1/texts" {:text-layer-id tl :document-id doc :body body}) :body :id)
+        offsets (reductions (fn [b w] (+ b (count w) 1)) 0 words)
+        tokens (-> (grouped q :post "/api/v1/tokens/bulk"
+                            (mapv (fn [w b] {:token-layer-id tkl :text text :begin b :end (+ b (count w))})
+                                  words offsets))
+                   :body :ids)
+        spans (-> (grouped q :post "/api/v1/spans/bulk"
+                           (mapv (fn [t v] {:span-layer-id sl :tokens [t] :value v}) tokens values))
+                  :body :ids)]
+    {:doc doc :text text :tokens tokens :spans spans}))
+
+(defn- declare-values! [sl values]
+  (api-call admin-request {:method :put :path (str "/api/v1/span-layers/" sl "/constraints/igt")
+                           :body {:constraints [{:type "value-set" :values values}]}}))
+
+(deftest a-value-with-no-audit-row-is-exempt-when-an-import-made-its-document
+  (let [proj (create-test-project admin-request "Exempt")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+        sl (-> (create-span-layer admin-request tkl "SL") :body :id)
+        imported (grouped-document! (group-query "import") proj tl tkl sl "Imported" ["A" "ZZ"])
+        planned (grouped-document! (group-query "assistant-plan") proj tl tkl sl "Planned" ["A" "YY"])
+        refused (fn []
+                  (let [r (declare-values! sl ["A"])]
+                    (assert-status 422 r)
+                    (set (map :at (-> r :body :violations)))))]
+    (testing "with every row recorded, only the plan's value is refused"
+      (is (= #{(str (second (:spans planned)))} (set (map str (refused))))))
+    (is (pos? (+ (unrecord-untouched! (:doc imported)) (unrecord-untouched! (:doc planned)))))
+    (is (empty? (psc/q db ["SELECT 1 FROM audit_writes WHERE target_id = ?" (str (second (:spans imported)))])))
+    (testing "with no audit row, the import's value is still exempt and the plan's is not"
+      (is (= #{(str (second (:spans planned)))} (set (map str (refused))))))))
