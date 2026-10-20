@@ -1,0 +1,123 @@
+name: CI
+
+# The per-push check: Clojure formatting, every unit suite and a build of each
+# SPA, in parallel jobs, in about ten minutes. Every job calls `bb ci-fast`
+# (bb/pipeline.clj), so a developer runs the same thing with `bb ci-fast`.
+# The fidelity round trips, the e2e suites, `bb build` and the jar smoke test
+# stay in nightly.yml and release.yml.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request stops the older run. Runs on master
+# all finish, so every commit there gets a result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The Clojure suite in four shards, one JVM each, split by the recorded
+  # per-namespace times (plaid-core/src/test-runner/test-timings.edn).
+  core:
+    name: core (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+          bb: latest
+      - name: Cache Maven + gitlibs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.m2
+            ~/.gitlibs
+          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
+          restore-keys: ${{ runner.os }}-cljdeps-
+      - name: Run the Clojure suite
+        run: bb ci-fast core ${{ matrix.shard }}/4
+
+  # Lint, tests and a Vite build of every JavaScript package, and the JS
+  # client's suite.
+  js:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          bb: latest
+      # Node 24: the lockfiles are written by npm 11, and npm 10 refuses them.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: '*/package-lock.json'
+      - name: Lint, test and build the JavaScript packages
+        run: bb ci-fast js
+
+  # cljfmt, then the Python suites. The assistant's suite boots a private
+  # plaid-core from source (hence Java and Clojure) and runs the apps' domain
+  # modules in plain node for its mirror tests (hence Node and `npm ci`).
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+          bb: latest
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: '*/package-lock.json'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            plaid-agent/pyproject.toml
+            plaid-client-py/pyproject.toml
+      - name: Cache Maven + gitlibs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.m2
+            ~/.gitlibs
+          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
+          restore-keys: ${{ runner.os }}-cljdeps-
+      - name: Check the Clojure formatting
+        run: bb ci-fast cljfmt
+      # The client goes in first and editable, so the assistant resolves its
+      # `larc-plaid-client` dependency against this checkout. plaid-umr's
+      # comparison tests run the real ancast metric.
+      - name: Install the Python packages under test
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./plaid-client-py
+          pip install -e './plaid-agent[dev]'
+          pip install ancast
+      - name: Run the Python suites
+        run: bb ci-fast python

@@ -8,6 +8,11 @@
    :requires ([pipeline :as pl])
    :task (pl/run-tests!)}
 
+  ci-fast
+  {:doc "The per-push check ci.yml runs: cljfmt, the Clojure suite, every JavaScript package's lint, tests and build, and the Python suites (the assistant's against a private core). No fidelity, e2e or jar. Usage: bb ci-fast [cljfmt|core [I/N]|js|python]. With no part it runs all four in turn. `core 2/4` runs one shard of the Clojure suite. It runs `npm ci` in every JavaScript package, which empties node_modules under a dev server. Prereqs as for `bb test`."
+   :requires ([pipeline :as pl])
+   :task (pl/run-fast-checks! *command-line-args*)}
+
   build
   {:doc "Build ALL release artifacts locally, like release.yml's build job (NO publishing). Usage: bb build [version] [--no-smoke] [--skip-clients]. version defaults to 0.0.0-alpha.0. Produces dist-artifacts/ (uberjar with the UD+IGT+dictionary+UMR SPAs, the JavaScript client served at /client/plaid-client.js, and the services bundled, npm .tgz, Python sdist+wheel for the client; the assistant is NOT staged, since it does not go to PyPI yet) and boot-smoke-tests the jar on :8080 (PLAID_SMOKE_PORT picks another port). Prereqs: Node >= 24 active (e.g. `nvm use 24.1.0`); for the Python client, a mamba env active (`mamba activate plaid-agent`) — or pass --skip-clients."
    :requires ([pipeline :as pl])

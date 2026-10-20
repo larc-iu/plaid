@@ -97,16 +97,21 @@
 ;; it does own is a lint gate, and its install has to happen FIRST: every app
 ;; depends on it as `file:../plaid-ui`.
 
-(defn run-tests! []
-  (ensure-repo-root!)
-  (step "Run the Clojure test suite (plaid-core)")
+(defn- run-core-tests!
+  "The Clojure suite. With a shard (\"I/N\") it runs only that part of the
+  split, in one JVM, for a CI matrix."
+  [shard]
+  (step (str "Run the Clojure test suite (plaid-core)" (when shard (str ", shard " shard))))
   ;; One JVM per shard of namespaces, half the cores and at most 8 (so 2 on a
   ;; 4-core GitHub runner). See plaid-core/src/test-runner/plaid/test_runner.clj.
-  (p/shell {:dir "plaid-core"} "clojure" "-M:test" "--jobs" "auto")
-  ;; The JS and Python suites are part of the gate too. They were not, and a
-  ;; tag could therefore ship an app whose own tests were red: the Clojure
-  ;; suite says nothing about either SPA or about the assistant. Slower, but
-  ;; this runs on tags and nightly only, never per-commit.
+  (if shard
+    (p/shell {:dir "plaid-core"} "clojure" "-M:test" "--shard" shard)
+    (p/shell {:dir "plaid-core"} "clojure" "-M:test" "--jobs" "auto")))
+
+(defn- run-js-tests!
+  "Lint, install and test every JavaScript package, and with `build?` also
+  build each SPA, which is the check that every module still parses."
+  [build?]
   (ensure-node!)
   (step "Lint the shared UI package (plaid-ui)")
   (p/shell {:dir "plaid-ui"} "npm" "ci")
@@ -120,7 +125,9 @@
     ;; step rather than each app's `npm test`, so every app is linted exactly
     ;; once and the gate says in one place what it is. plaid-ud and plaid-umr
     ;; used to lint here and again inside their own `npm test`.
-    (p/shell {:dir app} "npm" "run" "lint"))
+    (p/shell {:dir app} "npm" "run" "lint")
+    (when build?
+      (p/shell {:dir app} "npm" "run" "build")))
   ;; The JS client's own suite (the request layer, batching, OCC stamps,
   ;; pagination, service RPC). It was never in the gate either.
   ;; The client has no runtime dependencies, but its suite type-checks the
@@ -128,11 +135,17 @@
   ;; from the lockfile first.
   (step "Run the JavaScript test suite (plaid-client-js)")
   (p/shell {:dir "plaid-client-js"} "npm" "ci")
-  (p/shell {:dir "plaid-client-js"} "npm" "test")
-  ;; After the JS step, deliberately: the assistant's mirror test runs the
-  ;; app's own domain modules through node and SKIPS ITSELF when plaid-igt's
-  ;; node_modules are missing, which would make it pass by not running.
+  (p/shell {:dir "plaid-client-js"} "npm" "test"))
+
+;; Run after the JavaScript packages are installed, deliberately: the
+;; assistant's mirror tests run the apps' own domain modules through node, and
+;; they need plaid-igt's and plaid-ud's node_modules.
+(defn- run-python-tests! []
   (let [py (agent-python-exe)]
+    ;; Every Python file still parses, including a service no test imports.
+    (step "Compile every Python package")
+    (p/shell (python-exe) "-m" "compileall" "-q" "plaid-agent/plaid_agent" "plaid-client-py/src"
+             "plaid-igt/services" "plaid-ud/services" "plaid-umr/services")
     (step "Run the Python test suite (plaid-agent)")
     ;; igt's corpus tools ask a real core's query engine, so the suite boots a
     ;; private one from plaid-core's source (its own port and database, stopped
@@ -155,6 +168,41 @@
     ;; deadline, batch bypass and the three workflows. It was never in the gate.
     (step "Run the Python test suite (plaid-client-py)")
     (p/shell {:dir "plaid-client-py"} (python-exe) "-m" "pytest" "-q")))
+
+(defn run-tests! []
+  (ensure-repo-root!)
+  (run-core-tests! nil)
+  ;; The JS and Python suites are part of the gate too. They were not, and a
+  ;; tag could therefore ship an app whose own tests were red: the Clojure
+  ;; suite says nothing about either SPA or about the assistant.
+  (run-js-tests! false)
+  (run-python-tests!))
+
+;; The per-push check (ci.yml): formatting, every unit suite and a build of
+;; each SPA, without the fidelity round trips, the e2e suites or the jar. CI
+;; runs one part per job, in parallel, and the core suite in shards. With no
+;; part it runs all of them in turn, the way a developer would.
+(defn run-fast-checks! [[part shard]]
+  (ensure-repo-root!)
+  (let [cljfmt! (fn []
+                  (step "Check the Clojure formatting (plaid-core)")
+                  (p/shell {:dir "plaid-core"} "clojure" "-M:format" "check"))]
+    (case part
+      "cljfmt" (cljfmt!)
+      "core"   (run-core-tests! shard)
+      "js"     (run-js-tests! true)
+      ;; On its own, the Python part installs the JavaScript packages first,
+      ;; for the mirror tests.
+      "python" (do (ensure-node!)
+                   (doseq [d (concat ["plaid-ui"] js-suites ["plaid-client-js"])]
+                     (step (str "Install " d))
+                     (p/shell {:dir d} "npm" "ci"))
+                   (run-python-tests!))
+      nil      (do (cljfmt!)
+                   (run-core-tests! nil)
+                   (run-js-tests! true)
+                   (run-python-tests!))
+      (fail (str "unknown part '" part "': use cljfmt, core, js or python")))))
 
 ;; The fidelity campaign's round trips, in the order they fail most usefully:
 ;; the kitchen sink first (a feature the builder stopped making makes the other
