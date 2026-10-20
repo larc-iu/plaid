@@ -465,13 +465,6 @@
           :else
           (throw (ex-info "Unknown diff op code" {:code 500 :op-code code})))))))
 
-;; i is a code-point index, v a code-point count / inserted string.
-(defn- insert-str [s i v]
-  (str (cp/cp-subs s 0 i) v (cp/cp-subs s i)))
-
-(defn- delete-str [s i v]
-  (str (cp/cp-subs s 0 i) (cp/cp-subs s (+ i v))))
-
 (defn- combining-mark?
   "A code point of Unicode category Mn, Mc or Me: a mark that belongs to the
   letter before it."
