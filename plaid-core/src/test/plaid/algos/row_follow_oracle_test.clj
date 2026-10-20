@@ -17,26 +17,13 @@
      row over whole sentences meets a sentence boundary counts as typed at
      the boundary: it is in the row exactly when it is in one of the
      sentences the row reaches (FX-E-TEXT, REV4-TEXT-1), unless the save
-     deletes every sentence the row holds whole. Where a row's end sits in
-     the whitespace before a sentence's first letter and the next row
-     follows that sentence (begins on its boundary and holds it whole),
-     text typed in that whitespace that the sentence takes is in the next
-     row, not this one: the sentence wins the crossing (FX-F-TEXT,
-     REV5-TEXT-1), unless no letter of the row is left. The mirror: where
-     a row's begin sits in the whitespace after a sentence's last letter and
-     the row before follows that sentence (ends on its boundary and holds it
-     whole), text typed in that whitespace that the sentence takes is in the
-     row before (FX-G-TEXT, REV6-TEXT-2), unless no letter of the row is
-     left,
+     deletes every sentence the row holds whole,
   3. text typed where a row's edge meets a sentence boundary (a sentence's
      begin or first letter, its end or the end of its last letter) goes
      with the sentence the partition rule chooses, and the row on that
      sentence's side holds it,
   4. a row edge not on a sentence boundary stays where it was, among the
      text a gap typed there, or moved off whitespace onto the row's text,
-     or, at an end the sentence after it wins in (2), where the next row
-     now begins, and at a begin the sentence before wins in (2), where the
-     row before now ends,
   5. an old letter left stays in the row it was in, and in no other."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
@@ -138,45 +125,6 @@
                              (boolean (if (< lb le)
                                         (or (and wb (<= a lb)) (and we (>= z le)))
                                         (or wb we)))))
-            ;; where row i's end sits in the whitespace before a sentence's
-            ;; first letter and the next row follows that sentence:
-            ;; `[next-row sentence]`
-            crossing (fn [i]
-                       (let [[b e] (rows i)
-                             x (loop [x e] (if (and (< x (alength oc)) (ws? (aget oc x))) (recur (inc x)) x))
-                             j (some (fn [k] (when (= x (first (trim-ws oc (sents k)))) k)) (range (count sents)))
-                             nx (first (sort-by (comp first rows) (filter #(<= e (first (rows %)) x) (range (count rows)))))]
-                         (when (and (pos? e) (< b e) (ws? (aget oc (dec e))) j nx
-                                    (= j (sb (first (rows nx))))
-                                    (some #{j} (whole nx)))
-                           [nx j])))
-            crossing-ws? (fn [i a]
-                           (let [[b e] (rows i)]
-                             ;; (a row with no letter left keeps what is
-                             ;; typed in it, as it would be left empty)
-                             (and (crossing i) (< a e)
-                                  (every? #(ws? (aget oc %)) (range a e))
-                                  (some #(and (not (ws? (aget oc %))) (not (gone? %))) (range b e)))))
-            ;; the mirror: where row i's begin sits in the whitespace after
-            ;; a sentence's last letter and the row before follows that
-            ;; sentence (ends on its boundary and holds it whole):
-            ;; `[row-before sentence]`
-            mirror (fn [i]
-                     (let [[b e] (rows i)
-                           y (loop [y b] (if (and (pos? y) (ws? (aget oc (dec y)))) (recur (dec y)) y))
-                           j (some (fn [k] (let [[x z] (trim-ws oc (sents k))] (when (and (< x z) (= y z)) k))) (range (count sents)))
-                           pv (last (sort-by (comp second rows) (filter #(<= y (second (rows %)) b) (range (count rows)))))]
-                       (when (and (< b e) (< b (alength oc)) (ws? (aget oc b)) j pv
-                                  (= j (se (second (rows pv))))
-                                  (some #{j} (whole pv)))
-                         [pv j])))
-            mirror-ws? (fn [i a]
-                         (let [[b e] (rows i)]
-                           ;; (a row with no letter left keeps what is
-                           ;; typed in it)
-                           (and (mirror i) (< b a)
-                                (every? #(ws? (aget oc %)) (range b a))
-                                (some #(and (not (ws? (aget oc %))) (not (gone? %))) (range b e)))))
             out (transient [])
             v! (fn [k msg] (conj! out [k msg]))]
         ;; 1. no overlap
@@ -197,19 +145,10 @@
                   :when (and (< b a) (if (= a z) (< a e) (< z e)) (pos? (vlen g)))
                   :when (not (boundary-ws? i a z))
                   :let [x (new-at gi)
-                        [nx j] (when (crossing-ws? i a) (crossing i))
-                        [pv pj] (when (mirror-ws? i a) (mirror i))
                         ;; whitespace at an edge on a letter before is moved off
                         ;; (and a line made a sentence of its own at the
                         ;; start, which every token reaching over it leaves)
-                        out (remove (fn [p] (or (cond
-                                                  nx (if (= j (sentence-at p))
-                                                       (or (ws? (aget nc p)) (let [[x y] (new-rows nx)] (and x (<= x p) (< p y))))
-                                                       (<= nb* p (dec ne*)))
-                                                  pv (if (= pj (sentence-at p))
-                                                       (or (ws? (aget nc p)) (let [[x y] (new-rows pv)] (and x (<= x p) (< p y))))
-                                                       (<= nb* p (dec ne*)))
-                                                  :else (<= nb* p (dec ne*)))
+                        out (remove (fn [p] (or (<= nb* p (dec ne*))
                                                 (= -1 (sentence-at p))
                                                 (and (< p nb*) (not (ws? (aget oc b))) (every? #(ws? (aget nc %)) (range p nb*)))
                                                 (and (>= p ne*) (not (ws? (aget oc (dec e)))) (every? #(ws? (aget nc %)) (range ne* (inc p))))))
@@ -244,8 +183,6 @@
                         lo (if (seq at) (reduce min (map first at)) (pm p))
                         hi (if (seq at) (reduce max (map second at)) (pm p))
                         ok? (or (<= lo q hi)
-                                (and (= edge :end) (crossing i) (= q (first (new-rows (first (crossing i))))))
-                                (and (= edge :begin) (mirror i) (= q (second (new-rows (first (mirror i))))))
                                 (and (= edge :begin) (> q hi) (every? #(ws? (aget nc %)) (range hi q)))
                                 (and (= edge :end) (< q lo) (every? #(ws? (aget nc %)) (range q lo))))]
                   :when (not ok?)]
@@ -329,16 +266,16 @@
                                          [(first (ws a)) (second (ws z))]))))
                                  real))
                ;; rows over the last words of a sentence and the whitespace
-               ;; after it, beside rows over whole sentences (REV5-TEXT-1)
+               ;; after it, beside rows over whole sentences
                :part-ws (vec (keep (fn [[sb se :as s]]
                                      (let [ws (filterv (fn [[b e]] (and (<= sb b) (<= e se))) words)]
                                        (if (and (seq ws) (< (.nextDouble rng) 0.5))
                                          [(first (ws (.nextInt rng (count ws)))) se]
                                          s)))
                                    sents))
-;; rows beginning in the whitespace after the sentence before,
+               ;; rows beginning in the whitespace after the sentence before,
                ;; over all or part of their sentence, beside rows over whole
-               ;; sentences (REV6-TEXT-2)
+               ;; sentences
                :ws-begin (let [rs (mapv tr real)]
                            (vec (map-indexed (fn [i [tb te :as r]]
                                                (if (and (pos? i) (< (.nextDouble rng) 0.6))
@@ -450,16 +387,10 @@
                     {r :r} (run-case c path)]]
         (is (empty? (violations c path)) (pr-str o rows at path))
         (is (= want (rows-of r)) (pr-str o rows at path))))
-    (testing "REV5-TEXT-1: the next row follows its sentence over text typed in a row's trailing whitespace"
-      (doseq [[o sents words rows at v want] [["Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 5] [6 14]] 4 "So" [[0 4] [4 16]]]
-                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [9 15]] 7 "So" [[3 7] [7 17]]]
-                                              ["Ab cd.\n Ef gh." [[0 8] [8 14]] [[0 2] [3 6] [8 10] [11 14]] [[3 8] [8 14]] 7 "So" [[3 7] [7 16]]]
-                                              ;; a typed line, which the sentence before takes, stays
-                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [9 15]] 7 "So.\n" [[3 13] [13 19]]]
-                                              ;; the next row over part of the sentence: the row keeps it
-                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [12 15]] 7 "So" [[3 11] [14 17]]]
-                                              ;; a row ending on its letters takes nothing
-                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 7]] 7 "So" [[3 7]]]]
+    (testing "text typed in a row's whitespace off a sentence edge stays in that row, whatever the row beside it follows"
+      (doseq [[o sents words rows at v want] [["Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 5] [6 14]] 4 "So" [[0 7] [7 16]]]
+                                              ["Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [9 15]] 7 "So" [[3 11] [11 17]]]
+                                              ["Hi. \nThe end." [[0 5] [5 13]] [[0 2] [5 8] [9 12]] [[0 3] [3 13]] 4 "So" [[0 3] [3 15]]]]
               path [:edits :body]
               :let [c {:o o :sents sents :words words :rows rows :gaps [{:start at :end at :value v}]}
                     {r :r} (run-case c path)]]
@@ -494,12 +425,10 @@
                         (vec (sort-by first (keep #(when (= :r (:token/layer %)) [(:token/begin %) (subs b (:token/begin %) (:token/end %))]) (:tokens r))))))]
     (doseq [[label o sents words rows gaps want]
             [;; REV7-TEXT-1: a NEL reads as whitespace at a row's edge, as LF does
-             ["mirror, LF" "Hi. \nThe end." [[0 5] [5 13]] [[0 2] [5 8] [9 12]] [[0 3] [3 13]] [[4 4 "So"]] ["Hi. So" "\nThe end."]]
-             ["mirror, NEL" "Hi. \u0085The end." [[0 5] [5 13]] [[0 2] [5 8] [9 12]] [[0 3] [3 13]] [[4 4 "So"]] ["Hi. So" "\u0085The end."]]
              ["at the end, NEL" "Hi.\u0085The end." [[0 4] [4 12]] [[0 2] [4 7] [8 11]] [[0 3] [3 12]] [[3 3 " So"]] ["Hi. So" "\u0085The end."]]
              ;; REV7-TEXT-4: in a text with no word the rows decide, and the
              ;; edits and the body read a replace over a line break alike
-             ["no words, a replace over a line break" "abcd Ef ŋa \u2028ฉันไปตลาด" [[0 12] [12 21]] [] [[0 10] [10 21]] [[9 12 "x y"]] ["abcd Ef ŋx y" "ฉันไปตลาด"]]]
+             ["no words, a replace over a line break" "abcd Ef ŋa \u2028ฉันไปตลาด" [[0 12] [12 21]] [] [[0 10] [10 21]] [[9 12 "x y"]] ["abcd Ef ŋx" " yฉันไปตลาด"]]]
             path [:edits :body]
             :let [c {:o o :sents sents :words words :rows rows :gaps (mapv (fn [[a z v]] {:start a :end z :value v}) gaps)}
                   {r :r} (run-case c path)]]

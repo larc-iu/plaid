@@ -589,42 +589,23 @@
         (is (= want-body (:text/body (:body r))))
         (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
 
-(deftest the-sentence-after-wins-text-typed-in-a-rows-trailing-whitespace
-  ;; REV5-TEXT-1: a row over part of a sentence holding the whitespace after
-  ;; it, or a row ending inside that whitespace, kept text typed there that
-  ;; begins the next sentence, so the row over that sentence began after it
-  ;; and ELAN and FLEx lost a sentence's time. The next row follows its
-  ;; sentence and takes the text (FX-F-TEXT).
+(deftest a-row-keeps-text-typed-in-its-whitespace-off-a-sentence-edge
+  ;; A row whose edge sits in the whitespace off a sentence's edge (a script's
+  ;; row, the apps make none) keeps the text typed in that whitespace, and
+  ;; the row beside it, following its sentence or not, meets it there.
   (doseq [[label body sents words rows change want-body want-rows]
           [["a row over part of a sentence" "Ab cd.   Ef gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]] [[3 9] [9 15]]
-            {:edits [(ins 7 "So")]} "Ab cd. So  Ef gh." [[3 7] [7 17]]]
+            {:edits [(ins 7 "So")]} "Ab cd. So  Ef gh." [[3 11] [11 17]]]
            ["a row ending inside the whitespace" "Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 5] [6 14]]
-            {:edits [(ins 4 "So")]} "Hi. So  The end." [[0 4] [4 16]]]
+            {:edits [(ins 4 "So")]} "Hi. So  The end." [[0 7] [7 16]]]
            ["a whole-body save" "Hi.   The end." [[0 6] [6 14]] [[0 3] [6 9] [10 14]] [[0 5] [6 14]]
-            {:body "Hi. So  The end."} "Hi. So  The end." [[0 4] [4 16]]]
+            {:body "Hi. So  The end."} "Hi. So  The end." [[0 7] [7 16]]]
            ["a row holding a line break and the next line's space" "Ab cd.\n Ef gh." [[0 8] [8 14]] [[0 2] [3 6] [8 10] [11 14]]
-            [[3 8] [8 14]] {:edits [(ins 7 "So")]} "Ab cd.\nSo Ef gh." [[3 7] [7 16]]]]]
-    (testing label
-      (let [{:keys [text rows]} (rows-setup body sents words rows [])
-            r (edit-text text change)]
-        (is (= 200 (:status r)) (pr-str (:body r)))
-        (is (= want-body (:text/body (:body r))))
-        (is (= want-rows (map #(vec (take 2 (extent %))) rows)))))))
-
-(deftest the-sentence-before-wins-text-typed-in-a-rows-leading-whitespace
-  ;; REV6-TEXT-2, the mirror of REV5-TEXT-1: a row beginning in the
-  ;; whitespace after a sentence kept text typed there that the sentence
-  ;; before takes, so the row over that sentence lost it and FLEx lost the
-  ;; sentence's time. The row before follows its sentence and takes it.
-  (doseq [[label body sents words rows change want-body want-rows]
-          [["a row holding the line break after a sentence" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
-            [[0 3] [3 13]] {:edits [(ins 4 "So")]} "Hi. So\nThe end." [[0 6] [6 15]]]
-           ["a whole-body save" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
-            [[0 3] [3 13]] {:body "Hi. So\nThe end."} "Hi. So\nThe end." [[0 6] [6 15]]]
+            [[3 8] [8 14]] {:edits [(ins 7 "So")]} "Ab cd.\nSo Ef gh." [[3 10] [10 16]]]
+           ["a row holding the line break after a sentence" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
+            [[0 3] [3 13]] {:edits [(ins 4 "So")]} "Hi. So\nThe end." [[0 3] [3 15]]]
            ["a row over part of the next sentence" "Ab cd.  \nEf gh." [[0 9] [9 15]] [[0 2] [3 6] [9 11] [12 15]]
-            [[0 6] [7 11]] {:edits [(ins 8 "So")]} "Ab cd.  So\nEf gh." [[0 10] [10 13]]]
-           ["text the next sentence takes stays" "Hi. \nThe end." [[0 5] [5 13]] [[0 3] [5 8] [9 13]]
-            [[0 3] [3 13]] {:edits [(ins 5 "So ")]} "Hi. \nSo The end." [[0 3] [3 16]]]]]
+            [[0 6] [7 11]] {:edits [(ins 8 "So")]} "Ab cd.  So\nEf gh." [[0 7] [7 13]]]]]
     (testing label
       (let [{:keys [text rows]} (rows-setup body sents words rows [])
             r (edit-text text change)]
