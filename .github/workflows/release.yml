@@ -61,7 +61,7 @@ jobs:
           node-version: '24'
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Cache Maven + gitlibs
         uses: actions/cache@v5
         with:
@@ -115,7 +115,7 @@ jobs:
           node-version: '24'
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Cache Maven + gitlibs
         uses: actions/cache@v5
         with:
