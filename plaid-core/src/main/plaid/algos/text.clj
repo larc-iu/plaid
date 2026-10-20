@@ -1496,76 +1496,74 @@
   tokens' layers that are partitions, `word-layers` the words' layers and
   `letter-like` the code points the text's layers call letter-like (see
   `slide-cost`)."
-  ([ops old tokens] (slide-to-tokens ops old tokens #{}))
-  ([ops old tokens partitioning] (slide-to-tokens ops old tokens partitioning nil nil))
-  ([ops old tokens partitioning word-layers letter-like]
-   (let [partitioning (set partitioning)
-         word-layers (set word-layers)
-         edits (vec (ops->edits ops))
-         ^ints o (.toArray (.codePoints ^String old))
-         n (alength o)
-         reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
-         start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
-         near (tokens-near tokens (count edits))
+  [ops old tokens partitioning word-layers letter-like]
+  (let [partitioning (set partitioning)
+        word-layers (set word-layers)
+        edits (vec (ops->edits ops))
+        ^ints o (.toArray (.codePoints ^String old))
+        n (alength o)
+        reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
+        start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
+        near (tokens-near tokens (count edits))
          ;; an insert where a partition's token begins that the edits path
          ;; would give to that token: of two readings that disturb as much,
          ;; this one wins, so text typed at several sentence starts goes to
          ;; each sentence it starts, as one typed alone does
-         next-start? (fn [near-e e]
-                       (and (= :insert (:kind e))
-                            (some #(and (partitioning (:token/layer %)) (= (:at e) (:token/begin %))) near-e)
-                            (typed-to-next? o (:at e) (.toArray (.codePoints ^String (:value e))) letter-like)))
-         moved (reduce
-                (fn [moved e]
-                  (let [i (count moved)
-                        prev (get edits (dec i))
-                        nxt (get edits (inc i))
+        next-start? (fn [near-e e]
+                      (and (= :insert (:kind e))
+                           (some #(and (partitioning (:token/layer %)) (= (:at e) (:token/begin %))) near-e)
+                           (typed-to-next? o (:at e) (.toArray (.codePoints ^String (:value e))) letter-like)))
+        moved (reduce
+               (fn [moved e]
+                 (let [i (count moved)
+                       prev (get edits (dec i))
+                       nxt (get edits (inc i))
                         ;; A neighbour this edit touches makes the two one
                         ;; stretch, and a place that touches one would too.
                         ;; The edit before may already have moved, towards
                         ;; this one or away from it, and the two must not
                         ;; meet where it now stands.
-                        lo (if prev (inc (reach-of (peek moved))) 0)
-                        hi (if nxt (dec (start-of nxt)) n)]
-                    (conj moved
-                          (if (or (< (start-of e) lo) (> (reach-of e) hi))
-                            e
-                            (let [places (slide-places o e lo hi)
-                                  near-e (near (reduce min (map start-of places))
-                                               (reduce max (map reach-of places)))
-                                  cost #(slide-cost o near-e partitioning word-layers letter-like %)
-                                  here (cost e)
+                       lo (if prev (inc (reach-of (peek moved))) 0)
+                       hi (if nxt (dec (start-of nxt)) n)]
+                   (conj moved
+                         (if (or (< (start-of e) lo) (> (reach-of e) hi))
+                           e
+                           (let [places (slide-places o e lo hi)
+                                 near-e (near (reduce min (map start-of places))
+                                              (reduce max (map reach-of places)))
+                                 cost #(slide-cost o near-e partitioning word-layers letter-like %)
+                                 here (cost e)
                                   ;; an insert that can stand right after (or
                                   ;; before) a delete of exactly one token's text
                                   ;; makes that token typed over whole, which
                                   ;; keeps it: `我你好吗。` saved as `我好好吗！` is
                                   ;; `你` typed over as `好`, not `你` deleted and
                                   ;; `好` doubled (REV3-F-TEXT-CORE G2)
-                                  whole? (fn [d] (and d (= :delete (:kind d))
-                                                      (some #(and (= (:token/begin %) (:start d)) (= (:token/end %) (:end d)))
-                                                            (near (:start d) (:end d)))))
-                                  typed-over (when (and (= :insert (:kind e)) (pos? here))
-                                               (let [p (peek moved)]
-                                                 (or (when (and prev (whole? p) (<= (:end p) (:at e)))
-                                                       (some #(when (= (:at %) (:end p)) %) (slide-places o e (:end p) hi)))
-                                                     (when (and (whole? nxt) (<= (:at e) (:start nxt)))
-                                                       (some #(when (= (:at %) (:start nxt)) %) (slide-places o e lo (:start nxt)))))))]
-                              (cond
-                                typed-over typed-over
-                                (zero? here)
-                                e
+                                 whole? (fn [d] (and d (= :delete (:kind d))
+                                                     (some #(and (= (:token/begin %) (:start d)) (= (:token/end %) (:end d)))
+                                                           (near (:start d) (:end d)))))
+                                 typed-over (when (and (= :insert (:kind e)) (pos? here))
+                                              (let [p (peek moved)]
+                                                (or (when (and prev (whole? p) (<= (:end p) (:at e)))
+                                                      (some #(when (= (:at %) (:end p)) %) (slide-places o e (:end p) hi)))
+                                                    (when (and (whole? nxt) (<= (:at e) (:start nxt)))
+                                                      (some #(when (= (:at %) (:start nxt)) %) (slide-places o e lo (:start nxt)))))))]
+                             (cond
+                               typed-over typed-over
+                               (zero? here)
+                               e
                                 ;; The fewest disturbed, then the fewest cut, then
                                 ;; the nearest place. The sort is stable and
                                 ;; `places` starts with the edit itself.
-                                :else
-                                (first (sort-by (juxt cost
-                                                      #(slide-cuts near-e %)
-                                                      #(if (next-start? near-e %) 0 1)
-                                                      #(Math/abs (long (- (start-of %) (start-of e)))))
-                                                places))))))))
-                []
-                edits)]
-     (if (= edits moved) ops (edits->ops moved)))))
+                               :else
+                               (first (sort-by (juxt cost
+                                                     #(slide-cuts near-e %)
+                                                     #(if (next-start? near-e %) 0 1)
+                                                     #(Math/abs (long (- (start-of %) (start-of e)))))
+                                               places))))))))
+               []
+               edits)]
+    (if (= edits moved) ops (edits->ops moved))))
 
 (defn normalize-deletes
   "Rewrite `ops` (as produced by `diff` for `old`) so that two deletes
@@ -2579,7 +2577,7 @@
                             run (fn [idx] (loop [i 0] (if (and (< i n) (not (ws? (aget v (int (idx i)))))) (recur (inc i)) i)))
                             lead (run identity)
                             trail (run #(- n 1 %))]
-                        {:a start :b end :n n :delta (- n (- end start))
+                        {:a start :b end :n n :v v :delta (- n (- end start))
                          :lead lead :trail trail :word? (= lead n)
                          :before-ok (and (pos? lead) (pos? start) (not (ws? (aget o (dec start)))))
                          :after-ok (and (pos? trail) (< end len) (not (ws? (aget o end))))}))
@@ -2664,10 +2662,10 @@
                                          (map :token/begin))
                                wide)
          part-starts (into #{} (comp (filter #(partitioning (:token/layer %))) (map :token/begin)) wide)
-         ;; text holding a line break is a line typed: it goes to the
-         ;; sentence before, to be split off there, which leaves the next
-         ;; sentence and what it holds where they were
-         line? (fn [g] (boolean (re-find #"[\n\r\u0085\u2028\u2029]" (:value (gaps g)))))
+         ;; whether gap `g`, one that only types, goes to the sentence after
+         ;; it (see `typed-to-next?`: text holding a line break is a line
+         ;; typed, which goes to the sentence before, to be split off there)
+         to-next-sentence? (fn [g] (let [{:keys [a b v]} (info g)] (and (= a b) (typed-to-next? o a v letter-like))))
          ;; where no whitespace stands between two sentences and the first
          ;; ends on punctuation, text typed where they meet with no side
          ;; said goes to the one after
@@ -2678,7 +2676,7 @@
                                 (or (and (flag? g :before) (flag? g :after))
                                     (sentence-starts a)))
                        (or (:side (gaps g))
-                           (when (and (part-starts a) (not (line? g)) (punct? (or letter-like #{}) (aget o (dec a)))) :after)))))
+                           (when (and (part-starts a) (to-next-sentence? g)) :after)))))
          new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
         ;; [the letters the tokens ending at the gap take, the letters those
         ;; beginning after it take], the same for every layer, so that a
@@ -2715,18 +2713,14 @@
          given-after (fn [g] (second (given g)))
         ;; Text typed after whitespace, on the line of the next letter, goes
         ;; to the sentence that letter begins (Luke, 2026-10-15): the
-        ;; position of that letter, `q`, for a gap that only types, after
-        ;; whitespace, holds no line break, and has none between it and `q`,
-        ;; else nil. A boundary of a partition at or after the gap, up to
-        ;; `q`, moves to the gap's new text.
+        ;; position of that letter, `q`, for a gap that only types after
+        ;; whitespace and goes to the next sentence (`typed-to-next?`), else
+        ;; nil. A boundary of a partition at or after the gap, up to `q`,
+        ;; moves to the gap's new text.
          next-letter (mapv (fn [g]
-                             (let [{:keys [a b]} (info g)]
-                               (when (and (= a b) (pos? a) (< a len) (ws? (aget o (dec a))) (not (line? g)))
-                                 (loop [x a]
-                                   (cond (>= x len) nil
-                                         (not (ws? (aget o x))) x
-                                         (line-break? (aget o x)) nil
-                                         :else (recur (inc x)))))))
+                             (let [{:keys [a]} (info g)]
+                               (when (and (to-next-sentence? g) (ws? (aget o (dec a))))
+                                 (loop [x a] (if (ws? (aget o x)) (recur (inc x)) x)))))
                            (range k))
         ;; the first gap of the run of such gaps that `g` ends, every one
         ;; of them typing before the same letter: their text goes to the
@@ -3081,13 +3075,6 @@
                 (delay (body-diff-gaps old new tokens partitioning word-layers false (:letter-like opts)))
                 partitioning word-layers opts))
 
-(defn plain-body
-  "`apply-plain-gaps` for a whole-body save of `old` as `new`, as
-  `plain-body-read` reads it."
-  ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
-  ([old new tokens partitioning word-layers opts]
-   (second (plain-body-read old new tokens partitioning word-layers opts))))
-
 (defn plain-edit-gaps
   "The gaps an edit of `old` by `ops` from the caret is taken as, for
   `tokens` (see `apply-plain-gaps` for `partitioning`, `word-layers` and
@@ -3249,15 +3236,6 @@
                          (multi? g) (read i t)
                          :else [t]))))
            (range k)))))
-
-(defn plain-edits
-  "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
-  coordinates, see `compose-edits`), the change taken as `plain-edit-gaps`
-  takes it."
-  ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
-  ([^String old tokens ops partitioning word-layers opts]
-   (apply-plain-gaps old tokens (plain-edit-gaps old ops tokens partitioning word-layers opts)
-                     partitioning word-layers opts)))
 
 (defn layer-roles
   "What each token layer of a text is to a body save, from `layers`, each

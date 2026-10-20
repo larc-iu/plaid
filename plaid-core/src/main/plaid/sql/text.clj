@@ -498,7 +498,7 @@
   before it left, in the shapes `update-body` takes). The ops are composed
   into their net change, each gap of it standing where it was made, and the
   tokens take it by the plain rule a whole-body save takes (see
-  `plaid.algos.text/plain-edits`).
+  `plaid.algos.text/plain-edit-gaps` and `apply-plain-gaps`).
 
   With `base`, the edit applies only when it is the digest of the stored
   body, and answers 409 with `:text-changed` otherwise: the edit's places

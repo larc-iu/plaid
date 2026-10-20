@@ -35,6 +35,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
+            [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
 ;; ---------------------------------------------------------------- documents
@@ -510,7 +511,7 @@
   ([old tokens ops] (run old tokens ops :apps false))
   ([old tokens ops layout split?]
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers])))))
+     (th/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers])))))
 
 (defn- exact
   "What `ops` do taken exactly as made: each net gap less the text it shares

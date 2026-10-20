@@ -5,7 +5,8 @@
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
-            [plaid.algos.text :as ta]))
+            [plaid.algos.text :as ta]
+            [plaid.algos.text-helpers :as th]))
 
 (defn- ins [i v] {:type :insert :index i :value v})
 (defn- del [i n] {:type :delete :index i :value n})
@@ -56,7 +57,7 @@
 
 (defn- typed [old ops]
   (let [tokens (words old)
-        r (ta/plain-edits old tokens ops #{} #{:w})
+        r (th/plain-edits old tokens ops #{} #{:w})
         body (:text/body (:text r))]
     [body (->> (:tokens r) (sort-by :token/begin) (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))
 

@@ -6,6 +6,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
+            [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
 (defn- ins [i v] {:type :insert :index i :value v})
@@ -55,11 +56,11 @@
 
 (defn- edit [s ops]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-edits body tokens ops #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (th/plain-edits body tokens ops #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (defn- save [s new]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-body body new tokens #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (th/plain-body body new tokens #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (deftest an-edit-inside-a-word-or-at-its-edge-grows-it
   (testing "inside"
@@ -113,7 +114,7 @@
 
 (deftest partitions-follow-the-words
   (let [{:keys [body tokens]} (doc "|Hi.| /|Bye.|")
-        r (ta/plain-edits body tokens [(ins 4 "x")] #{:s} #{:w})
+        r (th/plain-edits body tokens [(ins 4 "x")] #{:s} #{:w})
         at (fn [id] (let [t (some #(when (= id (:token/id %)) %) (:tokens r))] [(:token/begin t) (:token/end t)]))]
     (is (= "Hi. xBye." (:text/body (:text r))))
     (is (= [4 9] (at [:w 1]) (at [:s 1])))
@@ -141,7 +142,7 @@
   ;; token in its sentence, and the rest typed before `dog`, the letters
   ;; against it going with it into the next sentence
   (let [{:keys [body tokens]} (doc "|köye| |a| /|dog|")
-        r (ta/plain-edits body tokens [(rep 5 2 "XZ XZ XZ")] #{:s} #{:w})
+        r (th/plain-edits body tokens [(rep 5 2 "XZ XZ XZ")] #{:s} #{:w})
         at (fn [id] (let [t (some #(when (= id (:token/id %)) %) (:tokens r))] [(:token/begin t) (:token/end t)]))]
     (is (= "köye XZ XZ XZdog" (:text/body (:text r))))
     (is (= [5 7] (at [:w 1])))
@@ -152,7 +153,7 @@
 (deftest a-sentence-or-a-segment-typed-over-exactly-keeps-its-token
   ;; L1: `kai\n` (all of sentence 1) typed over as `-`, which touches `dog`
   (let [{:keys [body tokens]} (doc "|kai|\n/|dog| |cat|")
-        r (ta/plain-edits body tokens [(rep 0 4 "-")] #{:s} #{:w})
+        r (th/plain-edits body tokens [(rep 0 4 "-")] #{:s} #{:w})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= "-dog cat" (:text/body (:text r))))
     (is (= [0 1] (at [:s 0])))
@@ -166,7 +167,7 @@
                 {:token/id :w3 :token/layer :w :token/begin 5 :token/end 7}
                 {:token/id :a1 :token/layer :a :token/begin 0 :token/end 2}
                 {:token/id :a2 :token/layer :a :token/begin 2 :token/end 7}]
-        r (ta/plain-edits "abcd ef" tokens [(rep 2 5 "xy")] #{:s} #{:w})
+        r (th/plain-edits "abcd ef" tokens [(rep 2 5 "xy")] #{:s} #{:w})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= "abxy" (:text/body (:text r))))
     (is (= [0 2] (at :a1) (at :w1)))
@@ -174,7 +175,7 @@
 
 (defn- edit-with [s ops opts]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-edits body tokens ops #{:s} #{:w} opts) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (th/plain-edits body tokens ops #{:s} #{:w} opts) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (deftest a-layer-that-splits-on-space-splits-a-word-a-space-is-typed-in
   ;; ud (Luke, 2026-09-30): as igt, but a space typed strictly inside a word
@@ -194,7 +195,7 @@
       (is (= ["the  cat" "the" "cat"] (edit-with "|the| |cat|" [(ins 4 " ")] split))))
     (testing "the morpheme as long as the word moves with it"
       (let [{:keys [body tokens]} (doc "|the| |cat|")
-            r (ta/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} split)
+            r (th/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} split)
             at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
         (is (= [6 8] (at [:w 1]) (at [:m 1])))))))
 
@@ -210,8 +211,8 @@
   (let [sents (fn [s ops & [body-new]]
                 (let [{:keys [body tokens]} (doc s)
                       r (if body-new
-                          (ta/plain-body body body-new tokens #{:s} #{:w})
-                          (ta/plain-edits body tokens ops #{:s} #{:w}))
+                          (th/plain-body body body-new tokens #{:s} #{:w})
+                          (th/plain-edits body tokens ops #{:s} #{:w}))
                       nb (:text/body (:text r))
                       ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
                       ;; the gap-fill, as the save runs it
@@ -254,8 +255,8 @@
   (let [raw (fn [s change]
               (let [{:keys [body tokens]} (doc s)
                     r (if (string? change)
-                        (ta/plain-body body change tokens #{:s} #{:w})
-                        (ta/plain-edits body tokens change #{:s} #{:w}))
+                        (th/plain-body body change tokens #{:s} #{:w})
+                        (th/plain-edits body tokens change #{:s} #{:w}))
                     nb (:text/body (:text r))
                     ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
                 (is (every? (fn [[b e]] (< b e)) ss) "no sentence is left empty")
@@ -299,7 +300,7 @@
   (let [rows (fn [s extents ops]
                (let [{:keys [body tokens]} (doc s)
                      rs (map-indexed (fn [i [b e]] {:token/id [:r i] :token/layer :r :token/begin b :token/end e}) extents)
-                     r (ta/plain-edits body (into tokens rs) ops #{:s} #{:w} {:children #{:m} :exclusive #{:r}})
+                     r (th/plain-edits body (into tokens rs) ops #{:s} #{:w} {:children #{:m} :exclusive #{:r}})
                      nb (:text/body (:text r))
                      at (fn [l] (sort-by first (keep #(when (= l (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))
                      rr (at :r)]
@@ -342,14 +343,14 @@
                      {:token/id :at :token/layer :y :token/begin 5 :token/end 7}
                      {:token/id :c :token/layer :y :token/begin 4 :token/end 5}
                      {:token/id :dc :token/layer :u :token/begin 0 :token/end 7})
-        r (ta/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} {:split-on-space true})
+        r (th/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} {:split-on-space true})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= "dog c at eel" (:text/body (:text r))))
     (is (= [6 8] (at [:w 1])))
     (is (= [6 8] (at :at)))
     (is (= [4 5] (at :c)) "on the new part, now a token of its own (Q2-UD-POLISH-2)")
     (is (= [0 8] (at :dc)))
-    (let [r (ta/plain-edits body tokens [(ins 6 " ")] #{:s} #{:w} {:split-on-space true})
+    (let [r (th/plain-edits body tokens [(ins 6 " ")] #{:s} #{:w} {:split-on-space true})
           at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
       (is (= "dog ca t eel" (:text/body (:text r))))
       (is (= [4 6] (at [:w 1])))
@@ -370,7 +371,7 @@
   ;; whitespace they did not have
   (let [sents (fn [s ops]
                 (let [{:keys [body tokens]} (doc s)
-                      r (ta/plain-edits body tokens ops #{:s} #{:w})
+                      r (th/plain-edits body tokens ops #{:s} #{:w})
                       nb (:text/body (:text r))
                       ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
                       ss (map-indexed (fn [i [b e]] [(if (zero? i) 0 b) (if (= i (dec (count ss))) (cp/cp-count nb) (first (nth ss (inc i))))]) ss)]
@@ -389,7 +390,7 @@
         tokens (conj tokens
                      {:token/id :seg :token/layer :a :token/begin 4 :token/end 12}
                      {:token/id :node :token/layer :u :token/begin 4 :token/end 7})
-        r (ta/plain-edits body tokens [(ins 4 "Oh ")] #{:s} #{:w} {:exclusive #{:a}})
+        r (th/plain-edits body tokens [(ins 4 "Oh ")] #{:s} #{:w} {:exclusive #{:a}})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= "Hi. Oh The end." (:text/body (:text r))))
     (is (= [4 15] (at [:s 1]) (at :seg)))
@@ -397,7 +398,7 @@
 
 (defn- extents-after [s extra ops & [opts]]
   (let [{:keys [body tokens]} (doc s)
-        r (ta/plain-edits body (into tokens extra) ops #{:s} #{:w} (merge {:children #{:m} :exclusive #{:a}} opts))
+        r (th/plain-edits body (into tokens extra) ops #{:s} #{:w} (merge {:children #{:m} :exclusive #{:a}} opts))
         nb (:text/body (:text r))
         at (fn [id] (some #(when (= id (:token/id %)) (cp/cp-subs nb (:token/begin %) (:token/end %))) (:tokens r)))]
     [nb at r]))
@@ -464,7 +465,7 @@
         segs [{:token/id :g1 :token/layer :g :token/begin 8 :token/end 9}
               {:token/id :g2 :token/layer :g :token/begin 9 :token/end 11}]
         ops [(rep 4 7 "one")]
-        r (ta/plain-edits old (into words segs) ops #{} #{:w} {:exclusive #{:g}})
+        r (th/plain-edits old (into words segs) ops #{} #{:w} {:exclusive #{:g}})
         gs (sort-by :token/begin (filter #(= :g (:token/layer %)) (:tokens r)))]
     (is (= "dog one fox." (:text/body (:text r))))
     (is (every? (fn [[x y]] (<= (:token/end x) (:token/begin y))) (partition 2 1 gs)) (pr-str gs))))
@@ -474,7 +475,7 @@
   ;; punctuation: text typed at the end of row 1 goes to its sentence (and
   ;; its row), and to no word
   (let [{:keys [body tokens]} (doc "|Hi|./|Yo|.")
-        run (fn [op] (let [r (ta/plain-edits body tokens [op] #{:s} #{:w} {:exclusive #{:a}})
+        run (fn [op] (let [r (th/plain-edits body tokens [op] #{:s} #{:w} {:exclusive #{:a}})
                            nb (:text/body (:text r))
                            ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
                            ;; the gap-fill
@@ -506,7 +507,7 @@
         tokens (conj tokens
                      {:token/id :a0 :token/layer :a :token/begin 0 :token/end 3}
                      {:token/id :z :token/layer :a :token/begin 3 :token/end 3})
-        r (ta/plain-edits body tokens [(ins 3 "x")] #{:s} #{:w} {:exclusive #{:a}})
+        r (th/plain-edits body tokens [(ins 3 "x")] #{:s} #{:w} {:exclusive #{:a}})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= [0 4] (at :a0)))
     (is (= [4 4] (at :z)))))
@@ -563,7 +564,7 @@
         nodes [{:token/id :n0 :token/layer :u :token/begin 0 :token/end 3}
                {:token/id :c :token/layer :u :token/begin 0 :token/end 0}]
         ops [(ins 12 "x")]
-        r (ta/plain-edits old (into words nodes) ops #{} #{:w})
+        r (th/plain-edits old (into words nodes) ops #{} #{:w})
         c (some #(when (= :c (:token/id %)) %) (:tokens r))]
     (is (= [0 0] [(:token/begin c) (:token/end c)]))))
 
@@ -613,8 +614,8 @@
               (let [r (f old new tokens)
                     gone (set (:deleted r))]
                 (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id #(subs new (:token/begin %) (:token/end %))))) (:tokens r))))
-        body (fn [old new tokens] (ta/plain-body old new tokens #{} #{:w} {:children #{:m}}))
-        edits (fn [old new tokens] (ta/plain-edits old tokens [(rep 4 3 (subs new 4 7))] #{} #{:w}))
+        body (fn [old new tokens] (th/plain-body old new tokens #{} #{:w} {:children #{:m}}))
+        edits (fn [old new tokens] (th/plain-edits old tokens [(rep 4 3 (subs new 4 7))] #{} #{:w}))
         cow [(t :w :w 4 7) (t :co :m 4 6) (t :w2 :m 6 7)]
         cat [(t :w :w 4 7) (t :ca :m 4 6) (t :t :m 6 7)]]
     (is (= {:w "abc"} (run "the cow sat" "the abc sat" cow body) (run "the cow sat" "the abc sat" cow edits)))
@@ -666,9 +667,9 @@
             lb (cp/cp-count (line-text (subvec lines 0 li)))
             lb (if (pos? li) (inc lb) lb)
             le (+ lb (cp/cp-count (str/join " " line)))
-            readings {:whole-replace (ta/plain-edits body tokens [(rep 0 (cp/cp-count body) new)] #{:s} #{:w})
-                      :line-replace (ta/plain-edits body tokens [(rep lb (- le lb) (str/join " " new-line))] #{:s} #{:w})
-                      :whole-body (ta/plain-body body new tokens #{:s} #{:w})}]
+            readings {:whole-replace (th/plain-edits body tokens [(rep 0 (cp/cp-count body) new)] #{:s} #{:w})
+                      :line-replace (th/plain-edits body tokens [(rep lb (- le lb) (str/join " " new-line))] #{:s} #{:w})
+                      :whole-body (th/plain-body body new tokens #{:s} #{:w})}]
         (doseq [[rname r] readings]
           (let [got (live-texts r)
                 where (str rname " " change " word " k " of line " li)]
@@ -707,7 +708,7 @@
   (let [t (fn [id l b e & [p]] (cond-> {:token/id id :token/layer l :token/begin b :token/end e} p (assoc :token/precedence p)))
         opts {:split-on-space true :children #{:x} :dealt #{:x}}
         run (fn [body tokens ops]
-              (let [r (ta/plain-edits body tokens ops #{:s} #{:w} opts)
+              (let [r (th/plain-edits body tokens ops #{:s} #{:w} opts)
                     nb (:text/body (:text r))
                     gone (set (:deleted r))]
                 {:body nb
@@ -721,7 +722,7 @@
                 :made [[:w "ful"] [:x "ful"]]}
                (run body toks [(ins 12 " ")])))
         (testing "a whole-body save alike"
-          (let [r (ta/plain-body body "Hello wonder ful world." toks #{:s} #{:w} opts)]
+          (let [r (th/plain-body body "Hello wonder ful world." toks #{:s} #{:w} opts)]
             (is (= [[:w 13 16] [:x 13 16]] (mapv (juxt :token/layer :token/begin :token/end) (:made r))))))))
     (testing "can't, ca + n't, typed as ca n't: each word on its own part"
       (let [body "I can't go"
@@ -740,7 +741,7 @@
                 :made [[:w "ab"] [:x "ab"] [:w "g"] [:x "g"]]}
                (run body toks [(ins 2 " ") (ins 7 " ")])))))
     (testing "no layer splits on space: nothing is made"
-      (let [r (ta/plain-edits "wonderful" [(t :s :s 0 9) (t :w :w 0 9)] [(ins 6 " ")] #{:s} #{:w} {:children #{:x}})]
+      (let [r (th/plain-edits "wonderful" [(t :s :s 0 9) (t :w :w 0 9)] [(ins 6 " ")] #{:s} #{:w} {:children #{:x}})]
         (is (nil? (:made r)))))))
 
 ;; FX6-SPLIT (2026-10-06): the tokens under a word a typed space splits are
@@ -752,7 +753,7 @@
 (deftest a-split-places-the-tokens-under-a-word-by-where-they-stand
   (let [t (fn [id l b e & [p]] (cond-> {:token/id id :token/layer l :token/begin b :token/end e} p (assoc :token/precedence p)))
         run (fn [body tokens ops opts]
-              (let [r (ta/plain-edits body tokens ops #{:s} #{:w} (merge {:split-on-space true} opts))
+              (let [r (th/plain-edits body tokens ops #{:s} #{:w} (merge {:split-on-space true} opts))
                     nb (:text/body (:text r))
                     gone (set (:deleted r))]
                 {:body nb
@@ -803,7 +804,7 @@
                 :made [[:w "ers"] [:m "ers"] [:m "ers"]]}
                (run body toks [(ins 4 " ")] {:children #{:m}})))))
     (testing "a whole-body save alike"
-      (let [r (ta/plain-body "singers" "sing ers" [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 2) (t :ngers :m 2 7)]
+      (let [r (th/plain-body "singers" "sing ers" [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 2) (t :ngers :m 2 7)]
                              #{:s} #{:w} {:split-on-space true :children #{:m}})]
         (is (= [[:w 5 8] [:m 5 8]] (mapv (juxt :token/layer :token/begin :token/end) (:made r))))
         (is (= [2 4] ((juxt :token/begin :token/end) (some #(when (= :ngers (:token/id %)) %) (:tokens r)))))))))
@@ -862,20 +863,20 @@
   (is (= ["a at" "a" nil "at"] (edit "|at| |at| |at|" [(del 1 4)])) "the word all of whose letters went")
   (testing "sentence 1 is kept"
     (let [{:keys [body tokens]} (doc "|at|\n/|at|")
-          r (ta/plain-edits body tokens [(del 1 3)] #{:s} #{:w})]
+          r (th/plain-edits body tokens [(del 1 3)] #{:s} #{:w})]
       (is (empty? (filter #(= :s (first %)) (:deleted r)))))))
 
 (deftest gaps-read-apart-rebuild-the-body-sent
   ;; REV2-F-TEXT-CORE R2: two gaps over several words and a typed gap between
   (let [{:keys [body tokens]} (doc "|an| |a| |a| |is| |sat|")
         ops [(rep 8 3 "x") (rep 4 1 "") (rep 1 1 "b a")]
-        r (ta/plain-edits body tokens ops #{:s} #{:w})]
+        r (th/plain-edits body tokens ops #{:s} #{:w})]
     (is (= (ta/edit-ops-body ops body) (:text/body (:text r))))))
 
 (deftest a-line-typed-in-front-with-the-first-letter-changed-is-a-sentence
   ;; REV2-F-TEXT-CORE R4: `Oh my.\nH` typed over the `h` of `hi`
   (let [{:keys [body tokens]} (doc "|hi| |there.|\n/|bye|")
-        r (ta/plain-edits body tokens [(rep 0 1 "Oh my.\nH")] #{:s} #{:w})
+        r (th/plain-edits body tokens [(rep 0 1 "Oh my.\nH")] #{:s} #{:w})
         nb (:text/body (:text r))
         w0 (some #(when (= [:w 0] (:token/id %)) %) (:tokens r))]
     (is (= "Oh my.\nHi there.\nbye" nb))
@@ -915,7 +916,7 @@
                                    [(rep (dec e) (- (inc b2) (dec e)) "x y") (ins (inc b0) "q")])))
                  (sort-by #(- (:index %)))
                  vec)
-        run #(ta/plain-edits body tokens ops #{:s} #{:w} {:children #{:m}})
+        run #(th/plain-edits body tokens ops #{:s} #{:w} {:children #{:m}})
         _ (run)
         t0 (System/nanoTime)
         r (run)]
@@ -966,12 +967,12 @@
     (doseq [[body new] [["btd c tttt tbaa td." "btd cY ttttX td."]
                         ["abdc bcat aa t daac." "bcat."]]]
       (let [t (toks body)]
-        (is (= (ta/plain-body body new t #{:s} #{:x} opts)
-               (ta/plain-body body new t #{:s} #{:w} opts)
-               (ta/plain-body body new t #{:s} #{} opts))
+        (is (= (th/plain-body body new t #{:s} #{:x} opts)
+               (th/plain-body body new t #{:s} #{:w} opts)
+               (th/plain-body body new t #{:s} #{} opts))
             (str (pr-str body) " -> " (pr-str new)))
-        (is (= (ta/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:x} opts)
-               (ta/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:w} opts))
+        (is (= (th/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:x} opts)
+               (th/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:w} opts))
             (str "edits " (pr-str body) " -> " (pr-str new)))))))
 
 (deftest a-space-typed-in-a-row-of-a-text-with-no-words-splits-nothing
@@ -991,8 +992,8 @@
                            [(ins 4 "\t") "Ana \truns. Ben sits." [[0 10] [11 20]]]
                            [(ins 4 "and ") "Ana and runs. Ben sits." [[0 13] [14 23]]]
                            [(ins 16 " ") "Ana runs. Ben si ts." [[0 9] [10 20]]]]]
-      (doseq [[path r] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w} opts)]
-                        [:body (ta/plain-body body new tokens #{:s} #{:w} opts)]]]
+      (doseq [[path r] [[:edits (th/plain-edits body tokens [op] #{:s} #{:w} opts)]
+                        [:body (th/plain-body body new tokens #{:s} #{:w} opts)]]]
         (is (= new (:text/body (:text r))) (str path " " (pr-str op)))
         (is (empty? (:made r)) (str path " " (pr-str op) " makes no token"))
         (is (= rows (vec (sort (keep #(when (= :r (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))
@@ -1010,7 +1011,7 @@
         tokens [{:token/id :s :token/layer :s :token/begin 0 :token/end 16}
                 {:token/id :r :token/layer :r :token/begin 0 :token/end 12}
                 {:token/id :p :token/layer :r :token/begin 12 :token/end 12}]
-        r (ta/plain-edits body tokens [(ins 9 " ") (ins 13 "So ")] (:partitioning roles) (:deciders roles)
+        r (th/plain-edits body tokens [(ins 9 " ") (ins 13 "So ")] (:partitioning roles) (:deciders roles)
                           (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers]))
         rows (concat (filter #(= :r (:token/layer %)) (:tokens r)) (filter #(= :r (:token/layer %)) (:made r)))]
     (is (= "Ab cd ef  gh.So  Xy." (:text/body (:text r))))
@@ -1063,8 +1064,8 @@
             punct? [false true]
             :let [tokens (runs-doc body punct?)
                   new (ta/edit-ops-body [op] body)]
-            [path r] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w})]
-                      [:body (ta/plain-body body new tokens #{:s} #{:w})]]]
+            [path r] [[:edits (th/plain-edits body tokens [op] #{:s} #{:w})]
+                      [:body (th/plain-body body new tokens #{:s} #{:w})]]]
       (is (= expect (mapv second (words r))) (str id " " path (when punct? " with punctuation tokens")))
       (when punct?
         (is (every? #(re-matches #"[\p{P}\p{S}]+" %) (puncts r)) (str id " " path " punctuation stays punctuation"))))))
@@ -1090,8 +1091,8 @@
             :let [tokens (doc body spans)
                   new (ta/edit-ops-body [op] body)
                   opts {:letter-like letter-like}]
-            [path r] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w} opts)]
-                      [:body (ta/plain-body body new tokens #{:s} #{:w} opts)]]]
+            [path r] [[:edits (th/plain-edits body tokens [op] #{:s} #{:w} opts)]
+                      [:body (th/plain-body body new tokens #{:s} #{:w} opts)]]]
       (is (= expect (mapv second (word-texts r))) (str id " " path (when (seq letter-like) " with ' letter-like"))))))
 
 (deftest the-punctuation-rule-reads-the-unicode-16-table
@@ -1103,7 +1104,7 @@
                 {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end 2}
                 {:token/id [:w 1] :token/layer :w :token/begin 3 :token/end 4}
                 {:token/id [:w 2] :token/layer :w :token/begin 5 :token/end 7}]
-        r (ta/plain-edits body tokens [(ins 4 "x")] #{:s} #{:w})]
+        r (th/plain-edits body tokens [(ins 4 "x")] #{:s} #{:w})]
     (is (= [[0 2] [3 4] [6 8]]
            (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))))
 
@@ -1150,8 +1151,8 @@
                        (vec (keep #(when (= :a (:token/layer %)) (cp/cp-subs b (:token/begin %) (:token/end %)))
                                   (sort-by :token/begin (:tokens r))))))
         opts {:exclusive #{:a :w}}]
-    (is (= ["ab cd" "...x" "ef gh"] (rows (ta/plain-edits body tokens [(ins 9 "x")] #{:s} #{:w} opts))))
-    (is (= ["ab cd" "...x" "ef gh"] (rows (ta/plain-body body "ab cd ...x ef gh" tokens #{:s} #{:w} opts))))))
+    (is (= ["ab cd" "...x" "ef gh"] (rows (th/plain-edits body tokens [(ins 9 "x")] #{:s} #{:w} opts))))
+    (is (= ["ab cd" "...x" "ef gh"] (rows (th/plain-body body "ab cd ...x ef gh" tokens #{:s} #{:w} opts))))))
 
 (deftest the-punctuation-rule-reads-the-projects-rule
   ;; REV8-PUNCT-5: core read every project with the default rule, so in a
@@ -1169,8 +1170,8 @@
              ["default" {"type" "unicodePunctuation" "whitelist" []} "ab ... cd" [[0 2] [3 6] [7 9]] (ins 6 "x") ["ab" "..." "cd"]]]
             :let [tokens (doc body spans)
                   opts {:letter-like (rule r)}]
-            [path res] [[:edits (ta/plain-edits body tokens [op] #{:s} #{:w} opts)]
-                        [:body (ta/plain-body body (ta/edit-ops-body [op] body) tokens #{:s} #{:w} opts)]]]
+            [path res] [[:edits (th/plain-edits body tokens [op] #{:s} #{:w} opts)]
+                        [:body (th/plain-body body (ta/edit-ops-body [op] body) tokens #{:s} #{:w} opts)]]]
       (is (= want (let [b (:text/body (:text res))]
                     (vec (keep #(when (= :w (:token/layer %)) (cp/cp-subs b (:token/begin %) (:token/end %)))
                                (sort-by :token/begin (:tokens res))))))
@@ -1190,9 +1191,9 @@
                                {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end cut}
                                {:token/id [:w 1] :token/layer :w :token/begin cut :token/end (cp/cp-count body)}])
         ll (ta/ignored-letter-like {"igt" {"ignoredTokens" {"type" "unicodePunctuation" "whitelist" ["'"]}}})]
-    (is (= ["ab'x" "cd"] (sents (ta/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))
-    (is (= ["ab'" "xcd"] (sents (ta/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w}))))
-    (is (= ["ab." "xcd"] (sents (ta/plain-edits "ab.cd" (tokens "ab.cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))))
+    (is (= ["ab'x" "cd"] (sents (th/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))
+    (is (= ["ab'" "xcd"] (sents (th/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w}))))
+    (is (= ["ab." "xcd"] (sents (th/plain-edits "ab.cd" (tokens "ab.cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))))
 
 (deftest a-punctuation-word-typed-over-keeps-its-token
   ;; Luke 2026-10-17: a word made only of punctuation typed over keeps its
@@ -1204,7 +1205,7 @@
                 {:token/id [:w 1] :token/layer :w :token/begin 2 :token/end 3}
                 {:token/id [:w 2] :token/layer :w :token/begin 4 :token/end 6}]
         op (rep 2 1 "x")]
-    (doseq [r [(ta/plain-edits body tokens [op] #{:s} #{:w})
-               (ta/plain-body body "abx cd" tokens #{:s} #{:w})]]
+    (doseq [r [(th/plain-edits body tokens [op] #{:s} #{:w})
+               (th/plain-body body "abx cd" tokens #{:s} #{:w})]]
       (is (= [[0 2] [2 3] [4 6]]
              (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))))))

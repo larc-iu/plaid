@@ -10,6 +10,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
+            [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
 (defn- tok [id begin end]
@@ -369,7 +370,7 @@
   ([old new tokens] (body-edit old new tokens #{}))
   ([old new tokens partitioning] (body-edit old new tokens partitioning #{}))
   ([old new tokens partitioning word-layers]
-   (ta/plain-body old new tokens partitioning word-layers)))
+   (th/plain-body old new tokens partitioning word-layers)))
 
 (deftest respelling-a-last-letter-keeps-it-in-the-tokens-over-the-word
   (let [old "юкъуз хьана"
@@ -823,7 +824,7 @@
   ;; `a` between them, and both would have taken the same letter.
   (let [old "xaaaaay"
         tokens [(tok :t 1 3) (tok :u 4 6)]
-        ops (ta/slide-to-tokens [(ta/delete-op 1 1) (ta/delete-op 4 1)] old tokens)
+        ops (ta/slide-to-tokens [(ta/delete-op 1 1) (ta/delete-op 4 1)] old tokens #{} nil nil)
         edits (#'ta/ops->edits ops)]
     (is (every? (fn [[a b]] (< (:end a) (:start b))) (partition 2 1 edits)) (pr-str ops))
     (is (= "xaaay" (:text/body (:text (apply-all ops old tokens)))))))
@@ -837,7 +838,7 @@
         tokens (word-tokens words)
         ops (ta/diff old new)
         t0 (System/nanoTime)
-        slid (ta/slide-to-tokens ops old tokens)
+        slid (ta/slide-to-tokens ops old tokens #{} nil nil)
         ms (/ (- (System/nanoTime) t0) 1e6)]
     (is (= 1000 (count ops)))
     (is (= new (:text/body (:text (apply-all slid old [])))))
@@ -922,15 +923,13 @@
     (testing "told that the sentences are a partition, the second sentence takes it whole"
       ;; typed after the space, at 5 it joins the second sentence (Luke,
       ;; 2026-10-15), as it does after the `a`
-      (is (#{5 6} (:index (peek (ta/slide-to-tokens ops old all #{:s})))))
+      (is (#{5 6} (:index (peek (ta/slide-to-tokens ops old all #{:s} nil nil)))))
       (let [{:keys [text tokens]} (body-edit old new all #{:s})
             at (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
         (is (= new (:text/body text)))
         ;; the second sentence still starts at the word, so the partition
         ;; gives the first nothing of it
         (is (= [5 16] (at :s2)))))
-    (testing "a layer that is not a partition leaves the choice as it was"
-      (is (= (ta/slide-to-tokens ops old all) (ta/slide-to-tokens ops old all #{}))))
     (testing "a word typed at the start of a sentence stays out of the word after it"
       (let [s [(assoc (tok :s1 0 3) :token/layer :s) (assoc (tok :s2 3 6) :token/layer :s)
                (assoc (tok :x 0 1) :token/layer :w) (assoc (tok :abc 3 6) :token/layer :w)]
@@ -1000,7 +999,7 @@
                       (recur (+ len d) (dec i) (conj out op)))))
               2 (let [new (rstr (.nextInt r 40))]
                   (-> (ta/diff body new)
-                      (ta/slide-to-tokens body tokens)
+                      (ta/slide-to-tokens body tokens #{} nil nil)
                       (ta/normalize-deletes body tokens))))]
     [body tokens ops]))
 
@@ -1277,7 +1276,7 @@
                                 e (if (< (.nextDouble r) 0.15) b (min len (+ b (.nextInt r 6))))]
                             (tok i b e))))
             new (body-of (vec (keep #(case (.nextInt r 4) 0 nil 1 (str % (nth words (.nextInt r (count words)))) %) ws)))
-            ops (ta/slide-to-tokens (ta/diff old new) old tokens)]
+            ops (ta/slide-to-tokens (ta/diff old new) old tokens #{} nil nil)]
         (when (not= (normalize-deletes-counting-every-token ops old tokens)
                     (ta/normalize-deletes ops old tokens))
           (swap! diverged conj [case-n old new]))))
