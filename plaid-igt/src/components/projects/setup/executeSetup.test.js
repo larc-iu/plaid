@@ -3,12 +3,12 @@ import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 import { executeProjectSetup } from './executeSetup.js';
 import { IGT_NAMESPACE } from '../../../domain/igtConfig.js';
 
-// Setup makes a text layer and a vocabulary in two requests: a create, and
-// the write that says what the thing is. A lost response between them leaves
-// something no later look for the finished shape can see, so the resume looks
-// for each twice, or an untagged "Main Text" and an unlinked vocabulary would
-// each be made a second time, the first left behind as an orphan. A token
-// layer is made in one batch with its role and is looked for once.
+// Setup makes a vocabulary in two requests: a create, and the link that says
+// it is this project's. A lost response between them leaves something no later
+// look for the finished shape can see, so the resume looks for it twice, or an
+// unlinked vocabulary would be made a second time, the first left behind as an
+// orphan. A text or token layer is made in one batch with its role and is
+// looked for once, by its role.
 
 // Every answer here has the shape core gives it, and no more: a create
 // answers with the new id alone, a project read names a token layer's id,
@@ -118,26 +118,29 @@ const run = (client, resumeProjectId) =>
 const madeOf = (calls, kind) => calls.created.filter((c) => c.kind === kind);
 
 describe('executeProjectSetup finishes what an interrupted run started', () => {
-  it('tags an untagged "Main Text" rather than making a second one', async () => {
+  it('makes its text layer in one batch with its role, and leaves an untagged "Main Text" alone', async () => {
+    // A layer without a role is not setup's, whatever it is called.
     const project = {
       id: 'p1',
       config: {},
-      textLayers: [{ id: 'tl-half', name: 'Main Text', config: {}, tokenLayers: [] }],
+      textLayers: [{ id: 'tl-other', name: 'Main Text', config: {}, tokenLayers: [] }],
       vocabs: [],
     };
     const { client, calls } = stub(project);
+    let batches = 0;
+    const batched = client.batched;
+    client.batched = async (fn) => {
+      batches += 1;
+      return batched(fn);
+    };
     const result = await run(client, 'p1');
     expect(result.failures).toEqual([]);
-    expect(madeOf(calls, 'text')).toEqual([]);
-    expect(calls.config).toContainEqual({
-      kind: 'text',
-      id: 'tl-half',
-      ns: PLAID_NAMESPACE,
-      key: ROLE_KEY,
-      value: ROLES.BASELINE,
-    });
-    // And its token layers hang off the layer that was there, not a new one.
-    expect(calls.config.filter((c) => c.kind === 'token' && c.key === ROLE_KEY)).toHaveLength(4);
+    expect(madeOf(calls, 'text')).toEqual([{ kind: 'text', name: 'Main Text', under: 'p1' }]);
+    expect(calls.config.some((c) => c.id === 'tl-other')).toBe(false);
+    const tag = calls.config.find((c) => c.kind === 'text' && c.key === ROLE_KEY);
+    expect(tag).toMatchObject({ ns: PLAID_NAMESPACE, value: ROLES.BASELINE });
+    expect(tag.id).not.toBe('tl-other');
+    expect(batches).toBeGreaterThan(0);
   });
 
   it('links a vocabulary an earlier run made rather than making a second one', async () => {

@@ -52,19 +52,13 @@ import { importRepairs } from '../../../domain/importFinish.js';
 // so it is also what identifies one this setup made before it was tagged.
 const BASELINE_LAYER_NAME = 'Main Text';
 
-// ONE RULE FOR "COMPLETE". A text layer and a vocabulary take two requests: a
-// create, and a write that says what the thing is (the role tag on the text
-// layer, the link on a vocabulary). A lost response between the two leaves
-// something no later look for the finished shape can see, and a resume that
-// only looks for the finished shape makes a second one and strands the first.
-// So both are looked for twice: first as finished, then as half made, by the
-// name they carry before the second write. A token or span layer is made in
-// one batch with its tag and its rules, so it is never half made.
-//
-// `unfinishedLayer` is that second look for a text layer. The vocabulary's is
-// at step 8, where the unlinked ones are read.
-const unfinishedLayer = (layers, name) =>
-  (layers || []).find((l) => l.name === name && !l.config?.[PLAID_NAMESPACE]?.[ROLE_KEY]) || null;
+// ONE RULE FOR "COMPLETE". A vocabulary takes two requests: a create, and the
+// link that says it is this project's. A lost response between the two leaves
+// something no later look for the finished shape can see, so the vocabulary
+// is looked for twice, at step 8, where the unlinked ones are read. A text,
+// token or span layer is made in one batch with its role tag (and its rules),
+// so it is never half made, and a layer without a role is never setup's,
+// whatever it is called.
 
 // The whole setup (project + layers + config + vocabularies) is ONE logical
 // operation in the audit log; each write keeps its own description underneath.
@@ -134,41 +128,27 @@ async function executeProjectSetupImpl({
   // another Plaid app may already have set up (matched by shared role).
   const existingTextLayers = existingProject?.textLayers || [];
   const adoptedBaseline = findBaselineTextLayer(existingTextLayers);
-  // Made by an interrupted run and not yet tagged. Nothing else makes a text
-  // layer of this name in this project, so it is finished rather than made a
-  // second time (which left the untagged one behind for good).
-  //
-  // Only where this run would otherwise CREATE one. Setting up over a project
-  // that already has its text, the wizard asks which text layer to build on
-  // and that answer is the step: an untagged "Main Text" from some earlier
-  // attempt is not a better answer to it, and taking it silently tags and
-  // builds under a layer the documents have no text on.
-  const wouldCreateBaseline = isNewProject || setupData.layerSelection?.textLayerType === 'new';
-  const halfMadeBaseline =
-    adoptedBaseline || !wouldCreateBaseline
-      ? null
-      : unfinishedLayer(existingTextLayers, BASELINE_LAYER_NAME);
-  const baselineLayer = adoptedBaseline ?? halfMadeBaseline;
+  const baselineLayer = adoptedBaseline;
+
+  // A text layer made here is made in one batch with its role.
+  const createBaseline = async () => {
+    updateProgress(20, 'Creating text layer…');
+    const id = uuidv7();
+    await client.batched((b) => {
+      b.textLayers.create(currentProjectId, BASELINE_LAYER_NAME, undefined, { id });
+      b.textLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+    });
+    resources.textLayer = { id, name: BASELINE_LAYER_NAME };
+    return id;
+  };
 
   let textLayerId = baselineLayer?.id ?? null;
-  let needsBaselineTag = !!halfMadeBaseline;
+  let needsBaselineTag = false;
   if (adoptedBaseline) {
     updateProgress(20, 'Using shared text layer…');
     // Adopted baseline already carries role=baseline — no re-stamp needed.
-  } else if (halfMadeBaseline) {
-    updateProgress(20, 'Using existing text layer…');
-  } else if (isNewProject) {
-    updateProgress(20, 'Creating text layer…');
-    const textLayer = await client.textLayers.create(currentProjectId, BASELINE_LAYER_NAME);
-    textLayerId = textLayer.id;
-    resources.textLayer = textLayer;
-    needsBaselineTag = true;
-  } else if (setupData.layerSelection?.textLayerType === 'new') {
-    updateProgress(20, 'Creating text layer…');
-    const textLayer = await client.textLayers.create(currentProjectId, BASELINE_LAYER_NAME);
-    textLayerId = textLayer.id;
-    resources.textLayer = textLayer;
-    needsBaselineTag = true;
+  } else if (isNewProject || setupData.layerSelection?.textLayerType === 'new') {
+    textLayerId = await createBaseline();
   } else if (
     setupData.layerSelection?.textLayerType === 'existing' &&
     setupData.layerSelection?.selectedTextLayerId
