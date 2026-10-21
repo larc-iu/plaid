@@ -126,6 +126,7 @@ export default {
     'vocab.fieldNotInline': VOCABULARY,
     'vocab.fieldTagset': VOCABULARY,
     'vocab.fieldLang': VOCABULARY,
+    'vocab.fieldRole': VOCABULARY,
     'vocab.fieldMultilingual': VOCABULARY,
     'vocab.fieldItemRef': VOCABULARY,
     'vocab.fieldItemRefMany': VOCABULARY,

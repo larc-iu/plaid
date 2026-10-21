@@ -503,6 +503,7 @@ const CONFIG_KEYS = {
     'vocab.fieldNotInline',
     'vocab.fieldTagset',
     'vocab.fieldLang',
+    'vocab.fieldRole',
     'vocab.fieldMultilingual',
     'vocab.fieldItemRef',
     'vocab.fieldItemRefMany',

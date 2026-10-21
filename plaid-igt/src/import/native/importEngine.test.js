@@ -521,6 +521,28 @@ describe('importVocabulary', () => {
     );
   });
 
+  it("writes each field's role, and proposes one for a field an older archive records without the key", async () => {
+    const client = stubClient();
+    const data = serializeVocabularyNative({
+      ...VOCAB,
+      config: {
+        igt: { fields: { gloss: { inline: true }, Meaning: { role: 'gloss' }, Stage: {} } },
+      },
+    });
+    // Recorded none: none, whatever the name.
+    expect(data.fields.find((f) => f.name === 'gloss').role).toBeNull();
+    data.fields.push({ name: 'Part of speech', inline: false }, { name: 'status', inline: false });
+    await importVocabulary({ client, vocabId: 'newvocab', vocabData: data });
+    expect(callsOf(client, 'vocabLayers.setConfig')[0][4]).toEqual({
+      morphType: { inline: false },
+      gloss: { inline: true },
+      Meaning: { inline: false, role: 'gloss' },
+      Stage: { inline: false },
+      'Part of speech': { inline: false, role: 'pos' },
+      status: { inline: false, role: 'status' },
+    });
+  });
+
   it('resumes by nativeImportId without duplicating', async () => {
     const client = stubClient({
       existingItems: [{ id: 'kept', form: 'perro', metadata: { nativeImportId: 'item1' } }],

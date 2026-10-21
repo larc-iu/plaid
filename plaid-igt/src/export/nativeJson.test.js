@@ -330,9 +330,9 @@ describe('serializeVocabularyNative', () => {
       ],
     });
     expect(out.fields).toEqual([
-      { name: 'morphType', inline: false }, // immutable core fields pinned first
-      { name: 'gloss', inline: true },
-      { name: 'custom', inline: false },
+      { name: 'morphType', inline: false, role: null }, // immutable core fields pinned first
+      { name: 'gloss', inline: true, role: null },
+      { name: 'custom', inline: false, role: null },
     ]);
     expect(out.items).toEqual([
       { id: 'b', form: 'zeta', metadata: { gloss: 'z' } },
@@ -355,10 +355,10 @@ describe('serializeVocabularyNative', () => {
       items: [],
     });
     expect(out.fields).toEqual([
-      { name: 'morphType', inline: false },
-      { name: 'gloss', inline: true },
-      { name: 'pos', inline: true, tagset: 'POS' },
-      { name: 'Plural', inline: false, lang: 'ru' },
+      { name: 'morphType', inline: false, role: null },
+      { name: 'gloss', inline: true, role: null },
+      { name: 'pos', inline: true, tagset: 'POS', role: null },
+      { name: 'Plural', inline: false, lang: 'ru', role: null },
     ]);
     expect(out.tagsets).toEqual(tagsets);
   });
@@ -567,7 +567,7 @@ describe('serializeVocabularyNative, the dictionary side of a field', () => {
       config: {
         igt: {
           fields: {
-            gloss: { inline: true },
+            gloss: { inline: true, role: 'gloss' },
             variantOf: { inline: false, type: 'item' },
             seeAlso: { inline: false, type: 'item', many: true },
             etymology: { inline: false, scope: 'entry' },
@@ -580,13 +580,19 @@ describe('serializeVocabularyNative, the dictionary side of a field', () => {
       name: 'variantOf',
       inline: false,
       type: 'item',
+      role: null,
     });
     expect(out.fields.find((f) => f.name === 'seeAlso')).toMatchObject({
       type: 'item',
       many: true,
     });
     expect(out.fields.find((f) => f.name === 'etymology')).toMatchObject({ scope: 'entry' });
-    expect(out.fields.find((f) => f.name === 'gloss')).toEqual({ name: 'gloss', inline: true });
+    // A role is always written, null for none.
+    expect(out.fields.find((f) => f.name === 'gloss')).toEqual({
+      name: 'gloss',
+      inline: true,
+      role: 'gloss',
+    });
   });
 });
 

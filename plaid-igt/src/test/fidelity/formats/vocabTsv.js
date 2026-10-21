@@ -100,6 +100,7 @@ export default {
     ),
     'vocab.fieldNotInline': FIELD_CONFIG,
     'vocab.fieldTagset': FIELD_CONFIG,
+    'vocab.fieldRole': inherent('A header is a label, and Bulk Add sets no field configuration.'),
     'vocab.fieldLang': inherent(
       'The Entries screen writes a field\'s language into its header ("Gloss (en)") and the project zip does not. Either way a header is a label, and Bulk Add sets no field configuration.',
     ),

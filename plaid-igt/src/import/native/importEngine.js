@@ -39,6 +39,7 @@ import {
 import { CHUNK } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
+import { proposeEntryRole } from '../../domain/entryRole.js';
 import { tokenEdges } from './readArchive.js';
 import {
   declareOtherLayerRules,
@@ -217,6 +218,7 @@ export async function importVocabulary({
           ...(f.type === 'item' ? { type: 'item' } : {}),
           ...(f.type === 'item' && f.many ? { many: true } : {}),
           ...(f.scope === 'entry' ? { scope: 'entry' } : {}),
+          ...(entryRoleOf(f) ? { role: entryRoleOf(f) } : {}),
         },
       ]),
     );
@@ -966,6 +968,11 @@ export async function runNativeImport(args) {
     ref: 'format:native',
   });
 }
+
+// A vocabulary field's role: what the archive records, none (null) included.
+// A record without the key, from an archive made before roles, is given the
+// one its name proposes, since the import makes the field.
+const entryRoleOf = (f) => (f.role !== undefined ? f.role : proposeEntryRole(f.name));
 
 /**
  * Archive layer id -> this project's id for the layers setup made or the

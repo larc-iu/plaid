@@ -682,12 +682,14 @@ describe('importLexicon', () => {
     expect(cfg.args).toMatchObject({ vocabId: 'v1', ns: 'igt', key: 'fields' });
     expect(cfg.args.value).toEqual({
       // the bare key is the primary analysis writing system, and says so
-      gloss: { inline: true, lang: 'en' },
-      pos: { inline: true },
-      definition: { inline: false, lang: 'en' },
+      // and each gloss, definition and part of speech holds its role, the
+      // second language's gloss with its language, never read from its name
+      gloss: { inline: true, lang: 'en', role: 'gloss' },
+      pos: { inline: true, role: 'pos' },
+      definition: { inline: false, lang: 'en', role: 'definition' },
       morphType: { inline: false },
       lexemeForm: { inline: false },
-      'gloss (ru)': { inline: false },
+      'gloss (ru)': { inline: false, lang: 'ru', role: 'gloss' },
       Plural: { inline: false },
       'Parsing Note': { inline: false },
     });
@@ -707,7 +709,7 @@ describe('importLexicon', () => {
     // The vocab's own choice survives, and the language it never had is filled in.
     expect(cfg.gloss).toEqual({ inline: false, lang: 'en' });
     expect(cfg.Dialect).toEqual({ inline: true });
-    expect(cfg.pos).toEqual({ inline: true });
+    expect(cfg.pos).toEqual({ inline: true, role: 'pos' });
     expect(cfg).toHaveProperty('gloss (ru)');
   });
 

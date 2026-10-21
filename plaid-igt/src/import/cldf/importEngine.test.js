@@ -416,7 +416,10 @@ describe('runCldfImport', () => {
     });
     const fields = callsOf(client, 'vocabLayers.setConfig').at(-1).args.value;
     expect(fields.status).toEqual({ inline: false, tagset: 'Status' });
-    expect(fields.gloss).toEqual({ inline: true });
+    // The keys CLDF's own columns fill hold their roles.
+    expect(fields.gloss).toEqual({ inline: true, role: 'gloss' });
+    expect(fields.pos).toEqual({ inline: true, role: 'pos' });
+    expect(fields.definition).toEqual({ inline: false, role: 'definition' });
   });
 
   it('places the senses a cancelled run left flat', async () => {

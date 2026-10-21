@@ -20,7 +20,7 @@ import {
   settlePrior,
 } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
-import { isReservedFieldName } from '../../domain/vocabFields.js';
+import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { withLangSuffix } from '../../domain/fieldNames.js';
@@ -296,12 +296,28 @@ export async function importLexicon({
   }
 
   const wsOk = analysisWss ? new Set(analysisWss) : null;
+  // What this import knows of each key it writes, for the field schema: the
+  // writing system of a per-language key, and the role of a gloss or a
+  // definition. Never read back from the key's name.
+  const keyLang = new Map();
   const perWs = (base, m) => {
     const out = {};
     for (const [ws, text] of Object.entries(m ?? {})) {
       if (wsOk && !wsOk.has(ws)) continue;
-      out[entryKey(base, ws, primaryAnalysisWs)] = text;
+      const key = entryKey(base, ws, primaryAnalysisWs);
+      out[key] = text;
+      keyLang.set(key, ws);
     }
+    return out;
+  };
+  const keyRole = new Map([
+    ['gloss', ENTRY_ROLES.GLOSS],
+    ['definition', ENTRY_ROLES.DEFINITION],
+    ['pos', ENTRY_ROLES.POS],
+  ]);
+  const senseText = (base, m) => {
+    const out = perWs(base, m);
+    for (const key of Object.keys(out)) keyRole.set(key, base);
     return out;
   };
   const wanted = new Set(lexiconFields);
@@ -362,8 +378,8 @@ export async function importLexicon({
       const metadata = {
         // gloss first: the editor popover's no-config fallback shows the
         // first metadata value.
-        ...perWs('gloss', sense.gloss),
-        ...perWs('definition', sense.definition),
+        ...senseText('gloss', sense.gloss),
+        ...senseText('definition', sense.definition),
         // One category, named in each analysis writing system: the entry
         // takes it in the one the import reads, as the words do.
         ...(sense.pos?.[posWs] != null && { pos: sense.pos[posWs] }),
@@ -394,6 +410,8 @@ export async function importLexicon({
   // glossed in one non-English language goes out mislabelled.
   const BARE_PRIMARY = new Set(['gloss', 'definition']);
   for (const n of fieldKeys) {
+    const role = keyRole.get(n);
+    const lang = keyLang.get(n) ?? customFieldWs[n];
     if (n in fieldsConfig) {
       // The wizard seeds every new vocabulary with gloss and definition before
       // the import runs, so for a FLEx import "already declared" is the usual
@@ -406,12 +424,14 @@ export async function importLexicon({
       }
       continue;
     }
-    // `lang` records the writing system for the fields that have exactly one
-    // (FLEx's custom fields, and the primary language of gloss/definition).
+    // `lang` records the writing system of every per-language key this
+    // import writes ("gloss (ru)" is in ru), and `role` what a gloss, a
+    // definition or the part of speech is, whatever the key is called.
     fieldsConfig[n] = {
       inline: n === 'gloss' || n === 'pos',
-      ...(customFieldWs[n] ? { lang: customFieldWs[n] } : {}),
+      ...(lang ? { lang } : {}),
       ...(BARE_PRIMARY.has(n) ? { lang: primaryAnalysisWs } : {}),
+      ...(role ? { role } : {}),
     };
   }
   // Only where it differs: a resume writes nothing the first run already did.

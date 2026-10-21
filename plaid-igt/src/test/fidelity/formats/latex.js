@@ -146,6 +146,10 @@ export default {
     'vocab.fieldTagset': inherent(
       'The tagset is not written. A value of the field prints as is, like any other.',
     ),
+    'vocab.fieldRole': {
+      carried: 'changed',
+      how: 'Not written. The status field decides which entries print, and its values are left out of the entry.',
+    },
     'vocab.fieldLang': {
       carried: 'changed',
       how: 'The writing system shows only as the suffix on the field\'s name ("Source (en): ..."). A value whose letters read right to left is set in its own direction.',

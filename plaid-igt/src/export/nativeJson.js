@@ -345,9 +345,11 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   // `lang` is a FLEx custom field's writing system; both are carried only
   // when set, so a plain field stays `{name, inline}`.
   // `type`, `many` and `scope` say a field is an Entry field or a
-  // headword-only one, written only when set, like the others.
+  // headword-only one, written only when set, like the others. `role` is
+  // always written, null for none: an import gives a field whose record lacks
+  // the key (an archive older than roles) the role its name proposes.
   const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(
-    ({ name, inline, tagset, lang, type, many, scope }) => ({
+    ({ name, inline, tagset, lang, type, many, scope, role }) => ({
       name,
       inline,
       ...(tagset ? { tagset } : {}),
@@ -355,6 +357,7 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
       ...(type === 'item' ? { type } : {}),
       ...(type === 'item' && many ? { many: true } : {}),
       ...(scope === 'entry' ? { scope } : {}),
+      role: role ?? null,
     }),
   );
   // `nativeImportId` is bookkeeping this app stamps on an entry it created from

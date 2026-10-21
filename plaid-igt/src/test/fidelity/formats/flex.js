@@ -248,6 +248,10 @@ export default {
       how: 'FLEx keeps part of speech and sense status as lists of its own, so a tagset on pos fills the grammatical-info range, and one on status fills the status range, with each entry\'s value as <sense><trait name="status" value>. On any other field, a closed tagset that splits no value into tags makes the field a FLEx custom list field: a <header><fields><field tag> whose qaa-x-spec form names Class LexSense (LexEntry for a headword-only field), Type ReferenceAtomic, DstCls CmPossibility and range <tagset name>, each value as <trait name="<field>" value>, and the list as <range id="<tagset name>" guid> in .lift-ranges. A field whose tagset is suggest or mixed stays a text <field> and its tagset is not written: its values are free text, and a list field would make every one of them a list item.',
       ruling: TAGSET_RULING,
     },
+    'vocab.fieldRole': {
+      carried: 'changed',
+      how: 'Not written as such. The LIFT export writes each gloss, definition and part-of-speech field by its role, and the import gives the gloss, definition and part-of-speech fields it makes those roles. A status field comes back with none.',
+    },
     'vocab.fieldLang': {
       carried: true,
       where: "lift lang attribute of the field's <gloss>, <definition><form> or <field><form>",

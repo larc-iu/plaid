@@ -283,6 +283,7 @@ export default {
     'vocab.fieldNotInline': NO_LEXICON,
     'vocab.fieldTagset': NO_LEXICON,
     'vocab.fieldLang': NO_LEXICON,
+    'vocab.fieldRole': NO_LEXICON,
     'vocab.fieldMultilingual': NO_LEXICON,
     'vocab.fieldItemRef': NO_LEXICON,
     'vocab.fieldItemRefMany': NO_LEXICON,

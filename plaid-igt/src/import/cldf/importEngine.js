@@ -21,7 +21,7 @@ import {
   settlePrior,
 } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
-import { isReservedFieldName } from '../../domain/vocabFields.js';
+import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   createDocumentShell,
@@ -32,6 +32,14 @@ import {
 } from '../project.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { sameName } from '@ui/lib/nameKey.js';
+
+// The entry keys the importer itself fills from CLDF's own columns, and the
+// role each holds. Any other column becomes a field without one.
+const COLUMN_ROLES = {
+  gloss: ENTRY_ROLES.GLOSS,
+  definition: ENTRY_ROLES.DEFINITION,
+  pos: ENTRY_ROLES.POS,
+};
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
@@ -217,7 +225,12 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
   for (const name of fieldKeys) {
     if (name in fieldsConfig) continue;
-    fieldsConfig[name] = { inline: name === 'gloss' || name === 'pos' };
+    fieldsConfig[name] = {
+      inline: name === 'gloss' || name === 'pos',
+      // The keys the dataset's own columns fill (a sense's Description, its
+      // Definition, a Part of Speech) say what they hold.
+      ...(COLUMN_ROLES[name] ? { role: COLUMN_ROLES[name] } : {}),
+    };
   }
   // Only where it differs: a resume writes nothing the first run already did.
   await writeVocabConfig(existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>

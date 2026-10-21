@@ -245,6 +245,13 @@ export default {
       kind: 'inherent',
       why: 'A field’s tagset has no place in CLDF. Only the Status field project setup seeds comes back with one.',
     },
+    'vocab.fieldRole': {
+      carried: false,
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
+      why: 'Not written. The gloss, definition and part-of-speech columns are filled by role, and the import gives the fields it makes from those columns their roles, so a role on any other field comes back as none.',
+    },
     'vocab.fieldLang': {
       carried: false,
       kind: 'ruled',

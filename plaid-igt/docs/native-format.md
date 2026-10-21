@@ -91,8 +91,9 @@ the upload's media type is validated from its filename.
 
 ```jsonc
 { "id": "…", "name": "Lexicon",
-  "fields": [{ "name": "morphType", "inline": false }, { "name": "gloss", "inline": true },
-             { "name": "pos", "inline": true, "tagset": "POS" },
+  "fields": [{ "name": "morphType", "inline": false, "role": null },
+             { "name": "gloss", "inline": true, "role": "gloss" },
+             { "name": "pos", "inline": true, "tagset": "POS", "role": "pos" },
              { "name": "variantOf", "inline": false, "type": "item", "many": true,
                "scope": "entry" }, …],
   "tagsets": { "POS": { "delimiters": "", "mode": "closed", "values": [{ "value": "n" }, …] } },
@@ -106,7 +107,10 @@ the upload's media type is validated from its filename.
   system) is likewise present only when set. A field that refers to entries is
   `type: "item"` (its values are ids of other entries in the SAME vocabulary),
   `many: true` (a list of them rather than one) and `scope: "entry"` (shown on a
-  headword, not on its senses), each written only when set.
+  headword, not on its senses), each written only when set. `role` (`gloss`,
+  `definition`, `pos` or `status`) says what the field's values are, and is always
+  written, `null` for none. On import a field whose record lacks the key is given
+  the role its name proposes, since the import makes the field.
 - `tagsets` is the vocabulary's own tagset map, the same shape as the project's
   `schema.tagsets`, `null` when it has none. A vocabulary carries its own because it
   is shared across projects. On import the map replaces the new vocabulary's
@@ -416,8 +420,8 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    span layers, then the relation layers on any of these. Config goes back key by
    key with `setConfig`. A layer whose parent cannot be resolved is skipped with a
    warning, and so is everything nested in it.
-2. Per vocabulary: write `fields` (with each `tagset`/`lang`, and `type`/`many`/
-   `scope`) and `tagsets`, then create items **in array order**, mapping old item
+2. Per vocabulary: write `fields` (with each `tagset`/`lang`, `type`/`many`/
+   `scope` and `role`) and `tagsets`, then create items **in array order**, mapping old item
    ids to new. Item
    metadata is written as it stands here, ids and all, and corrected in step 4.
    The importer stamps each created item's metadata with `nativeImportId` (the

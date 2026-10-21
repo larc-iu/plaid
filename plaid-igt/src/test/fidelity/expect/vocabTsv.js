@@ -110,6 +110,7 @@ const strips = {
   'vocab.fieldNotInline': onlyTheEntries,
   'vocab.fieldTagset': onlyTheEntries,
   'vocab.fieldLang': onlyTheEntries,
+  'vocab.fieldRole': onlyTheEntries,
   'vocab.fieldMultilingual': onlyTheEntries,
   'vocab.fieldItemRef': onlyTheEntries,
   'vocab.fieldItemRefMany': onlyTheEntries,

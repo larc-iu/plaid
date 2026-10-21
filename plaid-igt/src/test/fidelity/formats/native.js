@@ -109,6 +109,7 @@ export default {
     'vocab.fieldNotInline': carried,
     'vocab.fieldTagset': carried,
     'vocab.fieldLang': carried,
+    'vocab.fieldRole': carried,
     'vocab.fieldMultilingual': carried,
     'vocab.fieldItemRef': carried,
     'vocab.fieldItemRefMany': carried,

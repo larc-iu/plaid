@@ -420,6 +420,12 @@ export const FEATURES = [
     detect: (s) => count(vocabFieldEntries(s), ([, f]) => !!f?.lang),
   },
   {
+    key: 'vocab.fieldRole',
+    what: 'a vocabulary field holding a role (gloss, definition, part of speech, status)',
+    detect: (s) => count(vocabFieldEntries(s), ([, f]) => !!f?.role),
+    bare: true,
+  },
+  {
     key: 'vocab.fieldMultilingual',
     what: 'a field in a second writing system, named with its suffix (“gloss (ru)”)',
     detect: (s) => count(vocabFieldEntries(s), ([name]) => !!fieldNameLang(name)),

@@ -233,6 +233,10 @@ export const STRIPS = {
     for (const v of vocabs(s))
       for (const f of Object.values(v.config?.igt?.fields || {})) delete f?.lang;
   },
+  'vocab.fieldRole': (s) => {
+    for (const v of vocabs(s))
+      for (const f of Object.values(v.config?.igt?.fields || {})) delete f?.role;
+  },
   'vocab.fieldMultilingual': (s) => {
     for (const v of vocabs(s)) {
       const fields = v.config?.igt?.fields || {};
