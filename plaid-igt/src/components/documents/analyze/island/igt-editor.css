@@ -3,7 +3,12 @@
    convention of styling bespoke editor surfaces with plain CSS. Dimensions and
    colors carried over from the old DocumentAnalyze.css for visual continuity. */
 
-.igt-island {
+/* The alternatives list renders into its own root under <body> (see
+   IgtEditor), outside .igt-island, so the root takes the same variables: with
+   none, the list's background resolved to nothing and the grid showed
+   through it. */
+.igt-island,
+.igt-alts-root {
   --igt-blue: #2563eb;
   /* Provenance hues: violet for machine-made material, amber for a
      contributor's unreviewed work. Each has a soft tint for underlines and

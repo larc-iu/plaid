@@ -114,6 +114,7 @@ export class IgtEditor {
     // the cell — and keeping it out means opening, filtering and closing it
     // re-render one small element instead of every cell in the document.
     this._altsRoot = document.createElement('div');
+    this._altsRoot.className = 'igt-alts-root';
     document.body.appendChild(this._altsRoot);
     this.doc = doc;
     this.readOnly = readOnly;
