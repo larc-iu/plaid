@@ -1073,3 +1073,12 @@ def test_overwrite_restamps_a_verified_value_it_changes_and_leaves_one_it_agrees
     [(kind, [update])] = _writes(service)
     assert kind == 'spans.bulk_update' and update['id'] == 'u0-2'
     assert {'op': 'delete', 'path': ['provConfirmed']} in update['metadata']
+
+
+def test_a_layer_is_found_by_its_ud_flag_never_by_its_name():
+    """A7: a span layer named Lemma that carries no ud.lemma flag is not the
+    lemma layer, and one with the flag is, whatever it is called."""
+    layers = [{'id': 'a', 'name': 'Lemma', 'config': {}},
+              {'id': 'b', 'name': 'Citation form', 'config': {'ud': {'lemma': True}}}]
+    assert ud.span_layer_by_ud_config(layers, 'lemma')['id'] == 'b'
+    assert ud.span_layer_by_ud_config(layers[:1], 'lemma') is None

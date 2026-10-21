@@ -112,12 +112,12 @@ class PipelineProvider:
         return pipe
 
 
-def span_layer_by_ud_config(layers, key, fallback_name=None):
+def span_layer_by_ud_config(layers, key):
+    """The span layer carrying this `ud` flag, or None. By flag only, never by
+    the layer's name."""
     for layer in layers:
         if layer.get("config", {}).get("ud", {}).get(key) is True:
             return layer
-    if fallback_name:
-        return next((layer for layer in layers if layer.get("name") == fallback_name), None)
     return None
 
 
@@ -878,11 +878,11 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         raise setup_incomplete("no sentence, word or syntactic-word token layer")
 
     span_layers = morpheme_layer.get("span_layers", [])
-    form_layer = span_layer_by_ud_config(span_layers, "form", "Form")
-    lemma_layer = span_layer_by_ud_config(span_layers, "lemma", "Lemma")
-    upos_layer = span_layer_by_ud_config(span_layers, "upos", "UPOS")
-    xpos_layer = span_layer_by_ud_config(span_layers, "xpos", "XPOS")
-    features_layer = span_layer_by_ud_config(span_layers, "features", "Features")
+    form_layer = span_layer_by_ud_config(span_layers, "form")
+    lemma_layer = span_layer_by_ud_config(span_layers, "lemma")
+    upos_layer = span_layer_by_ud_config(span_layers, "upos")
+    xpos_layer = span_layer_by_ud_config(span_layers, "xpos")
+    features_layer = span_layer_by_ud_config(span_layers, "features")
 
     existing_sentences = sorted(sentence_layer.get("tokens") or [], key=lambda t: t["begin"])
     existing_words = sorted(word_layer.get("tokens") or [], key=lambda t: (t["begin"], t["end"]))
