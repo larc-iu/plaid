@@ -151,7 +151,7 @@ describe('useServiceSpot', () => {
     expect(spot().params.values).toEqual({});
   });
 
-  it("applies the project's default fields to every method of the task, under a method's own params", async () => {
+  it("applies the project's default fields to every method of the task, and never a field named in a method's params", async () => {
     const fieldParams = [
       { key: 'gloss_field', label: 'Gloss field', type: 'field', scope: 'Morpheme', role: 'gloss' },
       { key: 'translation_field', label: 'Translation field', type: 'field', scope: 'Sentence' },
@@ -188,8 +188,9 @@ describe('useServiceSpot', () => {
       fieldRoles,
       fieldIds,
     });
-    // The stored default field wins over the field holding the role.
-    expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Free' });
+    // The stored default field wins over the field holding the role, and a
+    // field the default method's params name by name is not read.
+    expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Traduccion' });
     await step(() => spot().choose('service:b'));
     expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Traduccion' });
   });

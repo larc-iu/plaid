@@ -412,4 +412,59 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
     );
     await unmount();
   });
+
+  it('saves a service option without a field named in its params', async () => {
+    const svc = {
+      serviceId: 's7',
+      serviceName: 's7',
+      online: true,
+      extras: {
+        tasks: ['analyze'],
+        parameters: [
+          { key: 'language', label: 'Language', type: 'string', default: '' },
+          {
+            key: 'gloss_field',
+            label: 'Gloss field',
+            type: 'field',
+            scope: 'Morpheme',
+            role: 'gloss',
+          },
+        ],
+      },
+    };
+    const stored = {
+      analyze: { service: { serviceId: 's7' }, params: { language: 'tr', gloss_field: 'Gloss' } },
+    };
+    const client = makeClient({
+      projects: {
+        get: async () => ({ id: 'p1', config: { igt: { serviceDefaults: stored } } }),
+        setConfig: vi.fn(async () => {}),
+      },
+      messages: { discoverServices: async () => [svc], discardService: vi.fn() },
+    });
+    const { container, step, unmount } = await mount({
+      client,
+      fieldsOf: () => ({ Morpheme: ['Gloss'] }),
+      fieldIdsOf: () => ({ Morpheme: { Gloss: 'id-gloss' } }),
+    });
+    const input = [...container.querySelectorAll('input')].find((i) => i.value === 'tr');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    await step(() => {
+      setter.call(input, 'az');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await step(async () => {
+      byText(container, 'button', 'Save defaults').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).toHaveBeenCalledWith(
+      'p1',
+      'igt',
+      'serviceDefaults',
+      { analyze: { service: { serviceId: 's7' }, params: { language: 'az' } } },
+      undefined,
+      expect.anything(),
+    );
+    await unmount();
+  });
 });

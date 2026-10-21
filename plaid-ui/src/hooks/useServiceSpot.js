@@ -38,6 +38,12 @@ const EMPTY = [];
 //               Lexicon field holds, which fills a `field` parameter naming it.
 //   fieldIds:   {scope: {field name: span layer id}}, what reads the project's
 //               default fields (stored by id) as names.
+// `params` without the keys the schema declares as field parameters.
+const withoutFieldParams = (schema, params) => {
+  const fieldKeys = new Set((schema || []).filter((p) => p?.type === 'field').map((p) => p.key));
+  return Object.fromEntries(Object.entries(params || {}).filter(([k]) => !fieldKeys.has(k)));
+};
+
 export function useServiceSpot({
   task,
   project,
@@ -129,12 +135,13 @@ export function useServiceSpot({
     fieldRoles,
     fieldIds,
     // A project default's params belong to the method it names, and to no
-    // other. Its default fields go to every method of the task, under those.
+    // other. Its default fields go to every method of the task. A field
+    // parameter comes only from those, never from a name in `params`.
     defaultParams: {
-      ...fieldParamNames(projectDefault, fieldIds),
       ...(projectDefault && selectionFromConfig(projectDefault) === selection
-        ? projectDefault.params
+        ? withoutFieldParams(schema, projectDefault.params)
         : {}),
+      ...fieldParamNames(projectDefault, fieldIds),
     },
   });
 

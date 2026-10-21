@@ -148,10 +148,14 @@ function SpotCard({
     () => getParamSchema(selectedService).filter((p) => p?.type !== 'field'),
     [selectedService],
   );
-  const paramValues = useMemo(
-    () => ({ ...buildDefaultValues(paramSchema), ...(draftEntry?.params || {}) }),
-    [paramSchema, draftEntry],
-  );
+  // Only the keys of those options: a field parameter is never kept by name
+  // in `params`, so saving drops one an older setting left there.
+  const paramValues = useMemo(() => {
+    const stored = draftEntry?.params || {};
+    return Object.fromEntries(
+      paramSchema.map((p) => [p.key, stored[p.key] ?? buildDefaultValues([p])[p.key]]),
+    );
+  }, [paramSchema, draftEntry]);
   // Every field parameter the task's methods take, once per key.
   const fieldSchema = useMemo(() => {
     const byKey = new Map();
