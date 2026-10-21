@@ -248,19 +248,27 @@ def test_a_sentence_with_nothing_to_go_on_is_a_counted_failure():
     assert service.client.writes == []
 
 
-def test_a_project_with_no_gloss_lines_names_no_node_from_a_gloss_and_says_so():
-    """No mapping on the project: a gloss names nothing, whatever its layer
-    is called, and the failure says the gloss lines are not set."""
+NO_GLOSS_LINE = ('Failed to draft sentence 1: No word has a vocabulary link, and no gloss line '
+                 'in UMR settings is a word or morpheme gloss.')
+
+
+@pytest.mark.parametrize('config', [
+    {},
+    # As setup writes it for a project IGT glossed later: no line reads a gloss.
+    {'umr': {'ilg': [{'header': None, 'lang': None, 'source': 'stored'}]}},
+    {'umr': {'ilg': [{'header': 'pos', 'lang': None, 'source': 'layer:glossL'}]}},
+])
+def test_a_project_whose_lines_read_no_gloss_names_no_node_from_one_and_says_so(config):
+    """No line of the project's mapping is a gloss: a gloss names nothing,
+    whatever its layer is called, and the failure says where lines are set."""
     document = _document()
     document['text_layers'][0]['token_layers'][1]['vocabs'] = []
     service = _service(documents=[document])
-    service.client.projects._project['config'] = {}
+    service.client.projects._project['config'] = config
     helper = servicetest.run(service, REQUEST)
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (0, 1)
-    assert result['notice']['message'] == (
-        'Failed to draft sentence 1: No word has a vocabulary link, and the project has no '
-        'gloss lines set in UMR settings.')
+    assert result['notice']['message'] == NO_GLOSS_LINE
     assert service.client.writes == []
 
 
