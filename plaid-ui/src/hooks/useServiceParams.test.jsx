@@ -53,6 +53,44 @@ describe('useServiceParams', () => {
     await unmount();
   });
 
+  it('remembers a field parameter by its span layer id, so a rename keeps it, never by name', async () => {
+    const schema = [
+      { key: 'gloss_field', label: 'Gloss field', type: 'field', scope: 'Morpheme', role: 'gloss' },
+    ];
+    const fieldIds = { Morpheme: { Gloss: 'id-gloss', Glosa: 'id-glosa' } };
+    const first = await mount({
+      schema,
+      storageKey: 'k',
+      fields: { Morpheme: ['Gloss', 'Glosa'] },
+      fieldRoles: { Morpheme: { Gloss: 'gloss' } },
+      fieldIds,
+    });
+    await first.step(() => first.params().setParam('gloss_field', 'Glosa'));
+    expect(JSON.parse(localStorage.getItem('k'))).toEqual({ gloss_field: 'id-glosa' });
+    await first.unmount();
+    // "Glosa" is renamed: the remembered id reads as the new name.
+    const again = await mount({
+      schema,
+      storageKey: 'k',
+      fields: { Morpheme: ['Gloss', 'Glosa2'] },
+      fieldRoles: { Morpheme: { Gloss: 'gloss' } },
+      fieldIds: { Morpheme: { Gloss: 'id-gloss', Glosa2: 'id-glosa' } },
+    });
+    expect(again.params().values.gloss_field).toBe('Glosa2');
+    await again.unmount();
+    // A remembered name is no id: it fills nothing, and the role fill runs.
+    localStorage.setItem('k', JSON.stringify({ gloss_field: 'Glosa' }));
+    const named = await mount({
+      schema,
+      storageKey: 'k',
+      fields: { Morpheme: ['Gloss', 'Glosa'] },
+      fieldRoles: { Morpheme: { Gloss: 'gloss' } },
+      fieldIds,
+    });
+    expect(named.params().values.gloss_field).toBe('Gloss');
+    await named.unmount();
+  });
+
   it('never seeds a field parameter from its schema default, and a required one says so', async () => {
     const schema = [
       {

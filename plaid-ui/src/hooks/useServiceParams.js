@@ -37,10 +37,36 @@ const NON_PERSISTENT_PARAMS = new Set(['overwrite']);
 //                  is then checked against them (domain/serviceFields.js).
 //   fieldRoles:    {scope: {field name: role}}, the role each field's stored
 //                  Lexicon field holds, which fills a parameter naming it.
+//   fieldIds:      {scope: {field name: span layer id}}, what a remembered
+//                  field parameter is kept by.
 //
 // A `field` parameter's schema default is never used: a field is never chosen
 // by name. It comes from the project's defaults, this user's last run, or the
 // one field whose Lexicon field holds the parameter's `role`.
+// A field parameter is remembered by its field's span layer id, never by its
+// name, so a rename keeps it (`fieldIds`: {scope: {name: id}}). Without the
+// ids a field parameter is not remembered at all.
+const toRemembered = (schema, values, fieldIds) => {
+  const out = { ...values };
+  for (const p of schema || []) {
+    if (p?.type !== 'field' || !p.key) continue;
+    const id = fieldIds?.[p.scope]?.[out[p.key]];
+    if (id) out[p.key] = id;
+    else delete out[p.key];
+  }
+  return out;
+};
+const fromRemembered = (schema, remembered, fieldIds) => {
+  const out = { ...remembered };
+  for (const p of schema || []) {
+    if (p?.type !== 'field' || !p.key || !(p.key in out)) continue;
+    const name = Object.entries(fieldIds?.[p.scope] || {}).find(([, id]) => id === out[p.key])?.[0];
+    if (name) out[p.key] = name;
+    else delete out[p.key];
+  }
+  return out;
+};
+
 export function useServiceParams({
   schema,
   storageKey,
@@ -48,6 +74,7 @@ export function useServiceParams({
   defaultParams = null,
   fields = null,
   fieldRoles = null,
+  fieldIds = null,
 }) {
   const [values, setValues] = useState({});
 
@@ -66,6 +93,8 @@ export function useServiceParams({
   fieldsRef.current = fields;
   const fieldRolesRef = useRef(fieldRoles);
   fieldRolesRef.current = fieldRoles;
+  const fieldIdsRef = useRef(fieldIds);
+  fieldIdsRef.current = fieldIds;
 
   // A schema is stable for the life of a method, so seeding is keyed on the
   // storage key rather than on schema identity (re-discovery replaces a
@@ -78,7 +107,7 @@ export function useServiceParams({
   // the project's, for anyone who had never touched the dialog.
   const seedSignature = JSON.stringify(seedParams ?? null);
   const defaultSignature = JSON.stringify(defaultParams ?? null);
-  const fieldsSignature = JSON.stringify([fields ?? null, fieldRoles ?? null]);
+  const fieldsSignature = JSON.stringify([fields ?? null, fieldRoles ?? null, fieldIds ?? null]);
 
   const seed = useCallback(
     ({ useCache = true } = {}) => {
@@ -89,7 +118,7 @@ export function useServiceParams({
       if (useCache && storageKey) {
         try {
           const raw = localStorage.getItem(storageKey);
-          if (raw) cached = JSON.parse(raw) || {};
+          if (raw) cached = fromRemembered(schema, JSON.parse(raw) || {}, fieldIdsRef.current);
         } catch {
           /* ignore malformed cache */
         }
@@ -140,14 +169,14 @@ export function useServiceParams({
       try {
         // Persist everything EXCEPT destructive opt-ins, so they can't re-arm
         // on the next open. They still toggle live within the open dialog.
-        const toPersist = { ...next };
+        const toPersist = toRemembered(schema, next, fieldIdsRef.current);
         for (const k of NON_PERSISTENT_PARAMS) delete toPersist[k];
         localStorage.setItem(storageKey, JSON.stringify(toPersist));
       } catch {
         /* ignore quota / serialization errors */
       }
     },
-    [storageKey],
+    [storageKey, schema],
   );
 
   const setParam = useCallback(

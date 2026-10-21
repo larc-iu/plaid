@@ -127,6 +127,7 @@ export function useServiceSpot({
     seedParams: seeded,
     fields,
     fieldRoles,
+    fieldIds,
     // A project default's params belong to the method it names, and to no
     // other. Its default fields go to every method of the task, under those.
     defaultParams: {
