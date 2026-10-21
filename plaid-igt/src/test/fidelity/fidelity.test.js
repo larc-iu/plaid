@@ -497,6 +497,7 @@ const CONFIG_KEYS = {
     'layers.fieldMorpheme',
   ),
   'spanLayers igt.tagset': covers('layers.fieldTagset'),
+  'spanLayers igt.lexiconField': covers('layers.fieldLexiconField'),
   'vocabLayers igt.fields': covers(
     'vocab.customField',
     'vocab.fieldNotInline',
@@ -522,6 +523,7 @@ const IDENTIFIERS = {
   CONFIDENCE_KEY: 'confidence',
   IMPORT_KEY: 'import',
   TOKENIZE_NEW_TEXT_KEY: 'tokenizeNewText',
+  LEXICON_FIELD_KEY: 'lexiconField',
 };
 
 // Call sites that write back whatever an archive holds, key by key, rather

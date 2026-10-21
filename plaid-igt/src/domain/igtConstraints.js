@@ -11,7 +11,7 @@
 // Relative imports only: project setup (executeSetup.js) runs this from plain
 // node too.
 import { uuidv7 } from '@larc-iu/plaid-client';
-import { IGT_NAMESPACE } from './igtConfig.js';
+import { IGT_NAMESPACE, LEXICON_FIELD_KEY } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { findDoubles } from './doubles.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
@@ -58,7 +58,8 @@ export const wordLayerConstraints = () => [{ type: 'single-link' }];
 
 /**
  * Queue on batch `b` a new field's span layer under `parentLayerId`, with its
- * scope, its language when `field.lang` says one, and its rules. The layer is
+ * scope, its language when `field.lang` says one, its Lexicon field when
+ * `field.lexiconField` names one, and its rules. The layer is
  * new and empty, so no data can refuse the rules, and since they go in the
  * batch that makes it, no failure after it leaves the field without them.
  * Returns the new layer's id.
@@ -68,6 +69,9 @@ export const queueNewField = (b, parentLayerId, field, projectConfig) => {
   b.spanLayers.create(parentLayerId, field.name, undefined, { id });
   b.spanLayers.setConfig(id, IGT_NAMESPACE, 'scope', field.scope);
   if (field.lang) b.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', field.lang);
+  if (field.lexiconField) {
+    b.spanLayers.setConfig(id, IGT_NAMESPACE, LEXICON_FIELD_KEY, field.lexiconField);
+  }
   b.spanLayers.setConstraints(
     id,
     IGT_NAMESPACE,

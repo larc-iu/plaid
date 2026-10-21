@@ -376,10 +376,11 @@ describe('deriveSetupData', () => {
     ]);
     expect(setup.fields.fields).toEqual(
       expect.arrayContaining([
-        { name: 'Translation', scope: 'Sentence', lang: null, isCustom: true },
-        { name: 'POS', scope: 'Word', lang: null, isCustom: true },
-        { name: 'Phrase', scope: 'Word', lang: null, isCustom: true },
-        { name: 'Gloss', scope: 'Morpheme', lang: null, isCustom: true },
+        { name: 'Translation', scope: 'Sentence', lang: null, lexiconField: null, isCustom: true },
+        // An archive that records no Lexicon field gives none, whatever the name.
+        { name: 'POS', scope: 'Word', lang: null, lexiconField: null, isCustom: true },
+        { name: 'Phrase', scope: 'Word', lang: null, lexiconField: null, isCustom: true },
+        { name: 'Gloss', scope: 'Morpheme', lang: null, lexiconField: null, isCustom: true },
       ]),
     );
     // A field's recorded language comes back with it, for setup to stamp.
@@ -387,13 +388,26 @@ describe('deriveSetupData', () => {
       ...manifest,
       schema: {
         ...manifest.schema,
-        fields: { ...manifest.schema.fields, sentence: [{ name: 'Translation', lang: 'pmy' }] },
+        fields: {
+          ...manifest.schema.fields,
+          sentence: [{ name: 'Translation', lang: 'pmy' }],
+          morpheme: [{ name: 'Glosa', lexiconField: 'gloss' }],
+        },
       },
     };
     expect(deriveSetupData(labelled, 'x').fields.fields).toContainEqual({
       name: 'Translation',
       scope: 'Sentence',
       lang: 'pmy',
+      lexiconField: null,
+      isCustom: true,
+    });
+    // And so does its Lexicon field.
+    expect(deriveSetupData(labelled, 'x').fields.fields).toContainEqual({
+      name: 'Glosa',
+      scope: 'Morpheme',
+      lang: null,
+      lexiconField: 'gloss',
       isCustom: true,
     });
     expect(setup.fields.ignoredTokens).toBeUndefined(); // archive has null

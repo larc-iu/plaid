@@ -510,7 +510,7 @@ describe('a setup whose rules step fails', () => {
   const FIELDS = {
     ...SETUP_DATA,
     vocabulary: { vocabularies: [] },
-    fields: { fields: [{ name: 'Gloss', scope: 'Word', lang: 'en' }] },
+    fields: { fields: [{ name: 'Gloss', scope: 'Word', lang: 'en', lexiconField: 'gloss' }] },
   };
 
   it('leaves every layer it made holding its rules, from the batch that made it', async () => {
@@ -572,7 +572,11 @@ describe('a setup whose rules step fails', () => {
       expect(create?.batch).toBeTruthy();
       expect(declare?.batch).toBe(create.batch);
     }
-    // The field's scope and language went in that batch too.
-    expect(calls.config.filter((c) => c.id === gloss).map((c) => c.key)).toEqual(['scope', 'lang']);
+    // The field's scope, language and Lexicon field went in that batch too.
+    expect(calls.config.filter((c) => c.id === gloss).map((c) => [c.key, c.value])).toEqual([
+      ['scope', 'Word'],
+      ['lang', 'en'],
+      ['lexiconField', 'gloss'],
+    ]);
   });
 });

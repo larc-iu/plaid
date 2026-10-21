@@ -63,7 +63,7 @@ describe('setupDataFor', () => {
       { name: 'IPA' },
     ]);
     expect(setup.fields.fields).toEqual([
-      { name: 'Gloss', scope: 'Morpheme', lang: 'en', isCustom: true },
+      { name: 'Gloss', scope: 'Morpheme', lang: 'en', lexiconField: 'gloss', isCustom: true },
     ]);
     expect(setup.fields.ignoredTokens).toEqual(defaultIgnoredTokensSetup());
     expect(setup.vocabulary.vocabularies).toEqual([

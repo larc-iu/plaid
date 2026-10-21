@@ -84,7 +84,13 @@ const manifestFields = (manifest) => {
     ['word', 'Word'],
     ['morpheme', 'Morpheme'],
   ].flatMap(([key, scope]) =>
-    (schema.fields?.[key] || []).map((f) => ({ name: f.name, scope, lang: f.lang ?? null })),
+    (schema.fields?.[key] || []).map((f) => ({
+      name: f.name,
+      scope,
+      lang: f.lang ?? null,
+      // What the archive records, none included: never proposed from a name.
+      lexiconField: f.lexiconField ?? null,
+    })),
   );
 };
 

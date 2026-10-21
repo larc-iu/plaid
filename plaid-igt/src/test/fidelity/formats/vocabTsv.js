@@ -79,6 +79,7 @@ export default {
     'layers.fieldSameNameTwoScopes': NOT_A_VOCABULARY,
     'layers.fieldOrder': NOT_A_VOCABULARY,
     'layers.fieldLang': NOT_A_VOCABULARY,
+    'layers.fieldLexiconField': NOT_A_VOCABULARY,
     'layers.fieldTagset': NOT_A_VOCABULARY,
     'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
     'layers.foreignTokenLayer': foreign('A token layer another app uses.'),

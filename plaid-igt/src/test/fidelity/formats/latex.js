@@ -112,6 +112,7 @@ export default {
       how: "The lines follow the preset's own order, which starts as the project's field order and can be changed. A field the preset does not name goes right after the line the project's order puts before it (latexLayout).",
     },
     'layers.fieldLang': PROJECT_CONFIG,
+    'layers.fieldLexiconField': PROJECT_CONFIG,
     'layers.fieldTagset': PROJECT_CONFIG,
     'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
     'layers.foreignTokenLayer': foreign(

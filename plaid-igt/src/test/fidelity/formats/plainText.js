@@ -104,6 +104,7 @@ export default {
         "the lines of one scope follow the project's field order, since intersectSelection keeps the order of the discovered inventory rather than the preset's",
     },
     'layers.fieldLang': PROJECT_CONFIG,
+    'layers.fieldLexiconField': PROJECT_CONFIG,
     'layers.fieldTagset': PROJECT_CONFIG,
     'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
     'layers.foreignTokenLayer': foreign(

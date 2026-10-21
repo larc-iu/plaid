@@ -18,7 +18,13 @@ import {
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
-import { readFieldLang, readLanguages } from '@/domain/igtConfig';
+import {
+  readFieldLang,
+  readLanguages,
+  readLexiconField,
+  LEXICON_FIELD_KEY,
+} from '@/domain/igtConfig';
+import { lexiconFieldChoices } from '@/domain/lexiconField';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
 import { queueFieldDeclarations, refusedBySave, tagsetRefusal } from '@/domain/igtConstraints';
@@ -71,6 +77,7 @@ const extractFields = (project) => {
     isCustom: !isPredefinedField(spanLayer.name),
     tagset: readTagsetName(spanLayer.config),
     lang: readFieldLang(spanLayer.config),
+    lexiconField: readLexiconField(spanLayer.config),
   }));
   if (fields.length === 0 && !ignoredTokensConfig) return null;
 
@@ -118,6 +125,10 @@ export const FieldsSettings = ({
       ...new Set([l.object.tag, l.object.iso639P3, l.meta.tag, l.meta.iso639P3].filter(Boolean)),
     ];
   }, [project?.config]);
+
+  // The entry fields of the project's vocabularies, for each field's Lexicon
+  // field.
+  const lexiconChoices = useMemo(() => lexiconFieldChoices(project?.vocabs), [project?.vocabs]);
 
   // Read off the LIVE project rather than fetched once on mount, so the table
   // re-syncs whenever the project changes under it. The case that matters:
@@ -275,8 +286,8 @@ export const FieldsSettings = ({
       layerIds.delete(key);
     }
 
-    // Each field's tagset reference and language, for the fields whose value
-    // the user changed here. A field stores the tagset's NAME, never a copy of
+    // Each field's tagset reference, language and Lexicon field, for the
+    // fields whose value the user changed here. A field stores the tagset's NAME, never a copy of
     // the list, so pointing two fields at one tagset is what makes them share
     // it. The language is the record the exporters read.
     const sync = (fields, cell, read, valueOf, write) => {
@@ -314,6 +325,16 @@ export const FieldsSettings = ({
         next
           ? b.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', next, undefined, options)
           : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, 'lang', undefined, options),
+    );
+    sync(
+      change.lexiconField,
+      LEXICON_FIELD_KEY,
+      readLexiconField,
+      (f) => f.lexiconField || null,
+      (id, next, options) =>
+        next
+          ? b.spanLayers.setConfig(id, IGT_NAMESPACE, LEXICON_FIELD_KEY, next, undefined, options)
+          : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, LEXICON_FIELD_KEY, undefined, options),
     );
 
     // The rules of each field whose tagset this save sets, a new field's
@@ -445,6 +466,7 @@ export const FieldsSettings = ({
         onMoveField={handleMoveField}
         tagsetNames={tagsetNames}
         knownLangs={knownLangs}
+        lexiconChoices={lexiconChoices}
         violations={violations}
         projectId={projectId}
         showTitle={false}

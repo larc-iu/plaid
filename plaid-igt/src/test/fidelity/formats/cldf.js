@@ -190,6 +190,13 @@ export default {
       wart: true,
       why: 'No column records the writing system of its field. The import sets lang to the meta language’s ISO 639-3 code on every field named Gloss, Translation or Note, and on no other field.',
     },
+    'layers.fieldLexiconField': {
+      carried: false,
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
+      why: 'No column records which entry field a field pairs with. The import gives each word and morpheme field the Lexicon field its name proposes among a new vocabulary’s fields, and a field whose name proposes none gets none.',
+    },
     'layers.fieldTagset': {
       carried: false,
       kind: 'inherent',

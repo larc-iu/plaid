@@ -126,9 +126,10 @@ describe('deriveSetupData', () => {
       { name: 'IPA' },
     ]);
     expect(setup.fields.fields).toEqual([
-      { name: 'Translation', scope: 'Sentence', lang: null, isCustom: true },
-      { name: 'POS', scope: 'Word', lang: null, isCustom: true },
-      { name: 'Gloss', scope: 'Morpheme', lang: null, isCustom: true },
+      { name: 'Translation', scope: 'Sentence', lang: null, lexiconField: null, isCustom: true },
+      // A name proposes its Lexicon field among a new vocabulary's fields.
+      { name: 'POS', scope: 'Word', lang: null, lexiconField: 'pos', isCustom: true },
+      { name: 'Gloss', scope: 'Morpheme', lang: null, lexiconField: 'gloss', isCustom: true },
     ]);
     expect(setup.fields.ignoredTokens).toEqual(defaultIgnoredTokensSetup());
     // ELAN carries no lexicon, so no vocabulary is proposed.

@@ -18,10 +18,10 @@ export const FieldsStep = ({ data, onDataChange }) => {
       // imported one look alike and services that write morpheme glosses
       // (Auto-analyze) have their field from the start.
       fields: [
-        { name: 'Gloss', scope: 'Word', isCustom: false },
-        { name: 'POS', scope: 'Word', isCustom: false },
-        { name: 'Gloss', scope: 'Morpheme', isCustom: false },
-        { name: 'POS', scope: 'Morpheme', isCustom: false },
+        { name: 'Gloss', scope: 'Word', isCustom: false, lexiconField: 'gloss' },
+        { name: 'POS', scope: 'Word', isCustom: false, lexiconField: 'pos' },
+        { name: 'Gloss', scope: 'Morpheme', isCustom: false, lexiconField: 'gloss' },
+        { name: 'POS', scope: 'Morpheme', isCustom: false, lexiconField: 'pos' },
         { name: 'Translation', scope: 'Sentence', isCustom: false },
         { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
         { name: 'Note', scope: 'Sentence', isCustom: false },
@@ -61,7 +61,8 @@ export const FieldsStep = ({ data, onDataChange }) => {
             fields went out blank. */}
         <p className="mt-2 text-sm text-muted-foreground">
           Every field listed here is created. <strong>Language</strong> is the writing-system tag
-          for FLEx export, such as <code>en</code> or <code>tur</code>.
+          for FLEx export, such as <code>en</code> or <code>tur</code>.{' '}
+          <strong>Lexicon field</strong> is the entry field that holds the same value.
         </p>
       </div>
 

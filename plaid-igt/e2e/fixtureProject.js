@@ -51,6 +51,7 @@ async function ensureFixture() {
   // document and return — don't rebuild the (immutable) layer hierarchy.
   const full = await client.projects.get(projectId);
   if (full?.config?.igt?.initialized === true) {
+    await ensureLexiconField(client, full);
     await ensureVocab(client, projectId);
     return ensureDocument(client, projectId, full);
   }
@@ -100,14 +101,19 @@ async function initLayers(client, projectId) {
   await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'orthographies', [{ name: 'IPA' }]);
 
   // 5. Span layers for a few annotation fields at each scope (igt scope marker).
+  // The morpheme Gloss pairs with the lexicon's gloss (its Lexicon field), as
+  // setup gives a Gloss field.
   const fields = [
-    { name: 'Gloss', scope: 'Morpheme', parent: morphemeLayer.id },
+    { name: 'Gloss', scope: 'Morpheme', parent: morphemeLayer.id, lexiconField: 'gloss' },
     { name: 'Part of Speech', scope: 'Word', parent: wordLayer.id },
     { name: 'Translation', scope: 'Sentence', parent: sentenceLayer.id },
   ];
   for (const f of fields) {
     const sl = await client.spanLayers.create(f.parent, f.name);
     await client.spanLayers.setConfig(sl.id, 'igt', 'scope', f.scope);
+    if (f.lexiconField) {
+      await client.spanLayers.setConfig(sl.id, 'igt', 'lexiconField', f.lexiconField);
+    }
   }
 
   // 6. Ignored tokens (unicode punctuation, no whitelist) — igt namespace.
@@ -141,6 +147,18 @@ export async function createScratchProject({ name, docName, body }) {
   await client.texts.create(layers.textLayerId, doc.id, body);
   await seedTokensIfEmpty(client, doc.id, layers);
   return { projectId, documentId: doc.id };
+}
+
+// A fixture project built before fields recorded their Lexicon field: its
+// morpheme Gloss gets the one initLayers gives it.
+async function ensureLexiconField(client, project) {
+  const gloss = (project.textLayers || [])
+    .flatMap((tl) => tl.tokenLayers || [])
+    .flatMap((tl) => tl.spanLayers || [])
+    .find((sl) => sl.name === 'Gloss' && sl.config?.igt?.scope === 'Morpheme');
+  if (gloss && !gloss.config?.igt?.lexiconField) {
+    await client.spanLayers.setConfig(gloss.id, 'igt', 'lexiconField', 'gloss');
+  }
 }
 
 // Ensure a project-linked vocabulary with a few items exists, so the vocab-link

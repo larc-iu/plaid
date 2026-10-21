@@ -55,7 +55,7 @@ export const readScope = (config) => readIgt(config, 'scope') ?? null;
 export const readFieldLang = (config) => readIgt(config, 'lang') ?? null;
 
 /** Where a span layer keeps its Lexicon field (domain/lexiconField.js). */
-const LEXICON_FIELD_KEY = 'lexiconField';
+export const LEXICON_FIELD_KEY = 'lexiconField';
 
 /**
  * The lexicon entry field a span layer's values pair with ("gloss"), or null

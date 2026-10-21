@@ -367,6 +367,17 @@ describe('deriveImportConfig', () => {
       scope: 'Morpheme',
       ws: 'ru',
     });
+    // Each field pairs with the lexicon key the import writes its language's
+    // gloss under (the first analysis language keeps the bare key), POS with pos.
+    expect(config.fields.map((f) => `${f.scope}:${f.name}=${f.lexiconField}`)).toEqual([
+      'Word:Gloss (en)=gloss',
+      'Word:POS=pos',
+      'Morpheme:Gloss (en)=gloss',
+      'Morpheme:Gloss (ru)=gloss (ru)',
+      'Morpheme:POS=pos',
+      'Sentence:Translation (en)=null',
+      'Sentence:Note (en)=null',
+    ]);
     expect(config.orthographies).toEqual([{ ws: TRANS_WS, name: TRANS_WS }]);
     expect(config.baselineWs).toBe(BASE_WS);
     // The Info tab, in its own order: the text's own four fields whether or

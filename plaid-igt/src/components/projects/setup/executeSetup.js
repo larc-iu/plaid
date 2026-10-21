@@ -27,6 +27,7 @@ import {
 // scripts, which drive the real setup against the live core.
 import {
   IGT_NAMESPACE,
+  LEXICON_FIELD_KEY,
   readImportState,
   readInitialized,
   findBaselineTextLayer,
@@ -339,8 +340,17 @@ async function executeProjectSetupImpl({
             if (field.lang) {
               await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, 'lang', field.lang);
             }
+            if (field.lexiconField) {
+              await client.spanLayers.setConfig(
+                existing.id,
+                IGT_NAMESPACE,
+                LEXICON_FIELD_KEY,
+                field.lexiconField,
+              );
+            }
           } else {
-            // Made in one batch with its scope, language and rules.
+            // Made in one batch with its scope, language, Lexicon field and
+            // rules.
             let id;
             await client.batched((b) => {
               id = queueNewField(b, parentLayerId, field, existingProject?.config);

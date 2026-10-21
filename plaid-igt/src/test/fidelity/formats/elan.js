@@ -241,6 +241,13 @@ export default {
       wart: true,
       why: 'EAF 2.8 could name a tier’s language through LANGUAGE and LANG_REF, as project.languageObject and project.languageMeta say. The export declares none, so a field comes back with no language.',
     },
+    'layers.fieldLexiconField': {
+      carried: false,
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
+      why: 'A tier records no lexicon field. The import gives each word and morpheme field the Lexicon field its name proposes among a new vocabulary’s fields, and a field whose name proposes none gets none.',
+    },
     'layers.fieldTagset': {
       carried: false,
       kind: 'ruled',

@@ -354,7 +354,14 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
           // what `lang` means on a field everywhere outside this importer. It
           // is recorded on the layer, so the FLEx exporters can tag each field
           // exactly instead of reading it back out of the field's name.
-          fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, lang: f.ws ?? null })),
+          // Each field's Lexicon field is the lexicon key the import writes
+          // its values under.
+          fields: config.fields.map((f) => ({
+            name: f.name,
+            scope: f.scope,
+            lang: f.ws ?? null,
+            lexiconField: f.lexiconField,
+          })),
           vocabularies: flextext
             ? []
             : [

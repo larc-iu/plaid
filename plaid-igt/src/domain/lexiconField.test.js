@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lexiconFieldChoices, proposeLexiconField } from './lexiconField.js';
+import { lexiconFieldChoices, proposeLexiconField, withLexiconFields } from './lexiconField.js';
 
 const vocab = (fields) => ({ config: { igt: { fields } } });
 
@@ -59,5 +59,21 @@ describe('proposeLexiconField', () => {
     // What the field records wins over its name.
     expect(at('Gloss (pmy)', 'en')).toBe('gloss (en)');
     expect(at('Gloss (nl)')).toBeNull();
+  });
+});
+
+describe('withLexiconFields', () => {
+  it('keeps a stated Lexicon field, none included, and proposes the rest', () => {
+    const core = lexiconFieldChoices([]);
+    expect(
+      withLexiconFields(
+        [
+          { name: 'Gloss', scope: 'Morpheme' },
+          { name: 'Gloss', scope: 'Word', lexiconField: null },
+          { name: 'Meaning', scope: 'Morpheme', lexiconField: 'gloss' },
+        ],
+        core,
+      ).map((f) => f.lexiconField),
+    ).toEqual(['gloss', null, 'gloss']);
   });
 });

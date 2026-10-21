@@ -331,6 +331,11 @@ export const FEATURES = [
     detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.lang),
   },
   {
+    key: 'layers.fieldLexiconField',
+    what: 'an annotation field paired with a lexicon entry field (its Lexicon field)',
+    detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.lexiconField),
+  },
+  {
     key: 'layers.fieldTagset',
     what: 'an annotation field governed by a tagset',
     detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.tagset),

@@ -36,6 +36,7 @@ import {
   IGT_NAMESPACE,
   readVocabFields,
   readFieldLang,
+  readLexiconField,
 } from '../domain/igtConfig.js';
 import { ROLES } from '@larc-iu/plaid-client';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
@@ -130,10 +131,21 @@ export function buildProjectFile({
   const langOf = new Map(
     allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readFieldLang(sl.config)]),
   );
+  // So does its Lexicon field, the entry field it pairs with: an import
+  // never reads a field's name for it.
+  const lexiconFieldOf = new Map(
+    allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readLexiconField(sl.config)]),
+  );
   const fieldRow = (scope) => (name) => {
     const tagset = tagsetOf.get(`${scope}:${name}`);
     const lang = langOf.get(`${scope}:${name}`);
-    return { name, ...(tagset ? { tagset } : {}), ...(lang ? { lang } : {}) };
+    const lexiconField = lexiconFieldOf.get(`${scope}:${name}`);
+    return {
+      name,
+      ...(tagset ? { tagset } : {}),
+      ...(lang ? { lang } : {}),
+      ...(lexiconField ? { lexiconField } : {}),
+    };
   };
   // Project config this app owns, stored verbatim: defaults are the app's
   // business, not the archive's, so unset stays null.

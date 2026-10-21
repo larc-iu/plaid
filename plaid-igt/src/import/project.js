@@ -32,16 +32,20 @@ import {
   findWordTokenLayer,
   readScope,
 } from '../domain/igtConfig.js';
+import { lexiconFieldChoices, withLexiconFields } from '../domain/lexiconField.js';
 
 /**
  * The setup-wizard input an importer implies, in the shape
  * `executeProjectSetup` reads.
  *
  * - `orthographies` are names; Baseline is added here and is always first.
- * - `fields` are `{name, scope, lang}`. `lang` is the language the field's
- *   VALUES are in, recorded on the span layer. A format that calls it a
- *   writing system (FLEx) translates at its own call: `lang` is the word
- *   everything outside that importer uses.
+ * - `fields` are `{name, scope, lang, lexiconField?}`. `lang` is the language
+ *   the field's VALUES are in, recorded on the span layer. A format that calls
+ *   it a writing system (FLEx) translates at its own call: `lang` is the word
+ *   everything outside that importer uses. `lexiconField` is the entry field
+ *   the field pairs with (domain/lexiconField.js), null for none. A field that
+ *   leaves it out gets the one its name proposes among `entryFields` (as
+ *   lexiconFieldChoices gives them), by default a new vocabulary's fields.
  * - `ignoredTokens` is the wizard-shaped rule (see igtConfig). Left out, a
  *   project gets the default rule; passed `null`, setup writes none, which is
  *   what an archive that names no rule wants — the project keeps whatever it
@@ -57,6 +61,7 @@ export function setupDataFor({
   ignoredTokens = defaultIgnoredTokensSetup(),
   vocabularies = [],
   documentMetadata = [],
+  entryFields = lexiconFieldChoices([]),
 }) {
   return {
     basicInfo: { projectName },
@@ -67,10 +72,11 @@ export function setupDataFor({
       ],
     },
     fields: {
-      fields: fields.map((f) => ({
+      fields: withLexiconFields(fields, entryFields).map((f) => ({
         name: f.name,
         scope: f.scope,
         lang: f.lang ?? null,
+        lexiconField: f.lexiconField,
         isCustom: true,
       })),
       ignoredTokens: ignoredTokens ?? undefined,

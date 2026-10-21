@@ -21,6 +21,7 @@ import {
 } from '../../domain/igtConfig.js';
 import { parseFieldName } from '../../domain/fieldNames.js';
 import { queueNewField } from '../../domain/igtConstraints.js';
+import { lexiconFieldChoices, withLexiconFields } from '../../domain/lexiconField.js';
 
 /** The annotation scopes a span layer can carry, in the order they are shown. */
 const SCOPES = ['Sentence', 'Word', 'Morpheme'];
@@ -109,7 +110,9 @@ export async function createFields(client, project, fields, onProgress = null) {
     Word: findWordTokenLayer(tokenLayers)?.id,
     Morpheme: findMorphemeTokenLayer(tokenLayers)?.id,
   };
-  const planned = fields.map((field) => {
+  // A field's name proposes its Lexicon field among the project's
+  // vocabularies' fields, as Settings proposes one for a field it adds.
+  const planned = withLexiconFields(fields, lexiconFieldChoices(project?.vocabs)).map((field) => {
     const parentLayerId = parentFor[field.scope];
     if (!parentLayerId) {
       throw new Error(`This project has no ${field.scope.toLowerCase()} layer to add a field to.`);

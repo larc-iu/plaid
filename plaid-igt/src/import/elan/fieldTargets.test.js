@@ -170,6 +170,8 @@ describe('createFields', () => {
     expect(client.calls.filter((c) => c.kind === 'setConfig').map(strip)).toEqual([
       { kind: 'setConfig', id: speaker, ns: 'igt', key: 'scope', value: 'Sentence' },
       { kind: 'setConfig', id: gloss, ns: 'igt', key: 'scope', value: 'Morpheme' },
+      // The name proposes its Lexicon field.
+      { kind: 'setConfig', id: gloss, ns: 'igt', key: 'lexiconField', value: 'gloss' },
     ]);
   });
 

@@ -144,9 +144,9 @@ async function setupMain(client, name) {
           { name: 'Free translation', scope: 'Sentence', lang: 'en' },
           { name: 'Notes', scope: 'Sentence' },
           { name: 'Literal translation', scope: 'Sentence' },
-          { name: 'Gloss', scope: 'Word' },
-          { name: 'POS', scope: 'Word' },
-          { name: 'Gloss', scope: 'Morpheme' },
+          { name: 'Gloss', scope: 'Word', lexiconField: 'gloss' },
+          { name: 'POS', scope: 'Word', lexiconField: 'pos' },
+          { name: 'Gloss', scope: 'Morpheme', lexiconField: 'gloss' },
         ],
         ignoredTokens: {
           mode: 'unicode-punctuation',
@@ -847,9 +847,9 @@ async function buildBare(client, name) {
       orthographies: { orthographies: [{ name: 'Baseline', isBaseline: true }] },
       fields: {
         fields: [
-          { name: 'Gloss', scope: 'Word' },
-          { name: 'POS', scope: 'Word' },
-          { name: 'Gloss', scope: 'Morpheme' },
+          { name: 'Gloss', scope: 'Word', lexiconField: 'gloss' },
+          { name: 'POS', scope: 'Word', lexiconField: 'pos' },
+          { name: 'Gloss', scope: 'Morpheme', lexiconField: 'gloss' },
           { name: 'POS', scope: 'Morpheme' },
           { name: 'Translation', scope: 'Sentence' },
           { name: 'Literal Translation', scope: 'Sentence' },

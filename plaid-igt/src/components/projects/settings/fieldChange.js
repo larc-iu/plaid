@@ -12,6 +12,9 @@ export const fieldChange = ({ fields, ignoredTokens, previous }) => {
     removed: [...before.values()].filter((f) => !after.has(fieldKey(f))),
     tagset: fields.filter((f) => !was(f) || (was(f).tagset ?? null) !== (f.tagset ?? null)),
     lang: fields.filter((f) => !was(f) || (was(f).lang || null) !== (f.lang || null)),
+    lexiconField: fields.filter(
+      (f) => !was(f) || (was(f).lexiconField || null) !== (f.lexiconField || null),
+    ),
     ignoredTokens:
       JSON.stringify(storedIgnoredTokens(previous.ignoredTokens)) !==
       JSON.stringify(storedIgnoredTokens(ignoredTokens)),

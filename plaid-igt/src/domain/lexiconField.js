@@ -76,3 +76,12 @@ export function proposeLexiconField(field, choices) {
   );
   return hit?.key ?? null;
 }
+/**
+ * Each field with its Lexicon field: the one it states (`lexiconField`, null
+ * meaning none), else the one its name proposes. What every maker of fields
+ * runs once, before the fields exist.
+ */
+export const withLexiconFields = (fields, choices) =>
+  (fields || []).map((f) =>
+    f.lexiconField !== undefined ? f : { ...f, lexiconField: proposeLexiconField(f, choices) },
+  );

@@ -90,6 +90,7 @@ export default {
     // Setup creates the fields in schema order, which is the source's order_idx order.
     'layers.fieldOrder': carried,
     'layers.fieldLang': carried,
+    'layers.fieldLexiconField': carried,
     'layers.fieldTagset': carried,
     // Other apps' layers, their config verbatim (otherLayers in project.json).
     'layers.splitOnSpace': carried,

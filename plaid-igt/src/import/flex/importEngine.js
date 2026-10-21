@@ -187,9 +187,18 @@ export function deriveImportConfig(ir, build, opts = {}) {
   // first means nothing to a person reading the fields. The CLDF importer
   // names its translations by the same rule.
   const languages = new Set(perWs.filter((f) => f.base).map((f) => f.ws));
-  const fields = perWs.map(({ base, ...f }) =>
-    base ? { ...f, name: languages.size > 1 ? withLangSuffix(base, f.ws) : base } : f,
-  );
+  // Each gloss field pairs with the lexicon's gloss in its language, the key
+  // the lexicon import writes it under, and each POS field with `pos`.
+  const lexiconFieldOf = ({ kind, ws }) =>
+    kind === 'wordGloss' || kind === 'morphGloss'
+      ? entryKey('gloss', ws, primaryAnalysisWs)
+      : kind === 'wordPos' || kind === 'morphPos'
+        ? 'pos'
+        : null;
+  const fields = perWs.map(({ base, ...f }) => ({
+    ...(base ? { ...f, name: languages.size > 1 ? withLangSuffix(base, f.ws) : base } : f),
+    lexiconField: lexiconFieldOf(f),
+  }));
 
   // Alternate text titles (e.g. the English names of vernacular-titled texts)
   // and the abbreviations. A document field records no language of its own,

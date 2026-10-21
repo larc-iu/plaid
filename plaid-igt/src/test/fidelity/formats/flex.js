@@ -189,6 +189,10 @@ export default {
       where:
         "flextext lang attribute on each of the field's <item> elements, declared in <languages><language lang>",
     },
+    'layers.fieldLexiconField': {
+      carried: 'changed',
+      how: 'Not written, since a .flextext item and a LIFT field name no pairing. The import gives each gloss field the lexicon key its language’s gloss is imported under, each POS field pos, and every other field none.',
+    },
     'layers.fieldTagset': {
       carried: 'changed',
       how: "FLEx itself ties a word field mapped to pos, or a morpheme field mapped to msa, to its part-of-speech list, and the field's tagset fills that list (project.tagset). A tagset on any other annotation field is not written, since a .flextext item names no list.",

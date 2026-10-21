@@ -686,6 +686,8 @@ try {
     presets: [{ name: 'For the paper', format: 'latex' }],
   });
   await client.spanLayers.setConfig(glossLayer.id, 'igt', 'tagset', 'Leipzig');
+  // A Lexicon field no name would propose, so the archive is what carries it.
+  await client.spanLayers.setConfig(glossLayer.id, 'igt', 'lexiconField', 'definition');
 
   // ---- 2. export A ----
   const archiveA = await exportNative(setupA.projectId, expectedExportWarnings);
@@ -701,6 +703,12 @@ try {
     governedIn.join() === 'morpheme:Gloss (en)',
     "archive A carries the Gloss field's tagset reference, on that field alone",
     `governed: [${governedIn.join(', ')}]`,
+  );
+  check(
+    archiveA.manifest.schema.fields.morpheme?.find((f) => f.name === 'Gloss (en)')?.lexiconField ===
+      'definition',
+    "archive A carries the Gloss field's Lexicon field",
+    JSON.stringify(archiveA.manifest.schema.fields.morpheme),
   );
   const archivedComments = archiveA.documents.flatMap((d) => d.data.comments || []);
   check(
