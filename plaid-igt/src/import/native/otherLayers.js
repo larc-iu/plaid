@@ -339,19 +339,19 @@ export const remapIds = (value, ids) => {
   if (isMap(value)) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, remapIds(v, ids)]));
   }
-  if (typeof value !== 'string' || !ids.size) return value;
-  if (ids.has(value)) return ids.get(value);
-  // One pass, longest id first, so a replacement is never matched again.
+  if (typeof value !== 'string' || !value) return value;
+  // One pass, longest id first, so a replacement is never matched again. An
+  // empty id is no id: a pattern of nothing would match between every letter.
   let pattern = idPatterns.get(ids);
-  if (!pattern) {
+  if (pattern === undefined) {
     const escaped = [...ids.keys()]
-      .filter(Boolean)
+      .filter((id) => typeof id === 'string' && id)
       .sort((a, b) => b.length - a.length)
       .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    pattern = new RegExp(escaped.join('|'), 'g');
+    pattern = escaped.length ? new RegExp(escaped.join('|'), 'g') : null;
     idPatterns.set(ids, pattern);
   }
-  return value.replace(pattern, (id) => ids.get(id));
+  return pattern ? value.replace(pattern, (id) => ids.get(id)) : value;
 };
 
 /**
