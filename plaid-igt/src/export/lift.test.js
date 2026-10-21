@@ -42,8 +42,32 @@ const VOCAB = {
   ],
 };
 
+// The field settings a FLEx import writes: each gloss, definition and part of
+// speech holds its role, and a second language's gloss records its language.
+// A vocabulary's own settings are laid over these.
+const ROLE_FIELDS = {
+  gloss: { role: 'gloss' },
+  'gloss (ru)': { role: 'gloss', lang: 'ru' },
+  'gloss (en)': { role: 'gloss', lang: 'en' },
+  definition: { role: 'definition' },
+  pos: { role: 'pos' },
+};
+const withRoles = (vocab) => {
+  const declared = vocab.config?.igt?.fields ?? {};
+  const fields = { ...ROLE_FIELDS };
+  for (const [name, spec] of Object.entries(declared)) {
+    fields[name] = { ...ROLE_FIELDS[name], ...spec };
+  }
+  return { ...vocab, config: { ...vocab.config, igt: { ...vocab.config?.igt, fields } } };
+};
+
 const build = (vocabularies = [VOCAB], extra = {}) =>
-  buildLiftLexicon({ vocabularies, options: OPTIONS, rangesHref: 'X.lift-ranges', ...extra });
+  buildLiftLexicon({
+    vocabularies: vocabularies.map(withRoles),
+    options: OPTIONS,
+    rangesHref: 'X.lift-ranges',
+    ...extra,
+  });
 
 describe('groupEntries', () => {
   it('makes an entry of every headword with its senses under it', () => {
@@ -249,6 +273,8 @@ describe('buildLiftLexicon', () => {
       build([
         {
           id: 'v1',
+          // Each form's language is the one its field records, never its name's.
+          config: { igt: { fields: { Usage: {}, 'Usage (ru)': { lang: 'ru' } } } },
           items: [item('i1', 'a', { Usage: 'checked', 'Usage (ru)': 'проверено' })],
         },
       ]).lift,
@@ -259,6 +285,48 @@ describe('buildLiftLexicon', () => {
     expect([...fields[0].querySelectorAll('form')].map((f) => f.getAttribute('lang'))).toEqual([
       'en',
       'ru',
+    ]);
+  });
+
+  it('writes a gloss, definition and part of speech by role, never by name', () => {
+    const dom = parse(
+      buildLiftLexicon({
+        vocabularies: [
+          {
+            id: 'v1',
+            config: {
+              igt: {
+                fields: {
+                  gloss: {},
+                  'gloss (fr)': {},
+                  Meaning: { role: 'gloss', lang: 'es' },
+                  Sense: { role: 'definition', lang: 'es' },
+                  Category: { role: 'pos' },
+                },
+              },
+            },
+            items: [
+              item('i1', 'a', {
+                gloss: 'plain',
+                'gloss (fr)': 'chien',
+                Meaning: 'perro',
+                Sense: 'un animal',
+                Category: 'N',
+              }),
+            ],
+          },
+        ],
+        options: OPTIONS,
+      }).lift,
+    );
+    expect([...dom.querySelectorAll('gloss')].map((g) => g.getAttribute('lang'))).toEqual(['es']);
+    expect(dom.querySelector('definition form').getAttribute('lang')).toBe('es');
+    expect(dom.querySelector('grammatical-info').getAttribute('value')).toBe('N');
+    // The fields without a role are fields, each in the analysis language.
+    const fields = [...dom.querySelectorAll('sense field')];
+    expect(fields.map((f) => f.getAttribute('type'))).toEqual(['gloss']);
+    expect([...fields[0].querySelectorAll('form')].map((f) => f.getAttribute('lang'))).toEqual([
+      'en',
     ]);
   });
 
@@ -513,7 +581,7 @@ describe('buildLiftLexicon', () => {
 
   it('falls back to und/en when the preset has no language tags', () => {
     const { lift } = buildLiftLexicon({
-      vocabularies: [{ id: 'v1', items: [item('i1', 'a', { gloss: 'g' })] }],
+      vocabularies: [withRoles({ id: 'v1', items: [item('i1', 'a', { gloss: 'g' })] })],
     });
     const dom = parse(lift);
     expect(dom.querySelector('lexical-unit form').getAttribute('lang')).toBe('und');

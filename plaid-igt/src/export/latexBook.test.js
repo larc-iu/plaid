@@ -634,7 +634,14 @@ describe('links from the texts to the vocabulary', () => {
     { id: 'ar2', form: 'كتب', metadata: { gloss: 'book' } },
     { id: 'mwe', form: 'kai na', metadata: { gloss: 'leave' } },
   ];
-  const VOCABS = [{ id: 'v', name: 'Lexicon', config: {}, items: ITEMS }];
+  const VOCABS = [
+    {
+      id: 'v',
+      name: 'Lexicon',
+      config: { igt: { fields: { gloss: { role: 'gloss' } } } },
+      items: ITEMS,
+    },
+  ];
   const ENTRIES = chapterEntryIds(VOCABS, latexVocabulary({}, VOCABS));
   // A link over a piece of a cell, and a word cell linked to its entry: the
   // text as it is, and the link laid over it.
@@ -835,8 +842,8 @@ describe('the vocabulary chapter', () => {
     config: {
       igt: {
         fields: {
-          gloss: { inline: true },
-          pos: { inline: true },
+          gloss: { inline: true, role: 'gloss' },
+          pos: { inline: true, role: 'pos' },
           seeAlso: { type: 'item', many: true },
         },
       },
@@ -945,7 +952,7 @@ describe('the vocabulary chapter', () => {
     const affixes = {
       id: 'v4',
       name: 'Affixes',
-      config: { igt: { fields: { pos: {}, gloss: {} } } },
+      config: { igt: { fields: { pos: { role: 'pos' }, gloss: { role: 'gloss' } } } },
       items: [
         { id: 's', form: '-s', metadata: { gloss: 'PL', pos: 'sfx' } },
         { id: 'r', form: 'ra', metadata: { gloss: 'go' } },
@@ -993,7 +1000,7 @@ describe('the vocabulary chapter', () => {
     const vocab = {
       id: 'v7',
       name: 'Words',
-      config: { igt: { fields: { gloss: {}, status: {} } } },
+      config: { igt: { fields: { gloss: { role: 'gloss' }, status: { role: 'status' } } } },
       items: [
         { id: 's', form: 'kai', metadata: { gloss: 'go', morphType: 'stem', status: 'draft' } },
         { id: 'r', form: 'tu', metadata: { gloss: 'eat', morphType: 'Root', status: 'draft' } },
@@ -1036,6 +1043,19 @@ describe('the vocabulary chapter', () => {
       expect(tex).not.toContain('Status');
     });
 
+    it('the field off by default is the one holding the status role, whatever its name', () => {
+      const named = {
+        ...vocab,
+        config: { igt: { fields: { gloss: {}, status: {}, Stage: { role: 'status' } } } },
+      };
+      expect(fieldsOf(latexVocabulary({}, [named]))).toEqual({
+        morphType: true,
+        gloss: true,
+        status: true,
+        Stage: false,
+      });
+    });
+
     it('stay as a preset stored them', () => {
       expect(fieldsOf(latexVocabulary({ vocabulary: ticked }, [vocab]))).toEqual({
         morphType: true,
@@ -1062,7 +1082,7 @@ describe('the vocabulary chapter', () => {
     const vocab = {
       id: 'v5',
       name: 'Glosses',
-      config: { igt: { fields: { gloss: {} } } },
+      config: { igt: { fields: { gloss: { role: 'gloss' } } } },
       items: [
         { id: 'g', form: 'gi', metadata: { gloss: 'go.PST' } },
         { id: 'k', form: 'ka', metadata: { gloss: 'NOM', morphType: 'suffix' } },
@@ -1097,7 +1117,7 @@ describe('the vocabulary chapter', () => {
     const rtl = {
       id: 'v2',
       name: 'Arabic',
-      config: {},
+      config: { igt: { fields: { gloss: { role: 'gloss' } } } },
       items: [
         { id: 'r1', form: 'كتب', metadata: { gloss: 'write' } },
         { id: 'r2', form: 'كتب', metadata: { gloss: 'books' } },

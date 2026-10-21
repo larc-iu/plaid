@@ -56,7 +56,7 @@ const PROJECT = {
 const VOCAB = {
   id: 'v1',
   name: 'Lexicon',
-  config: { igt: { fields: { gloss: { inline: true }, form: { inline: true } } } },
+  config: { igt: { fields: { gloss: { inline: true, role: 'gloss' }, form: { inline: true } } } },
   items: [{ id: 'i1', form: 'perro', metadata: { gloss: 'dog' } }],
   vocabLinks: [],
 };

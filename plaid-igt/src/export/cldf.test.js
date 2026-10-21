@@ -438,7 +438,16 @@ describe('buildCldfDataset — dictionary', () => {
   const vocab = {
     id: 'v1',
     name: 'Lexicon',
-    config: { igt: { fields: { gloss: {}, pos: {}, definition: {}, morphType: {} } } },
+    config: {
+      igt: {
+        fields: {
+          gloss: { role: 'gloss' },
+          pos: { role: 'pos' },
+          definition: { role: 'definition' },
+          morphType: {},
+        },
+      },
+    },
     items: [
       { id: 'i1', form: 'perro', metadata: { gloss: 'dog', pos: 'N', definition: 'a canine' } },
       { id: 'i2', form: 'correr', metadata: { gloss: 'run', morphType: 'stem' } },
@@ -446,6 +455,34 @@ describe('buildCldfDataset — dictionary', () => {
     ],
   };
 
+  it('fills Description, Definition and Part_Of_Speech from the fields holding those roles', () => {
+    const vocab = {
+      id: 'v9',
+      name: 'Roles',
+      config: {
+        igt: {
+          fields: {
+            gloss: {},
+            Meaning: { role: 'gloss' },
+            Explanation: { role: 'definition' },
+            Category: { role: 'pos' },
+          },
+        },
+      },
+      items: [
+        {
+          id: 'i1',
+          form: 'perro',
+          metadata: { gloss: 'not it', Meaning: 'dog', Explanation: 'a dog', Category: 'N' },
+        },
+      ],
+    };
+    const { files } = build({ vocabularies: [vocab] });
+    const senses = table(files, 'senses.csv');
+    const entries = table(files, 'entries.csv');
+    expect(senses[0]).toMatchObject({ Description: 'dog', Definition: 'a dog' });
+    expect(entries[0]).toMatchObject({ Part_Of_Speech: 'N', Entry_gloss: 'not it' });
+  });
   it('turns vocabulary items into entries and senses', () => {
     const { files } = build({ vocabularies: [vocab] });
     const entries = table(files, 'entries.csv');
@@ -524,7 +561,7 @@ describe('buildCldfDataset — dictionary', () => {
   it('points a sense at the example rows its promoted examples became', () => {
     const dict = {
       ...vocab,
-      config: { igt: { fields: { gloss: {} } } },
+      config: { igt: { fields: { gloss: { role: 'gloss' } } } },
       items: [
         {
           id: 'i1',
@@ -557,7 +594,7 @@ describe('buildCldfDataset — dictionary', () => {
       id: 'v1',
       name: 'Lexicon',
       config: {
-        igt: { fields: { gloss: {}, variantOf: { type: 'item', many: true } } },
+        igt: { fields: { gloss: { role: 'gloss' }, variantOf: { type: 'item', many: true } } },
       },
       items: [
         { id: 'i1', form: 'perro', metadata: { gloss: 'dog' } },
@@ -574,7 +611,7 @@ describe('buildCldfDataset — dictionary', () => {
     const dict = {
       id: 'v1',
       name: 'Lexicon',
-      config: { igt: { fields: { gloss: {}, pos: {}, register: {} } } },
+      config: { igt: { fields: { gloss: { role: 'gloss' }, pos: { role: 'pos' }, register: {} } } },
       items: [
         { id: 'h', form: 'kat', metadata: { gloss: 'cat', pos: 'N', register: 'plain' } },
         {

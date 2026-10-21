@@ -33,7 +33,13 @@ import { canNameWord, joinerBetween, morphTypeLabel } from '../domain/affixMarke
 import { texEscape, texLine } from '../domain/tex.js';
 import { readTagsets } from '../domain/tagsets.js';
 import { readVocabFields } from '../domain/igtConfig.js';
-import { FIELD_TYPES, exportedVocabFields, fieldLabel } from '../domain/vocabFields.js';
+import {
+  ENTRY_ROLES,
+  FIELD_TYPES,
+  exportedVocabFields,
+  fieldLabel,
+  fieldsWithRole,
+} from '../domain/vocabFields.js';
 import {
   buildItemNumbers,
   buildSenseTree,
@@ -957,10 +963,10 @@ export function formatAbbreviations(tags, projectConfig) {
 // to (a headword with every sense, when any of them is linked), or all.
 export const VOCAB_SCOPES = Object.freeze({ USED: 'used', ALL: 'all' });
 
-// Fields a preset that never chose its fields leaves out: a status says how
-// far the entry's editing has got, which reads as noise in a book (Luke,
-// 2026-10-16). A preset can still tick it.
-const FIELDS_OFF_BY_DEFAULT = new Set(['status']);
+// Fields a preset that never chose its fields leaves out: the field holding
+// the status role says how far the entry's editing has got, which reads as
+// noise in a book (Luke, 2026-10-16). A preset can still tick it.
+const offByDefault = (field) => field.role === ENTRY_ROLES.STATUS;
 
 // The morph type a chapter that prints morph types leaves out, since nearly
 // every entry has it (Luke, 2026-10-16).
@@ -992,7 +998,7 @@ export function latexVocabulary(options, vocabs) {
         fields: exportedVocabFields(readVocabFields(v.config)).map((f) => ({
           name: f.name,
           label: fieldLabel(f),
-          on: savedFields.find((x) => x?.name === f.name)?.on ?? !FIELDS_OFF_BY_DEFAULT.has(f.name),
+          on: savedFields.find((x) => x?.name === f.name)?.on ?? !offByDefault(f),
         })),
       };
     }),
@@ -1096,11 +1102,13 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
   const tree = buildSenseTree(items);
   const numbers = buildItemNumbers(items, tree);
   const on = new Set(choice.fields.filter((f) => f.on).map((f) => f.name));
-  // The gloss comes first, after the form, and the other fields in the
-  // vocabulary's order.
-  const fields = exportedVocabFields(readVocabFields(vocab.config))
+  // The gloss (the first field holding the gloss role) comes first, after
+  // the form, and the other fields in the vocabulary's order.
+  const all = exportedVocabFields(readVocabFields(vocab.config));
+  const glossKey = fieldsWithRole(all, ENTRY_ROLES.GLOSS)[0]?.name ?? null;
+  const fields = all
     .filter((f) => on.has(f.name))
-    .sort((a, b) => (b.name === 'gloss') - (a.name === 'gloss'));
+    .sort((a, b) => (b.name === glossKey) - (a.name === glossKey));
   const nameOf = (id) => {
     const target = tree.byId.get(id);
     return target ? entryName(target.form ?? '', numbers.get(id)) : '';
@@ -1128,7 +1136,7 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
       const value = texLine(f.name === 'morphType' ? morphTypeLabel(raw) : raw);
       if (value === '') continue;
       out.push(
-        f.name === 'gloss'
+        f.name === glossKey
           ? `\\PlaidEntryGloss{${entryGloss(value, item)}}`
           : `\\PlaidEntryField{${runText(fieldLabel(f), 'ltr')}}{${runText(value, 'ltr')}}`,
       );

@@ -38,7 +38,12 @@ import {
 } from '../domain/vocabDictionary.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { readVocabFields } from '../domain/igtConfig.js';
-import { FIELD_TYPES, exportedVocabFields } from '../domain/vocabFields.js';
+import {
+  ENTRY_ROLES,
+  FIELD_TYPES,
+  exportedVocabFields,
+  fieldsWithRole,
+} from '../domain/vocabFields.js';
 import { phraseSpeakerFor } from './flextext.js';
 import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
 
@@ -586,13 +591,22 @@ export function buildCldfDataset({
   const extraSenseColumns = new Map();
   let entriesWithoutSense = 0;
   if (o.dictionary) {
-    const reserved = new Set(['gloss', 'definition', 'pos']);
     let entryN = 0;
     let senseN = 0;
     for (const vocab of vocabularies) {
       const specs = exportedVocabFields(readVocabFields(vocab.config));
       const fieldSpecs = Object.fromEntries(specs.map((f) => [f.name, f]));
       const fields = specs.map((f) => f.name);
+      // The columns CLDF names for a gloss, a definition and a part of speech
+      // take the first field holding each role. Every other field, another
+      // language's gloss included, is a column of its own.
+      const [glossKey, definitionKey, posKey] = [
+        ENTRY_ROLES.GLOSS,
+        ENTRY_ROLES.DEFINITION,
+        ENTRY_ROLES.POS,
+      ].map((role) => fieldsWithRole(specs, role)[0]?.name ?? null);
+      const reserved = new Set([glossKey, definitionKey, posKey].filter(Boolean));
+      const valueOf = (m, key) => (key ? m[key] : undefined);
       // A reference field holds another entry's id, which means nothing
       // outside this project, so it is written the way the vocabulary shows
       // it: the entry's form and its number.
@@ -611,7 +625,7 @@ export function buildCldfDataset({
           ID: entryId,
           Language_ID: objId,
           Headword: item.form ?? '',
-          Part_Of_Speech: meta.pos ?? '',
+          Part_Of_Speech: valueOf(meta, posKey) ?? '',
           // Which of the entries spelled alike this one is. LIFT, the TSV and
           // the archive all carry it, and row order alone does not survive a
           // round trip through a tool that reorders.
@@ -623,7 +637,7 @@ export function buildCldfDataset({
           Plaid_ID: item.id ?? '',
         };
         for (const field of fields) {
-          if (reserved.has(field.toLowerCase())) continue;
+          if (reserved.has(field)) continue;
           const value = meta[field];
           if (value === null || value === undefined || value === '') continue;
           const written =
@@ -642,7 +656,7 @@ export function buildCldfDataset({
         let wrote = 0;
         for (const sense of [item, ...descendantsOf(tree, item.id)]) {
           const m = sense.metadata || {};
-          const description = m.gloss || m.definition || '';
+          const description = valueOf(m, glossKey) || valueOf(m, definitionKey) || '';
           if (description === '') continue;
           senseN += 1;
           wrote += 1;
@@ -662,7 +676,7 @@ export function buildCldfDataset({
             // Written whenever there is one: a sense with a definition and no
             // gloss has it as its Description too, and the import reads the
             // pair as a definition, not a gloss.
-            Definition: m.definition ? String(m.definition) : '',
+            Definition: valueOf(m, definitionKey) ? String(valueOf(m, definitionKey)) : '',
             Example_IDs: examples.join(' '),
           };
           // A sense of its own carries what the entry row cannot: its part of
@@ -670,9 +684,9 @@ export function buildCldfDataset({
           // row, so writing them here too would double every column of a
           // vocabulary with no senses at all.
           if (sense.id !== item.id) {
-            row.Part_Of_Speech = m.pos ?? '';
+            row.Part_Of_Speech = valueOf(m, posKey) ?? '';
             for (const field of fields) {
-              if (reserved.has(field.toLowerCase())) continue;
+              if (reserved.has(field)) continue;
               const value = m[field];
               if (value === null || value === undefined || value === '') continue;
               const written =

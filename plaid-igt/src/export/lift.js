@@ -19,9 +19,12 @@
 //   metadata.flexEntry      → entry @guid, so re-importing into the FLEx project
 //                             the data came from MERGES instead of duplicating
 //   metadata.flexSense      → sense @id
-//   metadata.gloss (ru)     → <gloss lang="ru">                 (sense)
-//   metadata.definition (…) → <definition><form lang=…>         (sense)
-//   metadata.pos            → <grammatical-info value=…>        (sense)
+//   a gloss field           → <gloss lang=…>                    (sense)
+//   a definition field      → <definition><form lang=…>         (sense)
+//   a part-of-speech field  → <grammatical-info value=…>        (sense)
+//                             Each by the role its field holds, in the
+//                             language the field records (else the preset's
+//                             analysis tag), never by its name.
 //   metadata.examples       → <example><form>/<translation>     (sense)
 //                             A promoted example is a {document, token}
 //                             reference, so the sentence text comes from
@@ -36,7 +39,12 @@
 import { xmlEscape } from './flextext.js';
 import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
-import { FIELD_SCOPES, FIELD_TYPES, RESERVED_ITEM_KEYS } from '../domain/vocabFields.js';
+import {
+  ENTRY_ROLES,
+  FIELD_SCOPES,
+  FIELD_TYPES,
+  RESERVED_ITEM_KEYS,
+} from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { parseFieldName } from '../domain/fieldNames.js';
 import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
@@ -54,11 +62,7 @@ const ENTRY_KEYS = new Set([
   'morphType',
   ...[...RESERVED_ITEM_KEYS].filter((k) => k !== 'form' && k !== 'examples'),
 ]);
-const SENSE_KEYS = new Set(['pos', 'examples']);
-// Multilingual bases: written bare for the primary writing system and
-// suffixed for the others ("gloss", "gloss (ru)"). See fieldName() on the
-// importer's side, which these two must stay in step with.
-const SENSE_BASES = new Set(['gloss', 'definition']);
+const SENSE_KEYS = new Set(['examples']);
 
 const isId = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -73,9 +77,8 @@ const textEl = (indent, value) => `${indent}<text>${xmlEscape(value)}</text>`;
 
 /**
  * A LIFT multitext: one <form> per writing system. Only one form per lang is
- * allowed in a parent, so the first value for a lang wins (the primary
- * writing system is emitted first, and a "gloss (en)" alongside a "gloss"
- * already resolved to `en` would otherwise make the file invalid).
+ * allowed in a parent, so the first value for a lang wins (two fields that
+ * record one language would otherwise make the file invalid).
  */
 function multitext(indent, values) {
   const lines = [];
@@ -102,20 +105,24 @@ const trait = (indent, name, value) =>
 
 /**
  * Bucket one item's metadata: glosses and definitions as [lang, text] pairs,
- * plus the leftover custom fields in their original order.
- *
- * The unsuffixed key is the primary writing system: the one the vocabulary
- * records for the field, else the preset's analysis tag. The tag can still
- * collide with a suffixed key's ("gloss" resolving to `en` next to a
- * "gloss (en)" when nothing was recorded), so the primary sorts first and
- * wins the one-form-per-lang dedupe. The suffixed key is the one that was
- * renamed, not the other way around.
+ * the part of speech, the leftover custom fields in their original order, and
+ * the references. A field's role (`fieldRoles`) says whether it is a gloss, a
+ * definition or the part of speech, and its language is the one the
+ * vocabulary records for it (`fieldLangs`), else the preset's analysis tag.
  */
-function partitionMetadata(metadata, analysisLang, refFields = new Set(), fieldLangs = {}) {
+function partitionMetadata(
+  metadata,
+  analysisLang,
+  refFields = new Set(),
+  fieldLangs = {},
+  fieldRoles = {},
+  fieldRank = {},
+) {
   const glosses = [];
   const definitions = [];
   const fields = [];
   const relations = [];
+  let pos = null;
   for (const [key, value] of Object.entries(metadata || {})) {
     if (ENTRY_KEYS.has(key) || SENSE_KEYS.has(key)) continue;
     // A reference field holds item ids, which are not text: it becomes a
@@ -127,28 +134,26 @@ function partitionMetadata(metadata, analysisLang, refFields = new Set(), fieldL
     }
     const text = scalar(value);
     if (text == null || text === '') continue;
-    const { base, ws } = parseFieldName(key);
-    if (SENSE_BASES.has(base)) {
-      // The unsuffixed key's language is what the vocabulary recorded for the
-      // field (a FLEx import writes the lexicon's primary writing system
-      // there), else the preset's analysis tag.
-      const lang = ws ?? fieldLangs[key] ?? analysisLang;
-      (base === 'gloss' ? glosses : definitions).push({ lang, text, ws });
+    const lang = fieldLangs[key] ?? analysisLang;
+    const role = fieldRoles[key];
+    if (role === ENTRY_ROLES.POS) {
+      pos ??= text;
       continue;
     }
-    fields.push({ base, ws, text });
+    if (role === ENTRY_ROLES.GLOSS || role === ENTRY_ROLES.DEFINITION) {
+      (role === ENTRY_ROLES.GLOSS ? glosses : definitions).push({ key, lang, text });
+      continue;
+    }
+    fields.push({ base: parseFieldName(key).base, lang, text });
   }
-  const primaryFirst = (list) =>
+  // In the vocabulary's field order, so where two share a language the first
+  // field wins the one form LIFT allows per language.
+  const ordered = (list) =>
     list
       .map((v, i) => [v, i])
-      .sort(([a, ai], [b, bi]) => (a.ws == null ? 0 : 1) - (b.ws == null ? 0 : 1) || ai - bi)
+      .sort(([a, ai], [b, bi]) => (fieldRank[a.key] ?? 1e9) - (fieldRank[b.key] ?? 1e9) || ai - bi)
       .map(([v]) => [v.lang, v.text]);
-  return {
-    glosses: primaryFirst(glosses),
-    definitions: primaryFirst(definitions),
-    fields,
-    relations,
-  };
+  return { glosses: ordered(glosses), definitions: ordered(definitions), pos, fields, relations };
 }
 
 // FLEx's own LIFT spelling for the note and field properties built into
@@ -217,15 +222,12 @@ function builtinsXml(indent, grouped, level) {
 /**
  * Custom fields grouped by base name, so "Comment" and "Comment (ru)" become
  * ONE <field type="Comment"> holding a form per writing system rather than two
- * fields whose names happen to differ. Each form's language is the key's own
- * suffix when it has one, else the writing system the vocabulary records for
- * that field (the FLEx importer stamps it for custom fields, which are
- * single-writing-system and carry no suffix), else the analysis language.
+ * fields whose names happen to differ. Each form's language is the one the
+ * vocabulary records for its field, else the analysis language.
  */
-function groupFields(fields, fieldLangs, analysisLang) {
+function groupFields(fields) {
   const byBase = new Map();
-  for (const { base, ws, text } of fields) {
-    const lang = ws ?? fieldLangs[base] ?? analysisLang;
+  for (const { base, lang, text } of fields) {
     if (!byBase.has(base)) byBase.set(base, []);
     byBase.get(base).push([lang, text]);
   }
@@ -291,23 +293,20 @@ function relationsXml(indent, relations, ctx) {
 // top and 'subsense' below; `index` numbers it among its siblings for the id.
 function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
   const meta = item.metadata || {};
-  const { glosses, definitions, fields, relations } = partitionMetadata(
+  const { glosses, definitions, pos, fields, relations } = partitionMetadata(
     meta,
     ctx.analysisLang,
     ctx.refFields,
     ctx.fieldLangs,
+    ctx.fieldRoles,
+    ctx.fieldRank,
   );
-  const { lines: builtins, custom } = builtinsXml(
-    `${indent}  `,
-    groupFields(fields, ctx.fieldLangs, ctx.analysisLang),
-    'sense',
-  );
+  const { lines: builtins, custom } = builtinsXml(`${indent}  `, groupFields(fields), 'sense');
   for (const base of custom.keys()) ctx.customNames.add(base);
 
   const id = senseIdOf(item, ctx.entryId, index);
-  const pos = scalar(meta.pos);
   const inner = [];
-  if (pos != null && pos !== '') {
+  if (pos != null) {
     inner.push(`${indent}  <grammatical-info value="${xmlEscape(pos)}"/>`);
     ctx.posValues.add(pos);
   }
@@ -435,6 +434,8 @@ function entryXml(indent, group, ctx) {
           ctx.analysisLang,
           ctx.refFields,
           ctx.fieldLangs,
+          ctx.fieldRoles,
+          ctx.fieldRank,
         ).relations.filter((r) => ctx.entryRefFields.has(r.type)),
       ),
       ctx,
@@ -446,10 +447,17 @@ function entryXml(indent, group, ctx) {
   // of them: writing it as the first sense puts a gloss-less sense in front of
   // every real one, and re-importing that adds a spurious sense every round.
   // Its own fields are the entry's, and go after the senses.
-  const headParts = partitionMetadata(meta, ctx.analysisLang, ctx.refFields, ctx.fieldLangs);
+  const headParts = partitionMetadata(
+    meta,
+    ctx.analysisLang,
+    ctx.refFields,
+    ctx.fieldLangs,
+    ctx.fieldRoles,
+    ctx.fieldRank,
+  );
   // The entry's own note and fields (Comment, LiteralMeaning, ...), where FLEx
   // writes them: on the entry, before its senses.
-  const headGrouped = groupFields(headParts.fields, ctx.fieldLangs, ctx.analysisLang);
+  const headGrouped = groupFields(headParts.fields);
   inner.push(...builtinsXml(`${indent}  `, headGrouped, 'entry').lines);
   // What the head's examples RENDER to, which is what decides whether the head
   // says anything a sense says. Asking the raw list instead would turn a
@@ -461,7 +469,7 @@ function entryXml(indent, group, ctx) {
     !group.senses.length ||
     headParts.glosses.length > 0 ||
     headParts.definitions.length > 0 ||
-    (scalar(meta.pos) ?? '') !== '' ||
+    headParts.pos != null ||
     headParts.relations.some((r) => !ctx.entryRefFields.has(r.type)) ||
     headExamples.length > 0;
   // That render counts an unreadable reference into ctx.unresolved as a side
@@ -594,6 +602,10 @@ export function buildLiftLexicon({
   // <name>.lang). Merged across vocabularies: a name shared by two lexicons is
   // the same field for LIFT's purposes.
   const fieldLangs = {};
+  // And what each field holds (its role), merged the same way.
+  const fieldRoles = {};
+  // And where each comes in its vocabulary's field order.
+  const fieldRank = {};
   // The reference fields, by name, merged the same way: their values are item
   // ids and become <relation>s rather than text.
   const refFields = new Set();
@@ -602,6 +614,8 @@ export function buildLiftLexicon({
   for (const vocab of vocabularies) {
     for (const [name, spec] of Object.entries(readVocabFields(vocab?.config) ?? {})) {
       if (typeof spec?.lang === 'string' && spec.lang !== '') fieldLangs[name] = spec.lang;
+      if (typeof spec?.role === 'string') fieldRoles[name] = spec.role;
+      fieldRank[name] ??= Object.keys(fieldRank).length;
       if (spec?.type !== FIELD_TYPES.ITEM) continue;
       refFields.add(name);
       if (spec.scope === FIELD_SCOPES.ENTRY) entryRefFields.add(name);
@@ -618,8 +632,14 @@ export function buildLiftLexicon({
   const referenced = new Set();
   for (const g of groups) {
     for (const it of g.items) {
-      for (const r of partitionMetadata(it.metadata, analysisLang, refFields, fieldLangs)
-        .relations) {
+      for (const r of partitionMetadata(
+        it.metadata,
+        analysisLang,
+        refFields,
+        fieldLangs,
+        fieldRoles,
+        fieldRank,
+      ).relations) {
         referenced.add(r.target);
       }
     }
@@ -629,6 +649,8 @@ export function buildLiftLexicon({
     vern,
     analysisLang,
     fieldLangs,
+    fieldRoles,
+    fieldRank,
     refFields,
     entryRefFields,
     liftIds: assignLiftIds(groups),

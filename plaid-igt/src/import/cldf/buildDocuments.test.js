@@ -623,7 +623,7 @@ describe('round trip through the exporter', () => {
         {
           id: 'v1',
           name: 'Lexicon',
-          config: { igt: { fields: { gloss: {}, pos: {} } } },
+          config: { igt: { fields: { gloss: { role: 'gloss' }, pos: { role: 'pos' } } } },
           items: [{ id: 'i1', form: 'perro', metadata: { gloss: 'dog', pos: 'N' } }],
         },
       ],
@@ -701,7 +701,7 @@ describe('round trip through the exporter', () => {
     const vocab = {
       id: 'v1',
       name: 'Lexicon',
-      config: { igt: { fields: { gloss: { inline: true } } } },
+      config: { igt: { fields: { gloss: { inline: true, role: 'gloss' } } } },
       items: [
         { id: 'late', form: 'banco', metadata: { gloss: 'bench', homograph: 2 } },
         { id: 'early', form: 'banco', metadata: { gloss: 'bank', homograph: 1 } },
@@ -737,7 +737,7 @@ describe('round trip through the exporter', () => {
     const vocab = {
       id: 'v1',
       name: 'Lexicon',
-      config: { igt: { fields: { gloss: { inline: true } } } },
+      config: { igt: { fields: { gloss: { inline: true, role: 'gloss' }, pos: { role: 'pos' } } } },
       items: [
         { id: 'one', form: 'banco', metadata: { gloss: 'bench', pos: 'noun', homograph: 1 } },
       ],

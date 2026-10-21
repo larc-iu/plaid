@@ -148,7 +148,7 @@ export default {
     ),
     'vocab.fieldRole': {
       carried: 'changed',
-      how: 'Not written. The status field decides which entries print, and its values are left out of the entry.',
+      how: 'Not written. The first field holding the gloss role prints first, as the gloss, and the field holding the status role starts unticked.',
     },
     'vocab.fieldLang': {
       carried: 'changed',
