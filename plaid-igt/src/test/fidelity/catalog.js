@@ -333,6 +333,8 @@ export const FEATURES = [
   {
     key: 'layers.fieldLexiconField',
     what: 'an annotation field paired with a lexicon entry field (its Lexicon field)',
+    // Setup's Gloss and POS fields pair with gloss and pos.
+    bare: true,
     detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.lexiconField),
   },
   {
