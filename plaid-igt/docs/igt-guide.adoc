@@ -513,7 +513,7 @@ Runs of words whose joined form matches a multi-word expression entry are linked
 **Alt+↓** on a morpheme's gloss and a click on the morpheme's link open the same list: each sense with its gloss, the alternatives an analysis service weighed with their probability, and the glosses the project has given the form.
 Choosing a row sets the link and the gloss together.
 A row with no entry leaves the link as it is, and a sense with no gloss leaves the gloss as it is.
-Chosen in the popover, a sense keeps a gloss a person wrote, and fills the other gloss fields that are empty or hold an unconfirmed proposal.
+Chosen in the popover, a sense keeps a gloss a person wrote that is not the linked sense's own, and fills the other gloss fields that are empty or hold an unconfirmed proposal.
 A gloss typed by hand changes only the gloss.
 
 TIP: Accept links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.
@@ -1105,7 +1105,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
-| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, and accepts a proposed link, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, accepts a proposed link, and on a word unlinks the linked entry, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
