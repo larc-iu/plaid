@@ -249,6 +249,20 @@ export default {
         }
       }
     },
+    // A field setup seeds keeps the seed's role, the gloss, definition and pos
+    // the dataset's own columns fill hold theirs, and every other field has none.
+    'vocab.fieldRole': (s, ctx) => {
+      const seed = seededVocab(ctx).fields || {};
+      const columns = { gloss: 'gloss', definition: 'definition', pos: 'pos' };
+      for (const v of vocabs(s)) {
+        for (const [name, f] of Object.entries(v.config?.igt?.fields || {})) {
+          if (!f) continue;
+          const role = seed[name]?.role ?? columns[name];
+          if (role) f.role = role;
+          else delete f.role;
+        }
+      }
+    },
     // Only the field setup seeds with a tagset keeps one.
     'vocab.fieldTagset': (s, ctx) => {
       const seed = seededVocab(ctx).fields || {};

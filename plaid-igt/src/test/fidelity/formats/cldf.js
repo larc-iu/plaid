@@ -249,8 +249,7 @@ export default {
       carried: false,
       kind: 'ruled',
       ruling: PARITY_RULING,
-      wart: true,
-      why: 'Not written. The gloss, definition and part-of-speech columns are filled by role, and the import gives the fields it makes from those columns their roles, so a role on any other field comes back as none.',
+      why: 'Not written. The gloss, definition and part-of-speech columns are filled by role, and the import gives the fields setup seeds and the ones it makes from those columns their roles, so a role on any other field comes back as none.',
     },
     'vocab.fieldLang': {
       carried: false,
