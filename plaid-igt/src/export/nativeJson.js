@@ -144,7 +144,9 @@ export function buildProjectFile({
       name,
       ...(tagset ? { tagset } : {}),
       ...(lang ? { lang } : {}),
-      ...(lexiconField ? { lexiconField } : {}),
+      // Always written, null for none: an import proposes one for a record
+      // without the key (an archive older than the setting).
+      lexiconField: lexiconField ?? null,
     };
   };
   // Project config this app owns, stored verbatim: defaults are the app's

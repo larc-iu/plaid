@@ -429,9 +429,12 @@ describe('buildProjectFile', () => {
     expect(out.schema).toEqual({
       orthographies: [{ name: 'Translit' }],
       fields: {
-        sentence: [{ name: 'Translation' }],
-        word: [{ name: 'POS' }, { name: 'Phrase' }],
-        morpheme: [{ name: 'Gloss' }],
+        sentence: [{ name: 'Translation', lexiconField: null }],
+        word: [
+          { name: 'POS', lexiconField: null },
+          { name: 'Phrase', lexiconField: null },
+        ],
+        morpheme: [{ name: 'Gloss', lexiconField: null }],
       },
       ignoredTokens: null,
       documentMetadata: [{ name: 'Source' }],
@@ -520,9 +523,11 @@ describe('buildProjectFile', () => {
       .find((sl) => sl.name === 'Gloss');
     gloss.config.igt.tagset = 'Leipzig';
     const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
-    expect(out.schema.fields.morpheme).toEqual([{ name: 'Gloss', tagset: 'Leipzig' }]);
+    expect(out.schema.fields.morpheme).toEqual([
+      { name: 'Gloss', tagset: 'Leipzig', lexiconField: null },
+    ]);
     // A field with no tagset stays a bare name.
-    expect(out.schema.fields.sentence).toEqual([{ name: 'Translation' }]);
+    expect(out.schema.fields.sentence).toEqual([{ name: 'Translation', lexiconField: null }]);
   });
 
   it("carries each field's recorded language, on the field", () => {
@@ -536,7 +541,9 @@ describe('buildProjectFile', () => {
       .find((sl) => sl.name === 'Translation');
     translation.config.igt.lang = 'pmy';
     const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
-    expect(out.schema.fields.sentence).toEqual([{ name: 'Translation', lang: 'pmy' }]);
+    expect(out.schema.fields.sentence).toEqual([
+      { name: 'Translation', lang: 'pmy', lexiconField: null },
+    ]);
   });
 
   it('passes through null autoAnalysis without baking defaults', () => {

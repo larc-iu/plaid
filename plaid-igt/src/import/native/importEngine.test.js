@@ -368,6 +368,10 @@ const itemPatches = (client) =>
 describe('deriveSetupData', () => {
   it('maps the archive schema onto the setup wizard input', () => {
     const { manifest } = buildArchive();
+    // An archive made before fields recorded a Lexicon field.
+    for (const rows of Object.values(manifest.schema.fields)) {
+      for (const row of rows) delete row.lexiconField;
+    }
     const setup = deriveSetupData(manifest, 'Reimported');
     expect(setup.basicInfo).toEqual({ projectName: 'Reimported' });
     expect(setup.orthographies.orthographies).toEqual([
@@ -377,10 +381,11 @@ describe('deriveSetupData', () => {
     expect(setup.fields.fields).toEqual(
       expect.arrayContaining([
         { name: 'Translation', scope: 'Sentence', lang: null, lexiconField: null, isCustom: true },
-        // An archive that records no Lexicon field gives none, whatever the name.
-        { name: 'POS', scope: 'Word', lang: null, lexiconField: null, isCustom: true },
+        // A field record without the key (an archive made before it existed)
+        // is given the one its name proposes, as the import makes the field.
+        { name: 'POS', scope: 'Word', lang: null, lexiconField: 'pos', isCustom: true },
         { name: 'Phrase', scope: 'Word', lang: null, lexiconField: null, isCustom: true },
-        { name: 'Gloss', scope: 'Morpheme', lang: null, lexiconField: null, isCustom: true },
+        { name: 'Gloss', scope: 'Morpheme', lang: null, lexiconField: 'gloss', isCustom: true },
       ]),
     );
     // A field's recorded language comes back with it, for setup to stamp.
@@ -391,7 +396,10 @@ describe('deriveSetupData', () => {
         fields: {
           ...manifest.schema.fields,
           sentence: [{ name: 'Translation', lang: 'pmy' }],
-          morpheme: [{ name: 'Glosa', lexiconField: 'gloss' }],
+          morpheme: [
+            { name: 'Glosa', lexiconField: 'gloss' },
+            { name: 'Gloss', lexiconField: null },
+          ],
         },
       },
     };
@@ -408,6 +416,14 @@ describe('deriveSetupData', () => {
       scope: 'Morpheme',
       lang: null,
       lexiconField: 'gloss',
+      isCustom: true,
+    });
+    // A recorded none stays none, whatever the name.
+    expect(deriveSetupData(labelled, 'x').fields.fields).toContainEqual({
+      name: 'Gloss',
+      scope: 'Morpheme',
+      lang: null,
+      lexiconField: null,
       isCustom: true,
     });
     expect(setup.fields.ignoredTokens).toBeUndefined(); // archive has null

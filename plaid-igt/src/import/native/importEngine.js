@@ -89,8 +89,10 @@ const manifestFields = (manifest) => {
       name: f.name,
       scope,
       lang: f.lang ?? null,
-      // What the archive records, none included: never proposed from a name.
-      lexiconField: f.lexiconField ?? null,
+      // What the archive records, none (null) included. A record without the
+      // key, from an archive made before Lexicon fields, is proposed one from
+      // the name by setup, since the import makes the field.
+      lexiconField: f.lexiconField,
     })),
   );
 };

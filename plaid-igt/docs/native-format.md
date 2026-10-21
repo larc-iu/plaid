@@ -69,7 +69,7 @@ the upload's media type is validated from its filename.
 | `asOf` | ISO timestamp when this is a historical (time-travel) export, else `null` |
 | `project` | `{id, name}` of the source project |
 | `schema.orthographies` | `[{name}]` — non-baseline orthographies on the word layer |
-| `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?, lang?, lexiconField?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does; `lang` is the writing system the field records its values are in (`config.igt.lang`), absent when it records none. `lexiconField` is the lexicon entry field the field pairs with (`config.igt.lexiconField`), absent when none |
+| `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?, lang?, lexiconField?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does; `lang` is the writing system the field records its values are in (`config.igt.lang`), absent when it records none. `lexiconField` is the lexicon entry field the field pairs with (`config.igt.lexiconField`), null when none. An import gives a field whose record lacks the key the Lexicon field its name proposes, as setup does |
 | `schema.ignoredTokens` | the word layer's ignored-token config (`{type, whitelist, blacklist}`: `type` is `'unicodePunctuation'` or `'blacklist'` and names the list in force, and the other list is kept for switching back), or `null` |
 | `schema.documentMetadata` | `[{name, tagset?}]` enabled document metadata fields, or `[]` |
 | `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset |
