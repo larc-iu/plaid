@@ -36,7 +36,9 @@ export const popover = {
   // How wide each popover variant is, for the placement math. Must match the
   // width its CSS actually renders at.
   _popWidth(variant = this._popover?.variant) {
-    return variant === 'comment' ? 320 : 240;
+    if (variant === 'comment') return 320;
+    // A morpheme's chip lists the pair picker's rows (.igt-vocab-pop--pairs).
+    return this._popover?.kind === 'morpheme' ? 360 : 240;
   },
 
   _openPopover(tokenId, kind, anchorEl) {

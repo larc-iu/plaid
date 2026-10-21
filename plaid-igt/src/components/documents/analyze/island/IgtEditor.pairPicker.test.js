@@ -586,6 +586,25 @@ describe('the two doors dress a row alike', () => {
     expect(document.querySelectorAll('.igt-vocab-pop__item.is-active')).toHaveLength(1);
   });
 
+  it('places the chip list at the width its CSS draws, wide enough for “no entry” and “accept”', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(
+      `${process.cwd()}/src/components/documents/analyze/island/igt-editor.css`,
+      'utf8',
+    );
+    const rule = (sel) =>
+      css.match(new RegExp(`${sel.replace('.', '\\.')} \\{([^}]*)\\}`))?.[1] ?? '';
+    const width = Number(rule('.igt-vocab-pop--pairs').match(/width:\s*(\d+)px/)?.[1]);
+    expect(width).toBeGreaterThanOrEqual(360);
+    mount();
+    await settle(4);
+    openChip('m-2');
+    await settle(4);
+    expect(editor._popWidth()).toBe(width);
+    expect(rule('.igt-pair__entry')).toMatch(/white-space:\s*nowrap/);
+    expect(rule('.igt-vocab-pop__ok')).toMatch(/white-space:\s*nowrap/);
+  });
+
   it('labels a pick in History the same from either door', async () => {
     const { client } = mount();
     await settle(4);

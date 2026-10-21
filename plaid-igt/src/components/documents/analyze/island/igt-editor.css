@@ -1115,6 +1115,7 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--igt-green);
+  white-space: nowrap;
 }
 .igt-vocab-pop__empty {
   padding: 6px;
@@ -1580,7 +1581,9 @@
    entry it goes with, the vocabulary, and the tags. Grey tags: violet is for
    what a machine wrote, and a row is only offered. */
 .igt-vocab-pop--pairs {
-  width: 300px;
+  /* Wide enough that "no entry" and "accept" stay on one line each. Matches
+     _popWidth in editor/popover.js. */
+  width: 360px;
 }
 /* A sense under its headword, one rule for both lists. */
 .igt-vocab-pop__item,
@@ -1610,6 +1613,7 @@
 }
 .igt-pair__entry {
   font-weight: 400;
+  white-space: nowrap;
 }
 .igt-pair__none {
   color: var(--igt-gray-500);
