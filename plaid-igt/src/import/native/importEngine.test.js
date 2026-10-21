@@ -2079,7 +2079,11 @@ describe("runNativeImport, other apps' layers", () => {
     // Any namespace: the import knows nothing of what the setting means.
     manifest.otherConfig = {
       ...manifest.otherConfig,
-      someapp: { pick: { layers: [concepts.id, 'not-a-layer'], word: manifest.layers.word } },
+      someapp: {
+        pick: { layers: [concepts.id, 'not-a-layer'], word: manifest.layers.word },
+        // An id inside a longer string is an id too.
+        lines: [{ source: `layer:${field.id}` }, { source: 'layer:gone' }],
+      },
     };
     // A setting on an earlier layer naming one made after it.
     nodes.config = { ...nodes.config, someapp: { target: concepts.id, field: field.id } };
@@ -2095,6 +2099,7 @@ describe("runNativeImport, other apps' layers", () => {
       .find((sl) => sl.name === field.name && sl.config?.igt?.scope === field.scope).id;
     expect(argsOf(client, 'projects.setConfig').filter(([, ns]) => ns === 'someapp')).toEqual([
       ['newp', 'someapp', 'pick', { layers: [conceptsId, 'not-a-layer'], word: wordId }],
+      ['newp', 'someapp', 'lines', [{ source: `layer:${fieldId}` }, { source: 'layer:gone' }]],
     ]);
     expect(argsOf(client, 'tokenLayers.setConfig').filter(([, ns]) => ns === 'someapp')).toEqual([
       [nodesId, 'someapp', 'target', conceptsId],

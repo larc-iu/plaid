@@ -325,17 +325,33 @@ const restoredIds = (restored) => {
   return ids;
 };
 
+// The pattern matching every id of one id map, made once per map.
+const idPatterns = new WeakMap();
+
 /**
- * `value` with every string that is an archive layer id in `ids` replaced by
- * the id of the layer made or found for it, at any depth: a setting or a rule
- * may name a layer by id.
+ * `value` with every occurrence of an archive layer id in `ids`, in any string
+ * at any depth, replaced by the id of the layer made or found for it: a setting
+ * or a rule may name a layer by id, alone or inside a longer string
+ * ("layer:<id>"). Layer ids are UUIDs, so no other text matches one.
  */
 export const remapIds = (value, ids) => {
   if (Array.isArray(value)) return value.map((v) => remapIds(v, ids));
   if (isMap(value)) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, remapIds(v, ids)]));
   }
-  return typeof value === 'string' && ids.has(value) ? ids.get(value) : value;
+  if (typeof value !== 'string' || !ids.size) return value;
+  if (ids.has(value)) return ids.get(value);
+  // One pass, longest id first, so a replacement is never matched again.
+  let pattern = idPatterns.get(ids);
+  if (!pattern) {
+    const escaped = [...ids.keys()]
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)
+      .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    pattern = new RegExp(escaped.join('|'), 'g');
+    idPatterns.set(ids, pattern);
+  }
+  return value.replace(pattern, (id) => ids.get(id));
 };
 
 /**
