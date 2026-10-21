@@ -97,11 +97,12 @@ const PAST_DISABLED = 'data-[disabled]:pointer-events-none data-[disabled]:opaci
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
+// And "no role".
+const NO_ROLE = '__none__';
 
 // What a field holds, as the Type picker offers it: text, one entry, or a
 // list of entries. `many` only means anything with the item type, so the two
 // travel as one choice.
-const NO_ROLE = '__none__';
 const TYPE_CHOICES = [
   { key: 'text', label: 'Text', type: FIELD_TYPES.TEXT, many: false },
   { key: 'item', label: 'Entry', type: FIELD_TYPES.ITEM, many: false },

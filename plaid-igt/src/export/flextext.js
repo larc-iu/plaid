@@ -134,13 +134,13 @@ const mappedFields = (options, scope) =>
 // see presets.js), never the field's name. Everything the map leaves out
 // becomes a comment naming the field it came from, which is the only place a
 // .flextext has to put it.
+const METADATA_ITEM_TYPES = ['title', 'title-abbreviation', 'source', 'comment'];
+
 // What separates the fields sharing one comment. A newline is what it wants to
 // be, and FLEx does store one, but its Info tab draws a comment on a single
 // line and everything past the newline is invisible there. Wide enough to read
 // against a participant list, which uses "," and ";" of its own.
 const COMMENT_SEP = ' | ';
-/** The item types a document metadata field can go out as. */
-const METADATA_ITEM_TYPES = ['title', 'title-abbreviation', 'source', 'comment'];
 
 /**
  * A document's metadata as <interlinear-text> items.

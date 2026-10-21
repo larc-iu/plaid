@@ -402,7 +402,7 @@ A field marked **inline** also shows on each entry's row in the link popover.
 Other fields stay on the entry's own edit form.
 
 Each field's **role** says what its values are: a gloss, a definition, a part of speech, or the entry's status.
-A published dictionary prints the gloss, definition and part-of-speech fields and publishes by the status field, the FLEx, CLDF and LaTeX exports write each field by its role, and the assistant reads them.
+The FLEx, CLDF and LaTeX exports write each field by its role, and the assistant reads them.
 A field with no role is none of these, whatever it is called.
 A new vocabulary's Gloss, POS, Definition and Status fields hold their roles, an import gives its fields theirs, and a field you add is given the role its name suggests, such as Gloss for `Gloss (fr)`.
 Several fields can share a role, such as a gloss in each language, and each records its **language**.

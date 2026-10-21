@@ -128,7 +128,6 @@ async function executeProjectSetupImpl({
   // another Plaid app may already have set up (matched by shared role).
   const existingTextLayers = existingProject?.textLayers || [];
   const adoptedBaseline = findBaselineTextLayer(existingTextLayers);
-  const baselineLayer = adoptedBaseline;
 
   // A text layer made here is made in one batch with its role.
   const createBaseline = async () => {
@@ -142,7 +141,7 @@ async function executeProjectSetupImpl({
     return id;
   };
 
-  let textLayerId = baselineLayer?.id ?? null;
+  let textLayerId = adoptedBaseline?.id ?? null;
   let needsBaselineTag = false;
   if (adoptedBaseline) {
     updateProgress(20, 'Using shared text layer…');
@@ -168,7 +167,7 @@ async function executeProjectSetupImpl({
   let morphemeLayerId = null;
 
   if (textLayerId) {
-    const existingTokenLayers = baselineLayer?.tokenLayers || [];
+    const existingTokenLayers = adoptedBaseline?.tokenLayers || [];
 
     const ensureTokenLayer = async (
       found,
