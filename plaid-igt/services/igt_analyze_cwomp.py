@@ -374,6 +374,9 @@ class CwompModel:
             for e, v in zip(new, embs):
                 self._embedded[e] = v
         self.lexicon = lexicon
+        self.same_form: Dict[str, List[int]] = {}
+        for i, (form, _) in enumerate(lexicon):
+            self.same_form.setdefault(form, []).append(i)
         self.vocab = torch.cat([torch.stack([self._embedded[e] for e in lexicon]),
                                 self.eos.unsqueeze(0)]).to(self.device)
 
@@ -392,6 +395,15 @@ class CwompModel:
 
     def analyze(self, query_emb, max_length=20, num_beams=5):
         """-> [(form entry, gloss entry, probability or None)] for the best beam."""
+        return [(d['form'], d['gloss'], d['prob'])
+                for d in self.analyze_full(query_emb, max_length, num_beams)]
+
+    def analyze_full(self, query_emb, max_length=20, num_beams=5, max_alternatives=5):
+        """-> [{form, gloss, prob, alternatives}] for the best beam, where
+        `alternatives` is {gloss entry: probability} over the entries of the
+        same form at that step (the chosen one included, at most
+        `max_alternatives`), empty when uncalibrated or when no other entry
+        shares the form."""
         torch = self.torch
         eos_idx = len(self.lexicon)
         with torch.no_grad():
@@ -402,12 +414,34 @@ class CwompModel:
         chosen = [i for i in best if i != eos_idx]
         if not chosen:
             return []
-        probs = [None] * len(chosen)
+        out = [{'form': self.lexicon[i][0], 'gloss': self.lexicon[i][1], 'prob': None, 'alternatives': {}}
+               for i in chosen]
         if self.temperature:
             logits = self.step_logits(query_emb, chosen)[:len(chosen)] / self.temperature
             p = torch.softmax(logits, dim=-1)
-            probs = [float(p[k, i]) for k, i in enumerate(chosen)]
-        return [(self.lexicon[i][0], self.lexicon[i][1], pr) for i, pr in zip(chosen, probs)]
+            for k, i in enumerate(chosen):
+                out[k]['prob'] = float(p[k, i])
+                same = self.same_form.get(self.lexicon[i][0], [])
+                if len(same) > 1:
+                    ranked = sorted(same, key=lambda j: -float(p[k, j]))[:max_alternatives]
+                    out[k]['alternatives'] = {self.lexicon[j][1]: float(p[k, j]) for j in ranked}
+        return out
+
+
+def alternatives_detail(picked: dict, confirmed: 'Confirmed') -> Optional[dict]:
+    """What a gloss span records of the alternatives the model weighed: the
+    convention's `valueProbs` (shown in igt's Alt+Down list), and
+    `valueLinks`, the item each alternative would be linked to, so that
+    picking one moves the morpheme's link along with it."""
+    alts = picked['alternatives']
+    if len(alts) < 2:
+        return None
+    detail = {'valueProbs': {decode_piece(g): round(p, 4) for g, p in alts.items()}}
+    links = {decode_piece(g): confirmed.link_for((picked['form'], g)) for g in alts}
+    links = {g: item for g, item in links.items() if item}
+    if links:
+        detail['valueLinks'] = links
+    return detail
 
 
 def read_lexicon(path: Path) -> List[Tuple[str, str]]:
@@ -748,17 +782,18 @@ class CwompService(BaseService):
         for n, ((s, i, _), emb) in enumerate(zip(jobs, embs)):
             if n % 50 == 0:
                 response_helper.progress(25 + int(60 * n / len(jobs)), f'Analyzing words ({n}/{len(jobs)})…')
-            picked = model.analyze(emb)
+            picked = model.analyze_full(emb)
             w = s['words'][i]
             if not picked:
                 unanalyzed += 1
                 continue
-            forms, types = zip(*(decode_form(f) for f, _, _ in picked))
+            forms, types = zip(*(decode_form(d['form']) for d in picked))
             plans.append({'word': w, 'sentence_id': s['id'], 'analysis': {
-                'segments': list(forms), 'glosses': [decode_piece(g) for _, g, _ in picked],
+                'segments': list(forms), 'glosses': [decode_piece(d['gloss']) for d in picked],
                 'types': list(types), 'joiners': joiners_for(list(types)),
-                'probs': [p for _, _, p in picked],
-                'links': [confirmed.link_for((f, g)) for f, g, _ in picked],
+                'probs': [d['prob'] for d in picked],
+                'links': [confirmed.link_for((d['form'], d['gloss'])) for d in picked],
+                'gloss_details': [alternatives_detail(d, confirmed) for d in picked],
                 'surface_mismatch': False, 'degraded': False}})
             if w['state'] != 'unanalyzed':
                 replaced += 1

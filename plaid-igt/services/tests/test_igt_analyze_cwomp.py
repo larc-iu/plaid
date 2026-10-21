@@ -153,8 +153,9 @@ class _Model:
     def encode_queries(self, queries):
         return list(queries)
 
-    def analyze(self, emb):
-        return self.picked
+    def analyze_full(self, emb):
+        return [{'form': f, 'gloss': g, 'prob': p, 'alternatives': dict(alts)}
+                for f, g, p, *rest in self.picked for alts in [rest[0] if rest else {}]]
 
 
 def _document():
@@ -196,7 +197,8 @@ def _service(picked):
 
 def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side():
     enclitic = cwomp.encode_form('yor', 'enclitic')
-    service, model = _service([('gel', 'come', 0.9), (enclitic, 'PROG', 0.4)])
+    service, model = _service([('gel', 'come', 0.9, {'come': 0.9, 'arrive': 0.08}),
+                               (enclitic, 'PROG', 0.4)])
     helper = servicetest.run(service, REQUEST)
     assert helper.errors == []
     [result] = helper.results
@@ -210,6 +212,12 @@ def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side(
     assert morphs[0]['provDetail']['boundaries'] == '='
     glosses = [(c['args'][2], c['args'][3]) for kind, c in service.client.calls if kind == 'spans.create']
     # `gel` was always linked to one item, the enclitic never: only `gel` is linked.
+    # The alternatives the model weighed ride on the gloss, with the item each
+    # would link to; one alternative alone is no list.
+    details = [m['provDetail'] for _, m in glosses]
+    assert details[0]['valueProbs'] == {'come': 0.9, 'arrive': 0.08}
+    assert details[0]['valueLinks'] == {'come': 'item-gel'}
+    assert 'valueProbs' not in details[1]
     links = [c['args'] for kind, c in service.client.calls if kind == 'vocab_links.create']
     assert [(item, meta['provProb']) for item, _, meta in links] == [('item-gel', 0.9)] * 2
     assert [(v, m['provProb']) for v, m in glosses] == [('come', 0.9), ('PROG', 0.4)] * 2

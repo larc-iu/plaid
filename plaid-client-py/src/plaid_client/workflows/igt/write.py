@@ -23,7 +23,10 @@ first), ``provDetail.value`` on each gloss span. An analysis may carry
 the morpheme and its gloss as ``provProb``, and ``links``, one vocab item id
 per segment or None: the morpheme is linked to that item, stamped like the
 morpheme (``provDetail.vocabItem`` records the pick). A proposer links only
-to items that exist, and only when it knows which one is meant. Callers are expected to
+to items that exist, and only when it knows which one is meant. An analysis
+may also carry ``gloss_details``, one dict or None per segment, merged into
+the gloss span's ``provDetail`` (``valueProbs``, the alternatives a model
+weighed, which igt lists under Alt+Down). Callers are expected to
 have applied the write contract already (:func:`select_targets`).
 """
 
@@ -90,6 +93,7 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                         b.tokens.delete(m['id'])  # cascades its spans + links
                 probs = a.get('probs') or [None] * len(a['segments'])
                 links = a.get('links') or [None] * len(a['segments'])
+                gloss_details = a.get('gloss_details') or [None] * len(a['segments'])
                 for j, segment in enumerate(a['segments']):
                     prob = probs[j]
                     form_detail = {**detail, 'form': segment}
@@ -115,9 +119,9 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                             source, prob=prob, detail={**detail, 'vocabItem': links[j]}), id=uuid7())
                     gloss = a['glosses'][j]
                     if gloss:
-                        b.spans.create(gloss_layer_id, [mid], gloss,
-                                       stamp_inferred(source, prob=prob,
-                                                      detail={**detail, 'value': gloss}))
+                        b.spans.create(gloss_layer_id, [mid], gloss, stamp_inferred(
+                            source, prob=prob,
+                            detail={**detail, **(gloss_details[j] or {}), 'value': gloss}))
         written += len(chunk)
     if on_progress:
         on_progress(len(chunks), len(chunks))

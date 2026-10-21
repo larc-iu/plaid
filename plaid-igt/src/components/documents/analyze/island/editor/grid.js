@@ -1,7 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
-import { allowedGuess } from '@/domain/glossGuess';
+import { allowedGuess, linkFollowingGloss } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { KINDS } from '@/domain/precedent';
@@ -383,10 +383,22 @@ export const grid = {
                   this.doc.resendsByEntity(() =>
                     this.doc.labelled(
                       this._editLabel(name, this._morphemeSubject(morph, word, siblings), index, v),
-                      () =>
-                        this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
+                      () => {
+                        const written = this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
                           adopted: meta != null,
-                        }),
+                        });
+                        // Choosing one of the model's alternatives moves the
+                        // morpheme's link to that alternative's entry.
+                        const follow = linkFollowingGloss(morph, morph.annotations?.[name], v);
+                        if (follow) {
+                          this.doc.linkVocab(
+                            morph.id,
+                            follow.itemId,
+                            this.doc.adoptStamp(follow.source, { vocabItem: follow.itemId }),
+                          );
+                        }
+                        return written;
+                      },
                     ),
                   ),
                 extraClass: 'igt-morph-field',

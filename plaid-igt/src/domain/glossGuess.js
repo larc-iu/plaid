@@ -296,6 +296,22 @@ export function listAlternatives({
   return list;
 }
 
+// The entry a morpheme's link moves to when its gloss is set to `value`: the
+// one the gloss's producer named for that value among the alternatives it
+// weighed (provDetail.valueLinks, see CWoMP). Only while the morpheme has no
+// link, or still the same producer's unconfirmed one: a person's link, a
+// confirmed one and another producer's stay. Null when nothing moves.
+export function linkFollowingGloss(morph, span, value) {
+  const target = span?.metadata?.[PROV_DETAIL_KEY]?.valueLinks?.[value];
+  if (typeof target !== 'string' || !target) return null;
+  const source = span.metadata[PROV_SOURCE_KEY];
+  const v = morph?.vocabItem;
+  if (v && (v.id === target || v.prov !== PROV_STATES.MACHINE || v.provSource !== source)) {
+    return null;
+  }
+  return { itemId: target, source };
+}
+
 // Whole-value rows to part rows: each row's value is split on the tagset's
 // delimiters and its count credited to every part it contains. Two rows that
 // share a part pool into one ("1SG.NOM" and "1SG.ERG" both feed 1SG), which is

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  linkFollowingGloss,
   precedentGuessSource,
   vocabEntryGuessSource,
   entryFieldFor,
@@ -461,5 +462,39 @@ describe('what a mixed tagset offers', () => {
 
   it('never drops the tagset’s own values, whatever their count', () => {
     expect(offers([])).toEqual(['PRT', 'RES']);
+  });
+});
+
+describe('linkFollowingGloss', () => {
+  const span = {
+    metadata: {
+      prov: 'inferred',
+      provSource: 'service:cwomp-analyzer',
+      provDetail: {
+        valueProbs: { TOP: 0.6, and: 0.3 },
+        valueLinks: { TOP: 'i-top', and: 'i-and' },
+      },
+    },
+  };
+  const own = { id: 'i-top', prov: 'machine', provSource: 'service:cwomp-analyzer' };
+
+  it("moves the producer's own unconfirmed link to the picked alternative's entry", () => {
+    expect(linkFollowingGloss({ vocabItem: own }, span, 'and')).toEqual({
+      itemId: 'i-and',
+      source: 'service:cwomp-analyzer',
+    });
+    expect(linkFollowingGloss({ vocabItem: null }, span, 'and')?.itemId).toBe('i-and');
+  });
+
+  it('leaves the link when nothing moves or it is not the producer’s to move', () => {
+    expect(linkFollowingGloss({ vocabItem: own }, span, 'TOP')).toBeNull();
+    expect(linkFollowingGloss({ vocabItem: own }, span, 'typed')).toBeNull();
+    expect(linkFollowingGloss({ vocabItem: { ...own, prov: 'verified' } }, span, 'and')).toBeNull();
+    expect(
+      linkFollowingGloss({ vocabItem: { id: 'i-top', prov: 'human' } }, span, 'and'),
+    ).toBeNull();
+    const other = { ...own, provSource: 'rule:precedent-or-unique' };
+    expect(linkFollowingGloss({ vocabItem: other }, span, 'and')).toBeNull();
+    expect(linkFollowingGloss({ vocabItem: own }, { metadata: {} }, 'and')).toBeNull();
   });
 });
