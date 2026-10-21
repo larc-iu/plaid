@@ -210,7 +210,7 @@ describe('orthographies', () => {
 });
 
 describe('fieldRolesOf', () => {
-  it("gives each field the role its Lexicon field holds, a vocabulary's or a core field's", async () => {
+  it("gives each field the role its Lexicon field holds: a vocabulary's, or a core field's for a key none declares", async () => {
     const { fieldRolesOf } = await import('./fieldTargets.js');
     const span = (name, scope, lexiconField) => ({
       id: name,
@@ -236,9 +236,12 @@ describe('fieldRolesOf', () => {
         },
       ],
     };
-    // `gloss` keeps the core field's role: the vocabulary declares it with none.
-    expect(fieldRolesOf(project)).toEqual({
-      Morpheme: { Sense: 'gloss', Gloss: 'gloss', POS: 'pos' },
+    // The vocabulary declares `gloss` with its role cleared: no gloss, as the
+    // exports read it. `pos` it does not declare, so the core field's role holds.
+    expect(fieldRolesOf(project)).toEqual({ Morpheme: { Sense: 'gloss', POS: 'pos' } });
+    // With no vocabulary every core key holds its core role.
+    expect(fieldRolesOf({ ...project, vocabs: [] })).toEqual({
+      Morpheme: { Gloss: 'gloss', POS: 'pos' },
     });
   });
 });

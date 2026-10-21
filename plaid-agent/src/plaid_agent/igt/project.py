@@ -213,17 +213,20 @@ class IgtProject:
     def gloss_field(self, scope: str) -> Optional[Field]:
         """The field that plays the role of gloss at a scope, used only as the
         DEFAULT where a tool takes a field: the first whose Lexicon field
-        holds the gloss role (the role a lexicon gives that entry field, else
-        the one a new lexicon's core field of that key holds), else the
+        holds the gloss role (the role a lexicon declares for that entry
+        field, none when declared without one, else for a key no lexicon
+        declares the one a new lexicon's core field holds), else the
         scope's first field. Never read from a field's name. The overview
         names the choice so a caller can pass field= instead."""
         fs = self.fields_by_scope(scope)
         roles = {f['name']: f['role'] for f in CORE_VOCAB_FIELDS if f.get('role')}
+        # A key a lexicon declares holds the role it declares, none included: a
+        # cleared role is no role. The core role holds only for a key none declares.
         declared = {}
         for v in self.vocabs:
             for f in v.get('fields') or []:
-                if f.get('role') and f.get('declared') and f['name'] not in declared:
-                    declared[f['name']] = f['role']
+                if f.get('declared') and f['name'] not in declared:
+                    declared[f['name']] = f.get('role')
         roles.update(declared)
         return next((f for f in fs if roles.get(f.lexicon_field) == ROLE_GLOSS), None) or (fs[0] if fs else None)
 

@@ -57,16 +57,20 @@ export const fieldNamesOf = (project) =>
 /**
  * The role each field's stored Lexicon field holds, by scope and name,
  * `{scope: {name: role}}`: what fills a service's `field` parameter that names
- * a role. The role is the one the project's vocabularies give that entry field,
- * else the one a new vocabulary's core field of that key holds.
+ * a role. The role is the one the project's vocabularies declare for that
+ * entry field (none when declared without one), else, for a key no vocabulary
+ * declares, the one a new vocabulary's core field of that key holds.
  */
 export const fieldRolesOf = (project) => {
   const roleOfKey = {};
   for (const f of CORE_VOCAB_FIELDS) if (f.role) roleOfKey[f.name] = f.role;
+  // A key a vocabulary declares holds the role it declares, none included: a
+  // cleared role is no role. The first vocabulary to declare a key decides.
   const declared = {};
   for (const v of project?.vocabs || []) {
-    for (const f of normalizeVocabFields(readVocabFields(v?.config))) {
-      if (f.role && !(f.name in declared)) declared[f.name] = f.role;
+    const raw = readVocabFields(v?.config) || {};
+    for (const f of normalizeVocabFields(raw)) {
+      if (f.name in raw && !(f.name in declared)) declared[f.name] = f.role;
     }
   }
   Object.assign(roleOfKey, declared);

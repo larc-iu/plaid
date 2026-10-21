@@ -41,6 +41,31 @@ def test_a_field_named_gloss_is_not_the_gloss_without_its_setting():
     assert p.gloss_field('Morpheme').name == 'Sense'
 
 
+def test_the_default_gloss_field_reads_the_gloss_role_and_a_cleared_role_is_none():
+    from plaid_agent.igt.project import Field, IgtProject
+    from plaid_agent.igt.vocab import normalize_vocab_fields
+    # Notes comes first, so a default that finds no gloss role is Notes.
+    fields = {
+        'Notes': Field(name='Notes', layer_id='n', scope='Morpheme', base_name='Notes'),
+        'Gloss': Field(name='Gloss', layer_id='a', scope='Morpheme', base_name='Gloss', lexicon_field='gloss'),
+        'Meaning': Field(name='Meaning', layer_id='b', scope='Morpheme', base_name='Meaning',
+                         lexicon_field='meaning'),
+    }
+
+    def default(vocab_fields):
+        vocabs = ([{'id': 'v', 'name': 'L', 'fields': normalize_vocab_fields(vocab_fields)}]
+                  if vocab_fields is not None else [])
+        return IgtProject(id='p', name='p', text_layer_id='t', sentence_layer_id='s', word_layer_id='w',
+                          morpheme_layer_id='m', fields=fields, orthographies=[], ignored_cfg=None,
+                          vocabs=vocabs, document_metadata=[]).gloss_field('Morpheme').name
+    # The vocabulary gives `meaning` the gloss role and declares `gloss` with none.
+    assert default({'gloss': {}, 'meaning': {'role': 'gloss'}}) == 'Meaning'
+    # Both declared with their roles cleared: no gloss anywhere, so no pairing decides.
+    assert default({'gloss': {}, 'meaning': {}}) == 'Notes'
+    # No vocabulary: the core key `gloss` holds the gloss role.
+    assert default(None) == 'Gloss'
+
+
 def test_tools_follow_the_configured_shape():
     w = ws()
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'document': 'Odd text'})
