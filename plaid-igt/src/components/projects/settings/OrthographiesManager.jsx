@@ -11,10 +11,11 @@ import { RowControls } from '@/components/shared/RowControls';
 import { useListManager } from './useListManager';
 import { countOf } from '@ui/lib/plural.js';
 
-// The Baseline is first, and cannot be moved or removed.
+// The Baseline is first, and cannot be moved or removed. Its row is marked by
+// `isBaseline`, never by its name: an orthography may be called Baseline too.
 const DEFAULT_ORTHOGRAPHIES = [
-  { name: 'Baseline', isBaseline: true, isCustom: false },
-  { name: 'IPA', isBaseline: false, isCustom: false },
+  { name: 'Baseline', isBaseline: true },
+  { name: 'IPA', isBaseline: false },
 ];
 
 export const OrthographiesManager = ({
@@ -61,16 +62,18 @@ export const OrthographiesManager = ({
       return;
     }
 
-    await saveChanges([...orthographies, { name: trimmedName, isBaseline: false, isCustom: true }]);
+    await saveChanges([...orthographies, { name: trimmedName, isBaseline: false }]);
 
     setNewOrthographyName('');
     notifySuccess(`Orthography “${trimmedName}” added`);
   };
 
+  // Orthographies (never the Baseline row) are found by name: two cannot
+  // share one.
   const handleDeleteOrthography = async (orthographyName) => {
-    const orthography = orthographies.find((o) => o.name === orthographyName);
-    if (orthography?.isBaseline) return;
-    await saveChanges(orthographies.filter((orth) => orth.name !== orthographyName));
+    await saveChanges(
+      orthographies.filter((orth) => orth.isBaseline || orth.name !== orthographyName),
+    );
 
     notifyInfo(`Orthography “${orthographyName}” removed`);
   };
@@ -78,8 +81,6 @@ export const OrthographiesManager = ({
   // Entry point for the trash button: in settings mode open the confirm
   // dialog right away and fill in the usage count as it resolves.
   const requestDeleteOrthography = (orthographyName) => {
-    const orthography = orthographies.find((o) => o.name === orthographyName);
-    if (orthography?.isBaseline) return;
     if (!onCountOrthographyUsage) {
       handleDeleteOrthography(orthographyName);
       return;

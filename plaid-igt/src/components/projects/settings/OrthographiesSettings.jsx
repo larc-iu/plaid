@@ -25,12 +25,6 @@ export const OrthographiesSettings = ({ projectId, client }) => {
   const orthographiesCell = useConfigCell(stored);
   const [reloads, setReloads] = useState(0);
 
-  // Helper to check if an orthography is predefined
-  const isPredefinedOrthography = (orthographyName) => {
-    const predefinedOrthographies = ['Baseline', 'IPA'];
-    return predefinedOrthographies.includes(orthographyName);
-  };
-
   // Load current project configuration
   const handleLoadData = async () => {
     try {
@@ -67,25 +61,14 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         Object.prototype.hasOwnProperty.call(tokenLayer.config[IGT_NAMESPACE], 'orthographies');
 
       if (hasOrthographiesConfig) {
-        // Config has been set, respect it even if empty
-        const configOrthographies = (currentConfig || []).map((orth) => ({
-          name: orth.name,
-          isBaseline: orth.name === 'Baseline',
-          isCustom: !isPredefinedOrthography(orth.name),
-        }));
-
-        // Always ensure baseline is included (it's always present but not stored in config)
-        const hasBaseline = configOrthographies.some((orth) => orth.isBaseline);
-        if (!hasBaseline) {
-          configOrthographies.unshift({
-            name: 'Baseline',
-            isBaseline: true,
-            isCustom: false,
-          });
-        }
-
+        // Config has been set, respect it even if empty. The stored list
+        // never holds the Baseline (the text itself): every stored row is an
+        // orthography, whatever it is called, and the Baseline row goes first.
         return {
-          orthographies: configOrthographies,
+          orthographies: [
+            { name: 'Baseline', isBaseline: true },
+            ...(currentConfig || []).map((orth) => ({ name: orth.name, isBaseline: false })),
+          ],
         };
       }
 
