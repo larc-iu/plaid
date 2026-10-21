@@ -111,6 +111,8 @@ export function deriveSetupData(manifest, projectName) {
     ignoredTokens: ignored == null ? null : ignoredTokensSetup(ignored),
     vocabularies: (manifest.vocabularies || []).map((v) => ({ id: `new-${v.id}`, name: v.name })),
     documentMetadata: (schema.documentMetadata || []).map((m) => m.name),
+    // The archive's own service defaults are written as they were, or none.
+    serviceFieldDefaults: false,
   });
 }
 

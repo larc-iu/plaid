@@ -62,9 +62,11 @@ export function setupDataFor({
   vocabularies = [],
   documentMetadata = [],
   entryFields = lexiconFieldChoices([]),
+  serviceFieldDefaults = true,
 }) {
   return {
     basicInfo: { projectName },
+    serviceFieldDefaults,
     orthographies: {
       orthographies: [
         { name: 'Baseline', isBaseline: true },

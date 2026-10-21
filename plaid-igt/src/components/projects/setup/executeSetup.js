@@ -47,6 +47,7 @@ import {
 import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 import { importRepairs } from '../../../domain/importFinish.js';
+import { proposeServiceFieldDefaults } from '../../../domain/serviceFieldDefaults.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
 // so it is also what identifies one this setup made before it was tagged.
@@ -379,6 +380,20 @@ async function executeProjectSetupImpl({
         }
         siblings.set(parentId, order);
       }
+    }
+  }
+
+  // Step 6b: the project's default fields for igt's own services, proposed
+  // once from the fields setup makes, never over what is stored. An archive
+  // brings its own (`serviceFieldDefaults: false`).
+  if (
+    currentProjectId &&
+    setupData.serviceFieldDefaults !== false &&
+    existingProject?.config?.[IGT_NAMESPACE]?.serviceDefaults === undefined
+  ) {
+    const proposed = proposeServiceFieldDefaults(setupData.fields?.fields);
+    if (Object.keys(proposed).length) {
+      await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, 'serviceDefaults', proposed);
     }
   }
 

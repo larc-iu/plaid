@@ -583,3 +583,61 @@ describe('a setup whose rules step fails', () => {
     ]);
   });
 });
+
+describe('setup writes the default fields for igt services', () => {
+  const FIELDS = {
+    ...SETUP_DATA,
+    fields: {
+      fields: [
+        { name: 'Gloss', scope: 'Morpheme', isCustom: true },
+        { name: 'Translation', scope: 'Sentence', isCustom: true },
+      ],
+    },
+    vocabulary: { vocabularies: [] },
+  };
+  const defaultsWritten = (calls) =>
+    calls.config.filter((c) => c.kind === 'project' && c.key === 'serviceDefaults');
+
+  it('proposes them from the fields it makes, once', async () => {
+    const { client, calls } = stub({ id: 'p1', config: {}, textLayers: [], vocabs: [] });
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: true,
+      setupData: FIELDS,
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual([]);
+    expect(defaultsWritten(calls).map((c) => c.value)).toEqual([
+      {
+        analyze: { fieldParams: { gloss_field: 'Gloss', translation_field: 'Translation' } },
+        translate: { fieldParams: { translation_field: 'Translation', gloss_field: 'Gloss' } },
+      },
+    ]);
+  });
+
+  it('leaves stored defaults alone, and writes none when told not to', async () => {
+    const stored = {
+      id: 'p1',
+      config: { igt: { serviceDefaults: {} } },
+      textLayers: [],
+      vocabs: [],
+    };
+    let { client, calls } = stub(stored);
+    await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: 'p1',
+      setupData: FIELDS,
+      onProgress: () => {},
+    });
+    expect(defaultsWritten(calls)).toEqual([]);
+    ({ client, calls } = stub({ id: 'p1', config: {}, textLayers: [], vocabs: [] }));
+    await executeProjectSetup({
+      client,
+      isNewProject: true,
+      setupData: { ...FIELDS, serviceFieldDefaults: false },
+      onProgress: () => {},
+    });
+    expect(defaultsWritten(calls)).toEqual([]);
+  });
+});
