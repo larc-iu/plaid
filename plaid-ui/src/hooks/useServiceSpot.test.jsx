@@ -151,6 +151,43 @@ describe('useServiceSpot', () => {
     expect(spot().params.values).toEqual({});
   });
 
+  it("applies the project's default fields to every method of the task, under a method's own params", async () => {
+    const fieldParams = [
+      { key: 'gloss_field', label: 'Gloss field', type: 'field', scope: 'Morpheme', role: 'gloss' },
+      { key: 'translation_field', label: 'Translation field', type: 'field', scope: 'Sentence' },
+    ];
+    const analyzer = (id) =>
+      service(id, { extras: { tasks: [TASKS.ANALYZE], parameters: fieldParams } });
+    const project = {
+      config: {
+        igt: {
+          serviceDefaults: {
+            [TASKS.ANALYZE]: {
+              service: { serviceId: 'a' },
+              params: { translation_field: 'Free' },
+              fieldParams: { gloss_field: 'Glosa', translation_field: 'Traduccion' },
+            },
+          },
+        },
+      },
+    };
+    const fields = { Morpheme: ['Gloss', 'Glosa'], Sentence: ['Traduccion', 'Free'] };
+    const fieldRoles = { Morpheme: { Gloss: 'gloss' } };
+    const { spot, step } = await mount({
+      ...base,
+      task: TASKS.ANALYZE,
+      builtins: [],
+      services: [analyzer('a'), analyzer('b')],
+      project,
+      fields,
+      fieldRoles,
+    });
+    // The stored default field wins over the field holding the role.
+    expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Free' });
+    await step(() => spot().choose('service:b'));
+    expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Traduccion' });
+  });
+
   it('reports empty when there is no built-in and nothing online', async () => {
     const { spot } = await mount({ ...base, builtins: [], services: [] });
     expect(spot().empty).toBe(true);

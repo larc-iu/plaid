@@ -3,8 +3,15 @@
 // Stored in project config under the app's own namespace (`configNamespace`):
 //
 //   config.<app>.serviceDefaults = {
-//     [task]: { service: { serviceId } | { builtin }, params: { ... } }
+//     [task]: { service: { serviceId } | { builtin }, params: { ... },
+//               fieldParams: { [param key]: field name } }
 //   }
+//
+// `params` belong to the method `service` names. `fieldParams` are the
+// project's default fields for the task: they fill a `field` parameter of
+// that key on every method of the task (a service's gloss field, say), under
+// the named method's own `params`. Setup and a one-off backfill write them,
+// and maintainers edit them in Services settings.
 //
 // Maintainers edit this on the Services settings tab; editors read it to seed
 // their selection. Per-user localStorage still overrides on top (resolution
@@ -46,9 +53,13 @@ export const selectionToConfig = (selection) => {
   return decoded.kind === 'service' ? { serviceId: decoded.id } : { builtin: decoded.id };
 };
 
-// The project's default entry for a spot: {service, params} or null.
+// The project's default entry for a spot: {service, params, fieldParams} or null.
 export const readSpotDefault = (project, task) =>
   project?.config?.[configNamespace()]?.serviceDefaults?.[task] || null;
+
+// A spot entry's default fields, {param key: field name}.
+export const fieldParamsOf = (entry) =>
+  entry?.fieldParams && typeof entry.fieldParams === 'object' ? entry.fieldParams : {};
 
 // Pick the selection an editor should start from. `services` are the spot's
 // task-matching services; only ONLINE ones are runnable. `builtins` is a list

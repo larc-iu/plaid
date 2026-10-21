@@ -4,6 +4,7 @@ import {
   decodeSelection,
   encodeServiceSelection,
   encodeBuiltinSelection,
+  fieldParamsOf,
   readSpotDefault,
   resolveInitialSelection,
   selectionFromConfig,
@@ -123,11 +124,14 @@ export function useServiceSpot({
     seedParams: seeded,
     fields,
     fieldRoles,
-    // A project default's params belong to the method it names, and to no other.
-    defaultParams:
-      projectDefault && selectionFromConfig(projectDefault) === selection
+    // A project default's params belong to the method it names, and to no
+    // other. Its default fields go to every method of the task, under those.
+    defaultParams: {
+      ...fieldParamsOf(projectDefault),
+      ...(projectDefault && selectionFromConfig(projectDefault) === selection
         ? projectDefault.params
-        : null,
+        : {}),
+    },
   });
 
   return {

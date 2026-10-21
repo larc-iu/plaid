@@ -32,6 +32,7 @@ import {
   encodeServiceSelection,
   encodeBuiltinSelection,
   decodeSelection,
+  fieldParamsOf,
   selectionFromConfig,
   selectionToConfig,
 } from '../../domain/serviceDefaults.js';
@@ -139,26 +140,61 @@ function SpotCard({
   // A selected built-in may carry its own options (the link rule's copy policy,
   // say), shown in the same inline slot a service's params use.
   const builtinOpts = decoded?.kind === 'builtin' ? builtinOptions?.(spot.key, decoded.id) : null;
-  const paramSchema = getParamSchema(selectedService);
-  // As the run dialog seeds them: a field parameter's schema default is never
-  // used, and one naming no field is the one field holding its role.
-  const paramValues = useMemo(() => {
-    const defaults = buildDefaultValues(paramSchema);
-    for (const p of paramSchema) if (p?.type === 'field' && p.key) defaults[p.key] = '';
-    return resolveFieldParams(
-      paramSchema,
-      { ...defaults, ...(draftEntry?.params || {}) },
-      fields,
-      fieldRoles,
-    );
-  }, [paramSchema, draftEntry, fields, fieldRoles]);
+  // A service's own options. Its field parameters are the task's default
+  // fields, below, shared by every method of the task.
+  const paramSchema = useMemo(
+    () => getParamSchema(selectedService).filter((p) => p?.type !== 'field'),
+    [selectedService],
+  );
+  const paramValues = useMemo(
+    () => ({ ...buildDefaultValues(paramSchema), ...(draftEntry?.params || {}) }),
+    [paramSchema, draftEntry],
+  );
+  // Every field parameter the task's methods take, once per key.
+  const fieldSchema = useMemo(() => {
+    const byKey = new Map();
+    for (const svc of spotServices) {
+      for (const p of getParamSchema(svc)) {
+        if (p?.type === 'field' && p.key && !byKey.has(p.key)) {
+          byKey.set(p.key, { ...p, default: '', required: false });
+        }
+      }
+    }
+    return [...byKey.values()];
+  }, [spotServices]);
+  // As the run dialog seeds them: a stored default field, else the one field
+  // holding the parameter's role.
+  const fieldValues = useMemo(
+    () =>
+      resolveFieldParams(
+        fieldSchema,
+        {
+          ...Object.fromEntries(fieldSchema.map((p) => [p.key, ''])),
+          ...fieldParamsOf(draftEntry),
+        },
+        fields,
+        fieldRoles,
+      ),
+    [fieldSchema, draftEntry, fields, fieldRoles],
+  );
+  const fieldParams = fieldParamsOf(draftEntry);
+  const hasFields = Object.keys(fieldParams).length > 0;
 
   const setSelection = (value) => {
     const service = selectionToConfig(value);
-    onChange(service ? { service, params: {} } : null);
+    if (service) onChange({ service, params: {}, ...(hasFields ? { fieldParams } : {}) });
+    else onChange(hasFields ? { fieldParams } : null);
   };
   const setParam = (key, value) => {
     onChange({ ...(draftEntry || {}), params: { ...paramValues, [key]: value } });
+  };
+  const setField = (key, value) => {
+    const next = { ...fieldParams };
+    if (value) next[key] = value;
+    else delete next[key];
+    const { fieldParams: _gone, ...rest } = draftEntry || {};
+    const entry = Object.keys(next).length ? { ...rest, fieldParams: next } : rest;
+    onChange(Object.keys(entry).length ? entry : null);
   };
 
   return (
@@ -212,6 +248,18 @@ function SpotCard({
           </div>
         )}
 
+        {fieldSchema.length > 0 && (
+          <div className="mt-3 border-t pt-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Default fields</p>
+            <ServiceParamForm
+              schema={fieldSchema}
+              values={fieldValues}
+              onChange={setField}
+              fields={fields}
+              disabled={!canManage}
+            />
+          </div>
+        )}
         {builtinOpts && <div className="mt-3 border-t pt-3">{builtinOpts}</div>}
         {selectedService && paramSchema.length > 0 && (
           <div className="mt-3 border-t pt-3">

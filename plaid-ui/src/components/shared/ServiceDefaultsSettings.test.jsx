@@ -352,4 +352,63 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
     expect(trigger?.textContent).toContain('Meaning');
     await unmount();
   });
+
+  it("shows the task's stored default fields with no service chosen, and keeps them when one is", async () => {
+    const analyzer = (id) => ({
+      serviceId: id,
+      serviceName: id,
+      online: true,
+      extras: {
+        tasks: ['analyze'],
+        parameters: [
+          {
+            key: 'gloss_field',
+            label: 'Gloss field',
+            type: 'field',
+            scope: 'Morpheme',
+            role: 'gloss',
+          },
+        ],
+      },
+    });
+    const stored = { analyze: { fieldParams: { gloss_field: 'Glosa' } } };
+    const client = makeClient({
+      projects: {
+        get: async () => ({ id: 'p1', config: { igt: { serviceDefaults: stored } } }),
+        setConfig: vi.fn(async () => {}),
+      },
+      messages: {
+        discoverServices: async () => [analyzer('s4'), analyzer('s5')],
+        discardService: vi.fn(),
+      },
+    });
+    const { container, step, unmount } = await mount({
+      client,
+      fieldsOf: () => ({ Morpheme: ['Gloss', 'Glosa'] }),
+      fieldRolesOf: () => ({ Morpheme: { Gloss: 'gloss' } }),
+    });
+    expect(container.textContent).toContain('Default fields');
+    expect(container.querySelector('[role="combobox"]')?.textContent).toContain('Glosa');
+    const s4 = radios(container).find((r) => r.id.includes('s4'));
+    await step(() => s4.click());
+    await step(async () => {
+      byText(container, 'button', 'Save defaults').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).toHaveBeenCalledWith(
+      'p1',
+      'igt',
+      'serviceDefaults',
+      {
+        analyze: {
+          service: { serviceId: 's4' },
+          params: {},
+          fieldParams: { gloss_field: 'Glosa' },
+        },
+      },
+      undefined,
+      expect.anything(),
+    );
+    await unmount();
+  });
 });
