@@ -277,6 +277,9 @@ async function executeProjectSetupImpl({
     );
   }
 
+  // Each field setup made or reused, with its scope and id.
+  const madeFields = [];
+
   // Step 6: Create span layers for annotation fields. Resume-safe: reuse a
   // same-name layer under the chosen parent and just (re)stamp its scope.
   if (tokenLayerId && sentenceTokenLayerId) {
@@ -340,6 +343,7 @@ async function executeProjectSetupImpl({
           }
           fieldIndexOf.set(spanLayer.id, fieldIndexOf.size);
           createdSpanLayers.push(spanLayer);
+          madeFields.push({ name: field.name, scope: field.scope, id: spanLayer.id });
         } catch (fieldError) {
           console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
           failures.push(
@@ -391,7 +395,7 @@ async function executeProjectSetupImpl({
     setupData.serviceFieldDefaults !== false &&
     existingProject?.config?.[IGT_NAMESPACE]?.serviceDefaults === undefined
   ) {
-    const proposed = proposeServiceFieldDefaults(setupData.fields?.fields);
+    const proposed = proposeServiceFieldDefaults(madeFields);
     if (Object.keys(proposed).length) {
       await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, 'serviceDefaults', proposed);
     }

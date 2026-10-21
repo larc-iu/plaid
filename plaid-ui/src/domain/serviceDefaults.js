@@ -4,14 +4,15 @@
 //
 //   config.<app>.serviceDefaults = {
 //     [task]: { service: { serviceId } | { builtin }, params: { ... },
-//               fieldParams: { [param key]: field name } }
+//               fieldParams: { [param key]: span layer id } }
 //   }
 //
 // `params` belong to the method `service` names. `fieldParams` are the
-// project's default fields for the task: they fill a `field` parameter of
-// that key on every method of the task (a service's gloss field, say), under
-// the named method's own `params`. Setup and a one-off backfill write them,
-// and maintainers edit them in Services settings.
+// project's default fields for the task, each named by its span layer's id so
+// a rename never breaks it: they fill a `field` parameter of that key on every
+// method of the task (a service's gloss field, say) with the field's current
+// name, under the named method's own `params`. Setup and a one-off backfill
+// write them, and maintainers edit them in Services settings.
 //
 // Maintainers edit this on the Services settings tab; editors read it to seed
 // their selection. Per-user localStorage still overrides on top (resolution
@@ -57,9 +58,23 @@ export const selectionToConfig = (selection) => {
 export const readSpotDefault = (project, task) =>
   project?.config?.[configNamespace()]?.serviceDefaults?.[task] || null;
 
-// A spot entry's default fields, {param key: field name}.
+// A spot entry's default fields, {param key: span layer id}.
 export const fieldParamsOf = (entry) =>
   entry?.fieldParams && typeof entry.fieldParams === 'object' ? entry.fieldParams : {};
+
+// The same with each id read as the field's current name, through `fieldIds`
+// ({scope: {name: id}}). An id no field has any more is left out.
+export const fieldParamNames = (entry, fieldIds) => {
+  const nameOf = new Map();
+  for (const byName of Object.values(fieldIds || {})) {
+    for (const [name, id] of Object.entries(byName || {})) nameOf.set(id, name);
+  }
+  return Object.fromEntries(
+    Object.entries(fieldParamsOf(entry))
+      .filter(([, id]) => nameOf.has(id))
+      .map(([key, id]) => [key, nameOf.get(id)]),
+  );
+};
 
 // Pick the selection an editor should start from. `services` are the spot's
 // task-matching services; only ONLINE ones are runnable. `builtins` is a list

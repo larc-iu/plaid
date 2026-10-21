@@ -371,7 +371,7 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
         ],
       },
     });
-    const stored = { analyze: { fieldParams: { gloss_field: 'Glosa' } } };
+    const stored = { analyze: { fieldParams: { gloss_field: 'id-glosa' } } };
     const client = makeClient({
       projects: {
         get: async () => ({ id: 'p1', config: { igt: { serviceDefaults: stored } } }),
@@ -386,6 +386,7 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
       client,
       fieldsOf: () => ({ Morpheme: ['Gloss', 'Glosa'] }),
       fieldRolesOf: () => ({ Morpheme: { Gloss: 'gloss' } }),
+      fieldIdsOf: () => ({ Morpheme: { Gloss: 'id-gloss', Glosa: 'id-glosa' } }),
     });
     expect(container.textContent).toContain('Default fields');
     expect(container.querySelector('[role="combobox"]')?.textContent).toContain('Glosa');
@@ -403,7 +404,7 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
         analyze: {
           service: { serviceId: 's4' },
           params: {},
-          fieldParams: { gloss_field: 'Glosa' },
+          fieldParams: { gloss_field: 'id-glosa' },
         },
       },
       undefined,

@@ -10,7 +10,7 @@ import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
-import { fieldNamesOf, fieldRolesOf } from '@/import/elan/fieldTargets';
+import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/import/elan/fieldTargets';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { countOf, plural } from '@ui/lib/plural.js';
@@ -80,6 +80,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   // this project does not have.
   const fields = useMemo(() => (project ? fieldNamesOf(project) : null), [project]);
   const fieldRoles = useMemo(() => (project ? fieldRolesOf(project) : null), [project]);
+  const fieldIds = useMemo(() => (project ? fieldIdsOf(project) : null), [project]);
   const translateSpot = useServiceSpot({
     task: TASKS.TRANSLATE,
     project,
@@ -87,6 +88,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     storageId: 'translate',
     fields,
     fieldRoles,
+    fieldIds,
   });
   const analyzeSpot = useServiceSpot({
     task: TASKS.ANALYZE,
@@ -95,6 +97,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     storageId: 'analyze',
     fields,
     fieldRoles,
+    fieldIds,
   });
   const linkSpot = useServiceSpot({
     task: TASKS.LINK_VOCAB,

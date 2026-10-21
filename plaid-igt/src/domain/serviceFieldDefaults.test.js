@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { proposeServiceFieldDefaults } from './serviceFieldDefaults.js';
 
-// The rule the one-off backfill applies to existing projects too: the two
-// agree on these cases (B/scripts/test_backfill_service_defaults.py).
+// Each field is stored by its span layer id. The rule the one-off backfill
+// applies to existing projects too: the two agree on these cases (B/scripts/test_backfill_service_defaults.py).
 describe('proposeServiceFieldDefaults', () => {
-  const f = (name, scope) => ({ name, scope });
+  const f = (name, scope) => ({ name, scope, id: `id-${name}` });
 
   it("takes the field of the name, else the one named for a language, else the scope's only one", () => {
     expect(
@@ -15,12 +15,16 @@ describe('proposeServiceFieldDefaults', () => {
         f('Notes', 'Sentence'),
       ]),
     ).toEqual({
-      analyze: { fieldParams: { gloss_field: 'Gloss', translation_field: 'Translation (pmy)' } },
-      translate: { fieldParams: { translation_field: 'Translation (pmy)', gloss_field: 'Gloss' } },
+      analyze: {
+        fieldParams: { gloss_field: 'id-Gloss', translation_field: 'id-Translation (pmy)' },
+      },
+      translate: {
+        fieldParams: { translation_field: 'id-Translation (pmy)', gloss_field: 'id-Gloss' },
+      },
     });
     expect(proposeServiceFieldDefaults([f('Glosa', 'Morpheme')])).toEqual({
-      analyze: { fieldParams: { gloss_field: 'Glosa' } },
-      translate: { fieldParams: { gloss_field: 'Glosa' } },
+      analyze: { fieldParams: { gloss_field: 'id-Glosa' } },
+      translate: { fieldParams: { gloss_field: 'id-Glosa' } },
     });
   });
 

@@ -607,10 +607,15 @@ describe('setup writes the default fields for igt services', () => {
       onProgress: () => {},
     });
     expect(result.failures).toEqual([]);
+    // Each field by the id of the span layer setup made for it.
+    const idOf = (scope) =>
+      calls.config.find((c) => c.kind === 'span' && c.key === 'scope' && c.value === scope).id;
+    const [gloss, translation] = [idOf('Morpheme'), idOf('Sentence')];
+    expect(gloss).toBeTruthy();
     expect(defaultsWritten(calls).map((c) => c.value)).toEqual([
       {
-        analyze: { fieldParams: { gloss_field: 'Gloss', translation_field: 'Translation' } },
-        translate: { fieldParams: { translation_field: 'Translation', gloss_field: 'Gloss' } },
+        analyze: { fieldParams: { gloss_field: gloss, translation_field: translation } },
+        translate: { fieldParams: { translation_field: translation, gloss_field: gloss } },
       },
     ]);
   });

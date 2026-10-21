@@ -32,6 +32,7 @@ import {
   encodeServiceSelection,
   encodeBuiltinSelection,
   decodeSelection,
+  fieldParamNames,
   fieldParamsOf,
   selectionFromConfig,
   selectionToConfig,
@@ -126,6 +127,7 @@ function SpotCard({
   builtinOptions,
   fields,
   fieldRoles,
+  fieldIds,
 }) {
   const spotServices = useMemo(
     () => filterServicesByTask(services, spot.key),
@@ -170,12 +172,12 @@ function SpotCard({
         fieldSchema,
         {
           ...Object.fromEntries(fieldSchema.map((p) => [p.key, ''])),
-          ...fieldParamsOf(draftEntry),
+          ...fieldParamNames(draftEntry, fieldIds),
         },
         fields,
         fieldRoles,
       ),
-    [fieldSchema, draftEntry, fields, fieldRoles],
+    [fieldSchema, draftEntry, fields, fieldRoles, fieldIds],
   );
   const fieldParams = fieldParamsOf(draftEntry);
   const hasFields = Object.keys(fieldParams).length > 0;
@@ -188,9 +190,12 @@ function SpotCard({
   const setParam = (key, value) => {
     onChange({ ...(draftEntry || {}), params: { ...paramValues, [key]: value } });
   };
+  // Stored by the field's span layer id, so a rename keeps it.
   const setField = (key, value) => {
+    const scope = fieldSchema.find((p) => p.key === key)?.scope;
+    const id = value ? fieldIds?.[scope]?.[value] : null;
     const next = { ...fieldParams };
-    if (value) next[key] = value;
+    if (id) next[key] = id;
     else delete next[key];
     const { fieldParams: _gone, ...rest } = draftEntry || {};
     const entry = Object.keys(next).length ? { ...rest, fieldParams: next } : rest;
@@ -294,7 +299,9 @@ function SpotCard({
  * `extraDirty`. `fieldsOf(project)` gives the project's
  * annotation fields as {scope: [field name]}, for a `field` parameter to be
  * chosen from, and `fieldRolesOf(project)` the role each one's Lexicon field
- * holds ({scope: {field name: role}}), which fills a parameter naming it.
+ * holds ({scope: {field name: role}}), which fills a parameter naming it, and
+ * `fieldIdsOf(project)` each one's span layer id ({scope: {field name: id}}),
+ * which the task's default fields are stored by.
  */
 export const ServiceDefaultsSettings = ({
   projectId,
@@ -308,6 +315,7 @@ export const ServiceDefaultsSettings = ({
   onExtraSaved,
   fieldsOf,
   fieldRolesOf,
+  fieldIdsOf,
   showConfidence = false,
 }) => {
   const namespace = configNamespace();
@@ -518,6 +526,7 @@ export const ServiceDefaultsSettings = ({
           builtinOptions={builtinOptions}
           fields={project ? (fieldsOf?.(project) ?? null) : null}
           fieldRoles={project ? (fieldRolesOf?.(project) ?? null) : null}
+          fieldIds={project ? (fieldIdsOf?.(project) ?? null) : null}
         />
       ))}
 

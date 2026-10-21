@@ -48,6 +48,18 @@ export function existingFields(project) {
   return out;
 }
 
+/**
+ * Each field's span layer id by scope and name, `{scope: {name: id}}`: what a
+ * project's default service fields are stored by.
+ */
+export const fieldIdsOf = (project) =>
+  Object.fromEntries(
+    Object.entries(existingFields(project)).map(([scope, fs]) => [
+      scope,
+      Object.fromEntries(fs.map((f) => [f.name, f.id])),
+    ]),
+  );
+
 /** The same, as names only: what a `field` service parameter is chosen from. */
 export const fieldNamesOf = (project) =>
   Object.fromEntries(

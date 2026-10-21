@@ -1,7 +1,8 @@
 // The project's default fields for igt's own services, proposed once, when
 // setup makes the fields: `config.igt.serviceDefaults[task].fieldParams` (see
-// plaid-ui's domain/serviceDefaults.js). The run dialog and Services settings
-// read the stored value and never a field's name. The rule is the one the
+// plaid-ui's domain/serviceDefaults.js), each field named by its span layer's
+// id. The run dialog and Services settings read the stored id, never a
+// field's name. The name only proposes, here. The rule is the one the
 // run dialog applied to every project before FX-W, and the one the one-off
 // backfill (B/scripts/backfill_service_defaults.py) applies to existing
 // projects: the field of that exact name at the scope, else the one whose
@@ -33,20 +34,23 @@ const pick = (names, wanted) => {
 
 /**
  * The serviceDefaults entries a project's fields propose, `{task:
- * {fieldParams}}`, for the tasks whose fields resolve. `fields` is a list of
- * `{name, scope}`.
+ * {fieldParams: {param key: span layer id}}}`, for the tasks whose fields
+ * resolve. `fields` is a list of `{name, scope, id}`.
  */
 export function proposeServiceFieldDefaults(fields) {
   const byScope = {};
+  const idOf = new Map();
   for (const f of fields || []) {
-    if (f?.name && f?.scope) (byScope[f.scope] ??= []).push(f.name);
+    if (!f?.name || !f?.scope || !f?.id) continue;
+    (byScope[f.scope] ??= []).push(f.name);
+    idOf.set(`${f.scope}:${f.name}`, f.id);
   }
   const out = {};
   for (const [task, params] of Object.entries(SERVICE_FIELD_PARAMS)) {
     const fieldParams = {};
     for (const p of params) {
       const name = pick(byScope[p.scope] || [], p.name);
-      if (name) fieldParams[p.key] = name;
+      if (name) fieldParams[p.key] = idOf.get(`${p.scope}:${name}`);
     }
     if (Object.keys(fieldParams).length) out[task] = { fieldParams };
   }

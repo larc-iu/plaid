@@ -4,7 +4,7 @@ import {
   decodeSelection,
   encodeServiceSelection,
   encodeBuiltinSelection,
-  fieldParamsOf,
+  fieldParamNames,
   readSpotDefault,
   resolveInitialSelection,
   selectionFromConfig,
@@ -36,6 +36,8 @@ const EMPTY = [];
 //               `field` parameter is chosen from. Null where there are none.
 //   fieldRoles: {scope: {field name: role}}, the role each field's stored
 //               Lexicon field holds, which fills a `field` parameter naming it.
+//   fieldIds:   {scope: {field name: span layer id}}, what reads the project's
+//               default fields (stored by id) as names.
 export function useServiceSpot({
   task,
   project,
@@ -45,6 +47,7 @@ export function useServiceSpot({
   seedParams = null,
   fields = null,
   fieldRoles = null,
+  fieldIds = null,
 }) {
   const selectionKey = `${appPrefix()}_${storageId}_service`;
   const [choice, setChoice] = useState(null);
@@ -127,7 +130,7 @@ export function useServiceSpot({
     // A project default's params belong to the method it names, and to no
     // other. Its default fields go to every method of the task, under those.
     defaultParams: {
-      ...fieldParamsOf(projectDefault),
+      ...fieldParamNames(projectDefault, fieldIds),
       ...(projectDefault && selectionFromConfig(projectDefault) === selection
         ? projectDefault.params
         : {}),

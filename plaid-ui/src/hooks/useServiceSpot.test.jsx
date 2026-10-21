@@ -165,7 +165,8 @@ describe('useServiceSpot', () => {
             [TASKS.ANALYZE]: {
               service: { serviceId: 'a' },
               params: { translation_field: 'Free' },
-              fieldParams: { gloss_field: 'Glosa', translation_field: 'Traduccion' },
+              // By span layer id, read as the field's current name.
+              fieldParams: { gloss_field: 'id-glosa', translation_field: 'id-trad' },
             },
           },
         },
@@ -173,6 +174,10 @@ describe('useServiceSpot', () => {
     };
     const fields = { Morpheme: ['Gloss', 'Glosa'], Sentence: ['Traduccion', 'Free'] };
     const fieldRoles = { Morpheme: { Gloss: 'gloss' } };
+    const fieldIds = {
+      Morpheme: { Gloss: 'id-gloss', Glosa: 'id-glosa' },
+      Sentence: { Traduccion: 'id-trad', Free: 'id-free' },
+    };
     const { spot, step } = await mount({
       ...base,
       task: TASKS.ANALYZE,
@@ -181,11 +186,38 @@ describe('useServiceSpot', () => {
       project,
       fields,
       fieldRoles,
+      fieldIds,
     });
     // The stored default field wins over the field holding the role.
     expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Free' });
     await step(() => spot().choose('service:b'));
     expect(spot().params.values).toEqual({ gloss_field: 'Glosa', translation_field: 'Traduccion' });
+  });
+
+  it('reads a default field by its id, so a rename keeps it, and drops one whose layer is gone', async () => {
+    const project = {
+      config: {
+        igt: {
+          serviceDefaults: {
+            [TASKS.ANALYZE]: { fieldParams: { gloss_field: 'id-g', translation_field: 'id-gone' } },
+          },
+        },
+      },
+    };
+    const params = [
+      { key: 'gloss_field', label: 'Gloss field', type: 'field', scope: 'Morpheme', role: 'gloss' },
+      { key: 'translation_field', label: 'Translation field', type: 'field', scope: 'Sentence' },
+    ];
+    const { spot } = await mount({
+      ...base,
+      task: TASKS.ANALYZE,
+      builtins: [],
+      services: [service('a', { extras: { tasks: [TASKS.ANALYZE], parameters: params } })],
+      project,
+      fields: { Morpheme: ['Renamed gloss'], Sentence: ['Free'] },
+      fieldIds: { Morpheme: { 'Renamed gloss': 'id-g' }, Sentence: { Free: 'id-free' } },
+    });
+    expect(spot().params.values).toEqual({ gloss_field: 'Renamed gloss', translation_field: '' });
   });
 
   it('reports empty when there is no built-in and nothing online', async () => {
