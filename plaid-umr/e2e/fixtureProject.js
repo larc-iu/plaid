@@ -20,9 +20,11 @@ import PlaidClient, {
 } from '@larc-iu/plaid-client';
 import { createUmrProject } from '../src/domain/umrProjectSetup.js';
 import { importUmrDocument } from '../src/domain/umrImport.js';
+import { proposeIlg } from '../src/domain/ilg.js';
 import {
   getUmrLayerInfo,
   missingUmrLayerLabels,
+  readIlgConfig,
   readProjectLanguage,
   UMR_NAMESPACE,
 } from '../src/utils/umrLayerUtils.js';
@@ -47,6 +49,19 @@ async function findProjectByName(client, name) {
   return projects.find((p) => p.name === name) || null;
 }
 
+// The gloss lines a person sets up for the fixture's layers in UMR settings
+// (Propose lines, then Save): a read never proposes them. Written when the
+// stored lines differ, so a fixture made before its layers were added, or
+// before setup wrote the lines, heals.
+async function ensureIlg(client, project) {
+  const want = proposeIlg(getUmrLayerInfo(project));
+  const stored = readIlgConfig(project);
+  if (JSON.stringify(stored) === JSON.stringify(want)) return;
+  await client.projects.setConfig(project.id, UMR_NAMESPACE, 'ilg', want, undefined, {
+    expected: stored,
+  });
+}
+
 async function ensureFixture() {
   const { token } = readToken();
   const client = new PlaidClient(BASE_URL, token);
@@ -67,6 +82,7 @@ async function ensureFixture() {
     project = await client.projects.get(created.id);
   }
   const projectId = project.id;
+  await ensureIlg(client, project);
 
   // English, so the concept picker has a frame file to offer senses from.
   if (readProjectLanguage(project) !== 'en') {
@@ -247,7 +263,9 @@ async function ensureGlossedFixture() {
     }
   }
   if (!project) project = await createGlossedProject(client);
+  else project = await client.projects.get(project.id);
   const projectId = project.id;
+  await ensureIlg(client, project);
   const info = getUmrLayerInfo(project);
   const docs = await client.projects.listDocuments(projectId);
   let doc = docs.find((d) => d.name === GLOSSED_DOC) || null;

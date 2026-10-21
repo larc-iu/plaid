@@ -141,7 +141,7 @@ try {
   // ---- 2. UMR adopts it and annotates ---------------------------------------
 
   let project = await client.projects.get(projectId);
-  await adoptSubstrate(client, getUmrLayerInfo(project));
+  await adoptSubstrate(client, project, getUmrLayerInfo(project));
   project = await client.projects.get(projectId);
   const loadUmr = () => UmrDocument.load({ client, documentId, projectId, project });
   let umr = await loadUmr();

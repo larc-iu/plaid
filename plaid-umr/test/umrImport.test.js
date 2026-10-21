@@ -413,8 +413,8 @@ test('the report says when the saved Gloss lines show none of the lines the file
     await run(glossed, [...saved, { header: null, lang: null, source: 'stored' }]),
     false,
   );
-  // No saved lines: the proposal shows what an import stored.
-  assert.equal(await run(glossed, null), false);
+  // No saved lines show nothing, the stored lines included.
+  assert.equal(await run(glossed, null), true);
   // A file with no gloss lines loses nothing.
   assert.equal(await run(glossed.replace(/^Word Gloss.*\n/m, ''), saved), false);
 });

@@ -300,7 +300,10 @@ A relation between two constants, such as `(root :modal author)`, is listed in t
 = Gloss lines
 
 **Settings → UMR settings** chooses the gloss lines shown under the words and written to an exported file.
-**Propose lines** fills the list from the project's fields, and each line can then be moved or removed.
+Setting a project up for UMR fills the list from the fields the project has then.
+A field added later is shown only once it is given a line here.
+**Propose lines** fills the list again from the project's fields, and each line can then be moved or removed.
+A line whose field is no longer in the project shows nothing until it is given another.
 The lines are kept in order of scope: word lines, then morpheme lines, then sentence lines.
 `Index` and `Words` are always written.
 

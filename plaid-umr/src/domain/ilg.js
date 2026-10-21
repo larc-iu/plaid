@@ -47,14 +47,18 @@ const sortIlg = (mapping) =>
     .sort(([a, ai], [b, bi]) => scopeRank(a) - scopeRank(b) || ai - bi)
     .map(([entry]) => entry);
 
-// A layer's name says what it holds, often enough to propose a mapping.
+// A layer's name says what it holds, often enough to propose a mapping. Only
+// where a person sets the lines up (project setup, adopting a substrate, the
+// Settings screen's Propose button) and a backfill: a mapping is never read
+// from names.
 const looksLike = (name, re) => re.test(String(name || ''));
 
 /**
  * A mapping proposed from the project's layers: the morpheme layer as
  * Morphemes, a morpheme-scoped field named like a gloss as Morpheme Gloss,
  * a word-scoped one as Word Gloss, a sentence-scoped translation as Sentence
- * Gloss, and whatever an import stored after those.
+ * Gloss, and whatever an import stored after those. For setting the lines up,
+ * never for reading them (resolveIlg).
  */
 export function proposeIlg(layerInfo) {
   const out = [];
@@ -81,32 +85,23 @@ export function proposeIlg(layerInfo) {
 }
 
 /**
- * The project's mapping when it has one, else the proposal. A line whose
- * layer is gone takes the layer the proposal names for the same line: an
- * archive import, a project copy and a restore all give a layer a new id, and
- * the mapping, which names layers by id, then drew and wrote nothing for that
- * line, with nothing said about why.
+ * The project's mapping in reading order, and no lines when it has none.
+ * Setup and adopting a substrate write one, so a project without one has had
+ * its lines removed or predates them (a backfill sets those). A line whose
+ * layer is gone stays as it is: it draws nothing, and the Settings screen
+ * says its layer is gone.
  */
-export function resolveIlg(config, layerInfo) {
-  if (!Array.isArray(config) || !config.length) return proposeIlg(layerInfo);
-  const live = new Set((layerInfo?.glossLayers || []).map((g) => g.layer.id));
-  const isLayer = (source) => String(source ?? '').startsWith('layer:');
-  const slot = (entry) => `${entry.header}|${entry.lang || ''}`;
-  const proposed = new Map(
-    proposeIlg(layerInfo)
-      .filter((e) => isLayer(e.source))
-      .map((e) => [slot(e), e.source]),
-  );
-  return sortIlg(
-    config.map((entry) => {
-      if (!isLayer(entry.source) || live.has(String(entry.source).replace(/^layer:/, ''))) {
-        return entry;
-      }
-      const source = proposed.get(slot(entry));
-      return source ? { ...entry, source } : entry;
-    }),
-  );
+export function resolveIlg(config) {
+  return Array.isArray(config) ? sortIlg(config) : [];
 }
+
+/** Whether a mapping line names a layer `layerInfo` does not hold. */
+export const layerGone = (entry, layerInfo) => {
+  const source = String(entry?.source ?? '');
+  if (!source.startsWith('layer:')) return false;
+  const id = source.slice('layer:'.length);
+  return !(layerInfo?.glossLayers || []).some((g) => g.layer.id === id);
+};
 
 // ISO 639-1 codes by their ISO 639-3 equivalent, for the languages glosses are
 // most often written in, so a stored line compares with a layer's.

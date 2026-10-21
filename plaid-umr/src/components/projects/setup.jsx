@@ -12,7 +12,7 @@ import { missingUmrLayerLabels } from '../../utils/umrLayerUtils.js';
 export const SETUP = {
   app: 'UMR',
   note: 'Adds UMR annotation.',
-  adopt: (client, project, info) => adoptSubstrate(client, info),
+  adopt: (client, project, info) => adoptSubstrate(client, project, info),
   blocked: (info, projectId) =>
     info.textLayer && info.sentenceTokenLayer && info.wordTokenLayer
       ? null

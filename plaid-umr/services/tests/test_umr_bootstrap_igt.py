@@ -5,6 +5,7 @@ glosses and links and the writing of the anchors and nodes.
 Run: pytest -q services/tests, from plaid-umr. Runs from the base env.
 """
 
+import copy
 import json
 import re
 import pathlib
@@ -58,8 +59,20 @@ class _Client(draft_tests._Client):
             return VOCAB
 
 
+# The gloss lines as setting the project up for UMR writes them for these
+# layers: the word gloss, a part of speech, the morphemes and their gloss.
+SET_UP_ILG = [
+    {'header': 'word-gloss', 'lang': 'und', 'source': 'layer:glossL'},
+    {'header': 'pos', 'lang': None, 'source': 'layer:posL'},
+    {'header': 'morphemes', 'lang': None, 'source': 'morphemes'},
+    {'header': 'morpheme-gloss', 'lang': 'und', 'source': 'layer:mglossL'},
+    {'header': None, 'lang': None, 'source': 'stored'},
+]
+
+
 def _project():
-    return {'id': PROJECT, 'name': 'UMR', 'config': {}, 'vocabs': [{'id': 'v1'}]}
+    return {'id': PROJECT, 'name': 'UMR', 'config': {'umr': {'ilg': copy.deepcopy(SET_UP_ILG)}},
+            'vocabs': [{'id': 'v1'}]}
 
 
 def _service(*, documents=None, fails=None):
@@ -232,6 +245,22 @@ def test_a_sentence_with_nothing_to_go_on_is_a_counted_failure():
     assert result['notice']['message'] == (
         'Failed to draft sentence 1: No word has a vocabulary link or a gloss.')
     assert result['notice']['sticky'] is True
+    assert service.client.writes == []
+
+
+def test_a_project_with_no_gloss_lines_names_no_node_from_a_gloss_and_says_so():
+    """No mapping on the project: a gloss names nothing, whatever its layer
+    is called, and the failure says the gloss lines are not set."""
+    document = _document()
+    document['text_layers'][0]['token_layers'][1]['vocabs'] = []
+    service = _service(documents=[document])
+    service.client.projects._project['config'] = {}
+    helper = servicetest.run(service, REQUEST)
+    [result] = helper.results
+    assert (result['drafted'], result['failed']) == (0, 1)
+    assert result['notice']['message'] == (
+        'Failed to draft sentence 1: No word has a vocabulary link, and the project has no '
+        'gloss lines set in UMR settings.')
     assert service.client.writes == []
 
 
@@ -790,8 +819,8 @@ def _with_pos_line(document, values):
 
 
 def test_a_part_of_speech_line_never_names_a_node():
-    """Only a gloss line names a node, classified as the app's ILG mapping
-    classifies it (ilg.js): a field named POS is the part-of-speech line, and
+    """Only a gloss line names a node, as the project's ILG mapping files it:
+    the layer it files as the part-of-speech line names nothing, and
     'Praoloon', with no gloss, gets no node rather than a node named npr."""
     document = _with_pos_line(
         draft_tests._document(body='Praoloon went\n', sentences=((0, 14),),
@@ -838,9 +867,10 @@ def test_a_gloss_in_the_projects_language_names_the_node_whatever_its_scope():
     assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['house']
 
 
-# The app's own classification, run in node: which layer is which line must be
-# the same on the canvas and in the skeleton. Skips where node cannot run, and
-# never when the two disagree.
+# The app's own reading and proposal, run in node: which layer is which line
+# must be the same on the canvas and in the skeleton, and a backfill proposes
+# what setup proposes. Skips where node cannot run, and never when the two
+# disagree.
 ILG_JS = SERVICES.parent / 'src' / 'domain' / 'ilg.js'
 _NAMES = ('Gloss', 'Word gloss', 'Meaning', 'POS', 'Part of speech', 'Tag', 'Class', 'Category',
           'Morph type', 'Translation', 'Free translation', 'Notes', '', 'Glosa', 'PARTS', 'pos-en')
@@ -854,7 +884,7 @@ ILG_CONFIGS = [
      {'header': 'morphemes', 'lang': None, 'source': 'morphemes'},
      {'header': 'pos', 'lang': None, 'source': 'layer:L9'},
      {'header': None, 'lang': None, 'source': 'stored'}],
-    # A layer gone (a copied project): the proposal's layer for the same slot.
+    # A layer gone (a restored project): kept as it is, and draws nothing.
     [{'header': 'morpheme-gloss', 'lang': 'en', 'source': 'layer:gone'},
      {'header': 'word-gloss', 'lang': 'fr', 'source': 'layer:gone2'},
      {'header': 'sentence-gloss', 'lang': 'und', 'source': 'layer:L2'}],
@@ -881,11 +911,14 @@ def test_the_gloss_line_mapping_is_the_apps():
     script = (f"const m = await import({json.dumps(ILG_JS.as_uri())});\n"
               f"const info = {json.dumps(info)};\n"
               f"const configs = {json.dumps(ILG_CONFIGS)};\n"
-              "console.log(JSON.stringify(configs.map((c) => m.resolveIlg(c, info))));\n")
-    out = subprocess.run([exe, '--input-type=module', '-e', script], capture_output=True,
-                         text=True, timeout=60, check=True).stdout
-    layers = _umr_layers(ILG_LAYERS)
-    assert [umr_layers.resolve_ilg(c, layers) for c in ILG_CONFIGS] == json.loads(out)
+              "console.log(JSON.stringify({ resolved: configs.map((c) => m.resolveIlg(c)),\n"
+              "  proposed: m.proposeIlg(info), bare: m.proposeIlg({}) }));\n")
+    out = json.loads(subprocess.run([exe, '--input-type=module', '-e', script],
+                                    capture_output=True, text=True, timeout=60,
+                                    check=True).stdout)
+    assert [umr_layers.resolve_ilg(c) for c in ILG_CONFIGS] == out['resolved']
+    assert umr_layers.propose_ilg(_umr_layers(ILG_LAYERS)) == out['proposed']
+    assert umr_layers.propose_ilg(_umr_layers([], morphemes=False)) == out['bare']
 
 
 def test_the_default_table_knows_the_abbreviations_igt_knows():

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  layerGone,
   proposeIlg,
   resolveIlg,
   ilgLinesFor,
@@ -70,38 +71,49 @@ test('a mapping is proposed from what the layers are named and scoped', () => {
       [null, null, 'stored'],
     ],
   );
-  assert.equal(resolveIlg(null, layerInfo()).length, 5);
-  assert.deepEqual(resolveIlg([{ header: 'pos', lang: null, source: 'layer:p1' }], layerInfo()), [
+});
+
+// The mapping is read from the project, never proposed on a read: a project
+// with none shows no lines, and one that lists a single line shows that line.
+test('a mapping is read as stored, and a project without one has no lines', () => {
+  assert.deepEqual(resolveIlg(null), []);
+  assert.deepEqual(resolveIlg([]), []);
+  assert.deepEqual(resolveIlg([{ header: 'pos', lang: null, source: 'layer:p1' }]), [
     { header: 'pos', lang: null, source: 'layer:p1' },
   ]);
 });
 
-// An archive import, a copy and a restore all make the layers afresh, and the
-// mapping names them by id. The line used to be dropped, on the canvas and in
-// the file, with nothing said.
-test('a line whose layer is gone takes the layer of the same line in the proposal', () => {
+// An archive import or a restore makes the layers afresh, and the mapping
+// names them by id. A line whose layer is gone is kept as it is and draws
+// nothing: no layer is picked for it by name (layerGone tells Settings).
+test('a line whose layer is gone stays as it is and draws nothing', () => {
   const stored = [
     { header: 'morphemes', lang: null, source: 'morphemes' },
     { header: 'morpheme-gloss', lang: 'en', source: 'layer:GONE' },
     { header: 'pos', lang: null, source: 'layer:p1' },
     { header: null, lang: null, source: 'stored' },
   ];
-  assert.deepEqual(resolveIlg(stored, layerInfo()), [
+  const mapping = resolveIlg(stored);
+  assert.deepEqual(mapping, [
     { header: 'pos', lang: null, source: 'layer:p1' },
     { header: 'morphemes', lang: null, source: 'morphemes' },
-    { header: 'morpheme-gloss', lang: 'en', source: 'layer:g1' },
+    { header: 'morpheme-gloss', lang: 'en', source: 'layer:GONE' },
     { header: null, lang: null, source: 'stored' },
   ]);
-  // Nothing to heal it with: the line is left as it was rather than guessed.
   assert.deepEqual(
-    resolveIlg([{ header: 'sentence-gloss', lang: 'fr', source: 'layer:GONE' }], layerInfo()),
-    [{ header: 'sentence-gloss', lang: 'fr', source: 'layer:GONE' }],
+    mapping.map((e) => layerGone(e, layerInfo())),
+    [false, false, true, false],
+  );
+  const s = { ...sentence(), storedIlg: [] };
+  assert.deepEqual(
+    ilgLinesFor(s, layerInfo(), mapping).map((l) => l.key),
+    ['pos', 'morphemes'],
   );
 });
 
 test('lines come from the layers, grouped under the words, stored lines after', () => {
   const info = layerInfo();
-  const lines = ilgLinesFor(sentence(), info, resolveIlg(null, info));
+  const lines = ilgLinesFor(sentence(), info, proposeIlg(info));
   assert.deepEqual(
     lines.map((l) => [l.header, l.lang, l.items.join(' ')]),
     // Word scope, then morpheme, then sentence. A STORED line obeys it too:
@@ -127,7 +139,7 @@ test('a value with spaces is shown with them, and written with underscores', () 
   info.glossLayers[1].layer.spans[0].value = ' noun phrase ';
   const s = sentence();
   s.morphemes[2].text = 'har nuu';
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   const byKey = Object.fromEntries(lines.map((l) => [l.key, l]));
   assert.deepEqual(byKey.pos.perWord, [['noun phrase'], ['_']]);
   assert.deepEqual(byKey.pos.items, ['noun_phrase', '_']);
@@ -141,7 +153,7 @@ test('a stored line the layers also produce is not written twice', () => {
   const info = layerInfo();
   const s = sentence();
   s.storedIlg.push({ header: 'Morphemes', key: 'morphemes', lang: null, items: ['old', 'lines'] });
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   assert.equal(lines.filter((l) => l.key === 'morphemes').length, 1);
   assert.equal(lines.find((l) => l.key === 'morphemes').items.join(' '), 'dog -s bark');
 });
@@ -156,7 +168,7 @@ test('a stored line in a two-letter code is the layer line in its three-letter c
     lang: 'en',
     items: ['old', 'PL', 'lines'],
   });
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   const glosses = lines.filter((l) => l.key === 'morpheme-gloss');
   assert.equal(glosses.length, 1);
   assert.equal(glosses[0].items.join(' '), 'dog PL bark');
@@ -173,7 +185,7 @@ test('an empty layer neither pushes out a stored line nor writes placeholders', 
     lang: null,
     items: ['dog', '-s', 'bark'],
   });
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   assert.deepEqual(
     lines.map((l) => [l.key, l.lang, l.items.join(' ')]),
     [
@@ -191,7 +203,7 @@ test('a word with no morphemes is its own morpheme, its gloss is _, a gloss with
   );
   const s = sentence();
   s.words.push({ id: 'w3', index: 3, begin: 10, end: 11, text: '.' });
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   const morphemes = lines.find((l) => l.key === 'morphemes');
   assert.deepEqual(morphemes.items, ['dog', '-s', 'bark', '.']);
   assert.deepEqual(morphemes.perWord.at(-1), ['.']);
@@ -246,7 +258,7 @@ test('two values of one layer on one token are joined as IGT joins them', () => 
     { tokens: ['s1'], value: 'Dogs bark.' },
   );
   info.glossLayers[1].layer.spans.push({ tokens: ['w1'], value: 'V' });
-  const lines = ilgLinesFor(sentence(), info, resolveIlg(null, info));
+  const lines = ilgLinesFor(sentence(), info, proposeIlg(info));
   const line = (header) => lines.find((l) => l.header === header);
   assert.equal(line('Sentence Gloss').items.join(' '), 'Dogs bark. | The door opened.');
   assert.deepEqual(line('Part of Speech').perWord, [['N | V'], ['_']]);
@@ -270,12 +282,12 @@ test('an unanalyzed word reads as itself on the Morphemes line, as in IGT', () =
       { id: 'm3', begin: 15, end: 24, precedence: 2, text: 'lar' },
     ],
   };
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   const morphemes = lines.find((l) => l.key === 'morphemes');
   assert.deepEqual(morphemes.items, ['Çocuklar', 'okula', 'gid', '-iyor', '-lar']);
   // With no word segmented, the line would repeat the Words, and is left out.
   assert.ok(
-    !ilgLinesFor({ ...s, morphemes: [] }, info, resolveIlg(null, info)).some(
+    !ilgLinesFor({ ...s, morphemes: [] }, info, proposeIlg(info)).some(
       (l) => l.key === 'morphemes',
     ),
   );
@@ -302,7 +314,7 @@ test('the Morphemes line writes the joints IGT draws, and reads back by word', (
       { id: 'm5', begin: 19, end: 24, precedence: 1, text: 'ra', morphType: 'enclitic' },
     ],
   };
-  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const lines = ilgLinesFor(s, info, proposeIlg(info));
   const morphemes = lines.find((l) => l.key === 'morphemes');
   assert.deepEqual(morphemes.items, ['ts-', 'ɨmɨntsara', '-ra', 'ajan', 'may', '=ra']);
   // The canvas keeps the bare forms and draws the joints itself.

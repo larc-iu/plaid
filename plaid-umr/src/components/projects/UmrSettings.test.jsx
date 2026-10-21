@@ -3,9 +3,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
 
 // The Gloss lines form shows each line's source as the canvas and the export
-// read it. After an archive import or a project copy the stored mapping
-// still names the old layers' ids, and the form showed those lines with no
-// source.
+// read it: the stored mapping, never a layer guessed from its name. After an
+// archive import the stored mapping still names the old layers' ids, and the
+// form says those layers are gone rather than showing no source.
 
 const project = {
   id: 'p1',
@@ -41,7 +41,7 @@ vi.mock('../../utils/umrLayerUtils.js', async (importOriginal) => ({
 const { UmrSettings } = await import('./UmrSettings.jsx');
 
 describe('UmrSettings', () => {
-  it('shows a line whose layer has a new id with the layer the canvas draws', async () => {
+  it('says a line whose layer is gone has lost it, and picks no layer by name', async () => {
     const r = await renderComponent(
       <MemoryRouter initialEntries={['/projects/p1']}>
         <Routes>
@@ -52,8 +52,8 @@ describe('UmrSettings', () => {
     await r.step(async () => {});
     expect(texts(r.container, 'button[aria-label="Source"]')).toEqual([
       'Morphemes',
-      'Gloss · morpheme',
-      'Translation · sentence',
+      'Layer no longer in the project',
+      'Layer no longer in the project',
     ]);
     await r.unmount();
   });

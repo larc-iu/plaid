@@ -14,6 +14,11 @@
  *
  * No morpheme layer: that is IGT's, and this app reads it when a project has
  * one. Text and tokens are edited in IGT or UD, never here.
+ *
+ * Both setups also write the project's gloss lines (`config.umr.ilg`, see
+ * domain/ilg.js), proposed from the layers there are, since nothing reads
+ * the lines from layer names afterwards. A project made here has no gloss
+ * layer, so its lines are the ones an import stores.
  */
 
 import {
@@ -24,8 +29,9 @@ import {
   ROLES,
   uuidv7,
 } from '@larc-iu/plaid-client';
-import { UMR_NAMESPACE, UMR_LAYER_FLAGS } from '../utils/umrLayerUtils.js';
+import { UMR_NAMESPACE, UMR_LAYER_FLAGS, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { relationRules } from './umrConstraints.js';
+import { proposeIlg } from './ilg.js';
 
 // Provenance survives a split made by any app on this substrate. See the
 // manual's "Metadata Preserved Across a Split".
@@ -134,6 +140,9 @@ const bootstrap = async (client, projectName) => {
       b.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
 
       queueUmrLayers(b, { nodeLayerId, sentenceLayerId });
+      b.projects.setConfig(projectId, UMR_NAMESPACE, 'ilg', proposeIlg({}), undefined, {
+        expected: null,
+      });
     });
 
     return project;
@@ -170,11 +179,14 @@ export const createUmrProject = (client, projectName) =>
  * by IGT or UD). Creates only what is missing, so a re-run is harmless. One
  * batch, every new layer made under an id minted here: it lands whole or not
  * at all, so a layer is never left without the flag a re-run finds it by.
+ * The project's gloss lines are proposed from its layers when it has none,
+ * and a mapping already there is left as it is.
  * @param {object} client
+ * @param {object} project - the project, with its layers and config
  * @param {object} layerInfo - from getUmrLayerInfo on the project
  * @returns {Promise<boolean>} true when something was created
  */
-export const adoptSubstrate = async (client, layerInfo) => {
+export const adoptSubstrate = async (client, project, layerInfo) => {
   const { textLayer } = layerInfo;
   if (!textLayer) throw new Error('The project has no text layer to build on.');
   return client.withOperation('Set the project up for UMR', async () => {
@@ -197,6 +209,12 @@ export const adoptSubstrate = async (client, layerInfo) => {
           hasRelations: !!layerInfo.relationLayer,
           hasDocumentGraph: !!layerInfo.documentGraphLayer,
         }) || created;
+      if (!readIlgConfig(project)) {
+        b.projects.setConfig(project.id, UMR_NAMESPACE, 'ilg', proposeIlg(layerInfo), undefined, {
+          expected: null,
+        });
+        created = true;
+      }
     });
     return created;
   });

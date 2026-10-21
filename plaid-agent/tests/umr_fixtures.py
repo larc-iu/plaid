@@ -19,7 +19,10 @@ TEXT_ID = 'm-text'
 def project_raw():
     return {
         'id': PID, 'name': 'Sample',
-        'config': {'umr': {'language': 'en'}},
+        # The gloss lines as setting the project up for UMR writes them.
+        'config': {'umr': {'language': 'en', 'ilg': [
+            {'header': 'word-gloss', 'lang': 'en', 'source': f'layer:{GLOSS_LAYER}'},
+            {'header': None, 'lang': None, 'source': 'stored'}]}},
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [

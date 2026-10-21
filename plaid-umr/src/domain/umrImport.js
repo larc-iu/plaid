@@ -86,7 +86,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
   // file's own lines, which are stored all the same (H17-UMR-3).
   if (
     plan.sentences.some((s) => s.meta.ilg.length) &&
-    !resolveIlg(options.ilg, layerInfo).some((e) => e.source === 'stored')
+    !resolveIlg(options.ilg).some((e) => e.source === 'stored')
   ) {
     warnings.push(
       'Gloss lines stored but not shown. Add "Lines an import stored" in UMR settings.',

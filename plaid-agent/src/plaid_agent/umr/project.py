@@ -182,17 +182,10 @@ HEADERS = {
 }
 
 
-def propose_ilg(project: UmrProject) -> List[dict]:
-    """A mapping proposed from the project's layers, the way the app proposes
-    one (``plaid_client.workflows.umr.layers.propose_ilg``)."""
-    return umr_layers.propose_ilg(project.layers)
-
-
 def resolve_ilg(project: UmrProject) -> List[dict]:
-    """The project's mapping when it has one, else the proposal, with a layer
-    gone from the mapping replaced as the app replaces it
-    (``plaid_client.workflows.umr.layers.resolve_ilg``)."""
-    return umr_layers.resolve_ilg(project.ilg, project.layers)
+    """The project's mapping in reading order, and no lines when it has none,
+    as the app reads it (``plaid_client.workflows.umr.layers.resolve_ilg``)."""
+    return umr_layers.resolve_ilg(project.ilg)
 
 
 def gloss_headers(project: UmrProject) -> List[str]:

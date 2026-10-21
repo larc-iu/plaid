@@ -304,7 +304,11 @@ test("the project export writes the project's Gloss lines, as the Export tab doe
   const tab = new UmrDocument({ raw, project }).toUmr();
   assert.doesNotMatch(tab, /Word Gloss/);
   assert.equal(file.text, tab);
-  // With no saved lines both write what the import stored.
+  // Saved lines that keep what an import stored write it.
+  const storedLines = { umr: { ilg: [{ header: null, lang: null, source: 'stored' }] } };
+  const [kept] = await exportProjectUmr(client, 'p', { id: 'p', config: storedLines });
+  assert.match(kept.text, /Word Gloss \(en\):/);
+  // No saved lines write none: nothing is proposed from the layers on a read.
   const [plain] = await exportProjectUmr(client, 'p', { id: 'p', config: {} });
-  assert.match(plain.text, /Word Gloss \(en\):/);
+  assert.doesNotMatch(plain.text, /Word Gloss/);
 });

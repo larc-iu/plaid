@@ -366,7 +366,7 @@ export class UmrDocument extends DocumentModel {
   get graph() {
     return this._derived('graph', () => {
       const info = this.layerInfo;
-      const mapping = resolveIlg(readIlgConfig(this._project), info);
+      const mapping = resolveIlg(readIlgConfig(this._project));
       const built = buildDocumentGraph(info, { ilg: (s) => ilgLinesFor(s, info, mapping) });
       const graph = keepUnchangedSentences(this._lastGraph, built);
       this._lastGraph = graph;

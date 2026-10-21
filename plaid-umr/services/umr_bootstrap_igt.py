@@ -84,7 +84,7 @@ from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUM
                                                  can_name_word, gloss_morphemes, line_flags)
 from plaid_client.workflows.igt.senses import build_sense_tree
 from plaid_client.workflows.umr.inventory import attribute_value_problem
-from plaid_client.workflows.umr.layers import lexical_gloss_layers
+from plaid_client.workflows.umr.layers import ilg_config, lexical_gloss_layers
 
 DEFAULT_SERVICE_ID = 'umr-bootstrap-igt'
 
@@ -519,6 +519,12 @@ class UmrBootstrapService(BaseService):
         links = links_by_token(run.layers)
         listed = listed_forms(headwords)
         glosses = lexical_gloss_layers(project, run.layers)
+        # The gloss lines are read from the project's mapping alone: with none
+        # set, no gloss names a node, and a sentence that fails says so.
+        unmapped = ilg_config(project) is None
+        no_node = ('No word has a vocabulary link, and the project has no gloss lines set '
+                   'in UMR settings.' if unmapped
+                   else 'No word has a vocabulary link or a gloss.')
         run.progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         plans = []
@@ -528,8 +534,7 @@ class UmrBootstrapService(BaseService):
                                                  links, headwords, self.abbreviations, run.taken,
                                                  listed)
             if not nodes:
-                failures.append({'sentence': sentence.number,
-                                 'reason': 'No word has a vocabulary link or a gloss.'})
+                failures.append({'sentence': sentence.number, 'reason': no_node})
                 continue
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
                           'edges': edges})

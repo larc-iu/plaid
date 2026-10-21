@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getUmrLayerInfo, readIlgConfig, UMR_NAMESPACE } from '../../utils/umrLayerUtils.js';
-import { HEADERS, proposeIlg, resolveIlg } from '../../domain/ilg.js';
+import { HEADERS, layerGone, proposeIlg, resolveIlg } from '../../domain/ilg.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -34,17 +34,15 @@ export const UmrSettings = () => {
   const [seeded, setSeeded] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // Seed from the lines the canvas and the export draw (the stored mapping,
-  // a line whose layer is gone taking the proposal's layer for it, else the
-  // proposal), and re-seed on reload. An archive import or a project copy
-  // gives layers new ids, and the raw mapping showed those lines with no
-  // source.
+  // Seed from the lines the canvas and the export draw, the stored mapping,
+  // and re-seed on reload. A project with none shows no rows: Propose lines
+  // offers a start.
   useEffect(() => {
     if (!project) return;
-    const resolved = resolveIlg(readIlgConfig(project), layerInfo);
+    const resolved = resolveIlg(readIlgConfig(project));
     setRows(resolved);
     setSeeded(resolved);
-  }, [project, layerInfo]);
+  }, [project]);
 
   const sources = useMemo(() => {
     const out = [];
@@ -55,8 +53,17 @@ export const UmrSettings = () => {
       out.push({ value: `layer:${g.layer.id}`, label: `${g.layer.name} · ${g.scope}` });
     });
     out.push({ value: STORED, label: 'Lines an import stored' });
+    // A line whose layer is gone (an archive import or a restore made the
+    // layers afresh) draws nothing until it is given a layer here.
+    rows
+      .filter((r) => layerGone(r, layerInfo))
+      .forEach((r) => {
+        if (!out.some((s) => s.value === r.source)) {
+          out.push({ value: r.source, label: 'Layer no longer in the project' });
+        }
+      });
     return out;
-  }, [layerInfo]);
+  }, [layerInfo, rows]);
 
   // A row that stops being "stored" needs a header; the first that fits its
   // source's scope is a start.

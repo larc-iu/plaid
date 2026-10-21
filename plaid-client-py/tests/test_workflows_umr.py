@@ -777,13 +777,23 @@ def _gloss_layers(*specs):
         GlossLayer(id=i, name=name, scope=scope, lang=lang) for i, name, scope, lang in specs])
 
 
-def test_only_a_line_filed_as_a_gloss_is_a_lexical_gloss_layer():
+def test_only_a_line_the_mapping_files_as_a_gloss_is_a_lexical_gloss_layer():
     from plaid_client.workflows.umr.layers import lexical_gloss_layers
     layers = _gloss_layers(('pos', 'POS', 'word', None), ('g', 'Gloss', 'word', 'en'),
                            ('cat', 'Category', 'morpheme', None),
                            ('mg', 'Morpheme gloss', 'morpheme', 'en'),
                            ('tr', 'Translation', 'sentence', 'en'), ('n', 'Notes', 'word', None))
-    assert [g.id for g in lexical_gloss_layers(None, layers)] == ['mg', 'g']
+    # No mapping: no gloss layer, whatever the layers are called.
+    assert lexical_gloss_layers(None, layers) == []
+    assert lexical_gloss_layers({'config': {'umr': {}}}, layers) == []
+    # The mapping decides, names aside: Notes is the gloss, Gloss the part of speech.
+    project = {'config': {'umr': {'ilg': [
+        {'header': 'pos', 'lang': None, 'source': 'layer:g'},
+        {'header': 'word-gloss', 'lang': 'en', 'source': 'layer:n'},
+        {'header': 'morpheme-gloss', 'lang': 'en', 'source': 'layer:cat'},
+        {'header': 'sentence-gloss', 'lang': 'en', 'source': 'layer:tr'},
+    ]}}}
+    assert [g.id for g in lexical_gloss_layers(project, layers)] == ['cat', 'n']
 
 
 def test_the_projects_mapping_overrides_the_names_and_a_gloss_in_its_language_comes_first():

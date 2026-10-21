@@ -261,7 +261,9 @@ def _looks_like(name, pattern: str) -> bool:
 def propose_ilg(layers: UmrLayers) -> List[dict]:
     """A mapping proposed from the layers' names (``proposeIlg``): a field
     named like a gloss is the gloss of its scope, one named like a category
-    or a tag is the part of speech, anything else is not a line."""
+    or a tag is the part of speech, anything else is not a line. For setting
+    a project's lines up once (the app's setup, a backfill), never for reading
+    them: ``resolve_ilg`` reads only what is stored."""
     out: List[dict] = []
     if layers.morpheme_layer:
         out.append({'header': 'morphemes', 'lang': None, 'source': 'morphemes'})
@@ -296,43 +298,24 @@ def ilg_config(project) -> Optional[list]:
     return mapping if isinstance(mapping, list) else None
 
 
-def resolve_ilg(config, layers: UmrLayers) -> List[dict]:
-    """The project's mapping when it has one, else the proposal. An entry whose
-    layer is gone takes the layer the proposal names for the same line
-    (``resolveIlg``)."""
-    if not isinstance(config, list) or not config:
-        return propose_ilg(layers)
-    live = {g.id for g in layers.gloss_layers}
-
-    def is_layer(source) -> bool:
-        return str(source if source is not None else '').startswith('layer:')
-
-    def slot(entry) -> str:
-        return f"{entry.get('header')}|{entry.get('lang') or ''}"
-
-    proposed = {slot(e): e['source'] for e in propose_ilg(layers) if is_layer(e['source'])}
-    out = []
-    for entry in config:
-        if not isinstance(entry, dict):
-            continue
-        source = entry.get('source')
-        if not is_layer(source) or str(source)[len('layer:'):] in live:
-            out.append(entry)
-            continue
-        replacement = proposed.get(slot(entry))
-        out.append({**entry, 'source': replacement} if replacement else entry)
-    return _sort_ilg(out)
+def resolve_ilg(config) -> List[dict]:
+    """The project's mapping in reading order, and no lines when it has none
+    (``resolveIlg``). An entry whose layer is gone stays as it is and draws
+    nothing: no layer is picked for it by name."""
+    if not isinstance(config, list):
+        return []
+    return _sort_ilg([entry for entry in config if isinstance(entry, dict)])
 
 
 def lexical_gloss_layers(project, layers: UmrLayers) -> List[GlossLayer]:
     """The gloss layers a concept may be read from, in the order a concept is
-    looked for: those the project's mapping (or the proposal) files as a word
+    looked for: those the project's mapping files as a word
     or morpheme gloss, a gloss in the project's language first, then a
     morpheme gloss before a word gloss (the stem's gloss names a word), then
     the mapping's order."""
     by_id = {g.id: g for g in layers.gloss_layers}
     picked: List[tuple] = []
-    for entry in resolve_ilg(ilg_config(project), layers):
+    for entry in resolve_ilg(ilg_config(project)):
         source = str(entry.get('source') or '')
         if entry.get('header') not in GLOSS_HEADERS or not source.startswith('layer:'):
             continue
