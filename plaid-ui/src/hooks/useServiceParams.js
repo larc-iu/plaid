@@ -35,12 +35,19 @@ const NON_PERSISTENT_PARAMS = new Set(['overwrite']);
 //   fields:        {scope: [field name]}, the project's annotation fields, for
 //                  a `field` parameter. Whatever the merge settles on for one
 //                  is then checked against them (domain/serviceFields.js).
+//   lexiconFields: {scope: {field name: entry field}}, each field's stored
+//                  Lexicon field, which fills a parameter that names one.
+//
+// A `field` parameter's schema default is never used: a field is never chosen
+// by name. It comes from the project's defaults, this user's last run, or the
+// field the parameter's `lexiconField` is paired with.
 export function useServiceParams({
   schema,
   storageKey,
   seedParams = null,
   defaultParams = null,
   fields = null,
+  lexiconFields = null,
 }) {
   const [values, setValues] = useState({});
 
@@ -57,6 +64,8 @@ export function useServiceParams({
   defaultRef.current = defaultParams;
   const fieldsRef = useRef(fields);
   fieldsRef.current = fields;
+  const lexiconFieldsRef = useRef(lexiconFields);
+  lexiconFieldsRef.current = lexiconFields;
 
   // A schema is stable for the life of a method, so seeding is keyed on the
   // storage key rather than on schema identity (re-discovery replaces a
@@ -69,7 +78,7 @@ export function useServiceParams({
   // the project's, for anyone who had never touched the dialog.
   const seedSignature = JSON.stringify(seedParams ?? null);
   const defaultSignature = JSON.stringify(defaultParams ?? null);
-  const fieldsSignature = JSON.stringify(fields ?? null);
+  const fieldsSignature = JSON.stringify([fields ?? null, lexiconFields ?? null]);
 
   const seed = useCallback(
     ({ useCache = true } = {}) => {
@@ -86,6 +95,7 @@ export function useServiceParams({
         }
       }
       const merged = { ...defaults };
+      for (const param of schema) if (param?.type === 'field' && param.key) merged[param.key] = '';
       for (const k of Object.keys(defaults)) {
         if (seeded[k] !== undefined) merged[k] = seeded[k];
         if (projectParams[k] !== undefined) merged[k] = projectParams[k];
@@ -93,7 +103,7 @@ export function useServiceParams({
         // to the schema/project default on each open (NON_PERSISTENT_PARAMS).
         if (cached[k] !== undefined && !NON_PERSISTENT_PARAMS.has(k)) merged[k] = cached[k];
       }
-      return resolveFieldParams(schema, merged, fieldsRef.current);
+      return resolveFieldParams(schema, merged, fieldsRef.current, lexiconFieldsRef.current);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [storageKey, seedSignature, defaultSignature, fieldsSignature],

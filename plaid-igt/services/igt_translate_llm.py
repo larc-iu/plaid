@@ -175,11 +175,11 @@ class LLMTranslateService(BaseService):
                              description='The language to translate into.'),
                 Param.string('orthography', 'Orthography', default='', placeholder='baseline',
                              description='Name of a word orthography to send instead of the baseline text.'),
-                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                Param.field('translation_field', 'Translation field', 'Sentence',
                             required=True, description='The sentence-scope field that receives the drafts.'),
                 Param.boolean('use_glosses', 'Use glosses', default=True,
                               description="Show the model the sentence's morpheme glosses."),
-                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss',
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', lexicon_field='gloss',
                             description='The morpheme-scope field holding the glosses.'),
                 Param.number('context', 'Context sentences', default=DEFAULT_CONTEXT,
                              description='How many preceding sentences to show the model.'),
@@ -214,9 +214,15 @@ class LLMTranslateService(BaseService):
             return
         metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
         orthography = (request_data.get('orthography') or '').strip()
-        translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
+        # The fields come from the request, never from a name: the translation
+        # field is the one written, and one left out is an error. The gloss
+        # field is context, read only when one is named.
+        translation_field = (request_data.get('translation_field') or '').strip()
+        if not translation_field:
+            response_helper.error('Choose the translation field.')
+            return
         use_glosses = bool(request_data.get('use_glosses', True))
-        gloss_field = (request_data.get('gloss_field') or '').strip() or 'Gloss'
+        gloss_field = (request_data.get('gloss_field') or '').strip() or None
         overwrite = bool(request_data.get('overwrite', False))
         try:
             n_context = max(0, int(request_data.get('context') or 0))

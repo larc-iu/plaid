@@ -41,7 +41,7 @@ def test_vocab_entries_leave_out_a_headword_that_only_holds_senses():
         # So does an entry with no gloss and nothing under it: it is all there is.
         {'id': 'bare', 'form': 'zi', 'metadata': {}},
     ]
-    entries = llm.vocab_entries(items, 'L')
+    entries = llm.vocab_entries(items, 'L', gloss_key='gloss', pos_key='pos')
     assert [e['id'] for e in entries] == ['s1', 's2', 'g', 'gs', 'bare']
     assert all(e['vocab'] == 'L' for e in entries)
     # The form the container carried is still reachable through its senses.
@@ -55,7 +55,7 @@ def test_a_headword_no_sense_spells_out_is_kept():
         {'id': 'h', 'form': 'kwatha', 'metadata': {}},
         {'id': 's1', 'form': 'kuphika', 'metadata': {'gloss': 'do', 'parent': 'h'}},
     ]
-    entries = llm.vocab_entries(items, 'L')
+    entries = llm.vocab_entries(items, 'L', gloss_key='gloss', pos_key='pos')
     assert [e['id'] for e in entries] == ['h', 's1']
     assert [e['form'] for e in llm.matching_entries(entries, ['kwatha'])] == ['kwatha']
 
@@ -66,18 +66,18 @@ def test_a_broken_parent_leaves_the_entry_in_the_model_s_reach():
     the raw key instead dropped a glossless one from the prompt, so the form
     came back unglossed with nothing to say why."""
     lone = [{'id': 'x', 'form': 'zi', 'metadata': {'parent': 'x'}}]
-    assert [e['id'] for e in llm.vocab_entries(lone, 'L')] == ['x']
+    assert [e['id'] for e in llm.vocab_entries(lone, 'L', gloss_key='gloss', pos_key='pos')] == ['x']
 
     # A parent naming nothing: the headword is kept because no sense of it
     # spells its form, which the old rule also got right by accident, so this
     # pins the pair rather than the single item.
     dangling = [{'id': 'p', 'form': 'zi', 'metadata': {}},
                 {'id': 'y', 'form': 'zi', 'metadata': {'parent': 'gone'}}]
-    assert [e['id'] for e in llm.vocab_entries(dangling, 'L')] == ['p', 'y']
+    assert [e['id'] for e in llm.vocab_entries(dangling, 'L', gloss_key='gloss', pos_key='pos')] == ['p', 'y']
 
     cycle = [{'id': 'f1', 'form': 'nya', 'metadata': {'parent': 'f2'}},
              {'id': 'f2', 'form': 'nya', 'metadata': {'parent': 'f1'}}]
-    assert [e['id'] for e in llm.vocab_entries(cycle, 'L')] == ['f1', 'f2']
+    assert [e['id'] for e in llm.vocab_entries(cycle, 'L', gloss_key='gloss', pos_key='pos')] == ['f1', 'f2']
 
 
 def test_entries_read_the_sense_tree_as_the_app_does():
@@ -87,13 +87,13 @@ def test_entries_read_the_sense_tree_as_the_app_does():
     of the cycle member it names."""
     items = [{'id': 'h', 'form': 'kwatha', 'metadata': {'morphType': 'stem', 'gloss': 'do'}},
              {'id': 's', 'form': 'kwatha', 'metadata': {'gloss': 'make', 'parent': 'h'}}]
-    assert [e['type'] for e in llm.vocab_entries(items, 'L')] == ['stem', 'stem']
+    assert [e['type'] for e in llm.vocab_entries(items, 'L', gloss_key='gloss', pos_key='pos')] == ['stem', 'stem']
 
     below = [{'id': 'a', 'form': 'nya', 'metadata': {'parent': 'b'}},
              {'id': 'b', 'form': 'nyo', 'metadata': {'parent': 'a', 'gloss': 'x'}},
              {'id': 'c', 'form': 'nya', 'metadata': {'parent': 'a', 'gloss': 'y'}}]
     # `a` holds no gloss and its sense `c` spells it, so it is left out
-    assert [e['id'] for e in llm.vocab_entries(below, 'L')] == ['b', 'c']
+    assert [e['id'] for e in llm.vocab_entries(below, 'L', gloss_key='gloss', pos_key='pos')] == ['b', 'c']
 
 
 def test_rank_examples_prefers_shared_forms_then_character_overlap():
@@ -178,3 +178,22 @@ def test_lexicon_precedent_counts_this_project_s_links_only():
     assert {e['id']: e['count'] for e in entries} == {'kai1': 1, 'kai2': 0}
     assert [e['id'] for e in llm.matching_entries(entries, ['kai'])] == ['kai1', 'kai2']
     assert all(b['scope'] == {'project_ids': ['p1']} for b in seen)
+
+
+def test_the_lexicon_s_gloss_and_part_of_speech_come_from_stored_settings():
+    """Never from a key's name: the gloss is the entry field the gloss field
+    pairs with, else the vocabulary's gloss-role field, and the part of speech
+    its part-of-speech-role field. A key called gloss with neither is nothing."""
+    vocab = {'config': {'igt': {'fields': {'gloss': {}, 'Meaning': {'role': 'gloss'},
+                                           'Category': {'role': 'pos'}, 'pos': {}}}}}
+    assert llm._role_key(vocab, 'gloss') == 'Meaning' and llm._role_key(vocab, 'pos') == 'Category'
+    assert llm._role_key({'config': {}}, 'gloss') is None
+    items = [{'id': 'a', 'form': 'ev', 'metadata': {'gloss': 'no', 'Meaning': 'house', 'pos': 'X',
+                                                    'Category': 'N', 'gloss (es)': 'casa'}}]
+    [e] = llm.vocab_entries(items, 'L', gloss_key='Meaning', pos_key='Category')
+    assert (e['gloss'], e['pos']) == ('house', 'N')
+    [e] = llm.vocab_entries(items, 'L', gloss_key='gloss (es)', pos_key=None)
+    assert (e['gloss'], e['pos']) == ('casa', None)
+    project = {'text_layers': [{'token_layers': [{'span_layers': [
+        {'id': 'g', 'config': {'igt': {'lexiconField': 'gloss (es)'}}}, {'id': 'h', 'config': {}}]}]}]}
+    assert llm.lexicon_field_of(project, 'g') == 'gloss (es)' and llm.lexicon_field_of(project, 'h') is None

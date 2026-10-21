@@ -28,7 +28,9 @@ describe('useServiceParams', () => {
   beforeEach(() => localStorage.clear());
 
   // A value remembered from an earlier run can name a field this project does
-  // not have, and the cache outranks everything else in the merge.
+  // not have, and the cache outranks everything else in the merge. It is
+  // replaced by the field paired with the parameter's entry field, never by
+  // one whose name it begins.
   it('replaces a remembered field the project does not have', async () => {
     const schema = [
       {
@@ -36,6 +38,7 @@ describe('useServiceParams', () => {
         label: 'Gloss field',
         type: 'field',
         scope: 'Morpheme',
+        lexiconField: 'gloss',
         default: 'Gloss',
       },
     ];
@@ -43,9 +46,31 @@ describe('useServiceParams', () => {
     const { params, unmount } = await mount({
       schema,
       storageKey: 'k',
-      fields: { Morpheme: ['Gloss (pmy)', 'POS'] },
+      fields: { Morpheme: ['Gloss (pmy)', 'Meaning', 'POS'] },
+      lexiconFields: { Morpheme: { Meaning: 'gloss', POS: 'pos' } },
     });
-    expect(params().values.gloss_field).toBe('Gloss (pmy)');
+    expect(params().values.gloss_field).toBe('Meaning');
+    await unmount();
+  });
+
+  it('never seeds a field parameter from its schema default, and a required one says so', async () => {
+    const schema = [
+      {
+        key: 'gloss_field',
+        label: 'Gloss field',
+        type: 'field',
+        scope: 'Morpheme',
+        required: true,
+        default: 'Gloss',
+      },
+    ];
+    const { params, unmount } = await mount({
+      schema,
+      storageKey: 'k',
+      fields: { Morpheme: ['Gloss', 'POS'] },
+    });
+    expect(params().values.gloss_field).toBe('');
+    expect(params().errors.gloss_field).toBe('Gloss field is required');
     await unmount();
   });
 

@@ -23,13 +23,16 @@
  *         options?: [{value, label}],   // enum / multiselect
  *         min?, max?, step?, slider?,   // number (slider: drag, don't type)
  *         placeholder?, multiline?,     // string
- *         scope? }                      // field: 'Sentence' | 'Word' | 'Morpheme'
+ *         scope?, lexiconField? }       // field: 'Sentence' | 'Word' | 'Morpheme'
  *     ]
  *   }
  *
  * A `field` parameter names one of the project's annotation fields at its
  * `scope`. A UI that knows the project offers those fields to choose from; to
- * everything here, and to a UI that does not, it is a string.
+ * everything here, and to a UI that does not, it is a string. Its optional
+ * `lexiconField` names a lexicon entry field ("gloss"): a UI that knows the
+ * project fills the parameter with the field at `scope` whose stored Lexicon
+ * field it is. A field is never chosen by its name.
  *
  * A parameter's `key` is a string VALUE, so it passes over the wire verbatim;
  * the UI sends `{ [param.key]: value }` in the request data. Declare each `key`
@@ -117,6 +120,8 @@ export const TASKS = Object.freeze({
  * @property {"Sentence" | "Word" | "Morpheme"} [scope] `field` only: the
  *   scope of the project's annotation fields the value names one of. A
  *   `field` value is a string everywhere else.
+ * @property {string} [lexiconField] `field` only: the lexicon entry field
+ *   whose paired field fills the parameter when nothing else does.
  */
 
 /**

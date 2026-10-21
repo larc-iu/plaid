@@ -95,13 +95,21 @@ class Param:
         return p
 
     @staticmethod
-    def field(key, label, scope, *, description=None, default='', required=False):
+    def field(key, label, scope, *, description=None, default='', required=False, lexicon_field=None):
         """The name of one of the project's annotation fields at ``scope``
         (``'Sentence'``, ``'Word'`` or ``'Morpheme'``). A UI that knows the
         project offers its fields at that scope to choose from, and any other
-        treats the parameter as a string. The value arrives as a string."""
+        treats the parameter as a string. The value arrives as a string.
+
+        ``lexicon_field`` names a lexicon entry field (``'gloss'``): a UI that
+        knows the project fills the parameter with the field at ``scope`` whose
+        stored Lexicon field it is, when no other value is given. A field is
+        never chosen by its name, so a ``default`` here is only ever an
+        explicit choice the service makes."""
         p = {'key': key, 'label': label, 'type': 'field', 'scope': scope,
              'default': default, 'required': required}
+        if lexicon_field is not None:
+            p['lexicon_field'] = lexicon_field
         if description is not None:
             p['description'] = description
         return p

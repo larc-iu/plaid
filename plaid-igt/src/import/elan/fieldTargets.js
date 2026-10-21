@@ -16,6 +16,7 @@ import {
   findWordTokenLayer,
   findMorphemeTokenLayer,
   readOrthographies,
+  readLexiconField,
   readScope,
   IGT_NAMESPACE,
 } from '../../domain/igtConfig.js';
@@ -50,6 +51,23 @@ export const fieldNamesOf = (project) =>
   Object.fromEntries(
     Object.entries(existingFields(project)).map(([scope, fs]) => [scope, fs.map((f) => f.name)]),
   );
+
+/**
+ * Each field's stored Lexicon field by scope and name, `{scope: {name: entry
+ * field}}`: what fills a service's `field` parameter that names one.
+ */
+export const lexiconFieldsOf = (project) => {
+  const out = {};
+  const textLayer = findBaselineTextLayer(project?.textLayers || []);
+  for (const tl of textLayer?.tokenLayers || []) {
+    for (const sl of tl.spanLayers || []) {
+      const scope = readScope(sl.config);
+      const key = readLexiconField(sl.config);
+      if (scope && key) (out[scope] ??= {})[sl.name] = key;
+    }
+  }
+  return out;
+};
 
 // Names read alike when their base names do, ignoring case, spacing and
 // punctuation: "Translation (nl)", "translation" and "Translation-nl" all fold

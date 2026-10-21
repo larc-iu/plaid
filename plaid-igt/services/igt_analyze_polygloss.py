@@ -174,9 +174,9 @@ class PolyGlossService(BaseService):
                              description="The object language's name as the model would know it."),
                 Param.string('metalanguage', 'Metalanguage', default='English',
                              description="The language of the free translations."),
-                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', lexicon_field='gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
-                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                Param.field('translation_field', 'Translation field', 'Sentence',
                             description='The sentence-scope field holding the free translation.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
                               description='Also replace copied analyses and ones a person made or verified.'),
@@ -218,8 +218,14 @@ class PolyGlossService(BaseService):
             response_helper.error('Missing required option: Language')
             return
         metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
-        gloss_field = (request_data.get('gloss_field') or '').strip() or 'Gloss'
-        translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
+        # The fields come from the request, never from a name: the dialog fills
+        # the gloss field from its stored Lexicon field, and one left out is an
+        # error. The translation is context, read only when one is named.
+        gloss_field = (request_data.get('gloss_field') or '').strip()
+        if not gloss_field:
+            response_helper.error('Choose the gloss field.')
+            return
+        translation_field = (request_data.get('translation_field') or '').strip() or None
         overwrite = bool(request_data.get('overwrite', False))
 
         response_helper.progress(3, 'Fetching document…')
@@ -234,8 +240,8 @@ class PolyGlossService(BaseService):
             return
         # The translation is context only, so a run goes on without it, and
         # says so rather than analyzing a little worse without a word.
-        translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
-                               else translation_field)
+        translation_missing = (translation_field if translation_field
+                               and not field_layer_id(doc, sent_layer_id, translation_field) else None)
 
         # Eligible sentences: any word we may write (the write contract).
         targets, skipped = select_targets(sentences, overwrite,

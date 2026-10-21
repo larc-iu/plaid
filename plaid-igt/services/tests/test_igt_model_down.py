@@ -47,7 +47,8 @@ def _document():
 
 REQUEST = {'document_id': 'd1', 'project_id': 'p1', 'word_token_layer_id': 'wordL',
            'morpheme_token_layer_id': 'morphL', 'sentence_token_layer_id': 'sentL',
-           'language': 'Turkish', 'use_glosses': False}
+           'language': 'Turkish', 'use_glosses': False,
+           'gloss_field': 'Gloss', 'translation_field': 'Translation'}
 
 
 class _Model:

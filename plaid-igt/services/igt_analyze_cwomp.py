@@ -691,9 +691,9 @@ class CwompService(BaseService):
             summary=SUMMARY,
             extras={'request_fields': ANALYZE_REQUEST_FIELDS},
             parameters=[
-                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', lexicon_field='gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
-                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                Param.field('translation_field', 'Translation field', 'Sentence',
                             description='The sentence-scope field holding the free translation.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
                               description='Also replace copied analyses and ones a person made or verified.'),
@@ -762,8 +762,14 @@ class CwompService(BaseService):
             if not val:
                 response_helper.error(f'Missing required parameter: {key}')
                 return
-        gloss_field = (request_data.get('gloss_field') or '').strip() or 'Gloss'
-        translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
+        # The fields come from the request, never from a name: the dialog fills
+        # the gloss field from its stored Lexicon field, and one left out is an
+        # error. The translation is context, read only when one is named.
+        gloss_field = (request_data.get('gloss_field') or '').strip()
+        if not gloss_field:
+            response_helper.error('Choose the gloss field.')
+            return
+        translation_field = (request_data.get('translation_field') or '').strip() or None
         overwrite = bool(request_data.get('overwrite', False))
 
         response_helper.progress(2, 'Loading the model…')
@@ -800,8 +806,8 @@ class CwompService(BaseService):
         except ValueError as e:
             response_helper.error(str(e))
             return
-        translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
-                               else translation_field)
+        translation_missing = (translation_field if translation_field
+                               and not field_layer_id(doc, sent_layer_id, translation_field) else None)
         # This document's own confirmed morphemes count at once.
         own = Confirmed(service_source(self.service_id))
         for s in sentences:
@@ -889,8 +895,9 @@ def main():
         p.add_argument('--url', default='http://localhost:8080')
         p.add_argument('--home', default=str(DEFAULT_HOME))
         p.add_argument('--repo', default=None)
-        p.add_argument('--gloss-field', default='Gloss')
-        p.add_argument('--translation-field', default='Translation')
+        p.add_argument('--gloss-field', required=True, help='The morpheme field the model learns')
+        p.add_argument('--translation-field', default=None,
+                       help='The sentence field read as context (none when left out)')
         p.add_argument('--epochs', type=int, default=None,
                        help='Epochs for both stages (default: 100, 1000 under 100 sentences)')
         p.add_argument('--device', default=None)

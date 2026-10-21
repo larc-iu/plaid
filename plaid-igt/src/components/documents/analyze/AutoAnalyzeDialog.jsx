@@ -10,7 +10,7 @@ import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
-import { fieldNamesOf } from '@/import/elan/fieldTargets';
+import { fieldNamesOf, lexiconFieldsOf } from '@/import/elan/fieldTargets';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { countOf, plural } from '@ui/lib/plural.js';
@@ -79,12 +79,14 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   // What a service's field parameters are chosen from, so none names a field
   // this project does not have.
   const fields = useMemo(() => (project ? fieldNamesOf(project) : null), [project]);
+  const lexiconFields = useMemo(() => (project ? lexiconFieldsOf(project) : null), [project]);
   const translateSpot = useServiceSpot({
     task: TASKS.TRANSLATE,
     project,
     services: availableServices,
     storageId: 'translate',
     fields,
+    lexiconFields,
   });
   const analyzeSpot = useServiceSpot({
     task: TASKS.ANALYZE,
@@ -92,6 +94,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     services: availableServices,
     storageId: 'analyze',
     fields,
+    lexiconFields,
   });
   const linkSpot = useServiceSpot({
     task: TASKS.LINK_VOCAB,

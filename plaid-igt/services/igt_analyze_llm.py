@@ -135,16 +135,32 @@ def first_gloss_line(text: str) -> str:
 
 # --- retrieval: the lexicon -----------------------------------------------------
 
-def _field(meta, *names):
-    """A vocab item field by name, case and separator insensitive."""
-    want = {n.lower().replace('_', '').replace(' ', '') for n in names}
-    for k, v in (meta or {}).items():
-        if str(k).lower().replace('_', '').replace(' ', '') in want and v not in (None, ''):
-            return str(v)
+def _field(meta, key):
+    """An entry's value under ``key``, or None."""
+    v = (meta or {}).get(key) if key else None
+    return None if v in (None, '') else str(v)
+
+
+def _role_key(vocab_layer, role):
+    """The first entry field of a vocabulary holding ``role`` (its stored
+    ``role``), or None. Never read from a field's name."""
+    fields = ((vocab_layer.get('config') or {}).get('igt') or {}).get('fields') or {}
+    return next((k for k, cfg in fields.items() if isinstance(cfg, dict) and cfg.get('role') == role), None)
+
+
+def lexicon_field_of(project, span_layer_id):
+    """The entry field an annotation field pairs with (its stored
+    ``igt.lexiconField``), by the field's span layer id, or None."""
+    for tl in project.get('text_layers') or []:
+        for tk in tl.get('token_layers') or []:
+            for sl in tk.get('span_layers') or []:
+                if sl.get('id') == span_layer_id:
+                    v = ((sl.get('config') or {}).get('igt') or {}).get('lexiconField')
+                    return v if isinstance(v, str) and v else None
     return None
 
 
-def vocab_entries(items, vocab_name) -> List[dict]:
+def vocab_entries(items, vocab_name, *, gloss_key, pos_key) -> List[dict]:
     """One vocabulary's entries as the prompt shows them.
 
     A headword that leaves its own gloss empty says nothing the senses under it
@@ -161,7 +177,11 @@ def vocab_entries(items, vocab_name) -> List[dict]:
     Which item is a sense of which, and the morph type an item is read by
     (its own, else its headword's), are the app's sense tree
     (plaid_client.workflows.igt.senses): a parent that names the item itself,
-    nothing, or lies on a cycle makes an entry."""
+    nothing, or lies on a cycle makes an entry.
+
+    ``gloss_key`` and ``pos_key`` are the entry fields shown as the gloss and
+    the part of speech (None for none): the gloss field's Lexicon field, else
+    the vocabulary's gloss-role field, and its part-of-speech-role field."""
     items = [it for it in items if it.get('id')]
     tree = build_sense_tree(items)
     sense_forms = {}
@@ -174,18 +194,18 @@ def vocab_entries(items, vocab_name) -> List[dict]:
     entries = []
     for it in items:
         meta = it.get('metadata') or {}
-        gloss = _field(meta, 'gloss')
+        gloss = _field(meta, gloss_key)
         if not gloss and it['id'] in covered:
             continue
         entries.append({
             'id': it['id'], 'form': it.get('form') or '', 'vocab': vocab_name or '',
-            'gloss': gloss, 'pos': _field(meta, 'pos', 'part of speech'),
+            'gloss': gloss, 'pos': _field(meta, pos_key),
             'type': morph_type_of(tree, it['id']), 'count': 0,
         })
     return entries
 
 
-def load_lexicon(client, project, on_progress=None) -> List[dict]:
+def load_lexicon(client, project, on_progress=None, gloss_lexicon_field=None) -> List[dict]:
     """Every entry of every vocab linked to the project, with the fields the
     prompt shows and its project-wide link count (precedent). The count is
     this project's links only: a vocabulary shared with other projects is
@@ -200,7 +220,9 @@ def load_lexicon(client, project, on_progress=None) -> List[dict]:
         if on_progress:
             on_progress(n, len(vocabs))
         vl = client.vocab_layers.get(v['id'], include_items=True)
-        entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name')))
+        entries.extend(vocab_entries(
+            vl.get('items') or [], vl.get('name') or v.get('name'),
+            gloss_key=gloss_lexicon_field or _role_key(vl, 'gloss'), pos_key=_role_key(vl, 'pos')))
         try:
             res = client.query({
                 'where': [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']],
@@ -357,9 +379,9 @@ class LLMAnalyzeService(BaseService):
                              description="The object language's name."),
                 Param.string('metalanguage', 'Metalanguage', default='English',
                              description='The language of the glosses and free translations.'),
-                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', lexicon_field='gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
-                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                Param.field('translation_field', 'Translation field', 'Sentence',
                             description='The sentence-scope field holding the free translation.'),
                 Param.number('examples', 'Examples per sentence', default=DEFAULT_EXAMPLES,
                              description='How many of the most similar analyzed sentences to show the model.'),
@@ -395,8 +417,14 @@ class LLMAnalyzeService(BaseService):
             response_helper.error('Missing required option: Language')
             return
         metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
-        gloss_field = (request_data.get('gloss_field') or '').strip() or 'Gloss'
-        translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
+        # The fields come from the request, never from a name: the dialog fills
+        # the gloss field from its stored Lexicon field, and one left out is an
+        # error. The translation is context, read only when one is named.
+        gloss_field = (request_data.get('gloss_field') or '').strip()
+        if not gloss_field:
+            response_helper.error('Choose the gloss field.')
+            return
+        translation_field = (request_data.get('translation_field') or '').strip() or None
         overwrite = bool(request_data.get('overwrite', False))
         try:
             n_examples = max(0, int(request_data.get('examples') or DEFAULT_EXAMPLES))
@@ -415,8 +443,8 @@ class LLMAnalyzeService(BaseService):
             return
         # The translation is context only, so a run goes on without it, and
         # says so rather than analyzing a little worse without a word.
-        translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
-                               else translation_field)
+        translation_missing = (translation_field if translation_field
+                               and not field_layer_id(doc, sent_layer_id, translation_field) else None)
 
         targets, skipped = select_targets(sentences, overwrite,
                                           skip_word_ids=read_skip_word_ids(request_data))
@@ -436,7 +464,7 @@ class LLMAnalyzeService(BaseService):
         tagset = tagset_for(project, gloss_layer_id)
         system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
         lexicon = load_lexicon(
-            self.client, project,
+            self.client, project, gloss_lexicon_field=lexicon_field_of(project, gloss_layer_id),
             on_progress=lambda n, total: response_helper.progress(
                 5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
         pool = load_examples(
