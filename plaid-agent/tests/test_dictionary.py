@@ -15,8 +15,8 @@ from plaid_agent.igt.toolkit import call_tool
 # gloss and pos are ordinary text; variantOf points at one entry, seeAlso at
 # several, and etymology belongs to an entry rather than to each of its senses.
 FIELDS = {
-    'gloss': {'inline': True},
-    'pos': {'inline': True},
+    'gloss': {'inline': True, 'role': 'gloss'},
+    'pos': {'inline': True, 'role': 'pos'},
     'variantOf': {'inline': False, 'type': 'item'},
     'seeAlso': {'inline': False, 'type': 'item', 'many': True},
     'etymology': {'inline': False, 'scope': 'entry'},

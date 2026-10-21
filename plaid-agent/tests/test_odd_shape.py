@@ -12,19 +12,33 @@ def ws():
     return fake_ws(c)
 
 
-def test_gloss_roles_come_from_names_and_schemas():
+def test_gloss_roles_come_from_stored_settings_never_names():
     w = ws()
     p = w.project
     assert p.morpheme_layer_id is None and [f.name for f in p.fields_by_scope('Word')] == ['Category', 'Meaning']
+    # Meaning's Lexicon field holds the gloss role, so it is the gloss though Category comes first.
     assert p.gloss_field('Word').name == 'Meaning' and p.gloss_field('Morpheme') is None
     assert p.gloss_field('Sentence').name == 'Free translation'  # the only one: first
     wl, plain = p.vocab('Wordlist'), p.vocab('Plain')
     assert (p.lexicon_field(wl, 'gloss'), p.lexicon_field(wl, 'pos')) == ('meaning', 'category')
-    assert (p.lexicon_field(plain, 'gloss'), p.lexicon_field(plain, 'pos')) == ('gloss', 'pos')  # no schema: convention
-    # A schema that names no gloss-ish field plays no gloss role. The core
-    # inventory rides along on every vocabulary, so only declared fields count.
-    assert p.lexicon_field({'fields': [{'name': 'note', 'declared': True}]}, 'gloss') is None
-    assert p.lexicon_field({'fields': [{'name': 'gloss', 'declared': False}]}, 'gloss') == 'gloss'
+    assert (p.lexicon_field(plain, 'gloss'), p.lexicon_field(plain, 'pos')) == (None, None)  # no schema, no roles
+    # A field named gloss without the role plays none. The core inventory
+    # rides along on every vocabulary, so only declared fields count.
+    assert p.lexicon_field({'fields': [{'name': 'gloss', 'declared': True, 'role': None}]}, 'gloss') is None
+    assert p.lexicon_field({'fields': [{'name': 'gloss', 'declared': False, 'role': 'gloss'}]}, 'gloss') is None
+    assert p.lexicon_field({'fields': [{'name': 'Sense', 'declared': True, 'role': 'gloss'}]}, 'gloss') == 'Sense'
+
+
+def test_a_field_named_gloss_is_not_the_gloss_without_its_setting():
+    from plaid_agent.igt.project import Field, IgtProject
+    fields = {
+        'Gloss': Field(name='Gloss', layer_id='a', scope='Morpheme', base_name='Gloss'),
+        'Sense': Field(name='Sense', layer_id='b', scope='Morpheme', base_name='Sense', lexicon_field='gloss'),
+    }
+    p = IgtProject(id='p', name='p', text_layer_id='t', sentence_layer_id='s', word_layer_id='w',
+                   morpheme_layer_id='m', fields=fields, orthographies=[], ignored_cfg=None,
+                   vocabs=[], document_metadata=[])
+    assert p.gloss_field('Morpheme').name == 'Sense'
 
 
 def test_tools_follow_the_configured_shape():
@@ -35,8 +49,9 @@ def test_tools_follow_the_configured_shape():
     head = out.splitlines()[0]
     assert 'Meaning' in head and 'Free translation' in head and 'Category' not in head
     out = call_tool(w, 'check_lexicon', {})
-    assert 'entries without a gloss/meaning' in out and 'Ali' in out.split('entries without a gloss/meaning')[1].split('\n\n')[0]
-    assert 'entries without a category/pos' in out
+    # The schema-less lexicon has no gloss or part-of-speech field to check.
+    assert 'entries without a meaning' in out and 'Ali' in out.split('entries without a meaning')[1].split('\n\n')[0]
+    assert 'entries without a category' in out
     assert '2 homograph groups' not in out and '1 homograph groups (1 with a repeated gloss' in out  # both "gam" mean net
     out = call_tool(w, 'check_lexicon', {'section': 'glosses'})
     assert 'gam: lexicon "net", corpus mostly "fish"' in out

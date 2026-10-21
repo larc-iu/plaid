@@ -593,10 +593,18 @@ def validate_vocab_refs(items: List[dict], fields: List[dict]) -> Tuple[List[dic
 
 # ---- rendering ---------------------------------------------------------------
 
+_ROLE_NOTES = {ROLE_GLOSS: 'the gloss', ROLE_DEFINITION: 'the definition',
+               ROLE_POS: 'the part of speech', ROLE_STATUS: 'the status'}
+
+
 def field_note(field: dict) -> str:
     """What a field holds, when it is not plain text on every item: the marker
-    shown beside its name so the model knows a reference from a text field."""
+    shown beside its name so the model knows a reference from a text field, and
+    the role the field holds (its stored ``role``: the gloss, the definition,
+    the part of speech or the status), whatever it is called."""
     bits = []
+    if field.get('role'):
+        bits.append(_ROLE_NOTES[field['role']])
     if field.get('type') == FIELD_ITEM:
         bits.append('an entry of this lexicon' if not field.get('many') else 'entries of this lexicon')
     if field.get('scope') == SCOPE_ENTRY:

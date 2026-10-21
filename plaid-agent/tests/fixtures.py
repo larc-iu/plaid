@@ -18,7 +18,9 @@ def project_raw():
                            'tagsets': {'Leipzig': {'delimiters': '.:', 'mode': 'mixed',
                                                    'values': [{'value': 'PL', 'description': 'plural'},
                                                               {'value': 'ERG'}]}}}},
-        'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'config': {}}],
+        # The lexicon as setup makes it: gloss and pos hold their roles.
+        'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'config': {'igt': {'fields': {
+            'gloss': {'inline': True, 'role': 'gloss'}, 'pos': {'inline': True, 'role': 'pos'}}}}}],
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [
@@ -163,8 +165,9 @@ class FakeClient(AgentFakeClient):
 
 # --- an unconventionally shaped project -------------------------------------------
 # No morpheme layer, fields not called Gloss (and the gloss-like one is NOT first),
-# a lexicon whose schema names its fields "meaning" and "category", another with
-# no schema at all. Everything the agent infers about roles must come from config.
+# a lexicon whose schema names its fields "meaning" and "category" (holding the
+# gloss and part-of-speech roles), another with no schema at all. Everything the
+# agent infers about roles must come from config.
 
 ODD_CAT, ODD_MEAN, ODD_FREE = 'sl-cat', 'sl-mean', 'sl-free'
 ODD_VOCAB, ODD_VOCAB2 = 'v-odd', 'v-plain'
@@ -173,7 +176,7 @@ ODD_VOCAB, ODD_VOCAB2 = 'v-odd', 'v-plain'
 def odd_project_raw():
     return {
         'id': PID, 'name': 'Odd', 'config': {'igt': {'initialized': True, 'documentMetadata': []}},
-        'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'config': {'igt': {'fields': {'meaning': {}, 'category': {}}}}},
+        'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'config': {'igt': {'fields': {'meaning': {'role': 'gloss'}, 'category': {'role': 'pos'}}}}},
                    {'id': ODD_VOCAB2, 'name': 'Plain', 'config': {}}],
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
@@ -182,8 +185,10 @@ def odd_project_raw():
                  'span_layers': [{'id': ODD_FREE, 'name': 'Free translation', 'config': {'igt': {'scope': 'Sentence'}}}]},
                 {'id': WORD_LAYER, 'name': 'Tokens',
                  'config': {'plaid': {'role': 'word'}, 'igt': {'orthographies': [], 'ignoredTokens': {'type': 'blacklist', 'blacklist': ['.']}}},
-                 'span_layers': [{'id': ODD_CAT, 'name': 'Category', 'config': {'igt': {'scope': 'Word'}}},
-                                 {'id': ODD_MEAN, 'name': 'Meaning', 'config': {'igt': {'scope': 'Word'}}}]},
+                 'span_layers': [{'id': ODD_CAT, 'name': 'Category',
+                                  'config': {'igt': {'scope': 'Word', 'lexiconField': 'category'}}},
+                                 {'id': ODD_MEAN, 'name': 'Meaning',
+                                  'config': {'igt': {'scope': 'Word', 'lexiconField': 'meaning'}}}]},
             ]}],
     }
 

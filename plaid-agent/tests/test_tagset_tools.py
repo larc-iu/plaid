@@ -179,7 +179,7 @@ def test_a_lexicon_keeps_its_own_tagsets(proj):
     run(proj, ws)
     lex = proj.client.vocab_layers.get(proj.ids[VOCAB])['config']['igt']
     assert lex['tagsets']['Category']['mode'] == 'closed'
-    assert lex['fields']['gloss'] == {'inline': True, 'tagset': 'Category'}
+    assert lex['fields']['gloss'] == {'inline': True, 'tagset': 'Category', 'role': 'gloss'}
     assert 'Category' not in igt_config(proj)['tagsets']
 
 

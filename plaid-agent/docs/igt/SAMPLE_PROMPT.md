@@ -757,7 +757,7 @@ Tagsets: the user sees a value outside a field's list as invalid, so use the lis
     PL: plural
     ERG
 Orthographies: IPA
-Lexicons: Lexicon (entry fields: morphType, gloss)
+Lexicons: Lexicon (entry fields: morphType, gloss (the gloss), pos (the part of speech))
 Document metadata fields: Date
 Documents (1):
   "Text 1"

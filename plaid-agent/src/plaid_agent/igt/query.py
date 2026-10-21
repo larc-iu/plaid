@@ -81,8 +81,9 @@ def t_query_help(ws: Workspace) -> str:
     gloss = p.gloss_field('Morpheme') or p.gloss_field('Word')
     # The example spells a lexicon field this project has, since a metadata
     # key matches only as it is spelled.
-    names = [f['name'] for v in p.vocabs or [] for f in v.get('fields') or []]
-    entry = next((n for n in names if 'gloss' in n.casefold()), names[0] if names else 'Gloss')
+    fields = [f for v in p.vocabs or [] for f in v.get('fields') or []]
+    entry = next((f['name'] for f in fields if f.get('role') == 'gloss'),
+                 fields[0]['name'] if fields else 'Gloss')
     return HELP + IGT_HELP.format(morphemes=', morphemes' if p.morpheme_layer_id else '',
                                   layers='\n'.join(lines), gloss=gloss.name if gloss else 'Gloss',
                                   entry=json.dumps(entry, ensure_ascii=False), entry_bare=entry)

@@ -38,7 +38,7 @@ from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
 # the same cases.
 from plaid_client.workflows.igt.word_breaks import (is_js_space, is_unicode_punctuation,  # noqa: F401
                                                     split_words)
-from .vocab import normalize_vocab_fields, vocab_field_summary
+from .vocab import ROLE_GLOSS, fields_with_role, normalize_vocab_fields, vocab_field_summary
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -90,6 +90,9 @@ class Field:
     tagset_name: Optional[str] = None
     #: What a merge joins two of its values with (core.project.join_with).
     join_with: str = ' | '
+    #: The lexicon entry field the field pairs with (``igt.lexiconField`` on
+    #: its layer), or None.
+    lexicon_field: Optional[str] = None
 
 
 def _unique_field_names(entries):
@@ -207,42 +210,26 @@ class IgtProject:
     def fields_by_scope(self, scope: str) -> List[Field]:
         return [f for f in self.fields.values() if f.scope == scope]
 
-    GLOSS_NAMES = {'Word': ('gloss', 'meaning', 'sense', 'translation'), 'Morpheme': ('gloss', 'meaning', 'sense'),
-                   'Sentence': ('translation', 'gloss', 'free', 'meaning')}
-
     def gloss_field(self, scope: str) -> Optional[Field]:
         """The field that plays the role of gloss at a scope, used only as the
-        DEFAULT where a tool takes a field: the first field whose name says
-        so (gloss / meaning / sense; translation for sentences), else the
-        scope's first field. The overview names the choice so a caller can
-        pass field= instead."""
+        DEFAULT where a tool takes a field: the first whose Lexicon field is
+        the entry field ``gloss``, else one that holds the gloss role in a
+        lexicon, else the scope's first field. Never read from a field's
+        name. The overview names the choice so a caller can pass field=
+        instead."""
         fs = self.fields_by_scope(scope)
-        for key in self.GLOSS_NAMES.get(scope, ('gloss',)):
-            hit = next((f for f in fs if key in f.name.casefold()), None)
-            if hit:
-                return hit
-        return fs[0] if fs else None
+        glosses = {f['name'] for v in self.vocabs for f in fields_with_role(v.get('fields') or [], ROLE_GLOSS)}
+        return (next((f for f in fs if f.lexicon_field == 'gloss'), None)
+                or next((f for f in fs if f.lexicon_field in glosses), None)
+                or (fs[0] if fs else None))
 
     @staticmethod
     def lexicon_field(vocab: dict, role: str) -> Optional[str]:
-        """The lexicon entry field playing ``role`` ('gloss' or 'pos'): from
-        the lexicon's declared schema, the field whose name says so (for pos
-        also "part of speech" / "category"); without a schema, the plain
-        conventional name. None when the schema has no such field.
-
-        Only DECLARED fields count. The core inventory is guaranteed on every
-        vocabulary, so an undeclared "gloss" is always present and would
-        otherwise win the role over the "meaning" a lexicon actually keeps.
-        """
-        fields = [f for f in (vocab.get('fields') or []) if f.get('declared')]
-        if not fields:
-            return role
-        names = {'gloss': ('gloss', 'meaning', 'sense'), 'pos': ('pos', 'part of speech', 'category')}[role]
-        for f in fields:
-            k = f['name'].casefold()
-            if any(n in k for n in names):
-                return f['name']
-        return None
+        """The lexicon entry field holding ``role`` ('gloss', 'definition',
+        'pos' or 'status'), the first the lexicon declares with it, or None.
+        Read from the field's stored role, never its name."""
+        return next((f['name'] for f in fields_with_role(vocab.get('fields') or [], role)
+                     if f.get('declared')), None)
 
     def read_layer_ids(self) -> List[str]:
         """The layers a document read has to carry, for ``?layers=``.
@@ -325,8 +312,12 @@ def load_project(client, project_id: str) -> IgtProject:
                                 value_set_rules(sl)))
     fields = _unique_field_names(entries)
     joins = {sl['id']: join_with(sl) for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
+    lexicon_fields = {sl['id']: _igt(sl.get('config'), 'lexiconField')
+                      for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
     for f in fields.values():
         f.join_with = joins.get(f.layer_id, f.join_with)
+        lf = lexicon_fields.get(f.layer_id)
+        f.lexicon_field = lf if isinstance(lf, str) and lf else None
     metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
     metadata_tagsets, metadata_tagset_names = {}, {}
     for m in metadata:

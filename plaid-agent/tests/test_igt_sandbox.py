@@ -121,5 +121,5 @@ print([e["fields"].get("pos") for e in lexicon() if e["id"] == "vi-gam2"])
 def test_the_help_spells_the_lexicons_entry_fields():
     w = fake_ws(FakeClient())
     help_text = call_tool(w, 'code_help', {})
-    assert 'lexicon(name=None)' in help_text and '"Lexicon": "gloss"\n' in help_text
+    assert 'lexicon(name=None)' in help_text and '"Lexicon": "gloss", "pos"\n' in help_text
     assert 'plan("set_entry_field", entry_id=e["id"], field="pos"' in help_text
