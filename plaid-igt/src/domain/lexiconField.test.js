@@ -18,10 +18,13 @@ describe('lexiconFieldChoices', () => {
       { key: 'gloss', lang: 'pmy' },
       { key: 'gloss (en)', lang: 'en' },
       { key: 'category', lang: null },
+      // A new vocabulary's fields none of them declares.
+      { key: 'pos', lang: null },
+      { key: 'definition', lang: null },
     ]);
   });
 
-  it('offers the fields a new vocabulary starts with when the project has none', () => {
+  it('offers the fields a new vocabulary starts with when the project has no vocabulary', () => {
     expect(lexiconFieldChoices([]).map((c) => c.key)).toEqual([
       'morphType',
       'gloss',

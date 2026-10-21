@@ -121,6 +121,8 @@ describe('Settings > Fields > Lexicon field', () => {
       'Gloss',
       'Meaning',
       'Category',
+      'POS',
+      'Definition',
     ]);
     await view.unmount();
   });

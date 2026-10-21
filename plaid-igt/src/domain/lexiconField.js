@@ -22,25 +22,28 @@ import { fieldNameLang, parseFieldName } from './fieldNames.js';
 /**
  * The entry fields a Lexicon field can name: every text field of the given
  * vocabularies (each `{ config }`), with the language its schema records, in
- * first-seen order. With no vocabulary, the fields every new vocabulary starts
- * with, so a project set up before its lexicon pairs its fields all the same.
+ * first-seen order, then the fields every new vocabulary starts with that
+ * none of them declares, since an entry can hold one its schema leaves out.
  *
  * @returns {{ key: string, lang: string|null }[]}
  */
 export function lexiconFieldChoices(vocabs) {
   const out = [];
   const seen = new Set();
+  const add = (key, lang) => {
+    const id = `${key}\u0000${lang ?? ''}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push({ key, lang });
+  };
   for (const v of vocabs || []) {
     for (const f of normalizeVocabFields(readVocabFields(v?.config))) {
-      if (f.type !== FIELD_TYPES.TEXT) continue;
-      const id = `${f.name}\u0000${f.lang ?? ''}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      out.push({ key: f.name, lang: f.lang });
+      if (f.type === FIELD_TYPES.TEXT) add(f.name, f.lang);
     }
   }
-  if (out.length) return out;
-  return CORE_VOCAB_FIELDS.map((f) => ({ key: f.name, lang: null }));
+  const keys = new Set(out.map((c) => c.key));
+  for (const f of CORE_VOCAB_FIELDS) if (!keys.has(f.name)) add(f.name, null);
+  return out;
 }
 
 // An annotation field and an entry field name the same thing when they match
