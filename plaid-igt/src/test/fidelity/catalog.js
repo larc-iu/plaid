@@ -210,6 +210,8 @@ export const FEATURES = [
     key: 'project.serviceDefaults',
     what: 'stored service defaults',
     detect: (s) => (nonEmptyObject(igt(s).serviceDefaults) ? 1 : 0),
+    // Setup proposes the default fields for igt's own services.
+    bare: true,
   },
   {
     key: 'project.autoAnalysis',
