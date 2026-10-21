@@ -707,7 +707,7 @@ class CwompService(BaseService):
         stamp_detail = requester.detail(machine_detail(self.version, **model.describe()))
         with response_helper.critical():
             with self.client.operation(requester.label(f'CWoMP analysis ({len(plans)} words)'),
-                                       kind='service-run', ref=source):
+                                       kind='service-run', ref=service_source(self.service_id)):
                 with locked_for_writes(self.client, document_id, read_version):
                     def wrote(done, total):
                         response_helper.progress(88 + int(11 * done / max(total, 1)),
