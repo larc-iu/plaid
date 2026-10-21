@@ -254,43 +254,6 @@ def _sort_ilg(mapping) -> List[dict]:
     return sorted(mapping or [], key=_scope_rank)
 
 
-def _looks_like(name, pattern: str) -> bool:
-    return re.search(pattern, str(name or ''), re.IGNORECASE) is not None
-
-
-def propose_ilg(layers: UmrLayers) -> List[dict]:
-    """A mapping proposed from the layers' names (``proposeIlg``): a field
-    named like a gloss is the gloss of its scope, one named like a category
-    or a tag is the part of speech, anything else is not a line. For setting
-    a project's lines up once (the app's setup, a backfill), never for reading
-    them: ``resolve_ilg`` reads only what is stored."""
-    out: List[dict] = []
-    if layers.morpheme_layer:
-        out.append({'header': 'morphemes', 'lang': None, 'source': 'morphemes'})
-    for g in layers.gloss_layers:
-        header = None
-        if g.scope == 'morpheme':
-            if _looks_like(g.name, r'gloss|meaning'):
-                header = 'morpheme-gloss'
-            elif _looks_like(g.name, r'cat|pos|part|type|class'):
-                header = 'morpheme-category'
-        elif g.scope == 'word':
-            if _looks_like(g.name, r'gloss|meaning'):
-                header = 'word-gloss'
-            elif _looks_like(g.name, r'pos|part|tag|class'):
-                header = 'pos'
-        elif g.scope == 'sentence':
-            if _looks_like(g.name, r'trans|gloss|free|meaning'):
-                header = 'sentence-gloss'
-        if not header:
-            continue
-        out.append({'header': header,
-                    'lang': language_code(g.lang) if ILG_HEADERS[header][1] else None,
-                    'source': f'layer:{g.id}'})
-    out.append({'header': None, 'lang': None, 'source': 'stored'})
-    return _sort_ilg(out)
-
-
 def ilg_config(project) -> Optional[list]:
     """The project's own mapping, ``config.umr.ilg``, or None when unset
     (``readIlgConfig``)."""

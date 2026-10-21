@@ -875,17 +875,10 @@ def test_a_gloss_in_the_projects_language_names_the_node_whatever_its_scope():
     assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['house']
 
 
-# The app's own reading and proposal, run in node: which layer is which line
-# must be the same on the canvas and in the skeleton, and a backfill proposes
-# what setup proposes. Skips where node cannot run, and never when the two
-# disagree.
+# The app's own reading, run in node: which layer is which line must be the
+# same on the canvas and in the skeleton. Skips where node cannot run, and
+# never when the two disagree.
 ILG_JS = SERVICES.parent / 'src' / 'domain' / 'ilg.js'
-_NAMES = ('Gloss', 'Word gloss', 'Meaning', 'POS', 'Part of speech', 'Tag', 'Class', 'Category',
-          'Morph type', 'Translation', 'Free translation', 'Notes', '', 'Glosa', 'PARTS', 'pos-en')
-_LANGS = ('en', 'pt-BR', 'qaa-x-eng', None, 'ENG', 'e', 'lmk_x')
-ILG_LAYERS = [{'id': f'L{n}', 'name': name, 'scope': scope, 'lang': _LANGS[n % len(_LANGS)]}
-              for n, (name, scope) in enumerate(
-                  (name, scope) for name in _NAMES for scope in ('word', 'morpheme', 'sentence'))]
 ILG_CONFIGS = [
     None, [],
     [{'header': 'word-gloss', 'lang': 'en', 'source': 'layer:L0'},
@@ -899,13 +892,6 @@ ILG_CONFIGS = [
 ]
 
 
-def _umr_layers(specs, morphemes=True):
-    from plaid_client.workflows.umr import GlossLayer, UmrLayers
-    return UmrLayers(*([{}] * 7), morpheme_layer={'id': 'morphL'} if morphemes else None,
-                     gloss_layers=[GlossLayer(id=s['id'], name=s['name'], scope=s['scope'],
-                                              lang=s['lang']) for s in specs])
-
-
 def test_the_gloss_line_mapping_is_the_apps():
     import shutil
     import subprocess
@@ -913,20 +899,13 @@ def test_the_gloss_line_mapping_is_the_apps():
     exe = shutil.which('node')
     if not exe or not ILG_JS.is_file():
         pytest.skip('node or ilg.js is not here')
-    info = {'morphemeTokenLayer': {'id': 'morphL'},
-            'glossLayers': [{'layer': {'id': s['id'], 'name': s['name']}, 'scope': s['scope'],
-                             'lang': s['lang']} for s in ILG_LAYERS]}
     script = (f"const m = await import({json.dumps(ILG_JS.as_uri())});\n"
-              f"const info = {json.dumps(info)};\n"
               f"const configs = {json.dumps(ILG_CONFIGS)};\n"
-              "console.log(JSON.stringify({ resolved: configs.map((c) => m.resolveIlg(c)),\n"
-              "  proposed: m.proposeIlg(info), bare: m.proposeIlg({}) }));\n")
+              "console.log(JSON.stringify({ resolved: configs.map((c) => m.resolveIlg(c)) }));\n")
     out = json.loads(subprocess.run([exe, '--input-type=module', '-e', script],
                                     capture_output=True, text=True, timeout=60,
                                     check=True).stdout)
     assert [umr_layers.resolve_ilg(c) for c in ILG_CONFIGS] == out['resolved']
-    assert umr_layers.propose_ilg(_umr_layers(ILG_LAYERS)) == out['proposed']
-    assert umr_layers.propose_ilg(_umr_layers([], morphemes=False)) == out['bare']
 
 
 def test_the_default_table_knows_the_abbreviations_igt_knows():
