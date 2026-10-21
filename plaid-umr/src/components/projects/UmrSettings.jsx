@@ -55,13 +55,14 @@ export const UmrSettings = () => {
     out.push({ value: STORED, label: 'Lines an import stored' });
     // A line whose layer is gone (an archive import or a restore made the
     // layers afresh) draws nothing until it is given a layer here.
-    rows
-      .filter((r) => layerGone(r, layerInfo))
-      .forEach((r) => {
-        if (!out.some((s) => s.value === r.source)) {
-          out.push({ value: r.source, label: 'Layer no longer in the project' });
-        }
-      });
+    // Numbered when there are several, so they read apart in the select.
+    const gone = [
+      ...new Set(rows.filter((r) => layerGone(r, layerInfo)).map((r) => r.source)),
+    ].filter((source) => !out.some((s) => s.value === source));
+    gone.forEach((source, i) => {
+      const label = 'Layer no longer in the project';
+      out.push({ value: source, label: gone.length > 1 ? `${label} (${i + 1})` : label });
+    });
     return out;
   }, [layerInfo, rows]);
 

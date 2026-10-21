@@ -52,8 +52,9 @@ describe('UmrSettings', () => {
     await r.step(async () => {});
     expect(texts(r.container, 'button[aria-label="Source"]')).toEqual([
       'Morphemes',
-      'Layer no longer in the project',
-      'Layer no longer in the project',
+      // Two gone layers read apart in the select.
+      'Layer no longer in the project (1)',
+      'Layer no longer in the project (2)',
     ]);
     await r.unmount();
   });
