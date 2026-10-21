@@ -272,7 +272,9 @@ export const alternatives = {
     const f = collationKey(a.filter || '');
     const visible = f ? items.filter((it) => collationKey(it.value).startsWith(f)) : items;
     a.visible = visible;
-    if (a.active >= visible.length) a.active = 0;
+    // A typed filter starts on its first row, a list that started on none
+    // included (pairPicker.js _pairDefaultRow).
+    if (a.active >= visible.length || (a.active < 0 && f)) a.active = 0;
     const pos = this._altsPos;
     const posStyle = pos ? `left:${pos.left}px;top:${pos.top}px;min-width:${pos.width}px;` : '';
     const pairs = items.some((it) => it.pair);

@@ -286,7 +286,7 @@ export const vocabPopover = {
     // _refreshVocabularies) only when the user has not.
     if (this._popoverActiveIndex == null) {
       // A pair list may start on no row (pairPicker.js _pairDefaultRow).
-      this._popoverActiveIndex = pairs && best < 0 ? -1 : Math.max(0, best);
+      this._popoverActiveIndex = pairs && best < 0 && !search.trim() ? -1 : Math.max(0, best);
       this._popoverPickedIndex = this._popoverActiveIndex;
     }
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));

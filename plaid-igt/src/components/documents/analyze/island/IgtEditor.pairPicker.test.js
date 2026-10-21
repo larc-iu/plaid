@@ -420,6 +420,28 @@ describe('a governed gloss cell', () => {
     );
   });
 
+  it('completes a typed partial on Enter in a closed tagset, where the senses read alike', async () => {
+    const ALIKE = [
+      { id: 'h', form: 'cat', metadata: { morphType: 'stem' } },
+      { id: 'c1', form: 'cat', metadata: { gloss: 'AOR', parent: 'h', senseOrder: 1 } },
+      { id: 'c2', form: 'cat', metadata: { gloss: 'AOR', parent: 'h', senseOrder: 2 } },
+      { id: 't', form: 'the', metadata: { gloss: 'DEF' } },
+    ];
+    const { doc } = mount({
+      items: ALIKE,
+      tagset: { mode: 'closed', values: [{ value: 'AOR' }, { value: 'PL' }] },
+    });
+    await settle(4);
+    const el = cell('ma:m-4:Gloss');
+    focus(el);
+    // Nothing typed: no row to start on, since the two senses read alike.
+    expect(document.querySelectorAll('.igt-alts__item.is-active')).toHaveLength(0);
+    type(el, 'AO');
+    key(el, 'Enter');
+    await settle(6);
+    expect(morph(doc, 3).annotations.Gloss?.value).toBe('AOR');
+  });
+
   it('keeps the link of a sense whose gloss the tagset refuses, the value left out', async () => {
     mount({ tagset: TAGS });
     await settle(4);

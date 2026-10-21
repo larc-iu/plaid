@@ -139,9 +139,10 @@ export const pairPicker = {
 
   // The row a list starts on: the current link, else the first sense that
   // keeps the value there is, else the first sense, else the first row. -1,
-  // no row, when that sense reads exactly like another one (the same value,
-  // vocabulary and detail line, told apart only by its number), since Enter
-  // would take one of two a person cannot tell apart.
+  // no row, when that sense shows exactly what another one shows (told apart
+  // only by its number), since Enter would take one of two a person cannot
+  // tell apart. Only while nothing is typed: the callers start on the first
+  // row of a typed search.
   _pairDefaultRow(rows) {
     const current = rows.findIndex((r) => r.current && r.item);
     if (current >= 0) return current;
@@ -150,10 +151,38 @@ export const pairPicker = {
     const keeps = value ? rows.findIndex((r) => sense(r) && r.value === value) : -1;
     const at = keeps >= 0 ? keeps : rows.findIndex(sense);
     if (at < 0) return 0;
-    const looks = (r) =>
-      `${r.value}\u0000${r.vocabId}\u0000${this._vocabItemDetail(r.item, this.doc.vocabularies?.[r.vocabId])}`;
+    const multiVocab = Object.keys(this.doc.vocabularies || {}).length > 1;
+    const looks = (r) => JSON.stringify(this._pairShown(r, multiVocab));
     const mine = looks(rows[at]);
     return rows.some((r, i) => i !== at && sense(r) && looks(r) === mine) ? -1 : at;
+  },
+
+  // The text a row shows, but for its entry number: what tells two rows apart
+  // for a reader (see _pairRowCells, which draws exactly these).
+  _pairShown(row, multiVocab = false) {
+    const tags = [];
+    if (row.current) tags.push('current');
+    // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
+    if (row.model) {
+      tags.push(row.prob != null ? `model ${Math.floor(row.prob * 100 + 1e-9)}%` : 'model');
+    }
+    if (row.count) tags.push(`×${row.count}`);
+    if (row.current && row.item && this.doc.reviewableState(row.linkState)) {
+      tags.push('unconfirmed');
+    }
+    // A row that names no entry shows nothing of the one it carries.
+    const vocab =
+      row.named && row.item && row.vocabId ? this.doc.vocabularies?.[row.vocabId] : null;
+    const detail = vocab ? this._vocabItemDetail(row.item, vocab) : '';
+    return {
+      value: row.value,
+      entry: row.named && row.item ? row.item.form : row.current && !row.item ? 'no entry' : '',
+      senseValue: row.senseValue || '',
+      vocab: multiVocab && vocab && row.vocabName ? row.vocabName : '',
+      description: row.description || '',
+      tags: tags.join(' · '),
+      detail: detail && detail !== row.value && detail !== row.senseValue ? detail : '',
+    };
   },
 
   // Whether picking the current row confirms something: a link or a value
@@ -267,37 +296,22 @@ export const pairPicker = {
         : row.current && !row.item
           ? html`<span class="igt-pair__entry igt-pair__none">no entry</span>`
           : html`<span class="igt-pair__entry"></span>`;
-    const tags = [];
-    if (row.current) tags.push('current');
-    // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
-    if (row.model) {
-      tags.push(row.prob != null ? `model ${Math.floor(row.prob * 100 + 1e-9)}%` : 'model');
-    }
-    if (row.count) tags.push(`×${row.count}`);
-    if (row.current && row.item && this.doc.reviewableState(row.linkState)) {
-      tags.push('unconfirmed');
-    }
-    // A row that names no entry shows nothing of the one it carries.
-    const vocab =
-      row.named && row.item && row.vocabId ? this.doc.vocabularies?.[row.vocabId] : null;
-    const detail = vocab ? this._vocabItemDetail(row.item, vocab) : '';
+    const shown = this._pairShown(row, multiVocab);
     return html`<span class="igt-pair__line">
         <span class="igt-pair__value" dir="auto">${row.value}</span>
         ${entry}
-        ${row.senseValue
-          ? html`<span class="igt-pair__sense" dir="auto">${row.senseValue}</span>`
+        ${shown.senseValue
+          ? html`<span class="igt-pair__sense" dir="auto">${shown.senseValue}</span>`
           : nothing}
-        ${multiVocab && vocab && row.vocabName
-          ? html`<span class="igt-pair__vocab">${row.vocabName}</span>`
+        ${shown.vocab ? html`<span class="igt-pair__vocab">${shown.vocab}</span>` : nothing}
+        ${shown.description
+          ? html`<span class="igt-pair__desc">${shown.description}</span>`
           : nothing}
-        ${row.description ? html`<span class="igt-pair__desc">${row.description}</span>` : nothing}
-        <span class="igt-pair__tags">${tags.join(' · ')}</span>
+        <span class="igt-pair__tags">${shown.tags}</span>
         ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
         ${extra}
       </span>
-      ${detail && detail !== row.value && detail !== row.senseValue
-        ? html`<span class="igt-vocab-pop__detail">${detail}</span>`
-        : nothing}`;
+      ${shown.detail ? html`<span class="igt-vocab-pop__detail">${shown.detail}</span>` : nothing}`;
   },
 };
 
