@@ -29,8 +29,6 @@ const machineGloss = () => {
   return { doc, client };
 };
 const glossMeta = (doc) => doc.sentences[0].tokens[0].morphemes[0].annotations.Gloss.metadata;
-const patches = (client) =>
-  client.calls.filter((c) => c.kind === 'spans.patchMetadata').map((c) => c.args?.[1] ?? c.ops);
 
 beforeEach(() => resetIds());
 
