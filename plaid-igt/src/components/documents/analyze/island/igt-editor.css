@@ -1069,18 +1069,6 @@
   color: var(--igt-gray-600);
   white-space: nowrap;
 }
-/* A sense an analysis weighed, with its probability. Grey like the
-   precedent count: violet is for what a machine wrote, and this is only
-   offered. */
-.igt-vocab-pop__model {
-  font-size: 10px;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 999px;
-  border: 1px solid var(--igt-gray-300);
-  color: var(--igt-gray-600);
-  white-space: nowrap;
-}
 .igt-vocab-pop__goto {
   color: inherit;
   text-decoration: underline dotted;
@@ -1582,6 +1570,40 @@
   padding: 3px 6px;
   color: var(--igt-gray-500);
   font-style: italic;
+}
+
+/* The pair picker's rows (pairPicker.js), in both lists: the value, the
+   entry it goes with, the vocabulary, and the tags. Grey tags: violet is for
+   what a machine wrote, and a row is only offered. */
+.igt-vocab-pop--pairs {
+  width: 300px;
+}
+.igt-pair .igt-vocab-pop__main {
+  justify-content: flex-start;
+}
+.igt-pair__value {
+  font-weight: 500;
+  min-width: 3em;
+}
+.igt-pair__entry {
+  font-weight: 400;
+}
+.igt-pair__none {
+  color: var(--igt-gray-500);
+  font-style: italic;
+}
+.igt-pair__vocab,
+.igt-pair__desc {
+  font-size: 10px;
+  color: var(--igt-gray-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.igt-pair__tags {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--igt-gray-500);
+  white-space: nowrap;
 }
 
 /* ---- comment badges ------------------------------------------------------
@@ -2091,7 +2113,8 @@
 .igt-field,
 .igt-gap-form,
 .igt-vocab-pop__form,
-.igt-alts__value {
+.igt-alts__value,
+.igt-pair__value {
   font-family: var(--plaid-font-text);
 }
 

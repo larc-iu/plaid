@@ -46,6 +46,7 @@ import { assistant } from './editor/assistant.js';
 import { rows } from './editor/rows.js';
 import { grid } from './editor/grid.js';
 import { vocabPopover } from './editor/vocabPopover.js';
+import { pairPicker } from './editor/pairPicker.js';
 import { conflicts } from './editor/conflicts.js';
 import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.js';
 import { keys } from '@/lib/keymap.js';
@@ -659,6 +660,7 @@ export class IgtEditor {
     confidence = null,
     confirmWord = null,
     alternatives = null,
+    partAlternatives = null,
     confirmSentence = null,
     fieldName = null,
     tagset = null,
@@ -751,7 +753,8 @@ export class IgtEditor {
     // cell has already opened its list — so it would collide with the text to
     // say nothing. Skipping it also spares the computation on every such cell
     // of every render.
-    const nAlts = !tagset && !this.readOnly && alternatives ? alternatives().length : 0;
+    const altRows = !tagset && !this.readOnly && alternatives ? alternatives() : null;
+    const nAlts = altRows ? altRows.length : 0;
     const basis = g ? this._guessBasis(g) : null;
     const baseTitle = g
       ? `Guess: ${g.value}${basis ? `, ${basis}` : ''}. Enter to accept it, ${keys.words('analyze.accept')} to accept the whole word, type to replace`
@@ -763,7 +766,7 @@ export class IgtEditor {
     const title = violations.length
       ? this._violationText(violations, tagset)
       : nAlts > 1
-        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${nAlts} values seen for this form`
+        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${nAlts} ${altRows[0]?.pair ? 'senses and values' : 'values seen for this form'}`
         : (baseTitle ?? nothing);
     // A suggestion out of the lexicon wears the faint teal of a linked
     // morpheme chip, which already means "lexically identified" here. The wash
@@ -805,6 +808,7 @@ export class IgtEditor {
       aria-describedby=${this._conflictDescribedBy(key)}
       title=${title}
       .igtAlts=${alternatives || null}
+      .igtPartAlts=${partAlternatives}
       .igtTagset=${tagset}
       .igtWhat=${what}
       .igtEntityIds=${entityIds}
@@ -857,6 +861,7 @@ Object.assign(
   rows,
   grid,
   vocabPopover,
+  pairPicker,
   telemetry,
   conflicts,
 );

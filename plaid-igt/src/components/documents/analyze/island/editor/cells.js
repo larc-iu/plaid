@@ -485,7 +485,10 @@ export const cells = {
           ? pick
           : null;
     delete el.dataset.guessConfirmed;
-    if (next === (el.dataset.orig ?? '')) return;
+    // A pair row (pairPicker.js) writes its link too, so it goes even when
+    // the value stays: a link changes, or the pick confirms what is there.
+    const pair = adopted?.pair ?? null;
+    if (next === (el.dataset.orig ?? '') && !pair) return;
     // What this write says about a guess the cell showed, recorded once the
     // write lands (a refused save is no answer).
     const answer = this._guessAnswer(el, next);
@@ -495,12 +498,13 @@ export const cells = {
     // edit, and a human span stays human. (Stamping the pick's fragment over a
     // model's span replaced provSource and provDetail with the picker's while
     // provProb kept the model's number — a span that said "precedent, 80% sure".)
+    // A pick from a tagset carries no source and so no stamp.
     const fragment =
-      adopted && (el.dataset.orig ?? '') === ''
+      adopted?.source && (el.dataset.orig ?? '') === '' && next !== ''
         ? this.doc.adoptStamp(adopted.source, { value: next })
         : null;
     this._runKeepingFocus(el, next, () =>
-      this._recordWhenSaved(apply(next, fragment), answer ? [answer] : []),
+      this._recordWhenSaved(apply(next, fragment, pair), answer ? [answer] : []),
     );
   },
 

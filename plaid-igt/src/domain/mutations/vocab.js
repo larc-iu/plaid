@@ -24,6 +24,8 @@ import {
   revertedCaches,
   sendMorphTypeCaches,
 } from '../morphTypeCaches.js';
+import { findSpanLayer, planSpan, showSpan } from './spans.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
 // rather than a bulk endpoint, and a link replacement emits 2 ops apiece
@@ -327,6 +329,187 @@ export const vocabMutations = {
         ids.set(linkId, createdId(results[linkAt]));
         this._settle(ids);
       }),
+    );
+  },
+
+  /**
+   * Set a morpheme's link and value together, a pick from the pair picker:
+   * one patch and one batch, so a refusal leaves neither half.
+   *
+   * `field` and `value` are the picker field and its new value, `metadata` the
+   * span's stamp (an adoption on an empty field, else null for an ordinary
+   * write, which verifies a machine value). `itemId` is the entry to link,
+   * undefined to leave the link as it is, `linkStamp` the new link's stamp
+   * (null: the writer's own). `fill` holds other fields the pick sets,
+   * `[{ field, value, metadata }]`. A half the pick leaves as it is gets the
+   * writer's confirm stamp when there is something for them to confirm: the
+   * pick is a person saying "this sense with this value". `adopted` records
+   * the write as a guess adoption.
+   */
+  async setMorphemePair(
+    morphId,
+    { field, value, metadata = null, itemId, linkStamp = null, fill = [], adopted = false },
+  ) {
+    const fields = [{ field, value, metadata }, ...fill];
+    const layers = fields.map((f) => findSpanLayer(this, 'morpheme', f.field));
+    const missing = fields.find((f, i) => !layers[i]);
+    if (missing) {
+      this.setError(notSetUp(`Annotation layer "${missing.field}" not found`));
+      return false;
+    }
+    let target = null;
+    if (itemId != null) {
+      target = findVocabForItem(this._vocabularies, itemId);
+      if (!target.item) {
+        this.setError('Entry not found');
+        return false;
+      }
+    }
+    const stored = (layers[0].spans || []).find(
+      (s) => Array.isArray(s.tokens) && s.tokens.includes(this._currentMorphemeId(morphId)),
+    );
+    const label =
+      value && (stored?.value ?? '') !== value
+        ? `Failed to update ${field}`
+        : 'Failed to link the entry';
+    if (!this._canWrite(label)) return false;
+    const {
+      ids: [id],
+      creates,
+    } = this._planMorphemes([morphId]);
+    if (!id) {
+      this.setError('Morpheme not found');
+      return false;
+    }
+
+    // The values: each written, or confirmed when it stays.
+    const spanPlans = [];
+    fields.forEach((f, i) => {
+      if ((f.value ?? '') === '') return; // a pick never clears a value
+      const plan = planSpan(this, layers[i], id, f.value, f.metadata ?? null);
+      if (plan) {
+        spanPlans.push({ layerId: layers[i].id, plan });
+        return;
+      }
+      if (i > 0) return;
+      const span = (layers[i].spans || []).find(
+        (s) => Array.isArray(s.tokens) && s.tokens.includes(id),
+      );
+      const confirm = span ? this.confirmStamp(span.metadata) : null;
+      if (confirm) {
+        spanPlans.push({
+          layerId: layers[i].id,
+          plan: {
+            kind: 'confirm',
+            span,
+            fragment: confirm,
+            merged: mergeMetadata(span.metadata, confirm),
+          },
+        });
+      }
+    });
+
+    // The link: replaced, or confirmed when it stays.
+    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, id);
+    const relink = target && priorLink?.vocabItem?.id !== itemId ? target : null;
+    const linkConfirm = !relink && priorLink ? this.confirmStamp(priorLink.metadata) : null;
+    const stamp = linkStamp || this.createStamp;
+    const linkId = relink ? pendingId() : null;
+    let cachedType = null;
+    if (relink) {
+      cachedType = morphTypeCache(this, creates)(id, relink.vocab.id, itemId);
+      if (cachedType)
+        creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
+    }
+    const patchType = cachedType && !creates.length;
+    if (!spanPlans.length && !relink && !linkConfirm) return true;
+
+    this._applyRawPatch((next, info, vocabs) => {
+      this._showMorphemes(info, creates);
+      for (const { layerId, plan } of spanPlans) {
+        if (plan.kind === 'confirm') {
+          const layer = (info.spanLayers?.morpheme || []).find((sl) => sl.id === layerId);
+          const s = layer?.spans?.find((x) => x.id === plan.span.id);
+          if (s) s.metadata = plan.merged;
+        } else {
+          showSpan(info, 'morpheme', layerId, plan);
+        }
+      }
+      if (relink) {
+        if (priorLink && vocabs[priorVocabId]) {
+          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+            (l) => l.id !== priorLink.id,
+          );
+        }
+        const tv = vocabs[relink.vocab.id];
+        if (tv) {
+          if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+          tv.vocabLinks.push({
+            id: linkId,
+            tokens: [id],
+            vocabItem: { id: itemId, layer: relink.vocab.id, form: relink.item.form },
+            ...(stamp ? { metadata: stamp } : {}),
+          });
+        }
+        if (patchType) {
+          const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === id);
+          if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
+        }
+      } else if (linkConfirm) {
+        const l = (vocabs[priorVocabId]?.vocabLinks || []).find((x) => x.id === priorLink.id);
+        if (l) l.metadata = mergeMetadata(l.metadata, linkConfirm);
+      }
+    });
+
+    // As linkVocab's: values and a link on a token that leave it as it is.
+    return this.resendsByEntity(() =>
+      this._queueWrite(
+        label,
+        async () => {
+          const ids = new Map();
+          let morphemes;
+          const made = [];
+          let linkAt = null;
+          const results = await this._client.batched(async (b) => {
+            morphemes = this._queueMorphemes(b, creates);
+            const token = morphemes.tokenRef(id);
+            for (const { layerId, plan } of spanPlans) {
+              if (plan.kind === 'create') {
+                b.spans.create(layerId, [token], plan.value, plan.stamp || undefined, undefined, {
+                  id: plan.id,
+                });
+                made.push([plan.id, b.ref().$ref]);
+              } else if (plan.kind === 'update') {
+                const spanId = settledId(plan.span.id);
+                b.spans.update(spanId, plan.value);
+                if (plan.fragment) b.spans.patchMetadata(spanId, metadataOps(plan.fragment));
+              } else if (plan.kind === 'confirm') {
+                b.spans.patchMetadata(settledId(plan.span.id), metadataOps(plan.fragment));
+              }
+            }
+            if (relink) {
+              if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+              b.vocabLinks.create(settledId(itemId), [token], stamp || undefined, undefined, {
+                id: linkId,
+              });
+              linkAt = b.ref().$ref;
+              if (patchType) {
+                b.tokens.patchMetadata(settledId(id), [
+                  { op: 'set', path: ['morphType'], value: cachedType },
+                ]);
+              }
+            } else if (linkConfirm) {
+              b.vocabLinks.patchMetadata(settledId(priorLink.id), metadataOps(linkConfirm));
+            }
+          });
+          morphemes.read(results, ids);
+          for (const [pending, at] of made) ids.set(pending, createdId(results[at]));
+          if (linkAt != null) ids.set(linkId, createdId(results[linkAt]));
+          this._settle(ids);
+        },
+        undefined,
+        adopted ? { kind: 'guess-adoption' } : {},
+      ),
     );
   },
 

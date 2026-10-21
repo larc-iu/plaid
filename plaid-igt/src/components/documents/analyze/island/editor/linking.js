@@ -1,6 +1,5 @@
 import { notifyInfo } from '@/utils/feedback';
 import { sameFormUnlinked } from '@/domain/linkEverywhere.js';
-import { glossFollowingLink, modelSenses } from '@/domain/glossGuess';
 
 // Linking a token to a lexicon entry: confirm, toggle, create, link every
 // other unlinked form like it, and the hand-off to Auto-analyze.
@@ -95,61 +94,34 @@ export const linking = {
   // (The old _suggestMorphemeGloss "copy a gloss on link" write is gone: the
   // gloss-guess system shows the same suggestion as a placeholder in the cell
   // itself, and only writes it — with provenance — when the user confirms.)
-  async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
-    // A pick from the list as offered adopts the suggestion. One found by
-    // searching is the person's own link.
-    const searched = !!(this._popoverSearch || '').trim();
+  // A word's or an expression's link. A morpheme's goes through the pair
+  // picker (pairPicker.js).
+  _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
     this._closePopover(returnFocus);
-    // Linking a morpheme to one of the senses an analysis weighed adopts that
-    // suggestion: the link is stamped as the producer's, confirmed, and the
-    // gloss follows to that sense's gloss once the link has landed
-    // (glossFollowingLink), as a pick under Alt+Down moves the link.
-    const itemExists = this._vocabItemExists();
-    const morph = isLinked ? null : this._derivedMorpheme(tokenId);
-    const senses = modelSenses(morph, { itemExists });
-    const sense = senses?.senses.find((x) => x.itemId === item.id);
-    const follow = sense ? glossFollowingLink(morph, item.id, { itemExists }) : null;
-    await this._runThenFocus({ vocabOpener: tokenId }, () => {
-      const written = isLinked
-        ? this.doc.unlinkVocab(tokenId)
-        : this.doc.linkVocab(
-            tokenId,
-            item.id,
-            sense && !searched ? this.doc.adoptStamp(senses.source, { vocabItem: item.id }) : null,
+    return this._runThenFocus({ vocabOpener: tokenId }, () =>
+      isLinked ? this.doc.unlinkVocab(tokenId) : this.doc.linkVocab(tokenId, item.id),
+    );
+  },
+
+  // A row of a morpheme's chip: its link and value, and the other gloss
+  // fields the sense fills. `all` links the other unlinked tokens reading the
+  // same to its entry too, the link only.
+  _pickPair(tokenId, field, row, formText, others, returnFocus = false, all = false) {
+    this._closePopover(returnFocus);
+    if (!row.linkChange && !row.valueChange && !this._pairConfirms(row) && !all) return;
+    this._runThenFocus({ vocabOpener: tokenId }, () =>
+      this._pickPairFromChip(tokenId, field, row),
+    ).then((ok) => {
+      if (!ok || !all || !row.itemId || !others.length) return;
+      this.doc.linkVocabMany(others, row.itemId).then((linked) => {
+        if (linked) {
+          notifyInfo(
+            `Linked ${others.length + 1} “${formText}” to ${row.item?.form ?? ''}`,
+            'Linked in this text',
           );
-      if (follow) {
-        Promise.resolve(written).then((ok) => {
-          if (!ok) return;
-          // An ordinary edit, as a pick under Alt+Down over a stored value
-          // is: it confirms the gloss and keeps its provDetail, the
-          // alternatives included. A fresh stamp would replace them.
-          this.doc.updateMorphemeSpan(tokenId, follow.field, follow.value, null, {
-            adopted: true,
-          });
-        });
-      }
-      return written;
+        }
+      });
     });
-  },
-
-  // Whether a vocab item id names an item of the document's vocabularies.
-  _vocabItemExists() {
-    const ids = new Set();
-    for (const v of Object.values(this.doc.vocabularies || {})) {
-      for (const it of v.items || []) ids.add(it.id);
-    }
-    return (id) => ids.has(id);
-  },
-
-  // A morpheme as the grid derives it (with its annotations), by id.
-  _derivedMorpheme(id) {
-    for (const s of this.doc.sentences || []) {
-      for (const t of s.tokens || []) {
-        const m = (t.morphemes || []).find((x) => x.id === id);
-        if (m) return m;
-      }
-    }
-    return null;
   },
 
   // Turn the "+ Create" row into an inline editor prefilled with `form`

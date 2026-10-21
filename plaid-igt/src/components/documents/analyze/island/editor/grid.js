@@ -1,7 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
-import { allowedGuess, linkFollowingGloss } from '@/domain/glossGuess';
+import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { KINDS } from '@/domain/precedent';
@@ -363,6 +363,17 @@ export const grid = {
             siblings.indexOf(morph),
           );
           const tagset = readingTagset(this._tagsetFor('morpheme', name), reading);
+          const valueList = () =>
+            this._alternatives({
+              precedent: this._precedentTally(),
+              kind: KINDS.MORPHEME,
+              form: value,
+              field: name,
+              vocabItem: morph.vocabItem,
+              ...this._entryPairing('morpheme', name, morph.vocabItem),
+              span: morph.annotations?.[name],
+              tagset,
+            });
           return html`
             <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
               ${this._field({
@@ -378,38 +389,26 @@ export const grid = {
                     )
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',
-                // As a word's gloss (DocumentModel.resendsByEntity).
-                apply: (v, meta) =>
+                // As a word's gloss (DocumentModel.resendsByEntity). A row of
+                // the pair picker (`pair`) writes the value and the link in one
+                // batch, under the link's own label when the value stays.
+                apply: (v, meta, pair = null) =>
                   this.doc.resendsByEntity(() =>
                     this.doc.labelled(
-                      this._editLabel(name, this._morphemeSubject(morph, word, siblings), index, v),
-                      () => {
-                        const written = this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
-                          adopted: meta != null,
-                        });
-                        // Picking one of the model's alternatives moves the
-                        // morpheme's link to that alternative's entry, once
-                        // the gloss has landed (a refused gloss moves nothing).
-                        const follow = linkFollowingGloss(morph, morph.annotations?.[name], v, {
-                          picked: meta != null,
-                          itemExists: this._vocabItemExists(),
-                        });
-                        if (follow) {
-                          Promise.resolve(written).then((ok) => {
-                            if (!ok) return;
-                            if (follow.itemId) {
-                              this.doc.linkVocab(
-                                morph.id,
-                                follow.itemId,
-                                this.doc.adoptStamp(follow.source, { vocabItem: follow.itemId }),
-                              );
-                            } else {
-                              this.doc.unlinkVocab(morph.id);
-                            }
-                          });
-                        }
-                        return written;
-                      },
+                      !pair || v !== (morph.annotations?.[name]?.value ?? '')
+                        ? this._editLabel(
+                            name,
+                            this._morphemeSubject(morph, word, siblings),
+                            index,
+                            v,
+                          )
+                        : null,
+                      () =>
+                        pair
+                          ? this._writePair(morph, name, pair, { value: v, metadata: meta })
+                          : this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
+                              adopted: meta != null,
+                            }),
                     ),
                   ),
                 extraClass: 'igt-morph-field',
@@ -424,17 +423,13 @@ export const grid = {
                   }) ?? null,
                   tagset,
                 ),
-                alternatives: () =>
-                  this._alternatives({
-                    precedent: this._precedentTally(),
-                    kind: KINDS.MORPHEME,
-                    form: value,
-                    field: name,
-                    vocabItem: morph.vocabItem,
-                    ...this._entryPairing('morpheme', name, morph.vocabItem),
-                    span: morph.annotations?.[name],
-                    tagset,
-                  }),
+                // A gloss lists the pair picker's rows, sense and value
+                // together. With a tagset that splits values, typing lists
+                // the parts as any such cell does.
+                alternatives: this._opensPicker(name)
+                  ? () => this._cellPairRows(morph, name, tagset)
+                  : valueList,
+                partAlternatives: this._opensPicker(name) && tagset?.delimiters ? valueList : null,
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
                 provOrigin: provOrigin(morph.annotations?.[name]?.metadata),
                 confidence: this._confidence(morph.annotations?.[name]?.metadata),

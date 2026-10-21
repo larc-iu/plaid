@@ -296,3 +296,229 @@ describe('bulkLinkVocab over unanalyzed words', () => {
     expect(made).toEqual([]);
   });
 });
+
+// A pick from the pair picker sets a morpheme's link and gloss together: one
+// patch, one batch, so a refusal leaves neither half (setMorphemePair).
+describe('setMorphemePair', () => {
+  const MACHINE = { prov: 'inferred', provSource: 'service:m' };
+  const vocabularies = (links = []) => ({
+    v1: {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [
+        { id: 'i-sell', form: 'the', metadata: { gloss: 'sell', morphType: 'stem' } },
+        { id: 'i-sold', form: 'the', metadata: { gloss: 'sold' } },
+      ],
+      vocabLinks: links,
+    },
+  });
+  // The first word analyzed (m-1) or not, with a gloss span and a link.
+  const pairDoc = (client, { morphemes, gloss = null, link = null, fields } = {}) => {
+    const raw = buildRawDoc({ morphemes, morphFields: fields });
+    if (gloss) {
+      raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.push({
+        id: 'sp-1',
+        tokens: ['m-1'],
+        value: gloss.value,
+        metadata: gloss.metadata ?? {},
+      });
+    }
+    const links = link
+      ? [
+          {
+            id: 'l-1',
+            tokens: ['m-1'],
+            vocabItem: { id: link.item, layer: 'v1', form: 'the' },
+            metadata: link.metadata ?? {},
+          },
+        ]
+      : [];
+    return makeIgtDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: vocabularies(links),
+      client,
+    });
+  };
+  const kindsOf = (client) =>
+    client.calls.map((c) => c.kind).filter((k) => !/Operation|operationGroups/.test(k));
+
+  it('makes an unanalyzed word’s morpheme, its gloss and its link in one batch', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, { morphemes: [] });
+    const write = doc.setMorphemePair(morphOf(doc).id, {
+      field: 'Gloss',
+      value: 'sold',
+      itemId: 'i-sold',
+      metadata: { prov: 'inferred', provConfirmed: true, provSource: 'service:m' },
+      linkStamp: { prov: 'inferred', provConfirmed: true, provSource: 'service:m' },
+      adopted: true,
+    });
+    // Both halves show before the server answers.
+    expect(morphOf(doc).annotations.Gloss?.value).toBe('sold');
+    expect(morphOf(doc).vocabItem?.id).toBe('i-sold');
+    expect(await write).toBe(true);
+    expect(kindsOf(client)).toEqual([
+      'tokens.create',
+      'spans.create',
+      'vocabLinks.create',
+      'batch.submit',
+    ]);
+    // Span and link name the morpheme by the batch's ref, never the virtual id.
+    expect(callsOf(client, 'spans.create')[0].args[1]).toEqual([{ $ref: 0 }]);
+    expect(callsOf(client, 'vocabLinks.create')[0].args[1]).toEqual([{ $ref: 0 }]);
+    expect(callsOf(client, 'vocabLinks.create')[0].args[2]).toMatchObject({
+      provSource: 'service:m',
+    });
+    expect(client.calls.find((c) => c.kind === 'beginOperation').args[1]).toEqual({
+      kind: 'guess-adoption',
+    });
+    expect(morphOf(doc).id.startsWith('tok')).toBe(true);
+  });
+
+  it('leaves neither half when the batch is refused', async () => {
+    const client = makeFakeClient();
+    client.batched = async () => {
+      throw Object.assign(new Error('HTTP 422 refused'), { status: 422 });
+    };
+    client.documents.get = async () => buildRawDoc({ morphemes: [] });
+    const doc = pairDoc(client, { morphemes: [] });
+    expect(
+      await doc.setMorphemePair(morphOf(doc).id, {
+        field: 'Gloss',
+        value: 'sold',
+        itemId: 'i-sold',
+      }),
+    ).toBe(false);
+    expect(morphOf(doc).virtual).toBe(true);
+    expect(morphOf(doc).annotations.Gloss ?? null).toBeNull();
+    expect(morphOf(doc).vocabItem ?? null).toBeNull();
+    expect(doc.vocabularies.v1?.vocabLinks ?? []).toEqual([]);
+    expect(callsOf(client, 'tokens.create')).toHaveLength(0);
+  });
+
+  it('relinks and confirms a machine value it leaves as it is', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, {
+      gloss: { value: 'sell', metadata: MACHINE },
+      link: { item: 'i-sell', metadata: MACHINE },
+    });
+    expect(
+      await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'sell', itemId: 'i-sold' }),
+    ).toBe(true);
+    expect(kindsOf(client)).toEqual([
+      'spans.patchMetadata',
+      'vocabLinks.delete',
+      'vocabLinks.create',
+      'batch.submit',
+    ]);
+    expect(morphOf(doc).annotations.Gloss.metadata.provConfirmed).toBe(true);
+    expect(morphOf(doc).vocabItem.id).toBe('i-sold');
+  });
+
+  it('writes the value and confirms a machine link it leaves as it is', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, {
+      gloss: { value: 'sell', metadata: MACHINE },
+      link: { item: 'i-sell', metadata: MACHINE },
+    });
+    expect(
+      await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'sold', itemId: 'i-sell' }),
+    ).toBe(true);
+    expect(kindsOf(client)).toEqual([
+      'spans.update',
+      'spans.patchMetadata',
+      'vocabLinks.patchMetadata',
+      'batch.submit',
+    ]);
+    expect(morphOf(doc).annotations.Gloss.value).toBe('sold');
+    // An ordinary edit: it verifies the span and keeps the producer's record.
+    expect(morphOf(doc).annotations.Gloss.metadata).toMatchObject({
+      provSource: 'service:m',
+      provConfirmed: true,
+    });
+    expect(morphOf(doc).vocabItem.prov).toBe('verified');
+  });
+
+  it('only confirms when both halves stay, and writes nothing when there is nothing to confirm', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, {
+      gloss: { value: 'sell', metadata: MACHINE },
+      link: { item: 'i-sell', metadata: MACHINE },
+    });
+    expect(
+      await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'sell', itemId: 'i-sell' }),
+    ).toBe(true);
+    expect(kindsOf(client)).toEqual([
+      'spans.patchMetadata',
+      'vocabLinks.patchMetadata',
+      'batch.submit',
+    ]);
+
+    const quiet = makeFakeClient();
+    const own = pairDoc(quiet, { gloss: { value: 'sell' }, link: { item: 'i-sell' } });
+    expect(
+      await own.setMorphemePair('m-1', { field: 'Gloss', value: 'sell', itemId: 'i-sell' }),
+    ).toBe(true);
+    expect(kindsOf(quiet)).toEqual([]);
+  });
+
+  it('keeps the link of a value-only pick, and fills the other fields it is given', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, {
+      fields: ['Gloss', 'Gloss (es)'],
+      link: { item: 'i-sell' },
+    });
+    expect(
+      await doc.setMorphemePair('m-1', {
+        field: 'Gloss',
+        value: 'trade',
+        fill: [{ field: 'Gloss (es)', value: 'vender' }],
+      }),
+    ).toBe(true);
+    expect(kindsOf(client)).toEqual(['spans.create', 'spans.create', 'batch.submit']);
+    expect(morphOf(doc).annotations['Gloss (es)'].value).toBe('vender');
+    expect(morphOf(doc).vocabItem.id).toBe('i-sell');
+  });
+
+  it('stamps a contributor’s pick as their contribution', async () => {
+    const client = makeFakeClient();
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.push({
+      id: 'sp-1',
+      tokens: ['m-1'],
+      value: 'sell',
+      metadata: MACHINE,
+    });
+    const doc = makeIgtDoc({
+      raw,
+      project: {
+        id: 'proj-1',
+        vocabs: [{ id: 'v1' }],
+        config: { plaid: { review: { users: ['ann@x.com'] } } },
+        writers: ['ann@x.com'],
+      },
+      vocabularies: vocabularies(),
+      client,
+      user: { id: 'ann@x.com', isAdmin: false },
+    });
+    await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'sell', itemId: 'i-sold' });
+    expect(morphOf(doc).annotations.Gloss.metadata).toMatchObject({ prov: 'contributed' });
+    expect(morphOf(doc).vocabItem.prov).toBe('contributed');
+  });
+
+  it('writes the entry’s type to the morpheme it links, in the same batch', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, {});
+    await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'sell', itemId: 'i-sell' });
+    expect(kindsOf(client)).toEqual([
+      'spans.create',
+      'vocabLinks.create',
+      'tokens.patchMetadata',
+      'batch.submit',
+    ]);
+    expect(callsOf(client, 'tokens.patchMetadata')[0].args[1]).toEqual([
+      { op: 'set', path: ['morphType'], value: 'stem' },
+    ]);
+  });
+});

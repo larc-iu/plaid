@@ -132,6 +132,28 @@ describe('an Analyze edit shows before the server answers', () => {
     expect(isPendingId(item)).toBe(false);
   });
 
+  it('a link and gloss picked together on a word nobody has segmented', async () => {
+    const { doc, release } = makeDoc({ raw: buildRawDoc({ morphemes: [] }) });
+    const write = doc.setMorphemePair(word(doc, 0).morphemes[0].id, {
+      field: 'Gloss',
+      value: 'CAT',
+      itemId: 'vi-1',
+    });
+    await settle();
+    const m = word(doc, 0).morphemes[0];
+    expect(isPendingId(m.id)).toBe(true);
+    expect(m.annotations.Gloss?.value).toBe('CAT');
+    expect(m.vocabItem?.form).toBe('CAT');
+
+    release();
+    expect(await write).toBe(true);
+    const saved = word(doc, 0).morphemes[0];
+    expect(isPendingId(saved.id)).toBe(false);
+    expect(isPendingId(saved.annotations.Gloss.id)).toBe(false);
+    expect(doc.vocabularies.v1.vocabLinks.every((l) => !isPendingId(l.id))).toBe(true);
+    expect(doc.vocabularies.v1.vocabLinks[0].tokens).toEqual([saved.id]);
+  });
+
   it('a whole-word confirm that adopts a guess, without a reload', async () => {
     const { doc, client, release } = makeDoc({ raw: buildRawDoc({ morphemes: [] }) });
     const target = word(doc, 0).morphemes[0].id;

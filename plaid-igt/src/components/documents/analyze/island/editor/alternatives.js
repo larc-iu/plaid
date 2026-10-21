@@ -6,7 +6,9 @@ import { anchoredPos, cellByKey } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 
 // The alternatives list: Alt+Down on a cell lists every value the project
-// has given that form, and a pick adopts one.
+// has given that form, and a pick adopts one. On a morpheme's gloss the rows
+// are the pair picker's (pairPicker.js), each a sense and a value, and a pick
+// writes both.
 export const alternatives = {
   // seen for the form (domain/glossGuess.js listAlternatives), ranked, with
   // its provenance. ↑↓ move, ↵ picks, Esc closes, typing narrows. A pick goes
@@ -16,7 +18,7 @@ export const alternatives = {
   // `explicit`: the user asked for the list (Alt+Down), as opposed to a
   // governed cell opening it on focus. Escape reads the difference.
   _openAlts(el, { explicit = false } = {}) {
-    const items = typeof el.igtAlts === 'function' ? el.igtAlts() : [];
+    const items = this._altsItems(el, '');
     if (!items.length) return;
     this._alts = { cellKey: el.dataset.cellKey, active: 0, filter: '', visible: [], explicit };
     this._altsPos = this._computeAltsPos(el, items.length);
@@ -41,11 +43,25 @@ export const alternatives = {
     // The list has its own root, taken down with the island (see destroy).
     if (this._destroyed) return;
     const el = this._alts ? cellByKey(this.container, this._alts.cellKey) : null;
-    const items = el && typeof el.igtAlts === 'function' ? el.igtAlts() : null;
+    const items =
+      el && typeof el.igtAlts === 'function' ? this._altsItems(el, this._alts.filter) : null;
     render(
       this._alts && items ? this._altsTemplate(items, this._alts.cellKey) : nothing,
       this._altsRoot,
     );
+  },
+
+  // A cell's rows. A pair picker cell whose tagset splits values lists whole
+  // pairs until something is typed, and then the parts, as any such cell does.
+  _altsItems(el, filter) {
+    if (filter && typeof el.igtPartAlts === 'function') return el.igtPartAlts();
+    return typeof el.igtAlts === 'function' ? el.igtAlts() : [];
+  },
+
+  // What a pick of a pair row sets the cell to: its value, or for a row with
+  // none the stored value, which it leaves.
+  _pairValue(el, it) {
+    return it.value !== '' ? it.value : (el.dataset.orig ?? '');
   },
 
   // Returns true when the key was handled by the list.
@@ -96,17 +112,24 @@ export const alternatives = {
       // tagset (the typed text is a legal new value), a typed part that is
       // already legal (NOM typed out in full), or a pick that would not
       // change the value.
+      //
+      // A pair row also acts when it changes the link, or confirms the
+      // current link and value.
       const it = items.length ? items[this._alts.active] : null;
       const typed = this._alts.filter || '';
       const enforcing = el.dataset.tagsetEnforces === '1';
       const delims = el.dataset.tagsetDelims || '';
-      const would = it
-        ? delims
-          ? replacePartAtCaret(el.value, el.selectionStart, delims, it.value).value
-          : it.value
-        : null;
+      const would = !it
+        ? null
+        : it.pair
+          ? this._pairValue(el, it)
+          : delims
+            ? replacePartAtCaret(el.value, el.selectionStart, delims, it.value).value
+            : it.value;
+      const acts =
+        !!it && (would !== el.value || (it.pair && (it.linkChange || this._pairConfirms(it))));
       const completing = typed !== '' && enforcing && !isValueAllowed(typed, el.igtTagset ?? null);
-      if (!it || would === el.value || !(this._alts.steered || completing)) {
+      if (!acts || !(this._alts.steered || completing)) {
         this._closeAlts();
         return false; // fall through to the normal commit path
       }
@@ -139,8 +162,12 @@ export const alternatives = {
     // a whole-value pick finds the state already cleared and closes nothing,
     // which left the old rows on screen once the refocus stopped redrawing.
     this._renderAlts();
-    const delims = el.dataset.tagsetDelims || '';
-    if (delims) {
+    // A pair row is a whole value and a link: the cell takes the value and the
+    // commit writes both (_commitField hands the row to the cell's apply).
+    const delims = item.pair ? '' : el.dataset.tagsetDelims || '';
+    if (item.pair) {
+      el.value = this._pairValue(el, item);
+    } else if (delims) {
       // Part mode: the pick replaces only the part the caret is in, so
       // completing "1SG.NO" with NOM yields "1SG.NOM" and leaves the caret
       // after it, ready for the next delimiter.
@@ -167,7 +194,13 @@ export const alternatives = {
     // survives every later render that agrees with the previous one. A pick
     // parked there outlived its own commit, and Enter on the cell after it was
     // cleared "adopted" the stale pick straight back.
-    if (item.source !== TAGSET_SOURCE && !delims) {
+    if (item.pair) {
+      el.igtPick = {
+        value: el.value,
+        source: item.source !== TAGSET_SOURCE ? item.source : null,
+        pair: item,
+      };
+    } else if (item.source !== TAGSET_SOURCE && !delims) {
       el.igtPick = { value: item.value, source: item.source };
     }
     this._syncInput(el);
@@ -232,6 +265,8 @@ export const alternatives = {
     if (a.active >= visible.length) a.active = 0;
     const pos = this._altsPos;
     const posStyle = pos ? `left:${pos.left}px;top:${pos.top}px;min-width:${pos.width}px;` : '';
+    const pairs = items.some((it) => it.pair);
+    const multiVocab = Object.keys(this.doc?.vocabularies || {}).length > 1;
     const tag = (it) => {
       const parts = [];
       if (it.count) parts.push(`×${it.count}`);
@@ -245,7 +280,7 @@ export const alternatives = {
       class="igt-alts"
       style=${posStyle}
       role="listbox"
-      aria-label="Values seen for this form"
+      aria-label=${pairs ? 'Senses and values' : 'Values seen for this form'}
       @click=${(e) => e.stopPropagation()}
       @mousedown=${(e) => e.preventDefault()}
     >
@@ -253,14 +288,18 @@ export const alternatives = {
         ? visible.map(
             (it, i) =>
               html`<div
-                class="igt-alts__item ${i === a.active ? 'is-active' : ''}"
+                class="igt-alts__item ${it.pair ? 'igt-pair' : ''} ${i === a.active
+                  ? 'is-active'
+                  : ''}"
                 role="option"
                 aria-selected=${i === a.active}
                 @click=${() => this._pickAltByKey(cellKey, it)}
               >
-                <span class="igt-alts__value" dir="auto">${it.value}</span>
-                <span class="igt-alts__desc">${it.description ?? nothing}</span>
-                <span class="igt-alts__tag">${tag(it)}</span>
+                ${it.pair
+                  ? this._pairRowCells(it, { multiVocab })
+                  : html`<span class="igt-alts__value" dir="auto">${it.value}</span>
+                      <span class="igt-alts__desc">${it.description ?? nothing}</span>
+                      <span class="igt-alts__tag">${tag(it)}</span>`}
               </div>`,
           )
         : html`<div class="igt-alts__empty">No matching values</div>`}

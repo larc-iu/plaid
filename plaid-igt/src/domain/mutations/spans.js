@@ -9,7 +9,7 @@ import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 
-const findSpanLayer = (doc, scope, fieldName) => {
+export const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
   return spanLayers.find((sl) => sl.name === fieldName) || null;
 };
@@ -23,7 +23,7 @@ const findSpanLayer = (doc, scope, fieldName) => {
 // doc.editStamp (write-contract rule 3: a verifier's edit of a machine-made
 // or contributed span verifies it, keeping provSource for history; a
 // contributor's edit marks the span contributed).
-const planSpan = (doc, targetLayer, targetTokenId, value, metadata) => {
+export const planSpan = (doc, targetLayer, targetTokenId, value, metadata) => {
   const existing = (targetLayer.spans || []).find(
     (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
   );
@@ -50,7 +50,7 @@ const planSpan = (doc, targetLayer, targetTokenId, value, metadata) => {
   return { kind: 'create', id: pendingId(), token: targetTokenId, value, stamp };
 };
 
-const showSpan = (infoNext, scope, layerId, plan) => {
+export const showSpan = (infoNext, scope, layerId, plan) => {
   const layerDoc = (infoNext.spanLayers?.[scope] || []).find((sl) => sl.id === layerId);
   if (!layerDoc) return;
   if (!Array.isArray(layerDoc.spans)) layerDoc.spans = [];

@@ -58,6 +58,20 @@ export const pickerLexicon = (vocab, fields = null) => {
   return { id: vocab?.id, name: vocab?.name ?? '', items, ...view, fields, byForm };
 };
 
+// Every entry of every vocabulary by id, with its vocabulary.
+const indexOf = (lexicons) => {
+  const byId = new Map();
+  for (const lx of lexicons) for (const it of lx.items) byId.set(it.id, { item: it, lx });
+  return byId;
+};
+
+/**
+ * The vocabularies of a document for the picker, indexed once: a list of
+ * pickerLexicon with `byId` on it, what pairRows reads on every cell.
+ */
+export const pickerLexicons = (lexicons) =>
+  Object.assign([...lexicons], { byId: indexOf(lexicons) });
+
 // The alternatives a gloss span's producer linked to lexicon entries
 // (provDetail.valueLinks, a list of { value, item, prob }), keeping only
 // entries the vocabularies still hold (an archive import or a merge renumbers
@@ -123,8 +137,7 @@ export function pairRows({
   detailOf = null,
   cap = Infinity,
 }) {
-  const byId = new Map();
-  for (const lx of lexicons) for (const it of lx.items) byId.set(it.id, { item: it, lx });
+  const byId = lexicons.byId ?? indexOf(lexicons);
   const current = morph?.vocabItem && byId.has(morph.vocabItem.id) ? morph.vocabItem : null;
   const currentId = current?.id ?? null;
   const span = field ? morph?.annotations?.[field] : null;
@@ -195,7 +208,10 @@ export function pairRows({
 
   // The current row.
   if (current || currentValue) {
-    add(currentId, currentValue, T.CURRENT, { current: true });
+    const r = add(currentId, currentValue, T.CURRENT, { current: true });
+    // What a confirm of the current row would act on.
+    r.linkState = current?.prov ?? null;
+    r.valueMeta = span?.metadata ?? null;
   }
 
   // The producer's alternatives.

@@ -32,6 +32,7 @@ import s29 from '@ui/domain/permissions.js?raw';
 import s30 from '@ui/lib/unicodeRanges.js?raw';
 import s26 from '@ui/domain/punctuationClasses.js?raw';
 import s31 from '@ui/domain/igtWordBreaks.js?raw';
+import s32 from './mutations/spans.js?raw';
 
 export const SOURCE_TEXTS = {
   'plaid-client-js/src/ids.js': s24,
@@ -45,6 +46,7 @@ export const SOURCE_TEXTS = {
   'plaid-igt/src/domain/igtConfig.js': s7,
   'plaid-igt/src/domain/morphTypeCaches.js': s28,
   'plaid-igt/src/domain/mutations/analysisCopy.js': s9,
+  'plaid-igt/src/domain/mutations/spans.js': s32,
   'plaid-igt/src/domain/mutations/vocab.js': s10,
   'plaid-igt/src/domain/mwe.js': s11,
   'plaid-igt/src/domain/precedent.js': s12,
