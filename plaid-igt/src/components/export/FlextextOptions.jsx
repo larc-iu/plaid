@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { resolveFieldLang } from '@/domain/fieldNames';
+import { proposeMetadataMap } from '@/export/presets';
 import {
   Select,
   SelectTrigger,
@@ -114,8 +116,8 @@ const FieldMapGroup = ({
               aria-label={`Language tag for ${f}`}
               value={overrides[f] ?? ''}
               // What the field goes out as when the box is empty: what the
-              // field itself records, else the tag its own name carries, else
-              // the one for glosses and translations.
+              // field itself records, else the one for glosses and
+              // translations.
               placeholder={resolveFieldLang(langs, SCOPE_NAMES[scope], f)}
               onChange={(e) => onLang(f, e.target.value)}
               className="h-8 w-16 font-mono text-xs"
@@ -138,14 +140,83 @@ const FieldMapGroup = ({
 // Step 2 (flextext): language tags + field → FLEx item-type mapping.
 // We don't store ISO writing-system codes, so the preset carries them; FLEx
 // prompts to map unknown tags at import time, so imperfect tags are fine.
+// What a document metadata field goes out as, the FLEx text field it lands in.
+const METADATA_TYPES = [
+  { id: 'title', label: 'Title' },
+  { id: 'title-abbreviation', label: 'Abbreviation' },
+  { id: 'source', label: 'Source' },
+  { id: 'comment', label: 'Description' },
+];
+const AS_COMMENT = '__comment__';
+
+const MetadataMapGroup = ({ fields, map, langs, onChange }) => {
+  if (!fields.length) return null;
+  const set = (field, patch) => {
+    const next = { ...map };
+    const entry = { ...next[field], ...patch };
+    if (!entry.type) delete next[field];
+    else {
+      if (!entry.lang) delete entry.lang;
+      next[field] = entry;
+    }
+    onChange(next);
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>Document metadata</Label>
+      {fields.map((f) => (
+        <div key={f} className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm">{f}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <Select
+              value={map[f]?.type ?? AS_COMMENT}
+              onValueChange={(v) => set(f, { type: v === AS_COMMENT ? null : v })}
+            >
+              <SelectTrigger className="h-8 w-56" aria-label={`FLEx field for ${f}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {METADATA_TYPES.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value={AS_COMMENT}>Description, with its name</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label={`Language tag for ${f}`}
+              value={map[f]?.lang ?? ''}
+              disabled={!map[f]?.type}
+              placeholder={
+                map[f]?.type === 'title' ? langs.baseline || 'und' : langs.analysis || 'en'
+              }
+              onChange={(e) => set(f, { lang: e.target.value.trim() })}
+              className="h-8 w-16 font-mono text-xs"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const FlextextOptions = ({ options, layers, onChange }) => {
+  // A preset made before the metadata mapping was stored is given the one the
+  // field names propose, once, when it is opened. Saved with the preset.
+  useEffect(() => {
+    if (options.metadataMap === undefined) {
+      onChange({ ...options, metadataMap: proposeMetadataMap(layers.documentMetadata) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.metadataMap === undefined]);
   const langs = options.langs || {};
   const fieldMap = options.fieldMap || {};
   const overrides = langs.fieldOverrides || {};
   const setLangs = (patch) => onChange({ ...options, langs: { ...langs, ...patch } });
   const setMap = (scope, map) => onChange({ ...options, fieldMap: { ...fieldMap, [scope]: map } });
   // An empty box is not a tag: it drops the override and the field falls back
-  // to its name's tag or the analysis one.
+  // to the language it records or the analysis one.
   const setFieldLang = (field, value) => {
     const next = { ...overrides };
     if (value.trim() === '') delete next[field];
@@ -159,8 +230,8 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         <Label>Language tags</Label>
         <p className="text-xs text-muted-foreground">
           Writing-system codes FLEx will see (e.g. <code>lez</code>, <code>en</code>). Unknown tags
-          can be remapped in FLEx at import time. A field whose name ends in a tag, like{' '}
-          <code>Gloss (nl)</code>, goes out under that tag. Set any other field’s tag below.
+          can be remapped in FLEx at import time. A field goes out under the language it records.
+          Set another tag below.
         </p>
         <LangInput
           id="ft-lang-baseline"
@@ -220,6 +291,13 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         analysis={langs.analysis}
         onChange={(m) => setMap('morpheme', m)}
         onLang={setFieldLang}
+      />
+
+      <MetadataMapGroup
+        fields={layers.documentMetadata || []}
+        map={options.metadataMap || {}}
+        langs={langs}
+        onChange={(m) => onChange({ ...options, metadataMap: m })}
       />
 
       <div className="flex flex-col gap-3 border-t pt-3">

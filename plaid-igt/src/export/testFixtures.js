@@ -116,6 +116,7 @@ export const FLEXTEXT_OPTIONS = {
     word: { POS: 'pos' },
     morpheme: { Gloss: 'gls' },
   },
+  metadataMap: { Source: { type: 'source' } },
   citationForms: true,
 };
 

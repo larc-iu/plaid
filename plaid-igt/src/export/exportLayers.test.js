@@ -46,6 +46,7 @@ describe('discoverExportLayers', () => {
       morphFields: ['Gloss'],
       sentFields: ['Translation'],
       hasMorphemes: true,
+      documentMetadata: [],
       // Only the field that records one, keyed by scope and name.
       fieldLangs: { 'Sentence:Translation': 'pmy' },
     });
@@ -58,6 +59,7 @@ describe('discoverExportLayers', () => {
       morphFields: [],
       sentFields: [],
       hasMorphemes: false,
+      documentMetadata: [],
       fieldLangs: {},
     });
   });

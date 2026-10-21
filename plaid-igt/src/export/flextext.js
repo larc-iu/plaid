@@ -45,7 +45,7 @@ import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarke
 import { morphFormOf } from '../domain/igtExport.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { lexiconViewOf } from '../domain/vocabLookup.js';
-import { resolveFieldLang, parseFieldName, isLangTag } from '../domain/fieldNames.js';
+import { resolveFieldLang } from '../domain/fieldNames.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { provState } from '@larc-iu/plaid-client';
 
@@ -125,28 +125,22 @@ const mappedFields = (options, scope) =>
     ITEM_TYPES_BY_SCOPE[scope].includes(type),
   );
 
-// A document metadata field FLEx has a text field for, and the item type that
-// lands it there on import: Abbreviation and Source are the Info tab's own,
-// and "comment" is what FLEx calls a text's Description. Verified against
-// FieldWorks' InterlinearObjects.cs, which maps the two directions with this
-// same table. A field named for a writing system ("Title (nl)") goes out under
-// that one; everything else FLEx cannot place becomes a comment naming the
-// field it came from, which is the only place a .flextext has to put it.
+// A document metadata field FLEx has a text field for goes out as the item
+// type that lands it there on import: Abbreviation and Source are the Info
+// tab's own, and "comment" is what FLEx calls a text's Description. Verified
+// against FieldWorks' InterlinearObjects.cs, which maps the two directions
+// with this same table. Which field is which is the preset's `metadataMap`
+// ({field: {type, lang?}}, proposed from the names when the preset is made,
+// see presets.js), never the field's name. Everything the map leaves out
+// becomes a comment naming the field it came from, which is the only place a
+// .flextext has to put it.
 // What separates the fields sharing one comment. A newline is what it wants to
 // be, and FLEx does store one, but its Info tab draws a comment on a single
 // line and everything past the newline is invisible there. Wide enough to read
 // against a participant list, which uses "," and ";" of its own.
 const COMMENT_SEP = ' | ';
-const TEXT_ITEM_TYPES = {
-  title: 'title',
-  abbreviation: 'title-abbreviation',
-  source: 'source',
-  description: 'comment',
-};
-// Which language a mapped field goes out under when its name does not say:
-// the baseline's for the title, which is the text's own, and the analysis
-// one for the rest. A FLEx import tags every abbreviation it brings in
-// ("Abbreviation (en)"), so a bare one is one somebody added by hand.
+/** The item types a document metadata field can go out as. */
+export const METADATA_ITEM_TYPES = ['title', 'title-abbreviation', 'source', 'comment'];
 
 /**
  * A document's metadata as <interlinear-text> items.
@@ -156,17 +150,22 @@ const TEXT_ITEM_TYPES = {
  * system and sets it from each item in turn, so a second comment item does not
  * join the first, it replaces it: a text with a genre and three notebook
  * fields would arrive in FLEx carrying only the last of them.
+ *
+ * A mapped field goes out in the language the map gives it, else the
+ * baseline's for a title, which is the text's own, and the analysis one for
+ * the rest.
  */
 const metadataItems = (indent, metadata, options) => {
   const lines = [];
   const comments = new Map(); // lang → [line]
   const comment = (lang, text) => comments.set(lang, [...(comments.get(lang) ?? []), text]);
+  const map = options?.metadataMap || {};
   for (const [key, value] of Object.entries(userMetadata(metadata))) {
     if (value == null || value === '') continue;
-    const { base, ws } = parseFieldName(key);
-    const type = TEXT_ITEM_TYPES[base.trim().toLowerCase()];
+    const mapped = map[key];
+    const type = METADATA_ITEM_TYPES.includes(mapped?.type) ? mapped.type : null;
     const lang =
-      (ws && isLangTag(ws) && ws) ||
+      (typeof mapped?.lang === 'string' && mapped.lang.trim()) ||
       (type === 'title' ? baselineLang(options) : analysisLang(options));
     if (!type) comment(analysisLang(options), `${key}: ${value}`);
     else if (type === 'comment') comment(lang, String(value));

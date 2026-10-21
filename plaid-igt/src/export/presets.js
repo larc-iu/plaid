@@ -9,6 +9,7 @@ import { IGT_NAMESPACE } from '../domain/igtConfig.js';
 import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
 import { defaultLatexOptions } from './latexBook.js';
+import { isLangTag, parseFieldName } from '../domain/fieldNames.js';
 
 export const EXPORT_FORMATS = [
   { id: 'plaintext', label: 'Plain text', ext: 'txt', defaultName: 'Plain text' },
@@ -111,6 +112,33 @@ export function defaultFieldMap(layers) {
   return { sentence, word, morpheme };
 }
 
+// The FLEx text fields a document metadata field's name proposes, the inverse
+// of the FLEx importer's naming. Proposed once, when a preset is made or a
+// preset without a mapping is first opened, and stored on the preset.
+const METADATA_TYPE_BY_NAME = {
+  title: 'title',
+  abbreviation: 'title-abbreviation',
+  source: 'source',
+  description: 'comment',
+};
+
+/**
+ * The .flextext `metadataMap` a set of document metadata field names
+ * proposes: `{field: {type, lang?}}` for each field whose name, without its
+ * language suffix, is Title, Abbreviation, Source or Description, with the
+ * language its suffix names. Every other field is left out (a comment).
+ */
+export function proposeMetadataMap(names) {
+  const out = {};
+  for (const name of names || []) {
+    const { base, ws } = parseFieldName(name);
+    const type = METADATA_TYPE_BY_NAME[base.trim().toLowerCase()];
+    if (!type) continue;
+    out[name] = { type, ...(ws && isLangTag(ws) ? { lang: ws } : {}) };
+  }
+  return out;
+}
+
 /**
  * A fresh preset with everything selected and heuristic defaults. `languages`
  * is the project's configured {object, meta} identity (see readLanguages); it
@@ -160,6 +188,7 @@ export function newPreset(format, layers, name = 'New preset', languages = null)
           fieldOverrides: {},
         },
         fieldMap: defaultFieldMap(layers),
+        metadataMap: proposeMetadataMap(layers.documentMetadata),
         citationForms: true,
         lexicon: true,
       },

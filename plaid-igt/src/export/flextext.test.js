@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildFlextextDocument, phraseTimingFor, phraseSpeakerFor } from './flextext.js';
+import { proposeMetadataMap } from './presets.js';
 import {
   makeFixtureDoc,
   makeSentence,
@@ -53,7 +54,12 @@ describe('buildFlextextDocument', () => {
       Researchers: 'Ana Ruiz',
       Sources: 'Bo Vega',
     };
-    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    // The mapping the field names propose when the preset is made.
+    const options = {
+      ...FLEXTEXT_OPTIONS,
+      metadataMap: proposeMetadataMap(Object.keys(doc.document.metadata)),
+    };
+    const dom = parse(buildFlextextDocument([doc], options));
     const items = [...dom.querySelectorAll('interlinear-text > item')].map((i) => [
       i.getAttribute('type'),
       i.getAttribute('lang'),
@@ -75,6 +81,38 @@ describe('buildFlextextDocument', () => {
     ]);
   });
 
+  it('maps a metadata field by the preset, never by its name', () => {
+    const doc = makeFixtureDoc();
+    doc.document.metadata = { Title: 'Not a title here', Origin: 'Notebook 3', Fonte: 'X' };
+    const options = {
+      ...FLEXTEXT_OPTIONS,
+      metadataMap: { Origin: { type: 'source', lang: 'nl' }, Fonte: { type: 'title' } },
+    };
+    const dom = parse(buildFlextextDocument([doc], options));
+    const items = [...dom.querySelectorAll('interlinear-text > item')].map((i) => [
+      i.getAttribute('type'),
+      i.getAttribute('lang'),
+      i.textContent,
+    ]);
+    expect(items).toEqual([
+      ['title', 'spa', 'Test & Doc'],
+      ['source', 'nl', 'Notebook 3'],
+      ['title', 'spa', 'X'],
+      ['comment', 'en', 'Title: Not a title here'],
+    ]);
+  });
+
+  it('proposes the mapping from the field names once, for a new preset', () => {
+    expect(
+      proposeMetadataMap(['Title (en)', 'Abbreviation', 'Source', 'Description', 'Sources']),
+    ).toEqual({
+      'Title (en)': { type: 'title', lang: 'en' },
+      Abbreviation: { type: 'title-abbreviation' },
+      Source: { type: 'source' },
+      Description: { type: 'comment' },
+    });
+  });
+
   it('keeps one comment per writing system', () => {
     const doc = makeFixtureDoc();
     doc.document.metadata = {
@@ -82,7 +120,11 @@ describe('buildFlextextDocument', () => {
       'Description (nl)': 'In het Nederlands',
       Genre: 'narrative',
     };
-    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    const options = {
+      ...FLEXTEXT_OPTIONS,
+      metadataMap: proposeMetadataMap(Object.keys(doc.document.metadata)),
+    };
+    const dom = parse(buildFlextextDocument([doc], options));
     const comments = [...dom.querySelectorAll('interlinear-text > item[type="comment"]')];
     expect(comments.map((c) => [c.getAttribute('lang'), c.textContent])).toEqual([
       ['en', 'In English | Genre: narrative'],

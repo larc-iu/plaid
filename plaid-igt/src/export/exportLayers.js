@@ -14,6 +14,7 @@ import {
   findMorphemeTokenLayer,
   readFieldLang,
   readScope,
+  readDocumentMetadata,
   readOrthographies,
 } from '../domain/igtConfig.js';
 
@@ -56,6 +57,10 @@ export function discoverExportLayers(project) {
     morphFields: names(morphemeLayer, ['Morpheme']),
     sentFields: names(sentenceLayer, ['Sentence']),
     hasMorphemes: !!morphemeLayer,
+    // The document metadata fields, by name.
+    documentMetadata: (readDocumentMetadata(project?.config) || [])
+      .map((m) => m?.name)
+      .filter((n) => typeof n === 'string' && n !== ''),
   };
 }
 
