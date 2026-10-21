@@ -291,7 +291,8 @@ export const alternatives = {
               html`<div
                 class="igt-alts__item ${it.pair ? 'igt-pair' : ''} ${i === a.active
                   ? 'is-active'
-                  : ''}"
+                  : ''} ${it.context ? 'is-context' : ''}"
+                style=${it.depth ? `padding-left:${6 + it.depth * 14}px` : ''}
                 role="option"
                 aria-selected=${i === a.active}
                 @click=${() => this._pickAltByKey(cellKey, it)}

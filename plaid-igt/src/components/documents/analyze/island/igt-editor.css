@@ -1552,6 +1552,10 @@
 .igt-alts__item.is-active {
   background: var(--igt-indigo-100);
 }
+/* A headword shown to group its senses, as in the lexicon popover. */
+.igt-alts__item.is-context {
+  opacity: 0.55;
+}
 .igt-alts__value {
   font-weight: 500;
 }

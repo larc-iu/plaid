@@ -176,6 +176,17 @@ describe('the two doors', () => {
     expect(chipRows()).toEqual(fromCell);
   });
 
+  it('group the lexicon’s senses under their headword in Alt+Down too', async () => {
+    mount();
+    await settle(4);
+    openAlts(cell('ma:m-4:Gloss'));
+    const items = [...document.querySelectorAll('.igt-alts__item')];
+    const head = items.find((r) => r.classList.contains('is-context'));
+    expect(head?.querySelector('.igt-pair__entry').textContent.trim()).toBe('cat1');
+    const sense = items.find((r) => r.textContent.includes('jazzman'));
+    expect(sense.style.paddingLeft).toBe('20px');
+  });
+
   it('leave a field that is not a gloss its plain list of values', async () => {
     mount({ fields: ['Gloss', 'POS'] });
     await settle(4);
