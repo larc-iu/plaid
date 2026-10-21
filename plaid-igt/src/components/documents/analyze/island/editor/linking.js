@@ -107,10 +107,12 @@ export const linking = {
   // fields the sense fills. `all` links the other unlinked tokens reading the
   // same to its entry too, the link only.
   _pickPair(tokenId, field, row, formText, others, returnFocus = false, all = false) {
+    // A row found by searching is the person's own choice, not a suggestion.
+    const searched = !!(this._popoverSearch || '').trim();
     this._closePopover(returnFocus);
     if (!row.linkChange && !row.valueChange && !this._pairConfirms(row) && !all) return;
     this._runThenFocus({ vocabOpener: tokenId }, () =>
-      this._pickPairFromChip(tokenId, field, row),
+      this._pickPairFromChip(tokenId, field, row, { searched }),
     ).then((ok) => {
       if (!ok || !all || !row.itemId || !others.length) return;
       this.doc.linkVocabMany(others, row.itemId).then((linked) => {

@@ -266,6 +266,32 @@ describe('a pick from the chip', () => {
     expect(morph(doc).annotations.Gloss.value).toBe('feline');
   });
 
+  it('a row found by searching is the person’s own link, not the model’s', async () => {
+    const { doc, client } = mount();
+    await settle(4);
+    openChip('m-2');
+    const search = host.querySelector('.igt-vocab-pop__search');
+    search.value = 'jazz';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const rows = [...host.querySelectorAll('.igt-vocab-pop__item')];
+    click(rows.find((r) => r.querySelector('.igt-pair__value')?.textContent === 'jazzman'));
+    await settle(6);
+    expect(morph(doc).vocabItem.id).toBe('c2');
+    const link = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(link.args[2]?.provSource).toBeUndefined();
+  });
+
+  it('with no gloss field, lists entries and confirms the current link on Enter', async () => {
+    const { doc, client } = mount({ fields: ['Note'] });
+    await settle(4);
+    openChip('m-2');
+    expect(chipRows()[0]).toEqual(['', 'cat1.1']);
+    key(host.querySelector('.igt-vocab-pop__search'), 'Enter');
+    await settle(6);
+    expect(kinds(client)).toEqual(['vocabLinks.patchMetadata']);
+    expect(morph(doc).vocabItem.prov).toBe('verified');
+  });
+
   it('fills another gloss field that is empty from the sense, never one a person wrote', async () => {
     const items = structuredClone(ITEMS);
     Object.assign(items.find((i) => i.id === 'c2').metadata, {
@@ -342,6 +368,21 @@ describe('a governed gloss cell', () => {
     await settle(6);
     expect(morph(doc, 0).annotations.Gloss.value).toBe('PL');
     expect(kinds(client).some((k) => k.startsWith('vocabLinks'))).toBe(false);
+  });
+
+  it('lists the parts once something is typed, under a tagset that splits values', async () => {
+    mount({
+      tagset: { mode: 'closed', delimiters: '.', values: [{ value: '1SG' }, { value: 'NOM' }] },
+    });
+    await settle(4);
+    const el = cell('ma:m-1:Gloss');
+    focus(el);
+    expect(document.querySelector('.igt-alts .igt-pair')).not.toBeNull();
+    type(el, '1SG.');
+    expect(document.querySelector('.igt-alts .igt-pair')).toBeNull();
+    expect([...document.querySelectorAll('.igt-alts__value')].map((n) => n.textContent)).toEqual(
+      expect.arrayContaining(['1SG', 'NOM']),
+    );
   });
 
   it('keeps the link of a sense whose gloss the tagset refuses, the value left out', async () => {

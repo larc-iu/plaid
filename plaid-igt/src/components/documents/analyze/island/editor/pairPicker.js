@@ -17,19 +17,24 @@ import { morphFormOf, numHtml } from './shared.js';
 // (vocabPopover.js) list the same rows (domain/pairRows.js), and a pick writes
 // both halves in one batch (IgtDocument.setMorphemePair).
 export const pairPicker = {
-  // Every vocabulary as the picker reads it, once per data version and read
-  // of the vocabularies.
+  // Every vocabulary as the picker reads it. A vocabulary is read again only
+  // when its entry list or its settings changed: an edit keeps the entry list
+  // it did not touch (IgtDocument's keepUnchangedLists), and the sense tree
+  // of a large lexicon is not worth building on every keystroke.
   _pickerLexicons() {
-    const dv = this.doc?.dataVersion;
-    const vocabs = this.doc?.vocabularies;
-    if (this._pickerLexKey !== dv || this._pickerLexVocabs !== vocabs || !this._pickerLex) {
-      this._pickerLexKey = dv;
-      this._pickerLexVocabs = vocabs;
-      this._pickerLex = pickerLexicons(
-        Object.values(this.doc?.vocabularies || {}).map((v) =>
-          pickerLexicon(v, readVocabFields(v.config)),
-        ),
-      );
+    const vocabs = Object.values(this.doc?.vocabularies || {});
+    const memo = (this._pickerLexMemo ||= new Map());
+    const list = vocabs.map((v) => {
+      const cfg = JSON.stringify(v.config ?? null);
+      const hit = memo.get(v.id);
+      if (hit && hit.items === v.items && hit.cfg === cfg && hit.name === v.name) return hit.lx;
+      const lx = pickerLexicon(v, readVocabFields(v.config));
+      memo.set(v.id, { items: v.items, cfg, name: v.name, lx });
+      return lx;
+    });
+    const prev = this._pickerLex;
+    if (!prev || prev.length !== list.length || list.some((lx, i) => lx !== prev[i])) {
+      this._pickerLex = pickerLexicons(list);
     }
     return this._pickerLex;
   },
@@ -98,11 +103,12 @@ export const pairPicker = {
    * Write a picked row: the link it names (kept when it names none) and the
    * value, `value` being what the field is set to (the row's, or the stored
    * one for a row with none) and `metadata` the value's stamp. `fill` holds the
-   * other fields a pick from the chip sets.
+   * other fields a pick from the chip sets. `own`: the row was found by a
+   * typed search, so the link is the person's own, not an adopted suggestion.
    */
-  _writePair(morph, field, row, { value, metadata = null, fill = [] }) {
+  _writePair(morph, field, row, { value, metadata = null, fill = [], own = false }) {
     const linkStamp =
-      row.linkChange && row.linkSource
+      row.linkChange && row.linkSource && !own
         ? this.doc.adoptStamp(row.linkSource, { vocabItem: row.itemId })
         : null;
     return this.doc.setMorphemePair(morph.id, {
@@ -112,20 +118,26 @@ export const pairPicker = {
       itemId: row.itemId ?? undefined,
       linkStamp,
       fill,
-      adopted: metadata != null || row.model || row.count > 0,
+      adopted: metadata != null || (!own && (row.model || row.count > 0)),
     });
   },
 
   // A pick from the chip: the row's link and value, and the other gloss fields
   // the sense has a value for, each empty or a machine value nobody confirmed.
-  _pickPairFromChip(tokenId, field, row) {
+  // `searched`: the row was found by a typed search, and is the person's own.
+  _pickPairFromChip(tokenId, field, row, { searched = false } = {}) {
     const ctx = this._morphContext(tokenId);
     if (!ctx) return Promise.resolve(false);
     const { morph, word } = ctx;
     const stored = field ? (morph.annotations?.[field]?.value ?? '') : '';
     const value = row.value !== '' ? row.value : stored;
     const metadata =
-      field && stored === '' && value !== '' && row.source && row.source !== TAGSET_SOURCE
+      !searched &&
+      field &&
+      stored === '' &&
+      value !== '' &&
+      row.source &&
+      row.source !== TAGSET_SOURCE
         ? this.doc.adoptStamp(row.source, { value })
         : null;
     const others = this._morphFieldNames().filter((f) => f !== field && isGlossLikeField(f));
@@ -147,9 +159,10 @@ export const pairPicker = {
           : null,
     }));
     if (!field) {
-      return row.linkChange ? this.doc.linkVocab(tokenId, row.itemId) : Promise.resolve(true);
+      if (row.linkChange) return this.doc.linkVocab(tokenId, row.itemId);
+      return this._pairConfirms(row) ? this.doc.confirmVocabLink(tokenId) : Promise.resolve(true);
     }
-    return this._writePair(morph, field, row, { value, metadata, fill });
+    return this._writePair(morph, field, row, { value, metadata, fill, own: searched });
   },
 
   /**

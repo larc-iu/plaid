@@ -54,7 +54,8 @@ export const alternatives = {
   // A cell's rows. A pair picker cell whose tagset splits values lists whole
   // pairs until something is typed, and then the parts, as any such cell does.
   _altsItems(el, filter) {
-    if (filter && typeof el.igtPartAlts === 'function') return el.igtPartAlts();
+    const typed = filter || el.value !== (el.dataset.orig ?? el.value);
+    if (typed && typeof el.igtPartAlts === 'function') return el.igtPartAlts();
     return typeof el.igtAlts === 'function' ? el.igtAlts() : [];
   },
 
