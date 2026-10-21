@@ -295,6 +295,7 @@ Four states are distinguished in the grid:
 
 * A value **you typed** shows plain. A marked value you have edited or confirmed keeps only a thin violet underline.
 * A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to accept or discard it.
+  When the service that made it gave its confidence, hovering shows the percentage, and a value below the project's **Low confidence** threshold gets a heavier, darker underline. A maintainer sets the threshold on the project's **Services** settings page.
 * A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to accept or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter. A guess on a **pale teal** background comes from the linked lexicon entry, and one on plain background from what the same form was given elsewhere in the project.
 
@@ -784,7 +785,7 @@ There are six integration points:
 * **Transcription (ASR)**: transcribes and time-aligns a recording, on the **Media** tab. There is no built-in, so this needs a connected service (the bundled example uses Whisper).
 * **Speech detection**: proposes where the utterances are in a recording, on the **Media** tab. The built-in runs in your browser (see <<_speech_detection>>).
 * **Translation**: proposes a free translation for each sentence, as step 1 of **Auto-analyze** (see <<_auto_analyze>>). The bundled example uses a language model.
-* **Analysis**: proposes a morpheme segmentation and glosses for every word, as step 3 of Auto-analyze. There is no built-in. Two examples are bundled: PolyGloss, a multilingual glossing model, and a language model given the project's own analyses as examples.
+* **Analysis**: proposes a morpheme segmentation and glosses for every word, as step 3 of Auto-analyze. There is no built-in. Three examples are bundled: PolyGloss, a multilingual glossing model, CWoMP, which learns a lexicon of morphemes from the project's own analyses and gives its confidence for every morpheme, and a language model given the project's own analyses as examples. CWoMP is trained on the machine that runs it, and morphemes the project confirms after training are used without training it again.
 * **Auto-link vocabulary**: proposes vocabulary links for unlinked words and morphemes, as step 4 of Auto-analyze. The built-in rule follows your project's own precedent.
 
 The Assistant is a service too (see <<_assistant>>).
