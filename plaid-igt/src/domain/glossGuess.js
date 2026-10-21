@@ -169,8 +169,9 @@ export const TAGSET_SOURCE = 'tagset';
 // distribution under provDetail.valueProbs when it has one), and what the
 // field's tagset allows. Rows merge by value; `source` is the provenance
 // source a pick is written with. Rank: an entry reached through a person's
-// link, then count, then probability, then any other entry-backed row, then
-// alphabetical — the same order defaultGuessSource picks the placeholder in.
+// link, then a model's probability (when the cell records one), then count,
+// then any other entry-backed row, then alphabetical. Without a model that is
+// the order defaultGuessSource picks the placeholder in.
 //
 // An ENFORCING tagset then keeps only what it allows: offering a value that
 // commit will reject is offering a dead end. It also drops a one-off lexical
@@ -286,9 +287,13 @@ export function listAlternatives({
     });
   }
 
+  // A model's probability outranks a count: it was weighed for this very
+  // occurrence, where a count is about the form anywhere in the project. Only
+  // the entry a person linked the morpheme to ranks above it.
   list.sort(
     (a, b) =>
       Number(b.entryTrusted) - Number(a.entryTrusted) ||
+      (b.prob ?? -1) - (a.prob ?? -1) ||
       b.count - a.count ||
       (b.prob ?? -1) - (a.prob ?? -1) ||
       Number(b.entry) - Number(a.entry) ||
@@ -356,8 +361,13 @@ export function glossFollowingLink(morph, itemId) {
   const d = m.span.metadata[PROV_DETAIL_KEY];
   const weighed = new Set([...Object.keys(d.valueProbs || {}), ...Object.keys(d.valueLinks)]);
   if (!weighed.has(now)) return null;
-  const sense = m.senses.find((x) => x.itemId === itemId);
-  if (!sense || sense.gloss === now) return null;
+  // Several of the glosses weighed may name one entry ("sell", "sold" both
+  // linked to the headword): the link then says nothing about which gloss,
+  // so the gloss stays.
+  const named = m.senses.filter((x) => x.itemId === itemId);
+  if (named.length !== 1) return null;
+  const [sense] = named;
+  if (sense.gloss === now) return null;
   return { field: m.field, value: sense.gloss, source: m.source };
 }
 

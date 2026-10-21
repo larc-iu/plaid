@@ -588,3 +588,50 @@ describe('glossFollowingLink', () => {
     expect(glossFollowingLink({ annotations: {} }, 'i-sell')).toBeNull();
   });
 });
+
+describe('the order of a model-glossed cell', () => {
+  it('ranks the model’s alternatives by probability above project counts', () => {
+    const t = createTally();
+    addPrecedent(t, 'morpheme', 'xa', 'Gloss', 'be', 97);
+    addPrecedent(t, 'morpheme', 'xa', 'Gloss', 'happened', 89);
+    addPrecedent(t, 'morpheme', 'xa', 'Gloss', 'stray', 40);
+    const span = {
+      value: 'happened',
+      metadata: {
+        prov: 'inferred',
+        provSource: 'service:x',
+        provDetail: { value: 'happened', valueProbs: { happened: 0.57, be: 0.23 } },
+      },
+    };
+    const values = listAlternatives({
+      precedent: t,
+      kind: 'morpheme',
+      form: 'xa',
+      field: 'Gloss',
+      span,
+    }).map((r) => r.value);
+    expect(values).toEqual(['happened', 'be', 'stray']);
+  });
+});
+
+describe('a link that names several of the glosses weighed', () => {
+  it('leaves the gloss, since the link does not say which', () => {
+    const morph = {
+      annotations: {
+        Gloss: {
+          value: 'sell',
+          metadata: {
+            prov: 'inferred',
+            provSource: 'service:x',
+            provDetail: {
+              valueProbs: { sell: 0.5, sold: 0.3, another: 0.2 },
+              valueLinks: { sell: 'i-sell', sold: 'i-sell', another: 'i-another' },
+            },
+          },
+        },
+      },
+    };
+    expect(glossFollowingLink(morph, 'i-sell')).toBeNull();
+    expect(glossFollowingLink(morph, 'i-another')?.value).toBe('another');
+  });
+});

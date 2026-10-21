@@ -153,6 +153,7 @@ class _Model:
 
     def __init__(self, picked):
         self.picked = picked
+        self.manifest = {'gloss_field': 'Gloss'}
         self.lexicon = []
         self.queries = []
 
@@ -254,3 +255,10 @@ def test_a_project_with_no_model_is_told_how_to_train_one():
     helper = servicetest.run(service, REQUEST)
     assert helper.results == []
     assert 'igt_analyze_cwomp.py train p1' in helper.errors[0]
+
+
+def test_a_request_for_another_gloss_field_than_the_model_knows_is_refused():
+    service, _ = _service([('gel', 'come', 0.9)])
+    helper = servicetest.run(service, {**REQUEST, 'gloss_field': 'Gloss (ru)'})
+    assert helper.results == []
+    assert '"Gloss"' in helper.errors[0] and '"Gloss (ru)"' in helper.errors[0]

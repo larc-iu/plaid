@@ -761,6 +761,16 @@ class CwompService(BaseService):
                 f'igt_analyze_cwomp.py train {project_id}')
             return
 
+        # A model knows the glosses of the field it was trained on. Another
+        # field (a second gloss language, say) would get this one's glosses.
+        trained_field = model.manifest.get('gloss_field')
+        if trained_field and trained_field != gloss_field:
+            response_helper.error(
+                f'This project\'s CWoMP model was trained on the "{trained_field}" field, '
+                f'not "{gloss_field}". Choose "{trained_field}", or train a model for '
+                f'"{gloss_field}" on the service\'s machine.')
+            return
+
         response_helper.progress(5, 'Reading the project’s confirmed morphemes…')
         project_confirmed = self.confirmed_for(
             project_id, gloss_field, translation_field,
