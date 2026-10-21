@@ -1025,7 +1025,7 @@ export class ConlluDocument extends DocumentModel {
           kind: 'update',
           span,
           value: want,
-          stamp: this.writer.editStamp(span.metadata),
+          stamp: this._valueEditStamp(span.metadata),
         });
       } else if (!span && want != null && formLayer?.id) {
         const stamp = this.writer.createStamp;
@@ -1337,7 +1337,7 @@ export class ConlluDocument extends DocumentModel {
       if (existingFeat) {
         // A person's edit carries the writer's stamp (see the existing-span
         // branch below for the full rationale).
-        const verifyFeat = this.writer.editStamp(existingFeat.metadata);
+        const verifyFeat = this._valueEditStamp(existingFeat.metadata, existingFeat.value !== pair);
         // Optimistic overwrite: update the tag locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
           const layerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
@@ -1429,7 +1429,7 @@ export class ConlluDocument extends DocumentModel {
       // in ONE optimistic patch (single _dataVersion bump, so the styling
       // changes with the value, no double repaint) and one atomic batch
       // (single document-version bump, OCC-safe).
-      const verify = this.writer.editStamp(existingSpan.metadata);
+      const verify = this._valueEditStamp(existingSpan.metadata, existingSpan.value !== value);
       // Optimistic: update the value (+ metadata) locally before the round trip.
       this._applyRawPatch((next, infoNext) => {
         const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
@@ -1820,6 +1820,19 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
+  /**
+   * The stamp a person's edit of a value carries: the writer's (a verifier's
+   * confirms machine-made material, a contributor's marks it contributed),
+   * and, when the value `changes`, provProb removed, since it was the
+   * probability of the value replaced (the provenance convention). Null when
+   * there is nothing to write.
+   */
+  _valueEditStamp(metadata, changes = true) {
+    const stamp = this.writer.editStamp(metadata);
+    if (!changes || metadata?.provProb == null) return stamp;
+    return { ...(stamp || {}), provProb: null };
+  }
+
   // A relation's label, in the tree or in the enhanced layer: the id says which.
   async updateRelation(rawRelationId, deprel) {
     const relationId = settledId(rawRelationId);
@@ -1831,7 +1844,7 @@ export class ConlluDocument extends DocumentModel {
     const existing = dependencyRelationLayers(this.layerInfo)
       .flatMap((layer) => layer.relations || [])
       .find((r) => r.id === relationId);
-    const verify = this.writer.editStamp(existing?.metadata);
+    const verify = this._valueEditStamp(existing?.metadata, existing?.value !== deprel);
     // Optimistic: reflect the new value immediately, BEFORE the round trip,
     // so the label doesn't flash the previous value while the save is in
     // flight. On failure, the queue reloads from the server and reverts.

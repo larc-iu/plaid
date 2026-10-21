@@ -560,3 +560,56 @@ test('confirmTokens names a part of a multi-word token by its form', async () =>
   assert.equal(await doc.confirmTokens(det.tokens), false);
   assert.deepEqual(errors, ['Not on the list, not accepted: DET (UPOS, el).']);
 });
+
+// provProb is the probability of the value an entity holds: a typed value
+// removes it, and a re-typed value, which changes nothing, keeps it
+// (the provenance convention, 2026-10-21). provDetail stays as history.
+test('a typed value drops provProb, on an annotation and on a relation', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  span.metadata = {
+    prov: 'inferred',
+    provSource: 'service:stanza-parser',
+    provProb: 0.9,
+    provDetail: { model: 'm' },
+  };
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  assert.deepEqual(client.calls[1][2], [
+    { op: 'set', path: ['provConfirmed'], value: true },
+    { op: 'delete', path: ['provProb'] },
+  ]);
+  const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);
+  assert.equal(after.metadata.provProb, undefined);
+  assert.deepEqual(after.metadata.provDetail, { model: 'm' });
+
+  const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
+  rel.metadata = { prov: 'inferred', provSource: 'service:stanza-parser', provProb: 0.7 };
+  assert.equal(await doc.updateRelation(rel.id, 'nsubj'), true);
+  const relAfter = doc.layerInfo.relationLayer.relations.find((r) => r.id === rel.id);
+  assert.equal(relAfter.metadata.provProb, undefined);
+  assert.equal(relAfter.metadata.provConfirmed, true);
+});
+
+test('a human annotation with a provProb loses it on a typed value too', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  span.metadata = { prov: 'inferred', provSource: 'service:x', provConfirmed: true, provProb: 0.5 };
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);
+  assert.equal(after.metadata.provProb, undefined);
+});
+
+test('re-typing a feature already on the word keeps its provProb', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  feat.metadata = { prov: 'inferred', provSource: 'service:stanza-parser', provProb: 0.8 };
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender=Masc'), true);
+  const after = doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id);
+  assert.equal(after.metadata.provProb, 0.8);
+});
