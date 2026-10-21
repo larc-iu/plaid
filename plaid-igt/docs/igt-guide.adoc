@@ -506,6 +506,7 @@ The built-in linking rule of step 4 works word by word and morpheme by morpheme.
 A form that has been linked before follows **precedent**: the entry that form has most often been linked to in the project.
 A form never linked before is linked to the lexicon entry with the same form, if there is one.
 A whole word is never linked to an affix or clitic entry.
+The rule replaces only links it made itself that nobody has confirmed. A link a person made or confirmed stays, and so does one an analysis service proposed. CWoMP links a morpheme by its form and gloss together, which picks out the sense where the form alone cannot.
 Runs of words whose joined form matches a multi-word expression entry are linked as one (see <<_multi_word_expressions>>).
 
 TIP: Accept links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.

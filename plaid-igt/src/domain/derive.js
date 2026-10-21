@@ -447,6 +447,8 @@ function collectSingleTokenVocabLinks(vocabularies) {
         // link's tooltip needs, since the state folds both origins.
         prov: provState(linkMeta),
         provOrigin: provOrigin(linkMeta),
+        // Who made the link: the built-in link rule replaces only its own.
+        provSource: linkMeta.provSource ?? null,
       };
     });
   });

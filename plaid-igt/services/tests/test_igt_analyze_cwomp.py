@@ -60,7 +60,7 @@ def test_joiners_put_equals_on_the_clitic_side():
 def _word(surface, morphs, glosses):
     """A derived word: `morphs` [(form, metadata)], `glosses` [(value, metadata)]."""
     ms = [{'id': f'{surface}-{k}', 'metadata': {'form': f, **meta}} for k, (f, meta) in enumerate(morphs)]
-    return {'surface': surface, 'morphs': ms,
+    return {'surface': surface, 'morphs': ms, 'morph_links': {},
             'morph_spans': {m['id']: [('glossL', {'value': v, 'metadata': gm})]
                             for m, (v, gm) in zip(ms, glosses)}}
 
@@ -94,6 +94,39 @@ def test_the_training_file_is_sigmorphon_lines(tmp_path):
     cwomp.write_split(path, [{'t': 'a b', 'm': 'a b-c', 'g': 'x y-Z', 'l': 'tr'},
                              {'t': 'd', 'm': 'd', 'g': 'q', 'l': ''}])
     assert path.read_text() == '\\t a b\n\\m a b-c\n\\g x y-Z\n\\l tr\n\n\\t d\n\\m d\n\\g q\n'
+
+
+def _linked(surface, morphs, links):
+    """A word whose morphemes a person analyzed, with `links` [(item, metadata) or None]."""
+    w = _word(surface, morphs, [('g%d' % k, {}) for k in range(len(morphs))])
+    w['morph_links'] = {m['id']: ([{'vocab_item': {'id': l[0]}, 'metadata': l[1]}] if l else [])
+                        for m, l in zip(w['morphs'], links)}
+    return w
+
+
+def test_an_entry_links_to_the_item_people_always_linked_it_to():
+    c = cwomp.Confirmed()
+    c.add_word(_linked('ev', [('ev', {})], [('item-ev', {})]), 'glossL')
+    c.add_word(_linked('ev', [('ev', {})], [('item-ev', VERIFIED)]), 'glossL')
+    assert c.link_for(('ev', 'g0')) == 'item-ev'
+    # An unreviewed machine link is no evidence.
+    c.add_word(_linked('ev', [('ev', {})], [('item-x', MACHINE)]), 'glossL')
+    assert c.link_for(('ev', 'g0')) == 'item-ev'
+    # People disagree: no link.
+    c.add_word(_linked('ev', [('ev', {})], [('item-y', {})]), 'glossL')
+    assert c.link_for(('ev', 'g0')) is None
+    # Never linked: no link.
+    c.add_word(_linked('su', [('su', {})], [None]), 'glossL')
+    assert ('su', 'g0') in c.entries and c.link_for(('su', 'g0')) is None
+
+
+def test_merged_tallies_add_up():
+    a, b = cwomp.Confirmed(), cwomp.Confirmed()
+    a.add_word(_linked('ev', [('ev', {})], [('item-ev', {})]), 'glossL')
+    b.add_word(_linked('ev', [('ev', {})], [('item-z', {})]), 'glossL')
+    m = a.merged(b)
+    assert m.entries == {('ev', 'g0')} and m.link_for(('ev', 'g0')) is None
+    assert a.link_for(('ev', 'g0')) == 'item-ev'
 
 
 # --- a request -----------------------------------------------------------------
@@ -153,7 +186,10 @@ def _service(picked):
     service = cwomp.CwompService()
     model = _Model(picked)
     service.model_for = lambda project_id: model
-    service.confirmed_entries = lambda *a: {('ev', 'house')}
+    confirmed = cwomp.Confirmed()
+    confirmed.entries = {('ev', 'house'), ('gel', 'come')}
+    confirmed.links = {('gel', 'come'): cwomp.Counter({'item-gel': 3})}
+    service.confirmed_for = lambda *a: confirmed
     service.client = servicetest.FakeClient([_document()])
     return service, model
 
@@ -173,6 +209,9 @@ def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side(
     assert [m['provProb'] for m in morphs] == [0.9, 0.4, 0.9, 0.4]
     assert morphs[0]['provDetail']['boundaries'] == '='
     glosses = [(c['args'][2], c['args'][3]) for kind, c in service.client.calls if kind == 'spans.create']
+    # `gel` was always linked to one item, the enclitic never: only `gel` is linked.
+    links = [c['args'] for kind, c in service.client.calls if kind == 'vocab_links.create']
+    assert [(item, meta['provProb']) for item, _, meta in links] == [('item-gel', 0.9)] * 2
     assert [(v, m['provProb']) for v, m in glosses] == [('come', 0.9), ('PROG', 0.4)] * 2
 
 

@@ -20,7 +20,10 @@ prediction from the provenance convention: ``provDetail.form`` on each
 morpheme (plus ``boundaries``, ``degraded`` and ``surfaceMismatch`` on the
 first), ``provDetail.value`` on each gloss span. An analysis may carry
 ``probs``, one calibrated probability per segment or None, which goes on
-the morpheme and its gloss as ``provProb``. Callers are expected to
+the morpheme and its gloss as ``provProb``, and ``links``, one vocab item id
+per segment or None: the morpheme is linked to that item, stamped like the
+morpheme (``provDetail.vocabItem`` records the pick). A proposer links only
+to items that exist, and only when it knows which one is meant. Callers are expected to
 have applied the write contract already (:func:`select_targets`).
 """
 
@@ -40,7 +43,8 @@ def _stored(w):
 
 def _ops_for(p):
     n = len(p['analysis']['segments'])
-    return len(_stored(p['word'])) + n + n
+    links = sum(1 for item in p['analysis'].get('links') or [] if item)
+    return len(_stored(p['word'])) + n + n + links
 
 
 def chunk_plans(plans, budget=BATCH_OP_BUDGET):
@@ -85,6 +89,7 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                     for m in stored:
                         b.tokens.delete(m['id'])  # cascades its spans + links
                 probs = a.get('probs') or [None] * len(a['segments'])
+                links = a.get('links') or [None] * len(a['segments'])
                 for j, segment in enumerate(a['segments']):
                     prob = probs[j]
                     form_detail = {**detail, 'form': segment}
@@ -105,6 +110,9 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                         mid = uuid7()
                         b.tokens.create(morph_layer_id, text_id, w['token']['begin'], w['token']['end'],
                                         precedence=j + 1, metadata=meta, id=mid)
+                    if links[j]:
+                        b.vocab_links.create(links[j], [mid], stamp_inferred(
+                            source, prob=prob, detail={**detail, 'vocabItem': links[j]}), id=uuid7())
                     gloss = a['glosses'][j]
                     if gloss:
                         b.spans.create(gloss_layer_id, [mid], gloss,

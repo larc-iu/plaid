@@ -475,6 +475,49 @@ def test_write_analyses_puts_each_segment_probability_on_its_morpheme_and_gloss(
     assert morphs[0]['provProb'] == 0.38 and glosses[0]['provProb'] == 0.38
     assert 'provProb' not in morphs[1] and 'provProb' not in glosses[1]
 
+
+def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
+    """A proposer's per-segment ``links`` become machine-made links on the new
+    morphemes, with its probability, and count toward the batch budget."""
+    class _Batch:
+        def __init__(self, log):
+            self.tokens = _Rec(log, 'tokens')
+            self.spans = _Rec(log, 'spans')
+            self.vocab_links = _Rec(log, 'vocab_links')
+
+    class _Rec:
+        def __init__(self, log, name):
+            self._log, self._name = log, name
+
+        def __getattr__(self, method):
+            return lambda *a, **k: self._log.append((self._name, method, a, k))
+
+    class _Client:
+        def __init__(self):
+            self.log = []
+
+        @contextlib.contextmanager
+        def batched(self):
+            yield _Batch(self.log)
+
+    m0 = virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3})
+    plan = {'word': {'text_id': 't1', 'morphs': [m0], 'morph_spans': {m0['id']: []},
+                     'token': {'id': 'w1', 'begin': 0, 'end': 3}},
+            'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': [None, None],
+                         'joiners': ['-'], 'surface_mismatch': False, 'degraded': False,
+                         'probs': [0.8, 0.3], 'links': ['item-ab', None]}}
+    client = _Client()
+    write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {'model': 'm'})
+    made = [c[3]['id'] for c in client.log if c[:2] == ('tokens', 'create')]
+    [link] = [c for c in client.log if c[:2] == ('vocab_links', 'create')]
+    item, tokens, meta = link[2]
+    assert (item, tokens) == ('item-ab', [made[0]])
+    assert meta['prov'] == 'inferred' and meta['provSource'] == 'service:x' and meta['provProb'] == 0.8
+    assert meta['provDetail'] == {'model': 'm', 'vocabItem': 'item-ab'}
+    assert link[3]['id']
+    from plaid_client.workflows.igt.write import _ops_for
+    assert _ops_for(plan) == 5
+
 # --- re-analysis replaces the whole analysis (H26-SERVICES-1, -2, -3) -------------------
 
 PRECEDENT = {'prov': 'inferred', 'provSource': 'rule:analysis-precedent'}

@@ -24,9 +24,12 @@
 // provConfirmed: true.
 //
 // Provenance write contract (rule behaves like a re-runnable service): a
-// word/morpheme with no link gets one; a link that is still machine-unverified
-// is REPLACED when the rule now resolves to a different item; links a human
-// made or confirmed are protected and never touched. A form the rule can't
+// word/morpheme with no link gets one; a link this rule made that is still
+// unverified is REPLACED when the rule now resolves to a different item; links
+// a human made or confirmed are protected and never touched, and so are
+// another producer's unverified links. An analysis service links a morpheme
+// by its form AND gloss (CWoMP picks a sense), which this rule, going by the
+// form alone, must not overwrite with the form's most common entry. A form the rule can't
 // resolve leaves any existing link alone (re-running never strips a machine
 // link the rule has lost its opinion on).
 //
@@ -157,13 +160,14 @@ function resolveForm(form, kind, precedent, items) {
 }
 
 // Is a word/morpheme open to (re)linking, and what does it currently point at?
-// Open when it has no link or only a machine-UNVERIFIED one; human and
-// human-confirmed (verified) links are protected. `vocabItem.prov` is the
-// derived provenance state of the link (see derive.js).
+// Open when it has no link or only an UNVERIFIED one this rule made; a
+// person's, a confirmed and another producer's link are left alone.
+// `vocabItem.prov` and `vocabItem.provSource` are the link's provenance (see
+// derive.js).
 function linkTarget(entity) {
   const v = entity?.vocabItem;
   if (!v) return { open: true, currentItemId: null };
-  return v.prov === PROV_STATES.MACHINE
+  return v.prov === PROV_STATES.MACHINE && v.provSource === AUTO_LINK_SOURCE
     ? { open: true, currentItemId: v.id }
     : { open: false, currentItemId: null };
 }

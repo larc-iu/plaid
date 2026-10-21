@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildItemIndex, computeAutoLinkProposals, computeMweProposals } from './autoLink.js';
+import {
+  AUTO_LINK_SOURCE,
+  buildItemIndex,
+  computeAutoLinkProposals,
+  computeMweProposals,
+} from './autoLink.js';
 import { createTally, foldLinkRows } from './precedent.js';
 
 const res = (rows) => ({ results: rows });
@@ -55,7 +60,8 @@ describe('computeAutoLinkProposals', () => {
     // The copy phase linked "se" to i-se2 with its glosses. The project's
     // precedent for "se" is i-se1, which would otherwise relink it.
     const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, 9]]));
-    const copied = { id: 'i-se2', prov: 'machine' };
+    // Unverified links of this rule's own, which it would otherwise replace.
+    const copied = { id: 'i-se2', prov: 'machine', provSource: AUTO_LINK_SOURCE };
     const sentences = sentence([
       word('w1', 'se', null, [morph('m1', 'se', copied)]),
       word('w2', 'se', null, [morph('m2', 'se', copied)]),
@@ -124,13 +130,27 @@ describe('computeAutoLinkProposals', () => {
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
     const precedent = precedentOf(res([['i-all', null, 'todos', 'word', null, 5]]));
     const sentences = sentence([
-      word('w1', 'todos', { id: 'i-se1', prov: 'machine' }), // machine, rule says i-all -> replace
-      word('w2', 'todos', { id: 'i-all', prov: 'machine' }), // machine, already i-all -> no-op
+      word('w1', 'todos', { id: 'i-se1', prov: 'machine', provSource: AUTO_LINK_SOURCE }), // own, rule says i-all -> replace
+      word('w2', 'todos', { id: 'i-all', prov: 'machine', provSource: AUTO_LINK_SOURCE }), // own, already i-all -> no-op
       word('w3', 'todos', { id: 'i-se1', prov: 'human' }), // human/verified -> protected, skip
     ]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
     expect(proposals).toEqual([
       { tokenId: 'w1', vocabItemId: 'i-all', form: 'todos', kind: 'word' },
+    ]);
+  });
+
+  it("leaves another producer's unverified link alone: a service picked it by more than the form", () => {
+    const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, 9]]));
+    const sentences = sentence([
+      word('w1', 'se', null, [
+        morph('m1', 'se', { id: 'i-se2', prov: 'machine', provSource: 'service:cwomp-analyzer' }),
+      ]),
+      word('w2', 'se', null, [morph('m2', 'se')]),
+    ]);
+    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
+    expect(proposals).toEqual([
+      { tokenId: 'm2', vocabItemId: 'i-se1', form: 'se', kind: 'morpheme' },
     ]);
   });
 

@@ -33,6 +33,13 @@ and its gloss: the decoder's calibrated probability for that entry given the
 ones before it. A model whose held-out data was too small to calibrate writes
 no `provProb`. The write contract is PolyGloss's, see that service.
 
+It also links each morpheme it writes to the vocab item people linked that
+entry to, when they always linked it to the same one (`Confirmed`). An entry
+is a form with its gloss, so the link names the sense, where the built-in link
+step can only go by the form. Entries people never linked, or linked to
+different items, get no link, and Auto-analyze's link step handles them.
+It never creates an item.
+
 Beyond the paper: CWoMP's code reads `=` as `-` and drops it, so clitics lose
 their side. Here a clitic's form carries a mark the code does not split on
 (U+207C) in training and in the lexicon, so a proclitic, an enclitic and an
@@ -61,6 +68,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -101,6 +109,8 @@ SUMMARY = """\
 **glosses** for every word, by picking entries from a lexicon of morphemes
 learned from this project's own analyses. It never proposes a morpheme the
 project has not used, and every morpheme it writes carries its confidence.
+A morpheme whose form and gloss people always linked to one lexicon entry is
+linked to it.
 Morphemes confirmed after training are used without retraining.
 
 - **Gloss field**: the morpheme-scope field that receives the glosses.
@@ -188,6 +198,54 @@ def trusted_analysis(w, gloss_layer_id) -> Optional[List[Tuple[str, str]]]:
     return out or None
 
 
+def person_link(w, m) -> Optional[str]:
+    """The vocab item a person linked morpheme `m` to, or None (no link, a
+    machine's or a contributor's unreviewed link, or links to two items)."""
+    items = set()
+    for link in w['morph_links'].get(m['id'], []):
+        if prov_state(link.get('metadata')) in (HUMAN, VERIFIED):
+            v = link.get('vocab_item')
+            items.add(v.get('id') if isinstance(v, dict) else v)
+    items.discard(None)
+    return items.pop() if len(items) == 1 else None
+
+
+class Confirmed:
+    """What the project's people have confirmed: every (form, gloss) entry
+    of a trusted analysis, and the vocab items they linked each entry's
+    morphemes to. A morpheme CWoMP picks is one of these entries, so when
+    people always linked it to one item, that item is the link to propose:
+    the entry already names the sense, which a link by form alone cannot."""
+
+    def __init__(self):
+        self.entries = set()
+        self.links: Dict[Tuple[str, str], Counter] = {}
+
+    def add_word(self, w, gloss_layer_id) -> None:
+        a = trusted_analysis(w, gloss_layer_id)
+        if not a:
+            return
+        self.entries.update(a)
+        for m, entry in zip(w['morphs'], a):
+            item = person_link(w, m)
+            if item:
+                self.links.setdefault(entry, Counter())[item] += 1
+
+    def merged(self, other: 'Confirmed') -> 'Confirmed':
+        out = Confirmed()
+        out.entries = self.entries | other.entries
+        for src in (self.links, other.links):
+            for entry, c in src.items():
+                out.links.setdefault(entry, Counter()).update(c)
+        return out
+
+    def link_for(self, entry) -> Optional[str]:
+        """The one item people linked this entry to, or None when they never
+        linked it or linked it to different items."""
+        c = self.links.get(entry)
+        return next(iter(c)) if c and len(c) == 1 else None
+
+
 def sentence_record(s, gloss_layer_id) -> Optional[dict]:
     """A sentence as CWoMP training data, when every word is trusted."""
     if not s['words']:
@@ -210,10 +268,10 @@ def is_dev(sentence_id: str) -> bool:
 
 
 def read_project(client, project_id, gloss_field, translation_field, log=print):
-    """-> (records, confirmed entries {(form, gloss)}) over every document."""
+    """-> (training records, Confirmed) over every document."""
     project = client.projects.get(project_id)
     layers = igt_layers(project)
-    records, confirmed = [], set()
+    records, confirmed = [], Confirmed()
     docs = client.projects.list_documents(project_id) or []
     for n, d in enumerate(docs):
         log(f'Reading document {n + 1} of {len(docs)}: {d.get("name") or d["id"]}')
@@ -222,9 +280,7 @@ def read_project(client, project_id, gloss_field, translation_field, log=print):
                                            translation_field=translation_field)
         for s in sentences:
             for w in s['words']:
-                a = trusted_analysis(w, gloss_layer_id)
-                if a:
-                    confirmed.update(a)
+                confirmed.add_word(w, gloss_layer_id)
             r = sentence_record(s, gloss_layer_id)
             if r:
                 records.append(r)
@@ -583,7 +639,7 @@ class CwompService(BaseService):
         self.repo = None
         self.device = None
         self.models: Dict[str, CwompModel] = {}
-        self.confirmed: Dict[str, Tuple[float, set]] = {}
+        self.confirmed: Dict[str, Tuple[float, Confirmed]] = {}
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--home', default=str(DEFAULT_HOME), help='Where models are kept, one per project')
@@ -607,15 +663,16 @@ class CwompService(BaseService):
             m = self.models[project_id] = CwompModel(d, self.repo, device=self.device)
         return m
 
-    def confirmed_entries(self, project_id, gloss_field, translation_field, progress) -> set:
-        """Every (form, gloss) the project's people have confirmed, read again
-        at most every LEXICON_REFRESH_S. The paper's mutable lexicon: what a
-        person accepts reaches the next run without retraining."""
-        at, entries = self.confirmed.get(project_id, (0.0, set()))
+    def confirmed_for(self, project_id, gloss_field, translation_field, progress) -> Confirmed:
+        """What the project's people have confirmed (entries and their links),
+        read again at most every LEXICON_REFRESH_S. The paper's mutable
+        lexicon: what a person accepts reaches the next run without
+        retraining."""
+        at, confirmed = self.confirmed.get(project_id, (0.0, Confirmed()))
         if time.monotonic() - at > LEXICON_REFRESH_S:
-            _, entries = read_project(self.client, project_id, gloss_field, translation_field, log=progress)
-            self.confirmed[project_id] = (time.monotonic(), entries)
-        return entries
+            _, confirmed = read_project(self.client, project_id, gloss_field, translation_field, log=progress)
+            self.confirmed[project_id] = (time.monotonic(), confirmed)
+        return confirmed
 
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
@@ -642,9 +699,10 @@ class CwompService(BaseService):
             return
 
         response_helper.progress(5, 'Reading the project’s confirmed morphemes…')
-        model.set_lexicon(self.confirmed_entries(
+        project_confirmed = self.confirmed_for(
             project_id, gloss_field, translation_field,
-            lambda msg: response_helper.progress(5, msg)))
+            lambda msg: response_helper.progress(5, msg))
+        model.set_lexicon(project_confirmed.entries)
 
         response_helper.progress(20, 'Fetching document…')
         doc = self.client.documents.get(document_id, include_body=True)
@@ -659,12 +717,13 @@ class CwompService(BaseService):
         translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
                                else translation_field)
         # This document's own confirmed morphemes count at once.
-        own = set()
+        own = Confirmed()
         for s in sentences:
             for w in s['words']:
-                own.update(trusted_analysis(w, gloss_layer_id) or [])
-        if own - set(model.lexicon):
-            model.set_lexicon(set(model.lexicon) | own)
+                own.add_word(w, gloss_layer_id)
+        if own.entries - set(model.lexicon):
+            model.set_lexicon(set(model.lexicon) | own.entries)
+        confirmed = project_confirmed.merged(own)
 
         targets, skipped = select_targets(sentences, overwrite,
                                           skip_word_ids=read_skip_word_ids(request_data))
@@ -698,7 +757,9 @@ class CwompService(BaseService):
             plans.append({'word': w, 'sentence_id': s['id'], 'analysis': {
                 'segments': list(forms), 'glosses': [decode_piece(g) for _, g, _ in picked],
                 'types': list(types), 'joiners': joiners_for(list(types)),
-                'probs': [p for _, _, p in picked], 'surface_mismatch': False, 'degraded': False}})
+                'probs': [p for _, _, p in picked],
+                'links': [confirmed.link_for((f, g)) for f, g, _ in picked],
+                'surface_mismatch': False, 'degraded': False}})
             if w['state'] != 'unanalyzed':
                 replaced += 1
 
