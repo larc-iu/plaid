@@ -1627,8 +1627,9 @@ Without it the threshold is 0.5.
 Both clients read it with `readConfidenceThreshold` and test a value with `isDoubtful`.
 
 A machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and every one records the version of its own code in `provDetail.version`.
-These details describe the original prediction and are kept after a person edits the value.
-So once `provConfirmed` is set, do not present `provProb` as confidence in the current value.
+`provDetail` describes the original prediction and is kept after a person edits the value.
+`provProb` is the probability of the value the entity holds: when a person picks another of the alternatives the producer weighed, the app writes that alternative's probability, and when a person types a value it removes `provProb`.
+So once `provConfirmed` is set, do not present `provProb` as the machine's confidence in the value.
 
 === The write contract
 

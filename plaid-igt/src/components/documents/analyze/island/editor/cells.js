@@ -504,7 +504,10 @@ export const cells = {
         ? this.doc.adoptStamp(adopted.source, { value: next })
         : null;
     this._runKeepingFocus(el, next, () =>
-      this._recordWhenSaved(apply(next, fragment, pair), answer ? [answer] : []),
+      this._recordWhenSaved(
+        apply(next, fragment, pair, typeof adopted?.prob === 'number' ? adopted.prob : null),
+        answer ? [answer] : [],
+      ),
     );
   },
 

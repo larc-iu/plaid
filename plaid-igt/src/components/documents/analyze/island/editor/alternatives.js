@@ -206,7 +206,12 @@ export const alternatives = {
         pair: item,
       };
     } else if (item.source !== TAGSET_SOURCE && !delims) {
-      el.igtPick = { value: item.value, source: item.source };
+      // A model's alternative brings its probability, the value's provProb.
+      el.igtPick = {
+        value: item.value,
+        source: item.source,
+        ...(typeof item.prob === 'number' ? { prob: item.prob } : {}),
+      };
     }
     this._syncInput(el);
     // Part mode keeps the caret in the cell: the value is mid-construction and

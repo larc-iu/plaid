@@ -219,6 +219,8 @@ export const pairPicker = {
         // vouch for the value there.
         confirmValue: row.value !== '' && !row.senseValue,
         adopted: metadata != null || (!searched && (row.model || row.count > 0)),
+        // The picked alternative's probability, the value's provProb.
+        prob: typeof row.prob === 'number' ? row.prob : null,
       }),
     );
   },

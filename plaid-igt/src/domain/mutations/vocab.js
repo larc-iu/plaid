@@ -369,6 +369,8 @@ export const vocabMutations = {
    * "this sense with this value". `confirmValue` false: the row showed no
    * value of its own, so the value is not confirmed. A link the row does not
    * name is left alone. `adopted` records the write as a guess adoption.
+   * `prob` is the picked alternative's probability, which becomes the
+   * value's provProb.
    */
   async setMorphemePair(
     morphId,
@@ -381,9 +383,10 @@ export const vocabMutations = {
       fill = [],
       confirmValue = true,
       adopted = false,
+      prob = null,
     },
   ) {
-    const fields = [...(field ? [{ field, value, metadata, main: true }] : []), ...fill];
+    const fields = [...(field ? [{ field, value, metadata, prob, main: true }] : []), ...fill];
     const layers = fields.map((f) => findSpanLayer(this, 'morpheme', f.field));
     const missing = fields.find((f, i) => !layers[i]);
     if (missing) {
@@ -421,7 +424,7 @@ export const vocabMutations = {
     const spanPlans = [];
     fields.forEach((f, i) => {
       if ((f.value ?? '') === '') return; // a pick never clears a value
-      const plan = planSpan(this, layers[i], id, f.value, f.metadata ?? null);
+      const plan = planSpan(this, layers[i], id, f.value, f.metadata ?? null, f.prob ?? null);
       if (plan) {
         spanPlans.push({ layerId: layers[i].id, plan });
         return;

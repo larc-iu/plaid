@@ -23,7 +23,12 @@ export const findSpanLayer = (doc, scope, fieldName) => {
 // doc.editStamp (write-contract rule 3: a verifier's edit of a machine-made
 // or contributed span verifies it, keeping provSource for history; a
 // contributor's edit marks the span contributed).
-export const planSpan = (doc, targetLayer, targetTokenId, value, metadata) => {
+//
+// `prob` is the probability of the value written, for a pick of one of the
+// alternatives a producer weighed: provProb becomes it. A human edit with no
+// probability (a typed value) drops provProb, which describes the value the
+// span held, not this one. provDetail stays, as history.
+export const planSpan = (doc, targetLayer, targetTokenId, value, metadata, prob = null) => {
   const existing = (targetLayer.spans || []).find(
     (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
   );
@@ -40,7 +45,12 @@ export const planSpan = (doc, targetLayer, targetTokenId, value, metadata) => {
     // (a machine writer re-stamping) still writes.
     if (!metadata && existing.value === value) return null;
     // No caller fragment = a human edit, which carries the writer's stamp.
-    const fragment = metadata || doc.editStamp(existing.metadata);
+    let fragment = metadata || doc.editStamp(existing.metadata);
+    if (!metadata) {
+      if (typeof prob === 'number') fragment = { ...(fragment || {}), provProb: prob };
+      else if (existing.metadata?.provProb != null)
+        fragment = { ...(fragment || {}), provProb: null };
+    }
     // Only the fragment's keys are sent, so a key written elsewhere since
     // this copy was loaded survives. `merged` is the same edit made locally.
     const merged = fragment ? mergeMetadata(existing.metadata, fragment) : null;
@@ -105,7 +115,13 @@ const sendSpan = async (doc, layerId, plan, ids) => {
 // Enter, a row picked from the alternatives) rather than typed, which the
 // write's operation records as its kind for a reader of the audit log.
 const makeSpanUpdater = (scope) =>
-  async function (targetId, fieldName, value, metadata = null, { adopted = false } = {}) {
+  async function (
+    targetId,
+    fieldName,
+    value,
+    metadata = null,
+    { adopted = false, prob = null } = {},
+  ) {
     const layer = findSpanLayer(this, scope, fieldName);
     if (!layer) {
       this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
@@ -123,7 +139,7 @@ const makeSpanUpdater = (scope) =>
       this.setError('Morpheme not found');
       return false;
     }
-    const plan = planSpan(this, layer, id, value, metadata);
+    const plan = planSpan(this, layer, id, value, metadata, prob);
     // Nothing to write, and so no morpheme to make for it either.
     if (!plan) return true;
     this._applyRawPatch((next, infoNext) => {

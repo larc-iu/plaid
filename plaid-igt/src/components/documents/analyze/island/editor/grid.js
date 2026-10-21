@@ -162,13 +162,14 @@ export const grid = {
                 value: token.annotations?.[name]?.value ?? '',
                 // A gloss goes again by itself past another user's value on
                 // another word (DocumentModel.resendsByEntity).
-                apply: (v, meta) =>
+                apply: (v, meta, _pair, prob = null) =>
                   this.doc.resendsByEntity(() =>
                     this.doc.labelled(
                       this._editLabel(name, `"${token.content}"`, sctx.index, v),
                       () =>
                         this.doc.updateTokenSpan(token.id, name, v, meta, {
                           adopted: meta != null,
+                          prob,
                         }),
                     ),
                   ),
@@ -383,7 +384,7 @@ export const grid = {
                 // As a word's gloss (DocumentModel.resendsByEntity). A row of
                 // the pair picker (`pair`) goes through the picker's one path,
                 // which labels and batches it (pairPicker.js _pickPairRow).
-                apply: (v, meta, pair = null) =>
+                apply: (v, meta, pair = null, prob = null) =>
                   pair
                     ? this._pickPairRow(morph.id, name, pair, { typed: v })
                     : this.doc.resendsByEntity(() =>
@@ -397,6 +398,7 @@ export const grid = {
                           () =>
                             this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
                               adopted: meta != null,
+                              prob,
                             }),
                         ),
                       ),

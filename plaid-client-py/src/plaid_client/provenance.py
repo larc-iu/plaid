@@ -69,9 +69,12 @@ else it considered, in two reserved slots split along the queryability line:
   distributions, model name/version, raw scores. Deliberately nested (not
   queryable); keep it small (top-k, not whole-vocabulary dumps).
 
-Both describe the machine's ORIGINAL prediction. They are kept after human
-edits (history is valuable), so a consumer must not present ``provProb`` as
-confidence in the CURRENT value once the entity is verified
+``provDetail`` describes the machine's ORIGINAL prediction and is kept after
+human edits (history is valuable). ``provProb`` is the probability of the value
+the entity holds: when a person picks another of the alternatives the producer
+weighed, the app writes that alternative's probability, and when a person
+types a value it removes ``provProb``. A consumer still must not present
+``provProb`` as the machine's confidence once the entity is verified
 (``provConfirmed`` is exactly the flag to check).
 
 Recommended ``provDetail`` keys, so consumers (review dashboards, ranked

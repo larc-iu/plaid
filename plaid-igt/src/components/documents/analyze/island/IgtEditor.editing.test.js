@@ -161,7 +161,10 @@ describe('a value picked from the list', () => {
     await settle(6);
     const span = glossOf(doc);
     expect(span.value).toBe('NOM');
-    expect(span.metadata).toEqual({ ...MACHINE, provConfirmed: true });
+    // A pick with no probability of its own drops the model's, which was the
+    // replaced value's (PICKER-REAL ruling); the prediction stays as history.
+    const { provProb: _was, ...machine } = MACHINE;
+    expect(span.metadata).toEqual({ ...machine, provConfirmed: true });
   });
 });
 
@@ -226,9 +229,9 @@ describe('as a contributor', () => {
     await settle(6);
     const span = glossOf(doc);
     expect(span.value).toBe('NOM');
+    // A typed value drops provProb, the replaced value's probability.
     expect(span.metadata).toEqual({
       ...CONTRIBUTED,
-      provProb: 0.8,
       provDetail: { value: 'PL', valueProbs: { PL: 0.8, NOM: 0.2 } },
     });
     expect(span.metadata.provConfirmed).toBeUndefined();
