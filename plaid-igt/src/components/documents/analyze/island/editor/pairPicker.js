@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { readVocabFields } from '@/domain/igtConfig';
-import { TAGSET_SOURCE } from '@/domain/glossGuess';
+import { TAGSET_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import {
   isGlossLikeField,
   pairRows,
@@ -14,17 +14,26 @@ import { morphFormOf, numHtml } from './shared.js';
 
 // The pair picker: a morpheme's link and gloss picked together. Alt+Down on a
 // morpheme's gloss (alternatives.js) and a click on its lexicon chip
-// (vocabPopover.js) list the same rows (domain/pairRows.js), and a pick writes
-// both halves in one batch (IgtDocument.setMorphemePair).
+// (vocabPopover.js) list the same rows (domain/pairRows.js), drawn by one
+// template, and a pick from either goes through one path (_pickPairRow) to one
+// batch (IgtDocument.setMorphemePair).
 export const pairPicker = {
-  // Every vocabulary as the picker reads it. A vocabulary is read again only
-  // when its entry list or its settings changed: an edit keeps the entry list
-  // it did not touch (IgtDocument's keepUnchangedLists), and the sense tree
-  // of a large lexicon is not worth building on every keystroke.
+  // Every vocabulary as the picker reads it. Asked once per gloss cell per
+  // render, so it answers at once while the data has not changed. After a
+  // change a vocabulary is read again only when its entry list or its
+  // settings changed: an edit keeps the entry list it did not touch
+  // (IgtDocument's keepUnchangedLists), and the sense tree of a large lexicon
+  // is not worth building on every keystroke.
   _pickerLexicons() {
-    const vocabs = Object.values(this.doc?.vocabularies || {});
+    const dv = this.doc?.dataVersion;
+    const vocabsNow = this.doc?.vocabularies;
+    if (this._pickerLex && this._pickerLexDv === dv && this._pickerLexVocabs === vocabsNow) {
+      return this._pickerLex;
+    }
+    this._pickerLexDv = dv;
+    this._pickerLexVocabs = vocabsNow;
     const memo = (this._pickerLexMemo ||= new Map());
-    const list = vocabs.map((v) => {
+    const list = Object.values(vocabsNow || {}).map((v) => {
       const cfg = JSON.stringify(v.config ?? null);
       const hit = memo.get(v.id);
       if (hit && hit.items === v.items && hit.cfg === cfg && hit.name === v.name) return hit.lx;
@@ -49,19 +58,22 @@ export const pairPicker = {
     return isGlossLikeField(name) && Object.keys(this.doc.vocabularies || {}).length > 0;
   },
 
-  // A morpheme as the grid derives it, with its word.
+  // A morpheme as the grid derives it, with its word and its sentence's place.
   _morphContext(id) {
-    for (const s of this.doc.sentences || []) {
-      for (const word of s.tokens || []) {
+    const sentences = this.doc.sentences || [];
+    for (let index = 0; index < sentences.length; index++) {
+      for (const word of sentences[index].tokens || []) {
         const morph = (word.morphemes || []).find((x) => x.id === id);
-        if (morph) return { morph, word };
+        if (morph) return { morph, word, index };
       }
     }
     return null;
   },
 
-  // A morpheme field's tagset as the cell reads it (see _morphCol).
-  _morphFieldTagset(morph, word, name) {
+  // How a morpheme field's cell reads its value (an affix's gloss against
+  // the tagset alone, a stem's with the word's other stems'), and the tagset
+  // as read so.
+  _morphFieldReading(morph, word, name) {
     const siblings = word?.morphemes || [morph];
     const reading = morphemeGlossReading(
       siblings.map((m) => ({
@@ -71,11 +83,15 @@ export const pairPicker = {
       })),
       Math.max(0, siblings.indexOf(morph)),
     );
-    return readingTagset(this._tagsetFor('morpheme', name), reading);
+    return { reading, tagset: readingTagset(this._tagsetFor('morpheme', name), reading) };
+  },
+
+  _morphFieldTagset(morph, word, name) {
+    return this._morphFieldReading(morph, word, name).tagset;
   },
 
   /** The picker's rows for a morpheme and field (pairRows). */
-  _pairRows(morph, field, { tagset = null, search = '', cap = Infinity } = {}) {
+  _pairRows(morph, field, { tagset = null, search = '', cap = Infinity, chip = false } = {}) {
     return pairRows({
       morph,
       field,
@@ -87,6 +103,7 @@ export const pairPicker = {
       search,
       detailOf: (item, lx) => this._vocabItemDetail(item, this.doc.vocabularies?.[lx.id]),
       cap,
+      keepPersonValue: chip,
     });
   },
 
@@ -100,117 +117,29 @@ export const pairPicker = {
   },
 
   /**
-   * Write a picked row: the link it names (kept when it names none) and the
-   * value, `value` being what the field is set to (the row's, or the stored
-   * one for a row with none) and `metadata` the value's stamp. `fill` holds the
-   * other fields a pick from the chip sets. `own`: the row was found by a
-   * typed search, so the link is the person's own, not an adopted suggestion.
-   */
-  _writePair(morph, field, row, { value, metadata = null, fill = [], own = false }) {
-    const linkStamp =
-      row.linkChange && row.linkSource && !own
-        ? this.doc.adoptStamp(row.linkSource, { vocabItem: row.itemId })
-        : null;
-    return this.doc.setMorphemePair(morph.id, {
-      field,
-      value,
-      metadata,
-      itemId: row.itemId ?? undefined,
-      linkStamp,
-      fill,
-      adopted: metadata != null || (!own && (row.model || row.count > 0)),
-    });
-  },
-
-  // A pick from the chip: the row's link and value, and the other gloss fields
-  // the sense has a value for, each empty or a machine value nobody confirmed.
-  // `searched`: the row was found by a typed search, and is the person's own.
-  _pickPairFromChip(tokenId, field, row, { searched = false } = {}) {
-    const ctx = this._morphContext(tokenId);
-    if (!ctx) return Promise.resolve(false);
-    const { morph, word } = ctx;
-    const stored = field ? (morph.annotations?.[field]?.value ?? '') : '';
-    const value = row.value !== '' ? row.value : stored;
-    const metadata =
-      !searched &&
-      field &&
-      stored === '' &&
-      value !== '' &&
-      row.source &&
-      row.source !== TAGSET_SOURCE
-        ? this.doc.adoptStamp(row.source, { value })
-        : null;
-    const others = this._morphFieldNames().filter((f) => f !== field && isGlossLikeField(f));
-    const hit = row.itemId ? this._pickerLexicons().byId.get(row.itemId) : null;
-    const fill = senseFills({
-      morph,
-      item: hit?.item ?? null,
-      lexicon: hit?.lx ?? null,
-      fields: others,
-      fieldInfo: (f) => ({
-        fieldLang: this._entryPairing('morpheme', f, null).fieldLang,
-        tagset: this._morphFieldTagset(morph, word, f),
-      }),
-    }).map((x) => ({
-      ...x,
-      metadata:
-        (morph.annotations?.[x.field]?.value ?? '') === ''
-          ? this.doc.adoptStamp('vocab:entry', { value: x.value })
-          : null,
-    }));
-    if (!field) {
-      if (row.linkChange) return this.doc.linkVocab(tokenId, row.itemId);
-      return this._pairConfirms(row) ? this.doc.confirmVocabLink(tokenId) : Promise.resolve(true);
-    }
-    return this._writePair(morph, field, row, { value, metadata, fill, own: searched });
-  },
-
-  /**
    * The chip's rows for a morpheme: the picker field (pickerFieldOf) and its
-   * rows for the typed search, capped as the list is.
+   * rows for the typed search, capped as the list is. Over a value a person
+   * wrote, a sense keeps it (pairRows' keepPersonValue).
    */
   _chipPairs(tokenId, search) {
     const ctx = this._morphContext(tokenId);
     const morph = ctx?.morph ?? { id: tokenId, annotations: {}, vocabItem: null };
     const field = pickerFieldOf(morph, this._morphFieldNames());
     const tagset = field && ctx ? this._morphFieldTagset(morph, ctx.word, field) : null;
-    const { rows, more } = this._pairRows(morph, field, { tagset, search, cap: 30 });
+    const { rows, more } = this._pairRows(morph, field, { tagset, search, cap: 30, chip: true });
     return { rows, more, field, morph };
   },
 
-  // A row's cells, the same in both lists: the value, the entry (or "no
-  // entry"), the vocabulary when there are several, and the tags.
-  _pairRowCells(row, { multiVocab = false, entryLink = null } = {}) {
-    const entry = row.item
-      ? entryLink
-        ? html`<a
-            class="igt-pair__entry igt-vocab-pop__form igt-vocab-pop__goto"
-            href=${entryLink}
-            title="Open this entry in the lexicon"
-            @click=${(e) => e.stopPropagation()}
-            >${row.item.form}${numHtml(row.sub, 'igt-vocab-pop')}</a
-          >`
-        : html`<span class="igt-pair__entry igt-vocab-pop__form"
-            >${row.item.form}${numHtml(row.sub, 'igt-vocab-pop')}</span
-          >`
-      : html`<span class="igt-pair__entry igt-pair__none">no entry</span>`;
-    const tags = [];
-    if (row.current) tags.push('current');
-    // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
-    if (row.model) {
-      tags.push(row.prob != null ? `model ${Math.floor(row.prob * 100 + 1e-9)}%` : 'model');
-    }
-    if (row.count) tags.push(`×${row.count}`);
-    if (row.current && row.item && this.doc.reviewableState(row.linkState)) {
-      tags.push('unconfirmed');
-    }
-    return html`<span class="igt-pair__value" dir="auto">${row.value}</span>
-      ${entry}
-      ${multiVocab && row.vocabName
-        ? html`<span class="igt-pair__vocab">${row.vocabName}</span>`
-        : nothing}
-      ${row.description ? html`<span class="igt-pair__desc">${row.description}</span>` : nothing}
-      <span class="igt-pair__tags">${tags.join(' · ')}</span>`;
+  // The row a list starts on: the current link, else the first sense that
+  // keeps the value there is, else the first sense, else the first row.
+  _pairDefaultRow(rows) {
+    const current = rows.findIndex((r) => r.current && r.item);
+    if (current >= 0) return current;
+    const value = rows.find((r) => r.current)?.value ?? '';
+    const sense = (r) => r.named && r.itemId && !r.context && !r.current;
+    const keeps = value ? rows.findIndex((r) => sense(r) && r.value === value) : -1;
+    if (keeps >= 0) return keeps;
+    return Math.max(0, rows.findIndex(sense));
   },
 
   // Whether picking the current row confirms something: a link or a value
@@ -221,6 +150,137 @@ export const pairPicker = {
       ((!!row.item && this.doc.reviewableState(row.linkState)) ||
         (row.value !== '' && this.doc.reviewable(row.valueMeta)))
     );
+  },
+
+  // Whether picking a row with the cell holding `value` writes anything.
+  _pairActs(row, value) {
+    return (row.value !== '' && row.value !== value) || row.linkChange || this._pairConfirms(row);
+  },
+
+  /**
+   * Write a picked row, from either door: the entry it names (a row that
+   * names none leaves the link as it is) and its value (a row with none
+   * leaves the value, or writes `typed`, what the cell holds). The value is
+   * stamped as adopting the row's suggestion when the field was empty, and
+   * the link as adopting the producer's when the row is the producer's,
+   * unless the row was found by a typed search (`searched`). From the chip
+   * (`fill`) the sense also fills the other gloss fields that are empty or
+   * hold a machine value nobody confirmed. One History label for both doors.
+   */
+  _pickPairRow(morphId, field, row, { typed = null, searched = false, fill = false } = {}) {
+    const ctx = this._morphContext(morphId);
+    if (!ctx) return Promise.resolve(false);
+    const { morph, word, index } = ctx;
+    const stored = field ? (morph.annotations?.[field]?.value ?? '') : '';
+    const value = row.value !== '' ? row.value : (typed ?? stored);
+    const suggested = !searched && row.value !== '' && row.source && row.source !== TAGSET_SOURCE;
+    const metadata =
+      field && stored === '' && value !== '' && suggested
+        ? this.doc.adoptStamp(row.source, { value })
+        : null;
+    const named = row.named && row.itemId ? row.itemId : undefined;
+    const linkStamp =
+      named && row.linkChange && row.linkSource && !searched
+        ? this.doc.adoptStamp(row.linkSource, { vocabItem: row.itemId })
+        : null;
+    const fills = fill ? this._senseFillsFor(morph, word, field, row) : [];
+    const label =
+      field && value !== stored
+        ? this._editLabel(
+            field,
+            this._morphemeSubject(morph, word, word.morphemes || []),
+            index,
+            value,
+          )
+        : null;
+    return this.doc.labelled(label, () =>
+      this.doc.setMorphemePair(morph.id, {
+        field,
+        value,
+        metadata,
+        itemId: named,
+        linkStamp,
+        fill: fills,
+        // A row that showed no value of its own, or kept a person's, does not
+        // vouch for the value there.
+        confirmValue: row.value !== '' && !row.senseValue,
+        adopted: metadata != null || (!searched && (row.model || row.count > 0)),
+      }),
+    );
+  },
+
+  // The other gloss fields a sense fills, each with its stamp.
+  _senseFillsFor(morph, word, field, row) {
+    const hit = row.named && row.itemId ? this._pickerLexicons().byId.get(row.itemId) : null;
+    if (!hit) return [];
+    return senseFills({
+      morph,
+      item: hit.item,
+      lexicon: hit.lx,
+      fields: this._morphFieldNames().filter((f) => f !== field && isGlossLikeField(f)),
+      fieldInfo: (f) => ({
+        fieldLang: this._entryPairing('morpheme', f, null).fieldLang,
+        tagset: this._morphFieldTagset(morph, word, f),
+      }),
+    }).map((x) => ({
+      ...x,
+      metadata:
+        (morph.annotations?.[x.field]?.value ?? '') === ''
+          ? this.doc.adoptStamp(VOCAB_ENTRY_SOURCE, { value: x.value })
+          : null,
+    }));
+  },
+
+  // A row's cells, the same in both lists: the value, the entry (empty for a
+  // row that names none, "no entry" on an unlinked morpheme's current row),
+  // the sense's own value when the row keeps another, the vocabulary when
+  // there are several, the tags, and the entry's detail line.
+  // `extra`: the chip's actions on the row, at the end of its line.
+  _pairRowCells(row, { multiVocab = false, entryLink = null, extra = nothing } = {}) {
+    const form = row.item ? html`${row.item.form}${numHtml(row.sub, 'igt-vocab-pop')}` : null;
+    const entry =
+      row.named && row.item
+        ? entryLink
+          ? html`<a
+              class="igt-pair__entry igt-vocab-pop__form igt-vocab-pop__goto"
+              href=${entryLink}
+              title="Open this entry in the lexicon"
+              @click=${(e) => e.stopPropagation()}
+              >${form}</a
+            >`
+          : html`<span class="igt-pair__entry igt-vocab-pop__form">${form}</span>`
+        : row.current && !row.item
+          ? html`<span class="igt-pair__entry igt-pair__none">no entry</span>`
+          : html`<span class="igt-pair__entry"></span>`;
+    const tags = [];
+    if (row.current) tags.push('current');
+    // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
+    if (row.model) {
+      tags.push(row.prob != null ? `model ${Math.floor(row.prob * 100 + 1e-9)}%` : 'model');
+    }
+    if (row.count) tags.push(`×${row.count}`);
+    if (row.current && row.item && this.doc.reviewableState(row.linkState)) {
+      tags.push('unconfirmed');
+    }
+    const vocab = row.item && row.vocabId ? this.doc.vocabularies?.[row.vocabId] : null;
+    const detail = vocab ? this._vocabItemDetail(row.item, vocab) : '';
+    return html`<span class="igt-pair__line">
+        <span class="igt-pair__value" dir="auto">${row.value}</span>
+        ${entry}
+        ${row.senseValue
+          ? html`<span class="igt-pair__sense" dir="auto">${row.senseValue}</span>`
+          : nothing}
+        ${multiVocab && row.vocabName
+          ? html`<span class="igt-pair__vocab">${row.vocabName}</span>`
+          : nothing}
+        ${row.description ? html`<span class="igt-pair__desc">${row.description}</span>` : nothing}
+        <span class="igt-pair__tags">${tags.join(' · ')}</span>
+        ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
+        ${extra}
+      </span>
+      ${detail && detail !== row.value && detail !== row.senseValue
+        ? html`<span class="igt-vocab-pop__detail">${detail}</span>`
+        : nothing}`;
   },
 };
 

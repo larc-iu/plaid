@@ -1582,12 +1582,31 @@
 .igt-vocab-pop--pairs {
   width: 300px;
 }
-.igt-pair .igt-vocab-pop__main {
-  justify-content: flex-start;
+/* A sense under its headword, one rule for both lists. */
+.igt-vocab-pop__item,
+.igt-alts__item {
+  margin-inline-start: calc(var(--igt-depth, 0) * 14px);
 }
+.igt-alts__item.igt-pair {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+}
+.igt-pair__line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+/* Value and entry as two aligned columns. */
 .igt-pair__value {
+  flex: 0 0 7em;
   font-weight: 500;
-  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.igt-pair__sense {
+  font-size: 11px;
+  color: var(--igt-gray-500);
 }
 .igt-pair__entry {
   font-weight: 400;

@@ -766,7 +766,7 @@ export class IgtEditor {
     const title = violations.length
       ? this._violationText(violations, tagset)
       : nAlts > 1
-        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${nAlts} ${altRows[0]?.pair ? 'senses and values' : 'values seen for this form'}`
+        ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${altRows[0]?.pair ? 'senses and values' : `${nAlts} values seen for this form`}`
         : (baseTitle ?? nothing);
     // A suggestion out of the lexicon wears the faint teal of a linked
     // morpheme chip, which already means "lexically identified" here. The wash

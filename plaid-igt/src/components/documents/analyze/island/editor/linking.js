@@ -103,24 +103,23 @@ export const linking = {
     );
   },
 
-  // A row of a morpheme's chip: its link and value, and the other gloss
-  // fields the sense fills. `all` links the other unlinked tokens reading the
-  // same to its entry too, the link only.
+  // A row of a morpheme's chip (pairPicker.js _pickPairRow). `all` links the
+  // other unlinked tokens reading the same to the row's entry too, the link
+  // only, once this one's pick has landed.
   _pickPair(tokenId, field, row, formText, others, returnFocus = false, all = false) {
     // A row found by searching is the person's own choice, not a suggestion.
     const searched = !!(this._popoverSearch || '').trim();
     this._closePopover(returnFocus);
-    if (!row.linkChange && !row.valueChange && !this._pairConfirms(row) && !all) return;
+    const takeAll = all && row.named && row.itemId && others.length;
+    if (!row.linkChange && !row.valueChange && !this._pairConfirms(row) && !takeAll) return;
     this._runThenFocus({ vocabOpener: tokenId }, () =>
-      this._pickPairFromChip(tokenId, field, row, { searched }),
+      this._pickPairRow(tokenId, field, row, { searched, fill: true }),
     ).then((ok) => {
-      if (!ok || !all || !row.itemId || !others.length) return;
+      if (!ok || !takeAll) return;
       this.doc.linkVocabMany(others, row.itemId).then((linked) => {
         if (linked) {
-          notifyInfo(
-            `Linked ${others.length + 1} “${formText}” to ${row.item?.form ?? ''}`,
-            'Linked in this text',
-          );
+          const n = others.length + (row.linkChange ? 1 : 0);
+          notifyInfo(`Linked ${n} “${formText}” to ${row.item?.form ?? ''}`, 'Linked in this text');
         }
       });
     });

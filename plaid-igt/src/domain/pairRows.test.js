@@ -5,7 +5,6 @@ import {
   pickerFieldOf,
   pickerLexicon,
   senseFills,
-  valueLinksOf,
 } from './pairRows.js';
 import { addPrecedent, createTally, SLOT_LINK } from './precedent.js';
 import { PRECEDENT_SOURCE, TAGSET_SOURCE, VOCAB_ENTRY_SOURCE } from './glossGuess.js';
@@ -45,6 +44,8 @@ describe('isGlossLikeField and pickerFieldOf', () => {
     expect(isGlossLikeField('Gloss')).toBe(true);
     expect(isGlossLikeField('Gloss (pmy)')).toBe(true);
     expect(isGlossLikeField('Morpheme gloss')).toBe(true);
+    expect(isGlossLikeField('Glosa')).toBe(true);
+    expect(isGlossLikeField('Glose (fr)')).toBe(true);
     expect(isGlossLikeField('POS')).toBe(false);
     expect(isGlossLikeField('Note (gloss)')).toBe(false);
   });
@@ -63,15 +64,21 @@ describe('isGlossLikeField and pickerFieldOf', () => {
   });
 
   it('keeps only valueLinks entries that are whole and still exist', () => {
-    const s = model('sell', {
+    const gloss = model('sell', {
       valueLinks: [
         { value: 'sell', item: 's1', prob: 0.5 },
-        { value: '', item: 's2' },
-        { value: 'gone', item: 'zz' },
+        { value: '', item: 's2', prob: 0.4 },
+        { value: 'gone', item: 'zz', prob: 0.3 },
         null,
       ],
     });
-    expect(valueLinksOf(s, (id) => id !== 'zz').map((x) => x.item)).toEqual(['s1']);
+    const { rows } = pairRows({
+      morph: morph({ gloss }),
+      field: 'Gloss',
+      form: 'sel',
+      lexicons: lexicons(),
+    });
+    expect(rows.filter((r) => r.model).map((r) => [r.itemId, r.value])).toEqual([['s1', 'sell']]);
   });
 });
 
@@ -136,6 +143,53 @@ describe('pairRows', () => {
       [null, 'sell'],
       [null, 'trade'],
     ]);
+  });
+
+  it('names an entry only where a source does: a carried link is not the row’s', () => {
+    const tally = createTally();
+    addPrecedent(tally, 'morpheme', 'sel', 'Gloss', 'trade');
+    const { rows } = pairRows({
+      morph: morph({ link: link('s1', 'machine'), gloss: span('sell') }),
+      field: 'Gloss',
+      form: 'sel',
+      precedent: tally,
+      lexicons: lexicons(),
+      tagset: { mode: 'suggest', values: [{ value: 'PL' }] },
+    });
+    const by = (v) => rows.find((r) => r.value === v);
+    expect(by('sell')).toMatchObject({ current: true, named: true });
+    expect(by('trade')).toMatchObject({ named: false, linkChange: false });
+    expect(by('PL')).toMatchObject({ named: false, linkChange: false });
+    expect(rows.find((r) => r.itemId === 's2')).toMatchObject({ named: true, linkChange: true });
+  });
+
+  it('from the chip, keeps a value a person wrote on every sense, showing the sense’s own', () => {
+    const args = {
+      morph: morph({ gloss: span('cat.PL') }),
+      field: 'Gloss',
+      form: 'sel',
+      lexicons: lexicons(),
+    };
+    const chip = pairRows({ ...args, keepPersonValue: true }).rows;
+    expect(chip.find((r) => r.itemId === 's1')).toMatchObject({
+      value: 'cat.PL',
+      senseValue: 'sell',
+      valueChange: false,
+    });
+    // A machine value nobody confirmed is not kept, and Alt+Down never keeps.
+    expect(pairRows(args).rows.find((r) => r.itemId === 's1').value).toBe('sell');
+    const machine = pairRows({
+      ...args,
+      morph: morph({ gloss: model('cat.PL', {}) }),
+      keepPersonValue: true,
+    }).rows;
+    expect(machine.find((r) => r.itemId === 's1').value).toBe('sell');
+  });
+
+  it('puts the senses an enforcing tagset leaves valueless after its values', () => {
+    const pairs = rowsOf({ morph: morph(), tagset: { mode: 'closed', values: [{ value: 'PL' }] } });
+    expect(pairs[0]).toEqual([null, 'PL']);
+    expect(pairs.slice(1).every(([id, v]) => id && v === '')).toBe(true);
   });
 
   it('keeps two senses with one gloss apart, and one sense with two glosses', () => {

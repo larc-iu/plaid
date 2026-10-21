@@ -225,69 +225,11 @@ export const vocabPopover = {
     // sense and a value, from every vocabulary. A word's and an expression's
     // list entries.
     const pairs = kind === 'morpheme' ? this._chipPairs(tokenId, search) : null;
-    const numIdx = activeVocab ? this._itemNumbersFor(activeVocab.id) : null;
-    // Ranked by vocabRank.js: what this form was linked to before comes
-    // first, then form-match tiers; a typed search ranks against the typed
-    // text alone.
     const isMwe = kind === 'mwe';
     const precForm = isMwe ? formText : this._precedentForm(formText, kind);
-    const items = rankVocabItems(
-      (pairs ? [] : activeVocab?.items || []).map((it) => ({
-        ...it,
-        _detail: this._vocabItemDetail(it, activeVocab),
-        _sub: numIdx ? numIdx.get(it.id) : null,
-      })),
-      {
-        form: formText || '',
-        search,
-        // Precedent is tallied per word or morpheme form; the joined form of
-        // a multi-word expression has none.
-        precedent: isMwe
-          ? null
-          : precedentCounts(this._precedentTally(), kind, precForm, SLOT_LINK),
-      },
-    );
-    // In MWE mode the phrase-typed entries come first, in their ranked order.
-    // Single-word entries stay listed: a fixed spelling can be what is wanted.
-    if (isMwe) {
-      const typeOf = activeVocab
-        ? (it) => this._vocabMemoFor(activeVocab.id).morphTypeOf(it.id)
-        : (it) => it.metadata?.morphType;
-      const phrases = items.filter((it) => isMweType(typeOf(it)));
-      const others = items.filter((it) => !isMweType(typeOf(it)));
-      items.length = 0;
-      for (const it of phrases) items.push(it);
-      for (const it of others) items.push(it);
-    }
-    if (currentItem) {
-      const i = items.findIndex((it) => it.id === currentItem.id);
-      if (i > 0) {
-        const [x] = items.splice(i, 1);
-        items.unshift(x);
-      }
-    }
-    // The candidates read like the dictionary: each headword once, its senses
-    // under it, numbered; a headword that only carries senses is shown for
-    // context, dimmed. Each row keeps its rank.
-    const grouped = activeVocab
-      ? groupRankedByHeadword(items, activeVocab.items || [], this._senseTreeFor(activeVocab.id))
-      : items.map((it) => ({ item: it, depth: 0 }));
-    const entryRows = grouped.slice(0, 30).map((r) => ({
-      ...r.item,
-      // A row shown only for context never went through the ranking, so it
-      // arrives undecorated: give it the same number and detail line, or a
-      // headword reads like a lone entry.
-      _sub: r.item._sub ?? (numIdx ? numIdx.get(r.item.id) : null),
-      _detail: r.item._detail ?? this._vocabItemDetail(r.item, activeVocab),
-      _depth: r.depth,
-      _context: !!r.context,
-    }));
-    // What the cap left out, counted in candidates: a headword drawn only
-    // as context above its senses was never one.
-    const limited = pairs ? pairs.rows : entryRows;
-    const truncated = pairs
-      ? pairs.more
-      : items.length - entryRows.filter((r) => !r._context).length;
+    const { limited, truncated, best } = pairs
+      ? { limited: pairs.rows, truncated: pairs.more, best: this._pairDefaultRow(pairs.rows) }
+      : this._entryList(activeVocab, formText, kind, search, currentItem);
     // The form a new entry would get: the word/morpheme's surface with edge
     // punctuation trimmed by the project's own ignored-tokens rule
     // (`derechos.` → `derechos`; user decision 2026-08-26).
@@ -339,24 +281,6 @@ export const vocabPopover = {
     }
     // Rows the keyboard can land on: every item, the create row, the extras.
     const total = limited.length + (canCreate ? 1 : 0) + extraRows.length;
-    // Where the keyboard lands before it is moved: the best-ranked candidate
-    // that is not a headword standing over one of its own same-form senses
-    // in the list. Such a headword ranks level with its senses (same form,
-    // same tier) and, created first by an import, would win the tie on id;
-    // the auto-linker drops it for the same reason (dropCoveredHeadwords).
-    // A headword the form was linked to before keeps its place: precedent is
-    // a person's own choice. Every row stays selectable by arrow or click:
-    // linking to a headword is the user's call, just never the one Enter
-    // makes on its own.
-    const rankedIds = new Set(items.map((it) => it.id));
-    const tree = activeVocab ? this._senseTreeFor(activeVocab.id) : null;
-    const covered = (it) =>
-      it._tier !== TIERS.PRECEDENT &&
-      (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
-    const first = items.find((it) => !covered(it)) ?? items[0];
-    const best = pairs
-      ? this._chipDefaultRow(pairs.rows)
-      : limited.findIndex((r) => !r._context && r.id === first?.id);
     // The row the render picked, told apart from one the user moved to, so a
     // lexicon read landing while this is open picks again (see
     // _refreshVocabularies) only when the user has not.
@@ -549,44 +473,45 @@ export const vocabPopover = {
           @keydown=${onSearchKey}
         />
         <div class="igt-vocab-pop__list">
-          ${limited.length && pairs
-            ? limited.map((row, i) =>
-                this._chipPairRow(row, i, {
-                  tokenId,
+          ${limited.length
+            ? limited.map((it, i) => {
+                // A morpheme's pair row, or a word's or expression's entry row,
+                // in the same shell.
+                if (pairs) {
+                  const linked = it.current && !!it.item;
+                  return this._popRow({
+                    i,
+                    activeIdx,
+                    cls: `igt-pair ${linked ? 'is-linked' : ''} ${it.context ? 'is-context' : ''}`,
+                    depth: it.depth,
+                    // Shift+click takes the others along, as Shift+Enter does.
+                    onClick: (e) => act.pick(it, false, e.shiftKey),
+                    main: this._pairRowCells(it, {
+                      multiVocab: vocabs.length > 1,
+                      entryLink: linked ? `#/vocabularies/${it.vocabId}?item=${it.itemId}` : null,
+                      extra: html`${canTakeAll && i === activeIdx && it.named && it.itemId
+                        ? this._takeAllMark(allTitle, others.length + (it.linkChange ? 1 : 0), () =>
+                            act.pick(it, false, true),
+                          )
+                        : nothing}
+                      ${linked
+                        ? this._unlinkMark(() => this._toggleVocab(tokenId, it.item, true))
+                        : nothing}`,
+                    }),
+                  });
+                }
+                const linked = currentItem && it.id === currentItem.id;
+                const confirmable = linked && inferredCurrent;
+                return this._popRow({
+                  i,
                   activeIdx,
-                  act,
-                  canTakeAll,
-                  allTitle,
-                  others,
-                  multiVocab: vocabs.length > 1,
-                }),
-              )
-            : limited.length
-              ? limited.map((it, i) => {
-                  const linked = currentItem && it.id === currentItem.id;
-                  const confirmable = linked && inferredCurrent;
-                  return html`<button
-                    type="button"
-                    class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx
-                      ? 'is-active'
-                      : ''} ${it._context ? 'is-context' : ''}"
-                    style=${it._depth ? `margin-left:${it._depth * 14}px` : ''}
-                    @mousemove=${(e) => {
-                      if (!this._pointerMoved(e)) return;
-                      if (this._popoverActiveIndex !== i) {
-                        this._popoverActiveIndex = i;
-                        this._render(true);
-                      }
-                    }}
-                    @click=${(e) => {
-                      e.stopPropagation();
-                      if (confirmable) act.confirm();
-                      // Shift+click is the chip's gesture on the whole row, as
-                      // Shift+Enter is from the keyboard.
-                      else act.toggle(it, linked, false, e.shiftKey);
-                    }}
-                  >
-                    <span class="igt-vocab-pop__main" dir="auto">
+                  cls: `${linked ? 'is-linked' : ''} ${it._context ? 'is-context' : ''}`,
+                  depth: it._depth,
+                  // Shift+click is the chip's gesture on the whole row, as
+                  // Shift+Enter is from the keyboard.
+                  onClick: (e) =>
+                    confirmable ? act.confirm() : act.toggle(it, linked, false, e.shiftKey),
+                  main: html`<span class="igt-vocab-pop__main" dir="auto">
                       ${linked
                         ? html`<a
                             class="igt-vocab-pop__form igt-vocab-pop__goto"
@@ -607,37 +532,18 @@ export const vocabPopover = {
                         : nothing}
                       ${confirmable ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
                       ${canTakeAll && i === activeIdx
-                        ? html`<span
-                            class="igt-vocab-pop__take-all"
-                            role="button"
-                            tabindex="-1"
-                            title=${allTitle}
-                            @click=${(e) => {
-                              e.stopPropagation();
-                              act.toggle(it, false, false, true);
-                            }}
-                            >all ×${others.length + 1}</span
-                          >`
+                        ? this._takeAllMark(allTitle, others.length + 1, () =>
+                            act.toggle(it, false, false, true),
+                          )
                         : nothing}
-                      ${linked
-                        ? html`<span
-                            class="igt-vocab-pop__x"
-                            role="button"
-                            tabindex="-1"
-                            @click=${(e) => {
-                              e.stopPropagation();
-                              act.toggle(it, true);
-                            }}
-                            >unlink</span
-                          >`
-                        : nothing}
+                      ${linked ? this._unlinkMark(() => act.toggle(it, true)) : nothing}
                     </span>
                     ${it._detail
                       ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>`
-                      : nothing}
-                  </button>`;
-                })
-              : html`<div class="igt-vocab-pop__empty">No matches</div>`}
+                      : nothing}`,
+                });
+              })
+            : html`<div class="igt-vocab-pop__empty">No matches</div>`}
           ${truncated > 0
             ? html`<div class="igt-vocab-pop__more">+ ${truncated} more. Type to narrow</div>`
             : nothing}
@@ -770,7 +676,11 @@ export const vocabPopover = {
             ? this._mweTypeRow(currentItem)
             : nothing}
         ${vocabs.length
-          ? html`<div class="igt-vocab-pop__vocabsel" role="tablist" aria-label="Choose lexicon">
+          ? html`<div
+              class="igt-vocab-pop__vocabsel"
+              role="tablist"
+              aria-label=${pairs ? 'Create in' : 'Choose lexicon'}
+            >
               ${vocabs.map((v) => {
                 const isActive = v.id === activeVocab?.id;
                 // An inactive chip scopes the popover to that lexicon; the active
@@ -794,7 +704,7 @@ export const vocabPopover = {
                       class="igt-vocab-pop__vocabtab"
                       role="tab"
                       aria-selected="false"
-                      title=${`Switch to “${v.name}”`}
+                      title=${pairs ? `Create in “${v.name}”` : `Switch to “${v.name}”`}
                       @click=${(e) => {
                         e.stopPropagation();
                         selectVocab(v.id);
@@ -809,32 +719,13 @@ export const vocabPopover = {
     `;
   },
 
-  // The row the keyboard starts on in a morpheme's chip: the current link,
-  // else the first sense that keeps the value there is, else the first sense,
-  // else the first row.
-  _chipDefaultRow(rows) {
-    const current = rows.findIndex((r) => r.current && r.item);
-    if (current >= 0) return current;
-    const value = rows.find((r) => r.current)?.value ?? '';
-    const sense = (r) => r.itemId && !r.context && !r.current;
-    const keeps = value ? rows.findIndex((r) => sense(r) && r.value === value) : -1;
-    if (keeps >= 0) return keeps;
-    return Math.max(0, rows.findIndex(sense));
-  },
-
-  // A row of a morpheme's chip (_pairRowCells), with the chip's actions:
-  // accept on the current row when there is something to confirm, unlink on
-  // the current link, and "all ×N" on the active row.
-  _chipPairRow(row, i, { tokenId, activeIdx, act, canTakeAll, allTitle, others, multiVocab }) {
-    const linked = row.current && !!row.item;
-    const vocab = row.vocabId ? this.doc.vocabularies?.[row.vocabId] : null;
-    const detail = row.item && vocab ? this._vocabItemDetail(row.item, vocab) : '';
+  // A row of the list: a button the pointer makes active and a click picks,
+  // indented under its headword. `main` is what it shows.
+  _popRow({ i, activeIdx, cls, depth, onClick, main }) {
     return html`<button
       type="button"
-      class="igt-vocab-pop__item igt-pair ${linked ? 'is-linked' : ''} ${i === activeIdx
-        ? 'is-active'
-        : ''} ${row.context ? 'is-context' : ''}"
-      style=${row.depth ? `margin-left:${row.depth * 14}px` : ''}
+      class="igt-vocab-pop__item ${cls} ${i === activeIdx ? 'is-active' : ''}"
+      style=${depth ? `--igt-depth:${depth}` : ''}
       @mousemove=${(e) => {
         if (!this._pointerMoved(e)) return;
         if (this._popoverActiveIndex !== i) {
@@ -844,46 +735,122 @@ export const vocabPopover = {
       }}
       @click=${(e) => {
         e.stopPropagation();
-        // Shift+click takes the others along, as Shift+Enter does.
-        act.pick(row, false, e.shiftKey);
+        onClick(e);
       }}
     >
-      <span class="igt-vocab-pop__main">
-        ${this._pairRowCells(row, {
-          multiVocab,
-          entryLink: linked ? `#/vocabularies/${row.vocabId}?item=${row.itemId}` : null,
-        })}
-        ${this._pairConfirms(row) ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
-        ${canTakeAll && i === activeIdx && row.itemId
-          ? html`<span
-              class="igt-vocab-pop__take-all"
-              role="button"
-              tabindex="-1"
-              title=${allTitle}
-              @click=${(e) => {
-                e.stopPropagation();
-                act.pick(row, false, true);
-              }}
-              >all ×${others.length + 1}</span
-            >`
-          : nothing}
-        ${linked
-          ? html`<span
-              class="igt-vocab-pop__x"
-              role="button"
-              tabindex="-1"
-              @click=${(e) => {
-                e.stopPropagation();
-                this._toggleVocab(tokenId, row.item, true);
-              }}
-              >unlink</span
-            >`
-          : nothing}
-      </span>
-      ${detail && detail !== row.value
-        ? html`<span class="igt-vocab-pop__detail">${detail}</span>`
-        : nothing}
+      ${main}
     </button>`;
+  },
+
+  // "all ×N" on the active row: link the other unlinked tokens reading the same.
+  _takeAllMark(title, count, onClick) {
+    return html`<span
+      class="igt-vocab-pop__take-all"
+      role="button"
+      tabindex="-1"
+      title=${title}
+      @click=${(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      >all ×${count}</span
+    >`;
+  },
+
+  _unlinkMark(onClick) {
+    return html`<span
+      class="igt-vocab-pop__x"
+      role="button"
+      tabindex="-1"
+      @click=${(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      >unlink</span
+    >`;
+  },
+
+  // A word's or an expression's list: the vocabulary's entries ranked
+  // against the form or the typed search (vocabRank.js), grouped by headword,
+  // capped, and the row the keyboard starts on.
+  _entryList(activeVocab, formText, kind, search, currentItem) {
+    const numIdx = activeVocab ? this._itemNumbersFor(activeVocab.id) : null;
+    // Ranked by vocabRank.js: what this form was linked to before comes
+    // first, then form-match tiers; a typed search ranks against the typed
+    // text alone.
+    const isMwe = kind === 'mwe';
+    const precForm = isMwe ? formText : this._precedentForm(formText, kind);
+    const items = rankVocabItems(
+      (activeVocab?.items || []).map((it) => ({
+        ...it,
+        _detail: this._vocabItemDetail(it, activeVocab),
+        _sub: numIdx ? numIdx.get(it.id) : null,
+      })),
+      {
+        form: formText || '',
+        search,
+        // Precedent is tallied per word or morpheme form; the joined form of
+        // a multi-word expression has none.
+        precedent: isMwe
+          ? null
+          : precedentCounts(this._precedentTally(), kind, precForm, SLOT_LINK),
+      },
+    );
+    // In MWE mode the phrase-typed entries come first, in their ranked order.
+    // Single-word entries stay listed: a fixed spelling can be what is wanted.
+    if (isMwe) {
+      const typeOf = activeVocab
+        ? (it) => this._vocabMemoFor(activeVocab.id).morphTypeOf(it.id)
+        : (it) => it.metadata?.morphType;
+      const phrases = items.filter((it) => isMweType(typeOf(it)));
+      const others = items.filter((it) => !isMweType(typeOf(it)));
+      items.length = 0;
+      for (const it of phrases) items.push(it);
+      for (const it of others) items.push(it);
+    }
+    if (currentItem) {
+      const i = items.findIndex((it) => it.id === currentItem.id);
+      if (i > 0) {
+        const [x] = items.splice(i, 1);
+        items.unshift(x);
+      }
+    }
+    // The candidates read like the dictionary: each headword once, its senses
+    // under it, numbered; a headword that only carries senses is shown for
+    // context, dimmed. Each row keeps its rank.
+    const grouped = activeVocab
+      ? groupRankedByHeadword(items, activeVocab.items || [], this._senseTreeFor(activeVocab.id))
+      : items.map((it) => ({ item: it, depth: 0 }));
+    const entryRows = grouped.slice(0, 30).map((r) => ({
+      ...r.item,
+      // A row shown only for context never went through the ranking, so it
+      // arrives undecorated: give it the same number and detail line, or a
+      // headword reads like a lone entry.
+      _sub: r.item._sub ?? (numIdx ? numIdx.get(r.item.id) : null),
+      _detail: r.item._detail ?? this._vocabItemDetail(r.item, activeVocab),
+      _depth: r.depth,
+      _context: !!r.context,
+    }));
+    // What the cap left out, counted in candidates: a headword drawn only
+    // as context above its senses was never one.
+    const truncated = items.length - entryRows.filter((r) => !r._context).length;
+    // Where the keyboard lands before it is moved: the best-ranked candidate
+    // that is not a headword standing over one of its own same-form senses
+    // in the list. Such a headword ranks level with its senses (same form,
+    // same tier) and, created first by an import, would win the tie on id;
+    // the auto-linker drops it for the same reason (dropCoveredHeadwords).
+    // A headword the form was linked to before keeps its place: precedent is
+    // a person's own choice. Every row stays selectable by arrow or click:
+    // linking to a headword is the user's call, just never the one Enter
+    // makes on its own.
+    const rankedIds = new Set(items.map((it) => it.id));
+    const tree = activeVocab ? this._senseTreeFor(activeVocab.id) : null;
+    const covered = (it) =>
+      it._tier !== TIERS.PRECEDENT &&
+      (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
+    const first = items.find((it) => !covered(it)) ?? items[0];
+    const best = entryRows.findIndex((r) => !r._context && r.id === first?.id);
+    return { limited: entryRows, truncated, best };
   },
 
   // Morpheme type editor (popover footer row): metadata.morphType from FLEx's

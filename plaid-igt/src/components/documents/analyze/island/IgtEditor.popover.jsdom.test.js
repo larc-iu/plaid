@@ -50,8 +50,8 @@ describe('the popover entry list', () => {
     expect(head).toBeTruthy();
     expect(sense).toBeTruthy();
     // Grouping the list by headword only reads as grouping if a sense indents.
-    expect(head.style.marginLeft).toBe('');
-    expect(sense.style.marginLeft).toBe('14px');
+    expect(head.style.getPropertyValue('--igt-depth')).toBe('');
+    expect(sense.style.getPropertyValue('--igt-depth')).toBe('1');
   });
 });
 

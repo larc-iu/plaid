@@ -23,6 +23,7 @@ import { PROV, PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { collationKey, compareText } from '@ui/domain/collation.js';
 import {
   entryFieldFor,
+  isTrustedLink,
   PRECEDENT_SOURCE,
   TAGSET_SOURCE,
   VOCAB_ENTRY_SOURCE,
@@ -36,9 +37,11 @@ import { rankVocabItems } from './vocabRank.js';
 const DETAIL = PROV.detailKey;
 const SOURCE = PROV.sourceKey;
 
-/** Whether a field records glosses: its name, the language left out, says so. */
-export const isGlossLikeField = (name) =>
-  /gloss/i.test(parseFieldName(name).base.replace(/[^A-Za-z]/g, ''));
+/**
+ * Whether a field records glosses: its name, the language left out, says so
+ * ("Gloss", "Glosa", "Glose", "Gloss (es)").
+ */
+export const isGlossLikeField = (name) => /glos/i.test(parseFieldName(name).base);
 
 /**
  * What the picker reads of one vocabulary: its items, the sense tree and
@@ -76,7 +79,7 @@ export const pickerLexicons = (lexicons) =>
 // (provDetail.valueLinks, a list of { value, item, prob }), keeping only
 // entries the vocabularies still hold (an archive import or a merge renumbers
 // items the record still names).
-export function valueLinksOf(span, itemExists = null) {
+function valueLinksOf(span, itemExists = null) {
   const links = span?.metadata?.[DETAIL]?.valueLinks;
   if (!Array.isArray(links)) return [];
   return links.filter(
@@ -103,11 +106,6 @@ export function pickerFieldOf(morph, morphFields) {
 // Tiers, in the order the list shows them.
 const T = { CURRENT: 0, MODEL: 1, OWN: 2, PRECEDENT: 3, LEXICON: 4, TAGSET: 5 };
 
-// A person's link (made or confirmed by one) puts its own sense above
-// precedent, as the placeholder guess does.
-const isTrusted = (v) =>
-  !!v && (v.prov == null || v.prov === PROV_STATES.HUMAN || v.prov === PROV_STATES.VERIFIED);
-
 /**
  * The rows for a morpheme.
  *
@@ -123,7 +121,15 @@ const isTrusted = (v) =>
  * @param {Function} [args.detailOf] (item, lexicon) => the entry's detail line,
  *   for a search that matches it
  * @param {number} [args.cap] how many rows to keep
+ * @param {boolean} [args.keepPersonValue] the chip's rows: over a value a
+ *   person wrote or confirmed, a sense row links and keeps that value, and
+ *   shows the sense's own as `senseValue`
  * @returns {{ rows: object[], more: number }}
+ *
+ * A row's entry is `named` when a source names it (the current link, a
+ * producer's valueLinks, the lexicon). A row from a source that names none
+ * carries the current link only to merge with the row of the same value, and
+ * a pick of it leaves the link as it is.
  */
 export function pairRows({
   morph,
@@ -136,6 +142,7 @@ export function pairRows({
   search = '',
   detailOf = null,
   cap = Infinity,
+  keepPersonValue = false,
 }) {
   const byId = lexicons.byId ?? indexOf(lexicons);
   const current = morph?.vocabItem && byId.has(morph.vocabItem.id) ? morph.vocabItem : null;
@@ -182,6 +189,7 @@ export function pairRows({
         context: false,
         source: null,
         linkSource: null,
+        named: false,
       };
       rows.set(key, r);
     }
@@ -208,7 +216,7 @@ export function pairRows({
 
   // The current row.
   if (current || currentValue) {
-    const r = add(currentId, currentValue, T.CURRENT, { current: true });
+    const r = add(currentId, currentValue, T.CURRENT, { current: true, named: !!current });
     // What a confirm of the current row would act on.
     r.linkState = current?.prov ?? null;
     r.valueMeta = span?.metadata ?? null;
@@ -227,6 +235,7 @@ export function pairRows({
         ...(prob != null ? { prob } : {}),
         source: producer,
         linkSource: producer,
+        named: true,
       });
     }
     // Alternatives that name no entry, or whose entry is gone, keep the link.
@@ -301,6 +310,7 @@ export function pairRows({
   for (const e of lexRows) {
     const r = addPair(e.id, e.value, T.LEXICON, {
       lexicon: true,
+      named: true,
       source: e.value ? VOCAB_ENTRY_SOURCE : null,
     });
     if (r && r.tier === T.LEXICON) {
@@ -309,7 +319,7 @@ export function pairRows({
     }
   }
   // A person's link: its own sense ranks above precedent.
-  if (current && isTrusted(current)) {
+  if (current && isTrustedLink(current)) {
     const hit = byId.get(currentId);
     const own = rows.get(`${currentId}\u0000${senseValue(hit.item, hit.lx)}`);
     if (own && own.tier > T.OWN) own.tier = T.OWN;
@@ -328,6 +338,25 @@ export function pairRows({
   }
 
   let list = [...rows.values()];
+  // From the chip, a sense over a value a person wrote or confirmed links and
+  // keeps that value. The row shows the value it keeps.
+  const personValue =
+    keepPersonValue &&
+    currentValue !== '' &&
+    [PROV_STATES.HUMAN, PROV_STATES.VERIFIED].includes(provState(span?.metadata));
+  if (personValue) {
+    const kept = new Map();
+    for (const r of list) {
+      if (r.named && r.itemId && !r.current && r.value !== currentValue) {
+        r.senseValue = r.value;
+        r.value = currentValue;
+        r.key = `${r.itemId}\u0000${currentValue}`;
+      }
+      const had = kept.get(r.key);
+      if (!had || r.tier < had.tier) kept.set(r.key, r);
+    }
+    list = [...kept.values()];
+  }
   if (enforcing) {
     // As listAlternatives: a value admitted only because it looks lexical has
     // to have been used more than once to be offered.
@@ -339,8 +368,12 @@ export function pairRows({
   if (searching) {
     list = list.filter((r) => r.lexicon || (r.value !== '' && collationKey(r.value).startsWith(q)));
   }
+  // Under an enforcing tagset, the senses whose value it refuses come after
+  // its own values.
+  const tierOf = (r) =>
+    enforcing && r.tier === T.LEXICON && r.value === '' ? T.TAGSET + 1 : r.tier;
   list.sort((a, b) => {
-    if (a.tier !== b.tier) return a.tier - b.tier;
+    if (tierOf(a) !== tierOf(b)) return tierOf(a) - tierOf(b);
     if (a.tier === T.MODEL) {
       const d = (b.prob ?? -1) - (a.prob ?? -1);
       if (d) return d;
@@ -356,7 +389,7 @@ export function pairRows({
       r.context = false;
     }
     // What the pick writes, against what is there now.
-    r.linkChange = r.itemId != null && r.itemId !== currentId;
+    r.linkChange = r.named && r.itemId != null && r.itemId !== currentId;
     r.valueChange = r.value !== '' && r.value !== currentValue;
     r.pair = true;
   }

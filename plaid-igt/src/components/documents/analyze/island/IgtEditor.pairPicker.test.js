@@ -184,7 +184,7 @@ describe('the two doors', () => {
     const head = items.find((r) => r.classList.contains('is-context'));
     expect(head?.querySelector('.igt-pair__entry').textContent.trim()).toBe('cat1');
     const sense = items.find((r) => r.textContent.includes('jazzman'));
-    expect(sense.style.paddingLeft).toBe('20px');
+    expect(sense.style.getPropertyValue('--igt-depth')).toBe('1');
   });
 
   it('leave a field that is not a gloss its plain list of values', async () => {
@@ -299,7 +299,7 @@ describe('a pick from the chip', () => {
     expect(chipRows()[0]).toEqual(['', 'cat1.1']);
     key(host.querySelector('.igt-vocab-pop__search'), 'Enter');
     await settle(6);
-    expect(kinds(client)).toEqual(['vocabLinks.patchMetadata']);
+    expect(kinds(client)).toEqual(['vocabLinks.patchMetadata', 'batch.submit']);
     expect(morph(doc).vocabItem.prov).toBe('verified');
   });
 
@@ -403,5 +403,130 @@ describe('a governed gloss cell', () => {
     // "feline" and "jazzman" are not tags: the senses stay, valueless.
     expect(altRows()).toContainEqual(['', 'cat1.2']);
     expect(altRows().some(([v]) => v === 'jazzman')).toBe(false);
+  });
+});
+
+// The review of the first build (REV14-PAIR, rulings 2026-10-21).
+describe('what a pick leaves alone', () => {
+  const rowWith = (selector, value, entry) =>
+    [...document.querySelectorAll(selector)].find(
+      (r) =>
+        (r.querySelector('.igt-pair__value')?.textContent.trim() ?? '') === value &&
+        (r.querySelector('.igt-pair__entry')?.textContent.replace(/\s+/g, '') ?? '') === entry,
+    );
+
+  it('a sense with no value of its own moves the link and leaves the gloss unconfirmed (chip)', async () => {
+    const items = structuredClone(ITEMS);
+    delete items.find((i) => i.id === 'c2').metadata.gloss;
+    const { doc } = mount({ items });
+    await settle(4);
+    openChip('m-2');
+    click(rowWith('.igt-vocab-pop__item', '', 'cat1.2'));
+    await settle(6);
+    expect(morph(doc).vocabItem.id).toBe('c2');
+    expect(morph(doc).annotations.Gloss.value).toBe('feline');
+    expect(morph(doc).annotations.Gloss.metadata.provConfirmed).toBeUndefined();
+  });
+
+  it('a sense whose value the tagset refuses does the same from Alt+Down', async () => {
+    const { doc } = mount({
+      tagset: { mode: 'closed', values: [{ value: 'DEF' }, { value: 'PL' }] },
+    });
+    await settle(4);
+    focus(cell('ma:m-2:Gloss'));
+    click(rowWith('.igt-alts__item', '', 'cat1.2'));
+    await settle(6);
+    expect(morph(doc).vocabItem.id).toBe('c2');
+    expect(morph(doc).annotations.Gloss.value).toBe('feline');
+    expect(morph(doc).annotations.Gloss.metadata.provConfirmed).toBeUndefined();
+  });
+
+  it('from the chip, a sense over a gloss a person wrote links and keeps the gloss', async () => {
+    const { doc } = mount();
+    await settle(4);
+    await doc.updateMorphemeSpan('m-4', 'Gloss', 'cat.PL');
+    await settle(4);
+    openChip('m-4');
+    // The row shows the gloss it keeps, the sense's own beside it.
+    const row = rowWith('.igt-vocab-pop__item', 'cat.PL', 'cat1.1');
+    expect(row.querySelector('.igt-pair__sense').textContent).toBe('feline');
+    click(row);
+    await settle(6);
+    expect(morph(doc, 3).vocabItem.id).toBe('c1');
+    expect(morph(doc, 3).annotations.Gloss.value).toBe('cat.PL');
+    // From Alt+Down the same pick writes both: the person is choosing the gloss.
+    openAlts(cell('ma:m-4:Gloss'));
+    expect(rowWith('.igt-alts__item', 'jazzman', 'cat1.2')).toBeTruthy();
+  });
+
+  it('a row with no entry shows none, keeps the link and does not confirm it', async () => {
+    const { doc, client } = mount();
+    await settle(4);
+    await doc.updateMorphemeSpan('m-4', 'Gloss', 'tom');
+    await settle(4);
+    openAlts(cell('ma:m-2:Gloss'));
+    const tom = rowWith('.igt-alts__item', 'tom', '');
+    expect(tom).toBeTruthy();
+    click(tom);
+    await settle(6);
+    expect(morph(doc).annotations.Gloss.value).toBe('tom');
+    expect(morph(doc).vocabItem).toMatchObject({ id: 'c1', prov: 'machine' });
+    expect(kinds(client).some((k) => k.startsWith('vocabLinks'))).toBe(false);
+  });
+
+  it('a typed gloss leaves the model’s link to the other sense, still unconfirmed (as ruled)', async () => {
+    const { doc } = mount();
+    await settle(4);
+    const el = cell('ma:m-2:Gloss');
+    focus(el);
+    type(el, 'jazzman');
+    el.dispatchEvent(new Event('blur', { bubbles: true }));
+    await settle(6);
+    expect(morph(doc).annotations.Gloss.value).toBe('jazzman');
+    expect(morph(doc).vocabItem).toMatchObject({ id: 'c1', prov: 'machine' });
+  });
+});
+
+describe('the two doors dress a row alike', () => {
+  it('Alt+Down marks the current pair to accept, starts on it, and its tooltip gives no count', async () => {
+    mount();
+    await settle(4);
+    expect(cell('ma:m-2:Gloss').title).toMatch(/to list senses and values$/);
+    openAlts(cell('ma:m-2:Gloss'));
+    const active = document.querySelector('.igt-alts__item.is-active');
+    expect(active.textContent).toContain('feline');
+    expect(active.querySelector('.igt-vocab-pop__ok')).not.toBeNull();
+  });
+
+  it('Alt+Down starts on the first sense, past a headword shown for its senses', async () => {
+    mount();
+    await settle(4);
+    openAlts(cell('ma:m-4:Gloss'));
+    const active = document.querySelector('.igt-alts__item.is-active');
+    expect(active.classList.contains('is-context')).toBe(false);
+    expect(active.querySelector('.igt-pair__entry').textContent.replace(/\s+/g, '')).toBe('cat1.1');
+  });
+
+  it('labels a pick in History the same from either door', async () => {
+    const { client } = mount();
+    await settle(4);
+    openChip('m-4');
+    click(
+      [...host.querySelectorAll('.igt-vocab-pop__item')].find(
+        (r) => r.querySelector('.igt-pair__value')?.textContent === 'jazzman',
+      ),
+    );
+    await settle(6);
+    const op = client.calls.filter((c) => c.kind === 'beginOperation').at(-1);
+    expect(op.args[0]).toMatch(/^Gloss of .*: jazzman$/);
+  });
+
+  it('names the vocabulary tabs for where + Create puts a new entry', async () => {
+    const { doc } = mount();
+    doc.vocabularies.v2 = { id: 'v2', name: 'Loans', items: [], vocabLinks: [] };
+    await settle(4);
+    openChip('m-2');
+    const tab = host.querySelector('button.igt-vocab-pop__vocabtab');
+    expect(tab?.title).toBe('Create in “Loans”');
   });
 });

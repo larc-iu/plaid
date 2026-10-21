@@ -20,7 +20,9 @@ export const alternatives = {
   _openAlts(el, { explicit = false } = {}) {
     const items = this._altsItems(el, '');
     if (!items.length) return;
-    this._alts = { cellKey: el.dataset.cellKey, active: 0, filter: '', visible: [], explicit };
+    // A pair list starts where the chip's does (pairPicker.js).
+    const active = items[0]?.pair ? this._pairDefaultRow(items) : 0;
+    this._alts = { cellKey: el.dataset.cellKey, active, filter: '', visible: [], explicit };
     this._altsPos = this._computeAltsPos(el, items.length);
     this._renderAlts();
   },
@@ -60,9 +62,9 @@ export const alternatives = {
   },
 
   // What a pick of a pair row sets the cell to: its value, or for a row with
-  // none the stored value, which it leaves.
+  // none what the cell holds.
   _pairValue(el, it) {
-    return it.value !== '' ? it.value : (el.dataset.orig ?? '');
+    return it.value !== '' ? it.value : el.value;
   },
 
   // Returns true when the key was handled by the list.
@@ -127,8 +129,7 @@ export const alternatives = {
           : delims
             ? replacePartAtCaret(el.value, el.selectionStart, delims, it.value).value
             : it.value;
-      const acts =
-        !!it && (would !== el.value || (it.pair && (it.linkChange || this._pairConfirms(it))));
+      const acts = !!it && (it.pair ? this._pairActs(it, el.value) : would !== el.value);
       const completing = typed !== '' && enforcing && !isValueAllowed(typed, el.igtTagset ?? null);
       if (!acts || !(this._alts.steered || completing)) {
         this._closeAlts();
@@ -292,7 +293,7 @@ export const alternatives = {
                 class="igt-alts__item ${it.pair ? 'igt-pair' : ''} ${i === a.active
                   ? 'is-active'
                   : ''} ${it.context ? 'is-context' : ''}"
-                style=${it.depth ? `padding-left:${6 + it.depth * 14}px` : ''}
+                style=${it.depth ? `--igt-depth:${it.depth}` : ''}
                 role="option"
                 aria-selected=${i === a.active}
                 @click=${() => this._pickAltByKey(cellKey, it)}

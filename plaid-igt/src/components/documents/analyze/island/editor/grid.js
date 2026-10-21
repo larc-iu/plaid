@@ -3,7 +3,6 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
 import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
-import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { KINDS } from '@/domain/precedent';
 import { extractAnalysis } from '@/domain/analysisMemory.js';
 import {
@@ -354,15 +353,7 @@ export const grid = {
         ${ctx.morphFields.map((name) => {
           // The tagset as this cell reads its gloss: an affix's with no
           // fall-back, a stem's together with the word's other stems' glosses.
-          const reading = morphemeGlossReading(
-            siblings.map((m) => ({
-              morphType: m.morphType,
-              form: morphFormOf(m),
-              gloss: m.annotations?.[name]?.value ?? '',
-            })),
-            siblings.indexOf(morph),
-          );
-          const tagset = readingTagset(this._tagsetFor('morpheme', name), reading);
+          const { reading, tagset } = this._morphFieldReading(morph, word, name);
           const valueList = () =>
             this._alternatives({
               precedent: this._precedentTally(),
@@ -390,27 +381,25 @@ export const grid = {
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',
                 // As a word's gloss (DocumentModel.resendsByEntity). A row of
-                // the pair picker (`pair`) writes the value and the link in one
-                // batch, under the link's own label when the value stays.
+                // the pair picker (`pair`) goes through the picker's one path,
+                // which labels and batches it (pairPicker.js _pickPairRow).
                 apply: (v, meta, pair = null) =>
-                  this.doc.resendsByEntity(() =>
-                    this.doc.labelled(
-                      !pair || v !== (morph.annotations?.[name]?.value ?? '')
-                        ? this._editLabel(
+                  pair
+                    ? this._pickPairRow(morph.id, name, pair, { typed: v })
+                    : this.doc.resendsByEntity(() =>
+                        this.doc.labelled(
+                          this._editLabel(
                             name,
                             this._morphemeSubject(morph, word, siblings),
                             index,
                             v,
-                          )
-                        : null,
-                      () =>
-                        pair
-                          ? this._writePair(morph, name, pair, { value: v, metadata: meta })
-                          : this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
+                          ),
+                          () =>
+                            this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
                               adopted: meta != null,
                             }),
-                    ),
-                  ),
+                        ),
+                      ),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
                 fieldName: name,

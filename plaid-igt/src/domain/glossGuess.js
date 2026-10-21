@@ -96,7 +96,7 @@ export function entryFieldFor(field, metadata, { fieldLang = null, entryFields =
 const TRUSTED_LINK_STATES = new Set([PROV_STATES.HUMAN, PROV_STATES.VERIFIED]);
 
 /** Whether a derived vocabItem's LINK was made or confirmed by a person. */
-const isTrustedLink = (vocabItem) =>
+export const isTrustedLink = (vocabItem) =>
   !!vocabItem && TRUSTED_LINK_STATES.has(vocabItem.prov ?? PROV_STATES.HUMAN);
 
 // The linked entry's own value for the same-named field. An entry's fields

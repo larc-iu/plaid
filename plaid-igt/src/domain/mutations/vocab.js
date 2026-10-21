@@ -260,42 +260,10 @@ export const vocabMutations = {
       this.setError('Word or morpheme not found');
       return false;
     }
-    const targetVocabId = targetVocab.id;
-    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(
-      this._vocabularies,
-      targetTokenId,
-    );
-    const stamp = metadata || this.createStamp;
-    const cachedType = morphTypeCache(this, creates)(targetTokenId, targetVocabId, vocabItemId);
-    // A morpheme made here is made with the type; one already there takes it
-    // in the link's batch.
-    if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
-    const patchType = cachedType && !creates.length;
-    const linkId = pendingId();
-    // The shape a document read gives a link's entry: id, layer, and form.
-    const itemSnapshot = { id: vocabItem.id, layer: targetVocabId, form: vocabItem.form };
-
+    const relink = this._planRelink(targetTokenId, creates, targetVocab, vocabItem, metadata);
     this._applyRawPatch((next, info, vocabs) => {
       this._showMorphemes(info, creates);
-      if (priorLink && priorVocabId && vocabs[priorVocabId]) {
-        vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-          (l) => l.id !== priorLink.id,
-        );
-      }
-      const tv = vocabs[targetVocabId];
-      if (tv) {
-        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        tv.vocabLinks.push({
-          id: linkId,
-          tokens: [targetTokenId],
-          vocabItem: itemSnapshot,
-          ...(stamp ? { metadata: stamp } : {}),
-        });
-      }
-      if (patchType) {
-        const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
-        if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-      }
+      this._showRelink(info, vocabs, relink);
     });
 
     // One batch: the morpheme an unanalyzed word needs, the link that
@@ -307,50 +275,115 @@ export const vocabMutations = {
       this._queueWrite(label, async () => {
         const ids = new Map();
         let morphemes;
-        let linkAt;
+        let readLink;
         const results = await this._client.batched(async (b) => {
           morphemes = this._queueMorphemes(b, creates);
-          if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-          b.vocabLinks.create(
-            settledId(vocabItemId),
-            [morphemes.tokenRef(targetTokenId)],
-            stamp || undefined,
-            undefined,
-            { id: linkId },
-          );
-          linkAt = b.ref().$ref;
-          if (patchType) {
-            b.tokens.patchMetadata(settledId(targetTokenId), [
-              { op: 'set', path: ['morphType'], value: cachedType },
-            ]);
-          }
+          readLink = this._queueRelink(b, relink, morphemes.tokenRef);
         });
         morphemes.read(results, ids);
-        ids.set(linkId, createdId(results[linkAt]));
+        readLink(results, ids);
         this._settle(ids);
       }),
     );
+  },
+
+  // A token's link replaced by one to `vocabItem`, in three parts so a write
+  // that makes other changes in the same batch can use it: the plan (the
+  // prior link, a pending id for the new one, the morph-type cache, which a
+  // morpheme made in `creates` is made with), the patch, and the send.
+  _planRelink(tokenId, creates, vocab, vocabItem, stamp = null) {
+    const { link: prior, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
+    const cachedType = morphTypeCache(this, creates)(tokenId, vocab.id, vocabItem.id);
+    // A morpheme made here is made with the type; one already there takes it
+    // in the link's batch.
+    if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
+    return {
+      tokenId,
+      prior,
+      priorVocabId,
+      vocabId: vocab.id,
+      // The shape a document read gives a link's entry: id, layer, and form.
+      item: { id: vocabItem.id, layer: vocab.id, form: vocabItem.form },
+      linkId: pendingId(),
+      stamp: stamp || this.createStamp,
+      cachedType,
+      patchType: !!cachedType && !creates.length,
+    };
+  },
+
+  _showRelink(info, vocabs, plan) {
+    if (plan.prior && vocabs[plan.priorVocabId]) {
+      vocabs[plan.priorVocabId].vocabLinks = (vocabs[plan.priorVocabId].vocabLinks || []).filter(
+        (l) => l.id !== plan.prior.id,
+      );
+    }
+    const tv = vocabs[plan.vocabId];
+    if (tv) {
+      if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+      tv.vocabLinks.push({
+        id: plan.linkId,
+        tokens: [plan.tokenId],
+        vocabItem: plan.item,
+        ...(plan.stamp ? { metadata: plan.stamp } : {}),
+      });
+    }
+    if (plan.patchType) {
+      const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === plan.tokenId);
+      if (m) m.metadata = { ...(m.metadata || {}), morphType: plan.cachedType };
+    }
+  },
+
+  // Queue the relink on batch `b`. Answers `read(results, ids)`, which records
+  // the new link's id.
+  _queueRelink(b, plan, tokenRef) {
+    if (plan.prior) b.vocabLinks.delete(settledId(plan.prior.id));
+    b.vocabLinks.create(
+      settledId(plan.item.id),
+      [tokenRef(plan.tokenId)],
+      plan.stamp || undefined,
+      undefined,
+      { id: plan.linkId },
+    );
+    const at = b.ref().$ref;
+    if (plan.patchType) {
+      b.tokens.patchMetadata(settledId(plan.tokenId), [
+        { op: 'set', path: ['morphType'], value: plan.cachedType },
+      ]);
+    }
+    return (results, ids) => ids.set(plan.linkId, createdId(results[at]));
   },
 
   /**
    * Set a morpheme's link and value together, a pick from the pair picker:
    * one patch and one batch, so a refusal leaves neither half.
    *
-   * `field` and `value` are the picker field and its new value, `metadata` the
-   * span's stamp (an adoption on an empty field, else null for an ordinary
-   * write, which verifies a machine value). `itemId` is the entry to link,
-   * undefined to leave the link as it is, `linkStamp` the new link's stamp
-   * (null: the writer's own). `fill` holds other fields the pick sets,
-   * `[{ field, value, metadata }]`. A half the pick leaves as it is gets the
-   * writer's confirm stamp when there is something for them to confirm: the
-   * pick is a person saying "this sense with this value". `adopted` records
-   * the write as a guess adoption.
+   * `field` and `value` are the picker field and its new value (no field: the
+   * link alone), `metadata` the span's stamp (an adoption on an empty field,
+   * else null for an ordinary write, which verifies a machine value).
+   * `itemId` is the entry the row names, undefined to leave the link as it
+   * is, `linkStamp` the new link's stamp (null: the writer's own). `fill`
+   * holds other fields the pick sets, `[{ field, value, metadata }]`.
+   *
+   * A half the pick names and leaves as it is gets the writer's confirm stamp
+   * when there is something for them to confirm: the pick is a person saying
+   * "this sense with this value". `confirmValue` false: the row showed no
+   * value of its own, so the value is not confirmed. A link the row does not
+   * name is left alone. `adopted` records the write as a guess adoption.
    */
   async setMorphemePair(
     morphId,
-    { field, value, metadata = null, itemId, linkStamp = null, fill = [], adopted = false },
+    {
+      field = null,
+      value = '',
+      metadata = null,
+      itemId,
+      linkStamp = null,
+      fill = [],
+      confirmValue = true,
+      adopted = false,
+    },
   ) {
-    const fields = [{ field, value, metadata }, ...fill];
+    const fields = [...(field ? [{ field, value, metadata, main: true }] : []), ...fill];
     const layers = fields.map((f) => findSpanLayer(this, 'morpheme', f.field));
     const missing = fields.find((f, i) => !layers[i]);
     if (missing) {
@@ -365,11 +398,13 @@ export const vocabMutations = {
         return false;
       }
     }
-    const stored = (layers[0].spans || []).find(
-      (s) => Array.isArray(s.tokens) && s.tokens.includes(this._currentMorphemeId(morphId)),
-    );
+    const stored = field
+      ? (layers[0].spans || []).find(
+          (s) => Array.isArray(s.tokens) && s.tokens.includes(this._currentMorphemeId(morphId)),
+        )
+      : null;
     const label =
-      value && (stored?.value ?? '') !== value
+      field && value && (stored?.value ?? '') !== value
         ? `Failed to update ${field}`
         : 'Failed to link the entry';
     if (!this._canWrite(label)) return false;
@@ -391,7 +426,7 @@ export const vocabMutations = {
         spanPlans.push({ layerId: layers[i].id, plan });
         return;
       }
-      if (i > 0) return;
+      if (!f.main || !confirmValue) return;
       const span = (layers[i].spans || []).find(
         (s) => Array.isArray(s.tokens) && s.tokens.includes(id),
       );
@@ -409,19 +444,13 @@ export const vocabMutations = {
       }
     });
 
-    // The link: replaced, or confirmed when it stays.
-    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, id);
-    const relink = target && priorLink?.vocabItem?.id !== itemId ? target : null;
-    const linkConfirm = !relink && priorLink ? this.confirmStamp(priorLink.metadata) : null;
-    const stamp = linkStamp || this.createStamp;
-    const linkId = relink ? pendingId() : null;
-    let cachedType = null;
-    if (relink) {
-      cachedType = morphTypeCache(this, creates)(id, relink.vocab.id, itemId);
-      if (cachedType)
-        creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
-    }
-    const patchType = cachedType && !creates.length;
+    // The link: replaced, or confirmed when the row names the one there.
+    const { link: prior, vocabId: priorVocabId } = findPriorLink(this._vocabularies, id);
+    const relink =
+      target && prior?.vocabItem?.id !== itemId
+        ? this._planRelink(id, creates, target.vocab, target.item, linkStamp)
+        : null;
+    const linkConfirm = target && !relink && prior ? this.confirmStamp(prior.metadata) : null;
     if (!spanPlans.length && !relink && !linkConfirm) return true;
 
     this._applyRawPatch((next, info, vocabs) => {
@@ -435,28 +464,9 @@ export const vocabMutations = {
           showSpan(info, 'morpheme', layerId, plan);
         }
       }
-      if (relink) {
-        if (priorLink && vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-            (l) => l.id !== priorLink.id,
-          );
-        }
-        const tv = vocabs[relink.vocab.id];
-        if (tv) {
-          if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-          tv.vocabLinks.push({
-            id: linkId,
-            tokens: [id],
-            vocabItem: { id: itemId, layer: relink.vocab.id, form: relink.item.form },
-            ...(stamp ? { metadata: stamp } : {}),
-          });
-        }
-        if (patchType) {
-          const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === id);
-          if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-        }
-      } else if (linkConfirm) {
-        const l = (vocabs[priorVocabId]?.vocabLinks || []).find((x) => x.id === priorLink.id);
+      if (relink) this._showRelink(info, vocabs, relink);
+      else if (linkConfirm) {
+        const l = (vocabs[priorVocabId]?.vocabLinks || []).find((x) => x.id === prior.id);
         if (l) l.metadata = mergeMetadata(l.metadata, linkConfirm);
       }
     });
@@ -469,7 +479,7 @@ export const vocabMutations = {
           const ids = new Map();
           let morphemes;
           const made = [];
-          let linkAt = null;
+          let readLink = null;
           const results = await this._client.batched(async (b) => {
             morphemes = this._queueMorphemes(b, creates);
             const token = morphemes.tokenRef(id);
@@ -487,24 +497,14 @@ export const vocabMutations = {
                 b.spans.patchMetadata(settledId(plan.span.id), metadataOps(plan.fragment));
               }
             }
-            if (relink) {
-              if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-              b.vocabLinks.create(settledId(itemId), [token], stamp || undefined, undefined, {
-                id: linkId,
-              });
-              linkAt = b.ref().$ref;
-              if (patchType) {
-                b.tokens.patchMetadata(settledId(id), [
-                  { op: 'set', path: ['morphType'], value: cachedType },
-                ]);
-              }
-            } else if (linkConfirm) {
-              b.vocabLinks.patchMetadata(settledId(priorLink.id), metadataOps(linkConfirm));
+            if (relink) readLink = this._queueRelink(b, relink, morphemes.tokenRef);
+            else if (linkConfirm) {
+              b.vocabLinks.patchMetadata(settledId(prior.id), metadataOps(linkConfirm));
             }
           });
           morphemes.read(results, ids);
           for (const [pending, at] of made) ids.set(pending, createdId(results[at]));
-          if (linkAt != null) ids.set(linkId, createdId(results[linkAt]));
+          readLink?.(results, ids);
           this._settle(ids);
         },
         undefined,

@@ -481,6 +481,41 @@ describe('setMorphemePair', () => {
     expect(morphOf(doc).vocabItem.id).toBe('i-sell');
   });
 
+  it('leaves alone a link the row does not name, and a value it does not show', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, {
+      gloss: { value: 'sell', metadata: MACHINE },
+      link: { item: 'i-sell', metadata: MACHINE },
+    });
+    // A value with no entry of its own: the machine link stays unconfirmed.
+    await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'trade' });
+    expect(kindsOf(client)).toEqual(['spans.update', 'spans.patchMetadata', 'batch.submit']);
+    expect(morphOf(doc).vocabItem.prov).toBe('machine');
+
+    // A sense with no value: the link moves, the machine value stays unconfirmed.
+    const other = makeFakeClient();
+    const doc2 = pairDoc(other, {
+      gloss: { value: 'sell', metadata: MACHINE },
+      link: { item: 'i-sell', metadata: MACHINE },
+    });
+    await doc2.setMorphemePair('m-1', {
+      field: 'Gloss',
+      value: 'sell',
+      itemId: 'i-sold',
+      confirmValue: false,
+    });
+    expect(kindsOf(other)).toEqual(['vocabLinks.delete', 'vocabLinks.create', 'batch.submit']);
+    expect(morphOf(doc2).annotations.Gloss.metadata.provConfirmed).toBeUndefined();
+  });
+
+  it('with no field, writes the link alone', async () => {
+    const client = makeFakeClient();
+    const doc = pairDoc(client, { link: { item: 'i-sell', metadata: MACHINE } });
+    await doc.setMorphemePair('m-1', { itemId: 'i-sell' });
+    expect(kindsOf(client)).toEqual(['vocabLinks.patchMetadata', 'batch.submit']);
+    expect(morphOf(doc).vocabItem.prov).toBe('verified');
+  });
+
   it('stamps a contributor’s pick as their contribution', async () => {
     const client = makeFakeClient();
     const raw = buildRawDoc();
