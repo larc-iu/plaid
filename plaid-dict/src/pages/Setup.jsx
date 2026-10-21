@@ -15,10 +15,10 @@ import {
   validateSetup,
 } from '@/domain/dictConfig';
 import {
+  NO_STATUS_FIELD,
   PUBLISHED,
   publicationCounts,
   publishAll,
-  publishKeyOfConfig,
   statusKeyOfConfig,
 } from '@/domain/publication';
 import { discoverExampleLayers } from '@/domain/exampleLayers';
@@ -294,7 +294,8 @@ export const Setup = () => {
 
   const runPublishAll = async () => {
     if (!items || publishing) return;
-    const key = publishKeyOfConfig(vocab?.config);
+    const key = statusKeyOfConfig(vocab?.config);
+    if (!key) return;
     setPublishing({ done: 0, total: counts.total - counts.published });
     // Shown at once. The server's own list replaces it when the run ends,
     // whether or not every write landed.
@@ -505,18 +506,22 @@ export const Setup = () => {
               <p className="mt-1 text-sm text-muted-foreground">
                 {counts.published.toLocaleString()} of {counts.total.toLocaleString()}.
               </p>
-              {(counts.published < counts.total || publishing) && (
-                <Button
-                  className="mt-3"
-                  variant="secondary"
-                  size="sm"
-                  disabled={!!publishing}
-                  onClick={runPublishAll}
-                >
-                  {publishing
-                    ? `Publishing ${publishing.done.toLocaleString()} of ${publishing.total.toLocaleString()}…`
-                    : 'Publish all'}
-                </Button>
+              {!statusKeyOfConfig(vocab?.config) ? (
+                <p className="mt-1 text-sm text-muted-foreground">{NO_STATUS_FIELD}</p>
+              ) : (
+                (counts.published < counts.total || publishing) && (
+                  <Button
+                    className="mt-3"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!!publishing}
+                    onClick={runPublishAll}
+                  >
+                    {publishing
+                      ? `Publishing ${publishing.done.toLocaleString()} of ${publishing.total.toLocaleString()}…`
+                      : 'Publish all'}
+                  </Button>
+                )
               )}
             </>
           )}

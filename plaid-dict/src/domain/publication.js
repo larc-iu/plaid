@@ -9,9 +9,9 @@
 //
 // The field is found by `statusFieldKey`, plaid-igt's own: the field whose
 // role is status, whatever it is called. A vocabulary with no such field has
-// nothing published until Publish all gives it one.
+// nothing published, and Publish all has nowhere to write.
 
-import { statusFieldKey, statusFieldSeed } from '@igt/domain/vocabDictionary.js';
+import { statusFieldKey } from '@igt/domain/vocabDictionary.js';
 import { IGT_NAMESPACE, readVocabFields } from '@igt/domain/igtConfig.js';
 import { metadataOps } from '@larc-iu/plaid-client';
 
@@ -22,15 +22,8 @@ export const statusKeyOf = (fields) => statusFieldKey(fields);
 /** The same, from a vocab layer's whole config. */
 export const statusKeyOfConfig = (config) => statusKeyOf(readVocabFields(config));
 
-/**
- * The key Publish all writes under: the status field's, else the one
- * plaid-igt's seed gives the vocabulary first.
- */
-export const publishKeyOf = (fieldsConfig) =>
-  statusFieldKey(fieldsConfig) ??
-  statusFieldKey(statusFieldSeed({ fieldsConfig, tagsets: {} }).fieldsConfig);
-/** The same, from a vocab layer's whole config. */
-export const publishKeyOfConfig = (config) => publishKeyOf(readVocabFields(config));
+/** The message Publish all refuses with when no field holds the Status role. */
+export const NO_STATUS_FIELD = 'No field has the Status role.';
 
 /**
  * The key every status read takes, from statusKeyOf: a string, or null for a
@@ -67,26 +60,23 @@ const BATCH_CHUNK = 200;
  * dictionary that does not involve a Bulk Edit field-replace in plaid-igt.
  * `onProgress({done, total})` fires after each chunk. Returns how many changed.
  *
- * A vocabulary with no field whose role is status gets plaid-igt's own seed
- * first, in the same operation: a value under a field the schema does not
- * name is invisible in plaid-igt, no control on the entry, nothing in Bulk
- * Edit. One that has it is written under that field's key.
+ * It writes under the key of the field holding the Status role. A
+ * vocabulary with none is refused before anything is written: a role is
+ * never given from a field's name, and one a maintainer cleared stays
+ * cleared.
  *
  * The schema and the entries are read FRESH, never from what the page loaded:
- * the two apps are meant to be open at once. `setConfig` replaces a namespace
- * key wholesale, so writing from a stale schema deleted whatever field or
- * tagset plaid-igt had added since. Read raw rather than through
- * `readTagsets`, which rebuilds each tagset and would drop anything it does
- * not know on the way back out. And core refuses a whole batch when one of
- * its entries is gone, so a stale entry list failed every chunk it touched.
+ * the two apps are meant to be open at once, and the status field may have
+ * changed since. And core refuses a whole batch when one of its entries is
+ * gone, so a stale entry list failed every chunk it touched.
  * An entry deleted while this runs does the same to its chunk, which is then
  * sent again without the entries that no longer exist.
  */
 export const publishAll = async (client, { vocabularyId, name, onProgress }) => {
   const layer = await client.vocabLayers.get(vocabularyId, true);
   const igt = layer?.config?.[IGT_NAMESPACE] ?? {};
-  const declared = statusFieldKey(igt.fields);
-  const key = declared ?? publishKeyOf(igt.fields);
+  const key = statusFieldKey(igt.fields);
+  if (!key) throw new Error(NO_STATUS_FIELD);
   const pending = (layer?.items || []).filter((it) => !isPublished(it, key));
   if (!pending.length) return 0;
   // A metadata PATCH is a list of path ops. One top-level set leaves every
@@ -99,11 +89,6 @@ export const publishAll = async (client, { vocabularyId, name, onProgress }) => 
   let done = 0;
   let changed = 0;
   await client.withOperation(`Publish every entry in "${name || 'vocabulary'}"`, async () => {
-    if (!declared) {
-      const seed = statusFieldSeed({ fieldsConfig: igt.fields, tagsets: igt.tagsets });
-      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', seed.tagsets);
-      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', seed.fieldsConfig);
-    }
     for (let i = 0; i < pending.length; i += BATCH_CHUNK) {
       let part = pending.slice(i, i + BATCH_CHUNK);
       try {

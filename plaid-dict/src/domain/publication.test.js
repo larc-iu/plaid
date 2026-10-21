@@ -80,7 +80,7 @@ describe('publishAll', () => {
       // What the SERVER holds right now, which is what publishAll must read.
       layer: {
         id: 'v',
-        config: { igt: { fields: { gloss: { inline: true } } } },
+        config: { igt: { fields: { gloss: { inline: true }, status: { role: 'status' } } } },
         items: [entry('a')],
       },
       vocabLayers: {
@@ -120,60 +120,18 @@ describe('publishAll', () => {
     ]);
   });
 
-  it('declares the Status field first on a vocabulary that has none', async () => {
-    // A value under a field the schema does not name is invisible in
-    // plaid-igt: no control on the entry, nothing in Bulk Edit.
-    const client = fakeClient();
-    await publishAll(client, { vocabularyId: 'v', name: 'Sena' });
-    expect(client.configs.map(([k]) => k)).toEqual(['tagsets', 'fields']);
-    expect(client.configs.find(([k]) => k === 'fields')[1].status).toEqual({
-      inline: false,
-      tagset: 'Status',
-      role: 'status',
-    });
-    expect(client.configs.find(([k]) => k === 'tagsets')[1].Status.mode).toBe('closed');
-    // One operation covers the schema write and the entries alike.
-    expect(client.operations).toEqual(['Publish every entry in "Sena"']);
-  });
-
-  it('keeps every field and tagset the server holds now, not what was cached', async () => {
-    // The catalog is loaded once at app start, and setConfig replaces a
-    // namespace key wholesale. Writing from the snapshot deleted whatever
-    // plaid-igt had added in the other tab since.
-    const client = fakeClient();
-    client.layer = {
-      id: 'v',
-      config: {
-        igt: {
-          fields: { gloss: { inline: true }, etymology: { inline: false } },
-          tagsets: { Register: { mode: 'closed', values: [{ value: 'formal' }] } },
-        },
-      },
-      items: [entry('a')],
-    };
-    await publishAll(client, { vocabularyId: 'v' });
-    const fields = client.configs.find(([k]) => k === 'fields')[1];
-    const tagsets = client.configs.find(([k]) => k === 'tagsets')[1];
-    expect(Object.keys(fields).sort()).toEqual(['etymology', 'gloss', 'status']);
-    expect(Object.keys(tagsets).sort()).toEqual(['Register', 'Status']);
-    // Verbatim, so a tagset key this app does not know survives the write.
-    expect(tagsets.Register).toEqual({ mode: 'closed', values: [{ value: 'formal' }] });
-  });
-
-  it('gives a "Status" field without the role the role, so no pair is made', async () => {
-    // plaid-igt's field editor rejects a duplicate case-insensitively, so a
-    // `status` beside a "Status" would be the very pair it refuses.
-    const client = fakeClient();
-    client.layer = {
-      id: 'v',
-      config: { igt: { fields: { Status: { inline: true } } } },
-      items: [entry('a')],
-    };
-    await publishAll(client, { vocabularyId: 'v' });
-    expect(client.configs.find(([k]) => k === 'fields')[1]).toEqual({
-      Status: { inline: true, role: 'status' },
-    });
-    expect(client.patched).toEqual([['a', { Status: 'published' }]]);
+  it('refuses on a vocabulary with no field holding the Status role, and writes nothing', async () => {
+    // A role is never given from a name, and a role a maintainer cleared
+    // stays cleared: Publish all has no field to write and says so.
+    for (const fields of [{ gloss: { inline: true } }, { Status: { inline: true } }]) {
+      const client = fakeClient();
+      client.layer = { id: 'v', config: { igt: { fields } }, items: [entry('a')] };
+      await expect(publishAll(client, { vocabularyId: 'v', name: 'Sena' })).rejects.toThrow(
+        'No field has the Status role',
+      );
+      expect(client.configs).toEqual([]);
+      expect(client.patched).toEqual([]);
+    }
   });
 
   it('leaves the schema alone when Status is already declared', async () => {

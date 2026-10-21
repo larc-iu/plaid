@@ -69,15 +69,11 @@ export const statusFieldKey = (fields) => {
  * missing. Both halves always come back, so a caller never asks which changed
  * (writing a null half once wiped a field inventory).
  *
- * Called where a vocabulary is CREATED, by the New vocabulary screen
- * (VocabularyDetail) and the project setup wizard (executeSetup), and by
- * plaid-dict's Publish all on a vocabulary with no field whose role is status,
- * since a value under an undeclared field is invisible in plaid-igt. A field
+ * Called only where a vocabulary is CREATED, by the New vocabulary screen
+ * (VocabularyDetail) and the project setup wizard (executeSetup). A field
  * already holding the role is left as its owner arranged it, and a Status
  * tagset already there keeps its own values and gains the three the field is
- * written with. A field of the seed's own key in another case ("Status") is
- * given the role rather than joined by a `status` beside it, a pair the field
- * editor refuses.
+ * written with.
  */
 export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
   if (statusFieldKey(fieldsConfig)) {
@@ -98,16 +94,6 @@ export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
         ],
       }
     : statusTagset();
-  const taken = Object.keys(fieldsConfig || {}).find((k) => k.toLowerCase() === STATUS_FIELD);
-  if (taken) {
-    return {
-      fieldsConfig: {
-        ...fieldsConfig,
-        [taken]: { ...fieldsConfig[taken], role: ENTRY_ROLES.STATUS },
-      },
-      tagsets: tagsets ?? {},
-    };
-  }
   return {
     fieldsConfig: {
       ...(fieldsConfig || {}),

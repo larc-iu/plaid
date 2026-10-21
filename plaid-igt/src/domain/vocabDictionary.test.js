@@ -104,12 +104,6 @@ describe('statusFieldSeed', () => {
     expect(seed.tagsets.Status.mode).toBe('closed');
   });
 
-  it('gives a field of its own key in another case the role, declaring nothing beside it', () => {
-    const seed = statusFieldSeed({ fieldsConfig: { Status: { inline: true } }, tagsets: {} });
-    expect(seed.fieldsConfig).toEqual({ Status: { inline: true, role: 'status' } });
-    expect(seed.tagsets).toEqual({});
-  });
-
   it('adds the Status field and its list to what a new vocabulary was given', () => {
     const seed = statusFieldSeed({ fieldsConfig: { gloss: { inline: true } }, tagsets: {} });
     expect(seed.fieldsConfig).toEqual({
