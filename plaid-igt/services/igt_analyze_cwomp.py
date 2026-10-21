@@ -441,6 +441,41 @@ def calibrate(model: CwompModel, dev_records: List[dict], log) -> dict:
             'ece_after': ece_after, 'morpheme_accuracy': accuracy}
 
 
+def edit_distance(a, b) -> int:
+    prev = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        cur = [i]
+        for j, y in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x != y)))
+        prev = cur
+    return prev[-1]
+
+
+def held_out_scores(model: CwompModel, dev_records: List[dict]) -> dict:
+    """The paper's morpheme error rate on the held-out sentences, every word
+    counted (a word whose morphemes the lexicon lacks included): per sentence,
+    the edit distance between the predicted and the gold glosses as units,
+    over the gold count, clipped at 1, averaged over sentences. With the
+    trained lexicon only, the paper's train-lexicon setting."""
+    mers, words, right = [], 0, 0
+    for r in dev_records:
+        tw, sw, gw = r['t'].split(), r['m'].split(), r['g'].split()
+        embs = model.encode_queries([model.query(w, r['t'], r['l']) for w in tw])
+        pred, gold = [], []
+        for emb, seg, gloss in zip(embs, sw, gw):
+            picked = model.analyze(emb)
+            p = [(f, g) for f, g, _ in picked]
+            t = list(zip(seg.split('-'), gloss.split('-')))
+            words += 1
+            right += p == t
+            pred += [g for _, g in p]
+            gold += [g for _, g in t]
+        if gold:
+            mers.append(min(1.0, edit_distance(pred, gold) / len(gold)))
+    return {'mer': sum(mers) / len(mers) if mers else None,
+            'word_accuracy': right / words if words else None}
+
+
 def train(args) -> None:
     home = Path(args.home)
     repo = Path(args.repo) if args.repo else home / 'repo'
@@ -505,6 +540,9 @@ def train(args) -> None:
     model = CwompModel(staged, repo, device=args.device)
     manifest['calibration'] = calibrate(model, dev, print)
     manifest['temperature'] = manifest['calibration']['temperature']
+    manifest['held_out'] = held_out_scores(model, dev)
+    print(f'Held out: morpheme error rate {manifest["held_out"]["mer"]:.3f}, '
+          f'word accuracy {manifest["held_out"]["word_accuracy"]:.3f}')
     (staged / 'model.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     # Swap in whole, so a running service never loads half a model.
     current = model_dir / 'current'
