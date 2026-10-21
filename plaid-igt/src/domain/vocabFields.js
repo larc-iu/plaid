@@ -21,6 +21,13 @@
 // `scope` says whether the field belongs to the ENTRY (shown on a headword
 // only) or to every SENSE (the default). See vocabDictionary.js.
 //
+// `role` says what a field's values ARE, for every reader that has to know
+// (a published dictionary, the LIFT, CLDF and LaTeX exports, the assistant):
+// a gloss, a definition, a part of speech, or the entry's editorial status.
+// It is stored, set in the vocabulary's field settings and written by setup
+// and the importers, and a field without one has none, whatever it is called.
+// Several fields may share a role (a gloss in each language).
+//
 // Some fields are immutable — they can never be removed, because the app relies
 // on them: `morphType` for rendering (affix joiners + the stem accent; see
 // affixMarkers.js), `gloss` for the vocab list's Gloss column. New vocabs are
@@ -41,10 +48,25 @@ import { withLangSuffix } from './fieldNames.js';
  */
 export const CORE_VOCAB_FIELDS = [
   { name: 'morphType', inline: false, immutable: true },
-  { name: 'gloss', inline: true, immutable: true },
-  { name: 'pos', inline: true },
-  { name: 'definition', inline: false },
+  { name: 'gloss', inline: true, immutable: true, role: 'gloss' },
+  { name: 'pos', inline: true, role: 'pos' },
+  { name: 'definition', inline: false, role: 'definition' },
 ];
+
+/** The roles a field may hold (`role` in its config). */
+export const ENTRY_ROLES = Object.freeze({
+  GLOSS: 'gloss',
+  DEFINITION: 'definition',
+  POS: 'pos',
+  STATUS: 'status',
+});
+const ROLE_VALUES = new Set(Object.values(ENTRY_ROLES));
+
+/**
+ * The fields that hold `role`, in the order given. Takes a normalized field
+ * list (normalizeVocabFields).
+ */
+export const fieldsWithRole = (fields, role) => (fields || []).filter((f) => f?.role === role);
 
 const CORE_BY_NAME = new Map(CORE_VOCAB_FIELDS.map((f) => [f.name, f]));
 
@@ -255,13 +277,14 @@ export const isReservedFieldName = (name) => {
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const typeOf = (v) => (str(v) === FIELD_TYPES.ITEM ? FIELD_TYPES.ITEM : FIELD_TYPES.TEXT);
 const scopeOf = (v) => (str(v) === FIELD_SCOPES.ENTRY ? FIELD_SCOPES.ENTRY : FIELD_SCOPES.SENSE);
+const roleOf = (v) => (ROLE_VALUES.has(str(v)) ? str(v) : null);
 
 /**
  * Read a vocab layer's config into an ordered list of fields, guaranteeing the
  * immutable core fields are present. `form` is never a field (it's the item's own form).
  *
  * @param {object} vocabFields - the raw `igt.fields` map (from readVocabFields)
- * @returns {{name: string, inline: boolean, immutable: boolean, tagset: string|null, lang: string|null, type: string, many: boolean, scope: string}[]}
+ * @returns {{name: string, inline: boolean, immutable: boolean, tagset: string|null, lang: string|null, type: string, many: boolean, scope: string, role: string|null}[]}
  */
 export const normalizeVocabFields = (vocabFields) => {
   const out = [];
@@ -284,6 +307,7 @@ export const normalizeVocabFields = (vocabFields) => {
       type,
       many: type === FIELD_TYPES.ITEM && !!obj?.many,
       scope: scopeOf(obj?.scope),
+      role: roleOf(obj?.role),
     });
   };
 
@@ -342,14 +366,20 @@ export const newVocabField = (name) => ({
   type: FIELD_TYPES.TEXT,
   many: false,
   scope: FIELD_SCOPES.SENSE,
+  role: null,
 });
 
 /**
- * The `{ name: { inline } }` map to seed a brand-new vocab layer with the full
- * core inventory.
+ * The `{ name: { inline, role } }` map to seed a brand-new vocab layer with the
+ * full core inventory, each core field holding its role.
  */
 export const seedDefaultFields = () =>
-  Object.fromEntries(CORE_VOCAB_FIELDS.map((f) => [f.name, { inline: f.inline }]));
+  Object.fromEntries(
+    CORE_VOCAB_FIELDS.map((f) => [
+      f.name,
+      { inline: f.inline, ...(f.role ? { role: f.role } : {}) },
+    ]),
+  );
 
 /**
  * Serialize a normalized field list back to the stored map. `tagset` and
@@ -368,6 +398,7 @@ export const fieldsToConfig = (fields) =>
         ...(f.type === FIELD_TYPES.ITEM ? { type: FIELD_TYPES.ITEM } : {}),
         ...(f.type === FIELD_TYPES.ITEM && f.many ? { many: true } : {}),
         ...(f.scope === FIELD_SCOPES.ENTRY ? { scope: FIELD_SCOPES.ENTRY } : {}),
+        ...(roleOf(f.role) ? { role: roleOf(f.role) } : {}),
       },
     ]),
   );

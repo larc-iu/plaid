@@ -78,11 +78,16 @@ describe('numbering is by creation order, never by id', () => {
 });
 
 describe('statusFieldKey', () => {
-  it('finds the declared key in any case, from a config map or a field list', () => {
-    expect(statusFieldKey({ gloss: {}, Status: {} })).toBe('Status');
-    expect(statusFieldKey([{ name: 'gloss' }, { name: 'STATUS' }])).toBe('STATUS');
+  it('finds the field whose role is status, from a config map or a field list', () => {
+    expect(statusFieldKey({ gloss: {}, Stage: { role: 'status' } })).toBe('Stage');
+    expect(statusFieldKey([{ name: 'gloss' }, { name: 'Stage', role: 'status' }])).toBe('Stage');
     expect(statusFieldKey({ gloss: {} })).toBeNull();
     expect(statusFieldKey(null)).toBeNull();
+  });
+
+  it('never takes a field for the status by its name', () => {
+    expect(statusFieldKey({ status: {}, Status: { inline: true } })).toBeNull();
+    expect(statusFieldKey([{ name: 'status', role: null }])).toBeNull();
   });
 });
 
@@ -99,9 +104,9 @@ describe('statusFieldSeed', () => {
     expect(seed.tagsets.Status.mode).toBe('closed');
   });
 
-  it('declares nothing beside a field already named Status in another case', () => {
+  it('gives a field of its own key in another case the role, declaring nothing beside it', () => {
     const seed = statusFieldSeed({ fieldsConfig: { Status: { inline: true } }, tagsets: {} });
-    expect(Object.keys(seed.fieldsConfig)).toEqual(['Status']);
+    expect(seed.fieldsConfig).toEqual({ Status: { inline: true, role: 'status' } });
     expect(seed.tagsets).toEqual({});
   });
 
@@ -109,7 +114,7 @@ describe('statusFieldSeed', () => {
     const seed = statusFieldSeed({ fieldsConfig: { gloss: { inline: true } }, tagsets: {} });
     expect(seed.fieldsConfig).toEqual({
       gloss: { inline: true },
-      [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
+      [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET, role: 'status' },
     });
     expect(seed.tagsets[STATUS_TAGSET].mode).toBe('closed');
   });
@@ -117,18 +122,15 @@ describe('statusFieldSeed', () => {
   it('returns both parts whole even when neither needs adding', () => {
     // The half that needs no change comes back as it was, never as null: a
     // caller writes both, and writing null over `fields` would empty it.
-    const fieldsConfig = { [STATUS_FIELD]: { inline: true, tagset: 'Mine' } };
+    const fieldsConfig = { Stage: { inline: true, tagset: 'Mine', role: 'status' } };
     const tagsets = { [STATUS_TAGSET]: { mode: 'open', values: [] } };
     const seed = statusFieldSeed({ fieldsConfig, tagsets });
     expect(seed.fieldsConfig).toBe(fieldsConfig);
     expect(seed.tagsets).toBe(tagsets);
   });
 
-  it('counts a user\'s own "Status" field as this one, case and all', () => {
-    // The field editor rejects a duplicate case-insensitively, so seeding
-    // `status` beside a user's `Status` makes a pair it would have refused,
-    // and the two write different metadata keys.
-    const fieldsConfig = { Status: { inline: true } };
+  it('leaves a field that holds the role as it is, whatever its name', () => {
+    const fieldsConfig = { Stage: { inline: true, role: 'status' }, status: {} };
     const seed = statusFieldSeed({ fieldsConfig, tagsets: {} });
     expect(seed.fieldsConfig).toBe(fieldsConfig);
     expect(seed.tagsets).toEqual({});

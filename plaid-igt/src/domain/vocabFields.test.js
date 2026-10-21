@@ -14,6 +14,8 @@ import {
   normalizeVocabFields as normalizeFields2,
   groupFieldsForForm,
   exportedVocabFields,
+  fieldsWithRole,
+  seedDefaultFields,
 } from './vocabFields.js';
 
 const POS = { delimiters: '', mode: 'closed', values: [{ value: 'n' }, { value: 'v' }] };
@@ -57,6 +59,42 @@ describe('normalizeVocabFields / fieldsToConfig', () => {
       variantOf: { inline: false, type: 'item' },
       seeAlso: { inline: false, type: 'item', many: true },
       etymology: { inline: false, scope: 'entry' },
+    });
+  });
+
+  it('carries a role through, and reads one it does not know as none', () => {
+    const fields = normalizeVocabFields({
+      gloss: { inline: true, role: 'gloss' },
+      Meaning: { role: 'gloss' },
+      Stage: { role: 'status' },
+      pos: { inline: true },
+      Odd: { role: 'colour' },
+    });
+    expect(fields.map((f) => [f.name, f.role])).toEqual([
+      ['morphType', null],
+      ['gloss', 'gloss'],
+      ['Meaning', 'gloss'],
+      ['Stage', 'status'],
+      ['pos', null],
+      ['Odd', null],
+    ]);
+    expect(fieldsToConfig(fields)).toEqual({
+      morphType: { inline: false },
+      gloss: { inline: true, role: 'gloss' },
+      Meaning: { inline: false, role: 'gloss' },
+      Stage: { inline: false, role: 'status' },
+      pos: { inline: true },
+      Odd: { inline: false },
+    });
+    expect(fieldsWithRole(fields, 'gloss').map((f) => f.name)).toEqual(['gloss', 'Meaning']);
+  });
+
+  it('seeds a new vocabulary with each core field holding its role', () => {
+    expect(seedDefaultFields()).toEqual({
+      morphType: { inline: false },
+      gloss: { inline: true, role: 'gloss' },
+      pos: { inline: true, role: 'pos' },
+      definition: { inline: false, role: 'definition' },
     });
   });
 

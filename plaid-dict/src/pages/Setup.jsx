@@ -14,7 +14,13 @@ import {
   slugify,
   validateSetup,
 } from '@/domain/dictConfig';
-import { PUBLISHED, publicationCounts, publishAll, statusKeyOfConfig } from '@/domain/publication';
+import {
+  PUBLISHED,
+  publicationCounts,
+  publishAll,
+  publishKeyOfConfig,
+  statusKeyOfConfig,
+} from '@/domain/publication';
 import { discoverExampleLayers } from '@/domain/exampleLayers';
 import {
   formatAlphabet,
@@ -288,7 +294,7 @@ export const Setup = () => {
 
   const runPublishAll = async () => {
     if (!items || publishing) return;
-    const key = statusKeyOfConfig(vocab?.config);
+    const key = publishKeyOfConfig(vocab?.config);
     setPublishing({ done: 0, total: counts.total - counts.published });
     // Shown at once. The server's own list replaces it when the run ends,
     // whether or not every write landed.

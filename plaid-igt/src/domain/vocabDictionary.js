@@ -25,7 +25,7 @@
 // function it exports against the Python port, so an export with no importer
 // in this tree is not spare.
 
-import { FIELD_SCOPES, FIELD_TYPES } from './vocabFields.js';
+import { ENTRY_ROLES, FIELD_SCOPES, FIELD_TYPES } from './vocabFields.js';
 
 export const PARENT_KEY = 'parent';
 const SENSE_ORDER_KEY = 'senseOrder';
@@ -49,35 +49,35 @@ export const statusTagset = () => ({
 });
 
 /**
- * The key under which a vocabulary keeps its editorial status: the declared
- * field whose name is `status` in any case, or null when it declares none.
- * Takes the raw `igt.fields` map or a normalized field list.
- *
- * Matched the way the field editor rejects a duplicate, case-insensitively: a
- * user (or a FLEx custom field) that names it "Status" HAS the field, and
- * writing `status` beside it would make the very pair the editor forbids, two
- * metadata keys reading as one. Every reader and writer of the value asks
- * this for the key, here and in plaid-dict, so none of them can disagree with
- * the seed about which field it is.
+ * The key under which a vocabulary keeps its editorial status: the first
+ * field whose role is status, or null when none has it. Takes the raw
+ * `igt.fields` map or a normalized field list. Every reader and writer of the
+ * value asks this for the key, here and in plaid-dict.
  */
 export const statusFieldKey = (fields) => {
-  const names = Array.isArray(fields) ? fields.map((f) => f?.name) : Object.keys(fields || {});
-  return names.find((k) => typeof k === 'string' && k.toLowerCase() === STATUS_FIELD) ?? null;
+  const list = Array.isArray(fields)
+    ? fields
+    : Object.entries(fields || {}).map(([name, cfg]) => ({ name, role: cfg?.role }));
+  return (
+    list.find((f) => typeof f?.name === 'string' && f.role === ENTRY_ROLES.STATUS)?.name ?? null
+  );
 };
 
 /**
- * A vocabulary's config with the Status field and its tagset, whole and ready
+ * A vocabulary's config with a Status field and its tagset, whole and ready
  * to write: what it was given, plus the field and the list wherever either is
  * missing. Both halves always come back, so a caller never asks which changed
  * (writing a null half once wiped a field inventory).
  *
  * Called where a vocabulary is CREATED, by the New vocabulary screen
  * (VocabularyDetail) and the project setup wizard (executeSetup), and by
- * plaid-dict's Publish all on a vocabulary that declares no status field at
- * all, since a value under an undeclared field is invisible in plaid-igt. An
- * existing field of the name, in any case, is left as its owner arranged it,
- * and a Status tagset already there keeps its own values and gains the three
- * the field is written with.
+ * plaid-dict's Publish all on a vocabulary with no field whose role is status,
+ * since a value under an undeclared field is invisible in plaid-igt. A field
+ * already holding the role is left as its owner arranged it, and a Status
+ * tagset already there keeps its own values and gains the three the field is
+ * written with. A field of the seed's own key in another case ("Status") is
+ * given the role rather than joined by a `status` beside it, a pair the field
+ * editor refuses.
  */
 export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
   if (statusFieldKey(fieldsConfig)) {
@@ -98,10 +98,20 @@ export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
         ],
       }
     : statusTagset();
+  const taken = Object.keys(fieldsConfig || {}).find((k) => k.toLowerCase() === STATUS_FIELD);
+  if (taken) {
+    return {
+      fieldsConfig: {
+        ...fieldsConfig,
+        [taken]: { ...fieldsConfig[taken], role: ENTRY_ROLES.STATUS },
+      },
+      tagsets: tagsets ?? {},
+    };
+  }
   return {
     fieldsConfig: {
       ...(fieldsConfig || {}),
-      [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
+      [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET, role: ENTRY_ROLES.STATUS },
     },
     tagsets: { ...(tagsets || {}), [STATUS_TAGSET]: list },
   };

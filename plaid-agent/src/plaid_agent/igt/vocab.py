@@ -71,10 +71,20 @@ SCOPE_SENSE = 'sense'
 
 CORE_VOCAB_FIELDS = (
     {'name': 'morphType', 'inline': False, 'immutable': True},
-    {'name': 'gloss', 'inline': True, 'immutable': True},
-    {'name': 'pos', 'inline': True, 'immutable': False},
-    {'name': 'definition', 'inline': False, 'immutable': False},
+    {'name': 'gloss', 'inline': True, 'immutable': True, 'role': 'gloss'},
+    {'name': 'pos', 'inline': True, 'immutable': False, 'role': 'pos'},
+    {'name': 'definition', 'inline': False, 'immutable': False, 'role': 'definition'},
 )
+
+# What a field's values ARE (``role`` in its config): a gloss, a definition, a
+# part of speech, or the entry's editorial status. Stored, set in the app's
+# field settings and by setup and the importers. A field without one has none,
+# whatever it is called, and several may share one (a gloss per language).
+ROLE_GLOSS = 'gloss'
+ROLE_DEFINITION = 'definition'
+ROLE_POS = 'pos'
+ROLE_STATUS = 'status'
+ENTRY_ROLES = (ROLE_GLOSS, ROLE_DEFINITION, ROLE_POS, ROLE_STATUS)
 _IMMUTABLE = tuple(f['name'] for f in CORE_VOCAB_FIELDS if f['immutable'])
 _CORE_BY_NAME = {f['name']: f for f in CORE_VOCAB_FIELDS}
 
@@ -125,6 +135,7 @@ def normalize_vocab_fields(raw: Optional[dict]) -> List[dict]:
             'type': ftype,
             'many': ftype == FIELD_ITEM and bool((obj or {}).get('many')),
             'scope': SCOPE_ENTRY if _str((obj or {}).get('scope')) == SCOPE_ENTRY else SCOPE_SENSE,
+            'role': _str((obj or {}).get('role')) if _str((obj or {}).get('role')) in ENTRY_ROLES else None,
             # False for an immutable field the config never named: the app shows
             # it, but it is not what this vocabulary chose to record.
             'declared': name in declared,
@@ -144,6 +155,11 @@ def normalize_vocab_fields(raw: Optional[dict]) -> List[dict]:
         return len(CORE_VOCAB_FIELDS) + 1
     pinned = sorted([f for f in out if f['immutable']], key=lambda f: core_idx(f['name']))
     return pinned + [f for f in out if not f['immutable']]
+
+
+def fields_with_role(fields: List[dict], role: str) -> List[dict]:
+    """The fields that hold ``role``, in the order given. Mirrors fieldsWithRole."""
+    return [f for f in fields or [] if f.get('role') == role]
 
 
 def field_by_name(fields: List[dict], name) -> Optional[dict]:

@@ -15,13 +15,13 @@ import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
 // The Sena demo's shape: a Portuguese primary gloss, an English one named in
 // the field, a custom text field, a reference field and the status field.
 const fields = normalizeVocabFields({
-  pos: { inline: true },
-  gloss: { inline: true, lang: 'pt' },
-  'gloss (en)': { inline: false },
-  definition: { inline: false, lang: 'pt' },
+  pos: { inline: true, role: 'pos' },
+  gloss: { inline: true, lang: 'pt', role: 'gloss' },
+  'gloss (en)': { inline: false, lang: 'en', role: 'gloss' },
+  definition: { inline: false, lang: 'pt', role: 'definition' },
   Plural: { inline: false, lang: 'seh' },
   morphType: { inline: false },
-  status: { inline: false, tagset: 'Status' },
+  status: { inline: false, tagset: 'Status', role: 'status' },
   seeAlso: { inline: false, type: 'item', many: true },
 });
 
@@ -46,13 +46,40 @@ describe('entryText', () => {
     expect(text.pos).toBe('N');
   });
 
-  it('groups the glosses and the definitions by their base name', () => {
+  it('takes the glosses and the definitions from the fields holding those roles', () => {
     expect(text.glosses.map((g) => g.value)).toEqual(['quarta-feira', 'Wednesday']);
     expect(text.definitions.map((d) => d.value)).toEqual(['o terceiro dia']);
   });
 
-  it('tags a gloss whose language is only in its name', () => {
+  it('tags each gloss with the language its field records', () => {
     expect(text.glosses.map((g) => g.lang)).toEqual(['pt', 'en']);
+  });
+
+  it('reads roles, never names', () => {
+    const named = normalizeVocabFields({
+      gloss: { inline: true },
+      'gloss (fr)': { inline: false },
+      pos: { inline: true },
+      Meaning: { inline: true, role: 'gloss', lang: 'en' },
+      Category: { inline: true, role: 'pos' },
+      Explanation: { role: 'definition' },
+    });
+    const read = entryText(
+      item({
+        gloss: 'not printed',
+        'gloss (fr)': 'mercredi',
+        pos: 'X',
+        Meaning: 'Wednesday',
+        Category: 'N',
+        Explanation: 'the third day',
+      }),
+      named,
+    );
+    expect(read.glosses).toEqual([
+      { name: 'Meaning', label: 'Meaning (en)', lang: 'en', value: 'Wednesday' },
+    ]);
+    expect(read.definitions.map((d) => d.value)).toEqual(['the third day']);
+    expect(read.pos).toBe('N');
   });
 
   it('leaves out status, morphType, the reference fields and every custom field', () => {
@@ -65,8 +92,8 @@ describe('entryText', () => {
     // Lamkang's Comment and Source hold recording timestamps and the names of
     // the people consulted. A field is not public because it exists.
     const flex = normalizeVocabFields({
-      gloss: { inline: true, lang: 'en' },
-      definition: { inline: false, lang: 'en' },
+      gloss: { inline: true, lang: 'en', role: 'gloss' },
+      definition: { inline: false, lang: 'en', role: 'definition' },
       Comment: { inline: false },
       Source: { inline: false },
       'Source (lmk-Qaaa-x-LMKL)': { inline: false, lang: 'lmk-Qaaa-x-LMKL' },
@@ -219,7 +246,7 @@ describe('searchableText', () => {
 
 describe('entryRefs', () => {
   const scoped = normalizeVocabFields({
-    gloss: { inline: true },
+    gloss: { inline: true, role: 'gloss' },
     variantOf: { inline: false, type: 'item', scope: 'entry' },
     seeAlso: { inline: false, type: 'item', many: true },
   });

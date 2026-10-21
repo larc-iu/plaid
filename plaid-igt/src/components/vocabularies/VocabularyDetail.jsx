@@ -37,6 +37,7 @@ import {
   FIELD_TYPES,
   FIELD_SCOPES,
 } from '@/domain/vocabFields';
+import { ENTRY_ROLE_CHOICES, proposeEntryRole } from '@/domain/entryRole';
 import {
   buildSenseTree,
   morphTypeOf,
@@ -100,6 +101,7 @@ const NO_TAGSET = '__none__';
 // What a field holds, as the Type picker offers it: text, one entry, or a
 // list of entries. `many` only means anything with the item type, so the two
 // travel as one choice.
+const NO_ROLE = '__none__';
 const TYPE_CHOICES = [
   { key: 'text', label: 'Text', type: FIELD_TYPES.TEXT, many: false },
   { key: 'item', label: 'Entry', type: FIELD_TYPES.ITEM, many: false },
@@ -479,7 +481,10 @@ export const VocabularyDetail = () => {
       return;
     }
 
-    await saveFields([...fields, newVocabField(trimmedName)]);
+    await saveFields([
+      ...fields,
+      { ...newVocabField(trimmedName), role: proposeEntryRole(trimmedName) },
+    ]);
     setNewFieldName('');
   };
 
@@ -727,6 +732,13 @@ export const VocabularyDetail = () => {
     await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, scope } : f)));
   };
 
+  // What a field's values are (gloss, definition, part of speech, status),
+  // for the dictionary, the exports and the assistant. NO_ROLE clears it.
+  const handleSetRole = async (fieldName, value) => {
+    const role = value === NO_ROLE ? null : value;
+    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, role } : f)));
+  };
+
   // Fields reference a tagset by name, so a rename repoints every field that
   // used the old name in the same batch as the tagsets write, or they would
   // quietly fall back to free. Same contract as the project's TagsetsSettings:
@@ -839,6 +851,7 @@ export const VocabularyDetail = () => {
                 <th className="px-3 py-2 text-left font-medium">Type</th>
                 <th className="px-3 py-2 text-left font-medium">Shown on</th>
                 <th className="px-3 py-2 text-left font-medium">Language</th>
+                <th className="px-3 py-2 text-left font-medium">Role</th>
                 {showTagsetCol && <th className="px-3 py-2 text-left font-medium">Tagset</th>}
                 <th className="w-24 px-3 py-2" />
               </tr>
@@ -937,6 +950,32 @@ export const VocabularyDetail = () => {
                             if (e.key === 'Enter') e.currentTarget.blur();
                           }}
                         />
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {field.name !== 'morphType' && !isRef ? (
+                        <Select
+                          value={field.role ?? NO_ROLE}
+                          onValueChange={(v) => handleSetRole(field.name, v)}
+                        >
+                          <SelectTrigger
+                            id={`role-${field.name}`}
+                            aria-label={`Role of ${fieldLabel(field)}`}
+                            className="h-7 w-36 text-xs"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_ROLE}>None</SelectItem>
+                            {ENTRY_ROLE_CHOICES.map((c) => (
+                              <SelectItem key={c.role} value={c.role}>
+                                {c.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                     {showTagsetCol && (

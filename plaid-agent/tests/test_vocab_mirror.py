@@ -148,6 +148,10 @@ def _raw_fields(r: random.Random):
             {'inline': True, 'scope': 'entry', 'tagset': 'Status'},
             {'inline': False, 'lang': 'pt', 'type': 'text'},
             {'type': 'nonsense', 'scope': 'nonsense', 'many': 'yes'},
+            {'inline': True, 'role': 'gloss'},
+            {'role': 'status', 'tagset': 'Status'},
+            {'role': 'pos', 'type': 'item'},
+            {'role': 'nonsense'},
         ])
     return r.choice([out, None, {}])
 

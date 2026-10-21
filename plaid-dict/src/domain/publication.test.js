@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
-import { isPublished, publicationCounts, publishAll, statusOf } from './publication.js';
+import {
+  isPublished,
+  publicationCounts,
+  publishAll,
+  statusKeyOf,
+  statusOf,
+} from './publication.js';
+import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
 
 const entry = (id, status) => ({ id, metadata: status ? { status } : {} });
 
@@ -24,6 +31,13 @@ describe('the status key', () => {
     expect(() => publicationCounts(items)).toThrow(TypeError);
     expect(isPublished(items[0], 'Status')).toBe(true);
     expect(publicationCounts(items, 'Status')).toEqual({ published: 1, total: 1 });
+  });
+
+  it('is null for a vocabulary with no status field, and nothing is published', () => {
+    const items = [entry('a', 'published')];
+    expect(statusKeyOf(normalizeVocabFields({ status: { inline: false } }))).toBeNull();
+    expect(isPublished(items[0], null)).toBe(false);
+    expect(publicationCounts(items, null)).toEqual({ published: 0, total: 1 });
   });
 });
 
@@ -79,17 +93,17 @@ describe('publishAll', () => {
     return client;
   };
 
-  it('writes under the key the vocabulary declares, in whatever case, and declares nothing', async () => {
+  it('writes under the key of the field whose role is status, and declares nothing', async () => {
     const client = fakeClient();
     client.layer = {
       id: 'v',
-      config: { igt: { fields: { gloss: {}, Status: { inline: true } } } },
+      config: { igt: { fields: { gloss: {}, Stage: { inline: true, role: 'status' } } } },
     };
-    client.layer.items = [entry('a'), { id: 'b', metadata: { Status: 'published' } }];
+    client.layer.items = [entry('a'), { id: 'b', metadata: { Stage: 'published' } }];
     const n = await publishAll(client, { vocabularyId: 'v' });
     expect(n).toBe(1);
     expect(client.configs).toEqual([]);
-    expect(client.patched).toEqual([['a', { Status: 'published' }]]);
+    expect(client.patched).toEqual([['a', { Stage: 'published' }]]);
   });
 
   it('sends each entry one set op on the status key, never a merge object', async () => {
@@ -115,6 +129,7 @@ describe('publishAll', () => {
     expect(client.configs.find(([k]) => k === 'fields')[1].status).toEqual({
       inline: false,
       tagset: 'Status',
+      role: 'status',
     });
     expect(client.configs.find(([k]) => k === 'tagsets')[1].Status.mode).toBe('closed');
     // One operation covers the schema write and the entries alike.
@@ -145,11 +160,9 @@ describe('publishAll', () => {
     expect(tagsets.Register).toEqual({ mode: 'closed', values: [{ value: 'formal' }] });
   });
 
-  it('takes a user\'s own "Status" field as this one, so no pair is made', async () => {
-    // plaid-igt's field editor rejects a duplicate case-insensitively, and
-    // seeds nothing beside such a field. Testing the exact key here rebuilt
-    // the very pair it refuses: two fields both labelled Status, writing
-    // different metadata keys, only one of which is published by.
+  it('gives a "Status" field without the role the role, so no pair is made', async () => {
+    // plaid-igt's field editor rejects a duplicate case-insensitively, so a
+    // `status` beside a "Status" would be the very pair it refuses.
     const client = fakeClient();
     client.layer = {
       id: 'v',
@@ -157,7 +170,10 @@ describe('publishAll', () => {
       items: [entry('a')],
     };
     await publishAll(client, { vocabularyId: 'v' });
-    expect(client.configs).toEqual([]);
+    expect(client.configs.find(([k]) => k === 'fields')[1]).toEqual({
+      Status: { inline: true, role: 'status' },
+    });
+    expect(client.patched).toEqual([['a', { Status: 'published' }]]);
   });
 
   it('leaves the schema alone when Status is already declared', async () => {
@@ -165,7 +181,10 @@ describe('publishAll', () => {
     client.layer = {
       id: 'v',
       config: {
-        igt: { fields: { status: { inline: false, tagset: 'Status' } }, tagsets: { Status: {} } },
+        igt: {
+          fields: { status: { inline: false, tagset: 'Status', role: 'status' } },
+          tagsets: { Status: {} },
+        },
       },
       items: [entry('a')],
     };

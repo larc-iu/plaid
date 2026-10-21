@@ -180,7 +180,10 @@ describe('affixes', () => {
   });
 
   it('finds an affix by its letters, and by the marker typed with them', () => {
-    const index = buildSearchIndex(items, normalizeVocabFields({ gloss: { inline: true } }));
+    const index = buildSearchIndex(
+      items,
+      normalizeVocabFields({ gloss: { inline: true, role: 'gloss' }, status: { role: 'status' } }),
+    );
     expect(searchPages(pages, 'ka', index).map((p) => p.form)).toEqual(['ka', '-ka']);
     expect(searchPages(pages, '-ka', index).map((p) => p.form)).toEqual(['-ka']);
   });
@@ -195,7 +198,10 @@ describe('affixes', () => {
       },
     ];
     const pgs = pagesOf(affix);
-    const idx = buildSearchIndex(affix, normalizeVocabFields({ gloss: { inline: true } }));
+    const idx = buildSearchIndex(
+      affix,
+      normalizeVocabFields({ gloss: { inline: true, role: 'gloss' }, status: { role: 'status' } }),
+    );
     const find = (q) => searchPages(pgs, q, idx).map((p) => p.form);
     expect(find('cheh')).toEqual(['-cheḥ']);
     expect(find('-cheḥ')).toEqual(['-cheḥ']);
@@ -206,7 +212,11 @@ describe('affixes', () => {
 });
 
 describe('buildSearchIndex / searchPages', () => {
-  const fields = normalizeVocabFields({ gloss: { inline: true }, pos: { inline: true } });
+  const fields = normalizeVocabFields({
+    gloss: { inline: true, role: 'gloss' },
+    pos: { inline: true, role: 'pos' },
+    status: { role: 'status' },
+  });
   const items = [
     { id: 'water', form: 'madzi', metadata: { status: 'published', gloss: 'water' } },
     { id: 'melon', form: 'bvembe', metadata: { status: 'published', gloss: 'watermelon' } },
@@ -252,9 +262,10 @@ describe('buildSearchIndex / searchPages', () => {
     // Lamkang: `kaang` found daar, hol, lee and reen, whose Comments quote a
     // sentence with kaang in it.
     const flex = normalizeVocabFields({
-      gloss: { inline: true },
-      definition: { inline: false },
-      pos: { inline: true },
+      gloss: { inline: true, role: 'gloss' },
+      definition: { inline: false, role: 'definition' },
+      pos: { inline: true, role: 'pos' },
+      status: { role: 'status' },
       Comment: { inline: false },
       Source: { inline: false },
     });
@@ -289,7 +300,10 @@ describe('buildSearchIndex / searchPages', () => {
 // said that was the moment they decided not to show the dictionary to a
 // community.
 describe('searchPages and the marks a keyboard cannot make', () => {
-  const fields = normalizeVocabFields({ gloss: { inline: true } });
+  const fields = normalizeVocabFields({
+    gloss: { inline: true, role: 'gloss' },
+    status: { role: 'status' },
+  });
   const items = [
     { id: 'husband', form: 'ọkọ', metadata: { status: 'published', gloss: 'husband' } },
     { id: 'farm', form: 'oko', metadata: { status: 'published', gloss: 'farm' } },
@@ -338,7 +352,10 @@ describe('searchPages and the marks a keyboard cannot make', () => {
 // The nineteen headwords of the Yoruba dictionary the finding came from, four
 // of which differ from each other only in their marks.
 describe('searchPages over a real tone-marked dictionary', () => {
-  const fields = normalizeVocabFields({ gloss: { inline: true } });
+  const fields = normalizeVocabFields({
+    gloss: { inline: true, role: 'gloss' },
+    status: { role: 'status' },
+  });
   const FORMS = [
     'igba',
     'igbá',

@@ -1,24 +1,26 @@
 // What a dictionary draws for one entry, out of the vocabulary's field schema.
 //
 // The schema is plaid-igt's (`config.igt.fields`), read and grouped by its own
-// helpers so the two apps agree on a field's label and its language. This
-// module only decides what a READER sees:
+// helpers so the two apps agree on a field's label and its language. Each
+// field's stored role says what it holds, never its name. This module only
+// decides what a READER sees:
 //
-//   pos          shown beside the number, the way a dictionary sets it
-//   glosses      the meaning line, one per language
-//   definitions  under it, one per language
+//   pos          the first part-of-speech field, beside the number
+//   glosses      every gloss field, the meaning line, one per language
+//   definitions  every definition field, under it
 //
 // Nothing else is text on the page. A vocabulary is a working lexicon, and its
 // other fields are the compiler's: a FLEx import brings Comment, Source and
 // GeneralNote, which hold recording timestamps, consultant names and queries
 // to a colleague. A published dictionary must not print those because a field
-// exists, so it prints only the fields whose meaning is known to be public.
+// exists, so it prints only the fields whose role is known to be public.
 // `morphType` is not printed either: it decorates the form ("-ka" for a
 // suffix). Reference fields are links, drawn by entryRefs.
 
 import {
-  fieldBaseName,
+  ENTRY_ROLES,
   fieldLabel,
+  fieldsWithRole,
   groupFieldsForForm,
   FIELD_TYPES,
 } from '@igt/domain/vocabFields.js';
@@ -31,33 +33,16 @@ import {
 } from '@igt/domain/vocabDictionary.js';
 import { decorateWithAffixMarkers } from '@igt/domain/affixMarkers.js';
 
-export const POS_FIELD = 'pos';
-// Fields the article never prints as text: the status decides what is shown,
-// the morph type decorates the form, the part of speech has its own place.
-const silentFields = (fields) => new Set([statusFieldKey(fields), 'morphType', POS_FIELD]);
-
 const value = (item, field) => {
   const v = item?.metadata?.[field.name];
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
-};
-
-/**
- * The language tag set beside a value. A FLEx import names the non-primary
- * language in the field's own name ("gloss (en)") and leaves `lang` unset, so
- * read the name's suffix when the config has nothing, or one line of a
- * multilingual gloss is tagged and its neighbour is not.
- */
-const langTag = (field) => {
-  if (field.lang) return field.lang;
-  const suffix = String(field.name ?? '').match(/\(([^()]+)\)$/);
-  return suffix ? suffix[1] : null;
 };
 
 const entryOf = (item, field) => {
   const v = value(item, field);
   return v === null
     ? null
-    : { name: field.name, label: fieldLabel(field), lang: langTag(field), value: v };
+    : { name: field.name, label: fieldLabel(field), lang: field.lang, value: v };
 };
 
 const filled = (item, fields) => fields.map((f) => entryOf(item, f)).filter(Boolean);
@@ -79,24 +64,15 @@ export const displayForm = (item) =>
 export const entryText = (item, fields) => {
   // A headword-scope field belongs to the headword, so a sense never repeats
   // its entry's etymology.
-  const groups = groupFieldsForForm(fieldsForItem(fields, item), {
-    statusField: statusFieldKey(fields),
-  });
-  const silent = silentFields(fields);
-  const text = [...groups.builtIn, ...groups.custom].filter(
-    (f) => f.type !== FIELD_TYPES.ITEM && !silent.has(f.name),
-  );
-  const posField = (fields || []).find((f) => f.name === POS_FIELD);
+  const shown = fieldsForItem(fields, item);
+  const groups = groupFieldsForForm(shown, { statusField: statusFieldKey(fields) });
+  // Form order: the built-in fields with their languages, then the rest.
+  const text = [...groups.builtIn, ...groups.custom].filter((f) => f.type !== FIELD_TYPES.ITEM);
+  const posField = fieldsWithRole(fields, ENTRY_ROLES.POS)[0];
   return {
     pos: posField ? value(item, posField) : null,
-    glosses: filled(
-      item,
-      text.filter((f) => fieldBaseName(f.name) === 'gloss'),
-    ),
-    definitions: filled(
-      item,
-      text.filter((f) => fieldBaseName(f.name) === 'definition'),
-    ),
+    glosses: filled(item, fieldsWithRole(text, ENTRY_ROLES.GLOSS)),
+    definitions: filled(item, fieldsWithRole(text, ENTRY_ROLES.DEFINITION)),
   };
 };
 

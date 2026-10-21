@@ -7,32 +7,46 @@
 // not itself published still appears as the heading over its published senses,
 // with its own gloss hidden: the tree's spine is structure, not content.
 //
-// The field is found by `statusFieldKey`, plaid-igt's own: a vocabulary that
-// spells it "Status" has it under that key, and every read and write here
-// goes to that key, never to a `status` beside it that no schema names.
+// The field is found by `statusFieldKey`, plaid-igt's own: the field whose
+// role is status, whatever it is called. A vocabulary with no such field has
+// nothing published until Publish all gives it one.
 
-import { STATUS_FIELD, statusFieldKey, statusFieldSeed } from '@igt/domain/vocabDictionary.js';
+import { statusFieldKey, statusFieldSeed } from '@igt/domain/vocabDictionary.js';
 import { IGT_NAMESPACE, readVocabFields } from '@igt/domain/igtConfig.js';
 import { metadataOps } from '@larc-iu/plaid-client';
 
 export const PUBLISHED = 'published';
 
-/** The key a vocabulary keeps its status under: the declared one, else the seed's. */
-export const statusKeyOf = (fields) => statusFieldKey(fields) ?? STATUS_FIELD;
+/** The key a vocabulary keeps its status under, or null when no field has the role. */
+export const statusKeyOf = (fields) => statusFieldKey(fields);
 /** The same, from a vocab layer's whole config. */
 export const statusKeyOfConfig = (config) => statusKeyOf(readVocabFields(config));
 
 /**
- * The key every status read takes, from statusKeyOf. There is no default: a
- * read under `status` hid every entry of a vocabulary that spells it "Status".
+ * The key Publish all writes under: the status field's, else the one
+ * plaid-igt's seed gives the vocabulary first.
+ */
+export const publishKeyOf = (fieldsConfig) =>
+  statusFieldKey(fieldsConfig) ??
+  statusFieldKey(statusFieldSeed({ fieldsConfig, tagsets: {} }).fieldsConfig);
+/** The same, from a vocab layer's whole config. */
+export const publishKeyOfConfig = (config) => publishKeyOf(readVocabFields(config));
+
+/**
+ * The key every status read takes, from statusKeyOf: a string, or null for a
+ * vocabulary with no status field, under which nothing is published. There
+ * is no default, so a caller that passes nothing is refused.
  */
 export const requireStatusKey = (key) => {
-  if (typeof key !== 'string' || !key) throw new TypeError('A status read needs the status key');
+  if (key !== null && (typeof key !== 'string' || !key)) {
+    throw new TypeError('A status read needs the status key');
+  }
   return key;
 };
 
 export const statusOf = (item, key) => {
-  const v = item?.metadata?.[requireStatusKey(key)];
+  if (requireStatusKey(key) === null) return '';
+  const v = item?.metadata?.[key];
   return typeof v === 'string' ? v : '';
 };
 
@@ -53,10 +67,10 @@ const BATCH_CHUNK = 200;
  * dictionary that does not involve a Bulk Edit field-replace in plaid-igt.
  * `onProgress({done, total})` fires after each chunk. Returns how many changed.
  *
- * A vocabulary that declares no status field gets plaid-igt's own seed first,
- * in the same operation: a value under a field the schema does not name is
- * invisible in plaid-igt, no control on the entry, nothing in Bulk Edit. One
- * that declares it, in any case, is written under that key.
+ * A vocabulary with no field whose role is status gets plaid-igt's own seed
+ * first, in the same operation: a value under a field the schema does not
+ * name is invisible in plaid-igt, no control on the entry, nothing in Bulk
+ * Edit. One that has it is written under that field's key.
  *
  * The schema and the entries are read FRESH, never from what the page loaded:
  * the two apps are meant to be open at once. `setConfig` replaces a namespace
@@ -72,7 +86,7 @@ export const publishAll = async (client, { vocabularyId, name, onProgress }) => 
   const layer = await client.vocabLayers.get(vocabularyId, true);
   const igt = layer?.config?.[IGT_NAMESPACE] ?? {};
   const declared = statusFieldKey(igt.fields);
-  const key = declared ?? STATUS_FIELD;
+  const key = declared ?? publishKeyOf(igt.fields);
   const pending = (layer?.items || []).filter((it) => !isPublished(it, key));
   if (!pending.length) return 0;
   // A metadata PATCH is a list of path ops. One top-level set leaves every

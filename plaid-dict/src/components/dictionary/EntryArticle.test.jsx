@@ -12,9 +12,9 @@ import { EntryArticle } from './EntryArticle.jsx';
 // `ọmọ₁` and `ọmọ₁.₁`.
 
 const fields = normalizeVocabFields({
-  pos: { inline: true },
-  gloss: { inline: true },
-  status: { inline: false, tagset: 'Status' },
+  pos: { inline: true, role: 'pos' },
+  gloss: { inline: true, role: 'gloss' },
+  status: { inline: false, tagset: 'Status', role: 'status' },
 });
 
 const node = (id, form, number, gloss, senses = []) => ({
@@ -63,7 +63,7 @@ describe('EntryArticle', () => {
 
   it('prints no Comment or Source, whatever the entry holds', async () => {
     const flex = normalizeVocabFields({
-      gloss: { inline: true },
+      gloss: { inline: true, role: 'gloss' },
       Comment: { inline: false },
       Source: { inline: false },
     });
