@@ -338,8 +338,8 @@ export function pairRows({
   }
 
   let list = [...rows.values()];
-  // From the chip, a sense over a value a person wrote or confirmed links and
-  // keeps that value, when the value is the person's own rather than the one
+  // From the chip, a sense over a value a person wrote (a contributor
+  // included) or confirmed links and keeps that value, when the value is the person's own rather than the one
   // that goes with the current link (the linked sense's own, or its
   // producer's for that entry): a value that only went with the old sense
   // moves with the pick. The row shows the value it keeps, and the sense's
@@ -361,7 +361,7 @@ export function pairRows({
   const personValue =
     keepPersonValue &&
     currentValue !== '' &&
-    [PROV_STATES.HUMAN, PROV_STATES.VERIFIED].includes(provState(span?.metadata)) &&
+    provState(span?.metadata) !== PROV_STATES.MACHINE &&
     !pairedWithLink.has(currentValue);
   if (personValue) {
     const kept = new Map();

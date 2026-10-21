@@ -186,6 +186,21 @@ describe('pairRows', () => {
     expect(machine.find((r) => r.itemId === 's1').value).toBe('sell');
   });
 
+  it('from the chip, keeps a contributor’s value as it keeps a person’s', () => {
+    const contributed = span('cat.PL', { prov: 'contributed', provSource: 'user:c' });
+    const { rows } = pairRows({
+      morph: morph({ gloss: contributed }),
+      field: 'Gloss',
+      form: 'sel',
+      lexicons: lexicons(),
+      keepPersonValue: true,
+    });
+    expect(rows.find((r) => r.itemId === 's1')).toMatchObject({
+      value: 'cat.PL',
+      senseValue: 'sell',
+    });
+  });
+
   it('from the chip, does not keep a confirmed value that only went with the current link', () => {
     const chipRows = (gloss, lex = LEX) =>
       pairRows({
