@@ -262,7 +262,9 @@ export const pairPicker = {
     if (row.current && row.item && this.doc.reviewableState(row.linkState)) {
       tags.push('unconfirmed');
     }
-    const vocab = row.item && row.vocabId ? this.doc.vocabularies?.[row.vocabId] : null;
+    // A row that names no entry shows nothing of the one it carries.
+    const vocab =
+      row.named && row.item && row.vocabId ? this.doc.vocabularies?.[row.vocabId] : null;
     const detail = vocab ? this._vocabItemDetail(row.item, vocab) : '';
     return html`<span class="igt-pair__line">
         <span class="igt-pair__value" dir="auto">${row.value}</span>
@@ -270,7 +272,7 @@ export const pairPicker = {
         ${row.senseValue
           ? html`<span class="igt-pair__sense" dir="auto">${row.senseValue}</span>`
           : nothing}
-        ${multiVocab && row.vocabName
+        ${multiVocab && vocab && row.vocabName
           ? html`<span class="igt-pair__vocab">${row.vocabName}</span>`
           : nothing}
         ${row.description ? html`<span class="igt-pair__desc">${row.description}</span>` : nothing}

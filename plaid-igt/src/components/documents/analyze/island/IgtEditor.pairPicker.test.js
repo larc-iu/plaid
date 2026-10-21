@@ -474,6 +474,31 @@ describe('what a pick leaves alone', () => {
     expect(kinds(client).some((k) => k.startsWith('vocabLinks'))).toBe(false);
   });
 
+  it('from the chip, an accepted pair’s gloss moves with a pick of the other sense', async () => {
+    const { doc } = mount();
+    await settle(4);
+    openChip('m-2');
+    key(host.querySelector('.igt-vocab-pop__search'), 'Enter');
+    await settle(6);
+    expect(morph(doc).annotations.Gloss.metadata.provConfirmed).toBe(true);
+    openChip('m-2');
+    click(rowWith('.igt-vocab-pop__item', 'jazzman', 'cat1.2'));
+    await settle(6);
+    expect(morph(doc).vocabItem.id).toBe('c2');
+    expect(morph(doc).annotations.Gloss.value).toBe('jazzman');
+  });
+
+  it('a row with no entry draws no detail line of the entry it carries', async () => {
+    const { doc } = mount();
+    await settle(4);
+    await doc.updateMorphemeSpan('m-4', 'Gloss', 'tom');
+    await settle(4);
+    openAlts(cell('ma:m-2:Gloss'));
+    expect(
+      rowWith('.igt-alts__item', 'tom', '').querySelector('.igt-vocab-pop__detail'),
+    ).toBeNull();
+  });
+
   it('a typed gloss leaves the model’s link to the other sense, still unconfirmed (as ruled)', async () => {
     const { doc } = mount();
     await settle(4);

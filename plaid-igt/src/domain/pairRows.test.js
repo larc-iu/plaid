@@ -186,6 +186,49 @@ describe('pairRows', () => {
     expect(machine.find((r) => r.itemId === 's1').value).toBe('sell');
   });
 
+  it('from the chip, does not keep a confirmed value that only went with the current link', () => {
+    const chipRows = (gloss, lex = LEX) =>
+      pairRows({
+        morph: morph({ link: link('s1'), gloss }),
+        field: 'Gloss',
+        form: 'sel',
+        lexicons: lexicons(lex),
+        keepPersonValue: true,
+      }).rows;
+    const confirmed = { prov: 'inferred', provSource: 'service:m', provConfirmed: true };
+    // The linked sense's own value, accepted: a pick of the other sense takes its value.
+    expect(chipRows(span('sell', confirmed)).find((r) => r.itemId === 's2').value).toBe('sold');
+    // The producer's value for the linked entry, accepted: the same.
+    const own = span('vend', {
+      ...confirmed,
+      provDetail: { valueLinks: [{ value: 'vend', item: 's1', prob: 0.5 }] },
+    });
+    expect(chipRows(own).find((r) => r.itemId === 's2').value).toBe('sold');
+    // A value of the person's own stays, and the dimmed headword does not take it.
+    const kept = chipRows(span('cat.PL'));
+    expect(kept.find((r) => r.itemId === 's2')).toMatchObject({
+      value: 'cat.PL',
+      senseValue: 'sold',
+    });
+    expect(kept.find((r) => r.itemId === 'h')).toMatchObject({ value: '', context: true });
+  });
+
+  it('shows the lexicon’s own value beside a kept one, where a model row names the sense too', () => {
+    const gloss = span('cat.PL', {
+      provDetail: { valueLinks: [{ value: 'trade', item: 's2', prob: 0.3 }] },
+    });
+    const rows = pairRows({
+      morph: morph({ gloss }),
+      field: 'Gloss',
+      form: 'sel',
+      lexicons: lexicons(),
+      keepPersonValue: true,
+    }).rows;
+    const s2 = rows.filter((r) => r.itemId === 's2');
+    expect(s2).toHaveLength(1);
+    expect(s2[0]).toMatchObject({ value: 'cat.PL', senseValue: 'sold' });
+  });
+
   it('puts the senses an enforcing tagset leaves valueless after its values', () => {
     const pairs = rowsOf({ morph: morph(), tagset: { mode: 'closed', values: [{ value: 'PL' }] } });
     expect(pairs[0]).toEqual([null, 'PL']);
