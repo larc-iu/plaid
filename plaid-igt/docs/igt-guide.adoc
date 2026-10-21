@@ -510,11 +510,10 @@ The rule replaces only links nobody has confirmed: its own, links copied with an
 A link a person made or confirmed stays, and so does an entry an analysis service chose for that occurrence.
 Runs of words whose joined form matches a multi-word expression entry are linked as one (see <<_multi_word_expressions>>).
 
-**Alt+↓** on a morpheme's gloss and a click on the morpheme's link open one list of senses with their glosses, and choosing one sets both the link and the gloss.
-The list starts with the current link and gloss, then the alternatives an analysis service weighed, each with its probability, then the glosses the project has given the form, with counts, then the senses of the linked entry and of the entries spelled like the morpheme, and last the field's tagset values.
-A row with no entry keeps the link the morpheme has. Unlinking is in the popover.
-Choosing a row from the link also fills each other gloss field that is empty or holds a proposal nobody confirmed, from the sense.
-Choosing the current row accepts the link and the gloss when they are proposals.
+**Alt+↓** on a morpheme's gloss and a click on the morpheme's link open the same list: each sense with its gloss, the alternatives an analysis service weighed with their probability, and the glosses the project has given the form.
+Choosing a row sets the link and the gloss together.
+A row with no entry leaves the link as it is, and a sense with no gloss leaves the gloss as it is.
+Chosen in the popover, a sense keeps a gloss a person wrote, and fills the other gloss fields that are empty or hold an unconfirmed proposal.
 A gloss typed by hand changes only the gloss.
 
 TIP: Accept links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.
@@ -1091,7 +1090,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the row, leaving a guess as it is. **Shift+Enter** moves back the same way.
 | **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_details>>.
 | **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first. In a cell with nothing typed, **Esc** lets the next **Tab** leave the grid, and **Shift+Tab** go back before it.
-| **Alt+↓** | List every value the project has given this form, with counts. On a morpheme's gloss, list the senses with their glosses. **↑** / **↓** move through the list, **Enter** takes the highlighted value, or sense and gloss, **Esc** closes the list. A field held to a tagset opens its list on its own.
+| **Alt+↓** | List every value the project has given this form, with counts. On a morpheme's gloss, list the senses with their glosses. **↑** / **↓** move through the list, **Enter** takes the highlighted row, **Esc** closes the list. A field held to a tagset opens its list on its own.
 | **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
@@ -1106,7 +1105,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
-| **↑** / **↓** (entry popover) | Move through the entries, or on a morpheme the senses with their glosses. **Enter** links or unlinks the highlighted entry, and on a morpheme sets the link and the gloss, or accepts the current pair, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, and accepts a proposed link, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
