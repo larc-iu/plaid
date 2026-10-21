@@ -285,7 +285,8 @@ export const vocabPopover = {
     // lexicon read landing while this is open picks again (see
     // _refreshVocabularies) only when the user has not.
     if (this._popoverActiveIndex == null) {
-      this._popoverActiveIndex = Math.max(0, best);
+      // A pair list may start on no row (pairPicker.js _pairDefaultRow).
+      this._popoverActiveIndex = pairs && best < 0 ? -1 : Math.max(0, best);
       this._popoverPickedIndex = this._popoverActiveIndex;
     }
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
@@ -337,6 +338,7 @@ export const vocabPopover = {
     // available.
     const inferredCurrent = this.doc.reviewableState(currentItem?.prov);
     const selectActive = (immediate = false, all = false) => {
+      if (activeIdx < 0) return;
       if (pairs && activeIdx < limited.length) {
         act.pick(limited[activeIdx], true, all);
       } else if (activeIdx < limited.length) {

@@ -90,7 +90,10 @@ export const alternatives = {
       e.preventDefault();
       const n = items.length;
       if (n) {
-        this._alts.active = (this._alts.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        // From no row, ↓ lands on the first and ↑ on the last.
+        const from =
+          this._alts.active < 0 ? (e.key === 'ArrowDown' ? n - 1 : 0) : this._alts.active;
+        this._alts.active = (from + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
         // The user has now steered the list, so Enter belongs to it.
         this._alts.steered = true;
         this._renderAlts();
@@ -118,7 +121,7 @@ export const alternatives = {
       //
       // A pair row also acts when it changes the link, or confirms the
       // current link and value.
-      const it = items.length ? items[this._alts.active] : null;
+      const it = items.length && this._alts.active >= 0 ? items[this._alts.active] : null;
       const typed = this._alts.filter || '';
       const enforcing = el.dataset.tagsetEnforces === '1';
       const delims = el.dataset.tagsetDelims || '';

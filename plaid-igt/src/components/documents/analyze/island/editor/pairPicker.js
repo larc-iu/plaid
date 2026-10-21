@@ -138,15 +138,22 @@ export const pairPicker = {
   },
 
   // The row a list starts on: the current link, else the first sense that
-  // keeps the value there is, else the first sense, else the first row.
+  // keeps the value there is, else the first sense, else the first row. -1,
+  // no row, when that sense reads exactly like another one (the same value,
+  // vocabulary and detail line, told apart only by its number), since Enter
+  // would take one of two a person cannot tell apart.
   _pairDefaultRow(rows) {
     const current = rows.findIndex((r) => r.current && r.item);
     if (current >= 0) return current;
     const value = rows.find((r) => r.current)?.value ?? '';
     const sense = (r) => r.named && r.itemId && !r.context && !r.current;
     const keeps = value ? rows.findIndex((r) => sense(r) && r.value === value) : -1;
-    if (keeps >= 0) return keeps;
-    return Math.max(0, rows.findIndex(sense));
+    const at = keeps >= 0 ? keeps : rows.findIndex(sense);
+    if (at < 0) return 0;
+    const looks = (r) =>
+      `${r.value}\u0000${r.vocabId}\u0000${this._vocabItemDetail(r.item, this.doc.vocabularies?.[r.vocabId])}`;
+    const mine = looks(rows[at]);
+    return rows.some((r, i) => i !== at && sense(r) && looks(r) === mine) ? -1 : at;
   },
 
   // Whether picking the current row confirms something: a link or a value

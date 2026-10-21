@@ -556,6 +556,36 @@ describe('the two doors dress a row alike', () => {
     expect(active.querySelector('.igt-pair__entry').textContent.replace(/\s+/g, '')).toBe('cat1.1');
   });
 
+  it('starts on no row in either door when the first senses read alike', async () => {
+    // Two senses told apart by nothing a person sees but their number.
+    const ALIKE = [
+      { id: 'h', form: 'cat', metadata: { morphType: 'stem' } },
+      { id: 'c1', form: 'cat', metadata: { gloss: 'AOR', pos: 'v', parent: 'h', senseOrder: 1 } },
+      { id: 'c2', form: 'cat', metadata: { gloss: 'AOR', pos: 'v', parent: 'h', senseOrder: 2 } },
+      { id: 't', form: 'the', metadata: { gloss: 'DEF' } },
+    ];
+    const { client } = mount({ items: ALIKE });
+    await settle(4);
+    openAlts(cell('ma:m-4:Gloss'));
+    expect(document.querySelectorAll('.igt-alts__item.is-active')).toHaveLength(0);
+    key(cell('ma:m-4:Gloss'), 'Escape');
+    await settle(2);
+    openChip('m-4');
+    await settle(4);
+    expect(document.querySelectorAll('.igt-vocab-pop__item.is-active')).toHaveLength(0);
+    // Enter takes nothing; an arrow lands on the first row.
+    const before = client.calls.length;
+    const search = document.querySelector('.igt-vocab-pop input');
+    key(search, 'Enter');
+    await settle(4);
+    expect(client.calls.slice(before).filter((c) => /batch|vocabLinks|spans/.test(c.kind))).toEqual(
+      [],
+    );
+    key(search, 'ArrowDown');
+    await settle(2);
+    expect(document.querySelectorAll('.igt-vocab-pop__item.is-active')).toHaveLength(1);
+  });
+
   it('labels a pick in History the same from either door', async () => {
     const { client } = mount();
     await settle(4);
