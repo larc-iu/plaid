@@ -401,6 +401,12 @@ You can add your own fields, reorder them, and remove any except Form, Morph Typ
 A field marked **inline** also shows on each entry's row in the link popover.
 Other fields stay on the entry's own edit form.
 
+Each field's **role** says what its values are: a gloss, a definition, a part of speech, or the entry's status.
+A published dictionary prints the gloss, definition and part-of-speech fields and publishes by the status field, the FLEx, CLDF and LaTeX exports write each field by its role, and the assistant reads them.
+A field with no role is none of these, whatever it is called.
+A new vocabulary's Gloss, POS, Definition and Status fields hold their roles, an import gives its fields theirs, and a field you add is given the role its name suggests, such as Gloss for `Gloss (fr)`.
+Several fields can share a role, such as a gloss in each language, and each records its **language**.
+
 A field can be held to a **tagset** (see <<_tagsets>>), so a part of speech is always `n` and never sometimes `noun`.
 A vocabulary keeps its own tagsets, under its Settings, because it is shared across projects.
 A closed tagset becomes a dropdown on the entry form and refuses a value outside the list in Bulk Add.
@@ -480,6 +486,8 @@ Everything it produces shows in violet until you accept or discard it (see <<_pr
 4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. Needs the project to have a vocabulary.
 
 A service step is unavailable when no service for it is online.
+An analysis service writes its glosses into the morpheme field whose lexicon field is the entry's gloss, and a translation service into the translation field chosen in the dialog.
+With no such field the dialog asks for one.
 
 A run over a long document takes minutes.
 The dialog ticks off the steps as they finish, and you can close it: the **Auto-analyze** button shows the elapsed time until the run ends.
