@@ -594,6 +594,7 @@ It is independent of the role: tick it for a community member or a student whate
 
 Which service, or built-in method, each task uses by default: tokenization, transcription, speech detection, translation, analysis, and auto-linking (see <<_services>>).
 A default can carry default options too, and people can still switch per use.
+Each task also has **default fields**, the fields a service writes into or reads, such as the gloss field an analysis service fills and the translation it reads. Setup sets them from the fields it makes, and a renamed field stays the default.
 This is also where you say what Auto-analyze's copy step copies from a word's previous analyses: its segmentation, its links, its field values, or any combination.
 
 = Tagsets
