@@ -16,6 +16,7 @@ import {
   stampInferred,
   wasReplayed,
 } from '@larc-iu/plaid-client';
+import { valueEditStamp } from './valueEditStamp.js';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import {
   getUdLayerInfo,
@@ -1828,9 +1829,7 @@ export class ConlluDocument extends DocumentModel {
    * there is nothing to write.
    */
   _valueEditStamp(metadata, changes = true) {
-    const stamp = this.writer.editStamp(metadata);
-    if (!changes || metadata?.provProb == null) return stamp;
-    return { ...(stamp || {}), provProb: null };
+    return valueEditStamp(this.writer, metadata, changes);
   }
 
   // A relation's label, in the tree or in the enhanced layer: the id says which.

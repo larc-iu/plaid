@@ -100,11 +100,15 @@ function stubClient(...raws) {
   return withOps(c);
 }
 
-const setup = () => {
+const setup = ({ provProb } = {}) => {
   const raw = rawDocFromConllu(CONLLU, 'doc1');
   // "a" was tagged by a parser: the verifier's rewrite confirms it.
   const aUpos = raw.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config.ud.upos).spans[3];
-  aUpos.metadata = { prov: 'inferred', provSource: 'parser' };
+  aUpos.metadata = {
+    prov: 'inferred',
+    provSource: 'parser',
+    ...(provProb != null ? { provProb } : {}),
+  };
   const client = stubClient(raw);
   const project = {
     id: 'p1',
@@ -165,6 +169,20 @@ test('apply: updates carry the verifier stamp, all under one operation', async (
   // The machine-made tag is confirmed by the person's rewrite.
   assert.equal(client.calls[2].args[0], client.calls[1].args[0]);
   assert.deepEqual(client.calls[2].args[1], [{ op: 'set', path: ['provConfirmed'], value: true }]);
+});
+
+// provProb is the probability of the value a span holds, so a rewrite that
+// changes the value removes it, as a typed edit does.
+test("apply: a rewritten value drops the replaced value's provProb", async () => {
+  const { client, project, layerInfo } = setup({ provProb: 0.9 });
+  const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const patch = client.calls.find((c) => c.op === 'spans.patchMetadata');
+  assert.deepEqual(patch.args[1], [
+    { op: 'set', path: ['provConfirmed'], value: true },
+    { op: 'delete', path: ['provProb'] },
+  ]);
 });
 
 // A study reads the audit log: a rewrite is one bulk edit, named as a Grew
