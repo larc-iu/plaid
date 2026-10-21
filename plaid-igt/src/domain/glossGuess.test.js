@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   precedentGuessSource,
   vocabEntryGuessSource,
-  entryFieldFor,
   defaultGuessSource,
   listAlternatives,
   allowedGuess,
@@ -102,59 +101,34 @@ describe('precedentGuessSource', () => {
 
 describe('vocabEntryGuessSource', () => {
   const g = vocabEntryGuessSource();
-  const ctx = (metadata) => ({ vocabItem: { metadata } });
+  const ctx = (metadata, lexiconField = 'gloss') => ({ vocabItem: { metadata }, lexiconField });
 
-  it("offers the linked entry's same-named field, matching across case and separators", () => {
+  it("offers the linked entry's value for the field's Lexicon field", () => {
     expect(g.guessFor('morpheme', 'perro', 'Gloss', ctx({ gloss: 'dog' }))).toEqual({
       value: 'dog',
       source: 'vocab:entry',
       entryForm: null,
       trusted: true,
     });
-    expect(g.guessFor('word', 'perro', 'POS', ctx({ pos: 'N' }))?.value).toBe('N');
-    expect(g.guessFor('word', 'x', 'Morph Type', ctx({ morphType: 'stem' }))?.value).toBe('stem');
+    expect(g.guessFor('word', 'perro', 'POS', ctx({ pos: 'N' }, 'pos'))?.value).toBe('N');
   });
 
-  it('has no opinion for unlinked tokens, unknown fields, or blank entry values', () => {
-    expect(g.guessFor('morpheme', 'perro', 'Gloss', { vocabItem: null })).toBeNull();
+  it('reads the record and never the name', () => {
+    // A field paired with an entry field of another name.
+    const meta = { gloss: 'rumah', 'gloss (en)': 'house', meaning: 'home' };
+    expect(g.guessFor('morpheme', 'x', 'Glosa', ctx(meta, 'meaning'))?.value).toBe('home');
+    expect(g.guessFor('morpheme', 'x', 'Gloss (pmy)', ctx(meta, 'gloss (en)'))?.value).toBe(
+      'house',
+    );
+    // A field named Gloss with no Lexicon field takes nothing from the entry.
+    expect(g.guessFor('morpheme', 'x', 'Gloss', ctx(meta, null))).toBeNull();
+  });
+
+  it('has no opinion for unlinked tokens, an entry without the field, or blank values', () => {
+    const unlinked = { vocabItem: null, lexiconField: 'gloss' };
+    expect(g.guessFor('morpheme', 'perro', 'Gloss', unlinked)).toBeNull();
     expect(g.guessFor('morpheme', 'perro', 'Gloss', ctx({ pos: 'N' }))).toBeNull();
     expect(g.guessFor('morpheme', 'perro', 'Gloss', ctx({ gloss: '  ' }))).toBeNull();
-  });
-
-  // A FieldWorks import in two analysis languages names the annotation fields
-  // "Gloss (pmy)" and "Gloss (en)" but keeps the entry's built-in `gloss`,
-  // recording its language in the lexicon's field schema.
-  it('pairs a tagged field with the entry field in the same language', () => {
-    const meta = { gloss: 'rumah', 'gloss (en)': 'house' };
-    const entryFields = { gloss: { lang: 'pmy' }, 'gloss (en)': { lang: 'en' } };
-    const withSchema = (fieldLang = null) => ({ ...ctx(meta), fieldLang, entryFields });
-    expect(g.guessFor('morpheme', 'x', 'Gloss (pmy)', withSchema('pmy'))?.value).toBe('rumah');
-    expect(g.guessFor('morpheme', 'x', 'Gloss (en)', withSchema('en'))?.value).toBe('house');
-    // A field that records no language is read by its name's tag.
-    expect(g.guessFor('morpheme', 'x', 'Gloss (pmy)', withSchema())?.value).toBe('rumah');
-    // What a field records wins over its name.
-    expect(g.guessFor('morpheme', 'x', 'Gloss (pmy)', withSchema('en'))?.value).toBe('house');
-    // No schema, so nothing says the bare `gloss` is in pmy.
-    expect(g.guessFor('morpheme', 'x', 'Gloss (pmy)', ctx(meta))).toBeNull();
-    // A language nothing on the entry is in.
-    expect(g.guessFor('morpheme', 'x', 'Gloss (nl)', withSchema('nl'))).toBeNull();
-  });
-});
-
-describe('entryFieldFor', () => {
-  it('takes the same name before the same language', () => {
-    const meta = { gloss: 'a', 'gloss (pmy)': 'b' };
-    const entryFields = { gloss: { lang: 'pmy' } };
-    expect(entryFieldFor('Gloss (pmy)', meta, { fieldLang: 'pmy', entryFields })).toBe(
-      'gloss (pmy)',
-    );
-    expect(entryFieldFor('Gloss', meta, { fieldLang: 'pmy', entryFields })).toBe('gloss');
-  });
-
-  it('never pairs across base names', () => {
-    const meta = { definition: 'a' };
-    const entryFields = { definition: { lang: 'pmy' } };
-    expect(entryFieldFor('Gloss (pmy)', meta, { fieldLang: 'pmy', entryFields })).toBeNull();
   });
 });
 
@@ -169,9 +143,10 @@ describe('defaultGuessSource', () => {
       ),
     });
     const item = { metadata: { gloss: 'dog' } };
-    expect(g.guessFor('morpheme', 'perro', 'Gloss', { vocabItem: item })?.value).toBe('dog');
-    expect(g.guessFor('morpheme', 'perro', 'Gloss', { vocabItem: null })?.value).toBe('hound');
-    expect(g.guessFor('morpheme', 's', 'Gloss', { vocabItem: { metadata: {} } })).toEqual({
+    const at = (vocabItem) => ({ vocabItem, lexiconField: 'gloss' });
+    expect(g.guessFor('morpheme', 'perro', 'Gloss', at(item))?.value).toBe('dog');
+    expect(g.guessFor('morpheme', 'perro', 'Gloss', at(null))?.value).toBe('hound');
+    expect(g.guessFor('morpheme', 's', 'Gloss', at({ metadata: {} }))).toEqual({
       value: 'PL',
       source: PRECEDENT_SOURCE,
       count: 1,
@@ -189,7 +164,10 @@ describe('defaultGuessSource', () => {
     });
     const entry = { form: 'perro', metadata: { gloss: 'dog' } };
     const guess = (prov) =>
-      g.guessFor('morpheme', 'perro', 'Gloss', { vocabItem: { ...entry, prov } });
+      g.guessFor('morpheme', 'perro', 'Gloss', {
+        vocabItem: { ...entry, prov },
+        lexiconField: 'gloss',
+      });
 
     // A person made or confirmed the link: the entry is a claim about THIS
     // token and outranks what other tokens spelled the same were given.
@@ -200,7 +178,10 @@ describe('defaultGuessSource', () => {
     expect(guess('contributed')?.value).toBe('hound');
     // ...but the entry is still better than nothing where precedent is silent.
     expect(
-      g.guessFor('morpheme', 'gato', 'Gloss', { vocabItem: { ...entry, prov: 'machine' } }),
+      g.guessFor('morpheme', 'gato', 'Gloss', {
+        vocabItem: { ...entry, prov: 'machine' },
+        lexiconField: 'gloss',
+      }),
     ).toMatchObject({ value: 'dog', source: 'vocab:entry', trusted: false });
   });
 
@@ -209,6 +190,7 @@ describe('defaultGuessSource', () => {
     expect(
       g.guessFor('morpheme', 'perro', 'Gloss', {
         vocabItem: { form: 'perro', prov: 'human', metadata: { gloss: 'dog' } },
+        lexiconField: 'gloss',
       }),
     ).toEqual({ value: 'dog', source: 'vocab:entry', entryForm: 'perro', trusted: true });
   });
@@ -233,6 +215,7 @@ describe('listAlternatives', () => {
       form: 's',
       field: 'Gloss',
       vocabItem: { metadata: { gloss: '3SG' } },
+      lexiconField: 'gloss',
       span: {
         metadata: {
           prov: 'inferred',
@@ -258,6 +241,7 @@ describe('listAlternatives', () => {
         form: 's',
         field: 'Gloss',
         vocabItem: { form: 's', prov, metadata: { gloss: 'GEN' } },
+        lexiconField: 'gloss',
       }).map((r) => [r.value, r.entry, r.entryTrusted]);
 
     expect(rank('human')).toEqual([
@@ -272,17 +256,21 @@ describe('listAlternatives', () => {
     ]);
   });
 
-  it('lists the entry value of a tagged field in the same language', () => {
-    const list = listAlternatives({
+  it("lists the entry value of the field's Lexicon field, and none without one", () => {
+    const args = {
       precedent,
       kind: 'morpheme',
       form: 's',
       field: 'Gloss (pmy)',
       vocabItem: { metadata: { gloss: 'jamak', 'gloss (en)': 'PL' } },
-      fieldLang: 'pmy',
-      entryFields: { gloss: { lang: 'pmy' }, 'gloss (en)': { lang: 'en' } },
-    });
-    expect(list.filter((r) => r.entry).map((r) => r.value)).toEqual(['jamak']);
+    };
+    const entryRows = (lexiconField) =>
+      listAlternatives({ ...args, lexiconField })
+        .filter((r) => r.entry)
+        .map((r) => r.value);
+    expect(entryRows('gloss')).toEqual(['jamak']);
+    expect(entryRows('gloss (en)')).toEqual(['PL']);
+    expect(entryRows(null)).toEqual([]);
   });
 
   it('is empty when nothing is known, and precedent alone ranks by count then name', () => {

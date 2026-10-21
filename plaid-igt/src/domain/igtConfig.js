@@ -54,6 +54,15 @@ export const readScope = (config) => readIgt(config, 'scope') ?? null;
  */
 export const readFieldLang = (config) => readIgt(config, 'lang') ?? null;
 
+/** Where a span layer keeps its Lexicon field (domain/lexiconField.js). */
+const LEXICON_FIELD_KEY = 'lexiconField';
+
+/**
+ * The lexicon entry field a span layer's values pair with ("gloss"), or null
+ * for none. See domain/lexiconField.js.
+ */
+export const readLexiconField = (config) => readIgt(config, LEXICON_FIELD_KEY) ?? null;
+
 /** A word token layer's non-baseline orthographies: [{name}], or null. */
 export const readOrthographies = (config) => readIgt(config, 'orthographies') ?? null;
 

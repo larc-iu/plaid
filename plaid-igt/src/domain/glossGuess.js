@@ -2,9 +2,9 @@
 // answers guessFor(kind, form, field, ctx) with { value, source } or null;
 // `form` is the token's precedent form (precedent.js: a word trimmed by the
 // ignore rule, a morpheme's form verbatim) and `ctx` carries the token's
-// derived `vocabItem` (null when unlinked), plus the field's recorded language
-// and the entry's field schema for pairing the two (see entryFieldFor). The
-// editor renders guesses as placeholder-style suggestions; a guess is only
+// derived `vocabItem` (null when unlinked) and the field's Lexicon field
+// (`lexiconField`, the entry field its values pair with, see lexiconField.js).
+// The editor renders guesses as placeholder-style suggestions; a guess is only
 // ever WRITTEN when the user confirms it, and the written span carries
 // born-verified provenance metadata (the editor stamps confirmedInferred(source)
 // from the shared provenance helpers).
@@ -20,7 +20,6 @@
 import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
 import { isValueAllowed, scanValue, tagsetEnforces } from './tagsets.js';
-import { fieldNameLang, parseFieldName } from './fieldNames.js';
 
 const PROV_DETAIL_KEY = PROV.detailKey;
 const PROV_SOURCE_KEY = PROV.sourceKey;
@@ -48,44 +47,6 @@ export function precedentGuessSource(precedent) {
 
 export const VOCAB_ENTRY_SOURCE = 'vocab:entry';
 
-// An annotation field and an entry field name the same thing when they match
-// after case and separators are dropped: the project's morpheme-scope "Gloss"
-// layer pairs with the vocab's `gloss` field, "POS" with `pos`, "Morph Type"
-// with `morphType`.
-const fieldKey = (name) =>
-  String(name ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-
-/**
- * The key of an entry's metadata that answers for an annotation field, or null.
- * The same name first, as above. Failing that, the same base name in the same
- * language: a FieldWorks import in several analysis languages names the
- * annotation field "Gloss (pmy)" but keeps the entry's built-in `gloss`, whose
- * language the lexicon's field schema records. A language is what a field
- * records, else the tag its name ends in.
- *
- * @param fieldLang   what the annotation field records (config.igt.lang)
- * @param entryFields the entry's vocabulary field schema (readVocabFields)
- */
-export function entryFieldFor(field, metadata, { fieldLang = null, entryFields = null } = {}) {
-  const want = fieldKey(field);
-  if (!want || !metadata) return null;
-  const keys = Object.keys(metadata);
-  const same = keys.find((k) => fieldKey(k) === want);
-  if (same !== undefined) return same;
-  const lang = fieldLang || fieldNameLang(field);
-  if (!lang) return null;
-  const base = fieldKey(parseFieldName(field).base);
-  return (
-    keys.find(
-      (k) =>
-        fieldKey(parseFieldName(k).base) === base &&
-        (entryFields?.[k]?.lang || fieldNameLang(k)) === lang,
-    ) ?? null
-  );
-}
-
 // Link states whose entry may outrank precedent. A person saying "this token
 // IS this lexeme" is a claim about THIS token, which beats "other tokens
 // spelled the same got X"; an auto-made link nobody has confirmed is itself a
@@ -99,10 +60,11 @@ const TRUSTED_LINK_STATES = new Set([PROV_STATES.HUMAN, PROV_STATES.VERIFIED]);
 export const isTrustedLink = (vocabItem) =>
   !!vocabItem && TRUSTED_LINK_STATES.has(vocabItem.prov ?? PROV_STATES.HUMAN);
 
-// The linked entry's own value for the same-named field. An entry's fields
+// The linked entry's own value for the field's Lexicon field. An entry's fields
 // are what it says about itself in the lexicon (form aside); a token linked to
 // it inherits them as guesses, never as writes, since an instance may
-// legitimately differ from its entry (context-specific glossing).
+// legitimately differ from its entry (context-specific glossing). A field
+// with no Lexicon field takes nothing from an entry, whatever it is called.
 //
 // `trusted` filters by the LINK's provenance (see TRUSTED_LINK_STATES): true
 // answers only for a person's links, false only for a machine's, null for
@@ -119,8 +81,8 @@ export function vocabEntryGuessSource({ trusted = null } = {}) {
       if (!meta || typeof meta !== 'object') return null;
       const isTrusted = isTrustedLink(item);
       if (trusted !== null && isTrusted !== trusted) return null;
-      const key = entryFieldFor(field, meta, ctx ?? {});
-      const value = key == null ? null : meta[key];
+      const key = ctx?.lexiconField;
+      const value = key ? meta[key] : null;
       if (value == null) return null;
       const s = String(value).trim();
       return s
@@ -190,8 +152,7 @@ export function listAlternatives({
   form,
   field,
   vocabItem = null,
-  fieldLang = null,
-  entryFields = null,
+  lexiconField = null,
   span = null,
   tagset = null,
 }) {
@@ -210,8 +171,7 @@ export function listAlternatives({
   if (counts) for (const [v, n] of counts) row(v).count += n;
   const e = vocabEntryGuessSource().guessFor(kind, form, field, {
     vocabItem,
-    fieldLang,
-    entryFields,
+    lexiconField,
   });
   if (e) {
     const r = row(e.value);

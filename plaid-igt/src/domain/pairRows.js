@@ -12,7 +12,7 @@
 //   precedent the values this form was given in the project, with counts
 //   lexicon   the senses of the linked entry, of the entries spelled like the
 //             morpheme and of the entries it was linked to before, each with
-//             its own value for the field (entryFieldFor)
+//             its own value for the field (the field's Lexicon field)
 //   tagset    the field's tagset values
 //
 // A row from a source that names no entry (precedent, tagset, a model value
@@ -22,14 +22,12 @@
 import { PROV, PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { collationKey, compareText } from '@ui/domain/collation.js';
 import {
-  entryFieldFor,
   isTrustedLink,
   PRECEDENT_SOURCE,
   TAGSET_SOURCE,
   VOCAB_ENTRY_SOURCE,
 } from './glossGuess.js';
 import { KINDS, precedentCounts, SLOT_LINK } from './precedent.js';
-import { parseFieldName } from './fieldNames.js';
 import { isValueAllowed, tagsetEnforces } from './tagsets.js';
 import { groupRankedByHeadword, lexiconView } from './vocabDictionary.js';
 import { rankVocabItems } from './vocabRank.js';
@@ -37,19 +35,19 @@ import { rankVocabItems } from './vocabRank.js';
 const DETAIL = PROV.detailKey;
 const SOURCE = PROV.sourceKey;
 
-/**
- * Whether a field records glosses: its name, the language left out, says so
- * ("Gloss", "Glosa", "Glose", "Gloss (es)").
- */
-export const isGlossLikeField = (name) => /glos/i.test(parseFieldName(name).base);
+// An entry's value for an entry field, '' when the field is none or the entry
+// has no value in it.
+const entryValue = (item, key) => {
+  const v = key ? item?.metadata?.[key] : null;
+  return v == null ? '' : String(v).trim();
+};
 
 /**
  * What the picker reads of one vocabulary: its items, the sense tree and
- * numbers, its field schema, and its entries by form. `fields` is the
- * vocabulary's schema (readVocabFields). Built once per data version by the
+ * numbers, and its entries by form. Built once per data version by the
  * editor.
  */
-export const pickerLexicon = (vocab, fields = null) => {
+export const pickerLexicon = (vocab) => {
   const items = vocab?.items || [];
   const view = lexiconView(items);
   const byForm = new Map();
@@ -58,7 +56,7 @@ export const pickerLexicon = (vocab, fields = null) => {
     if (!byForm.has(k)) byForm.set(k, []);
     byForm.get(k).push(it);
   }
-  return { id: vocab?.id, name: vocab?.name ?? '', items, ...view, fields, byForm };
+  return { id: vocab?.id, name: vocab?.name ?? '', items, ...view, byForm };
 };
 
 // Every entry of every vocabulary by id, with its vocabulary.
@@ -94,13 +92,16 @@ function valueLinksOf(span, itemExists = null) {
 }
 
 /**
- * The morpheme field whose values the chip's rows show: the first gloss field,
- * in grid order, whose value records alternatives with their entries, else the
- * first gloss field. Null when the morpheme has none.
+ * The morpheme field whose values the chip's rows show: the first paired
+ * field (one with a Lexicon field), in grid order, whose value records
+ * alternatives with their entries, else the first paired field. Null when
+ * the morpheme has none.
+ *
+ * @param {string[]} pairedFields the morpheme fields with a Lexicon field
  */
-export function pickerFieldOf(morph, morphFields) {
-  const glossy = (morphFields || []).filter(isGlossLikeField);
-  return glossy.find((f) => valueLinksOf(morph?.annotations?.[f]).length) ?? glossy[0] ?? null;
+export function pickerFieldOf(morph, pairedFields) {
+  const paired = pairedFields || [];
+  return paired.find((f) => valueLinksOf(morph?.annotations?.[f]).length) ?? paired[0] ?? null;
 }
 
 // Tiers, in the order the list shows them.
@@ -115,7 +116,8 @@ const T = { CURRENT: 0, MODEL: 1, OWN: 2, PRECEDENT: 3, LEXICON: 4, TAGSET: 5 };
  * @param {string} args.form the morpheme's precedent form
  * @param {Map} [args.precedent] the precedent tally
  * @param {object[]} args.lexicons pickerLexicon per vocabulary
- * @param {string|null} [args.fieldLang] what the field records (config.igt.lang)
+ * @param {string|null} [args.lexiconField] the field's Lexicon field, the entry
+ *   field a sense's value is read from
  * @param {object|null} [args.tagset] the field's tagset, as the cell reads it
  * @param {string} [args.search] the chip's typed search
  * @param {Function} [args.detailOf] (item, lexicon) => the entry's detail line,
@@ -137,7 +139,7 @@ export function pairRows({
   form,
   precedent = null,
   lexicons = [],
-  fieldLang = null,
+  lexiconField = null,
   tagset = null,
   search = '',
   detailOf = null,
@@ -153,13 +155,9 @@ export function pairRows({
   const searching = !!search.trim();
   const q = collationKey(search.trim());
 
-  // A sense's own value for the field, '' when it has none.
-  const senseValue = (item, lx) => {
-    if (!field) return '';
-    const key = entryFieldFor(field, item?.metadata, { fieldLang, entryFields: lx?.fields });
-    const v = key == null ? null : item.metadata[key];
-    return v == null ? '' : String(v).trim();
-  };
+  // A sense's own value for the field, '' when it has none (an entry of a
+  // vocabulary without the Lexicon field has none).
+  const senseValue = (item) => entryValue(item, field ? lexiconField : null);
 
   const rows = new Map();
   let order = 0;
@@ -267,7 +265,7 @@ export function pairRows({
       const ranked = rankVocabItems(
         lx.items.map((it) => ({
           ...it,
-          _detail: detailOf ? detailOf(it, lx) : senseValue(it, lx),
+          _detail: detailOf ? detailOf(it, lx) : senseValue(it),
         })),
         { form, search: search.trim() },
       );
@@ -301,7 +299,7 @@ export function pairRows({
       for (const r of roots) walk(lx.byId.get(r), 0);
     }
     for (const e of entries) {
-      const value = senseValue(e.item, lx);
+      const value = senseValue(e.item);
       // A headword with senses and no value of its own is there to group them.
       const context = e.context || (!searching && e.depth === 0 && !value && e.hasKids);
       lexRows.push({ id: e.item.id, value, depth: e.depth, context });
@@ -321,7 +319,7 @@ export function pairRows({
   // A person's link: its own sense ranks above precedent.
   if (current && isTrustedLink(current)) {
     const hit = byId.get(currentId);
-    const own = rows.get(`${currentId}\u0000${senseValue(hit.item, hit.lx)}`);
+    const own = rows.get(`${currentId}\u0000${senseValue(hit.item)}`);
     if (own && own.tier > T.OWN) own.tier = T.OWN;
   }
 
@@ -346,7 +344,7 @@ export function pairRows({
   // own value as `senseValue`.
   const lexiconValue = (id) => {
     const hit = id ? byId.get(id) : null;
-    return hit ? senseValue(hit.item, hit.lx) : '';
+    return hit ? senseValue(hit.item) : '';
   };
   const pairedWithLink = new Set(
     current
@@ -418,28 +416,27 @@ export function pairRows({
 }
 
 /**
- * The other gloss fields a pick from the chip fills from the sense: each one
+ * The other paired fields a pick from the chip fills from the sense: each one
  * that is empty or holds a machine value nobody confirmed, given the sense's
- * own value for it, when that differs and the field's tagset allows it.
+ * own value for its Lexicon field, when that differs and the field's tagset
+ * allows it.
  *
  * @param {object} args
  * @param {object} args.morph the derived morpheme
  * @param {object|null} args.item the picked sense
- * @param {object|null} args.lexicon its vocabulary (pickerLexicon)
- * @param {string[]} args.fields the other gloss fields
- * @param {(field: string) => { fieldLang, tagset }} args.fieldInfo
+ * @param {string[]} args.fields the other morpheme fields with a Lexicon field
+ * @param {(field: string) => { lexiconField, tagset }} args.fieldInfo
  * @returns {{ field: string, value: string }[]}
  */
-export function senseFills({ morph, item, lexicon, fields, fieldInfo }) {
+export function senseFills({ morph, item, fields, fieldInfo }) {
   if (!item) return [];
   const out = [];
   for (const f of fields) {
     const span = morph?.annotations?.[f];
     const had = span?.value ?? '';
     if (had !== '' && provState(span?.metadata) !== PROV_STATES.MACHINE) continue;
-    const { fieldLang = null, tagset = null } = fieldInfo(f) || {};
-    const key = entryFieldFor(f, item.metadata, { fieldLang, entryFields: lexicon?.fields });
-    const v = key == null || item.metadata[key] == null ? '' : String(item.metadata[key]).trim();
+    const { lexiconField = null, tagset = null } = fieldInfo(f) || {};
+    const v = entryValue(item, lexiconField);
     if (!v || v === had) continue;
     if (tagset && !isValueAllowed(v, tagset)) continue;
     out.push({ field: f, value: v });

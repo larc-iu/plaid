@@ -183,7 +183,7 @@ export const grid = {
                     name,
                     {
                       vocabItem: token.vocabItem,
-                      ...this._entryPairing('word', name, token.vocabItem),
+                      lexiconField: this._lexiconFieldOf('word', name),
                     },
                   ) ?? null,
                   this._tagsetFor('word', name),
@@ -195,7 +195,7 @@ export const grid = {
                     form: this._precedentForm(token.content, KINDS.WORD),
                     field: name,
                     vocabItem: token.vocabItem,
-                    ...this._entryPairing('word', name, token.vocabItem),
+                    lexiconField: this._lexiconFieldOf('word', name),
                     span: token.annotations?.[name],
                     tagset: this._tagsetFor('word', name),
                   }),
@@ -361,7 +361,7 @@ export const grid = {
               form: value,
               field: name,
               vocabItem: morph.vocabItem,
-              ...this._entryPairing('morpheme', name, morph.vocabItem),
+              lexiconField: this._lexiconFieldOf('morpheme', name),
               span: morph.annotations?.[name],
               tagset,
             });
@@ -408,13 +408,13 @@ export const grid = {
                 guess: allowedGuess(
                   ctx.guess?.guessFor('morpheme', value, name, {
                     vocabItem: morph.vocabItem,
-                    ...this._entryPairing('morpheme', name, morph.vocabItem),
+                    lexiconField: this._lexiconFieldOf('morpheme', name),
                   }) ?? null,
                   tagset,
                 ),
-                // A gloss lists the pair picker's rows, sense and value
-                // together. With a tagset that splits values, typing lists
-                // the parts as any such cell does.
+                // A field with a Lexicon field lists the pair picker's rows,
+                // sense and value together. With a tagset that splits values,
+                // typing lists the parts as any such cell does.
                 alternatives: this._opensPicker(name)
                   ? () => this._cellPairRows(morph, name, tagset)
                   : valueList,

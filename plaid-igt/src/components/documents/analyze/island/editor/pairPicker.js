@@ -1,8 +1,6 @@
 import { html, nothing } from 'lit-html';
-import { readVocabFields } from '@/domain/igtConfig';
 import { TAGSET_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import {
-  isGlossLikeField,
   pairRows,
   pickerFieldOf,
   pickerLexicon,
@@ -12,16 +10,17 @@ import {
 import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { morphFormOf, numHtml } from './shared.js';
 
-// The pair picker: a morpheme's link and gloss picked together. Alt+Down on a
-// morpheme's gloss (alternatives.js) and a click on its lexicon chip
+// The pair picker: a morpheme's link and value picked together. Alt+Down on a
+// morpheme field with a Lexicon field (alternatives.js; domain/lexiconField.js)
+// and a click on its lexicon chip
 // (vocabPopover.js) list the same rows (domain/pairRows.js), drawn by one
 // template, and a pick from either goes through one path (_pickPairRow) to one
 // batch (IgtDocument.setMorphemePair).
 export const pairPicker = {
-  // Every vocabulary as the picker reads it. Asked once per gloss cell per
+  // Every vocabulary as the picker reads it. Asked once per paired cell per
   // render, so it answers at once while the data has not changed. After a
   // change a vocabulary is read again only when its entry list or its
-  // settings changed: an edit keeps the entry list it did not touch
+  // name changed: an edit keeps the entry list it did not touch
   // (IgtDocument's keepUnchangedLists), and the sense tree of a large lexicon
   // is not worth building on every keystroke.
   _pickerLexicons() {
@@ -34,11 +33,10 @@ export const pairPicker = {
     this._pickerLexVocabs = vocabsNow;
     const memo = (this._pickerLexMemo ||= new Map());
     const list = Object.values(vocabsNow || {}).map((v) => {
-      const cfg = JSON.stringify(v.config ?? null);
       const hit = memo.get(v.id);
-      if (hit && hit.items === v.items && hit.cfg === cfg && hit.name === v.name) return hit.lx;
-      const lx = pickerLexicon(v, readVocabFields(v.config));
-      memo.set(v.id, { items: v.items, cfg, name: v.name, lx });
+      if (hit && hit.items === v.items && hit.name === v.name) return hit.lx;
+      const lx = pickerLexicon(v);
+      memo.set(v.id, { items: v.items, name: v.name, lx });
       return lx;
     });
     const prev = this._pickerLex;
@@ -48,14 +46,21 @@ export const pairPicker = {
     return this._pickerLex;
   },
 
-  _morphFieldNames() {
-    return (this.doc.layerInfo?.spanLayers?.morpheme || []).map((l) => l.name);
+  // The morpheme fields with a Lexicon field, in grid order.
+  _pairedMorphFields() {
+    return (this.doc.layerInfo?.spanLayers?.morpheme || [])
+      .map((l) => l.name)
+      .filter((name) => this._lexiconFieldOf('morpheme', name));
   },
 
-  // Whether Alt+Down on this morpheme field opens the picker: a gloss field,
-  // in a project with a lexicon. Every other field keeps its value list.
+  // Whether Alt+Down on this morpheme field opens the picker: a field with a
+  // Lexicon field, in a project with a lexicon. Every other field keeps its
+  // value list.
   _opensPicker(name) {
-    return isGlossLikeField(name) && Object.keys(this.doc.vocabularies || {}).length > 0;
+    return (
+      !!this._lexiconFieldOf('morpheme', name) &&
+      Object.keys(this.doc.vocabularies || {}).length > 0
+    );
   },
 
   // A morpheme as the grid derives it, with its word and its sentence's place.
@@ -98,7 +103,7 @@ export const pairPicker = {
       form: morphFormOf(morph),
       precedent: this._precedentTally(),
       lexicons: this._pickerLexicons(),
-      fieldLang: field ? this._entryPairing('morpheme', field, null).fieldLang : null,
+      lexiconField: field ? this._lexiconFieldOf('morpheme', field) : null,
       tagset,
       search,
       detailOf: (item, lx) => this._vocabItemDetail(item, this.doc.vocabularies?.[lx.id]),
@@ -107,7 +112,7 @@ export const pairPicker = {
     });
   },
 
-  // The rows a gloss cell lists, once per render pass (see _alternatives).
+  // The rows a paired cell lists, once per render pass (see _alternatives).
   _cellPairRows(morph, field, tagset) {
     const key = `pair\u0000${morph.id}\u0000${field}\u0000${JSON.stringify(tagset?.reading ?? null)}`;
     const memo = (this._altsMemo ||= new Map());
@@ -124,7 +129,7 @@ export const pairPicker = {
   _chipPairs(tokenId, search) {
     const ctx = this._morphContext(tokenId);
     const morph = ctx?.morph ?? { id: tokenId, annotations: {}, vocabItem: null };
-    const field = pickerFieldOf(morph, this._morphFieldNames());
+    const field = pickerFieldOf(morph, this._pairedMorphFields());
     const tagset = field && ctx ? this._morphFieldTagset(morph, ctx.word, field) : null;
     const { rows, more } = this._pairRows(morph, field, { tagset, search, cap: 30, chip: true });
     return { rows, more, field, morph };
@@ -164,7 +169,7 @@ export const pairPicker = {
    * stamped as adopting the row's suggestion when the field was empty, and
    * the link as adopting the producer's when the row is the producer's,
    * unless the row was found by a typed search (`searched`). From the chip
-   * (`fill`) the sense also fills the other gloss fields that are empty or
+   * (`fill`) the sense also fills the other paired fields that are empty or
    * hold a machine value nobody confirmed. One History label for both doors.
    */
   _pickPairRow(morphId, field, row, { typed = null, searched = false, fill = false } = {}) {
@@ -209,17 +214,16 @@ export const pairPicker = {
     );
   },
 
-  // The other gloss fields a sense fills, each with its stamp.
+  // The other paired fields a sense fills, each with its stamp.
   _senseFillsFor(morph, word, field, row) {
     const hit = row.named && row.itemId ? this._pickerLexicons().byId.get(row.itemId) : null;
     if (!hit) return [];
     return senseFills({
       morph,
       item: hit.item,
-      lexicon: hit.lx,
-      fields: this._morphFieldNames().filter((f) => f !== field && isGlossLikeField(f)),
+      fields: this._pairedMorphFields().filter((f) => f !== field),
       fieldInfo: (f) => ({
-        fieldLang: this._entryPairing('morpheme', f, null).fieldLang,
+        lexiconField: this._lexiconFieldOf('morpheme', f),
         tagset: this._morphFieldTagset(morph, word, f),
       }),
     }).map((x) => ({

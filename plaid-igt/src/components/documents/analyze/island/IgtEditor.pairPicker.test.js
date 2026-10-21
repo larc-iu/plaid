@@ -34,7 +34,14 @@ const ITEMS = [
 
 // "the cat the cat": the first "cat" (m-2) glossed and linked by a model
 // that weighed both senses. `hold` keeps every batch until `release()`.
-function mount({ hold = false, tagset = null, analyzed = true, fields, items = ITEMS } = {}) {
+function mount({
+  hold = false,
+  tagset = null,
+  analyzed = true,
+  fields,
+  lexiconFields,
+  items = ITEMS,
+} = {}) {
   const raw = buildRawDoc({
     body: 'the cat the cat',
     words: [
@@ -45,6 +52,7 @@ function mount({ hold = false, tagset = null, analyzed = true, fields, items = I
     ],
     ...(analyzed ? {} : { morphemes: [] }),
     ...(fields ? { morphFields: fields } : {}),
+    lexiconFields,
   });
   const gloss = raw.textLayers[0].tokenLayers[2].spanLayers[0];
   if (analyzed) {
@@ -187,11 +195,18 @@ describe('the two doors', () => {
     expect(sense.style.getPropertyValue('--igt-depth')).toBe('1');
   });
 
-  it('leave a field that is not a gloss its plain list of values', async () => {
-    mount({ fields: ['Gloss', 'POS'] });
+  it('open from any field with a Lexicon field, POS included, and from no other', async () => {
+    mount({ fields: ['Gloss', 'POS', 'Note'] });
     await settle(4);
-    expect(cell('ma:m-2:POS').title).not.toContain('senses');
     expect(cell('ma:m-2:Gloss').title).toContain('senses and values');
+    expect(cell('ma:m-2:POS').title).toContain('senses and values');
+    expect(cell('ma:m-2:Note').title).not.toContain('senses');
+  });
+
+  it('leave a field named Gloss with no Lexicon field its plain list', async () => {
+    mount({ fields: ['Gloss'], lexiconFields: { 'Morpheme:Gloss': null } });
+    await settle(4);
+    expect(cell('ma:m-2:Gloss').title).not.toContain('senses');
   });
 });
 
@@ -303,21 +318,30 @@ describe('a pick from the chip', () => {
     expect(morph(doc).vocabItem.prov).toBe('verified');
   });
 
-  it('fills another gloss field that is empty from the sense, never one a person wrote', async () => {
+  it('fills another paired field that is empty from the sense, never one a person wrote', async () => {
     const items = structuredClone(ITEMS);
     Object.assign(items.find((i) => i.id === 'c2').metadata, {
       'gloss (es)': 'jazzista',
       'gloss (fr)': 'jazzeux',
     });
-    const { doc } = mount({ fields: ['Gloss', 'Gloss (es)', 'Gloss (fr)'], items });
-    await doc.updateMorphemeSpan('m-2', 'Gloss (fr)', 'chat');
+    const { doc } = mount({
+      fields: ['Gloss', 'Spanish', 'French', 'Gloss (de)'],
+      lexiconFields: {
+        'Morpheme:Spanish': 'gloss (es)',
+        'Morpheme:French': 'gloss (fr)',
+        'Morpheme:Gloss (de)': null,
+      },
+      items,
+    });
+    await doc.updateMorphemeSpan('m-2', 'French', 'chat');
     await settle(4);
     openChip('m-2');
     const rows = [...host.querySelectorAll('.igt-vocab-pop__item')];
     click(rows.find((r) => r.querySelector('.igt-pair__value')?.textContent === 'jazzman'));
     await settle(6);
-    expect(morph(doc).annotations['Gloss (es)'].value).toBe('jazzista');
-    expect(morph(doc).annotations['Gloss (fr)'].value).toBe('chat');
+    expect(morph(doc).annotations.Spanish.value).toBe('jazzista');
+    expect(morph(doc).annotations.French.value).toBe('chat');
+    expect(morph(doc).annotations['Gloss (de)'] ?? null).toBeNull();
   });
 
   it('takes the other unlinked same-form morphemes along to the entry with “all”', async () => {

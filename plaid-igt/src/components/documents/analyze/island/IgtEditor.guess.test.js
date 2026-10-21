@@ -130,20 +130,14 @@ describe('IgtEditor suggestion provenance', () => {
 // but keeps the entry's built-in `gloss`, whose language the lexicon records.
 // The first field is named with no tag at all, so only what it records can
 // pair it with that `gloss`.
-describe('an entry guess in a field of another name', () => {
-  function mountTagged() {
+describe('an entry guess reads the field’s Lexicon field, never its name', () => {
+  function mountPaired() {
     const raw = buildRawDoc({
       body: 'kucing',
       words: [{ id: 'w-1', begin: 0, end: 6 }],
-      wordFields: ['Gloss (Malay)', 'Gloss (en)'],
+      wordFields: ['Malay', 'Meaning', 'Gloss'],
+      lexiconFields: { 'Word:Malay': 'gloss', 'Word:Meaning': 'gloss (en)', 'Word:Gloss': null },
     });
-    const langs = { 'Gloss (Malay)': 'pmy', 'Gloss (en)': 'en' };
-    raw.textLayers[0].tokenLayers
-      .flatMap((tl) => tl.spanLayers || [])
-      .filter((sl) => langs[sl.name])
-      .forEach((sl) => {
-        sl.config.igt.lang = langs[sl.name];
-      });
     const entry = { id: 'i-1', form: 'kucing', metadata: { gloss: 'kucing', 'gloss (en)': 'cat' } };
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });
@@ -165,10 +159,12 @@ describe('an entry guess in a field of another name', () => {
     ({ host, editor } = mountIsland(doc));
   }
 
-  it('pairs each field with the entry field in its language', () => {
-    mountTagged();
-    expect(cell('wa:w-1:Gloss (Malay)').placeholder).toBe('kucing');
-    expect(cell('wa:w-1:Gloss (en)').placeholder).toBe('cat');
+  it('guesses from the entry field each field names, and nothing for a field with none', () => {
+    mountPaired();
+    expect(cell('wa:w-1:Malay').placeholder).toBe('kucing');
+    expect(cell('wa:w-1:Meaning').placeholder).toBe('cat');
+    expect(cell('wa:w-1:Gloss').placeholder).not.toBe('kucing');
+    expect(cell('wa:w-1:Gloss').placeholder).not.toBe('cat');
   });
 });
 

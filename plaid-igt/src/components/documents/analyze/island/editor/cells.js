@@ -8,7 +8,7 @@ import {
   tagsetEnforces,
   validateValue,
 } from '@/domain/tagsets';
-import { readFieldLang, readVocabFields } from '@/domain/igtConfig';
+import { readLexiconField } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { isImeKey } from '@ui/lib/chords.js';
@@ -839,25 +839,20 @@ export const cells = {
     return this._tagsetCache.get(`${scope}:${name}`) ?? null;
   },
 
-  // What pairs an annotation field with a field of the linked lexicon entry
-  // when their names differ (see entryFieldFor): the language the annotation
-  // field records and the entry's field schema. Asked once per rendered cell,
-  // so the languages are memoized on layerInfo like the tagsets above.
-  _entryPairing(scope, name, vocabItem) {
+  // A field's Lexicon field (domain/lexiconField.js): the entry field its
+  // guesses and the pair picker read, or null. Asked once per rendered cell,
+  // so it is memoized on layerInfo like the tagsets above.
+  _lexiconFieldOf(scope, name) {
     const info = this.doc.layerInfo;
-    if (this._fieldLangCacheInfo !== info) {
-      this._fieldLangCacheInfo = info;
+    if (this._lexiconFieldCacheInfo !== info) {
+      this._lexiconFieldCacheInfo = info;
       const map = new Map();
       for (const [bucket, layers] of Object.entries(info?.spanLayers || {})) {
-        for (const sl of layers || []) map.set(`${bucket}:${sl.name}`, readFieldLang(sl.config));
+        for (const sl of layers || []) map.set(`${bucket}:${sl.name}`, readLexiconField(sl.config));
       }
-      this._fieldLangCache = map;
+      this._lexiconFieldCache = map;
     }
-    const vocab = vocabItem ? this.doc.vocabularies?.[vocabItem.vocabId] : null;
-    return {
-      fieldLang: this._fieldLangCache.get(`${scope}:${name}`) ?? null,
-      entryFields: vocab ? readVocabFields(vocab.config) : null,
-    };
+    return this._lexiconFieldCache.get(`${scope}:${name}`) ?? null;
   },
 
   _guessSource(sentences, wordFields, morphFields) {

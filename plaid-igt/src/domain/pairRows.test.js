@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  isGlossLikeField,
-  pairRows,
-  pickerFieldOf,
-  pickerLexicon,
-  senseFills,
-} from './pairRows.js';
+import { pairRows as pairRowsOf, pickerFieldOf, pickerLexicon, senseFills } from './pairRows.js';
 import { addPrecedent, createTally, SLOT_LINK } from './precedent.js';
 import { PRECEDENT_SOURCE, TAGSET_SOURCE, VOCAB_ENTRY_SOURCE } from './glossGuess.js';
 
@@ -33,34 +27,26 @@ const morph = ({ link = null, gloss = null } = {}) => ({
 });
 const link = (id, prov = 'human') => ({ id, form: 'sel', vocabId: 'v1', prov });
 
+// The tests' field "Gloss" pairs with the entry field `gloss` unless a test
+// says otherwise.
+const pairRows = (args) => pairRowsOf({ lexiconField: 'gloss', ...args });
+
 const rowsOf = (args) =>
   pairRows({ field: 'Gloss', form: 'sel', lexicons: lexicons(), ...args }).rows.map((r) => [
     r.itemId,
     r.value,
   ]);
 
-describe('isGlossLikeField and pickerFieldOf', () => {
-  it('reads a gloss field by its name, a language left out', () => {
-    expect(isGlossLikeField('Gloss')).toBe(true);
-    expect(isGlossLikeField('Gloss (pmy)')).toBe(true);
-    expect(isGlossLikeField('Morpheme gloss')).toBe(true);
-    expect(isGlossLikeField('Glosa')).toBe(true);
-    expect(isGlossLikeField('Glose (fr)')).toBe(true);
-    expect(isGlossLikeField('POS')).toBe(false);
-    expect(isGlossLikeField('Note (gloss)')).toBe(false);
-  });
-
-  it('picks the gloss field recording the producer’s entries, else the first', () => {
+describe('pickerFieldOf', () => {
+  it('picks the paired field recording the producer’s entries, else the first', () => {
     const m = {
       annotations: {
         'Gloss (es)': model('vender', { valueLinks: [{ value: 'vender', item: 's1', prob: 1 }] }),
       },
     };
     expect(pickerFieldOf(m, ['POS', 'Gloss (en)', 'Gloss (es)'])).toBe('Gloss (es)');
-    expect(pickerFieldOf({ annotations: {} }, ['POS', 'Gloss (en)', 'Gloss (es)'])).toBe(
-      'Gloss (en)',
-    );
-    expect(pickerFieldOf({ annotations: {} }, ['POS'])).toBeNull();
+    expect(pickerFieldOf({ annotations: {} }, ['POS', 'Gloss (en)', 'Gloss (es)'])).toBe('POS');
+    expect(pickerFieldOf({ annotations: {} }, [])).toBeNull();
   });
 
   it('keeps only valueLinks entries that are whole and still exist', () => {
@@ -317,22 +303,45 @@ describe('pairRows', () => {
     );
   });
 
-  it('pairs a sense with the entry field its language names', () => {
+  it('reads each sense’s value from the field’s Lexicon field, never its name', () => {
     const lex = {
       id: 'v1',
       name: 'L',
       items: [{ id: 'e', form: 'sel', metadata: { gloss: 'sell', 'gloss (es)': 'vender' } }],
     };
+    const pairsOf = (field, lexiconField) =>
+      pairRows({
+        morph: morph(),
+        field,
+        form: 'sel',
+        lexicons: lexicons(lex),
+        lexiconField,
+      }).rows.map((r) => [r.itemId, r.value]);
+    expect(pairsOf('Gloss (es)', 'gloss (es)')).toEqual([['e', 'vender']]);
+    // A name that matches nothing, paired by the record.
+    expect(pairsOf('Traducción', 'gloss (es)')).toEqual([['e', 'vender']]);
+    // A field named Gloss with no Lexicon field gives link-only rows.
+    expect(pairsOf('Gloss', null)).toEqual([['e', '']]);
+  });
+
+  it('gives a sense of a vocabulary without the Lexicon field no value', () => {
+    const a = { id: 'va', name: 'A', items: [{ id: 'a1', form: 'sel', metadata: { pos: 'V' } }] };
+    const b = {
+      id: 'vb',
+      name: 'B',
+      items: [{ id: 'b1', form: 'sel', metadata: { gloss: 'sell', category: 'verb' } }],
+    };
     const { rows } = pairRows({
       morph: morph(),
-      field: 'Gloss (es)',
+      field: 'POS',
       form: 'sel',
-      lexicons: lexicons(lex),
+      lexicons: lexicons(a, b),
+      lexiconField: 'pos',
     });
-    expect(rows.map((r) => [r.itemId, r.value])).toEqual([['e', 'vender']]);
-    // A field no entry answers for gives link-only rows.
-    const pos = pairRows({ morph: morph(), field: 'Note', form: 'sel', lexicons: lexicons(lex) });
-    expect(pos.rows.map((r) => [r.itemId, r.value])).toEqual([['e', '']]);
+    expect(rows.map((r) => [r.itemId, r.value])).toEqual([
+      ['a1', 'V'],
+      ['b1', ''],
+    ]);
   });
 
   it('under an enforcing tagset keeps the entry of a pair whose value it refuses', () => {
@@ -431,8 +440,8 @@ describe('pairRows', () => {
 
 describe('senseFills', () => {
   const item = { id: 's1', metadata: { gloss: 'sell', 'gloss (es)': 'vender' } };
-  const lexicon = pickerLexicon(LEX);
-  const info = () => ({ fieldLang: null, tagset: null });
+  // Each field pairs with the entry field of its language's gloss.
+  const info = (f) => ({ lexiconField: f.replace('Gloss', 'gloss'), tagset: null });
 
   it('fills an empty field and a machine value nobody confirmed, never a person’s', () => {
     const m = {
@@ -445,7 +454,6 @@ describe('senseFills', () => {
       senseFills({
         morph: m,
         item: { ...item, metadata: { ...item.metadata, 'gloss (fr)': 'vente' } },
-        lexicon,
         fields: ['Gloss (es)', 'Gloss (fr)'],
         fieldInfo: info,
       }),
@@ -454,20 +462,40 @@ describe('senseFills', () => {
       senseFills({
         morph: { annotations: {} },
         item,
-        lexicon,
         fields: ['Gloss (es)'],
         fieldInfo: info,
       }),
     ).toEqual([{ field: 'Gloss (es)', value: 'vender' }]);
   });
 
-  it('skips a value the field’s tagset refuses, and a sense with none', () => {
-    const closed = () => ({ tagset: { mode: 'closed', values: [{ value: 'SELL' }] } });
+  it('reads only the record: a field with no Lexicon field is not filled', () => {
     expect(
       senseFills({
         morph: { annotations: {} },
         item,
-        lexicon,
+        fields: ['Gloss (es)'],
+        fieldInfo: () => ({ lexiconField: null, tagset: null }),
+      }),
+    ).toEqual([]);
+    expect(
+      senseFills({
+        morph: { annotations: {} },
+        item,
+        fields: ['Lemma'],
+        fieldInfo: () => ({ lexiconField: 'gloss (es)', tagset: null }),
+      }),
+    ).toEqual([{ field: 'Lemma', value: 'vender' }]);
+  });
+
+  it('skips a value the field’s tagset refuses, and a sense with none', () => {
+    const closed = () => ({
+      lexiconField: 'gloss (es)',
+      tagset: { mode: 'closed', values: [{ value: 'SELL' }] },
+    });
+    expect(
+      senseFills({
+        morph: { annotations: {} },
+        item,
         fields: ['Gloss (es)'],
         fieldInfo: closed,
       }),
@@ -476,7 +504,6 @@ describe('senseFills', () => {
       senseFills({
         morph: { annotations: {} },
         item,
-        lexicon,
         fields: ['Gloss (de)'],
         fieldInfo: info,
       }),

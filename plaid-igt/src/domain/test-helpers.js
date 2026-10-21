@@ -6,6 +6,7 @@
 
 import { ROLES, applyMetadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
+import { lexiconFieldChoices, proposeLexiconField } from './lexiconField.js';
 import { IgtEditor } from '@/components/documents/analyze/island/IgtEditor.js';
 
 let idCounter = 0;
@@ -19,6 +20,16 @@ const nextId = (p = 'new') => `${p}-${++idCounter}`;
 // single sentence covering the whole body, two word tokens, and (optionally)
 // morphemes + span layers at each scope.
 
+// A field's config as setup makes it: its scope, and the Lexicon field its
+// name proposes against a new vocabulary's fields, unless the test states one
+// (`opts.lexiconFields`, "<scope>:<name>" -> key or null).
+const fieldConfig = (opts, scope, name) => {
+  const stated = opts.lexiconFields?.[`${scope}:${name}`];
+  const lexiconField =
+    stated !== undefined ? stated : proposeLexiconField({ name, scope }, lexiconFieldChoices([]));
+  return { igt: { scope, ...(lexiconField ? { lexiconField } : {}) } };
+};
+
 export function buildRawDoc(opts = {}) {
   const body = opts.body ?? 'the cat';
   const textId = 'text-1';
@@ -26,13 +37,13 @@ export function buildRawDoc(opts = {}) {
   const wordSpanLayers = (opts.wordFields ?? ['POS']).map((name, i) => ({
     id: `wsl-${i}`,
     name,
-    config: { igt: { scope: 'Word' } },
+    config: fieldConfig(opts, 'Word', name),
     spans: [],
   }));
   const morphSpanLayers = (opts.morphFields ?? ['Gloss']).map((name, i) => ({
     id: `msl-${i}`,
     name,
-    config: { igt: { scope: 'Morpheme' } },
+    config: fieldConfig(opts, 'Morpheme', name),
     spans: [],
   }));
   const sentSpanLayers = (opts.sentFields ?? ['Translation']).map((name, i) => ({
