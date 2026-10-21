@@ -140,7 +140,7 @@ const mappedFields = (options, scope) =>
 // against a participant list, which uses "," and ";" of its own.
 const COMMENT_SEP = ' | ';
 /** The item types a document metadata field can go out as. */
-export const METADATA_ITEM_TYPES = ['title', 'title-abbreviation', 'source', 'comment'];
+const METADATA_ITEM_TYPES = ['title', 'title-abbreviation', 'source', 'comment'];
 
 /**
  * A document's metadata as <interlinear-text> items.
