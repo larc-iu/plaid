@@ -96,6 +96,7 @@ MIN_CALIBRATION_STEPS = 50
 # 100 epochs each, 1000 for a corpus as small as Gitksan's 31 sentences.
 TINY_CORPUS = 100
 LEXICON_REFRESH_S = 15 * 60
+MIN_ALTERNATIVE_PROB = 0.01
 
 # Characters CWoMP's code splits a word on, and what they become inside a
 # form or gloss so that they stay one piece. A clitic's form carries CLITIC on
@@ -448,7 +449,9 @@ def alternatives_detail(picked: dict, confirmed: 'Confirmed') -> Optional[dict]:
     convention's `valueProbs` (shown in igt's Alt+Down list), and
     `valueLinks`, the item each alternative would be linked to, so that
     picking one moves the morpheme's link along with it."""
-    alts = picked['alternatives']
+    # An alternative under 1% is noise in a list a person reads ("model 0%").
+    alts = {g: p for g, p in picked['alternatives'].items()
+            if p >= MIN_ALTERNATIVE_PROB or g == picked['gloss']}
     if len(alts) < 2:
         return None
     detail = {'valueProbs': {decode_piece(g): round(p, 4) for g, p in alts.items()}}

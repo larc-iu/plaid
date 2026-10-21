@@ -27,9 +27,9 @@
 // word/morpheme with no link gets one; a link this rule made that is still
 // unverified is REPLACED when the rule now resolves to a different item; links
 // a human made or confirmed are protected and never touched, and so are
-// another producer's unverified links. An analysis service links a morpheme
-// by its form AND gloss (CWoMP picks a sense), which this rule, going by the
-// form alone, must not overwrite with the form's most common entry. A form the rule can't
+// another producer's unverified links. An analysis service may link a
+// morpheme by its form AND gloss, picking a sense, which this rule, going by
+// the form alone, must not overwrite with the form's most common entry. A form the rule can't
 // resolve leaves any existing link alone (re-running never strips a machine
 // link the rule has lost its opinion on).
 //

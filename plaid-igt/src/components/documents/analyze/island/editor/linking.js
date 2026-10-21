@@ -1,5 +1,6 @@
 import { notifyInfo } from '@/utils/feedback';
 import { sameFormUnlinked } from '@/domain/linkEverywhere.js';
+import { glossFollowingLink, modelSenses } from '@/domain/glossGuess';
 
 // Linking a token to a lexicon entry: confirm, toggle, create, link every
 // other unlinked form like it, and the hand-off to Auto-analyze.
@@ -96,9 +97,46 @@ export const linking = {
   // itself, and only writes it — with provenance — when the user confirms.)
   async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
     this._closePopover(returnFocus);
-    await this._runThenFocus({ vocabOpener: tokenId }, () =>
-      isLinked ? this.doc.unlinkVocab(tokenId) : this.doc.linkVocab(tokenId, item.id),
-    );
+    // Linking a morpheme to one of the senses an analysis weighed adopts that
+    // suggestion: the link is stamped as the producer's, confirmed, and the
+    // gloss follows to that sense's gloss once the link has landed
+    // (glossFollowingLink), as a pick under Alt+Down moves the link.
+    const morph = isLinked ? null : this._derivedMorpheme(tokenId);
+    const sense = modelSenses(morph)?.senses.find((x) => x.itemId === item.id);
+    const source = sense ? modelSenses(morph).source : null;
+    const follow = sense ? glossFollowingLink(morph, item.id) : null;
+    await this._runThenFocus({ vocabOpener: tokenId }, () => {
+      const written = isLinked
+        ? this.doc.unlinkVocab(tokenId)
+        : this.doc.linkVocab(
+            tokenId,
+            item.id,
+            sense ? this.doc.adoptStamp(source, { vocabItem: item.id }) : null,
+          );
+      if (follow) {
+        Promise.resolve(written).then((ok) => {
+          if (!ok) return;
+          // An ordinary edit, as a pick under Alt+Down over a stored value
+          // is: it confirms the gloss and keeps its provDetail, the
+          // alternatives included. A fresh stamp would replace them.
+          this.doc.updateMorphemeSpan(tokenId, follow.field, follow.value, null, {
+            adopted: true,
+          });
+        });
+      }
+      return written;
+    });
+  },
+
+  // A morpheme as the grid derives it (with its annotations), by id.
+  _derivedMorpheme(id) {
+    for (const s of this.doc.sentences || []) {
+      for (const t of s.tokens || []) {
+        const m = (t.morphemes || []).find((x) => x.id === id);
+        if (m) return m;
+      }
+    }
+    return null;
   },
 
   // Turn the "+ Create" row into an inline editor prefilled with `form`

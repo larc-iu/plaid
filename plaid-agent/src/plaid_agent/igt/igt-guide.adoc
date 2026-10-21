@@ -509,6 +509,9 @@ A whole word is never linked to an affix or clitic entry.
 The rule replaces only links it made itself that nobody has confirmed. A link a person made or confirmed stays, and so does one an analysis service proposed. CWoMP links a morpheme by its form and gloss together, which picks out the sense where the form alone cannot.
 Runs of words whose joined form matches a multi-word expression entry are linked as one (see <<_multi_word_expressions>>).
 
+When an analysis service weighed several senses of a morpheme, the lexicon popover lists those entries first, each with its probability, and **Alt+↓** on the morpheme's gloss lists the same senses by their glosses.
+Choosing one in either place sets both the gloss and the link.
+
 TIP: Accept links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.
 
 = Activity

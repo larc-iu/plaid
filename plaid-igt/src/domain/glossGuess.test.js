@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  glossFollowingLink,
   linkFollowingGloss,
+  modelSenses,
   precedentGuessSource,
   vocabEntryGuessSource,
   entryFieldFor,
@@ -536,5 +538,53 @@ describe('linkFollowingGloss', () => {
     const other = { ...own, provSource: 'rule:precedent-or-unique' };
     expect(linkFollowingGloss({ vocabItem: other }, span, 'and')).toBeNull();
     expect(linkFollowingGloss({ vocabItem: own }, { metadata: {} }, 'and')).toBeNull();
+  });
+});
+
+describe('glossFollowingLink', () => {
+  const gloss = (value, meta = {}) => ({
+    value,
+    metadata: {
+      prov: 'inferred',
+      provSource: 'service:x',
+      provDetail: {
+        value: 'sell',
+        valueProbs: { sell: 0.39, another: 0.3, other: 0.19 },
+        valueLinks: { sell: 'i-sell', another: 'i-another' },
+      },
+      ...meta,
+    },
+  });
+  const morph = (value, meta) => ({
+    annotations: { Gloss: gloss(value, meta), POS: { value: 'n' } },
+  });
+
+  it('lists the senses weighed, with the field that records them', () => {
+    const m = modelSenses(morph('sell'));
+    expect(m.field).toBe('Gloss');
+    expect(m.senses).toEqual([
+      { gloss: 'sell', itemId: 'i-sell', prob: 0.39 },
+      { gloss: 'another', itemId: 'i-another', prob: 0.3 },
+    ]);
+    expect(modelSenses({ annotations: { POS: { value: 'n' } } })).toBeNull();
+  });
+
+  it('sets the gloss of the sense a link picks, while the gloss is one the model weighed', () => {
+    expect(glossFollowingLink(morph('sell'), 'i-another')).toEqual({
+      field: 'Gloss',
+      value: 'another',
+      source: 'service:x',
+    });
+    // A gloss a person confirmed or picked, still among the alternatives.
+    expect(glossFollowingLink(morph('other', { provConfirmed: true }), 'i-sell')?.value).toBe(
+      'sell',
+    );
+  });
+
+  it('leaves the gloss when it is not one the model weighed, or nothing changes', () => {
+    expect(glossFollowingLink(morph('typed by hand'), 'i-another')).toBeNull();
+    expect(glossFollowingLink(morph('sell'), 'i-sell')).toBeNull();
+    expect(glossFollowingLink(morph('sell'), 'i-unrelated')).toBeNull();
+    expect(glossFollowingLink({ annotations: {} }, 'i-sell')).toBeNull();
   });
 });

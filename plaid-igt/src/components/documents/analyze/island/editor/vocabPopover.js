@@ -6,6 +6,7 @@ import { groupRankedByHeadword, itemLabel, lexiconView, refIds } from '@/domain/
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 import { rankVocabItems, TIERS } from '@/domain/vocabRank';
 import { isMweType } from '@/domain/mwe';
+import { modelSenses } from '@/domain/glossGuess';
 import {
   SLOT_LINK,
   createTally,
@@ -255,6 +256,21 @@ export const vocabPopover = {
       for (const it of phrases) items.push(it);
       for (const it of others) items.push(it);
     }
+    // The entries an analysis service weighed for this morpheme, its glosses'
+    // alternatives (modelSenses), come first, most probable first, marked
+    // with their probability as Alt+Down marks the glosses. A typed search
+    // ranks by the text alone.
+    const senses = kind === 'morpheme' ? modelSenses(this._derivedMorpheme(tokenId)) : null;
+    const senseOf = new Map((senses?.senses || []).map((x) => [x.itemId, x]));
+    for (const it of items) it._model = senseOf.get(it.id) ?? null;
+    if (senseOf.size && !search) {
+      const weighed = items
+        .filter((it) => it._model)
+        .sort((a, b) => (b._model.prob ?? -1) - (a._model.prob ?? -1));
+      const rest = items.filter((it) => !it._model);
+      items.length = 0;
+      for (const it of [...weighed, ...rest]) items.push(it);
+    }
     if (currentItem) {
       const i = items.findIndex((it) => it.id === currentItem.id);
       if (i > 0) {
@@ -270,6 +286,7 @@ export const vocabPopover = {
       : items.map((it) => ({ item: it, depth: 0 }));
     const limited = grouped.slice(0, 30).map((r) => ({
       ...r.item,
+      _model: r.item._model ?? null,
       // A row shown only for context never went through the ranking, so it
       // arrives undecorated: give it the same number and detail line, or a
       // headword reads like a lone entry.
@@ -578,6 +595,13 @@ export const vocabPopover = {
                           class="igt-vocab-pop__prec"
                           title=${`“${precForm}” was linked to this entry ${countOf(it._prec, 'time')} in this project`}
                           >×${it._prec}</span
+                        >`
+                      : nothing}
+                    ${it._model?.prob != null
+                      ? html`<span
+                          class="igt-vocab-pop__model"
+                          title=${`Gloss “${it._model.gloss}”`}
+                          >model ${Math.floor(it._model.prob * 100 + 1e-9)}%</span
                         >`
                       : nothing}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}

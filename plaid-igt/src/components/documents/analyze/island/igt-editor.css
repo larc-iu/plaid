@@ -1069,6 +1069,18 @@
   color: var(--igt-gray-600);
   white-space: nowrap;
 }
+/* A sense an analysis weighed, with its probability. Grey like the
+   precedent count: violet is for what a machine wrote, and this is only
+   offered. */
+.igt-vocab-pop__model {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--igt-gray-300);
+  color: var(--igt-gray-600);
+  white-space: nowrap;
+}
 .igt-vocab-pop__goto {
   color: inherit;
   text-decoration: underline dotted;

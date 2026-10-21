@@ -1612,6 +1612,8 @@ A machine writer may also record how confident it was.
 It should be calibrated on held-out data, so that values given 70% are right about 70% of the time.
 A writer that cannot calibrate leaves `provProb` out.
 Everything else, such as the top few alternatives, goes in the open map `provDetail`.
+The alternatives a producer weighed for a value go in `provDetail.valueProbs`, a map from each value to its probability, and on a gloss `provDetail.valueLinks` can name the lexicon entry each alternative stands for.
+Plaid IGT lists these alternatives under **Alt+↓** on the cell and first in the lexicon popover, and picking one in either place keeps the gloss and the link in step.
 
 The apps draw a heavier, darker underline under a machine value whose `provProb` is below the project's confidence threshold, and its tooltip gives the percentage.
 A maintainer sets the threshold on the Services settings page, and it is stored as a number between 0 and 1:

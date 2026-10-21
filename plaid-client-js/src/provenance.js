@@ -81,6 +81,10 @@
  *   - valueProbs / formProbs: a top-k {label: probability} map over the
  *     alternatives the producer considered, the chosen label included
  *     (provProb, when given, is that label's entry duplicated flat).
+ *   - valueLinks: on a gloss, a {label: vocab item id} map naming the
+ *     lexicon entry each alternative stands for. igt then lists those
+ *     entries first in the lexicon popover, and keeps the morpheme's link
+ *     and gloss in step when a person picks an alternative in either place.
  *   - model: what made the prediction (a model name, or a tool and its
  *     release such as 'stanza==1.11.0'), and version: which version of the
  *     writer ran ('<release>+<8 hex>', see the manual, "Provenance"). Every

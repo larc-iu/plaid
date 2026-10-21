@@ -298,10 +298,11 @@ export function listAlternatives({
 }
 
 // What happens to a morpheme's link when its gloss is set to `value`, given
-// the alternatives the gloss's producer weighed (provDetail.valueLinks, see
-// CWoMP): `{ itemId, source }` moves it to that value's entry, `{ itemId:
-// null }` takes it off (the new gloss has no entry the producer knew), and
-// null leaves it. Only the producer's own link moves: its unconfirmed one, or
+// the alternatives the gloss's producer weighed (provDetail.valueLinks, an
+// analysis service's record of the entry each alternative names):
+// `{ itemId, source }` moves it to that value's entry, `{ itemId: null }`
+// takes it off (the new gloss has no entry the producer knew), and null
+// leaves it. Only the producer's own link moves: its unconfirmed one, or
 // one a person already moved here by picking another of its alternatives. A
 // link a person chose otherwise, and another producer's, stay.
 export function linkFollowingGloss(morph, span, value) {
@@ -318,6 +319,46 @@ export function linkFollowingGloss(morph, span, value) {
   const target = typeof links[value] === 'string' && links[value] ? links[value] : null;
   if (target) return v?.id === target ? null : { itemId: target, source };
   return v ? { itemId: null, source } : null;
+}
+
+// The senses a producer weighed for a morpheme: the gloss field that records
+// them, that gloss span, its producer, and for each alternative its gloss,
+// probability and entry (provDetail.valueLinks and valueProbs). Null when no
+// gloss of the morpheme carries any. The lexicon popover ranks these entries
+// first, as Alt+Down ranks their glosses.
+export function modelSenses(morph) {
+  for (const [field, span] of Object.entries(morph?.annotations || {})) {
+    const d = span?.metadata?.[PROV_DETAIL_KEY];
+    const links = d?.valueLinks;
+    if (!links || typeof links !== 'object') continue;
+    const probs = d.valueProbs && typeof d.valueProbs === 'object' ? d.valueProbs : {};
+    const senses = Object.entries(links)
+      .filter(([, id]) => typeof id === 'string' && id)
+      .map(([gloss, itemId]) => ({
+        gloss,
+        itemId,
+        prob: typeof probs[gloss] === 'number' ? probs[gloss] : null,
+      }));
+    if (senses.length) return { field, span, source: span.metadata[PROV_SOURCE_KEY], senses };
+  }
+  return null;
+}
+
+// The gloss a morpheme takes when its link is set to `itemId`: the gloss of
+// that entry among the alternatives its producer weighed, while the current
+// gloss is still one of them. Linking from the lexicon popover and picking
+// from Alt+Down then leave the gloss and the link telling the same story.
+// Null when nothing changes.
+export function glossFollowingLink(morph, itemId) {
+  const m = modelSenses(morph);
+  if (!m) return null;
+  const now = m.span.value ?? '';
+  const d = m.span.metadata[PROV_DETAIL_KEY];
+  const weighed = new Set([...Object.keys(d.valueProbs || {}), ...Object.keys(d.valueLinks)]);
+  if (!weighed.has(now)) return null;
+  const sense = m.senses.find((x) => x.itemId === itemId);
+  if (!sense || sense.gloss === now) return null;
+  return { field: m.field, value: sense.gloss, source: m.source };
 }
 
 // Whole-value rows to part rows: each row's value is split on the tagset's

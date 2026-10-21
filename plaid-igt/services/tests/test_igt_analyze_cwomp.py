@@ -215,7 +215,7 @@ def _service(picked):
 
 def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side():
     enclitic = cwomp.encode_form('yor', 'enclitic')
-    service, model = _service([('gel', 'come', 0.9, {'come': 0.9, 'arrive': 0.08}),
+    service, model = _service([('gel', 'come', 0.9, {'come': 0.9, 'arrive': 0.08, 'go': 0.002}),
                                (enclitic, 'PROG', 0.4)])
     helper = servicetest.run(service, REQUEST)
     assert helper.errors == []
