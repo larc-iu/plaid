@@ -100,19 +100,19 @@
 /** The flat metadata keys of the provenance convention. */
 export const PROV = Object.freeze({
   /** 'inferred' when produced by an algorithm/service; absent = human. */
-  key: "prov",
+  key: 'prov',
   /** Which producer, e.g. 'service:<id>', 'rule:precedent-or-unique'. */
-  sourceKey: "provSource",
+  sourceKey: 'provSource',
   /** true once a human confirmed (or edited) the inferred value. */
-  confirmedKey: "provConfirmed",
+  confirmedKey: 'provConfirmed',
   /** Producer's probability ([0,1]) for the chosen value. Flat = queryable. */
-  probKey: "provProb",
+  probKey: 'provProb',
   /** Open map of producer extras (alternatives, model version, raw scores). */
-  detailKey: "provDetail",
+  detailKey: 'provDetail',
   /** `prov` for machine-made material. Any value but CONTRIBUTED reads as machine. */
-  INFERRED: "inferred",
+  INFERRED: 'inferred',
   /** `prov` for a contributor's material. */
-  CONTRIBUTED: "contributed",
+  CONTRIBUTED: 'contributed',
 });
 
 /**
@@ -136,10 +136,10 @@ export const PROVENANCE_KEYS = Object.freeze([
 
 /** The four provenance states returned by provState. */
 export const PROV_STATES = Object.freeze({
-  HUMAN: "human",
-  MACHINE: "machine",
-  CONTRIBUTED: "contributed",
-  VERIFIED: "verified",
+  HUMAN: 'human',
+  MACHINE: 'machine',
+  CONTRIBUTED: 'contributed',
+  VERIFIED: 'verified',
 });
 
 /**
@@ -199,9 +199,7 @@ export const stampContributed = (userId) => ({
 export const provState = (metadata) => {
   if (!metadata || metadata[PROV.key] == null) return PROV_STATES.HUMAN;
   if (metadata[PROV.confirmedKey]) return PROV_STATES.VERIFIED;
-  return metadata[PROV.key] === PROV.CONTRIBUTED
-    ? PROV_STATES.CONTRIBUTED
-    : PROV_STATES.MACHINE;
+  return metadata[PROV.key] === PROV.CONTRIBUTED ? PROV_STATES.CONTRIBUTED : PROV_STATES.MACHINE;
 };
 
 /**
@@ -214,9 +212,7 @@ export const provState = (metadata) => {
  */
 export const provOrigin = (metadata) => {
   if (!metadata || metadata[PROV.key] == null) return null;
-  return metadata[PROV.key] === PROV.CONTRIBUTED
-    ? PROV.CONTRIBUTED
-    : PROV.INFERRED;
+  return metadata[PROV.key] === PROV.CONTRIBUTED ? PROV.CONTRIBUTED : PROV.INFERRED;
 };
 
 /**
@@ -225,8 +221,7 @@ export const provOrigin = (metadata) => {
  * @param {object|null|undefined} metadata
  * @returns {boolean}
  */
-export const isMachine = (metadata) =>
-  provState(metadata) === PROV_STATES.MACHINE;
+export const isMachine = (metadata) => provState(metadata) === PROV_STATES.MACHINE;
 
 /**
  * Whether a machine writer must leave this entity alone (write-contract
@@ -254,8 +249,7 @@ export const needsReview = (metadata) => {
  * else null (nothing to do).
  * @param {object|null|undefined} metadata
  */
-export const verifyOnEdit = (metadata) =>
-  needsReview(metadata) ? PROV_CONFIRMED : null;
+export const verifyOnEdit = (metadata) => (needsReview(metadata) ? PROV_CONFIRMED : null);
 
 /**
  * The metadata fragment a CONTRIBUTOR's edit of this entity should merge in
@@ -292,7 +286,7 @@ export const userSource = (userId) => `user:${userId}`;
 // ---- review: whose work is reviewed (a project-config norm) ----
 
 /** The config key, under the `plaid` namespace, holding the review lists. */
-export const REVIEW_KEY = "review";
+export const REVIEW_KEY = 'review';
 
 /**
  * The project's review lists, normalized: { users: string[], roles: string[] }.
@@ -301,8 +295,7 @@ export const REVIEW_KEY = "review";
  */
 export const readReview = (config) => {
   const raw = config?.plaid?.[REVIEW_KEY];
-  const list = (v) =>
-    Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
   return { users: list(raw?.users), roles: list(raw?.roles) };
 };
 
@@ -316,12 +309,11 @@ export const readReview = (config) => {
  * @param {boolean} [opts.isAdmin]
  */
 export const projectRole = (project, userId, { isAdmin = false } = {}) => {
-  const inList = (l) =>
-    Array.isArray(l) && userId != null && l.includes(userId);
-  if (inList(project?.maintainers)) return "maintainer";
-  if (inList(project?.writers)) return "writer";
-  if (inList(project?.readers)) return "reader";
-  return isAdmin ? "maintainer" : null;
+  const inList = (l) => Array.isArray(l) && userId != null && l.includes(userId);
+  if (inList(project?.maintainers)) return 'maintainer';
+  if (inList(project?.writers)) return 'writer';
+  if (inList(project?.readers)) return 'reader';
+  return isAdmin ? 'maintainer' : null;
 };
 
 /**
@@ -365,7 +357,7 @@ export const withReviewedUser = (review, userId, reviewed) => {
  * write provProb calibrated on held-out data (manual, "Provenance"), so one
  * number serves every service on the project.
  */
-export const CONFIDENCE_KEY = "confidence";
+export const CONFIDENCE_KEY = 'confidence';
 
 /** The threshold when a project sets none: below it, a calibrated value is more likely wrong than right. */
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
@@ -378,9 +370,7 @@ export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
  */
 export const readConfidenceThreshold = (config) => {
   const t = config?.plaid?.[CONFIDENCE_KEY]?.threshold;
-  return typeof t === "number" && t >= 0 && t <= 1
-    ? t
-    : DEFAULT_CONFIDENCE_THRESHOLD;
+  return typeof t === 'number' && t >= 0 && t <= 1 ? t : DEFAULT_CONFIDENCE_THRESHOLD;
 };
 
 /**
@@ -393,7 +383,7 @@ export const readConfidenceThreshold = (config) => {
 export const machineProb = (metadata) => {
   if (provState(metadata) !== PROV_STATES.MACHINE) return null;
   const p = metadata[PROV.probKey];
-  return typeof p === "number" && Number.isFinite(p) ? p : null;
+  return typeof p === 'number' && Number.isFinite(p) ? p : null;
 };
 
 /**
@@ -402,10 +392,7 @@ export const machineProb = (metadata) => {
  * @param {number} [threshold] - readConfidenceThreshold(project.config)
  * @returns {boolean}
  */
-export const isDoubtful = (
-  metadata,
-  threshold = DEFAULT_CONFIDENCE_THRESHOLD,
-) => {
+export const isDoubtful = (metadata, threshold = DEFAULT_CONFIDENCE_THRESHOLD) => {
   const p = machineProb(metadata);
   return p != null && p < threshold;
 };
@@ -437,8 +424,7 @@ export const writerPolicy = (contributorId = null) => {
   // Material this writer's review gestures act on: a verifier reviews
   // machine and contributed material; a contributor reviews machine
   // proposals only, since their own vouching is itself a contribution.
-  const reviewable = (metadata) =>
-    contributor ? isMachine(metadata) : needsReview(metadata);
+  const reviewable = (metadata) => (contributor ? isMachine(metadata) : needsReview(metadata));
   const reviewableState = (state) =>
     contributor
       ? state === PROV_STATES.MACHINE
@@ -454,8 +440,7 @@ export const writerPolicy = (contributorId = null) => {
      * contributor's edit marks the entity contributed, dropping any earlier
      * confirmation.
      */
-    editStamp: (metadata) =>
-      contributor ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata),
+    editStamp: (metadata) => (contributor ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata)),
     /**
      * The fragment an explicit confirm gesture merges, or null when there is
      * nothing for this writer to confirm: PROV_CONFIRMED for a verifier, the
@@ -473,10 +458,7 @@ export const writerPolicy = (contributorId = null) => {
      */
     adoptStamp: (source, detail) =>
       contributor
-        ? {
-            ...stampContributed(id),
-            [PROV.detailKey]: { ...(detail || {}), guess: source },
-          }
+        ? { ...stampContributed(id), [PROV.detailKey]: { ...(detail || {}), guess: source } }
         : confirmedInferred(source, { detail }),
     reviewable,
     reviewableState,
