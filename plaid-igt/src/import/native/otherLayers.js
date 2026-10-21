@@ -51,6 +51,9 @@ const NOT_DESCRIBED = 'the archive does not describe where they go';
 export const noOtherLayers = () => ({
   // Archive token layer ids, parents first: the order their tokens are made in.
   order: [],
+  // Every archive layer id -> new id, this app's and vocabularies included,
+  // once restoreOtherLayers has run.
+  ids: new Map(),
   tokenLayers: new Map(), // archive id -> {id, overlapMode}
   spanLayers: new Map(), // archive id -> id
   relationLayers: new Map(), // archive id -> id
@@ -67,7 +70,7 @@ export const noOtherLayers = () => ({
  * value is left alone, so a resumed import writes only what an interrupted
  * one did not get to.
  */
-async function writeConfig(setConfig, id, current, config, skip = [], skipKeys = {}) {
+async function writeConfigNow(setConfig, id, current, config, skip = [], skipKeys = {}) {
   for (const [ns, keys] of Object.entries(config || {})) {
     if (skip.includes(ns) || !isMap(keys)) continue;
     for (const [key, value] of Object.entries(keys)) {
@@ -97,11 +100,19 @@ export async function restoreOtherLayers({
   projectId,
   project,
   manifest,
+  layerIds = new Map(),
   warnings = [],
   check = () => {},
 }) {
   const out = noOtherLayers();
   const described = manifest?.otherLayers || {};
+  // Settings are written once every layer is made, with each archive layer id
+  // in them replaced by the new layer's id: a setting may name a layer this
+  // run makes after the one holding it.
+  const writes = [];
+  const writeConfig = (...args) => {
+    writes.push(args);
+  };
 
   // Project settings. `igt` is this app's, and `plaid.review` and
   // `plaid.research` are not archived,
@@ -117,7 +128,7 @@ export async function restoreOtherLayers({
   );
 
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
-  if (!textLayer) return out;
+  if (!textLayer) return finish();
   const tokenLayers = textLayer.tokenLayers || [];
   const ownByRole = new Map(ownTokenLayers(tokenLayers));
   const archived = manifest?.layers || {};
@@ -293,12 +304,33 @@ export async function restoreOtherLayers({
       await restoreRelationLayers(spanLayer, spanRow.relationLayers);
     }
   }
-  return out;
+  return finish();
+
+  async function finish() {
+    out.ids = new Map([...layerIds, ...restoredIds(out)]);
+    for (const [setConfig, id, current, config, ...rest] of writes) {
+      check();
+      await writeConfigNow(setConfig, id, current, remapIds(config, out.ids), ...rest);
+    }
+    return out;
+  }
 }
 
-// `value` with every string that is an archive layer id in `ids` replaced by
-// the id of the layer made or found for it (a rule names a layer by id).
-const remapIds = (value, ids) => {
+// Archive layer id -> new id for every layer `restoreOtherLayers` made or found.
+const restoredIds = (restored) => {
+  const ids = new Map(restored.ownLayers);
+  restored.tokenLayers.forEach((layer, archiveId) => ids.set(archiveId, layer.id));
+  restored.spanLayers.forEach((id, archiveId) => ids.set(archiveId, id));
+  restored.relationLayers.forEach((id, archiveId) => ids.set(archiveId, id));
+  return ids;
+};
+
+/**
+ * `value` with every string that is an archive layer id in `ids` replaced by
+ * the id of the layer made or found for it, at any depth: a setting or a rule
+ * may name a layer by id.
+ */
+export const remapIds = (value, ids) => {
   if (Array.isArray(value)) return value.map((v) => remapIds(v, ids));
   if (isMap(value)) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, remapIds(v, ids)]));
@@ -316,10 +348,7 @@ const remapIds = (value, ids) => {
  */
 export async function declareOtherLayerRules({ client, restored, warnings = [] }) {
   if (!restored?.rules?.length) return;
-  const ids = new Map(restored.ownLayers);
-  restored.tokenLayers.forEach((layer, archiveId) => ids.set(archiveId, layer.id));
-  restored.spanLayers.forEach((id, archiveId) => ids.set(archiveId, id));
-  restored.relationLayers.forEach((id, archiveId) => ids.set(archiveId, id));
+  const ids = restored.ids ?? restoredIds(restored);
   for (const r of restored.rules) {
     const wanted = Object.entries(r.constraints)
       .filter(([, list]) => Array.isArray(list) && list.length)

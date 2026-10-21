@@ -2032,6 +2032,38 @@ describe("runNativeImport, other apps' layers", () => {
     );
   });
 
+  it('points every layer id in a restored setting at the layer made for it, at any depth', async () => {
+    const archive = otherAppArchive();
+    const { manifest } = archive;
+    const nodes = manifest.otherLayers.tokenLayers.find((tl) => tl.name === 'Nodes');
+    const concepts = nodes.spanLayers[0];
+    const field = manifest.layers.spanLayers[0];
+    // Any namespace: the import knows nothing of what the setting means.
+    manifest.otherConfig = {
+      ...manifest.otherConfig,
+      someapp: { pick: { layers: [concepts.id, 'not-a-layer'], word: manifest.layers.word } },
+    };
+    // A setting on an earlier layer naming one made after it.
+    nodes.config = { ...nodes.config, someapp: { target: concepts.id, field: field.id } };
+    const { client, result } = await freshImport(archive);
+    expect(result.warnings).toEqual([]);
+    const conceptsId = madeBy(client, 'spanLayers.create', (c) => c[2] === 'Concepts');
+    const nodesId = madeBy(client, 'tokenLayers.create', (c) => c[2] === 'Nodes');
+    const project = targetProject();
+    const tokenLayers = project.textLayers[0].tokenLayers;
+    const wordId = tokenLayers.find((tl) => tl.config?.plaid?.role === 'word').id;
+    const fieldId = tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.name === field.name && sl.config?.igt?.scope === field.scope).id;
+    expect(argsOf(client, 'projects.setConfig').filter(([, ns]) => ns === 'someapp')).toEqual([
+      ['newp', 'someapp', 'pick', { layers: [conceptsId, 'not-a-layer'], word: wordId }],
+    ]);
+    expect(argsOf(client, 'tokenLayers.setConfig').filter(([, ns]) => ns === 'someapp')).toEqual([
+      [nodesId, 'someapp', 'target', conceptsId],
+      [nodesId, 'someapp', 'field', fieldId],
+    ]);
+  });
+
   it('warns rather than making a span layer the archive does not describe', async () => {
     // The older path made one here from the name alone, cached per run: a
     // resumed import made the layer a second time. Every layer a current

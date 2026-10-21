@@ -45,6 +45,7 @@ import {
   hasOtherTokens,
   importOtherLayerData,
   noOtherLayers,
+  remapIds,
   restoreOtherLayers,
 } from './otherLayers.js';
 import {
@@ -186,6 +187,7 @@ export async function importVocabulary({
   client,
   vocabId,
   vocabData,
+  layerIds = new Map(),
   onProgress,
   shouldStop,
   warnings = [],
@@ -245,8 +247,9 @@ export async function importVocabulary({
   }
   for (const [ns, keys] of Object.entries(vocabData.config || {})) {
     if (ns === IGT_NAMESPACE || !keys || typeof keys !== 'object') continue;
-    for (const [key, value] of Object.entries(keys)) {
+    for (const [key, archived] of Object.entries(keys)) {
       if (takenSlug && ns === DICT_NAMESPACE && key === 'slug') continue;
+      const value = remapIds(archived, layerIds);
       await writeVocabConfig(vocab, ns, key, value, () =>
         client.vocabLayers.setConfig(vocabId, ns, key, value),
       );
@@ -962,28 +965,42 @@ export async function runNativeImport(args) {
   });
 }
 
+/**
+ * Archive layer id -> this project's id for the layers setup made or the
+ * project already holds: this app's own text and token layers, its fields
+ * (by scope and name) and the vocabularies (by name). Other apps' layers are
+ * added by restoreOtherLayers as it makes them.
+ */
+function knownLayerIds(archive, project, targets) {
+  const ids = new Map();
+  const layers = archive.manifest?.layers || {};
+  for (const [key, id] of [
+    ['baselineText', targets.textLayerId],
+    ['sentence', targets.sentenceLayerId],
+    ['word', targets.wordLayerId],
+    ['morpheme', targets.morphemeLayerId],
+    ['timeAlignment', targets.alignmentLayerId],
+  ]) {
+    if (layers[key] && id) ids.set(layers[key], id);
+  }
+  for (const row of layers.spanLayers || []) {
+    const id = targets.spanLayerByScopeName?.get(`${row.scope}:${row.name}`);
+    if (row.id && id) ids.set(row.id, id);
+  }
+  for (const vocab of archive.vocabularies || []) {
+    const target = (project.vocabs || []).find((v) => sameName(v.name, vocab.name));
+    if (vocab.data?.id && target) ids.set(vocab.data.id, target.id);
+  }
+  return ids;
+}
+
 async function runNativeImportImpl({ client, projectId, archive, onProgress, shouldStop }) {
   const project = await client.projects.get(projectId);
   const targets = resolveNativeTargets(project, archive.manifest);
   const warnings = [];
   const unmarked = unmarkedLedger({ client, projectId, project });
 
-  // Stored app config the setup wizard doesn't cover, written verbatim. The
-  // wizard does create documentMetadata, but only as `{name}` rows, so the
-  // archive's version is written over it to bring each field's tagset back.
   const schema = archive.manifest.schema || {};
-  for (const [key, value] of [
-    ['autoAnalysis', schema.autoAnalysis],
-    ['tagsets', schema.tagsets],
-    ['languages', schema.languages],
-    ['speakers', schema.speakers],
-    ['serviceDefaults', schema.serviceDefaults],
-    ['compose', schema.compose],
-    ['export', schema.exportPresets],
-    ['documentMetadata', schema.documentMetadata],
-  ]) {
-    if (value != null) await client.projects.setConfig(projectId, IGT_NAMESPACE, key, value);
-  }
   // "Tokenize new text" is on unless the word layer says false.
   if (schema.tokenizeNewText === false) {
     const words = findWordTokenLayer(findBaselineTextLayer(project.textLayers || [])?.tokenLayers);
@@ -1064,17 +1081,39 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   }
 
   // Other apps' settings and layers, once for the whole project, before any
-  // document needs them.
+  // document needs them. Settings are written with every archive layer id in
+  // them pointed at the layer that stands for it here.
   targets.otherLayers = await restoreOtherLayers({
     client,
     projectId,
     project,
     manifest: archive.manifest,
+    layerIds: knownLayerIds(archive, project, targets),
     warnings,
     check: () => {
       if (shouldStop?.()) throw new ImportCancelled();
     },
   });
+  const layerIds = targets.otherLayers.ids;
+
+  // Stored app config the setup wizard doesn't cover, written verbatim but for
+  // the layer ids in it. The wizard does create documentMetadata, but only as
+  // `{name}` rows, so the archive's version is written over it to bring each
+  // field's tagset back.
+  for (const [key, value] of [
+    ['autoAnalysis', schema.autoAnalysis],
+    ['tagsets', schema.tagsets],
+    ['languages', schema.languages],
+    ['speakers', schema.speakers],
+    ['serviceDefaults', schema.serviceDefaults],
+    ['compose', schema.compose],
+    ['export', schema.exportPresets],
+    ['documentMetadata', schema.documentMetadata],
+  ]) {
+    if (value != null) {
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, key, remapIds(value, layerIds));
+    }
+  }
 
   await restoreLayerNamesAndOrder({
     client,
@@ -1099,6 +1138,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       client,
       vocabId: target.id,
       vocabData: vocab.data,
+      layerIds,
       onProgress,
       shouldStop,
       warnings,
