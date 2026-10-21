@@ -317,3 +317,39 @@ describe('ServiceDefaultsSettings', () => {
     await unmount();
   });
 });
+
+describe('ServiceDefaultsSettings, a field parameter', () => {
+  it('shows the field holding its role, as the run dialog fills it, never the schema default', async () => {
+    const analyzer = {
+      serviceId: 's3',
+      serviceName: 'Glosser',
+      online: true,
+      extras: {
+        tasks: ['analyze'],
+        parameters: [
+          {
+            key: 'gloss_field',
+            label: 'Gloss field',
+            type: 'field',
+            scope: 'Morpheme',
+            role: 'gloss',
+            default: 'Gloss',
+          },
+        ],
+      },
+    };
+    const client = makeClient({
+      messages: { discoverServices: async () => [analyzer], discardService: vi.fn() },
+    });
+    const { container, step, unmount } = await mount({
+      client,
+      fieldsOf: () => ({ Morpheme: ['Gloss', 'Meaning'] }),
+      fieldRolesOf: () => ({ Morpheme: { Meaning: 'gloss' } }),
+    });
+    const glosser = radios(container).find((r) => r.id.includes('s3'));
+    await step(() => glosser.click());
+    const trigger = container.querySelector('[role="combobox"]');
+    expect(trigger?.textContent).toContain('Meaning');
+    await unmount();
+  });
+});

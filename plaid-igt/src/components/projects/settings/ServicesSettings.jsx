@@ -3,7 +3,7 @@ import { TASKS } from '@larc-iu/plaid-client';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
-import { fieldNamesOf } from '@/import/elan/fieldTargets';
+import { fieldNamesOf, fieldRolesOf } from '@/import/elan/fieldTargets';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
   BUILTIN_LINK_PRECEDENT,
@@ -148,6 +148,7 @@ export const ServicesSettings = ({ projectId, client }) => {
     <ServiceDefaultsSettings
       showConfidence
       fieldsOf={fieldNamesOf}
+      fieldRolesOf={fieldRolesOf}
       projectId={projectId}
       client={client}
       spots={SPOTS}

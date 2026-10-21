@@ -208,3 +208,37 @@ describe('orthographies', () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe('fieldRolesOf', () => {
+  it("gives each field the role its Lexicon field holds, a vocabulary's or a core field's", async () => {
+    const { fieldRolesOf } = await import('./fieldTargets.js');
+    const span = (name, scope, lexiconField) => ({
+      id: name,
+      name,
+      config: { igt: { scope, ...(lexiconField ? { lexiconField } : {}) } },
+    });
+    const project = {
+      vocabs: [{ config: { igt: { fields: { Meaning: { role: 'gloss' }, gloss: {} } } } }],
+      textLayers: [
+        {
+          config: { plaid: { role: 'baseline' } },
+          tokenLayers: [
+            {
+              config: { plaid: { role: 'morpheme' } },
+              spanLayers: [
+                span('Sense', 'Morpheme', 'Meaning'),
+                span('Gloss', 'Morpheme', 'gloss'),
+                span('POS', 'Morpheme', 'pos'),
+                span('Note', 'Morpheme', null),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    // `gloss` keeps the core field's role: the vocabulary declares it with none.
+    expect(fieldRolesOf(project)).toEqual({
+      Morpheme: { Sense: 'gloss', Gloss: 'gloss', POS: 'pos' },
+    });
+  });
+});

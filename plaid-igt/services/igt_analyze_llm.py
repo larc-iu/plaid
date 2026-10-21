@@ -379,7 +379,7 @@ class LLMAnalyzeService(BaseService):
                              description="The object language's name."),
                 Param.string('metalanguage', 'Metalanguage', default='English',
                              description='The language of the glosses and free translations.'),
-                Param.field('gloss_field', 'Gloss field', 'Morpheme', lexicon_field='gloss', required=True,
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', role='gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
                 Param.field('translation_field', 'Translation field', 'Sentence',
                             description='The sentence-scope field holding the free translation.'),

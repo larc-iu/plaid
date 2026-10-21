@@ -33,8 +33,8 @@ const EMPTY = [];
 //               A function of the chosen method's schema, or a plain object.
 //   fields:     {scope: [field name]}, the project's annotation fields, which a
 //               `field` parameter is chosen from. Null where there are none.
-//   lexiconFields: {scope: {field name: entry field}}, each field's stored
-//               Lexicon field, which fills a `field` parameter that names one.
+//   fieldRoles: {scope: {field name: role}}, the role each field's stored
+//               Lexicon field holds, which fills a `field` parameter naming it.
 export function useServiceSpot({
   task,
   project,
@@ -43,7 +43,7 @@ export function useServiceSpot({
   storageId,
   seedParams = null,
   fields = null,
-  lexiconFields = null,
+  fieldRoles = null,
 }) {
   const selectionKey = `${appPrefix()}_${storageId}_service`;
   const [choice, setChoice] = useState(null);
@@ -122,7 +122,7 @@ export function useServiceSpot({
     storageKey: selection ? `${appPrefix()}_${storageId}_params_${selection}` : null,
     seedParams: seeded,
     fields,
-    lexiconFields,
+    fieldRoles,
     // A project default's params belong to the method it names, and to no other.
     defaultParams:
       projectDefault && selectionFromConfig(projectDefault) === selection

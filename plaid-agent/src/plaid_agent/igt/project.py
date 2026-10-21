@@ -38,7 +38,7 @@ from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
 # the same cases.
 from plaid_client.workflows.igt.word_breaks import (is_js_space, is_unicode_punctuation,  # noqa: F401
                                                     split_words)
-from .vocab import ROLE_GLOSS, fields_with_role, normalize_vocab_fields, vocab_field_summary
+from .vocab import CORE_VOCAB_FIELDS, ROLE_GLOSS, fields_with_role, normalize_vocab_fields, vocab_field_summary
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -212,16 +212,20 @@ class IgtProject:
 
     def gloss_field(self, scope: str) -> Optional[Field]:
         """The field that plays the role of gloss at a scope, used only as the
-        DEFAULT where a tool takes a field: the first whose Lexicon field is
-        the entry field ``gloss``, else one that holds the gloss role in a
-        lexicon, else the scope's first field. Never read from a field's
-        name. The overview names the choice so a caller can pass field=
-        instead."""
+        DEFAULT where a tool takes a field: the first whose Lexicon field
+        holds the gloss role (the role a lexicon gives that entry field, else
+        the one a new lexicon's core field of that key holds), else the
+        scope's first field. Never read from a field's name. The overview
+        names the choice so a caller can pass field= instead."""
         fs = self.fields_by_scope(scope)
-        glosses = {f['name'] for v in self.vocabs for f in fields_with_role(v.get('fields') or [], ROLE_GLOSS)}
-        return (next((f for f in fs if f.lexicon_field == 'gloss'), None)
-                or next((f for f in fs if f.lexicon_field in glosses), None)
-                or (fs[0] if fs else None))
+        roles = {f['name']: f['role'] for f in CORE_VOCAB_FIELDS if f.get('role')}
+        declared = {}
+        for v in self.vocabs:
+            for f in v.get('fields') or []:
+                if f.get('role') and f.get('declared') and f['name'] not in declared:
+                    declared[f['name']] = f['role']
+        roles.update(declared)
+        return next((f for f in fs if roles.get(f.lexicon_field) == ROLE_GLOSS), None) or (fs[0] if fs else None)
 
     @staticmethod
     def lexicon_field(vocab: dict, role: str) -> Optional[str]:

@@ -29,7 +29,7 @@ describe('useServiceParams', () => {
 
   // A value remembered from an earlier run can name a field this project does
   // not have, and the cache outranks everything else in the merge. It is
-  // replaced by the field paired with the parameter's entry field, never by
+  // replaced by the field paired with the parameter's role, never by
   // one whose name it begins.
   it('replaces a remembered field the project does not have', async () => {
     const schema = [
@@ -38,7 +38,7 @@ describe('useServiceParams', () => {
         label: 'Gloss field',
         type: 'field',
         scope: 'Morpheme',
-        lexiconField: 'gloss',
+        role: 'gloss',
         default: 'Gloss',
       },
     ];
@@ -47,7 +47,7 @@ describe('useServiceParams', () => {
       schema,
       storageKey: 'k',
       fields: { Morpheme: ['Gloss (pmy)', 'Meaning', 'POS'] },
-      lexiconFields: { Morpheme: { Meaning: 'gloss', POS: 'pos' } },
+      fieldRoles: { Morpheme: { Meaning: 'gloss', POS: 'pos' } },
     });
     expect(params().values.gloss_field).toBe('Meaning');
     await unmount();

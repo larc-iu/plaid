@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { resolveFieldParams } from './serviceFields.js';
 
 const SCHEMA = [
-  { key: 'gloss_field', type: 'field', scope: 'Morpheme', lexiconField: 'gloss', default: '' },
+  { key: 'gloss_field', type: 'field', scope: 'Morpheme', role: 'gloss', default: '' },
   { key: 'translation_field', type: 'field', scope: 'Sentence', default: '' },
   { key: 'language', type: 'string', default: 'en' },
 ];
@@ -14,11 +14,11 @@ describe('resolveFieldParams', () => {
     expect(resolveFieldParams(SCHEMA, values, fields)).toEqual(values);
   });
 
-  it('fills a field parameter from the field whose stored Lexicon field it names', () => {
+  it('fills a field parameter from the field whose stored Lexicon field holds its role', () => {
     const fields = { Morpheme: ['POS', 'Meaning'], Sentence: ['Translation'] };
-    const lexiconFields = { Morpheme: { POS: 'pos', Meaning: 'gloss' } };
+    const fieldRoles = { Morpheme: { POS: 'pos', Meaning: 'gloss' } };
     expect(
-      resolveFieldParams(SCHEMA, { gloss_field: '', translation_field: '' }, fields, lexiconFields),
+      resolveFieldParams(SCHEMA, { gloss_field: '', translation_field: '' }, fields, fieldRoles),
     ).toMatchObject({ gloss_field: 'Meaning', translation_field: '' });
   });
 
@@ -33,10 +33,10 @@ describe('resolveFieldParams', () => {
 
   it('leaves a choice between two paired fields for a person to make', () => {
     const fields = { Morpheme: ['Gloss (pmy)', 'Gloss (en)'], Sentence: [] };
-    const lexiconFields = { Morpheme: { 'Gloss (pmy)': 'gloss', 'Gloss (en)': 'gloss' } };
-    expect(
-      resolveFieldParams(SCHEMA, { gloss_field: 'Gone' }, fields, lexiconFields),
-    ).toMatchObject({ gloss_field: '' });
+    const fieldRoles = { Morpheme: { 'Gloss (pmy)': 'gloss', 'Gloss (en)': 'gloss' } };
+    expect(resolveFieldParams(SCHEMA, { gloss_field: 'Gone' }, fields, fieldRoles)).toMatchObject({
+      gloss_field: '',
+    });
   });
 
   it('leaves alone a scope the app did not list, and everything without fields', () => {

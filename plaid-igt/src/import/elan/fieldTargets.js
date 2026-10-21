@@ -18,8 +18,10 @@ import {
   readOrthographies,
   readLexiconField,
   readScope,
+  readVocabFields,
   IGT_NAMESPACE,
 } from '../../domain/igtConfig.js';
+import { CORE_VOCAB_FIELDS, normalizeVocabFields } from '../../domain/vocabFields.js';
 import { parseFieldName } from '../../domain/fieldNames.js';
 import { queueNewField } from '../../domain/igtConstraints.js';
 import { lexiconFieldChoices, withLexiconFields } from '../../domain/lexiconField.js';
@@ -53,17 +55,28 @@ export const fieldNamesOf = (project) =>
   );
 
 /**
- * Each field's stored Lexicon field by scope and name, `{scope: {name: entry
- * field}}`: what fills a service's `field` parameter that names one.
+ * The role each field's stored Lexicon field holds, by scope and name,
+ * `{scope: {name: role}}`: what fills a service's `field` parameter that names
+ * a role. The role is the one the project's vocabularies give that entry field,
+ * else the one a new vocabulary's core field of that key holds.
  */
-export const lexiconFieldsOf = (project) => {
+export const fieldRolesOf = (project) => {
+  const roleOfKey = {};
+  for (const f of CORE_VOCAB_FIELDS) if (f.role) roleOfKey[f.name] = f.role;
+  const declared = {};
+  for (const v of project?.vocabs || []) {
+    for (const f of normalizeVocabFields(readVocabFields(v?.config))) {
+      if (f.role && !(f.name in declared)) declared[f.name] = f.role;
+    }
+  }
+  Object.assign(roleOfKey, declared);
   const out = {};
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
   for (const tl of textLayer?.tokenLayers || []) {
     for (const sl of tl.spanLayers || []) {
       const scope = readScope(sl.config);
-      const key = readLexiconField(sl.config);
-      if (scope && key) (out[scope] ??= {})[sl.name] = key;
+      const role = roleOfKey[readLexiconField(sl.config)];
+      if (scope && role) (out[scope] ??= {})[sl.name] = role;
     }
   }
   return out;

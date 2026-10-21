@@ -1,7 +1,7 @@
 """A service's field parameters come from the request, never from a name.
 
-The dialog fills a gloss field from the field whose stored Lexicon field is
-the entry field gloss (each gloss parameter says so with ``lexicon_field``),
+The dialog fills a gloss field from the field whose stored Lexicon field holds
+the gloss role (each gloss parameter says so with ``role``),
 and the field a service writes to, left out, is an error it says, rather than
 a field called "Gloss" or "Translation" it assumed. A field read only as
 context is left out when none is named."""
@@ -29,7 +29,7 @@ def test_no_field_parameter_defaults_to_a_name(module, cls):
     params = _params(getattr(module, cls)())
     for key in ('gloss_field', 'translation_field'):
         assert params[key]['default'] == '', (cls, key)
-    assert params['gloss_field']['lexicon_field'] == 'gloss'
+    assert params['gloss_field']['role'] == 'gloss'
 
 
 def test_an_analysis_without_its_gloss_field_says_so():

@@ -9,6 +9,7 @@ import {
   PLAID_NAMESPACE,
   readConfidenceThreshold,
 } from '@larc-iu/plaid-client';
+import { resolveFieldParams } from '../../domain/serviceFields.js';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
@@ -123,6 +124,7 @@ function SpotCard({
   canManage,
   builtinOptions,
   fields,
+  fieldRoles,
 }) {
   const spotServices = useMemo(
     () => filterServicesByTask(services, spot.key),
@@ -138,10 +140,18 @@ function SpotCard({
   // say), shown in the same inline slot a service's params use.
   const builtinOpts = decoded?.kind === 'builtin' ? builtinOptions?.(spot.key, decoded.id) : null;
   const paramSchema = getParamSchema(selectedService);
-  const paramValues = useMemo(
-    () => ({ ...buildDefaultValues(paramSchema), ...(draftEntry?.params || {}) }),
-    [paramSchema, draftEntry],
-  );
+  // As the run dialog seeds them: a field parameter's schema default is never
+  // used, and one naming no field is the one field holding its role.
+  const paramValues = useMemo(() => {
+    const defaults = buildDefaultValues(paramSchema);
+    for (const p of paramSchema) if (p?.type === 'field' && p.key) defaults[p.key] = '';
+    return resolveFieldParams(
+      paramSchema,
+      { ...defaults, ...(draftEntry?.params || {}) },
+      fields,
+      fieldRoles,
+    );
+  }, [paramSchema, draftEntry, fields, fieldRoles]);
 
   const setSelection = (value) => {
     const service = selectionToConfig(value);
@@ -235,7 +245,8 @@ function SpotCard({
  * `onExtraSaved` runs once they have landed, for the app to clear its own
  * `extraDirty`. `fieldsOf(project)` gives the project's
  * annotation fields as {scope: [field name]}, for a `field` parameter to be
- * chosen from.
+ * chosen from, and `fieldRolesOf(project)` the role each one's Lexicon field
+ * holds ({scope: {field name: role}}), which fills a parameter naming it.
  */
 export const ServiceDefaultsSettings = ({
   projectId,
@@ -248,6 +259,7 @@ export const ServiceDefaultsSettings = ({
   saveExtra,
   onExtraSaved,
   fieldsOf,
+  fieldRolesOf,
   showConfidence = false,
 }) => {
   const namespace = configNamespace();
@@ -457,6 +469,7 @@ export const ServiceDefaultsSettings = ({
           canManage={canManage}
           builtinOptions={builtinOptions}
           fields={project ? (fieldsOf?.(project) ?? null) : null}
+          fieldRoles={project ? (fieldRolesOf?.(project) ?? null) : null}
         />
       ))}
 

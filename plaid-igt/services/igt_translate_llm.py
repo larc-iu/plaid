@@ -179,7 +179,7 @@ class LLMTranslateService(BaseService):
                             required=True, description='The sentence-scope field that receives the drafts.'),
                 Param.boolean('use_glosses', 'Use glosses', default=True,
                               description="Show the model the sentence's morpheme glosses."),
-                Param.field('gloss_field', 'Gloss field', 'Morpheme', lexicon_field='gloss',
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', role='gloss',
                             description='The morpheme-scope field holding the glosses.'),
                 Param.number('context', 'Context sentences', default=DEFAULT_CONTEXT,
                              description='How many preceding sentences to show the model.'),
