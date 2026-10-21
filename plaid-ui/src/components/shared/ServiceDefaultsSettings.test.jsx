@@ -345,6 +345,7 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
       client,
       fieldsOf: () => ({ Morpheme: ['Gloss', 'Meaning'] }),
       fieldRolesOf: () => ({ Morpheme: { Meaning: 'gloss' } }),
+      fieldIdsOf: () => ({ Morpheme: { Gloss: 'id-gloss', Meaning: 'id-meaning' } }),
     });
     const glosser = radios(container).find((r) => r.id.includes('s3'));
     await step(() => glosser.click());
@@ -465,6 +466,29 @@ describe('ServiceDefaultsSettings, a field parameter', () => {
       undefined,
       expect.anything(),
     );
+    await unmount();
+  });
+
+  it('shows no Default fields where the app cannot store them', async () => {
+    const svc = {
+      serviceId: 's8',
+      serviceName: 's8',
+      online: true,
+      extras: {
+        tasks: ['analyze'],
+        parameters: [
+          { key: 'gloss_field', label: 'Gloss field', type: 'field', scope: 'Morpheme' },
+        ],
+      },
+    };
+    const client = makeClient({
+      messages: { discoverServices: async () => [svc], discardService: vi.fn() },
+    });
+    const { container, unmount } = await mount({
+      client,
+      fieldsOf: () => ({ Morpheme: ['Gloss'] }),
+    });
+    expect(container.textContent).not.toContain('Default fields');
     await unmount();
   });
 });

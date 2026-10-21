@@ -156,7 +156,8 @@ function SpotCard({
       paramSchema.map((p) => [p.key, stored[p.key] ?? buildDefaultValues([p])[p.key]]),
     );
   }, [paramSchema, draftEntry]);
-  // Every field parameter the task's methods take, once per key.
+  // Every field parameter the task's methods take, once per key. Shown only
+  // where the app gives the fields' ids, which they are stored by.
   const fieldSchema = useMemo(() => {
     const byKey = new Map();
     for (const svc of spotServices) {
@@ -257,7 +258,7 @@ function SpotCard({
           </div>
         )}
 
-        {fieldSchema.length > 0 && (
+        {fieldSchema.length > 0 && fieldIds && (
           <div className="mt-3 border-t pt-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">Default fields</p>
             <ServiceParamForm
