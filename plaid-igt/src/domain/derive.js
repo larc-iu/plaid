@@ -452,6 +452,9 @@ function collectSingleTokenVocabLinks(vocabularies) {
         // The producer a person adopted it from (a contributor's pick of a
         // suggestion keeps it in provDetail.guess), for linkFollowingGloss.
         provGuess: linkMeta.provDetail?.guess ?? null,
+        // The entry its producer chose (provDetail.vocabItem), recorded by a
+        // producer that weighed which entry is meant, not just the form.
+        provPick: linkMeta.provDetail?.vocabItem ?? null,
       };
     });
   });

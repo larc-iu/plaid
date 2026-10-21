@@ -506,11 +506,14 @@ The built-in linking rule of step 4 works word by word and morpheme by morpheme.
 A form that has been linked before follows **precedent**: the entry that form has most often been linked to in the project.
 A form never linked before is linked to the lexicon entry with the same form, if there is one.
 A whole word is never linked to an affix or clitic entry.
-The rule replaces only links it made itself that nobody has confirmed. A link a person made or confirmed stays, and so does one an analysis service proposed. CWoMP links a morpheme by its form and gloss together, which picks out the sense where the form alone cannot.
+The rule replaces only links nobody has confirmed: its own, links copied with an earlier analysis, and links to an entry that no longer has the word's or morpheme's form.
+A link a person made or confirmed stays, and so does an entry an analysis service chose for that occurrence.
 Runs of words whose joined form matches a multi-word expression entry are linked as one (see <<_multi_word_expressions>>).
 
 When an analysis service weighed several senses of a morpheme, the lexicon popover lists those entries first, each with its probability, and **Alt+↓** on the morpheme's gloss lists the same senses by their glosses.
-Choosing one in either place sets both the gloss and the link.
+Choosing a gloss under **Alt+↓** also moves the link to that gloss's entry.
+Choosing an entry in the popover sets the gloss to match, while the gloss is still the service's unconfirmed one.
+A gloss typed by hand leaves a confirmed link as it is, and takes off a link the service proposed and nobody confirmed, unless the gloss is that entry's.
 
 TIP: Accept links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.
 

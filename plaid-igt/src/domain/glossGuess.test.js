@@ -487,57 +487,97 @@ describe('what a mixed tagset offers', () => {
 });
 
 describe('linkFollowingGloss', () => {
+  const S = 'service:cwomp-analyzer';
   const span = {
     metadata: {
       prov: 'inferred',
-      provSource: 'service:cwomp-analyzer',
+      provSource: S,
       provDetail: {
         valueProbs: { TOP: 0.6, and: 0.3 },
-        valueLinks: { TOP: 'i-top', and: 'i-and' },
+        valueLinks: [
+          { value: 'TOP', item: 'i-top', prob: 0.6 },
+          { value: 'and', item: 'i-and', prob: 0.3 },
+        ],
       },
     },
   };
-  const own = { id: 'i-top', prov: 'machine', provSource: 'service:cwomp-analyzer' };
+  const own = { id: 'i-top', prov: 'machine', provSource: S };
+  const pick = (vocabItem, value, opts = {}) =>
+    linkFollowingGloss({ vocabItem }, span, value, { picked: true, ...opts });
 
   it("moves the producer's own unconfirmed link to the picked alternative's entry", () => {
-    expect(linkFollowingGloss({ vocabItem: own }, span, 'and')).toEqual({
-      itemId: 'i-and',
-      source: 'service:cwomp-analyzer',
-    });
-    expect(linkFollowingGloss({ vocabItem: null }, span, 'and')?.itemId).toBe('i-and');
+    expect(pick(own, 'and')).toEqual({ itemId: 'i-and', source: S });
+    expect(pick(null, 'and')?.itemId).toBe('i-and');
   });
 
   it('moves a link an earlier pick of an alternative made, for a verifier or a contributor', () => {
-    const picked = { id: 'i-and', prov: 'verified', provSource: 'service:cwomp-analyzer' };
-    expect(linkFollowingGloss({ vocabItem: picked }, span, 'TOP')?.itemId).toBe('i-top');
+    const picked = { id: 'i-and', prov: 'verified', provSource: S };
+    expect(pick(picked, 'TOP')?.itemId).toBe('i-top');
     const contributed = {
       id: 'i-and',
       prov: 'contributed',
       provSource: 'user:ann@x.com',
-      provGuess: 'service:cwomp-analyzer',
+      provGuess: S,
     };
-    expect(linkFollowingGloss({ vocabItem: contributed }, span, 'TOP')?.itemId).toBe('i-top');
+    expect(pick(contributed, 'TOP')?.itemId).toBe('i-top');
   });
 
-  it('takes the producer’s link off when the new gloss has no entry it knew', () => {
+  it('moves nothing on a typed gloss, and takes off only the unconfirmed link', () => {
+    expect(linkFollowingGloss({ vocabItem: null }, span, 'and')).toBeNull();
+    expect(linkFollowingGloss({ vocabItem: own }, span, 'and')).toEqual({
+      itemId: null,
+      source: S,
+    });
     expect(linkFollowingGloss({ vocabItem: own }, span, 'typed')).toEqual({
       itemId: null,
-      source: 'service:cwomp-analyzer',
+      source: S,
     });
-    expect(linkFollowingGloss({ vocabItem: null }, span, 'typed')).toBeNull();
+    expect(linkFollowingGloss({ vocabItem: own }, span, 'TOP')).toBeNull();
+    const confirmed = { id: 'i-and', prov: 'verified', provSource: S };
+    expect(linkFollowingGloss({ vocabItem: confirmed }, span, 'typed')).toBeNull();
+  });
+
+  it('never takes a confirmed link off', () => {
+    const confirmed = { id: 'i-and', prov: 'verified', provSource: S };
+    expect(pick(confirmed, 'unlinked')).toBeNull();
+    expect(pick(own, 'unlinked')).toEqual({ itemId: null, source: S });
+    expect(pick(null, 'unlinked')).toBeNull();
   });
 
   it('leaves a link that is not the producer’s to move', () => {
-    expect(linkFollowingGloss({ vocabItem: own }, span, 'TOP')).toBeNull();
-    expect(
-      linkFollowingGloss({ vocabItem: { id: 'i-top', prov: 'human' } }, span, 'and'),
-    ).toBeNull();
+    expect(pick(own, 'TOP')).toBeNull();
+    expect(pick({ id: 'i-top', prov: 'human' }, 'and')).toBeNull();
     // A person's verified link to an entry outside the alternatives.
-    const elsewhere = { id: 'i-x', prov: 'verified', provSource: 'service:cwomp-analyzer' };
-    expect(linkFollowingGloss({ vocabItem: elsewhere }, span, 'and')).toBeNull();
-    const other = { ...own, provSource: 'rule:precedent-or-unique' };
-    expect(linkFollowingGloss({ vocabItem: other }, span, 'and')).toBeNull();
-    expect(linkFollowingGloss({ vocabItem: own }, { metadata: {} }, 'and')).toBeNull();
+    expect(pick({ id: 'i-x', prov: 'verified', provSource: S }, 'and')).toBeNull();
+    expect(pick({ ...own, provSource: 'rule:precedent-or-unique' }, 'and')).toBeNull();
+    expect(
+      linkFollowingGloss({ vocabItem: own }, { metadata: {} }, 'and', { picked: true }),
+    ).toBeNull();
+  });
+
+  it('ignores an entry that no longer exists', () => {
+    expect(pick(own, 'and', { itemExists: (id) => id !== 'i-and' })).toEqual({
+      itemId: null,
+      source: S,
+    });
+  });
+
+  it('moves nothing when two senses share the gloss picked', () => {
+    const twice = {
+      metadata: {
+        ...span.metadata,
+        provDetail: {
+          valueLinks: [
+            { value: 'and', item: 'i-and1', prob: 0.3 },
+            { value: 'and', item: 'i-and2', prob: 0.2 },
+          ],
+        },
+      },
+    };
+    expect(linkFollowingGloss({ vocabItem: null }, twice, 'and', { picked: true })).toBeNull();
+    expect(
+      linkFollowingGloss({ vocabItem: { ...own, id: 'i-and2' } }, twice, 'and', { picked: true }),
+    ).toBeNull();
   });
 });
 
@@ -550,7 +590,10 @@ describe('glossFollowingLink', () => {
       provDetail: {
         value: 'sell',
         valueProbs: { sell: 0.39, another: 0.3, other: 0.19 },
-        valueLinks: { sell: 'i-sell', another: 'i-another' },
+        valueLinks: [
+          { value: 'sell', item: 'i-sell', prob: 0.39 },
+          { value: 'another', item: 'i-another', prob: 0.3 },
+        ],
       },
       ...meta,
     },
@@ -566,25 +609,28 @@ describe('glossFollowingLink', () => {
       { gloss: 'sell', itemId: 'i-sell', prob: 0.39 },
       { gloss: 'another', itemId: 'i-another', prob: 0.3 },
     ]);
+    expect(modelSenses(morph('sell'), { itemExists: (id) => id === 'i-sell' }).senses).toHaveLength(
+      1,
+    );
     expect(modelSenses({ annotations: { POS: { value: 'n' } } })).toBeNull();
   });
 
-  it('sets the gloss of the sense a link picks, while the gloss is one the model weighed', () => {
+  it('sets the gloss of the sense a link picks, while the gloss is the model’s unconfirmed one', () => {
     expect(glossFollowingLink(morph('sell'), 'i-another')).toEqual({
       field: 'Gloss',
       value: 'another',
       source: 'service:x',
     });
-    // A gloss a person confirmed or picked, still among the alternatives.
-    expect(glossFollowingLink(morph('other', { provConfirmed: true }), 'i-sell')?.value).toBe(
-      'sell',
-    );
   });
 
-  it('leaves the gloss when it is not one the model weighed, or nothing changes', () => {
-    expect(glossFollowingLink(morph('typed by hand'), 'i-another')).toBeNull();
+  it('leaves a gloss a person wrote or confirmed, or when nothing changes', () => {
+    expect(glossFollowingLink(morph('other', { provConfirmed: true }), 'i-sell')).toBeNull();
+    expect(
+      glossFollowingLink(morph('typed', { prov: undefined, provSource: undefined }), 'i-sell'),
+    ).toBeNull();
     expect(glossFollowingLink(morph('sell'), 'i-sell')).toBeNull();
     expect(glossFollowingLink(morph('sell'), 'i-unrelated')).toBeNull();
+    expect(glossFollowingLink(morph('sell'), 'i-another', { itemExists: () => false })).toBeNull();
     expect(glossFollowingLink({ annotations: {} }, 'i-sell')).toBeNull();
   });
 });
@@ -625,7 +671,11 @@ describe('a link that names several of the glosses weighed', () => {
             provSource: 'service:x',
             provDetail: {
               valueProbs: { sell: 0.5, sold: 0.3, another: 0.2 },
-              valueLinks: { sell: 'i-sell', sold: 'i-sell', another: 'i-another' },
+              valueLinks: [
+                { value: 'sell', item: 'i-sell', prob: 0.5 },
+                { value: 'sold', item: 'i-sell', prob: 0.3 },
+                { value: 'another', item: 'i-another', prob: 0.2 },
+              ],
             },
           },
         },
@@ -633,5 +683,10 @@ describe('a link that names several of the glosses weighed', () => {
     };
     expect(glossFollowingLink(morph, 'i-sell')).toBeNull();
     expect(glossFollowingLink(morph, 'i-another')?.value).toBe('another');
+    // One row per entry in the popover, at its likeliest sense.
+    expect(modelSenses(morph).senses.map((x) => [x.itemId, x.prob])).toEqual([
+      ['i-sell', 0.5],
+      ['i-another', 0.2],
+    ]);
   });
 });

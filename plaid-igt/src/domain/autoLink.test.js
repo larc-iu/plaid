@@ -140,17 +140,29 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
-  it("leaves another producer's unverified link alone: a service picked it by more than the form", () => {
+  it("leaves a producer's unverified pick of an entry alone, but not a link copied by form or gone stale", () => {
     const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, 9]]));
+    const svc = { id: 'i-se2', prov: 'machine', provSource: 'service:cwomp-analyzer' };
     const sentences = sentence([
-      word('w1', 'se', null, [
-        morph('m1', 'se', { id: 'i-se2', prov: 'machine', provSource: 'service:cwomp-analyzer' }),
-      ]),
+      // A service chose i-se2 for this occurrence: left alone.
+      word('w1', 'se', null, [morph('m1', 'se', { ...svc, provPick: 'i-se2' })]),
       word('w2', 'se', null, [morph('m2', 'se')]),
+      // A link copied with an analysis names no choice: replaceable.
+      word('w3', 'se', null, [
+        morph('m3', 'se', { ...svc, provSource: 'rule:analysis-precedent' }),
+      ]),
+      // Re-segmented since the service linked it: the entry is not this form.
+      word('w4', 'todos', null, [morph('m4', 'todos', { ...svc, provPick: 'i-se2' })]),
+      // Confirmed: left alone whatever its form.
+      word('w5', 'todos', null, [
+        morph('m5', 'todos', { ...svc, prov: 'verified', provPick: 'i-se2' }),
+      ]),
     ]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
-    expect(proposals).toEqual([
-      { tokenId: 'm2', vocabItemId: 'i-se1', form: 'se', kind: 'morpheme' },
+    expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([
+      ['m2', 'i-se1'],
+      ['m3', 'i-se1'],
+      ['m4', 'i-all'],
     ]);
   });
 

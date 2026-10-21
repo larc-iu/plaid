@@ -255,7 +255,7 @@ Annotations nobody has checked yet are marked, so you can see at a glance what i
 A **violet, dashed** mark means an automatic parser produced it.
 An **amber, dashed** mark means a member whose work the project reviews entered it (see <<_sharing_and_permissions>>).
 Hovering a cell or a relation names its state and who produced it.
-When the parser gave its confidence, hovering also shows the percentage, and a value below the project's **Low confidence** threshold gets a heavier, darker mark (a thicker arc in the tree). A maintainer sets the threshold on the project's **Services** settings page.
+When the parser gave its confidence, hovering also shows the percentage, and a value below the project's confidence threshold (50% unless the project sets another) gets a heavier, darker mark (a thicker arc in the tree).
 
 Any edit you make to a marked cell or relation confirms it and clears the mark, even typing the same value again.
 Moving through a cell with **Tab** or an arrow key, or leaving it with **Escape**, confirms nothing.

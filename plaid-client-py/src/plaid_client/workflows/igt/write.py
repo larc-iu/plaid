@@ -20,7 +20,9 @@ prediction from the provenance convention: ``provDetail.form`` on each
 morpheme (plus ``boundaries``, ``degraded`` and ``surfaceMismatch`` on the
 first), ``provDetail.value`` on each gloss span. An analysis may carry
 ``probs``, one calibrated probability per segment or None, which goes on
-the morpheme and its gloss as ``provProb``, and ``links``, one vocab item id
+the gloss and the link as ``provProb``, and on the morpheme too unless
+``form_probs`` gives the form's own (a form several entries share is more
+likely than any one of them), and ``links``, one vocab item id
 per segment or None: the morpheme is linked to that item, stamped like the
 morpheme (``provDetail.vocabItem`` records the pick). A proposer links only
 to items that exist, and only when it knows which one is meant. An analysis
@@ -93,21 +95,23 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                         b.tokens.delete(m['id'])  # cascades its spans + links
                 probs = a.get('probs') or [None] * len(a['segments'])
                 links = a.get('links') or [None] * len(a['segments'])
+                form_probs = a.get('form_probs') or probs
                 gloss_details = a.get('gloss_details') or [None] * len(a['segments'])
                 for j, segment in enumerate(a['segments']):
                     prob = probs[j]
+                    form_prob = form_probs[j]
                     form_detail = {**detail, 'form': segment}
                     if j == 0:
                         form_detail.update({
                             'boundaries': ''.join(a['joiners']),
                             **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                             **({'degraded': True} if a['degraded'] else {})})
-                    meta = {'form': segment, **stamp_inferred(source, prob=prob, detail=form_detail)}
+                    meta = {'form': segment, **stamp_inferred(source, prob=form_prob, detail=form_detail)}
                     if j == 0 and keep:
                         mid = keep
                         b.tokens.patch_metadata(mid, metadata_ops({
                             **meta, 'morphType': a['types'][0],
-                            PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: prob}))
+                            PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: form_prob}))
                     else:
                         if a['types'][j]:
                             meta['morphType'] = a['types'][j]

@@ -118,6 +118,12 @@ def test_an_entry_links_to_the_item_people_always_linked_it_to():
     # An unreviewed machine link is no evidence.
     c.add_word(_linked('ev', [('ev', {})], [('item-x', MACHINE)]), 'glossL')
     assert c.link_for(('ev', 'g0')) == 'item-ev'
+    # A link this service proposed and a person confirmed with the rest of
+    # the word is the service's own guess, not people's evidence.
+    own = cwomp.Confirmed('service:cwomp')
+    own.add_word(_linked('ev', [('ev', {})], [('item-x', {**VERIFIED, 'provSource': 'service:cwomp'})]), 'glossL')
+    own.add_word(_linked('ev', [('ev', {})], [('item-ev', {**VERIFIED, 'provSource': 'service:other'})]), 'glossL')
+    assert own.link_for(('ev', 'g0')) == 'item-ev'
     # People disagree: no link.
     c.add_word(_linked('ev', [('ev', {})], [('item-y', {})]), 'glossL')
     assert c.link_for(('ev', 'g0')) is None
@@ -172,7 +178,8 @@ class _Model:
         return list(queries)
 
     def analyze_full(self, emb):
-        return [{'form': f, 'gloss': g, 'prob': p, 'alternatives': dict(alts)}
+        return [{'form': f, 'gloss': g, 'prob': p, 'alternatives': dict(alts),
+                 'form_prob': None if p is None else min(1.0, sum(alts.values()) if alts else p)}
                 for f, g, p, *rest in self.picked for alts in [rest[0] if rest else {}]]
 
 
@@ -201,7 +208,7 @@ def _document():
     }
 
 
-def _service(picked):
+def _service(picked, config=None):
     service = cwomp.CwompService()
     model = _Model(picked)
     service.model_for = lambda project_id: model
@@ -209,8 +216,8 @@ def _service(picked):
     confirmed.entries = {('ev', 'house'), ('gel', 'come')}
     confirmed.links = {('gel', 'come'): cwomp.Counter({'item-gel': 3})}
     service.confirmed_for = lambda *a: confirmed
-    service.live_items = lambda project_id: {'item-gel'}
-    service.client = servicetest.FakeClient([_document()])
+    service.live_items = lambda project: {'item-gel'}
+    service.client = servicetest.FakeClient([_document()], project={'id': 'p', 'config': config or {}})
     return service, model
 
 
@@ -227,7 +234,8 @@ def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side(
     morphs = [c['kwargs']['metadata'] for kind, c in service.client.calls if kind == 'tokens.create']
     assert [m['form'] for m in morphs] == ['gel', 'yor', 'gel', 'yor']
     assert [m.get('morphType') for m in morphs] == [None, 'enclitic', None, 'enclitic']
-    assert [m['provProb'] for m in morphs] == [0.9, 0.4, 0.9, 0.4]
+    # A morpheme's probability is its form's: every entry of that form summed.
+    assert [round(m['provProb'], 3) for m in morphs] == [0.982, 0.4, 0.982, 0.4]
     assert morphs[0]['provDetail']['boundaries'] == '='
     glosses = [(c['args'][2], c['args'][3]) for kind, c in service.client.calls if kind == 'spans.create']
     # `gel` was always linked to one item, the enclitic never: only `gel` is linked.
@@ -235,11 +243,20 @@ def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side(
     # would link to; one alternative alone is no list.
     details = [m['provDetail'] for _, m in glosses]
     assert details[0]['valueProbs'] == {'come': 0.9, 'arrive': 0.08}
-    assert details[0]['valueLinks'] == {'come': 'item-gel'}
+    assert details[0]['valueLinks'] == [{'value': 'come', 'item': 'item-gel', 'prob': 0.9}]
     assert 'valueProbs' not in details[1]
     links = [c['args'] for kind, c in service.client.calls if kind == 'vocab_links.create']
     assert [(item, meta['provProb']) for item, _, meta in links] == [('item-gel', 0.9)] * 2
     assert [(v, m['provProb']) for v, m in glosses] == [('come', 0.9), ('PROG', 0.4)] * 2
+
+
+def test_a_link_the_model_doubts_is_not_proposed():
+    service, _ = _service([('gel', 'come', 0.45)], config={'plaid': {'confidence': {'threshold': 0.5}}})
+    servicetest.run(service, REQUEST)
+    assert not [c for kind, c in service.client.calls if kind == 'vocab_links.create']
+    service, _ = _service([('gel', 'come', 0.45)], config={'plaid': {'confidence': {'threshold': 0.4}}})
+    servicetest.run(service, REQUEST)
+    assert [c for kind, c in service.client.calls if kind == 'vocab_links.create']
 
 
 def test_an_uncalibrated_model_writes_no_probability():

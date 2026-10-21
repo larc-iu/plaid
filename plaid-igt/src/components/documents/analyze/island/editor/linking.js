@@ -96,22 +96,26 @@ export const linking = {
   // gloss-guess system shows the same suggestion as a placeholder in the cell
   // itself, and only writes it — with provenance — when the user confirms.)
   async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
+    // A pick from the list as offered adopts the suggestion. One found by
+    // searching is the person's own link.
+    const searched = !!(this._popoverSearch || '').trim();
     this._closePopover(returnFocus);
     // Linking a morpheme to one of the senses an analysis weighed adopts that
     // suggestion: the link is stamped as the producer's, confirmed, and the
     // gloss follows to that sense's gloss once the link has landed
     // (glossFollowingLink), as a pick under Alt+Down moves the link.
+    const itemExists = this._vocabItemExists();
     const morph = isLinked ? null : this._derivedMorpheme(tokenId);
-    const sense = modelSenses(morph)?.senses.find((x) => x.itemId === item.id);
-    const source = sense ? modelSenses(morph).source : null;
-    const follow = sense ? glossFollowingLink(morph, item.id) : null;
+    const senses = modelSenses(morph, { itemExists });
+    const sense = senses?.senses.find((x) => x.itemId === item.id);
+    const follow = sense ? glossFollowingLink(morph, item.id, { itemExists }) : null;
     await this._runThenFocus({ vocabOpener: tokenId }, () => {
       const written = isLinked
         ? this.doc.unlinkVocab(tokenId)
         : this.doc.linkVocab(
             tokenId,
             item.id,
-            sense ? this.doc.adoptStamp(source, { vocabItem: item.id }) : null,
+            sense && !searched ? this.doc.adoptStamp(senses.source, { vocabItem: item.id }) : null,
           );
       if (follow) {
         Promise.resolve(written).then((ok) => {
@@ -126,6 +130,15 @@ export const linking = {
       }
       return written;
     });
+  },
+
+  // Whether a vocab item id names an item of the document's vocabularies.
+  _vocabItemExists() {
+    const ids = new Set();
+    for (const v of Object.values(this.doc.vocabularies || {})) {
+      for (const it of v.items || []) ids.add(it.id);
+    }
+    return (id) => ids.has(id);
   },
 
   // A morpheme as the grid derives it (with its annotations), by id.

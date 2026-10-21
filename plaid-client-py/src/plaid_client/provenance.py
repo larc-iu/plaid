@@ -84,8 +84,10 @@ alternatives) can read any producer's output:
 - ``valueProbs`` / ``formProbs``: a top-k ``{label: probability}`` map over
   the alternatives the producer considered, the chosen label included
   (``provProb``, when given, is that label's entry duplicated flat).
-- ``valueLinks``: on a gloss, a ``{label: vocab item id}`` map naming the
-  lexicon entry each alternative stands for. igt lists those entries first in
+- ``valueLinks``: on a gloss, a list of ``{value, item, prob}``, one per
+  alternative that stands for a lexicon entry: its label, the vocab item id
+  and its probability (two senses may share a label, so this is a list, not
+  a map). igt lists those entries first in
   the lexicon popover and keeps the link and gloss in step when a person picks
   an alternative.
 - ``model``: what made the prediction (a model name, or a tool and its

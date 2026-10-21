@@ -17,7 +17,7 @@
 //   ({ precedent, sentences, wordFields, morphFields }) => ({ id, guessFor })
 // where `precedent` is the precedent.js tally the editor maintains.
 
-import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
 import { isValueAllowed, scanValue, tagsetEnforces } from './tagsets.js';
 import { fieldNameLang, parseFieldName } from './fieldNames.js';
@@ -302,73 +302,98 @@ export function listAlternatives({
   return list;
 }
 
+// The alternatives a gloss span's producer linked to lexicon entries
+// (provDetail.valueLinks, a list of { value, item, prob }), keeping only
+// entries that still exist (`itemExists`, when given: an archive import or a
+// merge renumbers items the record still names).
+function valueLinksOf(span, itemExists) {
+  const links = span?.metadata?.[PROV_DETAIL_KEY]?.valueLinks;
+  if (!Array.isArray(links)) return [];
+  return links.filter(
+    (x) =>
+      x &&
+      typeof x.value === 'string' &&
+      typeof x.item === 'string' &&
+      x.item &&
+      (!itemExists || itemExists(x.item)),
+  );
+}
+
 // What happens to a morpheme's link when its gloss is set to `value`, given
-// the alternatives the gloss's producer weighed (provDetail.valueLinks, an
-// analysis service's record of the entry each alternative names):
+// the entries the gloss's producer linked its alternatives to:
 // `{ itemId, source }` moves it to that value's entry, `{ itemId: null }`
-// takes it off (the new gloss has no entry the producer knew), and null
-// leaves it. Only the producer's own link moves: its unconfirmed one, or
-// one a person already moved here by picking another of its alternatives. A
-// link a person chose otherwise, and another producer's, stay.
-export function linkFollowingGloss(morph, span, value) {
-  const d = span?.metadata?.[PROV_DETAIL_KEY];
-  const links = d?.valueLinks;
-  if (!links || typeof links !== 'object') return null;
+// takes it off, and null leaves it.
+//
+// Only a pick (`picked`, a value chosen from the list) moves a link, and
+// only the producer's own: its unconfirmed link, or one a person already
+// moved by picking another of its alternatives. A typed gloss only takes
+// off the producer's unconfirmed link, when it names another entry. A link
+// a person confirmed is never taken off, and another producer's stays.
+export function linkFollowingGloss(morph, span, value, { picked = false, itemExists = null } = {}) {
+  const links = valueLinksOf(span, itemExists);
+  if (!links.length) return null;
   const source = span.metadata[PROV_SOURCE_KEY];
   const v = morph?.vocabItem;
-  const ours =
-    !v ||
-    (v.prov === PROV_STATES.MACHINE && v.provSource === source) ||
-    (Object.values(links).includes(v.id) && (v.provSource === source || v.provGuess === source));
-  if (!ours) return null;
-  const target = typeof links[value] === 'string' && links[value] ? links[value] : null;
-  if (target) return v?.id === target ? null : { itemId: target, source };
-  return v ? { itemId: null, source } : null;
+  const unconfirmed = !!v && v.prov === PROV_STATES.MACHINE && v.provSource === source;
+  const named = links.filter((x) => x.value === value);
+  if (v && named.some((x) => x.item === v.id)) return null;
+  if (picked) {
+    const moved =
+      !!v &&
+      links.some((x) => x.item === v.id) &&
+      (v.provSource === source || v.provGuess === source);
+    if (v && !unconfirmed && !moved) return null;
+    // Two senses with this gloss: the gloss does not say which entry.
+    const items = new Set(named.map((x) => x.item));
+    if (items.size === 1) return { itemId: [...items][0], source };
+  }
+  return unconfirmed ? { itemId: null, source } : null;
 }
 
 // The senses a producer weighed for a morpheme: the gloss field that records
-// them, that gloss span, its producer, and for each alternative its gloss,
-// probability and entry (provDetail.valueLinks and valueProbs). Null when no
-// gloss of the morpheme carries any. The lexicon popover ranks these entries
-// first, as Alt+Down ranks their glosses.
-export function modelSenses(morph) {
+// them, that gloss span, its producer, and for each entry its gloss and
+// probability (provDetail.valueLinks), one per entry, most probable kept.
+// Null when no gloss of the morpheme carries any. The lexicon popover ranks
+// these entries first, as Alt+Down ranks their glosses.
+export function modelSenses(morph, { itemExists = null } = {}) {
   for (const [field, span] of Object.entries(morph?.annotations || {})) {
-    const d = span?.metadata?.[PROV_DETAIL_KEY];
-    const links = d?.valueLinks;
-    if (!links || typeof links !== 'object') continue;
-    const probs = d.valueProbs && typeof d.valueProbs === 'object' ? d.valueProbs : {};
-    const senses = Object.entries(links)
-      .filter(([, id]) => typeof id === 'string' && id)
-      .map(([gloss, itemId]) => ({
-        gloss,
-        itemId,
-        prob: typeof probs[gloss] === 'number' ? probs[gloss] : null,
-      }));
-    if (senses.length) return { field, span, source: span.metadata[PROV_SOURCE_KEY], senses };
+    const links = valueLinksOf(span, itemExists);
+    if (!links.length) continue;
+    const byItem = new Map();
+    for (const x of links) {
+      const prob = typeof x.prob === 'number' ? x.prob : null;
+      const had = byItem.get(x.item);
+      if (!had || (prob ?? -1) > (had.prob ?? -1)) {
+        byItem.set(x.item, { gloss: x.value, itemId: x.item, prob });
+      }
+    }
+    return { field, span, source: span.metadata[PROV_SOURCE_KEY], senses: [...byItem.values()] };
   }
   return null;
 }
 
 // The gloss a morpheme takes when its link is set to `itemId`: the gloss of
-// that entry among the alternatives its producer weighed, while the current
-// gloss is still one of them. Linking from the lexicon popover and picking
-// from Alt+Down then leave the gloss and the link telling the same story.
+// that entry among the alternatives its producer weighed, while the gloss is
+// still the producer's own unconfirmed value. Linking from the lexicon
+// popover and picking from Alt+Down then leave the gloss and the link
+// telling the same story, and a gloss a person wrote or confirmed stays.
 // Null when nothing changes.
-export function glossFollowingLink(morph, itemId) {
-  const m = modelSenses(morph);
+export function glossFollowingLink(morph, itemId, { itemExists = null } = {}) {
+  const m = modelSenses(morph, { itemExists });
   if (!m) return null;
-  const now = m.span.value ?? '';
-  const d = m.span.metadata[PROV_DETAIL_KEY];
-  const weighed = new Set([...Object.keys(d.valueProbs || {}), ...Object.keys(d.valueLinks)]);
-  if (!weighed.has(now)) return null;
-  // Several of the glosses weighed may name one entry ("sell", "sold" both
-  // linked to the headword): the link then says nothing about which gloss,
-  // so the gloss stays.
-  const named = m.senses.filter((x) => x.itemId === itemId);
-  if (named.length !== 1) return null;
-  const [sense] = named;
-  if (sense.gloss === now) return null;
-  return { field: m.field, value: sense.gloss, source: m.source };
+  const meta = m.span.metadata;
+  if (provState(meta) !== PROV_STATES.MACHINE || meta[PROV_SOURCE_KEY] !== m.source) return null;
+  // Several glosses naming one entry ("sell", "sold" both linked to the
+  // headword): the link then says nothing about which gloss, so it stays.
+  const glosses = new Set(
+    valueLinksOf(m.span, itemExists)
+      .filter((x) => x.item === itemId)
+      .map((x) => x.value),
+  );
+  if (glosses.size !== 1) return null;
+  const [value] = glosses;
+  if (value === (m.span.value ?? '')) return null;
+  return { field: m.field, value, source: m.source };
 }
 
 // Whole-value rows to part rows: each row's value is split on the tagset's

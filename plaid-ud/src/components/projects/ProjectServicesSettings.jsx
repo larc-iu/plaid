@@ -42,7 +42,6 @@ export const ProjectServicesSettings = () => {
 
   return (
     <ServiceDefaultsSettings
-      showConfidence
       projectId={projectId}
       client={getClient()}
       spots={SPOTS}

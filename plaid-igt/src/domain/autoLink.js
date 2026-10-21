@@ -76,6 +76,7 @@ export function buildItemIndex(vocabularies) {
   const phrase = new Set();
   const known = new Set();
   const parentOf = new Map();
+  const formOf = new Map();
   const add = (map, key, id) => {
     const list = map.get(key);
     if (list) {
@@ -88,18 +89,19 @@ export function buildItemIndex(vocabularies) {
     const view = lexiconView(vocab.items || []);
     for (const it of vocab.items || []) {
       known.add(it.id);
+      const parent = view.tree.parentOf.get(it.id);
+      if (parent) parentOf.set(it.id, parent);
       if (!it.form) continue;
+      formOf.set(it.id, it.form);
       add(exact, nfc(it.form), it.id);
       add(folded, collationKey(it.form), it.id);
       const type = view.morphTypeOf(it.id);
       if (isBoundType(type)) bound.add(it.id);
       if (isMweType(type)) phrase.add(it.id);
-      const parent = view.tree.parentOf.get(it.id);
-      if (parent) parentOf.set(it.id, parent);
     }
   }
   dropCoveredHeadwords([exact, folded], parentOf);
-  return { exact, folded, bound, phrase, known };
+  return { exact, folded, bound, phrase, known, parentOf, formOf };
 }
 
 /**
@@ -160,16 +162,30 @@ function resolveForm(form, kind, precedent, items) {
 }
 
 // Is a word/morpheme open to (re)linking, and what does it currently point at?
-// Open when it has no link or only an UNVERIFIED one this rule made; a
-// person's, a confirmed and another producer's link are left alone.
-// `vocabItem.prov` and `vocabItem.provSource` are the link's provenance (see
+// Open when it has no link or an UNVERIFIED one that is this rule's, that
+// names no chosen entry (a link copied by form), or whose entry no longer
+// has the token's form (re-segmented since). A person's, a confirmed one,
+// and a producer's deliberate pick of an entry are left alone.
+// `vocabItem.prov`, `provSource` and `provPick` are the link's provenance (see
 // derive.js).
-function linkTarget(entity) {
+function linkTarget(entity, form, items) {
   const v = entity?.vocabItem;
   if (!v) return { open: true, currentItemId: null };
-  return v.prov === PROV_STATES.MACHINE && v.provSource === AUTO_LINK_SOURCE
-    ? { open: true, currentItemId: v.id }
-    : { open: false, currentItemId: null };
+  const open =
+    v.prov === PROV_STATES.MACHINE &&
+    (v.provSource === AUTO_LINK_SOURCE || !v.provPick || !hasForm(items, v.id, form));
+  return open ? { open: true, currentItemId: v.id } : { open: false, currentItemId: null };
+}
+
+// Whether the item has this form, or has none of its own and its headword
+// does (casefolded, as the rule matches).
+function hasForm(items, id, form) {
+  const key = collationKey(form);
+  for (let at = id, n = 0; at && n < 32; at = items.parentOf.get(at), n++) {
+    const f = items.formOf.get(at);
+    if (f != null) return collationKey(f) === key;
+  }
+  return false;
 }
 
 // The built-in proposal provider: every word/morpheme open to linking whose
@@ -202,7 +218,7 @@ export function computeAutoLinkProposals({
     // id. Linking a zero to the right entry is a human judgement, and it stays
     // available by hand: the lexicon popover still ranks ∅ entries for it.
     if (isZeroMorph(form)) return;
-    const { open, currentItemId } = linkTarget(entity);
+    const { open, currentItemId } = linkTarget(entity, form ?? '', items);
     if (!open) return;
     const itemId = resolveForm(form ?? '', kind, precedent, items);
     if (!itemId || itemId === currentItemId) return;

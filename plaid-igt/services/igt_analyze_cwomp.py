@@ -73,7 +73,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.provenance import prov_state, HUMAN, VERIFIED
+from plaid_client.provenance import (
+    prov_state, read_confidence_threshold, HUMAN, PROV_SOURCE_KEY, VERIFIED)
 from plaid_client.roles import ROLES, find_by_role
 from plaid_client.service import locked_for_writes, machine_detail
 from plaid_client.workflows.requester import requester_of
@@ -205,12 +206,17 @@ def trusted_analysis(w, gloss_layer_id) -> Optional[List[Tuple[str, str]]]:
     return out or None
 
 
-def person_link(w, m) -> Optional[str]:
+def person_link(w, m, own_source=None) -> Optional[str]:
     """The vocab item a person linked morpheme `m` to, or None (no link, a
-    machine's or a contributor's unreviewed link, or links to two items)."""
+    machine's or a contributor's unreviewed link, or links to two items).
+    A confirmed link this service proposed does not count: a person
+    confirming a whole word confirms it unread, and counting it would let
+    the service's own guesses vote for themselves."""
     items = set()
     for link in w['morph_links'].get(m['id'], []):
-        if prov_state(link.get('metadata')) in (HUMAN, VERIFIED):
+        meta = link.get('metadata') or {}
+        state = prov_state(meta)
+        if state == HUMAN or (state == VERIFIED and meta.get(PROV_SOURCE_KEY) != own_source):
             v = link.get('vocab_item')
             items.add(v.get('id') if isinstance(v, dict) else v)
     items.discard(None)
@@ -224,7 +230,8 @@ class Confirmed:
     people always linked it to one item, that item is the link to propose:
     the entry already names the sense, which a link by form alone cannot."""
 
-    def __init__(self):
+    def __init__(self, own_source=None):
+        self.own_source = own_source
         self.entries = set()
         self.links: Dict[Tuple[str, str], Counter] = {}
 
@@ -234,12 +241,12 @@ class Confirmed:
             return
         self.entries.update(a)
         for m, entry in zip(w['morphs'], a):
-            item = person_link(w, m)
+            item = person_link(w, m, self.own_source)
             if item:
                 self.links.setdefault(entry, Counter())[item] += 1
 
     def merged(self, other: 'Confirmed') -> 'Confirmed':
-        out = Confirmed()
+        out = Confirmed(self.own_source)
         out.entries = self.entries | other.entries
         for src in (self.links, other.links):
             for entry, c in src.items():
@@ -283,11 +290,12 @@ def is_dev(sentence_id: str) -> bool:
     return h / 0xFFFFFFFF < DEV_SHARE
 
 
-def read_project(client, project_id, gloss_field, translation_field, log=print):
-    """-> (training records, Confirmed) over every document."""
+def read_project(client, project_id, gloss_field, translation_field, log=print, own_source=None):
+    """-> (training records, Confirmed) over every document. `own_source` is
+    the service's provSource, whose links Confirmed leaves out."""
     project = client.projects.get(project_id)
     layers = igt_layers(project)
-    records, confirmed = [], Confirmed()
+    records, confirmed = [], Confirmed(own_source)
     docs = client.projects.list_documents(project_id) or []
     for n, d in enumerate(docs):
         log(f'Reading document {n + 1} of {len(docs)}: {d.get("name") or d["id"]}')
@@ -430,14 +438,16 @@ class CwompModel:
         chosen = [i for i in best if i != eos_idx]
         if not chosen:
             return []
-        out = [{'form': self.lexicon[i][0], 'gloss': self.lexicon[i][1], 'prob': None, 'alternatives': {}}
-               for i in chosen]
+        out = [{'form': self.lexicon[i][0], 'gloss': self.lexicon[i][1], 'prob': None,
+                'form_prob': None, 'alternatives': {}} for i in chosen]
         if self.temperature:
             logits = self.step_logits(query_emb, chosen)[:len(chosen)] / self.temperature
             p = torch.softmax(logits, dim=-1)
             for k, i in enumerate(chosen):
                 out[k]['prob'] = float(p[k, i])
                 same = self.same_form.get(self.lexicon[i][0], [])
+                # The form is right whichever of its entries is: their sum.
+                out[k]['form_prob'] = min(1.0, float(sum(p[k, j] for j in same))) if same else out[k]['prob']
                 if len(same) > 1:
                     ranked = sorted(same, key=lambda j: -float(p[k, j]))[:max_alternatives]
                     out[k]['alternatives'] = {self.lexicon[j][1]: float(p[k, j]) for j in ranked}
@@ -447,16 +457,18 @@ class CwompModel:
 def alternatives_detail(picked: dict, confirmed: 'Confirmed') -> Optional[dict]:
     """What a gloss span records of the alternatives the model weighed: the
     convention's `valueProbs` (shown in igt's Alt+Down list), and
-    `valueLinks`, the item each alternative would be linked to, so that
-    picking one moves the morpheme's link along with it."""
+    `valueLinks`, one {value, item, prob} per alternative a person linked
+    to an item, so that picking one moves the morpheme's link along with
+    it."""
     # An alternative under 1% is noise in a list a person reads ("model 0%").
     alts = {g: p for g, p in picked['alternatives'].items()
             if p >= MIN_ALTERNATIVE_PROB or g == picked['gloss']}
     if len(alts) < 2:
         return None
     detail = {'valueProbs': {decode_piece(g): round(p, 4) for g, p in alts.items()}}
-    links = {decode_piece(g): confirmed.link_for((picked['form'], g)) for g in alts}
-    links = {g: item for g, item in links.items() if item}
+    links = [{'value': decode_piece(g), 'item': confirmed.link_for((picked['form'], g)), 'prob': round(p, 4)}
+             for g, p in alts.items()]
+    links = [x for x in links if x['item']]
     if links:
         detail['valueLinks'] = links
     return detail
@@ -723,16 +735,17 @@ class CwompService(BaseService):
         key = (project_id, gloss_field, translation_field)
         at, confirmed = self.confirmed.get(key, (None, None))
         if at is None or time.monotonic() - at > LEXICON_REFRESH_S:
-            _, confirmed = read_project(self.client, project_id, gloss_field, translation_field, log=progress)
+            _, confirmed = read_project(self.client, project_id, gloss_field, translation_field,
+                                        log=progress, own_source=service_source(self.service_id))
             self.confirmed[key] = (time.monotonic(), confirmed)
         return confirmed
 
-    def live_items(self, project_id) -> set:
+    def live_items(self, project) -> set:
         """The ids of every vocab item the project's vocabularies hold now. A
         link to an item deleted or merged away since the confirmed morphemes
         were read would refuse its whole batch."""
         ids = set()
-        for v in self.client.projects.get(project_id).get('vocabs') or []:
+        for v in project.get('vocabs') or []:
             for it in self.client.vocab_layers.get(v['id'], include_items=True).get('items') or []:
                 ids.add(it['id'])
         return ids
@@ -790,14 +803,22 @@ class CwompService(BaseService):
         translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
                                else translation_field)
         # This document's own confirmed morphemes count at once.
-        own = Confirmed()
+        own = Confirmed(service_source(self.service_id))
         for s in sentences:
             for w in s['words']:
                 own.add_word(w, gloss_layer_id)
         if own.entries - set(model.lexicon):
             model.set_lexicon(set(model.lexicon) | own.entries)
         confirmed = project_confirmed.merged(own)
-        confirmed.keep_items(self.live_items(project_id))
+        project = self.client.projects.get(project_id)
+        confirmed.keep_items(self.live_items(project))
+        # A link the model doubts is one more thing to undo: propose none.
+        threshold = read_confidence_threshold(project.get('config'))
+
+        def link_for(d):
+            if d['prob'] is not None and d['prob'] < threshold:
+                return None
+            return confirmed.link_for((d['form'], d['gloss']))
 
         targets, skipped = select_targets(sentences, overwrite,
                                           skip_word_ids=read_skip_word_ids(request_data))
@@ -832,7 +853,8 @@ class CwompService(BaseService):
                 'segments': list(forms), 'glosses': [decode_piece(d['gloss']) for d in picked],
                 'types': list(types), 'joiners': joiners_for(list(types)),
                 'probs': [d['prob'] for d in picked],
-                'links': [confirmed.link_for((d['form'], d['gloss'])) for d in picked],
+                'form_probs': [d['form_prob'] for d in picked],
+                'links': [link_for(d) for d in picked],
                 'gloss_details': [alternatives_detail(d, confirmed) for d in picked],
                 'surface_mismatch': False, 'degraded': False}})
             if w['state'] != 'unanalyzed':

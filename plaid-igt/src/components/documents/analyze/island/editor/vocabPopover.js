@@ -260,7 +260,10 @@ export const vocabPopover = {
     // alternatives (modelSenses), come first, most probable first, marked
     // with their probability as Alt+Down marks the glosses. A typed search
     // ranks by the text alone.
-    const senses = kind === 'morpheme' ? modelSenses(this._derivedMorpheme(tokenId)) : null;
+    const senses =
+      kind === 'morpheme'
+        ? modelSenses(this._derivedMorpheme(tokenId), { itemExists: this._vocabItemExists() })
+        : null;
     const senseOf = new Map((senses?.senses || []).map((x) => [x.itemId, x]));
     for (const it of items) it._model = senseOf.get(it.id) ?? null;
     if (senseOf.size && !search) {

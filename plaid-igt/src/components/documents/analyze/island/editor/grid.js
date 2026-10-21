@@ -387,10 +387,13 @@ export const grid = {
                         const written = this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
                           adopted: meta != null,
                         });
-                        // Choosing one of the model's alternatives moves the
+                        // Picking one of the model's alternatives moves the
                         // morpheme's link to that alternative's entry, once
                         // the gloss has landed (a refused gloss moves nothing).
-                        const follow = linkFollowingGloss(morph, morph.annotations?.[name], v);
+                        const follow = linkFollowingGloss(morph, morph.annotations?.[name], v, {
+                          picked: meta != null,
+                          itemExists: this._vocabItemExists(),
+                        });
                         if (follow) {
                           Promise.resolve(written).then((ok) => {
                             if (!ok) return;

@@ -505,7 +505,7 @@ def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
                      'token': {'id': 'w1', 'begin': 0, 'end': 3}},
             'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': [None, None],
                          'joiners': ['-'], 'surface_mismatch': False, 'degraded': False,
-                         'probs': [0.8, 0.3], 'links': ['item-ab', None],
+                         'probs': [0.8, 0.3], 'form_probs': [0.9, 0.3], 'links': ['item-ab', None],
                          'gloss_details': [{'valueProbs': {'A': 0.8, 'B': 0.1}}, None]}}
     client = _Client()
     write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {'model': 'm'})
@@ -518,6 +518,9 @@ def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
     assert link[3]['id']
     spans = [c[2][3] for c in client.log if c[:2] == ('spans', 'create')]
     assert spans[0]['provDetail'] == {'model': 'm', 'valueProbs': {'A': 0.8, 'B': 0.1}, 'value': 'A'}
+    assert spans[0]['provProb'] == 0.8
+    # The morpheme carries its form's probability, the gloss its entry's.
+    assert [c[3]['metadata']['provProb'] for c in client.log if c[:2] == ('tokens', 'create')] == [0.9, 0.3]
     assert spans[1]['provDetail'] == {'model': 'm', 'value': 'C'}
     from plaid_client.workflows.igt.write import _ops_for
     assert _ops_for(plan) == 5
