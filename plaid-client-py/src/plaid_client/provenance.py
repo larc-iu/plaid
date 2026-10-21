@@ -87,9 +87,8 @@ alternatives) can read any producer's output:
 - ``valueLinks``: on a gloss, a list of ``{value, item, prob}``, one per
   alternative that stands for a lexicon entry: its label, the vocab item id
   and its probability (two senses may share a label, so this is a list, not
-  a map). igt lists those entries first in
-  the lexicon popover and keeps the link and gloss in step when a person picks
-  an alternative.
+  a map). igt offers each alternative together with its entry as one
+  choice, under Alt+Down on the gloss and in the lexicon popover.
 - ``model``: what made the prediction (a model name, or a tool and its
   release such as ``'stanza==1.11.0'``), and ``version``: which version of
   the writer ran (``'<release>+<8 hex>'``, see

@@ -355,7 +355,9 @@ test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; pi
       return span?.value;
     })
     .toBe('the.PL');
-  expect(seen).toEqual(['POST /api/v1/spans']);
+  // A morpheme's gloss is the pair picker's: its value and its link go in one
+  // batch, here the value alone.
+  expect(seen).toEqual(['POST /api/v1/batch']);
   expect(span?.metadata?.provSource).toBe('gloss:precedent');
   expect(span?.metadata?.provConfirmed).toBe(true);
   expect(span?.metadata?.provDetail?.value).toBe('the.PL');

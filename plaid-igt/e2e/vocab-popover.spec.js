@@ -448,8 +448,9 @@ test('B2 precedent: what a form was linked to before ranks first, counted across
   // A second throwaway document links its `ser` word to LEX-B `human`, and so
   // does this document's own `ser` word. The project query leaves the open
   // document out and its links are tallied live, so the count is exactly 2,
-  // not 3. Opened on the MORPHEME under `ser` (no morpheme ever linked `ser`,
-  // so it sees what any token did), `human ×2` ranks ahead of the two
+  // not 3. On the WORD the count shows, `human ×2`. On the MORPHEME under
+  // `ser` (no morpheme ever linked `ser`, so it sees what any token did) the
+  // chip lists senses with their glosses, and `human` ranks ahead of the
   // exact-form `ser` entries. Typing a search sets precedent aside.
   const humanId = lexB.items.human[0];
   const other = await client.documents.create(projectId, `popover-prec ${Date.now()}`);
@@ -472,13 +473,15 @@ test('B2 precedent: what a form was linked to before ranks first, counted across
     made.push((await client.vocabLinks.create(humanId, [ids.w[W.ser]])).id);
 
     await openAnalyze(page);
+    await open(page, ids.w[W.ser], lexB.name);
+    await expect(
+      rows(page).filter({ hasText: 'human' }).first().locator('.igt-vocab-pop__prec'),
+    ).toHaveText('×2');
+    await page.keyboard.press('Escape');
     await open(page, ids.m[W.ser], lexB.name);
-    // `human ×2` first, then the exact-form `ser` entry (B7 renamed the other
-    // homonym); the rest of LEX-B, including entries other tests added,
-    // follows by form.
+    // `human` first, then the exact-form `ser` entry (B7 renamed the other
+    // homonym).
     await expect.poll(async () => (await rowForms(page)).slice(0, 2)).toEqual(['human', 'ser']);
-    await expect(rows(page).first().locator('.igt-vocab-pop__prec')).toHaveText('×2');
-    await expect(page.locator('.igt-vocab-pop__prec')).toHaveCount(1);
     await page.locator('.igt-vocab-pop__search').fill('ser');
     await expect.poll(async () => (await rowForms(page))[0]).toBe('ser');
     expect((await rowForms(page)).every((f) => f.includes('ser'))).toBe(true);
