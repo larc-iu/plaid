@@ -146,6 +146,7 @@ export const ServicesSettings = ({ projectId, client }) => {
 
   return (
     <ServiceDefaultsSettings
+      showConfidence
       fieldsOf={fieldNamesOf}
       projectId={projectId}
       client={client}

@@ -38,6 +38,11 @@ from plaid_client.provenance import (
     project_role,
     is_reviewed,
     with_reviewed_user,
+    CONFIDENCE_KEY,
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    read_confidence_threshold,
+    machine_prob,
+    is_doubtful,
     WriterPolicy,
 )
 from plaid_client.constraints import value_set_allows, violations_of
@@ -111,6 +116,11 @@ __all__ = [
     "project_role",
     "is_reviewed",
     "with_reviewed_user",
+    "CONFIDENCE_KEY",
+    "DEFAULT_CONFIDENCE_THRESHOLD",
+    "read_confidence_threshold",
+    "machine_prob",
+    "is_doubtful",
     "WriterPolicy",
     "PLAID_NAMESPACE",
     "ROLE_KEY",

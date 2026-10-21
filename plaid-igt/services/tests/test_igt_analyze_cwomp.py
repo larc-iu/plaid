@@ -49,6 +49,12 @@ def test_hyphens_equals_and_spaces_inside_a_piece_survive_the_round_trip():
         assert cwomp.decode_piece(e) == s
 
 
+def test_every_kind_of_whitespace_stays_inside_one_piece():
+    for s_ in ('a\u00a0b', 'a\tb', 'a\u2009b', 'a b'):
+        e = cwomp.encode_piece(s_)
+        assert len(e.split()) == 1 and cwomp.decode_piece(e) == s_
+
+
 def test_joiners_put_equals_on_the_clitic_side():
     assert cwomp.joiners_for([None, None, 'enclitic']) == ['-', '=']
     assert cwomp.joiners_for(['proclitic', None]) == ['=']
@@ -118,6 +124,17 @@ def test_an_entry_links_to_the_item_people_always_linked_it_to():
     # Never linked: no link.
     c.add_word(_linked('su', [('su', {})], [None]), 'glossL')
     assert ('su', 'g0') in c.entries and c.link_for(('su', 'g0')) is None
+
+
+def test_a_link_to_an_item_that_is_gone_is_forgotten():
+    c = cwomp.Confirmed()
+    c.add_word(_linked('ev', [('ev', {})], [('item-gone', {})]), 'glossL')
+    c.add_word(_linked('ev', [('ev', {})], [('item-ev', {})]), 'glossL')
+    assert c.link_for(('ev', 'g0')) is None   # disagreement
+    c.keep_items({'item-ev'})                  # item-gone was merged into item-ev
+    assert c.link_for(('ev', 'g0')) == 'item-ev'
+    c.keep_items(set())
+    assert c.link_for(('ev', 'g0')) is None
 
 
 def test_merged_tallies_add_up():
@@ -191,6 +208,7 @@ def _service(picked):
     confirmed.entries = {('ev', 'house'), ('gel', 'come')}
     confirmed.links = {('gel', 'come'): cwomp.Counter({'item-gel': 3})}
     service.confirmed_for = lambda *a: confirmed
+    service.live_items = lambda project_id: {'item-gel'}
     service.client = servicetest.FakeClient([_document()])
     return service, model
 

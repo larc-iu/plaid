@@ -248,6 +248,7 @@ export const ServiceDefaultsSettings = ({
   saveExtra,
   onExtraSaved,
   fieldsOf,
+  showConfidence = false,
 }) => {
   const namespace = configNamespace();
   const [project, setProject] = useState(null);
@@ -259,10 +260,11 @@ export const ServiceDefaultsSettings = ({
   // The project's confidence threshold (`plaid.confidence`), shared by every
   // app, saved with the defaults.
   const [threshold, setThreshold] = useState('50');
-  const [thresholdDirty, setThresholdDirty] = useState(false);
-  const thresholdNow = useRef(threshold);
-  thresholdNow.current = threshold;
   const thresholdValue = parseThreshold(threshold);
+  // Changed when it differs from what the project stores: typing the stored
+  // number back is no change.
+  const thresholdDirty =
+    showConfidence && thresholdValue !== readConfidenceThreshold(project?.config);
 
   // Whether anything on the page is unsaved, for a reload that must not
   // throw it away.
@@ -296,7 +298,6 @@ export const ServiceDefaultsSettings = ({
         setThreshold(thresholdText(p?.config));
         onProjectLoaded?.(p);
         setDirty(false);
-        setThresholdDirty(false);
       } catch (error) {
         if (!isCurrent()) return;
         notifyError(humanizeError(error), 'Failed to load the services');
@@ -335,7 +336,7 @@ export const ServiceDefaultsSettings = ({
   };
 
   const save = async () => {
-    if (!client || thresholdValue == null) return;
+    if (!client || (showConfidence && thresholdValue == null)) return;
     setSaving(true);
     try {
       // Written only when changed, expecting what the page read, so a save by
@@ -379,7 +380,6 @@ export const ServiceDefaultsSettings = ({
             },
           },
         }));
-        setThresholdDirty(parseThreshold(thresholdNow.current) !== thresholdValue);
       }
       if (defaultsChanged) {
         setProject((p) => ({
@@ -392,7 +392,7 @@ export const ServiceDefaultsSettings = ({
       }
       if (extraDirty) onExtraSaved?.();
       setDirty(!sameConfig(draftNow.current, draft));
-      notifySuccess('Service defaults saved');
+      notifySuccess('Settings saved');
     } catch (error) {
       notifyError(humanizeError(error), 'Failed to save the defaults');
       // Someone else saved since: show what is stored now.
@@ -479,41 +479,44 @@ export const ServiceDefaultsSettings = ({
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Low confidence</CardTitle>
-          <CardDescription>
-            A machine value below this confidence gets a heavier underline.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="confidence-threshold">Threshold</Label>
-            <Input
-              id="confidence-threshold"
-              inputMode="numeric"
-              dir="ltr"
-              className="w-20"
-              value={threshold}
-              disabled={!canManage}
-              aria-invalid={thresholdValue == null}
-              onChange={(e) => {
-                setThreshold(e.target.value);
-                setThresholdDirty(true);
-              }}
-            />
-            <span className="text-sm text-muted-foreground">%</span>
-          </div>
-          {thresholdValue == null && (
-            <p className="text-xs text-destructive-strong">Enter a whole number from 0 to 100.</p>
-          )}
-        </CardContent>
-      </Card>
+      {showConfidence && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Low confidence</CardTitle>
+            <CardDescription>
+              A machine value below this confidence gets a heavier underline.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="confidence-threshold">Threshold</Label>
+              <Input
+                id="confidence-threshold"
+                inputMode="numeric"
+                dir="ltr"
+                className="w-20"
+                value={threshold}
+                disabled={!canManage}
+                aria-invalid={thresholdValue == null}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">%</span>
+            </div>
+            {thresholdValue == null && (
+              <p className="text-xs text-destructive-strong">Enter a whole number from 0 to 100.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {canManage && (
         <Button
           onClick={save}
-          disabled={(!dirty && !extraDirty && !thresholdDirty) || thresholdValue == null || saving}
+          disabled={
+            (!dirty && !extraDirty && !thresholdDirty) ||
+            (showConfidence && thresholdValue == null) ||
+            saving
+          }
         >
           {saving ? 'Saving…' : 'Save defaults'}
         </Button>

@@ -233,8 +233,9 @@ export const FEATURES = [
   },
   {
     key: 'project.plaidSettings',
-    what: 'the project’s shared plaid settings: tartan hidden',
-    detect: (s) => (s.config?.plaid?.tartan != null ? 1 : 0),
+    what: 'the project’s shared plaid settings: tartan hidden, confidence threshold',
+    detect: (s) =>
+      (s.config?.plaid?.tartan != null ? 1 : 0) + (s.config?.plaid?.confidence != null ? 1 : 0),
   },
   {
     key: 'project.researchOptIn',

@@ -135,3 +135,19 @@ def test_writer_policy():
     assert c.reviewable(stamp_inferred('x')) and not c.reviewable(CONTRIB)
     assert not c.reviewable_state(CONTRIBUTED_STATE)
     assert c.adopt_stamp('g', {'value': 'cat'}) == {**CONTRIB, 'provDetail': {'value': 'cat', 'guess': 'g'}}
+
+
+def test_confidence_threshold_and_doubtful_values_match_the_js_client():
+    from plaid_client import (DEFAULT_CONFIDENCE_THRESHOLD, read_confidence_threshold,
+                              machine_prob, is_doubtful, stamp_inferred)
+    assert read_confidence_threshold(None) == DEFAULT_CONFIDENCE_THRESHOLD == 0.5
+    assert read_confidence_threshold({'plaid': {'confidence': {'threshold': 0.3}}}) == 0.3
+    assert read_confidence_threshold({'plaid': {'confidence': {'threshold': 0}}}) == 0
+    for bad in (1.5, '0.3', True, None):
+        assert read_confidence_threshold({'plaid': {'confidence': {'threshold': bad}}}) == 0.5
+    m = stamp_inferred('service:x', prob=0.38)
+    assert machine_prob(m) == 0.38 and is_doubtful(m, 0.5) and not is_doubtful(m, 0.3)
+    assert machine_prob({**m, 'provConfirmed': True}) is None
+    assert machine_prob({**m, 'prov': 'contributed'}) is None
+    assert machine_prob(stamp_inferred('service:x')) is None
+    assert machine_prob({**m, 'provProb': float('nan')}) is None

@@ -281,7 +281,8 @@ export function listAlternatives({
       // accepts a stem gloss on commit, first use included, and the tagset's
       // own values are kept whatever their count.
       const listed = tagset.values.some((v) => v.value === r.value);
-      return listed || r.entry || r.count >= 2;
+      // A model's alternative is a considered value, not a typo, even unused.
+      return listed || r.entry || r.model || r.count >= 2;
     });
   }
 
@@ -296,20 +297,27 @@ export function listAlternatives({
   return list;
 }
 
-// The entry a morpheme's link moves to when its gloss is set to `value`: the
-// one the gloss's producer named for that value among the alternatives it
-// weighed (provDetail.valueLinks, see CWoMP). Only while the morpheme has no
-// link, or still the same producer's unconfirmed one: a person's link, a
-// confirmed one and another producer's stay. Null when nothing moves.
+// What happens to a morpheme's link when its gloss is set to `value`, given
+// the alternatives the gloss's producer weighed (provDetail.valueLinks, see
+// CWoMP): `{ itemId, source }` moves it to that value's entry, `{ itemId:
+// null }` takes it off (the new gloss has no entry the producer knew), and
+// null leaves it. Only the producer's own link moves: its unconfirmed one, or
+// one a person already moved here by picking another of its alternatives. A
+// link a person chose otherwise, and another producer's, stay.
 export function linkFollowingGloss(morph, span, value) {
-  const target = span?.metadata?.[PROV_DETAIL_KEY]?.valueLinks?.[value];
-  if (typeof target !== 'string' || !target) return null;
+  const d = span?.metadata?.[PROV_DETAIL_KEY];
+  const links = d?.valueLinks;
+  if (!links || typeof links !== 'object') return null;
   const source = span.metadata[PROV_SOURCE_KEY];
   const v = morph?.vocabItem;
-  if (v && (v.id === target || v.prov !== PROV_STATES.MACHINE || v.provSource !== source)) {
-    return null;
-  }
-  return { itemId: target, source };
+  const ours =
+    !v ||
+    (v.prov === PROV_STATES.MACHINE && v.provSource === source) ||
+    (Object.values(links).includes(v.id) && (v.provSource === source || v.provGuess === source));
+  if (!ours) return null;
+  const target = typeof links[value] === 'string' && links[value] ? links[value] : null;
+  if (target) return v?.id === target ? null : { itemId: target, source };
+  return v ? { itemId: null, source } : null;
 }
 
 // Whole-value rows to part rows: each row's value is split on the tagset's

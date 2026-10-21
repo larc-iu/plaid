@@ -388,14 +388,22 @@ export const grid = {
                           adopted: meta != null,
                         });
                         // Choosing one of the model's alternatives moves the
-                        // morpheme's link to that alternative's entry.
+                        // morpheme's link to that alternative's entry, once
+                        // the gloss has landed (a refused gloss moves nothing).
                         const follow = linkFollowingGloss(morph, morph.annotations?.[name], v);
                         if (follow) {
-                          this.doc.linkVocab(
-                            morph.id,
-                            follow.itemId,
-                            this.doc.adoptStamp(follow.source, { vocabItem: follow.itemId }),
-                          );
+                          Promise.resolve(written).then((ok) => {
+                            if (!ok) return;
+                            if (follow.itemId) {
+                              this.doc.linkVocab(
+                                morph.id,
+                                follow.itemId,
+                                this.doc.adoptStamp(follow.source, { vocabItem: follow.itemId }),
+                              );
+                            } else {
+                              this.doc.unlinkVocab(morph.id);
+                            }
+                          });
                         }
                         return written;
                       },

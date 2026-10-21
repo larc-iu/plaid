@@ -536,7 +536,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         onToggle={toggleStep}
         hint={
           hasVocabs
-            ? 'Links words and morphemes to lexicon entries. Links it did not make are left alone.'
+            ? 'Links words and morphemes to lexicon entries. Replaces only its own unconfirmed links.'
             : 'This project has no lexicon.'
         }
       >

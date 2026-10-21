@@ -96,6 +96,8 @@ as opaque (no recasing) — ``provSource``/``provConfirmed`` are camelCase on th
 wire and in every language, by design.
 """
 
+import math
+
 PROV_KEY = 'prov'
 PROV_SOURCE_KEY = 'provSource'
 PROV_CONFIRMED_KEY = 'provConfirmed'
@@ -284,6 +286,43 @@ def with_reviewed_user(review, user_id, reviewed):
     if reviewed:
         users.append(user_id)
     return {'users': users, 'roles': current['roles']}
+
+
+# --- confidence: which machine values are doubtful ------------------------------
+
+#: Key of the project's confidence setting under ``config.plaid``:
+#: ``{'threshold': number in [0, 1]}``. The JS client's CONFIDENCE_KEY.
+CONFIDENCE_KEY = 'confidence'
+
+#: The threshold when a project sets none.
+DEFAULT_CONFIDENCE_THRESHOLD = 0.5
+
+
+def read_confidence_threshold(config):
+    """The project's confidence threshold, or the default when it sets none
+    or stores something that is not a number in [0, 1]."""
+    t = (((config or {}).get('plaid') or {}).get(CONFIDENCE_KEY) or {}).get('threshold')
+    if isinstance(t, (int, float)) and not isinstance(t, bool) and 0 <= t <= 1:
+        return t
+    return DEFAULT_CONFIDENCE_THRESHOLD
+
+
+def machine_prob(metadata):
+    """The producer's probability for a machine value nobody has reviewed,
+    or None. None once a person confirmed or contributed it, since
+    ``provProb`` describes the original prediction."""
+    if prov_state(metadata) != MACHINE:
+        return None
+    p = metadata.get(PROV_PROB_KEY)
+    if isinstance(p, (int, float)) and not isinstance(p, bool) and math.isfinite(p):
+        return p
+    return None
+
+
+def is_doubtful(metadata, threshold=DEFAULT_CONFIDENCE_THRESHOLD):
+    """Whether an unreviewed machine value is below the project's threshold."""
+    p = machine_prob(metadata)
+    return p is not None and p < threshold
 
 
 # --- the writer's policy: what a person's writes carry --------------------------

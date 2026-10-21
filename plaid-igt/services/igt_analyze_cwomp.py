@@ -126,13 +126,19 @@ machine-made and shows as unverified until a person confirms it.
 
 # --- the lexicon's spelling ----------------------------------------------------
 
+# Any other whitespace (a no-break or thin space, a tab) goes to a private-use
+# character of its own, which str.split() leaves alone and decoding reverses.
+SPACE_BASE = 0xF0000
+
+
 def encode_piece(s: str) -> str:
     """A form or gloss as one unit CWoMP's code will not split."""
-    return ''.join(INNER.get(c, c) for c in s)
+    return ''.join(INNER.get(c) or (chr(SPACE_BASE + ord(c)) if c.isspace() else c) for c in s)
 
 
 def decode_piece(s: str) -> str:
-    return ''.join(OUTER.get(c, c) for c in s)
+    return ''.join(OUTER.get(c) or (chr(ord(c) - SPACE_BASE) if SPACE_BASE <= ord(c) < SPACE_BASE + 0x10000
+                                    else c) for c in s)
 
 
 def encode_form(form: str, morph_type: Optional[str]) -> str:
@@ -238,6 +244,15 @@ class Confirmed:
             for entry, c in src.items():
                 out.links.setdefault(entry, Counter()).update(c)
         return out
+
+    def keep_items(self, live: set) -> None:
+        """Forget links to items that no longer exist."""
+        for entry, c in list(self.links.items()):
+            kept = Counter({i: n for i, n in c.items() if i in live})
+            if kept:
+                self.links[entry] = kept
+            else:
+                del self.links[entry]
 
     def link_for(self, entry) -> Optional[str]:
         """The one item people linked this entry to, or None when they never
@@ -673,7 +688,7 @@ class CwompService(BaseService):
         self.repo = None
         self.device = None
         self.models: Dict[str, CwompModel] = {}
-        self.confirmed: Dict[str, Tuple[float, Confirmed]] = {}
+        self.confirmed: Dict[Tuple[str, str, str], Tuple[float, Confirmed]] = {}
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--home', default=str(DEFAULT_HOME), help='Where models are kept, one per project')
@@ -702,11 +717,22 @@ class CwompService(BaseService):
         read again at most every LEXICON_REFRESH_S. The paper's mutable
         lexicon: what a person accepts reaches the next run without
         retraining."""
-        at, confirmed = self.confirmed.get(project_id, (0.0, Confirmed()))
-        if time.monotonic() - at > LEXICON_REFRESH_S:
+        key = (project_id, gloss_field, translation_field)
+        at, confirmed = self.confirmed.get(key, (None, None))
+        if at is None or time.monotonic() - at > LEXICON_REFRESH_S:
             _, confirmed = read_project(self.client, project_id, gloss_field, translation_field, log=progress)
-            self.confirmed[project_id] = (time.monotonic(), confirmed)
+            self.confirmed[key] = (time.monotonic(), confirmed)
         return confirmed
+
+    def live_items(self, project_id) -> set:
+        """The ids of every vocab item the project's vocabularies hold now. A
+        link to an item deleted or merged away since the confirmed morphemes
+        were read would refuse its whole batch."""
+        ids = set()
+        for v in self.client.projects.get(project_id).get('vocabs') or []:
+            for it in self.client.vocab_layers.get(v['id'], include_items=True).get('items') or []:
+                ids.add(it['id'])
+        return ids
 
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
@@ -758,6 +784,7 @@ class CwompService(BaseService):
         if own.entries - set(model.lexicon):
             model.set_lexicon(set(model.lexicon) | own.entries)
         confirmed = project_confirmed.merged(own)
+        confirmed.keep_items(self.live_items(project_id))
 
         targets, skipped = select_targets(sentences, overwrite,
                                           skip_word_ids=read_skip_word_ids(request_data))

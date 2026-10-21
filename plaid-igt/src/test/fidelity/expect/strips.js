@@ -135,7 +135,10 @@ export const STRIPS = {
     pruneEmpty(s.config, 'plaid');
   },
   'project.plaidSettings': (s) => {
-    if (s.config?.plaid) delete s.config.plaid.tartan;
+    if (s.config?.plaid) {
+      delete s.config.plaid.tartan;
+      delete s.config.plaid.confidence;
+    }
     pruneEmpty(s.config, 'plaid');
   },
   'project.researchOptIn': (s) => {

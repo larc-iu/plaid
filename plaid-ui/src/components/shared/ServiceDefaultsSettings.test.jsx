@@ -155,13 +155,35 @@ describe('ServiceDefaultsSettings', () => {
     await unmount();
   });
 
+  it('offers the threshold only where the app asks for it', async () => {
+    const { container, unmount } = await mount();
+    expect(container.querySelector('#confidence-threshold')).toBe(null);
+    await unmount();
+  });
+
+  it('counts typing the stored threshold back as no change', async () => {
+    const { container, step, unmount } = await mount({ showConfidence: true });
+    const field = container.querySelector('#confidence-threshold');
+    const type = (value) =>
+      step(() => {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(field, value);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    await type('60');
+    expect(byText(container, 'button', 'Save defaults').disabled).toBe(false);
+    await type('50');
+    expect(byText(container, 'button', 'Save defaults').disabled).toBe(true);
+    await unmount();
+  });
+
   it('shows the project threshold and saves a new one under plaid', async () => {
     const get = vi.fn(async () => ({
       id: 'p1',
       config: { plaid: { confidence: { threshold: 0.4 } } },
     }));
     const client = makeClient({ projects: { get, setConfig: vi.fn(async () => {}) } });
-    const { container, step, unmount } = await mount({ client });
+    const { container, step, unmount } = await mount({ client, showConfidence: true });
     const field = container.querySelector('#confidence-threshold');
     expect(field.value).toBe('40');
     const type = (value) =>

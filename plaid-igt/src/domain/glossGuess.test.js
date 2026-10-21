@@ -463,6 +463,25 @@ describe('what a mixed tagset offers', () => {
   it('never drops the tagset’s own values, whatever their count', () => {
     expect(offers([])).toEqual(['PRT', 'RES']);
   });
+
+  it('keeps a model’s alternative it allows, used or not', () => {
+    const span = {
+      metadata: {
+        prov: 'inferred',
+        provSource: 'service:x',
+        provDetail: { value: 'sell', valueProbs: { sell: 0.39, another: 0.3 } },
+      },
+    };
+    const values = listAlternatives({
+      precedent: tallyWith([]),
+      kind: 'morpheme',
+      form: 'f',
+      field: 'Gloss',
+      span,
+      tagset: { mode: 'mixed', values: [{ value: 'PRT' }] },
+    }).map((r) => r.value);
+    expect(values).toEqual(expect.arrayContaining(['sell', 'another', 'PRT']));
+  });
 });
 
 describe('linkFollowingGloss', () => {
@@ -486,13 +505,34 @@ describe('linkFollowingGloss', () => {
     expect(linkFollowingGloss({ vocabItem: null }, span, 'and')?.itemId).toBe('i-and');
   });
 
-  it('leaves the link when nothing moves or it is not the producer’s to move', () => {
+  it('moves a link an earlier pick of an alternative made, for a verifier or a contributor', () => {
+    const picked = { id: 'i-and', prov: 'verified', provSource: 'service:cwomp-analyzer' };
+    expect(linkFollowingGloss({ vocabItem: picked }, span, 'TOP')?.itemId).toBe('i-top');
+    const contributed = {
+      id: 'i-and',
+      prov: 'contributed',
+      provSource: 'user:ann@x.com',
+      provGuess: 'service:cwomp-analyzer',
+    };
+    expect(linkFollowingGloss({ vocabItem: contributed }, span, 'TOP')?.itemId).toBe('i-top');
+  });
+
+  it('takes the producer’s link off when the new gloss has no entry it knew', () => {
+    expect(linkFollowingGloss({ vocabItem: own }, span, 'typed')).toEqual({
+      itemId: null,
+      source: 'service:cwomp-analyzer',
+    });
+    expect(linkFollowingGloss({ vocabItem: null }, span, 'typed')).toBeNull();
+  });
+
+  it('leaves a link that is not the producer’s to move', () => {
     expect(linkFollowingGloss({ vocabItem: own }, span, 'TOP')).toBeNull();
-    expect(linkFollowingGloss({ vocabItem: own }, span, 'typed')).toBeNull();
-    expect(linkFollowingGloss({ vocabItem: { ...own, prov: 'verified' } }, span, 'and')).toBeNull();
     expect(
       linkFollowingGloss({ vocabItem: { id: 'i-top', prov: 'human' } }, span, 'and'),
     ).toBeNull();
+    // A person's verified link to an entry outside the alternatives.
+    const elsewhere = { id: 'i-x', prov: 'verified', provSource: 'service:cwomp-analyzer' };
+    expect(linkFollowingGloss({ vocabItem: elsewhere }, span, 'and')).toBeNull();
     const other = { ...own, provSource: 'rule:precedent-or-unique' };
     expect(linkFollowingGloss({ vocabItem: other }, span, 'and')).toBeNull();
     expect(linkFollowingGloss({ vocabItem: own }, { metadata: {} }, 'and')).toBeNull();

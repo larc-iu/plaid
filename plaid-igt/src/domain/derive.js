@@ -449,6 +449,9 @@ function collectSingleTokenVocabLinks(vocabularies) {
         provOrigin: provOrigin(linkMeta),
         // Who made the link: the built-in link rule replaces only its own.
         provSource: linkMeta.provSource ?? null,
+        // The producer a person adopted it from (a contributor's pick of a
+        // suggestion keeps it in provDetail.guess), for linkFollowingGloss.
+        provGuess: linkMeta.provDetail?.guess ?? null,
       };
     });
   });
