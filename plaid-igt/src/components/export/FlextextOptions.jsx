@@ -1,10 +1,8 @@
-import { useEffect } from 'react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { resolveFieldLang } from '@/domain/fieldNames';
-import { proposeMetadataMap } from '@/export/presets';
 import {
   Select,
   SelectTrigger,
@@ -137,9 +135,6 @@ const FieldMapGroup = ({
   );
 };
 
-// Step 2 (flextext): language tags + field → FLEx item-type mapping.
-// We don't store ISO writing-system codes, so the preset carries them; FLEx
-// prompts to map unknown tags at import time, so imperfect tags are fine.
 // What a document metadata field goes out as, the FLEx text field it lands in.
 const METADATA_TYPES = [
   { id: 'title', label: 'Title' },
@@ -201,15 +196,10 @@ const MetadataMapGroup = ({ fields, map, langs, onChange }) => {
   );
 };
 
+// Step 2 (flextext): language tags + field → FLEx item-type mapping.
+// We don't store ISO writing-system codes, so the preset carries them; FLEx
+// prompts to map unknown tags at import time, so imperfect tags are fine.
 export const FlextextOptions = ({ options, layers, onChange }) => {
-  // A preset made before the metadata mapping was stored is given the one the
-  // field names propose, once, when it is opened. Saved with the preset.
-  useEffect(() => {
-    if (options.metadataMap === undefined) {
-      onChange({ ...options, metadataMap: proposeMetadataMap(layers.documentMetadata) });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.metadataMap === undefined]);
   const langs = options.langs || {};
   const fieldMap = options.fieldMap || {};
   const overrides = langs.fieldOverrides || {};
