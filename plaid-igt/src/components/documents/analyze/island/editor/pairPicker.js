@@ -129,7 +129,9 @@ export const pairPicker = {
   _chipPairs(tokenId, search) {
     const ctx = this._morphContext(tokenId);
     const morph = ctx?.morph ?? { id: tokenId, annotations: {}, vocabItem: null };
-    const field = pickerFieldOf(morph, this._pairedMorphFields());
+    const field = pickerFieldOf(morph, this._pairedMorphFields(), (name) =>
+      this._lexiconFieldOf('morpheme', name),
+    );
     const tagset = field && ctx ? this._morphFieldTagset(morph, ctx.word, field) : null;
     const { rows, more } = this._pairRows(morph, field, { tagset, search, cap: 30, chip: true });
     return { rows, more, field, morph };

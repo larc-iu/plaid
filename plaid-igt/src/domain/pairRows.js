@@ -94,14 +94,20 @@ function valueLinksOf(span, itemExists = null) {
 /**
  * The morpheme field whose values the chip's rows show: the first paired
  * field (one with a Lexicon field), in grid order, whose value records
- * alternatives with their entries, else the first paired field. Null when
- * the morpheme has none.
+ * alternatives with their entries, else the field paired with the entry
+ * field `gloss`, else the first paired field. Null when the morpheme has none.
  *
  * @param {string[]} pairedFields the morpheme fields with a Lexicon field
+ * @param {(name: string) => string|null} [lexiconFieldOf] each one's Lexicon field
  */
-export function pickerFieldOf(morph, pairedFields) {
+export function pickerFieldOf(morph, pairedFields, lexiconFieldOf = () => null) {
   const paired = pairedFields || [];
-  return paired.find((f) => valueLinksOf(morph?.annotations?.[f]).length) ?? paired[0] ?? null;
+  return (
+    paired.find((f) => valueLinksOf(morph?.annotations?.[f]).length) ??
+    paired.find((f) => lexiconFieldOf(f) === 'gloss') ??
+    paired[0] ??
+    null
+  );
 }
 
 // Tiers, in the order the list shows them.

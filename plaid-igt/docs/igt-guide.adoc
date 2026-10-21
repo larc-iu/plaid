@@ -510,7 +510,8 @@ The rule replaces only links nobody has confirmed: its own, links copied with an
 A link a person made or confirmed stays, and so does an entry an analysis service chose for that occurrence.
 Runs of words whose joined form matches a multi-word expression entry are linked as one (see <<_multi_word_expressions>>).
 
-**Alt+↓** on a morpheme field with a lexicon field, such as Gloss or POS, and a click on the morpheme's link open the same list: each sense with its value, the alternatives an analysis service weighed with their probability, and the values the project has given the form.
+**Alt+↓** on a morpheme field with a lexicon field, such as Gloss or POS, opens a list of each sense with its value, the alternatives an analysis service weighed with their probability, and the values the project has given the form.
+A click on the morpheme's link opens the same list for one field: the field whose values an analysis service gave with their entries, else the field whose lexicon field is the entry's gloss, else the first morpheme field with a lexicon field.
 Choosing a row sets the link and the gloss together.
 A row with no entry leaves the link as it is, and a sense with no gloss leaves the gloss as it is.
 Chosen in the popover, a sense keeps a value a person wrote that is not the linked sense's own, and fills the other fields with a lexicon field that are empty or hold an unconfirmed proposal.

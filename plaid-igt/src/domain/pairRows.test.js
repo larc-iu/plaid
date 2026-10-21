@@ -49,6 +49,13 @@ describe('pickerFieldOf', () => {
     expect(pickerFieldOf({ annotations: {} }, [])).toBeNull();
   });
 
+  it('takes the field paired with the entry gloss before an earlier paired field', () => {
+    const paired = { POS: 'pos', Meaning: 'gloss', Note: 'definition' };
+    const of = (f) => paired[f] ?? null;
+    expect(pickerFieldOf({ annotations: {} }, ['POS', 'Meaning', 'Note'], of)).toBe('Meaning');
+    expect(pickerFieldOf({ annotations: {} }, ['POS', 'Note'], of)).toBe('POS');
+  });
+
   it('keeps only valueLinks entries that are whole and still exist', () => {
     const gloss = model('sell', {
       valueLinks: [
