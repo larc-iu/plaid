@@ -490,7 +490,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         n={1}
         stepKey="translate"
         label="Propose translations"
-        on={steps.translate}
+        on={translateOn}
         disabled={!translateSpot.service}
         running={running}
         onToggle={toggleStep}
@@ -518,7 +518,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         n={3}
         stepKey="analyze"
         label="Propose segmentation and glosses"
-        on={steps.analyze}
+        on={analyzeOn}
         disabled={!analyzeSpot.service}
         running={running}
         onToggle={toggleStep}
@@ -536,7 +536,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         n={4}
         stepKey="link"
         label="Link to the lexicon"
-        on={steps.link}
+        on={linkOn}
         disabled={!hasVocabs}
         running={running}
         onToggle={toggleStep}
