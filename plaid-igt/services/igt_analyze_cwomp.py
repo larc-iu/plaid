@@ -836,7 +836,7 @@ class CwompService(BaseService):
             response_helper.error(str(e))
             return
         translation_missing = (translation_field if translation_field
-                               and not field_layer_id(doc, sent_layer_id, translation_field) else None)
+                               and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
         # This document's own confirmed morphemes count at once.
         own = Confirmed(service_source(self.service_id), project_confirmed.entry_types)
         for s in sentences:

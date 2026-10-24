@@ -114,3 +114,14 @@ def test_one_silent_sentence_between_answers_does_not_end_the_run(module, cls, r
     assert service.model.calls == N
     [result] = helper.results
     assert [f['sentence_id'] for f in result['sentences_failed']] == ['s1', 's3', 's5']
+
+
+def test_an_analysis_names_a_translation_field_of_another_scope_as_missing():
+    # derive reads the translation only from a Sentence-scope field, so a field
+    # of that name with another scope gives no translation, and the run says so.
+    service = _service(analyze, 'LLMAnalyzeService', ['house(ev)'] * N)
+    doc = _document()
+    doc['text_layers'][0]['token_layers'][0]['span_layers'][0]['config']['igt']['scope'] = 'Word'
+    service.client = servicetest.FakeClient([doc], project={'id': 'p1', 'config': {}, 'vocabs': []})
+    helper = servicetest.run(service, REQUEST)
+    assert helper.results[0]['translation_field_missing'] == 'Translation'

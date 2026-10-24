@@ -437,3 +437,14 @@ def test_the_words_auto_analyze_just_copied_are_left_alone_even_with_overwrite()
                for kind, payload in service.client.calls
                if kind in ('tokens.patch_metadata', 'tokens.delete')]
     assert touched == ['m1']
+
+
+def test_a_translation_field_of_another_scope_is_named_as_missing():
+    # derive reads the translation only from a Sentence-scope field, so a field
+    # of that name with another scope gives no translation, and the run says so.
+    doc = _document()
+    doc['text_layers'][0]['token_layers'][0]['span_layers'][0]['config']['igt']['scope'] = 'Word'
+    service = _service(documents=[doc])
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    assert helper.results[0]['translation_field_missing'] == 'Translation'

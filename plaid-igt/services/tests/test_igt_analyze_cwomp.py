@@ -279,3 +279,19 @@ def test_a_request_for_another_gloss_field_than_the_model_knows_is_refused():
     helper = servicetest.run(service, {**REQUEST, 'gloss_field': 'Gloss (ru)'})
     assert helper.results == []
     assert '"Gloss"' in helper.errors[0] and '"Gloss (ru)"' in helper.errors[0]
+
+
+def test_a_translation_field_of_another_scope_is_named_as_missing():
+    # derive reads the translation only from a Sentence-scope field, so a field
+    # of that name with another scope gives no translation, and the run says so.
+    service, _ = _service([('gel', 'come', 0.9)])
+    service.client = servicetest.FakeClient([_scoped_translation(_document(), 'Word')],
+                                            project={'id': 'p', 'config': {}})
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    assert helper.results[0]['translation_field_missing'] == 'Translation'
+
+
+def _scoped_translation(doc, scope):
+    doc['text_layers'][0]['token_layers'][0]['span_layers'][0]['config']['igt']['scope'] = scope
+    return doc

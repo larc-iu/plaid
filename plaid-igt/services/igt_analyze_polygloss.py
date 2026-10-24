@@ -241,7 +241,7 @@ class PolyGlossService(BaseService):
         # The translation is context only, so a run goes on without it, and
         # says so rather than analyzing a little worse without a word.
         translation_missing = (translation_field if translation_field
-                               and not field_layer_id(doc, sent_layer_id, translation_field) else None)
+                               and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
 
         # Eligible sentences: any word we may write (the write contract).
         targets, skipped = select_targets(sentences, overwrite,

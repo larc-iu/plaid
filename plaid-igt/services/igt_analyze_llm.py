@@ -462,7 +462,7 @@ class LLMAnalyzeService(BaseService):
         # The translation is context only, so a run goes on without it, and
         # says so rather than analyzing a little worse without a word.
         translation_missing = (translation_field if translation_field
-                               and not field_layer_id(doc, sent_layer_id, translation_field) else None)
+                               and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
 
         targets, skipped = select_targets(sentences, overwrite,
                                           skip_word_ids=read_skip_word_ids(request_data))
