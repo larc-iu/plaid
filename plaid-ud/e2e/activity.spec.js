@@ -8,10 +8,9 @@
 // pictures, which are welcome (Luke, 2026-09-12), so the panel shows them here
 // as it does in plaid-igt and the test is gone.
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, signInAdmin } from './fixtures.js';
+import { test, expect, seedAuth, signInAdmin, CORE } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
-const CORE = 'http://localhost:8085';
 const WRITER = { id: 'ud-activity-writer@x.com', password: 'writer-pass-1' };
 
 const S = {};

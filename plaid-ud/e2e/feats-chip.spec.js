@@ -3,10 +3,16 @@
 // seeds 'the dog runs' with tokens + lemma spans + two pre-seeded features on
 // the first morpheme, then drives the FEATS chip input through behaviors 1-5.
 import { createUdLayers } from './seedUdDoc.js';
-import { test, expect, seedAuth, collectClientErrors, readToken, BASE_URL } from './fixtures.js';
+import {
+  test,
+  expect,
+  seedAuth,
+  collectClientErrors,
+  readToken,
+  BASE_URL,
+  CORE,
+} from './fixtures.js';
 import { PlaidClient } from '@larc-iu/plaid-client';
-
-const BASE = 'http://localhost:8085';
 
 const S = {}; // shared setup state
 
@@ -15,7 +21,7 @@ const S = {}; // shared setup state
 
 test.beforeAll(async () => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE, token);
+  const client = new PlaidClient(CORE, token);
   S.client = client;
 
   // B1: project

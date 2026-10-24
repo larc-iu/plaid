@@ -1,11 +1,9 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // `/` outside a text box focuses the screen's search box, and inside one it is
 // a slash. Runs against "E2E IGT Fixture" and writes nothing.
-
-const CORE = 'http://localhost:8085';
 
 let projectId;
 

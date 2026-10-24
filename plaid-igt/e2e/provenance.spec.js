@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN A2/A4 UI rows: how machine material looks and behaves in the
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // e2e/live/provenance-structural.mjs. Uses a throwaway document + throwaway
 // vocab entries in the "E2E IGT Fixture" project; both are deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'alpha beta gamma delta epsilon';
 

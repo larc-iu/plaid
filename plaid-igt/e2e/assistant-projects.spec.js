@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createScratchProject } from './fixtureProject.js';
 import { assistantProjectsTests } from '../../plaid-ui/e2e/assistantProjects.js';
 
@@ -8,7 +8,6 @@ import { assistantProjectsTests } from '../../plaid-ui/e2e/assistantProjects.js'
 // Assistant tab and citation card. plaid-ud's twin is its own
 // assistant-projects spec.
 
-const CORE = 'http://localhost:8085';
 const client = () => new PlaidClient(CORE, readToken().token);
 
 const stamp = Date.now();

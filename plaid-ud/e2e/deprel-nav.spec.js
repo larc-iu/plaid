@@ -7,15 +7,14 @@
 // tree: root(runs), nsubj(runs->dog), det(dog->the). Relations store
 // source=head, target=dependent, so each token maps 1:1 to its own label.
 import { createUdLayers } from './seedUdDoc.js';
-import { test, expect, seedAuth, collectClientErrors, readToken } from './fixtures.js';
+import { test, expect, seedAuth, collectClientErrors, readToken, CORE } from './fixtures.js';
 import { PlaidClient } from '@larc-iu/plaid-client';
 
-const BASE = 'http://localhost:8085';
 const S = {};
 
 test.beforeAll(async () => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE, token);
+  const client = new PlaidClient(CORE, token);
   S.client = client;
 
   const L = await createUdLayers(client, `DEPREL nav ${Date.now()}`);

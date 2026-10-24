@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, metadataOps } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN B2 (ranking + search), B3 (keyboard), B4 (link/unlink/relink),
@@ -8,7 +8,6 @@ import { getFixture } from './fixtureProject.js';
 // "E2E IGT Fixture" project and removed afterwards; nothing is created in the
 // shared "IGT Lexicon" (LEX-A: all, the, human, be.born, free, equal).
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'derechos. "hola," dog\'s ... 😀 ser hum the';
 const W = { derechos: 0, hola: 1, dogs: 2, dots: 3, emoji: 4, ser: 5, hum: 6, the: 7 };

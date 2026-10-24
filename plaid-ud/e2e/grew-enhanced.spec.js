@@ -1,4 +1,4 @@
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { PlaidClient } from '@larc-iu/plaid-client';
 import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
@@ -34,7 +34,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   const { token } = readToken();
-  const client = new PlaidClient('http://localhost:8085', token);
+  const client = new PlaidClient(CORE, token);
   S.client = client;
   const project = await createUdProject(client, `Grew enhanced e2e ${Date.now()}`);
   S.projectId = project.id;

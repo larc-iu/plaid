@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createScratchProject } from './fixtureProject.js';
 
 // Time travel and the restore it leads to, end to end: the History drawer, the
@@ -13,7 +13,6 @@ import { createScratchProject } from './fixtureProject.js';
 // restore rewrites a whole document, and a run that dies partway leaves it
 // rewritten for every other spec in the tree.
 
-const CORE = 'http://localhost:8085';
 const GLOSS_CELL = '.igt-field[data-cell-key^="ma:"]';
 
 let projectId;

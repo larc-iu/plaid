@@ -5,15 +5,14 @@
 //  - accepting clears the inferred styling.
 // Seeds 'the dog runs' with a machine-inferred UPOS span on "dog".
 import { createUdLayers } from './seedUdDoc.js';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { PlaidClient, metadataOps } from '@larc-iu/plaid-client';
 
-const BASE = 'http://localhost:8085';
 const S = {};
 
 test.beforeAll(async () => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE, token);
+  const client = new PlaidClient(CORE, token);
   S.client = client;
 
   const L = await createUdLayers(client, `Accept preds ${Date.now()}`);

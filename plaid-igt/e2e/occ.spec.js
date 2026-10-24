@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { delayWrites } from '../../plaid-ui/e2e/writeDelay.js';
 
@@ -9,7 +9,6 @@ import { delayWrites } from '../../plaid-ui/e2e/writeDelay.js';
 // linked from both tabs ends up with exactly ONE link. Throwaway document +
 // throwaway lexicon entries in "E2E IGT Fixture", deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;

@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN A2-13 / A8-02 / B10-02: the Tokenize tab's delete and split
@@ -7,7 +7,6 @@ import { getFixture } from './fixtureProject.js';
 // material, and confirming actually removes it. Throwaway document in the
 // "E2E IGT Fixture" project, deleted afterwards.
 
-const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'alpha beta gamma';
 

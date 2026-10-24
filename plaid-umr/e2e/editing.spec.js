@@ -6,6 +6,7 @@ import {
   readToken,
   collectClientErrors,
   cleanDiagnostics,
+  CORE,
 } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { importUmrDocument } from '../src/domain/umrImport.js';
@@ -81,12 +82,10 @@ s2c: 1-1
 
 `;
 
-const API = 'http://localhost:8085';
-
 async function makeDocument(text = SAMPLE) {
   const { projectId } = await getFixture();
   const { token } = readToken();
-  const client = new PlaidClient(API, token);
+  const client = new PlaidClient(CORE, token);
   const project = await client.projects.get(projectId);
   const name = `editing ${Date.now()}`;
   const { document } = await importUmrDocument(

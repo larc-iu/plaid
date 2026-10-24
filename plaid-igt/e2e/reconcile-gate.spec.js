@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // Opening a document in IGT writes nothing (2026-10-06). Until then a
@@ -10,7 +10,7 @@ import { getFixture } from './fixtureProject.js';
 // layer holds none keeps its orphan through an open, and gains no rule.
 test('opening a document repairs nothing and declares no rule', async ({ page }) => {
   const { projectId, documentId } = await getFixture();
-  const client = new PlaidClient('http://localhost:8085', readToken().token);
+  const client = new PlaidClient(CORE, readToken().token);
   const project = await client.projects.get(projectId);
   const tokenLayers = project.textLayers.flatMap((tl) => tl.tokenLayers || []);
   const morphemeLayer = tokenLayers.find((tl) => tl.config?.plaid?.role === ROLES.MORPHEME);

@@ -1,12 +1,11 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The "Your last edit" column: it reads the caller's own writes out of the
 // audit log, says nothing for a document they have never touched, and costs
 // the column rather than the list when the read fails.
 
-const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const ROUTE = '**/audit/last-edits';
 
 let projectId;

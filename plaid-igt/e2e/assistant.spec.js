@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { agentUnavailable, startIgtAssistant } from './assistantService.js';
 
@@ -18,7 +18,6 @@ import { agentUnavailable, startIgtAssistant } from './assistantService.js';
 // record settled), the tab opening on a new conversation with the sidebar
 // linking each saved one, and Approve.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 
 let client;

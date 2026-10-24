@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // A document viewed as it was in the past reads its vocabulary as it was at
@@ -7,7 +7,6 @@ import { getFixture } from './fixtureProject.js';
 // shows its old form on the word it was linked from. A throwaway vocabulary
 // and document are made in the "E2E IGT Fixture" project and removed.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'fono tama';
 

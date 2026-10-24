@@ -13,18 +13,17 @@
 // up once.
 import { test, expect } from '@playwright/test';
 import PlaidClient from '@larc-iu/plaid-client';
-import { readToken, seedAuth } from './fixtures.js';
+import { readToken, seedAuth, CORE } from './fixtures.js';
 
 const PROJECT_NAME = 'E2E UD Unconfigured';
 const DOC_NAME = 'Doc 1';
-const BASE_URL = 'http://localhost:8085';
 
 let projectId;
 let documentId;
 
 test.beforeAll(async () => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
   const existing = (await client.projects.list()).find((p) => p.name === PROJECT_NAME);
   const project = existing || (await client.projects.create(PROJECT_NAME));
   projectId = project.id;
@@ -45,13 +44,13 @@ test('clicking into an unconfigured project offers setup where it stands', async
   // Looking is not writing: no redirect, and no layers made by arriving.
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/documents$`));
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
   expect((await client.projects.get(projectId)).textLayers || []).toHaveLength(0);
 });
 
 test('the button sets the project up and the document list appears', async ({ page }) => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
   const name = `E2E UD Adopt ${Date.now()}`;
   const project = await client.projects.create(name);
   try {
@@ -77,7 +76,7 @@ test('a document tokenized elsewhere gets its UD words when the project is set u
   page,
 }) => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
   const name = `E2E UD Adopt Tokens ${Date.now()}`;
   const project = await client.projects.create(name);
   try {

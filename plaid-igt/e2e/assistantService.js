@@ -6,11 +6,8 @@
 //
 // Needs the plaid-agent Python env: PLAID_AGENT_PYTHON, else the env's python
 // under the usual mamba roots (the lookup bb uses). `agentUnavailable()` says
-// why it cannot run, for a skip. The service is pointed at PLAID_CORE_URL
-// (default :8085), the variable fixtureProject.js reads. The private-core
-// runner (its shim reads FINAL_CORE) reroutes only node's fetch, never a
-// child process, so under it the service refuses to start unless
-// PLAID_CORE_URL names a core other than :8085.
+// why it cannot run, for a skip. The service dials the core the specs talk to
+// (`coreUrl()`: PLAID_CORE_URL, which `bb e2e` sets to its private core).
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -18,21 +15,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { coreUrl } from '../../plaid-ui/e2e/appFixtures.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DEV_CORE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):8085(\/|$)/;
-
-// The core the service dials. Under the private-core runner a missing or
-// :8085 PLAID_CORE_URL would send it to the dev core, so that throws.
-function coreUrl() {
-  const url = process.env.PLAID_CORE_URL;
-  if (process.env.FINAL_CORE && (!url || DEV_CORE.test(url)))
-    throw new Error(
-      `FINAL_CORE is ${process.env.FINAL_CORE} but PLAID_CORE_URL is ${url || 'unset'}: ` +
-        'set PLAID_CORE_URL to the private core so the assistant does not dial :8085',
-    );
-  return url || 'http://localhost:8085';
-}
 const PYTHONPATH = [
   path.join(REPO, 'plaid-agent', 'src'),
   path.join(REPO, 'plaid-client-py', 'src'),

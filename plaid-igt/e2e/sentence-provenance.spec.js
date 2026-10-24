@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // A machine-made sentence value (a proposed translation) renders with the
@@ -7,7 +7,6 @@ import { getFixture } from './fixtureProject.js';
 // sweep, and Ctrl+Enter accepts it as is. Throwaway document in the
 // "E2E IGT Fixture" project.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 
 let client;

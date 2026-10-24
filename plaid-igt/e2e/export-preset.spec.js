@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { executeProjectSetup } from '../src/components/projects/setup/executeSetup.js';
 
 // Creating an export preset, through the dialog rather than the API.
@@ -20,8 +20,6 @@ import { executeProjectSetup } from '../src/components/projects/setup/executeSet
 //
 // Throwaway project, deleted afterwards, so it never touches the shared
 // fixture project other specs and other sessions rely on.
-
-const CORE = 'http://localhost:8085';
 
 let client;
 let projectId;

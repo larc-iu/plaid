@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // Luke's ruling Q1: a gloss edit refused because another tab stored another
@@ -10,7 +10,6 @@ import { getFixture } from './fixtureProject.js';
 // B's goes out on a document that has moved on and the server refuses it.
 // A throwaway document in "E2E IGT Fixture", deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 

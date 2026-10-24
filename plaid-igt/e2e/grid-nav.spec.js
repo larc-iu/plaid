@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN C5 (grid navigation) auto rows + A4-08: Enter/Tab move along a
@@ -8,7 +8,6 @@ import { getFixture } from './fixtureProject.js';
 // cells persist, and Ctrl+Down with no machine chips leaves the browser
 // default alone. Throwaway document in "E2E IGT Fixture", deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 

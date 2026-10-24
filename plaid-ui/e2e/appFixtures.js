@@ -18,11 +18,17 @@ function parseJwtPayload(token) {
   return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
 }
 
-// The non-expiring API token an app keeps beside its package.json, and the two
-// helpers that read it. `tokenPath` is the app's own `.token`.
+// The core the specs and the fixture builders talk to. `bb e2e` sets
+// PLAID_CORE_URL to the private core it started for the suite. Without it they
+// talk to the shared dev core.
+export const coreUrl = () => process.env.PLAID_CORE_URL || 'http://localhost:8085';
+
+// The non-expiring API token for a@b.com, and the two helpers that read it.
+// `bb e2e` passes the token it minted on its own core in PLAID_E2E_TOKEN.
+// Without it the token is the app's own `.token`, beside its package.json.
 export const tokenFixtures = (tokenPath) => {
   const readToken = () => {
-    const tok = fs.readFileSync(tokenPath, 'utf8').trim();
+    const tok = (process.env.PLAID_E2E_TOKEN || fs.readFileSync(tokenPath, 'utf8')).trim();
     const payload = parseJwtPayload(tok);
     return { token: tok, userId: payload['user/id'] };
   };

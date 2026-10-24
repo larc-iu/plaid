@@ -9,7 +9,7 @@
 // Run standalone to print the IDs:  node e2e/fixtureProject.js
 import PlaidClient from '@larc-iu/plaid-client';
 import { ROLES } from '@larc-iu/plaid-client';
-import { readToken } from './fixtures.js';
+import { readToken, CORE } from './fixtures.js';
 
 // Editor binds the shared substrate by role (config.plaid.role) and reads its
 // own settings under the `igt` namespace — see src/domain/igtConfig.js. (Pre-
@@ -17,7 +17,6 @@ import { readToken } from './fixtures.js';
 // stale and renders "no primary token layer configured".)
 const roleOf = (l) => l?.config?.plaid?.role;
 
-const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const PROJECT_NAME = 'E2E IGT Fixture';
 const DOC_NAME = 'Sample IGT Document';
 const SAMPLE_TEXT = ' Todos los seres humanos nacen libres e iguales en dignidad y derechos.';
@@ -26,7 +25,7 @@ const VOCAB_ITEMS = ['all', 'the', 'human', 'be.born', 'free', 'equal'];
 
 export function makeClient() {
   const { token } = readToken();
-  return new PlaidClient(CORE_URL, token);
+  return new PlaidClient(CORE, token);
 }
 
 async function findProjectByName(client, name) {

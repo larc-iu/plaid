@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken, collectClientErrors } from './fixtures.js';
+import { test, expect, seedAuth, readToken, collectClientErrors, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The split paths that depend on real timing, so a headless DOM cannot vouch
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // the point is that the stored result must not. Throwaway document in "E2E
 // IGT Fixture", deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const NONCE = Date.now().toString(36);
 const W1 = `ngoko${NONCE}`;

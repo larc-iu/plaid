@@ -1,6 +1,6 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assistantChrome.js';
 
@@ -16,7 +16,6 @@ import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assis
 // different. No model and no service: an assistant is made to look online by
 // answering the one discovery GET.
 
-const CORE = 'http://localhost:8085';
 const FIXTURE = 'E2E IGT Fixture';
 const SECOND_DOCUMENT = 'Chrome Spec Second Document';
 

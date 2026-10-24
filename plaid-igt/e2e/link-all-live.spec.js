@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // "Link every…" on the first click, through the real grid: an unlinked word
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 //
 // Throwaway document in the "E2E IGT Fixture" project, deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const FORM = `all${Date.now().toString(36)}`;
 const BODY = `${FORM} ${FORM} ${FORM}`;

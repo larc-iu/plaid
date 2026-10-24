@@ -1,9 +1,8 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
 
-const API = 'http://localhost:8085';
 const COPY_NAME = 'E2E UMR Copy';
 
 // The Compare tab reads the report the AnCast service leaves on a document.
@@ -12,7 +11,7 @@ const COPY_NAME = 'E2E UMR Copy';
 // the two graphs with the unmatched nodes marked.
 test('the Compare tab shows a planted report side by side', async ({ page }) => {
   const { projectId, documentId } = await getFixture();
-  const client = new PlaidClient(API, readToken().token);
+  const client = new PlaidClient(CORE, readToken().token);
   const docs = await client.projects.listDocuments(projectId);
   let copy = docs.find((d) => d.name === COPY_NAME) || null;
   if (!copy) {

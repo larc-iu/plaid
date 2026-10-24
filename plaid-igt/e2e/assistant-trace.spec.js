@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { agentUnavailable, startIgtAssistant } from './assistantService.js';
 
@@ -9,7 +9,6 @@ import { agentUnavailable, startIgtAssistant } from './assistantService.js';
 // each step opens to its input and exactly what the tool returned (the
 // round stored beside the conversation), the same after a reload.
 
-const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const DOC = 'Sample IGT Document';
 const CODE = 'print(len(documents()))';
 

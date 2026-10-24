@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The Baseline tab saves the edits typed in the box as edits at the caret
@@ -12,7 +12,6 @@ import { getFixture } from './fixtureProject.js';
 // second with its draft kept. After each save the screen shows what a reload
 // shows. Throwaway documents in "E2E IGT Fixture".
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 
 let client;

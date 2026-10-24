@@ -1,6 +1,6 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assistantChrome.js';
 
@@ -17,7 +17,6 @@ import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assis
 // discovery GET, and a conversation is written straight into the user's own
 // key/value store.
 
-const CORE = 'http://localhost:8085';
 const SECOND_DOCUMENT = 'Chrome Spec Second Document';
 
 let projectId;

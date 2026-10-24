@@ -7,14 +7,12 @@
 // Two cases, and the notice has to tell them apart: a project with a substrate
 // (text, sentences, words) is adopted, and a project without one has nothing
 // for this app to add, text and tokens being made in IGT or UD.
-import { test, expect, seedAuth } from './fixtures.js';
+import { test, expect, seedAuth, CORE } from './fixtures.js';
 import { readToken } from './fixtures.js';
 import PlaidClient from '@larc-iu/plaid-client';
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 
-const BASE_URL = 'http://localhost:8085';
-
-const newClient = () => new PlaidClient(BASE_URL, readToken().token);
+const newClient = () => new PlaidClient(CORE, readToken().token);
 
 // A project shaped the way IGT and UD leave one: baseline text, sentences,
 // words, and nothing of UMR's.

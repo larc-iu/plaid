@@ -1,6 +1,6 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assistantChrome.js';
 
@@ -16,7 +16,6 @@ import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assis
 // takes) is e2e/assistant-panel.spec.js. No model and no service: an assistant
 // is made to look online by answering the one discovery GET.
 
-const CORE = 'http://localhost:8085';
 const SENTENCES = 'the dog runs. she sings.';
 const WORDS = [
   [0, 3],

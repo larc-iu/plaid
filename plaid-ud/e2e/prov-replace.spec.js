@@ -7,16 +7,15 @@
 // plus two machine relations, then drives each replace gesture and reads the
 // server state back after each.
 import { createUdLayers } from './seedUdDoc.js';
-import { test, expect, seedAuth, readToken, collectClientErrors } from './fixtures.js';
+import { test, expect, seedAuth, readToken, collectClientErrors, CORE } from './fixtures.js';
 import { PlaidClient, metadataOps } from '@larc-iu/plaid-client';
 
-const BASE = 'http://localhost:8085';
 const MACHINE = { prov: 'inferred', provSource: 'service:test', provDetail: { model: 'm1' } };
 const S = {};
 
 test.beforeAll(async () => {
   const { token } = readToken();
-  const client = new PlaidClient(BASE, token);
+  const client = new PlaidClient(CORE, token);
   S.client = client;
 
   const L = await createUdLayers(client, `Prov replace ${Date.now()}`);
@@ -101,7 +100,7 @@ const dump = (label, obj) => console.log(`[${label}]`, JSON.stringify(obj));
 const apiSummary = (c) =>
   c.apiCalls
     .filter((x) => x.method !== 'GET')
-    .map((x) => `${x.method} ${x.status} ${x.url.replace(BASE, '')}`);
+    .map((x) => `${x.method} ${x.status} ${x.url.replace(CORE, '')}`);
 
 // What the server holds once a write has LANDED. Every gesture below patches
 // the grid's own state BEFORE awaiting the server (see ConlluDocument), so the

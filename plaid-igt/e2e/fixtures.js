@@ -3,6 +3,7 @@ import PlaidClient from '@larc-iu/plaid-client';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  coreUrl,
   tokenFixtures,
   collectClientErrors,
   reportDiagnostics,
@@ -17,6 +18,9 @@ const TOKEN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 
 // The non-expiring API token for a@b.com.
 export const { readToken, seedAuth } = tokenFixtures(TOKEN_PATH);
+
+// The core the specs talk to (PLAID_CORE_URL under `bb e2e`, else the dev core).
+export const CORE = coreUrl();
 
 // A signed-in session for a@b.com, for the few calls a named API token is
 // refused (creating an account, minting or revoking API tokens).

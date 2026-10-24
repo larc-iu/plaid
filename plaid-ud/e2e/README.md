@@ -1,8 +1,16 @@
 # e2e
 
-Everything here runs against the LIVE dev core (`:8085`) and a dev server, as the
-admin `a@b.com` whose non-expiring token is in `../.token`. Run from `plaid-ud/`
-with Node 24 (`nvm use 24.1.0`).
+`bb e2e ud` (from the repo root) runs this suite on a core of its own: a
+plaid-core from source with a fresh database, a token minted on it, and a Vite
+dev server proxying to it, all on free ports, so nothing reaches the dev core.
+Pass Playwright arguments after `--`, e.g. `bb e2e ud -- e2e/smoke.spec.js`.
+The nightly runs it.
+
+Run by hand, the specs talk to the core in `PLAID_CORE_URL` (the LIVE dev core,
+`:8085`, when unset) as the admin `a@b.com`, with the token in
+`PLAID_E2E_TOKEN`, else the non-expiring one in `../.token`. Specs and fixture
+builders take the core from `CORE` in `fixtures.js` and never write a port.
+Run from `plaid-ud/` with Node 24 (`nvm use 24.1.0`).
 
 **Point it at your own dev server, not the shared one.** `PLAYWRIGHT_BASE_URL`
 does that, and every spec that builds an absolute URL reads `BASE_URL` from

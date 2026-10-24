@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The dictionary side of a vocabulary: the sense tree in the list and on an
@@ -7,7 +7,6 @@ import { getFixture } from './fixtureProject.js';
 // cleanup a delete does. Throwaway lexicon linked to "E2E IGT Fixture" for
 // the run + a throwaway document; both removed afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'kappa lambda mu nu';
 

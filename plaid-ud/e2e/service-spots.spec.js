@@ -6,11 +6,10 @@
 // Parse spot is only checked as far as its dialog, since whether a parser is
 // online is a property of the machine and not of the code.
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 
-const CORE = 'http://localhost:8085';
 const BODY = 'The dog runs. The cat sleeps.';
 
 const S = {};

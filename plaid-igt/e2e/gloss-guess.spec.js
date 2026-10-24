@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN A1: gloss guesses are placeholder suggestions from precedent (this
@@ -7,7 +7,6 @@ import { getFixture } from './fixtureProject.js';
 // provenance); Tab, blur and typing over them never write the guess.
 // Throwaway document in the "E2E IGT Fixture" project, deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 // Guesses draw on precedent across the WHOLE project, and the fixture project
 // is shared with other specs, so every form here is unique to this run.

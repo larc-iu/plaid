@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, readToken } from './fixtures.js';
+import { test, expect, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { importUmrDocument } from '../src/domain/umrImport.js';
 import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
@@ -7,7 +7,7 @@ import { UmrDocument } from '../src/domain/UmrDocument.js';
 
 // A .umr file imported onto a document that already has the words (the way
 // an IGT document does): the graphs land on those words, and a document that
-// already holds nodes, or whose words differ, is refused. API only.
+// already holds nodes, or whose words differ, is refused. CORE only.
 const FILE = `################################################################################
 # :: snt1	Dogs bark .
 Index: 1 2 3
@@ -30,11 +30,9 @@ s1d: 1-1
 
 `;
 
-const API = 'http://localhost:8085';
-
 test('a file lands on the words of a document that has them', async () => {
   const { projectId } = await getFixture();
-  const client = new PlaidClient(API, readToken().token);
+  const client = new PlaidClient(CORE, readToken().token);
   const project = await client.projects.get(projectId);
   const layerInfo = getUmrLayerInfo(project);
   const name = `attach ${Date.now()}`;

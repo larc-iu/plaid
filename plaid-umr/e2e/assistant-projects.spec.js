@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { createUmrProject } from '../src/domain/umrProjectSetup.js';
 import { assistantProjectsTests } from '../../plaid-ui/e2e/assistantProjects.js';
 
@@ -7,7 +7,6 @@ import { assistantProjectsTests } from '../../plaid-ui/e2e/assistantProjects.js'
 // assistant-projects spec, driven with this app's Assistant tab and citation
 // card. The tests are shared (plaid-ui/e2e/assistantProjects.js).
 
-const CORE = 'http://localhost:8085';
 const client = () => new PlaidClient(CORE, readToken().token);
 
 const stamp = Date.now();

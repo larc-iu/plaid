@@ -13,9 +13,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
-import { readToken } from './fixtures.js';
-
-const CORE = 'http://localhost:8085';
+import { readToken, CORE } from './fixtures.js';
 
 /**
  * @param {string} name        project name (make it unique per run)

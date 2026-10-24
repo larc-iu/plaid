@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The pair picker: a morpheme's link and gloss picked together, from Alt+Down
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // analysis service writes them, its alternatives naming their senses
 // (provDetail.valueLinks).
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const NONCE = Date.now().toString(36);
 const FORM = `kat${NONCE}`;

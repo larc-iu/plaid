@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { guidelinesTests } from '../../plaid-ui/e2e/guidelines.js';
 
@@ -7,7 +7,6 @@ import { guidelinesTests } from '../../plaid-ui/e2e/guidelines.js';
 // so are the tests that are about it; what this file supplies is where this app
 // serves the tab (a `?tab=`) and which project to put them on.
 
-const CORE = 'http://localhost:8085';
 const FIXTURE = 'E2E IGT Fixture';
 
 let projectId;

@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { wavBytes } from './bugbash/harness.mjs';
 
@@ -10,7 +10,6 @@ import { wavBytes } from './bugbash/harness.mjs';
 // Enter stores B's. A throwaway document in "E2E IGT Fixture", deleted
 // afterwards.
 
-const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 

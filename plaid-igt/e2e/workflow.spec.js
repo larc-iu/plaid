@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN surrounding-workflow rows driven end to end on one throwaway
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // Metadata tab (C2-02). Lives in "E2E IGT Fixture"; the document is deleted by
 // the last test (and again in afterAll, harmlessly).
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const STAMP = Date.now();
 const FORMS = [`zork${STAMP}`, `blip${STAMP}`, `quux${STAMP}`];

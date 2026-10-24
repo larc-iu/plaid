@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { test, expect, seedAuth } from './fixtures.js';
+import { test, expect, seedAuth, CORE } from './fixtures.js';
 import { PlaidClient } from '@larc-iu/plaid-client';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 import { createUdProject } from '../src/domain/udProjectSetup.js';
@@ -20,7 +20,7 @@ let PID;
 let client;
 
 test.beforeAll(async () => {
-  client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
+  client = await PlaidClient.login(CORE, 'a@b.com', 'password');
   // The same function the New Project modal calls, so the layers are the ones
   // a real project has.
   const project = await createUdProject(client, `${NAME_PREFIX}${Date.now()}`);

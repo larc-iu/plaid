@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The chords that changed on 2026-08-31 (Ctrl+Enter accepts everything proposed
@@ -11,7 +11,6 @@ import { getFixture } from './fixtureProject.js';
 // translation field's own Ctrl+Enter), vocab-popover (the popover's keys).
 // Throwaway document in "E2E IGT Fixture", deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 // Precedent is project-wide and the fixture project is shared: unique forms.
 const NONCE = Date.now().toString(36);

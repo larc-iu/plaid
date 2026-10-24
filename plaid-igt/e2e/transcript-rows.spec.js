@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken, signInAdmin } from './fixtures.js';
+import { test, expect, seedAuth, readToken, signInAdmin, CORE } from './fixtures.js';
 import { createScratchProject } from './fixtureProject.js';
 import { wavBytes } from './bugbash/harness.mjs';
 
@@ -11,7 +11,6 @@ import { wavBytes } from './bugbash/harness.mjs';
 // Enter stores the second user's text. A throwaway project and a throwaway
 // second user, both deleted afterwards.
 
-const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 const PASSWORD = 'rows-pass-123';

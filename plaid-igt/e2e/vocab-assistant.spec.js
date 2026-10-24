@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { assistantStub } from '../../plaid-ui/e2e/assistantChrome.js';
 
@@ -21,8 +21,6 @@ import { assistantStub } from '../../plaid-ui/e2e/assistantChrome.js';
 // fixture's lexicon is linked by whatever else has run against this dev core:
 // the first version of this spec failed because an "E2E Probe" project from
 // another session was still linked, which is the code being RIGHT.
-
-const CORE = 'http://localhost:8085';
 
 let projectId;
 let vocabularyId;

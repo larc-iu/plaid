@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN C12-03: an integrity finding (inverted alignment timing)
@@ -8,7 +8,7 @@ import { getFixture } from './fixtureProject.js';
 // user to other pages.
 test('integrity toast shows on the document and leaves with it', async ({ page }) => {
   const { projectId, documentId } = await getFixture();
-  const client = new PlaidClient('http://localhost:8085', readToken().token);
+  const client = new PlaidClient(CORE, readToken().token);
   const project = await client.projects.get(projectId);
   const alignLayer = project.textLayers
     .flatMap((tl) => tl.tokenLayers || [])

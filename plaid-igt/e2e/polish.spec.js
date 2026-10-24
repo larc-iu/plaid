@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The 2026-08-27 polish batch (ALPHA_TRIAGE "Polish"): rapid multi-hyphen
@@ -8,7 +8,6 @@ import { getFixture } from './fixtureProject.js';
 // the built-in tokenizer's inline hint. Throwaway document in "E2E IGT
 // Fixture", deleted afterwards.
 
-const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const STAMP = Date.now();
 const UNIQUE = `zyx${STAMP}`;

@@ -28,7 +28,7 @@ import {
   readProjectLanguage,
   UMR_NAMESPACE,
 } from '../src/utils/umrLayerUtils.js';
-import { readToken } from './fixtures.js';
+import { readToken, CORE } from './fixtures.js';
 import { isPrivateCore } from './privateCore.js';
 
 const PROJECT_NAME = 'E2E UMR Fixture';
@@ -41,8 +41,6 @@ const SAMPLE = path.join(
   'umr',
   'english_umr-0001.umr',
 );
-
-const BASE_URL = 'http://localhost:8085';
 
 async function findProjectByName(client, name) {
   const projects = await client.projects.list();
@@ -64,7 +62,7 @@ async function ensureIlg(client, project) {
 
 async function ensureFixture() {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
 
   let project = await findProjectByName(client, PROJECT_NAME);
   if (project) {
@@ -205,11 +203,11 @@ function hasIgtShape(words, morphemes) {
 }
 
 // The shared dev core is Luke's: nothing on it is ever deleted. Asked of the
-// request itself, so a run whose requests the round runner's shim routes to
-// its private core counts as private, and nothing else does (privateCore.js).
+// request itself, so only a run on the core `bb e2e` started for it counts as
+// private, and nothing else does (privateCore.js).
 async function reachesPrivateCore() {
-  const res = await fetch(`${BASE_URL}/api/v1/projects`);
-  return isPrivateCore(res.url, process.env.FINAL_CORE);
+  const res = await fetch(`${CORE}/api/v1/projects`);
+  return isPrivateCore(res.url, process.env.PLAID_E2E_PRIVATE_CORE);
 }
 
 async function createGlossedProject(client) {
@@ -247,7 +245,7 @@ async function createGlossedProject(client) {
 
 async function ensureGlossedFixture() {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
   let project = await findProjectByName(client, GLOSSED_NAME);
   if (project) {
     const docs = await client.projects.listDocuments(project.id);
@@ -388,7 +386,7 @@ s1t: 1-1
 
 async function ensureHebrewFixture() {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
   let project = await findProjectByName(client, HEBREW_NAME);
   if (!project) {
     const created = await createUmrProject(client, HEBREW_NAME);

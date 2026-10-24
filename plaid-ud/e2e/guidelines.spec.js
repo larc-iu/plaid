@@ -1,12 +1,11 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { guidelinesTests } from '../../plaid-ui/e2e/guidelines.js';
 
 // The Guidelines tab in plaid-ud. Same screen as plaid-igt's, same tests; this
 // app reaches it by route rather than by `?tab=`.
 
-const CORE = 'http://localhost:8085';
 const FIXTURE = 'E2E UD Fixture';
 
 let projectId;

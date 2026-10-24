@@ -12,14 +12,12 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../src/utils/udLayerUtils.js';
-import { readToken } from './fixtures.js';
+import { readToken, CORE } from './fixtures.js';
 
 const PROJECT_NAME = 'E2E UD Fixture';
 const DOC_NAME = 'Doc 1';
 const SAMPLE_TEXT =
   'The quick brown fox jumps over the lazy dog. She sells sea shells by the sea shore.';
-
-const BASE_URL = 'http://localhost:8085';
 
 async function findProjectByName(client, name) {
   const projects = await client.projects.list();
@@ -28,7 +26,7 @@ async function findProjectByName(client, name) {
 
 async function ensureFixture() {
   const { token } = readToken();
-  const client = new PlaidClient(BASE_URL, token);
+  const client = new PlaidClient(CORE, token);
 
   // 1. Project + layers. A project by this name is reused only if it is still
   // fully configured; a stale one is reported rather than patched. Healing an

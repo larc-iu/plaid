@@ -6,10 +6,9 @@
 // the tab and the badge are, and that the live claim is held only while
 // something is open.
 import PlaidClient, { metadataOps } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, signInAdmin } from './fixtures.js';
+import { test, expect, seedAuth, signInAdmin, CORE } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
-const CORE = 'http://localhost:8085';
 const COLLEAGUE = { id: 'ud-comment-colleague@x.com', password: 'colleague-pass-1' };
 
 const S = {};

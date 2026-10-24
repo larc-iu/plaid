@@ -1,12 +1,10 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 
 // A vocabulary's History (audit-vocab-history, ruled b): the rail lists every
 // change, a pick shows the entries as they were, read-only, and a maintainer
 // puts one entry back, a changed one or a deleted one, with Undo. A throwaway
 // vocabulary is made and removed; nothing touches the shared fixture.
-
-const CORE = 'http://localhost:8085';
 
 let client;
 let vocabId;

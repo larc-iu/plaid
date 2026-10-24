@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // A person's own shortcut, end to end: bound on the Profile screen, heard by
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // It writes to the shared dev account's keymap, so both shortcuts it changes
 // are ones no other spec presses, and it clears the entry whatever happens.
 
-const CORE = 'http://localhost:8085';
 const KEY = 'igt:keymap';
 
 let client;
