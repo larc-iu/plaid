@@ -1,8 +1,9 @@
 // What a token carries through a SPLIT or a MERGE.
 //
 // The server splits a row and leaves its metadata alone: the surviving half
-// keeps everything, the new half is born bare, and a merge keeps whatever the
-// survivor had. That is right for a generic layer, which has no business
+// keeps everything, the new half gets only what its layer names under
+// `config.plaid.preserveOnSplit` (IGT names the provenance keys), and a merge
+// keeps whatever the survivor had. That is right for a generic layer, which has no business
 // knowing that `prov` means something and `form` means something else. Deciding
 // what those keys mean when a token is reshaped is this app's job, and this is
 // where it is decided.
@@ -25,7 +26,13 @@
 // the new value for them, so we leave theirs alone. (This was briefly the other
 // way round, clearing `orthog:*`; the user's call, and the right one.)
 
-import { PROV, PROVENANCE_KEYS, mergeMetadata, needsReview } from '@larc-iu/plaid-client';
+import {
+  PROV,
+  PROVENANCE_KEYS,
+  mergeMetadata,
+  metadataOps,
+  needsReview,
+} from '@larc-iu/plaid-client';
 
 /** Just the provenance keys of a metadata map. */
 export const provenanceOf = (metadata) => {
@@ -69,13 +76,30 @@ export const survivorPatch = (own, inherited, editStamp) => {
 };
 
 /**
- * The whole metadata map for a token BORN of a reshape (the right half of a
- * split). It starts empty, so it gets the provenance and nothing else: an
- * orthography or a `form` copied onto it would describe text it does not
- * cover. Null when the original carried no provenance.
+ * The provenance a token BORN of a split (the right half) holds, the same
+ * the left half ends with (survivorPatch), so one word never renders as two
+ * kinds of thing and a contributor's split stamps both halves. It gets the
+ * provenance and nothing else: an orthography or a `form` copied onto it
+ * would describe text it does not cover. Null when it holds none.
  */
 export const newHalfMetadata = (original, editStamp) => {
-  const provenance = provenanceOf(original);
-  if (!Object.keys(provenance).length) return null;
-  return mergeMetadata(provenance, editStamp(original) || {});
+  const provenance = provenanceOf(mergeMetadata(provenanceOf(original), editStamp(original)));
+  return Object.keys(provenance).length ? provenance : null;
+};
+
+/**
+ * The ops that give the new half `metadata` (newHalfMetadata, and whatever
+ * else the caller adds). The server has already copied the original's
+ * provenance onto it (`config.plaid.preserveOnSplit`), so each provenance key
+ * the original held that `metadata` lacks is deleted: a contributor's split
+ * of a confirmed token must not leave the new half confirmed.
+ */
+export const newHalfOps = (original, metadata) => {
+  const ops = metadataOps(metadata);
+  for (const key of PROVENANCE_KEYS) {
+    if (original?.[key] !== undefined && metadata?.[key] === undefined) {
+      ops.push({ op: 'delete', path: [key] });
+    }
+  }
+  return ops;
 };

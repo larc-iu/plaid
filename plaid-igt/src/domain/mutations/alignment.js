@@ -60,7 +60,12 @@ import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
 import { MIN_SEGMENT, overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { countSplitLoss, countTextDeleteLoss, dropRelations } from '@ui/domain/annotationLoss.js';
-import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
+import {
+  newHalfMetadata,
+  newHalfOps,
+  survivingProvenance,
+  survivorPatch,
+} from '../tokenReshape.js';
 import { soleForms } from '../soleMorphemeForms.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 
@@ -1078,7 +1083,7 @@ export const alignmentMutations = {
           b.tokens.split(id, cutAt, undefined, { id: rightId });
           if (leftEnd < cutAt) b.tokens.update(id, undefined, leftEnd);
           b.tokens.patchMetadata(id, metadataOps(leftPatch));
-          b.tokens.patchMetadata(rightId, metadataOps(rightMetadata));
+          b.tokens.patchMetadata(rightId, newHalfOps(was, rightMetadata));
         });
         this._settle(new Map([[rightId, rightId]]));
       },

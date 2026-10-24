@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { writerPolicy } from '@larc-iu/plaid-client';
+import { mergeMetadata, writerPolicy } from '@larc-iu/plaid-client';
 import {
   newHalfMetadata,
+  newHalfOps,
   provenanceOf,
   survivingProvenance,
   survivorPatch,
@@ -84,5 +85,43 @@ describe('newHalfMetadata', () => {
       prov: 'contributed',
       provSource: 'user:u1',
     });
+  });
+
+  // HUNT-model M2: both halves end the same, whoever splits what.
+  it('is what the left half ends with', () => {
+    for (const writer of [verifier, contributor]) {
+      for (const original of [{}, machine, confirmed, { ...machine, provProb: 0.3 }]) {
+        const left = provenanceOf(
+          mergeMetadata(original, survivorPatch(original, {}, writer.editStamp)),
+        );
+        expect(newHalfMetadata(original, writer.editStamp) || {}).toEqual(left);
+      }
+    }
+    // A contributor's split of a confirmed token confirms neither half.
+    expect(newHalfMetadata(confirmed, contributor.editStamp)).toEqual({
+      prov: 'contributed',
+      provSource: 'user:u1',
+    });
+    // A contributor's split of a person's token stamps the new half too.
+    expect(newHalfMetadata({}, contributor.editStamp)).toEqual({
+      prov: 'contributed',
+      provSource: 'user:u1',
+    });
+  });
+});
+
+describe('newHalfOps', () => {
+  it('removes what the server copied onto the new half and the half does not hold', () => {
+    // The server gives the new half the original's provenance (preserveOnSplit).
+    const half = newHalfMetadata(confirmed, contributor.editStamp);
+    expect(newHalfOps(confirmed, half)).toEqual([
+      { op: 'set', path: ['prov'], value: 'contributed' },
+      { op: 'set', path: ['provSource'], value: 'user:u1' },
+      { op: 'delete', path: ['provConfirmed'] },
+    ]);
+    expect(newHalfOps({}, null)).toEqual([]);
+    expect(newHalfOps({ form: 'x' }, { timeBegin: 1 })).toEqual([
+      { op: 'set', path: ['timeBegin'], value: 1 },
+    ]);
   });
 });

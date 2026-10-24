@@ -29,6 +29,7 @@ import { sendTextPlan } from '../../../plaid-ui/src/lib/textSave.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
+import { joinSpansOn, singleSpanRule } from '../../../plaid-ui/src/domain/mergeRules.js';
 import {
   countDeleteLoss,
   countPartitionLoss,
@@ -714,13 +715,30 @@ export class ConlluDocument extends DocumentModel {
       }
       if (!this._canWrite(label)) return false;
       const joined = new Set([...between, startsHere].map((t) => t.id));
+      const beganAt = new Map([...between, startsHere].map((t) => [t.id, t.begin]));
       this._applyRawPatch((next, info) => {
-        if (info.sentenceTokenLayer?.tokens) {
-          const p = info.sentenceTokenLayer.tokens.find((t) => t.id === prevSent.id);
+        const layer = info.sentenceTokenLayer;
+        if (layer?.tokens) {
+          const p = layer.tokens.find((t) => t.id === prevSent.id);
           if (p) p.end = startsHere.end;
-          info.sentenceTokenLayer.tokens = info.sentenceTokenLayer.tokens.filter(
-            (t) => !joined.has(t.id),
-          );
+          layer.tokens = layer.tokens.filter((t) => !joined.has(t.id));
+        }
+        // The merge moves the joined sentences' spans (another app's
+        // sentence fields) onto the survivor, and a field's one-span rule
+        // joins them there in the merge's transaction (HUNT-model M5).
+        for (const sl of layer?.spanLayers || []) {
+          const own = new Set();
+          const beginOf = new Map();
+          for (const sp of sl.spans || []) {
+            if (!Array.isArray(sp.tokens)) continue;
+            if (sp.tokens.length === 1 && sp.tokens[0] === prevSent.id) own.add(sp.id);
+            const moved = sp.tokens.find((id) => joined.has(id));
+            if (moved === undefined) continue;
+            if (sp.tokens.length === 1) beginOf.set(sp.id, beganAt.get(moved));
+            sp.tokens = [...new Set(sp.tokens.map((id) => (joined.has(id) ? prevSent.id : id)))];
+          }
+          const rule = singleSpanRule(sl);
+          if (rule) joinSpansOn(sl, prevSent.id, beginOf, own, rule['join-with'] ?? ' | ');
         }
       });
       if (between.length === 0) {

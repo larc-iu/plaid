@@ -105,3 +105,29 @@ test('with no words before, the boundary joins the sentence right before, as eve
   assert.equal(await doc.toggleSentenceBoundary(sorted[2].begin), true);
   assert.deepEqual(calls, [[sorted[1].id, sorted[2].id]]);
 });
+
+// HUNT-model M5: the merge moves another app's sentence field (igt's
+// Translation) onto the survivor, and that field's one-span rule joins the
+// two values there, so the copy shows what a reload reads.
+test("removing a boundary keeps another app's sentence field, joined as the server joins it", async () => {
+  const client = withOps({ tokens: { merge: async () => {} } });
+  const raw = rawDocFromConllu(INPUT, 'gap');
+  const sentences = raw.textLayers[0].tokenLayers[0];
+  const [first, second] = [...sentences.tokens].sort((a, b) => a.begin - b.begin);
+  sentences.spanLayers = [
+    ...(sentences.spanLayers || []),
+    {
+      id: 'translation',
+      name: 'Translation',
+      constraints: { igt: [{ type: 'single-span' }] },
+      spans: [
+        { id: 'tr-b', tokens: [first.id], value: 'One.' },
+        { id: 'tr-a', tokens: [second.id], value: 'Two.', metadata: { note: 'x' } },
+      ],
+    },
+  ];
+  const doc = new ConlluDocument({ raw, client });
+  assert.equal(await doc.toggleSentenceBoundary(second.begin), true);
+  const layer = doc.layerInfo.sentenceTokenLayer.spanLayers.find((sl) => sl.id === 'translation');
+  assert.deepEqual(layer.spans, [{ id: 'tr-b', tokens: [first.id], value: 'One. | Two.' }]);
+});

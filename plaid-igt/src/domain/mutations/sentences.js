@@ -9,7 +9,12 @@
 // edits used here; `clearSentences` is a merge of everything into the first.
 
 import { mergeMetadata, metadataOps, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
-import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
+import {
+  newHalfMetadata,
+  newHalfOps,
+  survivingProvenance,
+  survivorPatch,
+} from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 import { applyMergeRules } from '../igtConstraints.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -168,7 +173,8 @@ export const sentenceMutations = {
         }
         for (const s of splits) {
           if (s.leftPatch) b.tokens.patchMetadata(settledId(s.leftId), metadataOps(s.leftPatch));
-          if (s.rightMetadata) b.tokens.patchMetadata(s.rightId, metadataOps(s.rightMetadata));
+          const rightOps = newHalfOps(s.original, s.rightMetadata);
+          if (rightOps.length) b.tokens.patchMetadata(s.rightId, rightOps);
         }
       });
       this._settle(new Map(splits.map((s) => [s.rightId, s.rightId])));
@@ -225,7 +231,14 @@ export const sentenceMutations = {
       });
       tokens.sort((a, b) => a.begin - b.begin);
     });
-    return { leftId: containing.id, rightId, charPos, leftPatch, rightMetadata };
+    return {
+      leftId: containing.id,
+      rightId,
+      charPos,
+      leftPatch,
+      rightMetadata,
+      original: containing.metadata,
+    };
   },
 
   // Reset to a single sentence spanning the whole text. Sentence tokens are

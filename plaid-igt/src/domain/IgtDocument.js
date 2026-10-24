@@ -2,8 +2,9 @@ import { applyMetadataOps, mergeMetadata, metadataOps } from '@larc-iu/plaid-cli
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
 import { followIds, pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
+import { newHalfMetadata, newHalfOps, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
+import { removeTokensLocally } from './textEdits.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
 import { statusOf } from '@ui/lib/errors.js';
@@ -646,14 +647,16 @@ export class IgtDocument extends DocumentModel {
       .filter((m) => m.begin === token.begin && m.end === token.end)
       .map((m) => m.id);
     // What the two halves carry: see domain/tokenReshape.js. The server
-    // leaves the left half's metadata alone and gives the right half none,
-    // which would render one word as two different kinds of thing and leave
-    // a transcription of the whole word on a half of it.
+    // leaves the left half's metadata alone and gives the right half only the
+    // provenance its layer preserves on a split, so both halves are stamped
+    // here as one edit, and a transcription of the whole word stays off the
+    // right half.
     const leftPatch = survivorPatch(token.metadata, {}, (m) => this.editStamp(m));
     const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
     const rightId = pendingId();
 
-    this._applyRawPatch((next, infoNext) => {
+    const textId = info.primaryTextLayer?.text?.id;
+    this._applyRawPatch((next, infoNext, vocabs) => {
       const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
       if (t) {
         t.end = leftEnd;
@@ -670,12 +673,9 @@ export class IgtDocument extends DocumentModel {
         });
         infoNext.primaryTokenLayer.tokens.sort((a, b) => a.begin - b.begin);
       }
-      if (coincident.length > 0 && infoNext.morphemeTokenLayer?.tokens) {
-        const removed = new Set(coincident);
-        infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(
-          (m) => !removed.has(m.id),
-        );
-      }
+      // The coincident morphemes go with their annotations and links
+      // (HUNT-model M5).
+      if (coincident.length > 0) removeTokensLocally(next, textId, coincident, vocabs);
     });
 
     // One batch, the halves' metadata with the split: the right half is made
@@ -687,7 +687,8 @@ export class IgtDocument extends DocumentModel {
         b.tokens.split(id, rightBegin, undefined, { id: rightId });
         if (leftEnd < rightBegin) b.tokens.update(id, undefined, leftEnd);
         if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));
-        if (rightMetadata) b.tokens.patchMetadata(rightId, metadataOps(rightMetadata));
+        const rightOps = newHalfOps(token.metadata, rightMetadata);
+        if (rightOps.length) b.tokens.patchMetadata(rightId, rightOps);
       });
       this._settle(new Map([[rightId, rightId]]));
     });

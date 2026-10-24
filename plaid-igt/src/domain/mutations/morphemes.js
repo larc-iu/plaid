@@ -21,6 +21,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
+import { removeTokensLocally } from '../textEdits.js';
 import { entryMorphTypesOf } from '../vocabLookup.js';
 import { morphemeMorphType } from '@ui/domain/morphemes.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -76,7 +77,15 @@ const resolveMorpheme = (doc, morphemeId) => {
   return word ? { virtual: true, word } : null;
 };
 
-const sortByPrecedence = (ms) => [...ms].sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
+// The server's chain order: precedence, a morpheme storing none after the
+// rest (R4-1-2), then id.
+const sortByPrecedence = (ms) =>
+  [...ms].sort(
+    (a, b) =>
+      (a.precedence == null) - (b.precedence == null) ||
+      (a.precedence ?? 0) - (b.precedence ?? 0) ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
 
 const formOf = (morpheme, body) => {
   const meta = morpheme?.metadata;
@@ -352,12 +361,14 @@ export const morphemeMutations = {
     const subsequents = siblings.slice(idx + 1);
     const patch = formStamped(this, previous, mergedForm);
 
-    this._applyRawPatch((next, infoNext) => {
+    const textId = info.primaryTextLayer?.text?.id;
+    this._applyRawPatch((next, infoNext, vocabs) => {
       const layer = infoNext.morphemeTokenLayer;
       if (!layer || !Array.isArray(layer.tokens)) return;
       const prev = layer.tokens.find((m) => m.id === previous.id);
       if (prev) prev.metadata = mergeMetadata(prev.metadata, patch);
-      layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
+      // The delete takes the morpheme's annotations and links (HUNT-model M5).
+      removeTokensLocally(next, textId, [morphemeId], vocabs);
       layer.tokens.forEach((m) => {
         if (
           m.begin === target.begin &&
@@ -407,10 +418,13 @@ export const morphemeMutations = {
     if (!this._canWrite(label)) return false;
     const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
 
-    this._applyRawPatch((next, infoNext) => {
+    const textId = info.primaryTextLayer?.text?.id;
+    this._applyRawPatch((next, infoNext, vocabs) => {
       const layer = infoNext.morphemeTokenLayer;
       if (!layer || !Array.isArray(layer.tokens)) return;
-      layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
+      // The server's cascade takes what hangs off the token: its annotations,
+      // their relations and its links (HUNT-model M5).
+      removeTokensLocally(next, textId, [morphemeId], vocabs);
       layer.tokens.forEach((m) => {
         if (
           m.begin === target.begin &&
@@ -418,12 +432,6 @@ export const morphemeMutations = {
           (m.precedence ?? 0) > (target.precedence ?? 0)
         ) {
           m.precedence = (m.precedence ?? 0) - 1;
-        }
-      });
-      // The server's cascade takes what hangs off the token.
-      Object.values(infoNext.spanLayers?.morpheme || []).forEach((sl) => {
-        if (Array.isArray(sl.spans)) {
-          sl.spans = sl.spans.filter((s) => !(s.tokens || []).includes(morphemeId));
         }
       });
     });

@@ -256,6 +256,81 @@ describe('removeTokensLocally', () => {
     expect(word.spanLayers[0].spans).toEqual([{ id: 'p23', tokens: ['w3'], value: 'NP' }]);
     expect(vocabs.v.vocabLinks).toEqual([{ id: 'mwe', tokens: ['w3'] }]);
   });
+
+  it("drops a trimmed expression's remnant where the word has its own link, as the server's one-link rule does (HUNT-model M3)", () => {
+    const raw = (constraints) => ({
+      textLayers: [
+        {
+          text: { id: 't', body: 'uno dos tres' },
+          tokenLayers: [
+            {
+              id: 'word',
+              overlapMode: 'non-overlapping',
+              constraints,
+              tokens: [tok('w1', 0, 3), tok('w2', 4, 7), tok('w3', 8, 12)],
+            },
+          ],
+        },
+      ],
+    });
+    const links = () => ({
+      v: { vocabLinks: [{ id: 'mwe', tokens: ['w2', 'w3'] }] },
+      u: { vocabLinks: [{ id: 'z3', tokens: ['w3'] }] },
+    });
+    // The word's own link stays, whatever its id: the server keeps the link
+    // the delete did not touch.
+    const ruled = links();
+    removeTokensLocally(raw({ igt: [{ type: 'single-link' }] }), 't', ['w2'], ruled);
+    expect(ruled.v.vocabLinks).toEqual([]);
+    expect(ruled.u.vocabLinks).toEqual([{ id: 'z3', tokens: ['w3'] }]);
+    // Without the rule both stay. (removeTokensLocally's cascade is below.)
+    const free = links();
+    removeTokensLocally(raw({}), 't', ['w2'], free);
+    expect(free.v.vocabLinks).toEqual([{ id: 'mwe', tokens: ['w3'] }]);
+  });
+
+  it("takes the tokens nested under a deleted word, theirs and other apps', and the relations on what goes (HUNT-model M5)", () => {
+    const raw = {
+      textLayers: [
+        {
+          text: { id: 't', body: 'uno dos' },
+          tokenLayers: [
+            {
+              id: 'word',
+              overlapMode: 'non-overlapping',
+              tokens: [tok('w1', 0, 3), tok('w2', 4, 7)],
+            },
+            {
+              id: 'sw',
+              overlapMode: 'any',
+              parentTokenLayer: 'word',
+              tokens: [tok('s1', 0, 3), tok('s2', 4, 7)],
+              spanLayers: [
+                {
+                  id: 'lemma',
+                  spans: [
+                    { id: 'l1', tokens: ['s1'], value: 'uno' },
+                    { id: 'l2', tokens: ['s2'], value: 'dos' },
+                  ],
+                  relationLayers: [
+                    { id: 'deps', relations: [{ id: 'r', source: 'l1', target: 'l2' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const vocabs = { v: { vocabLinks: [{ id: 'k', tokens: ['s2'] }] } };
+    removeTokensLocally(raw, 't', ['w2'], vocabs);
+    const [word, sw] = raw.textLayers[0].tokenLayers;
+    expect(word.tokens.map((t) => t.id)).toEqual(['w1']);
+    expect(sw.tokens.map((t) => t.id)).toEqual(['s1']);
+    expect(sw.spanLayers[0].spans.map((s) => s.id)).toEqual(['l1']);
+    expect(sw.spanLayers[0].relationLayers[0].relations).toEqual([]);
+    expect(vocabs.v.vocabLinks).toEqual([]);
+  });
 });
 
 describe('applyTextEditsLocally on a long text', () => {

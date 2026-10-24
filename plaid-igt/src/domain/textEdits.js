@@ -241,15 +241,22 @@ export function applyGapsLocally(raw, textId, gaps) {
  * Take the tokens in `deletedIds` out of every span and vocab link, as the
  * server does when a token goes: a span or link over other tokens as well
  * keeps those (a multi-word expression that loses a word keeps the rest), and
- * one left with none is dropped.
+ * one left with none is dropped. A trimmed link left as the only link over
+ * one token of a layer with the single-link rule, beside another, is then
+ * settled as the server's rule settles it in the same transaction: the link
+ * the delete did not touch stays (else the smallest id), and the rest go.
  */
 function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
   if (deletedIds.length === 0) return;
   const dead = new Set(deletedIds);
+  const trimmed = new Set();
+  const dropped = new Set();
   const trim = (items) =>
     items.flatMap((item) => {
       if (!Array.isArray(item.tokens) || !item.tokens.some((id) => dead.has(id))) return [item];
       const tokens = item.tokens.filter((id) => !dead.has(id));
+      if (tokens.length) trimmed.add(item.id);
+      else dropped.add(item.id);
       return tokens.length ? [{ ...item, tokens }] : [];
     });
   for (const layer of tokenLayers) {
@@ -257,23 +264,111 @@ function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
       if (Array.isArray(sl.spans)) sl.spans = trim(sl.spans);
     }
   }
+  // A relation goes with either of its spans.
+  if (dropped.size) {
+    for (const layer of tokenLayers) {
+      for (const sl of layer.spanLayers || []) {
+        for (const rl of sl.relationLayers || []) {
+          if (Array.isArray(rl.relations)) {
+            rl.relations = rl.relations.filter(
+              (r) => !dropped.has(r.source) && !dropped.has(r.target),
+            );
+          }
+        }
+      }
+    }
+  }
+  trimmed.clear();
   for (const vocab of Object.values(vocabs || {})) {
     if (Array.isArray(vocab?.vocabLinks)) vocab.vocabLinks = trim(vocab.vocabLinks);
+  }
+  settleSingleLinks(tokenLayers, vocabs, trimmed);
+}
+
+/** Whether a token layer carries the single-link rule, in any app's namespace. */
+const hasSingleLink = (layer) =>
+  Object.values(layer?.constraints || {}).some(
+    (cs) => Array.isArray(cs) && cs.some((c) => c?.type === 'single-link'),
+  );
+
+/**
+ * The single-link rule's remedy (plaid-core `remedy-single-link!`) over the
+ * links `touched` made the only link of one token.
+ */
+function settleSingleLinks(tokenLayers, vocabs, touched) {
+  if (touched.size === 0) return;
+  const ruled = new Set(
+    tokenLayers.filter(hasSingleLink).flatMap((l) => (l.tokens || []).map((t) => t.id)),
+  );
+  if (ruled.size === 0) return;
+  const byToken = new Map();
+  for (const vocab of Object.values(vocabs || {})) {
+    for (const link of vocab?.vocabLinks || []) {
+      const [only] = link.tokens || [];
+      if (link.tokens?.length !== 1 || !ruled.has(only)) continue;
+      if (!byToken.has(only)) byToken.set(only, []);
+      byToken.get(only).push(link.id);
+    }
+  }
+  const drop = new Set();
+  for (const ids of byToken.values()) {
+    if (ids.length < 2 || !ids.some((id) => touched.has(id))) continue;
+    const sorted = ids.slice().sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const keep = sorted.find((id) => !touched.has(id)) ?? sorted[0];
+    for (const id of sorted) if (id !== keep) drop.add(id);
+  }
+  if (drop.size === 0) return;
+  for (const vocab of Object.values(vocabs || {})) {
+    if (Array.isArray(vocab?.vocabLinks)) {
+      vocab.vocabLinks = vocab.vocabLinks.filter((l) => !drop.has(l.id));
+    }
   }
 }
 
 /**
+ * The tokens `ids` and every token nested under one of them, on any layer
+ * whose parent chain reaches its layer (`parentTokenLayer`) and inside its
+ * extent: what the server's delete cascade takes.
+ */
+function withDescendants(tokenLayers, ids) {
+  const dead = new Set(ids);
+  const parentOf = new Map(tokenLayers.map((l) => [l.id, l.parentTokenLayer ?? null]));
+  const childrenOf = (layerId) =>
+    tokenLayers.filter((l) => {
+      for (
+        let p = parentOf.get(l.id), seen = 0;
+        p != null && seen < 32;
+        p = parentOf.get(p), seen++
+      ) {
+        if (p === layerId) return true;
+      }
+      return false;
+    });
+  for (const layer of tokenLayers) {
+    const gone = (layer.tokens || []).filter((t) => dead.has(t.id));
+    if (!gone.length) continue;
+    for (const child of childrenOf(layer.id)) {
+      for (const t of child.tokens || []) {
+        if (gone.some((g) => g.begin <= t.begin && t.end <= g.end)) dead.add(t.id);
+      }
+    }
+  }
+  return dead;
+}
+
+/**
  * Mirror a plain token delete (`tokens.delete`, no text edit): take the tokens
- * with these ids out of every token layer of the text, with the spans and
- * vocab links on them. The body and every other token stay as they are.
+ * with these ids, and those nested under them, out of every token layer of
+ * the text, with the spans, relations and vocab links on them. The body and
+ * every other token stay as they are.
  */
 export function removeTokensLocally(raw, textId, ids, vocabs = null) {
   const textLayer = (raw?.textLayers || []).find((tl) => tl.text?.id === textId);
   if (!textLayer?.text) return;
   const tokenLayers = textLayer.tokenLayers || [];
-  const dead = new Set(ids);
+  const dead = withDescendants(tokenLayers, ids);
   for (const layer of tokenLayers) {
     if (Array.isArray(layer.tokens)) layer.tokens = layer.tokens.filter((t) => !dead.has(t.id));
   }
-  sweepDeadTokens(tokenLayers, ids, vocabs);
+  sweepDeadTokens(tokenLayers, [...dead], vocabs);
 }
