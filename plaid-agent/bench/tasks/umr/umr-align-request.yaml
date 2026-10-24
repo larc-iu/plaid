@@ -1,0 +1,17 @@
+# A request the assistant has no tool for: it aligns nothing (a node it
+# makes is unaligned until someone anchors it on the canvas). The right
+# answer says so and points to the canvas, and writes nothing.
+id: umr-align-request
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 2, the node exist-91 (s2e) is aligned to no word. Align it
+      to word 4, shiringa, please.
+    approve: true
+check: umr_answer
+args:
+  reader: umr
+  match: '(canvas|can ?not|can.t|unable|not able|no tool|isn.t something I can|outside what I can)'

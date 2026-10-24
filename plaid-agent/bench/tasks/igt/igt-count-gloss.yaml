@@ -1,0 +1,14 @@
+# Question with a count as the answer, project-wide.
+id: igt-count-gloss
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      Across the whole project (all five texts), how many morphemes have the
+      gloss NEG, exactly that gloss and nothing more?
+check: igt_changes
+args:
+  plan: none
+  match: ['(?<![\d.])23(?![\d.]?\d)']

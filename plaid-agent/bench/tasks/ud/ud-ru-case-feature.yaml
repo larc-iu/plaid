@@ -1,0 +1,18 @@
+# set_feature on a Cyrillic word: one feature's value changed, the rest kept.
+id: ud-ru-case-feature
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 2}
+turns:
+  - say: >-
+      In sentence 7 of Russian 2, "жатвы" (word 14) is genitive ("во время
+      жатвы"), but its features say Case=Nom. Change it to Case=Gen and keep
+      its other features.
+    approve: true
+check: ud_tree
+args:
+  document: Russian 2
+  base: snapshot
+  expect:
+    "s7.w14:feats": Animacy=Inan|Case=Gen|Gender=Fem|Number=Sing

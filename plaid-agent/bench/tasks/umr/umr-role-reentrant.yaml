@@ -1,0 +1,20 @@
+# A missing role whose target is a node already in the graph: a re-entrancy,
+# not a second node.
+id: umr-role-reentrant
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 14 (ay ikian awa ɨtsɨkaka ni rapurara peikua, "He is
+      already scared because he doesn't find the way"), the not-finding
+      event purara (s14p) has no experiencer. The one who doesn't find the
+      way is the same person, awa (s14a), who is scared. Add s14a as the
+      :experiencer of s14p, without making a new node.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s14.s14p::experiencer": s14a

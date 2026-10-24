@@ -1,0 +1,19 @@
+# A deprel fix with the head kept (set_head with the same head).
+id: ud-ru-deprel
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 2}
+turns:
+  - say: >-
+      In sentence 11 of Russian 2, "жене" (word 5) is a dative indirect object
+      of "приходится" (word 3), so its relation should be iobj, not obj. Keep
+      its head as it is.
+    approve: true
+check: ud_tree
+args:
+  document: Russian 2
+  base: snapshot
+  expect:
+    "s11.w5:head": 3
+    "s11.w5:deprel": iobj

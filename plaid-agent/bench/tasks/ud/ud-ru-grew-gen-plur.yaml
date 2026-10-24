@@ -1,0 +1,21 @@
+# A structural count asked in words, with no Grew pattern given: the features
+# are on the head this time (pattern { N [upos=NOUN, Case=Gen, Number=Plur];
+# N -[amod]-> A; A [upos=ADJ] }). Answer: 19 matches in 11 sentences, both
+# numbers asked. The pattern needs no lemma, since an exact lemma="..." in
+# grew_search finds nothing for most Cyrillic lemmas in this snapshot.
+# Nothing written.
+id: ud-ru-grew-gen-plur
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 1}
+turns:
+  - say: >-
+      How many adjectives (UPOS ADJ) are attached by amod to a noun that is
+      in the genitive plural (Case=Gen, Number=Plur)? Count over all three
+      documents, and tell me in how many sentences they occur.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: ['\b19\b', '\b11\b']

@@ -1,0 +1,23 @@
+# Lexicon: two entries for one word merged, links moved (merge_entries). Setup
+# adds the duplicate and links occurrences to both.
+id: igt-lex-merge
+app: igt
+project: igt-lezgi
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      The lexicon has two entries for гада: the original one glossed "boy", and
+      one glossed "boy, son" that someone added later. They are the same word.
+      Merge the "boy, son" entry into the "boy" entry, so that only the "boy"
+      entry is left and every word linked to either one is linked to it.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "гада|boy, son": null
+  expect:
+    "Lezgi text 2|s10.w8.m1:link": "гада|boy"
+    "Lezgi text 2|s13.w3.m1:link": "гада|boy"
+  # The core's merge moves the links as they are, with their stamps.
+  prov: any

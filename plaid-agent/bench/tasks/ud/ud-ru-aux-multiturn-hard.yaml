@@ -1,0 +1,37 @@
+# Hard tier. Multi-turn: a request, then a correction of its plan before any
+# approval. Setup tagged all 11 forms of быть (был, была, было, были) VERB:
+# 3 in Russian 1, 6 in Russian 2, 2 in Russian 3. Turn 1 asks for every one
+# back to AUX and is NOT approved. Turn 2 narrows it to Russian 2 and its
+# plan is approved. Right: the 6 in Russian 2 are AUX, the 5 in Russian 1
+# and 3 stay VERB as setup left them. Turn 2 approves with "open": when turn 1
+# already planned only Russian 2 and turn 2 plans nothing, that plan is the
+# one on screen and it is approved. A turn 1 plan over all 11 still fails.
+id: ud-ru-aux-multiturn-hard
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 2}
+turns:
+  - say: >-
+      Somebody retagged every form of быть (был, была, было, были) as VERB
+      across the project. In this treebank быть is always AUX, both as a
+      copula and as the passive auxiliary. Change them back to AUX.
+    approve: false
+  - say: >-
+      Wait, no, only the ones in Russian 2. Russian 1 and Russian 3 are
+      Olga's, she is going through those by hand, so leave them as they
+      are.
+    approve: open
+check: ud_tree
+args:
+  # "In this treebank быть is always AUX" is a convention the user states: a guideline drafted
+  # for it goes on the card like the rest.
+  allow_guidelines: true
+  document: Russian 2
+  expect:
+    "s4.w2:upos": AUX
+    "s7.w2:upos": AUX
+    "s8.w6:upos": AUX
+    "s12.w1:upos": AUX
+    "s12.w12:upos": AUX
+    "s18.w2:upos": AUX

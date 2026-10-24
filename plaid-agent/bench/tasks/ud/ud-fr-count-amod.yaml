@@ -1,0 +1,17 @@
+# A Grew-like count over the whole project, answered with a number.
+id: ud-fr-count-amod
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      Across the whole project (all three documents), how many words attached
+      to a NOUN with the relation amod come before that noun in the sentence?
+      In Grew terms: pattern { N [upos=NOUN]; N -[amod]-> A; A << N }. Give me
+      the number of matches.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: '\b27\b'

@@ -1,0 +1,15 @@
+# An ambiguous request: "the chikari node" names five nodes in five
+# sentences with four different aspects. The right answer asks which one,
+# and plans nothing.
+id: umr-clarify-ambiguous
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: Set the aspect of the chikari node to activity.
+check: umr_answer
+args:
+  reader: umr
+  no_plan: true
+  match: ['\?', '(which|several|five|\b5\b|more than one|multiple|each|all of them)']

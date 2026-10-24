@@ -1,0 +1,26 @@
+# check_consistency form-upos then the fix (survey 14). Setup tagged three
+# commas AUX, one per document. The request names neither the form nor the
+# places: the assistant has to find them across the project and retag all
+# three PUNCT, and nothing else.
+# The prompt once asked for "every punctuation mark whose UPOS is not
+# PUNCT", which literally takes in the two / (SYM cc) and the % (SYM), always
+# SYM in the snapshot and right as SYM in UD, and runs retagged them as asked.
+# Runs made with that prompt are not comparable.
+id: ud-fr-form-upos-fix
+app: ud
+project: ud-french
+as: B
+turns:
+  - say: >-
+      Some punctuation in this project was tagged with a wrong UPOS by
+      mistake: a mark that is PUNCT everywhere else in the project got
+      another tag in a few places. Find those and set them to PUNCT.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "French 1|s11.w2:upos": PUNCT
+    "French 2|s10.w3:upos": PUNCT
+    "French 3|s5.w8:upos": PUNCT

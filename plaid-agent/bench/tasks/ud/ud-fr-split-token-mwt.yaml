@@ -1,0 +1,23 @@
+# split_token undoing a multi-word token built by mistake (survey item 13:
+# a token over two lines made one multi-word token of many words, and their
+# values and dependencies went with it). Setup glued the tokens "bas" and
+# "coût" of sentence 8 into one token "bas coût" holding the two annotated
+# words as a multi-word token. The fix makes them two tokens again with every
+# value and head kept: one word to each token.
+id: ud-fr-split-token-mwt
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 8 of French 1, "bas coût" is one multi-word token holding
+      the words bas and coût. That was a mistake: they are two separate
+      tokens. Make them two tokens again, and keep their annotation and
+      dependencies as they are.
+    approve: true
+check: ud_tokens
+args:
+  document: French 1
+  tokens:
+    s8: [Les, compagnies, aériennes, à, bas, coût, ne, connaissent, pas, la, crise, .]

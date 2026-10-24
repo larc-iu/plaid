@@ -1,0 +1,19 @@
+# set_feature: one Feature=Value added, the word's other features kept.
+# Setup removes Tense=Pres from the verb.
+id: ud-fr-feature-add
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 8 of French 1, the verb "connaissent" (word 8) has lost its
+      tense. Add Tense=Pres to its features and keep the features it already
+      has.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s8.w8:feats": Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin

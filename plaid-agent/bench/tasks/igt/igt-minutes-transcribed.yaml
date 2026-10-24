@@ -1,0 +1,23 @@
+# Minutes transcribed (survey item 11: many steps and tokens, and no
+# answer). Setup adds a time alignment to Lezgi text 1, one
+# 7-second segment per sentence (20 sentences, 2:20 in all), and a 5:00
+# recording of silence. corpus_stats (or read_document) says both in one call.
+# Read only: nothing may be written.
+# Setup fills the empty "Time Alignment" layer the igt project setup already
+# holds, not a second one (the assistant reads the first and would see no
+# segments), and asserts the assistant's lookup finds it.
+id: igt-minutes-transcribed
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      How much of the recording of this text has been transcribed? Give the
+      transcribed time and the length of the recording, in minutes and
+      seconds.
+check: answer
+args:
+  reader: igt
+  # Hyphens allowed ("a 5-minute-00-second recording").
+  match: ['(2:20|2[ -]?min\w*,?[ -](and )?20[ -]?s|140 ?s)', '(5:00|5[ -]?min|300 ?s)']

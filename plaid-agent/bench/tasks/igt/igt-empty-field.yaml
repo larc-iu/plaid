@@ -1,0 +1,16 @@
+# A question about a field that holds nothing (survey item 9: an empty field
+# searched again and again). Setup adds a
+# sentence field "Translation (ru)" with no values. project_overview says
+# "(empty)", so the answer is one call: there are no Russian translations.
+id: igt-empty-field
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      Which sentences have a Russian translation that mentions a dog?
+check: answer
+args:
+  reader: igt
+  match: '(empty|no russian translations?|no values|not (been )?(filled|translated)|(has|have|holds?|contains?) no|none of the (sentences|texts) (has|have)|nothing in)'

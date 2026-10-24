@@ -1,0 +1,23 @@
+# Closing a list that the stored values break: the morpheme glosses hold word
+# glosses no Leipzig list names, so a closed list is refused by core. The
+# assistant should find that out (check, or the warning when it plans) and
+# say so rather than leave the user a plan that cannot apply.
+id: igt-tagset-close-hard
+app: igt
+project: igt-natugu
+as: A
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      Make the Leipzig tagset closed, so nothing outside it can be entered.
+    approve: true
+check: igt_tagsets
+args:
+  mode: refuse
+  name: Leipzig
+  want_mode: mixed
+  # A plain close (no tag or word added to the list) that
+  # warns about the word glosses and offers mixed passes too. Core exempts
+  # imported values since 0b3f1a9ac, so the premise above no longer holds.
+  close_ok: {mode: closed, offer: '\bmixed\b'}
+  match: '(word|lexical|stem|lowercase).{0,200}(refus|reject|not (be )?(accepted|allowed)|break|ban|forbid|disallow|outside|(not|n''t) (in|on) (the|a|your) list|off the list|unlisted|keep it mixed|mixed mode)|(refus|reject|break|ban|forbid|disallow).{0,200}(word|lexical|stem|lowercase)'

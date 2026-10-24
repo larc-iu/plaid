@@ -1,0 +1,26 @@
+# Hard tier. A question and a change in one message. The way (pe) has a
+# node in six sentences, with a possessor in four: the answer names the
+# other two (8 and 14). The change adds the possessor in one of them, found
+# by meaning (the scared man, awa, s14a, already in the graph), and leaves
+# the other (s8, "far from the way") alone. :poss (the document's own) or
+# :possessor.
+id: umr-hard-mixed-path
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Quick question about the way, pe: in which sentences does the way node
+      have no possessor? Give me the sentence numbers. And while you're at
+      it, in the one where he's scared because he can't find the way, the
+      way is his, so give it the man who is scared (awa) as its possessor.
+      Don't touch the other ones.
+    approve: true
+check: umr_mixed
+args:
+  document: Kukama text 2
+  expect_any:
+    - {"s14.s14p2::poss": s14a}
+    - {"s14.s14p2::possessor": s14a}
+  match: ['(?<!\d)8(?!\d)', '(?<!\d)14(?!\d)']

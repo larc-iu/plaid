@@ -1,0 +1,18 @@
+# Smoke: one morpheme gloss changed on request, in the open document.
+id: igt-smoke-gloss
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      In sentence 2 of this text, the word я is glossed "was", but it is the
+      copula. Change its gloss to COP.
+    approve: true
+check: exact_changes
+args:
+  reader: igt
+  document: Lezgi text 1
+  expect:
+    "s2.w3.m1:Gloss": COP
+  prov: verified

@@ -1,0 +1,18 @@
+# A request that cannot be done as asked: the new head is the word's own
+# dependent, so the tree would have a cycle. The right answer says so and
+# writes nothing (a plan, if one is proposed, is approved and then fails).
+id: ud-fr-cycle
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 8 of French 1, attach "compagnies" (word 2) to "aériennes"
+      (word 3) as nsubj. Do not change anything else.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: >-
+    cycl|circular|\bloop|already (depends|attached|hangs|a dependent)|is (itself )?(a |the )?dependent of|depends on (\W)?compagnies|own (dependent|head)|attached to (\W)?compagnies|under (\W)?compagnies

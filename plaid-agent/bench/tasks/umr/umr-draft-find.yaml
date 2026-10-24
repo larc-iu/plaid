@@ -1,0 +1,31 @@
+# A sentence graph drafted from scratch, every part given in the prompt.
+id: umr-draft-find
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Sentence 5 (rapurara ikian kaykana, "He finds these monkeys") has no
+      graph yet. Please draft it. The root is purara "find", with :aspect
+      performance and :modal-strength full-affirmative. Its :experiencer is
+      the unexpressed 3rd person singular subject, a person node with
+      :refer-person 3rd and :refer-number singular. Its :stimulus is kay
+      "monkey", with :refer-number plural, and kay has a :mod ikian "this".
+      Nothing else.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  draft:
+    sentence: 5
+    root: e
+    nodes:
+      e: {concept: purara, attrs: {":aspect": performance, ":modal-strength": full-affirmative}}
+      p: {concept: person, attrs: {":refer-person": 3rd, ":refer-number": singular}}
+      k: {concept: kay, attrs: {":refer-number": plural}}
+      i: {concept: ikian}
+    edges:
+      - [e, ":experiencer", p]
+      - [e, ":stimulus", k]
+      - [k, ":mod", i]

@@ -1,0 +1,17 @@
+# An ambiguous request: sentence 4 has six words "de", one already DET. The
+# right answer asks which one is meant and writes nothing.
+id: ud-fr-clarify-de
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 4 of French 1, change the UPOS of "de" to DET.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match:
+    - '\?'
+    - 'which|several|multiple|more than one|\b(five|six)\b|\b[56]\b|each of|all of them|occurrences|instances'

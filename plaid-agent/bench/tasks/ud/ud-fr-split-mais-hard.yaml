@@ -1,0 +1,27 @@
+# Hard tier. split_sentence with the split point described by its words,
+# not numbered, then the root the split leaves missing. Setup merged French 1
+# sentences 2 and 3 ("... selon les Facultés . Mais comment faire ... ?"),
+# faire demoted under durent as parataxis. The merged sentence has a
+# lowercase "mais" (word 6) before the capital "Mais" (word 15): splitting at
+# the first one is the trap. Right: the snapshot's own document, faire root.
+id: ud-fr-split-mais-hard
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      The sentence about university studies lasting six years has swallowed
+      the question that follows it. The second sentence starts at "Mais
+      comment faire". Split them apart and fix whatever the split leaves
+      broken in the tree.
+    approve: true
+  - say: Go on with the rest of what I asked, if anything is left.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s3.w3:head": 0
+    "s3.w3:deprel": root

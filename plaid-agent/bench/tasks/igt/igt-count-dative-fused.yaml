@@ -1,0 +1,24 @@
+# Counting a tag fused into longer glosses, across the project. Natugu glosses
+# the dative fused with person and number (DAT.3MINII, DAT.1AUGII, ...), so no
+# gloss is DAT alone. Written to test recovery from an empty whole-value
+# result (from the assistant survey), but search matches substrings by
+# default, so a search for DAT finds all 16 at once and the empty result is
+# never reached: what it measures is scoping to the whole project, an exact
+# count, and a tally by value. Answer: 16 datives, the commonest DAT.3MINII
+# with 6. Nothing written.
+id: igt-count-dative-fused
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      How many datives (DAT) are glossed in the whole project, all five
+      texts? And which person and number does the dative carry most often?
+check: igt_changes
+args:
+  plan: none
+  # 16 in all, and 3MINII named with its 6, no other tag between them (so
+  # "DAT.1MINII (6), DAT.3MINII (4)" fails).
+  match: ['(?<![\d.])16(?![\d.]?\d)', '3MINII(?:(?!DAT|MINII)[^\n]){0,60}?\b(6|six)\b']
+  reject: ['\b(no|zero|0) (datives|DAT)\b']

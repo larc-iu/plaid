@@ -1,0 +1,20 @@
+# Two temporal triples, one to a constant: the direction of (a :before b)
+# is the point (b is before a).
+id: umr-doc-temporal
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Add two temporal relations to the document graph. The shooting in
+      sentence 6 (raya, s6r) happened before the document was created. And
+      it happened before he tied up the monkey in sentence 10 (tɨkɨta,
+      s10t).
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  triples:
+    - [document-creation-time, ":before", s6r]
+    - any: [[s10t, ":before", s6r], [s6r, ":after", s10t]]

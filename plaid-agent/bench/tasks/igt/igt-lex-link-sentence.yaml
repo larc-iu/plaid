@@ -1,0 +1,28 @@
+# Links: every morpheme of one sentence linked, choosing among senses by gloss (link_entry).
+id: igt-lex-link-sentence
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      Link every morpheme in sentence 4 of this text to its entry in the
+      lexicon. Where an entry has several senses, link the morpheme to the sense
+      whose gloss is the morpheme's gloss.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - link_by_gloss: {form: ii, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: hasak̲, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: t, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: dim, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: mehl, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: i, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: hl, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: wila, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: wil, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: win, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: yukw, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: silin, docs: [Gitksan text 1], sentences: [s4]}
+    - link_by_gloss: {form: asxw, docs: [Gitksan text 1], sentences: [s4]}

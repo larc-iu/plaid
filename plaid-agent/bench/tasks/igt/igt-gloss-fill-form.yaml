@@ -1,0 +1,20 @@
+# Corpus-wide glossing of empty cells: 49 glosses filled by form
+# (set_field_for_form). Setup clears every hl gloss.
+id: igt-gloss-fill-form
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      The morpheme hl has no gloss anywhere in the project. It is the common
+      noun connective: gloss every hl morpheme in every text CN.
+    approve: true
+check: igt_changes
+args:
+  # "It is the common noun connective: gloss every hl CN" states a
+  # project-wide convention, as igt-gloss-rename does, so a drafted guideline
+  # is allowed.
+  allow_guidelines: true
+  rules:
+    - gloss: {form: hl, from: null, to: CN}

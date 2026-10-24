@@ -1,0 +1,21 @@
+# Where a minority analysis is (survey item 7: many queries for the words
+# behind it). The suffix на is glossed AOR 63 times and AOC 7 times:
+# text 2: 6, 14 (twice), 19, text 3: 11, text 4: 9, 20. analyses_of with
+# value="AOC" lists them in one call. Nothing written.
+id: igt-minority-gloss-refs
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      The suffix на is mostly glossed AOR, but a few times AOC. Where is it
+      glossed AOC? End your answer with one line per text that has any, like
+      "Text 2: 4, 9", with just the sentence numbers.
+check: igt_changes
+args:
+  plan: none
+  numbers:
+    - {after: 'Text 2\W*:', expect: [6, 14, 19]}
+    - {after: 'Text 3\W*:', expect: [11]}
+    - {after: 'Text 4\W*:', expect: [9, 20]}

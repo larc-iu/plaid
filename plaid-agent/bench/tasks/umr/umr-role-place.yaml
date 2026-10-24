@@ -1,0 +1,20 @@
+# One role relabelled. The node it points at is aligned to a word and must
+# keep that alignment (a delete and remake would lose it).
+id: umr-role-place
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 7 (raepe raya wepe arawata, "There he shoots one monkey"),
+      raepe "there" (s7r2) hangs off the shooting event s7r as :temporal.
+      It names a place, and in sentence 6 the same word is :place. Change
+      its role in sentence 7 to :place.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s7.s7r::place": s7r2
+    "s7.s7r::temporal": null

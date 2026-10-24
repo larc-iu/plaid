@@ -1,0 +1,18 @@
+# Lexicon: a third sense under an entry that has two (add_sense).
+id: igt-lex-add-sense
+app: igt
+project: igt-gitksan
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      The entry wil has two senses, COMP and LVB. Add a third sense under it
+      with the gloss "do".
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "+wil|do:form": wil
+    "+wil|do:gloss": do
+    "+wil|do:parent": "wil|"
+    "+wil|do:senseOrder": 3

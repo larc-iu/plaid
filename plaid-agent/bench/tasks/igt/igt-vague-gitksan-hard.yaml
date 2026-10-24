@@ -1,0 +1,22 @@
+# Hard tier. Vague addressing: two glosses named only by what the sentence
+# says. Traps: huut "flee.PL" also occurs in text 2 (s18, the moose running
+# away again), and gu "what" also occurs in s17 of this text ("we asked what
+# he did"). Only s14's huut and s18's gu change.
+id: igt-vague-gitksan-hard
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      Two small fixes in this story. Where he says that if he moved, the
+      grouse would fly off and the moose he was after would run away, the
+      running-away verb should be glossed run.away.PL instead of flee.PL. And
+      where we ask him whether he shot a grouse or a moose, the "what" there
+      should be glossed WH.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Gitksan text 1|s14.w7.m1:Gloss": run.away.PL
+    "Gitksan text 1|s18.w1.m1:Gloss": WH

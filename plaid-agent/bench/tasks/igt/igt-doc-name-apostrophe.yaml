@@ -1,0 +1,23 @@
+# A document named the way the user types it, not the way it is stored
+# (from the assistant survey: a straight apostrophe typed for a stored curly
+# one, refused again and again). Setup renames the three texts to "Man’s hunting
+# story:  part N" (a curly apostrophe and two spaces after the colon). The
+# user, on the lexicon page, types "Man's hunting story: part 2". Right: both
+# hogwin of sentence 3 of part 2 (Gitksan text 2) glossed go.toward. Trap:
+# sentence 3 of part 1 has two hogwin glossed toward as well.
+id: igt-doc-name-apostrophe
+app: igt
+project: igt-gitksan
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      In Man's hunting story: part 2, sentence 3 has hogwin twice, both
+      glossed toward. In that sentence it's the preverb of motion, so gloss
+      both of them go.toward. Only that sentence.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Gitksan text 2|s3.w5.m1:Gloss": go.toward
+    "Gitksan text 2|s3.w9.m1:Gloss": go.toward

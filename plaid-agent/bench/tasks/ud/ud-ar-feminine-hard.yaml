@@ -1,0 +1,30 @@
+# Hard tier. A FEATS fix asked loosely ("these should be feminine"), the
+# words named by form, across two documents. Setup set Gender=Masc on every
+# الروسية (8: Arabic 2 has 7, Arabic 1 has one in its last sentence). Right:
+# Gender=Fem back on all 8, Case, Definite and Number kept. Traps: the
+# masculine الروسي (Arabic 2 s8, s10) and the dual روسيين are Masc and must
+# stay so, and nothing in XPOS changes (it already says F).
+id: ud-ar-feminine-hard
+app: ud
+project: ud-arabic
+as: B
+where: {document: Arabic 2}
+turns:
+  - say: >-
+      All the الروسية in this project, the feminine "Russian" in phrases
+      like المدفعية الروسية and القوات الروسية, came out masculine in the
+      features. These should be feminine.
+    approve: true
+check: ud_tree
+args:
+  document: Arabic 2
+  base: snapshot
+  expect:
+    "Arabic 1|s20.w9:feats": Case=Gen|Definite=Def|Gender=Fem|Number=Sing
+    "s1.w38:feats": Case=Gen|Definite=Def|Gender=Fem|Number=Sing
+    "s1.w53:feats": Case=Nom|Definite=Def|Gender=Fem|Number=Sing
+    "s2.w17:feats": Case=Gen|Definite=Def|Gender=Fem|Number=Sing
+    "s10.w21:feats": Case=Acc|Definite=Def|Gender=Fem|Number=Sing
+    "s11.w12:feats": Case=Gen|Definite=Def|Gender=Fem|Number=Sing
+    "s12.w10:feats": Case=Gen|Definite=Def|Gender=Fem|Number=Sing
+    "s13.w15:feats": Case=Gen|Definite=Def|Gender=Fem|Number=Sing

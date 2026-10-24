@@ -1,0 +1,20 @@
+# Links: three wrong links removed out of 68 (unlink_entry). Setup links every
+# mz morpheme to the PREP sense, the three glossed "eye" included.
+id: igt-lex-unlink
+app: igt
+project: igt-natugu
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      All mz morphemes in the project are linked to the PREP sense of the entry
+      mz, but three of them are the noun "eye" (glossed eye), and those three
+      links are wrong. Remove the links from the three mz morphemes glossed eye,
+      so they are not linked to anything. Keep every other link as it is.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Natugu text 2|s7.w7.m1:link": null
+    "Natugu text 3|s6.w2.m1:link": null
+    "Natugu text 4|s13.w9.m1:link": null

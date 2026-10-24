@@ -1,0 +1,17 @@
+# A Grew-like count with two conditions on the dependent and one on the head.
+id: ud-ru-count-gen
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 1}
+turns:
+  - say: >-
+      How many genitive nouns (UPOS NOUN with Case=Gen) are attached with the
+      relation nmod to a head that is also a NOUN? Count over all three
+      documents. In Grew terms: pattern { H [upos=NOUN]; D [upos=NOUN,
+      Case=Gen]; H -[nmod]-> D }. Give me the number of matches.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: '\b103\b'

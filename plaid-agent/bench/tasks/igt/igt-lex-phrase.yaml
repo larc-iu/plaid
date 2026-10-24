@@ -1,0 +1,22 @@
+# Lexicon and links: a new phrase entry linked over two words (create_entry + link_phrase).
+id: igt-lex-phrase
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      In sentence 9 of this text, the two words 'nii win (words 2 and 3) are a
+      fixed expression meaning "and then". Add a phrase entry "'nii win" to the
+      lexicon with the gloss "and then", and link those two words to it as one
+      multi-word expression. Leave the links of the single words as they are.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "+'nii win|and then:form": "'nii win"
+    "+'nii win|and then:gloss": and then
+  expect:
+    "Gitksan text 1|s9.w2+s9.w3:mwe": "+'nii win|and then"
+  # The morph type of the new entry (phrase, or none) is no fault.
+  allow: ["^LEX\\|\\+'nii win\\|and then:morphType$"]

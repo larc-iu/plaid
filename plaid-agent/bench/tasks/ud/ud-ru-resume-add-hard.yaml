@@ -1,0 +1,101 @@
+# Hard tier. Multi-turn, a plan carried into the next message in the ud
+# assistant (resume_plan, from the assistant survey).
+# Setup writes every Aspect=Imp as Aspect=Impf (57 words, as
+# ud-ru-corpus-aspect) and tags the 11 forms of быть VERB (as
+# ud-ru-aux-multiturn-hard). Turn 1 asks for the aspect fix and is NOT
+# approved. Turn 2 adds the быть fix and its plan is approved. Right: both
+# fixes, the project back to the snapshot with the 68 changes stamped. A turn
+# 2 plan that holds only the быть fix (turn 1's card silently replaced) fails.
+id: ud-ru-resume-add-hard
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 1}
+turns:
+  - say: >-
+      The imperfective aspect has been written Aspect=Impf throughout this
+      project, but the UD value is Aspect=Imp. Please change every
+      Aspect=Impf to Aspect=Imp in all three documents.
+    approve: false
+  - say: >-
+      One more thing for the same batch: somebody tagged the forms of быть
+      (был, была, было, были) as VERB everywhere. In this treebank быть is
+      always AUX, so change those back to AUX too. Then I'll approve it all
+      at once.
+    approve: true
+check: ud_tree
+args:
+  document: Russian 1
+  # A project guideline stating the convention is what the assistant is
+  # meant to draft when the user states one.
+  allow_guidelines: true
+  base: snapshot
+  expect:
+    "Russian 1|s1.w17:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s1.w21:feats": Animacy=Inan|Aspect=Imp|Case=Acc|Gender=Fem|Number=Sing|Tense=Pres|VerbForm=Part|Voice=Act
+    "Russian 1|s1.w26:feats": Animacy=Inan|Aspect=Imp|Case=Acc|Gender=Fem|Number=Sing|Tense=Pres|VerbForm=Part|Voice=Act
+    "Russian 1|s2.w3:feats": Animacy=Inan|Aspect=Imp|Case=Nom|Gender=Neut|Number=Sing|Tense=Pres|VerbForm=Part|Voice=Act
+    "Russian 1|s2.w18:feats": Animacy=Inan|Aspect=Imp|Case=Nom|Gender=Neut|Number=Sing|Tense=Pres|VerbForm=Part|Voice=Act
+    "Russian 1|s2.w21:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s3.w3:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Mid
+    "Russian 1|s5.w3:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s7.w9:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Mid
+    "Russian 1|s8.w24:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 1|s8.w37:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s9.w10:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 1|s9.w17:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 1|s9.w23:feats": Aspect=Imp|Gender=Neut|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 1|s10.w6:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s12.w9:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Act
+    "Russian 1|s13.w10:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s17.w8:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Mid
+    "Russian 1|s17.w30:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 1|s19.w2:feats": Animacy=Anim|Aspect=Imp|Case=Nom|Gender=Masc|Number=Sing|Tense=Past|VerbForm=Part|Voice=Act
+    "Russian 1|s19.w8:feats": Aspect=Imp|Tense=Pres|VerbForm=Conv|Voice=Act
+    "Russian 1|s19.w33:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Mid
+    "Russian 1|s19.w73:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 2|s3.w7:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Act
+    "Russian 2|s3.w13:feats": Aspect=Imp|Tense=Pres|VerbForm=Conv|Voice=Act
+    "Russian 2|s4.w2:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 2|s5.w7:feats": Animacy=Inan|Aspect=Imp|Case=Nom|Gender=Fem|Number=Sing|Tense=Pres|VerbForm=Part|Voice=Act
+    "Russian 2|s6.w7:feats": Animacy=Inan|Aspect=Imp|Case=Acc|Gender=Neut|Number=Sing|Tense=Pres|VerbForm=Part|Voice=Act
+    "Russian 2|s7.w2:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 2|s7.w8:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Act
+    "Russian 2|s8.w6:feats": Aspect=Imp|Mood=Ind|Number=Plur|Tense=Past|VerbForm=Fin
+    "Russian 2|s9.w19:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Act
+    "Russian 2|s11.w3:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 2|s12.w1:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 2|s12.w12:feats": Aspect=Imp|Mood=Ind|Number=Plur|Tense=Past|VerbForm=Fin
+    "Russian 2|s13.w6:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 2|s14.w4:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Mid
+    "Russian 2|s15.w5:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 2|s16.w8:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 2|s18.w2:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 2|s19.w4:feats": Aspect=Imp|VerbForm=Inf|Voice=Mid
+    "Russian 2|s20.w3:feats": Aspect=Imp|Gender=Fem|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Act
+    "Russian 2|s20.w11:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Act
+    "Russian 3|s1.w1:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 3|s2.w2:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 3|s3.w11:feats": Aspect=Imp|Gender=Neut|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 3|s6.w11:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 3|s7.w3:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 3|s7.w5:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 3|s8.w4:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 3|s8.w16:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 3|s10.w3:feats": Aspect=Imp|Mood=Ind|Number=Plur|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 3|s12.w5:feats": Aspect=Imp|Gender=Neut|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin|Voice=Mid
+    "Russian 3|s14.w6:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Mid
+    "Russian 3|s15.w4:feats": Aspect=Imp|Gender=Masc|Mood=Ind|Number=Sing|Tense=Past|VerbForm=Fin
+    "Russian 3|s17.w18:feats": Aspect=Imp|VerbForm=Inf|Voice=Act
+    "Russian 3|s20.w1:feats": Aspect=Imp|Mood=Ind|Number=Sing|Person=3|Tense=Pres|VerbForm=Fin|Voice=Act
+    "Russian 1|s9.w23:upos": AUX
+    "Russian 1|s17.w30:upos": AUX
+    "Russian 1|s19.w73:upos": AUX
+    "Russian 2|s4.w2:upos": AUX
+    "Russian 2|s7.w2:upos": AUX
+    "Russian 2|s8.w6:upos": AUX
+    "Russian 2|s12.w1:upos": AUX
+    "Russian 2|s12.w12:upos": AUX
+    "Russian 2|s18.w2:upos": AUX
+    "Russian 3|s3.w11:upos": AUX
+    "Russian 3|s15.w4:upos": AUX

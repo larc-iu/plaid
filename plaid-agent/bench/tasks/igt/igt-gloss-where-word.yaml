@@ -1,0 +1,21 @@
+# A conditional corpus-wide gloss change (survey item 4: per document loops
+# of hundreds of changes). wil inside wihl is glossed COMP in
+# three texts and LVB in three others. Only the COMP ones inside wihl change,
+# COMP on win (18 times) stays. One replace_in_field with where={"form":"wihl"}.
+id: igt-gloss-where-word
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      In the word wihl, the morpheme wil is the light verb and should be
+      glossed LVB, but in some places it is glossed COMP. Fix that across all
+      the texts. Leave COMP on every other word, such as win, alone.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Gitksan text 1|s1.w7.m1:Gloss": LVB
+    "Gitksan text 2|s6.w9.m1:Gloss": LVB
+    "Gitksan text 3|s1.w3.m1:Gloss": LVB

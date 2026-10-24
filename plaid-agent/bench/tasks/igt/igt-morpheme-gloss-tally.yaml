@@ -1,0 +1,18 @@
+# A tally over every occurrence, past the ones a concordance shows (survey
+# item 10). The morpheme nz occurs 75 times: NMLZ1 46, 3AUG 23, PAS 6. A
+# concordance shows 60 by default, and its tallies used to count only those.
+id: igt-morpheme-gloss-tally
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      Across the whole project, how is the morpheme nz glossed? Give each
+      gloss with the number of times it is used.
+check: answer
+args:
+  reader: igt
+  match: ['NMLZ1\D{0,30}(?<![\d.])46(?!\d)|(?<![\d.])46\D{0,30}NMLZ1',
+          '3AUG\D{0,30}(?<![\d.])23(?!\d)|(?<![\d.])23\D{0,30}3AUG',
+          'PAS\D{0,30}(?<![\d.])6(?!\d)|(?<![\d.])6\D{0,30}PAS']

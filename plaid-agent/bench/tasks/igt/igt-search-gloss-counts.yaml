@@ -1,0 +1,17 @@
+# Concordance with a checkable answer: the glosses one morpheme carries and their counts.
+id: igt-search-gloss-counts
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      Across the whole project, which glosses does the morpheme з carry, and how
+      many times each?
+check: igt_changes
+args:
+  plan: none
+  match:
+    - 'DAT\W{0,30}\D{0,30}(?<!\d)35(?!\d)|(?<!\d)35(?!\d)\D{0,40}DAT'
+    - 'INF\W{0,30}\D{0,30}(?<!\d)2(?!\d)|(?<!\d)2(?!\d)\D{0,40}INF'
+    - 'IMC\W{0,30}\D{0,30}(?<!\d)1(?!\d)|(?<!\d)1(?!\d)\D{0,40}IMC'

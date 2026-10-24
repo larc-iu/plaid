@@ -1,0 +1,42 @@
+# Hard tier. A structural fix found with a Grew pattern and features, no
+# lemma: pattern { V [upos=VERB, VerbForm=Part, Voice=Pass]; V -[nsubj]-> S }.
+# The snapshot has 3 such plain nsubj (GSD's own inconsistency: Стропило,
+# батарея, сюжет) and setup relabels 4 of the 10 nsubj:pass as nsubj (основы,
+# Текст, Дун, государство), so 7 relabels in three documents, heads kept.
+# Traps: the 6 nsubj:pass left right, and subjects of reflexive passives in
+# -ся (Voice=Mid, such as стрельба производится in Russian 1 s9), which stay
+# nsubj.
+id: ud-ru-passive-subj-hard
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 1}
+turns:
+  - say: >-
+      The subject of a short passive participle (написан, созданы and the
+      like, VerbForm=Part with Voice=Pass) should be nsubj:pass, but some of
+      ours are plain nsubj. Find all of them in the three documents and fix
+      the relation, keeping their heads. The -ся verbs are Voice=Mid in this
+      treebank and keep nsubj.
+    approve: true
+check: ud_tree
+args:
+  document: Russian 1
+  # A project guideline stating the convention is what the assistant is
+  # meant to draft when the user states one.
+  allow_guidelines: true
+  expect:
+    "Russian 1|s2.w1:head": 6
+    "Russian 1|s2.w1:deprel": nsubj:pass
+    "Russian 1|s9.w6:head": 8
+    "Russian 1|s9.w6:deprel": nsubj:pass
+    "Russian 1|s20.w3:head": 1
+    "Russian 1|s20.w3:deprel": nsubj:pass
+    "Russian 2|s4.w1:head": 3
+    "Russian 2|s4.w1:deprel": nsubj:pass
+    "Russian 2|s17.w6:head": 8
+    "Russian 2|s17.w6:deprel": nsubj:pass
+    "Russian 2|s18.w1:head": 3
+    "Russian 2|s18.w1:deprel": nsubj:pass
+    "Russian 3|s3.w14:head": 12
+    "Russian 3|s3.w14:deprel": nsubj:pass

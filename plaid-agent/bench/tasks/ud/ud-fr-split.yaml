@@ -1,0 +1,30 @@
+# split_sentence, then the tree mended across the new boundary in the next
+# plan: the relations that crossed it are gone, so the new sentence has no
+# root and two punctuation marks have no head.
+id: ud-fr-split
+app: ud
+project: ud-french
+as: B
+where: {document: French 2}
+turns:
+  - say: >-
+      Sentence 13 of French 2 is really two sentences: the second one starts
+      at "Les plats" (word 13). Split it there.
+    approve: true
+  - say: >-
+      Now mend the tree around the new boundary. "copieux" is the root of
+      the new sentence 14, and the final period of sentence 14 attaches to
+      "copieux" as punct. The "..." that now ends sentence 13 attaches to
+      "resto" as punct.
+    approve: true
+check: ud_tree
+args:
+  document: French 2
+  split: [s13.w13]
+  expect:
+    "s14.w4:head": 0
+    "s14.w4:deprel": root
+    "s14.w11:head": 4
+    "s14.w11:deprel": punct
+    "s13.w12:head": 4
+    "s13.w12:deprel": punct

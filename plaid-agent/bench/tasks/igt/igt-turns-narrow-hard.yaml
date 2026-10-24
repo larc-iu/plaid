@@ -1,0 +1,23 @@
+# Hard tier. Multi-turn: a corpus-wide request (63 AOR glosses on на over five
+# texts), not approved, then narrowed in turn 2 to one text that is not the
+# open one, and approved. The plan must shrink to the 15 in text 2. The AOC
+# на in text 2 stay as they are.
+id: igt-turns-narrow-hard
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      I'd like the aorist suffix на glossed PST rather than AOR from now on.
+      Can you change those over? The converb на (AOC) is a different thing and
+      stays.
+  - say: >-
+      Hmm, hold on. Only do it in text 2 for now. I still have to go over the
+      other texts with my consultant, so their AOR glosses stay as they are
+      until then.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - gloss: {form: на, from: AOR, to: PST, docs: [Lezgi text 2]}

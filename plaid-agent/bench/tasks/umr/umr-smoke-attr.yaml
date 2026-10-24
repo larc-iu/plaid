@@ -1,0 +1,18 @@
+# Smoke: one node attribute changed on request, in the open document.
+id: umr-smoke-attr
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 1, the event ɨmɨntsara (s1x) has modal strength
+      full-affirmative. Change it to partial-affirmative.
+    approve: true
+check: exact_changes
+args:
+  reader: umr
+  document: Kukama text 2
+  expect:
+    "s1.s1x::modal-strength": partial-affirmative
+  prov: verified

@@ -1,0 +1,32 @@
+# Hard tier. Reading chosen sentences of several documents (read_sentences,
+# fields=["Translation"]): 17 sentences over four texts, named by number. The
+# question needs the Lezgi line and the translation side by side: quoted
+# speech marked with « » in the Lezgi line, but no quotation marks at all in
+# the English translation. Answer: text 1 s1 and s3, text 2 s10, text 4 s18,
+# none in text 5. Traps: text 1 s16 (quotes in the translation only), text 1
+# s3's "let's" (an apostrophe, not a quotation mark). Nothing written.
+id: igt-read-quotes-hard
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      I'm checking the sentences I pulled for a handout on reported speech:
+      text 1 sentences 1, 3, 9, 10, 13 and 16, text 2 sentences 2, 4, 6, 10
+      and 14, text 4 sentences 1, 10 and 18, and text 5 sentences 1, 4 and 8.
+      Which of them have quoted speech marked with « » in the Lezgi line but
+      no quotation marks at all in the English translation? Those
+      translations need fixing. End your answer with one line per text that
+      has any, like "Text 2: 4, 9", with just the sentence numbers.
+check: igt_changes
+args:
+  plan: none
+  numbers:
+    - {after: 'Text 1\W*:', expect: [1, 3]}
+    - {after: 'Text 2\W*:', expect: [10]}
+    - {after: 'Text 4\W*:', expect: [18]}
+  # A Text 3 or 5 line with numbers fails, unless its text opens with none,
+  # no, neither or nothing (a run wrote "Text 5: none of s1, s4, s8
+  # qualifies" in its per-text analysis, above the right closing lines).
+  reject: ['Text [35]\W*:(?!\W*(none|no|neither|nothing)\b)[^\n]*\d']

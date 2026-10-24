@@ -1,0 +1,18 @@
+# set_field features: a whole FEATS bundle replaced on one word. Setup plants
+# a wrong bundle, the right result is the snapshot's own.
+id: ud-fr-feats-set
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 2 of French 1, the features of "études" (word 2) are wrong:
+      it is a feminine plural noun. Set its features to Gender=Fem|Number=Plur.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s2.w2:feats": Gender=Fem|Number=Plur

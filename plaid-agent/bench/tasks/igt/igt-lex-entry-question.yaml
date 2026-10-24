@@ -1,0 +1,15 @@
+# Question about an entry's use (lexicon_entry): which sense has the most
+# links, and how many. Setup links every ди morpheme to the sense its gloss names.
+id: igt-lex-entry-question
+app: igt
+project: igt-lezgi
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      Which sense of the entry ди has the most morphemes linked to it in the
+      texts, and how many morphemes are linked to that sense?
+check: igt_changes
+args:
+  plan: none
+  match: ['\bERG\b', '(?<!\d)35(?!\d)']

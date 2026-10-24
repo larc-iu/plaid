@@ -1,0 +1,29 @@
+# Segmentation: an unanalyzed word segmented into three morphemes with glosses
+# (set_analysis). Setup removes the word's analysis.
+id: igt-segment-word
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      In sentence 12 of this text, word 6 (g̲alts'ebi'y) has no analysis. Segment
+      it into three morphemes, giving each its underlying form and gloss: the
+      prefix g̲al glossed contain, the stem ts'ep glossed village.people, and the
+      enclitic 'y glossed 1SG.II.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Gitksan text 1|s12.w6.m1:form": g̲al
+    "Gitksan text 1|s12.w6.m1:Gloss": contain
+    "Gitksan text 1|s12.w6.m2:form": ts'ep
+    "Gitksan text 1|s12.w6.m2:Gloss": village.people
+    "Gitksan text 1|s12.w6.m3:form": "'y"
+    "Gitksan text 1|s12.w6.m3:Gloss": 1SG.II
+  # Linking the new morphemes to their (unique, matching) entries is no fault
+  # (glm-5.2 did it in the first run). A link anywhere else is.
+  optional:
+    "Gitksan text 1|s12.w6.m1:link": "g̲al|contain"
+    "Gitksan text 1|s12.w6.m2:link": "ts'ep|village.people"
+    "Gitksan text 1|s12.w6.m3:link": "'y|1SG.II"

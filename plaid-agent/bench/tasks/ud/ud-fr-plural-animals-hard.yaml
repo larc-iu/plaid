@@ -1,0 +1,27 @@
+# Hard tier. A FEATS fix asked loosely ("mark them as plural"), the words
+# named by what they mean in English, not by number or form. Setup set
+# Number=Sing on the four animal nouns of French 1 sentence 4 (bivalves,
+# poissons, crustacés, poulpes). Right: Number=Plur on those four, Gender
+# kept. The other nouns of the sentence (espèces, zones, chercheurs are
+# plural already, vie and obscurité are singular) must not change.
+id: ud-fr-plural-animals-hard
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In the sentence about the "oasis de vie" on the deep sea floor, the
+      animals the researchers find there (bivalves, fish, crustaceans,
+      octopuses) all got marked singular. They're plural, mark them as
+      plural please.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s4.w35:feats": Gender=Masc|Number=Plur
+    "s4.w38:feats": Gender=Masc|Number=Plur
+    "s4.w41:feats": Gender=Masc|Number=Plur
+    "s4.w44:feats": Gender=Masc|Number=Plur

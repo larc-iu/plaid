@@ -1,0 +1,31 @@
+# A drafted graph with a negation and a possessor pointing back at a node
+# already in the graph (a re-entrancy).
+id: umr-draft-negated
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Sentence 13 (ni rapurara rape, "He doesn't find his way") has no
+      graph. Please draft it. The root is purara "find", :aspect
+      performance, and since ni negates it, :modal-strength full-negative.
+      Its :experiencer is the unexpressed 3rd person singular subject (a
+      person node, :refer-person 3rd, :refer-number singular). Its :stimulus
+      is pe "way", :refer-number singular, and the way is his: pe has a
+      possessor role pointing back at that same person node.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  draft:
+    sentence: 13
+    root: e
+    nodes:
+      e: {concept: purara, attrs: {":aspect": performance, ":modal-strength": full-negative}}
+      p: {concept: person, attrs: {":refer-person": 3rd, ":refer-number": singular}}
+      w: {concept: pe, attrs: {":refer-number": singular}}
+    edges:
+      - [e, ":experiencer", p]
+      - [e, ":stimulus", w]
+      - [w, [":poss", ":possessor"], p]

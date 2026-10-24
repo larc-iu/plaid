@@ -18,7 +18,7 @@ dependencies = ["larc-plaid-client", "litellm>=1.70", "httpx", "pydantic-monty>=
                 "pypdfium2>=5,<6"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "pyyaml"]
 
 # One distribution, one service per app. The harness they share is subtle
 # enough (the request lifecycle, the record's ownership, the batching) to want

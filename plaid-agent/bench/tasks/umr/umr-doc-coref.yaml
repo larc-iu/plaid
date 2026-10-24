@@ -1,0 +1,17 @@
+# A document-level coreference between two sentences.
+id: umr-doc-coref
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      The monkey he shoots in sentence 7 (arawata, s7a) is the same monkey
+      he carries in sentence 11 (arawata, s11a). Record that coreference in
+      the document graph.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  triples:
+    - any: [[s7a, ":same-entity", s11a], [s11a, ":same-entity", s7a]]

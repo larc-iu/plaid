@@ -1,0 +1,19 @@
+# A question about alignment with a checkable answer: nothing is written.
+id: umr-q-alignment
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Two questions about sentence 9, no changes please. Which word is the
+      node s9a2 (after) aligned to? And which nodes of sentence 9 are
+      aligned to no word at all? Give their variables.
+check: umr_answer
+args:
+  reader: umr
+  match:
+    - rchikari
+    - '\bs9p\b'
+    - '\bs9h\b'
+    - '\bs9t\b'

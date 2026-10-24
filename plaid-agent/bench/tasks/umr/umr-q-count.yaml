@@ -1,0 +1,15 @@
+# A count over the document.
+id: umr-q-count
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      How many nodes in this document have the concept ikian ("this")? Just
+      the number, please, no changes.
+check: umr_answer
+args:
+  reader: umr
+  match: '\b15\b'
+  reject: '\b(14|16) nodes'

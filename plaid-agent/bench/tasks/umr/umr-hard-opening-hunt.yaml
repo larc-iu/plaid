@@ -1,0 +1,26 @@
+# Hard tier. Vague addressing: a role and an attribute on one node of the
+# opening sentence, named by meaning (the looking-for, chikari "look for",
+# in the sentence about the man who went to the forest to hunt) and by
+# analogy with s3. s1c :experiencer s1a becomes :actor s1a and its :aspect
+# state becomes process. s1 is the hardest graph of the text to rewrite: it
+# has two :quote edges back to its own root, which a rewrite must keep.
+id: umr-hard-opening-hunt
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In the opening sentence, about the man (awa) who went to the forest to
+      hunt, the looking-for (chikari, "look for") has the man as its
+      experiencer and is marked as a state. Looking for game is something he
+      does, so make him its actor, and make it a process, the way the next
+      sentence about the shiringuero going to the forest has it.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s1.s1c::experiencer": null
+    "s1.s1c::actor": s1a
+    "s1.s1c::aspect": process

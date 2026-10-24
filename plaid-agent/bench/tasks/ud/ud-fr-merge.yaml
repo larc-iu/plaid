@@ -1,0 +1,33 @@
+# merge_sentences with a root demoted under a word of the other sentence,
+# then one more re-attachment in the merged sentence (renumbered words) in
+# the next plan. Setup split French 1 sentence 18 at "Berkeley" and gave the
+# new sentence a root. The split left the colon before it with no head.
+# The end state is the snapshot's own sentence.
+id: ud-fr-merge
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      Sentences 18 and 19 of French 1 were split by mistake: they are one
+      sentence. Merge them back into one. "affirmait", the root of sentence
+      19, should then attach to "restée" (word 23 of sentence 18) as
+      parataxis.
+    approve: true
+  - say: >-
+      Now fix the punctuation of the merged sentence 18. The colon before
+      "Berkeley affirmait" (word 25) attaches to "affirmait" as punct, and
+      the semicolon at the very end attaches to "appuyait" (word 3) as punct.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s18.w27:head": 23
+    "s18.w27:deprel": parataxis
+    "s18.w38:head": 3
+    "s18.w38:deprel": punct
+    "s18.w25:head": 27
+    "s18.w25:deprel": punct

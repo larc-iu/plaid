@@ -1,0 +1,19 @@
+# A count held to two of five texts (survey item 8: a request about two
+# documents became a loop over documents). In texts 2 and 4 together ERG is a
+# morpheme gloss 13 times and DAT 17 times. Over the whole project both are
+# 35, so a count that is not held to the two texts cannot give the answer.
+# One frequency_list(what="Gloss", documents=[...]) call.
+id: igt-scope-two-texts
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      Counting only Lezgi text 2 and Lezgi text 4 together, which morpheme
+      gloss is more frequent, ERG or DAT? Give both counts.
+check: answer
+args:
+  reader: igt
+  match: ['(?<![\d.])17(?![\d.]?\d)', '(?<![\d.])13(?![\d.]?\d)']
+  reject: '(?<![\d.])35(?![\d.]?\d)'

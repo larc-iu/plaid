@@ -1,0 +1,18 @@
+# frequency_list ngram=2 (survey item 8: word-order questions asked
+# twice). Adjacent ADJ NOUN against NOUN ADJ inside a
+# sentence, over the whole project: 126 and 46 (the CoNLL-U source agrees).
+id: ud-ru-adj-noun-order
+app: ud
+project: ud-russian
+as: B
+turns:
+  - say: >-
+      For word order: across the whole project, how many times is an
+      adjective (ADJ) immediately followed by a noun (NOUN) in the same
+      sentence, and how many times is a NOUN immediately followed by an ADJ?
+      Just the two counts, change nothing.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: ['\b126\b', '\b46\b']

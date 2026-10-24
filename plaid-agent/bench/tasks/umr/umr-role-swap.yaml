@@ -1,0 +1,19 @@
+# Two roles swapped by somebody earlier: both must be put back.
+id: umr-role-swap
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 12 (rayupuni chikari rape, "He starts looking for his
+      way"), the two roles under chikari (s12c) are the wrong way round. The
+      person s12p is the one looking, so it is the :actor, and the way s12p2
+      (pe) is what he looks for, the :undergoer. Please swap them back.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s12.s12c::actor": s12p
+    "s12.s12c::undergoer": s12p2

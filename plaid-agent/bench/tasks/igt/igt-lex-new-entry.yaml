@@ -1,0 +1,18 @@
+# Lexicon: a new headword with three field values (create_entry).
+id: igt-lex-new-entry
+app: igt
+project: igt-natugu
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      Add a new entry to this lexicon: the form nyzlo, a noun stem meaning
+      "canoe". Give it the gloss canoe, part of speech (pos) n, and morph type stem.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "+nyzlo|canoe:form": nyzlo
+    "+nyzlo|canoe:gloss": canoe
+    "+nyzlo|canoe:pos": n
+    "+nyzlo|canoe:morphType": stem

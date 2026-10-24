@@ -1,0 +1,3 @@
+#!/bin/bash
+# Runs report.py with the plaid-agent env's python. See report.py for the options.
+exec "${PLAID_AGENT_PYTHON:?set PLAID_AGENT_PYTHON to the python of the plaid-agent env}" "$(cd "$(dirname "$0")" && pwd)/report.py" "$@"

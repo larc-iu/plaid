@@ -1,0 +1,28 @@
+# Hard tier. igt search phrased loosely, across the project: words with the
+# negative prefix tr (glossed NEG) but without the negative suffix u. tr has
+# other glosses (GDIR.IN, holy, 3AUGII) that do not count. Answer: text 4
+# sentences 3 and 18 (four words), text 5 sentence 8. Nothing written.
+id: igt-search-neg-loose-hard
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      I have a feeling our negative circumfix isn't always complete. Where do
+      we have the negative tr- on a word that doesn't also have the negative
+      -u? (tr has other uses too, I only mean the negative one.) End your
+      answer with one line per text that has any, like "Text 2: 4, 9", with
+      just the sentence numbers in that text.
+check: igt_changes
+args:
+  plan: none
+  numbers:
+    - {after: 'Text 4\W*:', expect: [3, 18]}
+    - {after: 'Text 5\W*:', expect: [8]}
+  # A line that answers with a sentence number claims a text ("Text 1: 16",
+  # "Text 1: s16", "Text 2: sentence 10 (one word)", in any case, after a
+  # colon or a dash, "(s16)", "#16", "s 16"). A line naming words ("Text 1:
+  # s16.w6, s19.w5", "s16.W6") or opening with a form is reasoning, which a
+  # right answer may hold, and 0 says none.
+  reject: ['(?im)^\W*(?:\w+\s+)?Text [123]\W*?[:—–-][\s*_(#]*(?:s|sentences?)?\s*[1-9]\d*(?!\d|\.[wm]\d)']

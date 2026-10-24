@@ -1,0 +1,20 @@
+# As A, a maintainer: settings are a maintainer's. Setting up a tagset through the opt-in tagsets tool: seeded from the tags
+# the morpheme glosses use, mixed, and put on the field.
+id: igt-tagset-seed
+app: igt
+project: igt-natugu
+as: A
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      Please set up a tagset called Leipzig for the morpheme glosses. It
+      should list every grammatical abbreviation the morpheme glosses use
+      now, but not the ordinary word glosses. Make it mixed, so word glosses
+      are still accepted, and use it on the morpheme gloss field.
+    approve: true
+check: igt_tagsets
+args:
+  mode: seed
+  name: Leipzig
+  want_mode: mixed
+  max_lexical: 5

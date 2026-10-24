@@ -1,0 +1,26 @@
+# Corpus-wide consistent glossing: 65 glosses changed over five documents
+# (replace_in_field or set_field_for_form).
+id: igt-gloss-rename
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      We are changing a convention. Everywhere in the project, the morpheme mz
+      glossed PREP should be glossed LOC instead. Change all of them, in every
+      text. The mz morphemes glossed eye stay as they are.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - gloss: {form: mz, from: PREP, to: LOC}
+  # Renaming the PREP sense of mz in the lexicon to match is no fault (glm-5.2
+  # did it in the first run, and a linguist changing a convention may well want it).
+  optional:
+    "LEX|mz|PREP:gloss": LOC
+  # The user says the convention is changing project-wide, and drafting a
+  # guideline for a project-wide convention the user states is what the
+  # assistant is meant to do. glm-5.2 added one in 3 of 3
+  # baseline runs. It still goes on the plan card for approval.
+  allow_guidelines: true

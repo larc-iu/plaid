@@ -1,0 +1,122 @@
+# Hard tier. Lexicon work that joins the corpus and the lexicon (lexicon() in
+# run_code gives every item with its fields and link count). Setup links every
+# morpheme of texts 1 and 3 to its entry or sense (101 items) and gives six
+# items a status: four linked ones (hl CN, dim PROSP, wila MANR reviewed,
+# bisde'y published) and two unlinked ones (gyet reviewed, dulp draft). Right:
+# status draft on the 97 linked items that had none, nothing else. Traps: the
+# four linked items that already have a status, the 56 unlinked items, and
+# headwords whose links are all on their senses.
+id: igt-lex-status-attested-hard
+app: igt
+project: igt-gitksan
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      I want everything in the lexicon that's actually used in the texts to
+      go into our review workflow. Every entry or sense that at least one
+      word or morpheme is linked to directly should get the status draft,
+      unless it already has a status. Leave items nothing links to alone,
+      and a headword whose links are all on its senses doesn't count as
+      used itself.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "'m|1PL.II:status": draft
+    "'nii'y|1SG.III:status": draft
+    "'nii|on:status": draft
+    "'nit|3.III:status": draft
+    "'nuu'm|1PL.III:status": draft
+    "'y|1SG.II:status": draft
+    "asxw|ANTIP:status": draft
+    "a|PREP:status": draft
+    "betl'a|Betl'a:status": draft
+    "betl'|Betl':status": draft
+    "brown|Brown:status": draft
+    "da'ak̲hlxw|CIRC.PSBL:status": draft
+    "da|SPT:status": draft
+    "del|make.noise:status": draft
+    "dii|FOC:status": draft
+    "dip|1PL.I:status": draft
+    "disim|keep.on:status": draft
+    "dis|time:status": draft
+    "diya|QUOT.3SG:status": draft
+    "diye|QUOT.3SG:status": draft
+    "di|T:status": draft
+    "dok̲|take.PL:status": draft
+    "d|T:status": draft
+    "gidax̲|ask:status": draft
+    "gijigyukwhla'a|Gitsegyukla:status": draft
+    "gipaykw|fly:status": draft
+    "gu'm|relative:status": draft
+    "guxw|shoot:status": draft
+    "gu|what:status": draft
+    "gya'a|see:status": draft
+    "gyuu'n|now:status": draft
+    "g̲a'a|LOC:status": draft
+    "g̲abii|CNT.AMT:status": draft
+    "g̲al|contain:status": draft
+    "g̲an|PCNJ:status": draft
+    "g̲an|REAS:status": draft
+    "g̲ay|CONTR:status": draft
+    "g̲a|PL:status": draft
+    "hasak̲|want:status": draft
+    "he|say:status": draft
+    "hlaa|INCEP:status": draft
+    "hlen|move:status": draft
+    "hlgu|small:status": draft
+    "hli|PART:status": draft
+    "hogwin|toward:status": draft
+    "hoox|use:status": draft
+    "huut|flee.PL:status": draft
+    "ii|CCNJ:status": draft
+    "in|CAUS2:status": draft
+    "i|T:status": draft
+    "i|TR:status": draft
+    "jacob|Jacob:status": draft
+    "jep|make:status": draft
+    "ji|IRR:status": draft
+    "jok̲|live:status": draft
+    "kw'itxw|arrive:status": draft
+    "kw'itxw|come:status": draft
+    "k̲'ay|still:status": draft
+    "ligi|DWID:status": draft
+    "loo|OBL:status": draft
+    "man|Man:status": draft
+    "mehl|tell:status": draft
+    "nee|NEG:status": draft
+    "nigwoot|father:status": draft
+    "nox̲|mother:status": draft
+    "n|1.I:status": draft
+    "n|2SG.II:status": draft
+    "saa|away:status": draft
+    "sdik'eekw|sibling:status": draft
+    "sg̲a|block.way:status": draft
+    "siilin|hunt:status": draft
+    "silin|hunt:status": draft
+    "s|PASS:status": draft
+    "s|PN:status": draft
+    "t'aa|sit:status": draft
+    "ts'ep|village.people:status": draft
+    "ts'im|in:status": draft
+    "ts'uusk|little:status": draft
+    "txw|PASS:status": draft
+    "tx̲oog̲|eat:status": draft
+    "t|3.I:status": draft
+    "t|3.II:status": draft
+    "t|PN:status": draft
+    "t|T:status": draft
+    "walk̲'a|all:status": draft
+    "wa|name:status": draft
+    "wen|sit.PL:status": draft
+    "we|name:status": draft
+    "wilp|house:status": draft
+    "wil|COMP:status": draft
+    "wil|LVB:status": draft
+    "win|COMP:status": draft
+    "xwin|DEM.PROX:status": draft
+    "x̲adaa|moose:status": draft
+    "x̲s|SUPER:status": draft
+    "yee|go:status": draft
+    "yukw|IPFV:status": draft

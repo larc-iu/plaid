@@ -1,0 +1,27 @@
+# Root change in a copula-less sentence: the predicate adjective becomes the
+# root and the former root noun its subject. Setup made the noun the root.
+id: ud-ru-root-copula
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 2}
+turns:
+  - say: >-
+      In sentence 1 of Russian 2 ("Вышивки Полесья -- простые и четкие по
+      композиции."), the noun "Вышивки" (word 1) has been made the root. In
+      this treebank the predicate adjective is the root of a sentence like
+      this one: make "простые" (word 4) the root, and attach "Вышивки" to it
+      as nsubj.
+    approve: true
+check: ud_tree
+args:
+  # "In this treebank the predicate adjective is the root" is a convention the user states: a guideline drafted
+  # for it goes on the card like the rest.
+  allow_guidelines: true
+  document: Russian 2
+  base: snapshot
+  expect:
+    "s1.w4:head": 0
+    "s1.w4:deprel": root
+    "s1.w1:head": 4
+    "s1.w1:deprel": nsubj

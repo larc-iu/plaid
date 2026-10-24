@@ -1,0 +1,29 @@
+# Hard tier. Multi-turn, part of a waiting plan dropped by field (drop_planned
+# field=, or resume_plan then drop_planned, or staging the kept part again).
+# Turn 1 asks for CCNJ to become CONJ in every text (45 glosses) and two new
+# translations in Gitksan text 1, and is NOT approved. Turn 2 drops the
+# translations. Right: the 45 CONJ glosses and no translation changed. Turn 2
+# approves with "open", so a turn 2 that stages nothing approves turn 1's
+# card as it stands, translations included, which fails.
+id: igt-resume-drop-field-hard
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      Two things. Our coordinator ii is glossed CCNJ, but the guide we follow
+      now says CONJ, so please change every CCNJ to CONJ across the project.
+      And in Gitksan text 1, sentence 1's translation should read "When I was
+      young, our relative who lives in Gitsegyukla came over." and sentence
+      17's should read "And we asked him what he had done."
+    approve: false
+  - say: >-
+      Actually, leave the translations out of this. Vince wants to redo
+      those himself. Just the CONJ change, please.
+    approve: open
+check: igt_changes
+args:
+  rules:
+    - relabel: {map: {CCNJ: CONJ}}
+  allow_guidelines: true

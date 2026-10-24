@@ -1,0 +1,20 @@
+# Lexicon: a sense that is really another word becomes a homograph headword (free_sense).
+id: igt-lex-split-homograph
+app: igt
+project: igt-natugu
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      The entry mz lumps together two different words: the preposition (sense 1,
+      glossed PREP) and the noun "eye" (sense 2). Make the "eye" sense an entry
+      of its own, a separate headword spelled mz, and leave the PREP sense where
+      it is.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "mz|eye:parent": null
+    "mz|eye:senseOrder": null
+  # Numbering the two headwords now spelled mz is no fault.
+  allow: ['^LEX\|mz\|[^:]*:homograph$']

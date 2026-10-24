@@ -1,0 +1,17 @@
+# A Grew-like count in Arabic script: a lemma with diacritics in the pattern.
+id: ud-ar-count
+app: ud
+project: ud-arabic
+as: B
+where: {document: Arabic 1}
+turns:
+  - say: >-
+      How many times in this project is the preposition في (lemma فِي)
+      attached to its head with the relation case? Count over all three
+      documents. In Grew terms: pattern { P [lemma="فِي"]; X -[case]-> P }.
+      Give me the number of matches.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: '\b58\b'

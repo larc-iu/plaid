@@ -1,0 +1,18 @@
+# Retagging one word: a word field and its morpheme's gloss in one request
+# (survey item 3: several set_field calls per word). Setup adds a word
+# field POS and tags the words of sentence 3, Бес wrongly as v.
+id: igt-retag-word
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      In sentence 3 of this text, Бес is the conjunction "but", not a verb.
+      Set its POS to conj and gloss its morpheme but.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Lezgi text 1|s3.w2:POS": conj
+    "Lezgi text 1|s3.w2.m1:Gloss": but

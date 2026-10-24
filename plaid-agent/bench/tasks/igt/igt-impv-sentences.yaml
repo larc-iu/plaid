@@ -1,0 +1,32 @@
+# A tag fused into longer glosses, as a list of sentences across the project.
+# Lezgi has no gloss that is IMPV alone: the tag sits inside call.IMPV,
+# put.IMPV, bring.IMPV.Q and three more. Written to test recovery from an
+# empty whole-value result, but search matches substrings by default, so a
+# search for IMPV finds every one at once and the empty result is never
+# reached: what it measures is scoping to the whole project
+# from an open document, telling IMPV from IMP and IMPF, and a per-text list.
+# Answer: 8 morphemes in 7 sentences, text 1: 9, 13, text 2: 2, 7, text 3: 8,
+# text 4: 8, text 5: 6. Glosses with IMP or IMPF (choose.IMP, run.IMP, IMPF)
+# are not IMPV. Nothing written. The prompt once said no scope, and the open
+# document's focus note kept every run in text 2, so "across all five texts"
+# was added.
+id: igt-impv-sentences
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 2}
+turns:
+  - say: >-
+      Across all five texts of the project, which sentences have a morpheme
+      whose gloss carries the IMPV tag? Only IMPV, not IMP or IMPF. End your
+      answer with one line per text, like "Text 2: 4, 9", with just the
+      sentence numbers.
+check: igt_changes
+args:
+  plan: none
+  numbers:
+    - {after: 'Text 1\W*:', expect: [9, 13]}
+    - {after: 'Text 2\W*:', expect: [2, 7]}
+    - {after: 'Text 3\W*:', expect: [8]}
+    - {after: 'Text 4\W*:', expect: [8]}
+    - {after: 'Text 5\W*:', expect: [6]}

@@ -1,0 +1,35 @@
+# Hard tier. Multi-turn: a relabel asked for everywhere (six ay "already"
+# nodes hang off their event with :temporal), then narrowed before approval
+# to the three sentences where he is scared (s14, s16, s18). Turn 1 is not
+# approved, turn 2 corrects the plan and approves it. The walking (s15), the
+# not-knowing (s17) and the running (s19) keep :temporal, as do the other
+# :temporal edges (today, after, there).
+id: umr-hard-already-multiturn
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      All the ay "already" nodes in this story hang off their event with
+      :temporal. I don't think that's right, "already" is more of a modifier
+      here than a time. Could you switch them to :mod?
+  - say: >-
+      Hmm, actually, on second thought only do that where he is scared ("he
+      is already scared" and the like). Leave the walking, the not-knowing
+      and the running with :temporal. Go ahead with just those.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  # A guideline narrowed as the request was (ay as :mod
+  # where he is scared) may go on the card. A guideline that does not name
+  # the scared reading stays collateral.
+  allow_guidelines: {match: 'scar'}
+  expect:
+    "s14.s14h::temporal": null
+    "s14.s14h::mod": s14a2
+    "s16.s16h::temporal": null
+    "s16.s16h::mod": s17a
+    "s18.s18h::temporal": null
+    "s18.s18h::mod": s18a

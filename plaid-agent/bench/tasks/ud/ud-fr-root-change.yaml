@@ -1,0 +1,24 @@
+# set_head with a root change: the new root takes head 0 and the old root
+# goes under it (old_root_head, old_root_deprel). Setup made the auxiliary
+# the root.
+id: ud-fr-root-change
+app: ud
+project: ud-french
+as: B
+where: {document: French 2}
+turns:
+  - say: >-
+      In sentence 7 of French 2 ("Il est fêté le 22 mai."), the auxiliary
+      "est" (word 2) has been made the root of the sentence. The root should
+      be the participle "fêté" (word 3), with "est" attached to it as
+      aux:pass.
+    approve: true
+check: ud_tree
+args:
+  document: French 2
+  base: snapshot
+  expect:
+    "s7.w3:head": 0
+    "s7.w3:deprel": root
+    "s7.w2:head": 3
+    "s7.w2:deprel": aux:pass

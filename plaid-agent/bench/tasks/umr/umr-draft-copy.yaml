@@ -1,0 +1,29 @@
+# A sentence graph drafted on the model of another sentence the user names,
+# with one difference.
+id: umr-draft-copy
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Sentence 16 (ay ra ɨtsɨkaka, "He is already scared") has lost its
+      graph. Draft it on the model of sentence 18 ("He is already very
+      scared"), which is the same construction, but without the
+      intensifier: sentence 16 has no "very".
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  draft:
+    sentence: 16
+    root: h
+    nodes:
+      h: {concept: have-mod-91, attrs: {":aspect": state, ":modal-strength": full-affirmative}}
+      p: {concept: person, attrs: {":refer-person": 3rd, ":refer-number": singular}}
+      x: {concept: ɨtsɨ}
+      a: {concept: ay}
+    edges:
+      - [h, ":ARG1", p]
+      - [h, ":ARG2", x]
+      - [h, ":temporal", a]

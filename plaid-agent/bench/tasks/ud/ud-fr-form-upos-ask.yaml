@@ -1,0 +1,17 @@
+# check_consistency form-upos (survey 14). Setup tagged three commas AUX, one
+# per document, beside 56 PUNCT. The question is answered from one grouped
+# read; a walk over every document also finds it. Nothing may be written.
+id: ud-fr-form-upos-ask
+app: ud
+project: ud-french
+as: B
+turns:
+  - say: >-
+      I think a few punctuation marks in this project were tagged with a UPOS
+      other than PUNCT by mistake. Which punctuation marks carry another tag,
+      which tag, and how many times? Just tell me, don't change anything yet.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: ['(","|«,»|“,”|'',''|`,`|comma)', '\bAUX\b', '\b(3|three)\b']

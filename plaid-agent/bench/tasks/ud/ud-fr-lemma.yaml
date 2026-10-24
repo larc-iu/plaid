@@ -1,0 +1,17 @@
+# set_field lemma on one word. Setup plants a misspelled lemma.
+id: ud-fr-lemma
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 2 of French 1, the lemma of "diffère" (word 9) is misspelled.
+      It should be the infinitive "différer".
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s2.w9:lemma": différer

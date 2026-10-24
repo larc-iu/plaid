@@ -1,0 +1,52 @@
+# Hard tier. A gloss convention migration over many turns, on public data. Twelve gloss labels are renamed across five
+# texts, about 464 values. Each rename is asked in its own turn and not
+# approved, so each turn's plan replaces the last (or, with resume_plan,
+# grows: either is right). Then all twelve are asked
+# at once and approved. What it measures besides the pass: the record's size,
+# the tool results prune drops, and whether the last plan holds all twelve.
+# Traps: labels are renamed only as whole labels. 3AUG must not touch 3AUGIS,
+# 3AUGII or 3AUGIA, and 1MINI must not touch 1MINII. RL.3AUG takes two
+# renames (REAL.3NSG). NMLZ1 becomes NMLZ, which already exists and stays.
+id: igt-migrate-glosses-hard
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      We're moving the glosses of all five texts to the abbreviations of the
+      grammar sketch, one label at a time. A label is a whole abbreviation
+      inside a gloss, so in RL.3AUG the labels are RL and 3AUG. Only whole
+      labels change: 3AUG is not part of 3AUGIS, and 1MINI is not part of
+      1MINII. First: SUBR becomes SBRD everywhere. Don't apply anything yet,
+      I'll look at each one first.
+  - say: Now RL becomes REAL, everywhere it is a label (RL.3AUG too).
+  - say: Next, COS becomes CS.
+  - say: NMLZ1 becomes plain NMLZ. The NMLZ glosses that are already there stay.
+  - say: PREP becomes ADP.
+  - say: PFV becomes PRF.
+  - say: >-
+      3AUG becomes 3NSG, only the label 3AUG itself. 3AUGIS, 3AUGII and
+      3AUGIA stay as they are.
+  - say: IRR becomes IRLS.
+  - say: INTS becomes INT.
+  - say: MID becomes MDL.
+  - say: APPL becomes APL.
+  - say: 1MINI becomes 1MIN. 1MINII stays.
+  - say: >-
+      Good. Now plan all twelve of those renames together, in one plan, so I
+      can approve them in one go.
+    # open: a model that kept every rename on one card with resume_plan
+    # has nothing to stage here and rightly says the card already holds all
+    # twelve. approve: true approves only a plan made in this turn, and would
+    # fail such a run with a right card waiting.
+    approve: open
+check: igt_changes
+args:
+  rules:
+    - relabel:
+        map: {SUBR: SBRD, RL: REAL, COS: CS, NMLZ1: NMLZ, PREP: ADP, PFV: PRF, 3AUG: 3NSG,
+              IRR: IRLS, INTS: INT, MID: MDL, APPL: APL, 1MINI: 1MIN}
+  # A convention the user states for the project: a guideline drafted for it
+  # goes on the card for approval like the rest (as igt-gloss-rename).
+  allow_guidelines: true

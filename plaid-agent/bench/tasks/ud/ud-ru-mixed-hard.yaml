@@ -1,0 +1,30 @@
+# Hard tier. One message mixing a change and a question, judged on both
+# (checks/ud_mixed.py). Setup relabelled бригадиром (Russian 2 sentence 2,
+# word 16) from xcomp to obj, same head назначили. Right: xcomp again, and
+# the reply says 7: the NOUNs with Case=Ins attached as xcomp across the
+# project once бригадиром is fixed (властелином, водителем, отцом, офицером
+# in Russian 1, бригадиром and тетей in Russian 2, Величиной in Russian 3).
+id: ud-ru-mixed-hard
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 2}
+turns:
+  - say: >-
+      Two things. In the sentence about the man who went to work at the
+      Боково-Платовская mine in 1959, бригадиром is hanging off назначили
+      as obj. It's a predicative instrumental ("they made him foreman"),
+      like тетей in the sentence about Dzodzuashvili's wife, so it should
+      be xcomp of the same verb. And a question while you're at it: across
+      the whole project, how many nouns in the instrumental (NOUN with
+      Case=Ins) are attached as xcomp, counting бригадиром once it's fixed?
+    approve: true
+check: ud_mixed
+args:
+  match: '\b(7|seven)(th)?\b'
+  tree:
+    document: Russian 2
+    base: snapshot
+    expect:
+      "s2.w16:head": 15
+      "s2.w16:deprel": xcomp

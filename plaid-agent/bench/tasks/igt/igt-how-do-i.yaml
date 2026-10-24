@@ -1,0 +1,17 @@
+# A "how do I ..." question about the app (survey item 16). The
+# answer is in the user guide (Media > Transcript): Alt+Enter splits the
+# segment at playback, Alt+M merges it with the next. app_guide gives it.
+# Nothing written.
+id: igt-how-do-i
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      On the Media tab, how do I split a transcript segment in two, and how do
+      I join two segments back together?
+check: answer
+args:
+  reader: igt
+  match: ['Alt\s*\+\s*Enter', 'Alt\s*\+\s*M\b']

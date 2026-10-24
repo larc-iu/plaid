@@ -1,0 +1,35 @@
+# set_words then annotation, in Arabic. Setup collapsed the multiword token
+# شقيقته (noun + pronoun clitic) into one plain word. Turn 1 makes it a
+# multiword token again, turn 2 annotates the two words. XPOS is not asked
+# for: either the snapshot's tag or none is accepted.
+id: ud-ar-mwt
+app: ud
+project: ud-arabic
+as: B
+where: {document: Arabic 1}
+turns:
+  - say: >-
+      In sentence 2 of Arabic 1, the token شقيقته (word 27) is a single word,
+      but it is the noun شقيقة with the attached pronoun ه, and in this
+      treebank such a token is a multiword token. Make it one, holding the
+      two words شقيقة and ه. Only that for now, I will give you their
+      annotation next.
+    approve: true
+  - say: >-
+      Now annotate the two words of شقيقته in sentence 2. شقيقة is NOUN with
+      the lemma شَقِيقَة and the features Case=Nom|Definite=Cons|Number=Sing,
+      attached to عثرت (word 24) as nsubj. ه is PRON with the lemma هُوَ and
+      the features Case=Gen|Gender=Masc|Number=Sing|Person=3|PronType=Prs,
+      attached to شقيقة as nmod.
+    approve: true
+check: ud_tree
+args:
+  # "in this treebank such a token is a multiword token" is a stated
+  # convention, so a drafted guideline is what the prompt asks for.
+  allow_guidelines: true
+  document: Arabic 1
+  base: snapshot
+  restore: [s2.w27, s2.w28]
+  expect:
+    "s2.w27:xpos": [N------S1R, null]
+    "s2.w28:xpos": [SP---3MS2-, null]

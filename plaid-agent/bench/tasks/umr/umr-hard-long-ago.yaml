@@ -1,0 +1,57 @@
+# Hard tier. Vague addressing by position: s2 coordinates three things
+# (and :op1 identity-91, :op2 exist-91, :op3 the telling), and "the second
+# thing it says" is exist-91 (s2e, "long time ago there was the shiringa").
+# ɨmɨna "long ago" has a word but no node: a new node under s2e by
+# :temporal. Matched as a draft of the whole of s2 (any new variable), with
+# the aligned nodes required to keep their variables and alignments, so a
+# remake of the sentence fails.
+id: umr-hard-long-ago
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      The sentence about the shiringa long ago ("this was the shiringuero,
+      long time ago there was the shiringa, I'll tell...") says three things,
+      and the graph leaves out ɨmɨna, "long ago". It belongs to the second
+      of the three, that there was shiringa. Can you add it there as a
+      temporal? Use ɨmɨna as the concept.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  prov: any
+  expect:
+    "s2.s2i3:anchor": ikian
+    "s2.s2s:anchor": shiringuero
+    "s2.s2s2:anchor": shiringa
+    "s2.s2x:anchor": tɨmɨntsararautsu
+    "s2.s2t:anchor": tsuparanpura.
+    "s2.s2i4:anchor": ikian
+  draft:
+    sentence: 2
+    root: a
+    nodes:
+      a: {concept: and}
+      i: {concept: identity-91, attrs: {":aspect": state, ":modal-strength": full-affirmative}}
+      i3: {concept: ikian, attrs: {":refer-number": singular}}
+      s: {concept: shiringuero, attrs: {":refer-number": singular}}
+      e: {concept: exist-91, attrs: {":aspect": state, ":modal-strength": full-affirmative}}
+      s2: {concept: shiringa}
+      x: {concept: ɨmɨntsarara, attrs: {":aspect": performance, ":modal-strength": full-affirmative}}
+      p: {concept: person, attrs: {":refer-person": 1st, ":refer-number": singular}}
+      t: {concept: tsuparan, attrs: {":refer-number": singular}}
+      i4: {concept: ikian}
+      m: {concept: [ɨmɨna, long-ago], attrs_at_least: true}
+    edges:
+      - [a, ":op1", i]
+      - [a, ":op2", e]
+      - [a, ":op3", x]
+      - [i, ":ARG0", i3]
+      - [i, ":ARG1", s]
+      - [e, ":ARG1", s2]
+      - [x, ":actor", p]
+      - [x, ":topic", t]
+      - [t, ":mod", i4]
+      - [e, ":temporal", m]

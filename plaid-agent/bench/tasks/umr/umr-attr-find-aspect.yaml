@@ -1,0 +1,25 @@
+# The same concept in four sentences, three of them wrong: a concept-wide
+# overwrite would also change the one that is right.
+id: umr-attr-find-aspect
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentences 4, 5 and 13, the finding event purara has :aspect state.
+      Finding is an event, not a state: change it to performance in those
+      three sentences. The purara in sentence 14 (s14p, "because he doesn't
+      find the way") is a state and stays as it is.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s4.s4p::aspect": performance
+    "s5.s5p::aspect": performance
+    "s13.s13p::aspect": performance
+  # "Finding is an event, not a state" is a convention the user states: a
+  # guideline drafted for it goes on the card like the rest (as the igt and
+  # ud tasks that allow it).
+  allow_guidelines: true

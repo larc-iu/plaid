@@ -1,0 +1,22 @@
+# Word order by adjacent pairs (survey item 8: asked twice, answered by
+# walking every document in run_code). The commonest pair
+# of adjacent words in the project is 'nii win, 12 times. One
+# frequency_list(ngram=2) call. Confirmed against the tool
+# (frequency_list ngram=2 says 12 in 2 documents, sequence_search finds
+# 11 sentences, s16 of text 2 holding it twice). The apostrophe is part of
+# the word: a reply that writes "nii win" fails, any apostrophe glyph passes.
+id: igt-word-pairs
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      Across the whole project, which two words most often occur next to each
+      other, in that order, within a sentence? How many times?
+check: answer
+args:
+  reader: igt
+  # A run wrote "**'nii** followed by **win**": the pair may be
+  # written apart with markup, "followed by", "then" or an arrow between.
+  match: ["['’ʼ]nii\\W{1,4}(followed by\\W{1,4}|then\\W{1,4}|→\\W{0,3})?win\\b", '(?<![\d.])12(?![\d.]?\d)']

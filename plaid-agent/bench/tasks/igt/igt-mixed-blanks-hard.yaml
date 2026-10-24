@@ -1,0 +1,23 @@
+# Hard tier. A question and a change in one message. Setup deletes 5 glosses
+# across three texts: 3 on yukw (IPFV) and 2 on 'nii (on). The answer is 5,
+# and only the 3 yukw get IPFV. The 2 'nii stay blank (an eager fill with
+# "on" is collateral).
+id: igt-mixed-blanks-hard
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 2}
+turns:
+  - say: >-
+      Some glosses seem to have gone missing. How many morphemes in the whole
+      project have no gloss at the moment? The blank yukw ones are just the
+      imperfective, so gloss those IPFV. Leave any other blanks as they are,
+      I want to look at them myself.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Gitksan text 1|s1.w2.m1:Gloss": IPFV
+    "Gitksan text 1|s4.w8.m1:Gloss": IPFV
+    "Gitksan text 2|s11.w2.m1:Gloss": IPFV
+  match: ['(?<![\d.])5(?![\d.]?\d)|\bfive\b']

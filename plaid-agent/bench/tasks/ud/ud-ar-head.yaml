@@ -1,0 +1,19 @@
+# set_head in right-to-left text, words named in Arabic script.
+id: ud-ar-head
+app: ud
+project: ud-arabic
+as: B
+where: {document: Arabic 1}
+turns:
+  - say: >-
+      In sentence 1 of Arabic 1, متشرد (word 8) is attached to the verb يقلب.
+      It belongs with حياة (word 7): حياة متشرد is a construct (idafa), so
+      attach متشرد to حياة as nmod.
+    approve: true
+check: ud_tree
+args:
+  document: Arabic 1
+  base: snapshot
+  expect:
+    "s1.w8:head": 7
+    "s1.w8:deprel": nmod

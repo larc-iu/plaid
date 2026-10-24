@@ -1,0 +1,18 @@
+# set_field features on an Arabic word, the word named in Arabic script.
+id: ud-ar-feats
+app: ud
+project: ud-arabic
+as: B
+where: {document: Arabic 1}
+turns:
+  - say: >-
+      In sentence 1 of Arabic 1, the noun حياة (word 7) is the object of
+      يقلب and the first term of a construct state, so its features should
+      be Case=Acc|Definite=Cons|Number=Sing. Set them.
+    approve: true
+check: ud_tree
+args:
+  document: Arabic 1
+  base: snapshot
+  expect:
+    "s1.w7:feats": Case=Acc|Definite=Cons|Number=Sing

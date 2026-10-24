@@ -1,0 +1,28 @@
+# Hard tier. Multi-turn, a plan carried into the next message (resume_plan,
+# from the assistant survey, where a follow-up's plan replaced a waiting one
+# and its changes were lost). Turn 1 asks for
+# INESS to become INE in all five texts (28 glosses) and is NOT approved.
+# Turn 2 adds SPSS to SRESS (16 glosses) and its plan is approved. Right:
+# both renames, 44 glosses. A turn 2 plan that holds only the SPSS renames
+# (turn 1's card silently replaced) fails. INELAT and POESS stay.
+id: igt-resume-add-hard
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: >-
+      We're switching to the new case abbreviations from our glossing guide.
+      First the inessive: every INESS gloss should be INE, in all five texts.
+    approve: false
+  - say: >-
+      Oh, and the superessive as well: SPSS becomes SRESS everywhere. Then
+      I'll approve the lot in one go.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - relabel: {map: {INESS: INE, SPSS: SRESS}}
+  # A project guideline stating the new abbreviations is what the assistant
+  # is meant to draft for a convention the user states.
+  allow_guidelines: true

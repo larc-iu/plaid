@@ -1,0 +1,18 @@
+# documents scope and frequency_list where (survey item 8: a request about
+# two documents). Two of the three documents: 69 ADJ words, the
+# commonest ADJ lemma français (4). Over the whole project it is 101.
+id: ud-fr-scope-adj
+app: ud
+project: ud-french
+as: B
+turns:
+  - say: >-
+      Counting only French 1 and French 2, leaving French 3 out: how many
+      words are tagged ADJ, and which adjective lemma is the most frequent
+      there? Change nothing.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: ['\b69\b', 'français']
+  reject: '\b101\b'

@@ -1,0 +1,19 @@
+# Glossing one word: four morpheme glosses filled in (set_field). Setup clears them.
+id: igt-gloss-word
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 2}
+turns:
+  - say: >-
+      In sentence 7 of this text, the word tqvzpebo has lost the
+      glosses of its four morphemes. Gloss them: tq is RL, vz is go, pe is COS,
+      and bo is bz(PDIR.YON).o(1MINI), written exactly like that.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Natugu text 2|s7.w15.m1:Gloss": RL
+    "Natugu text 2|s7.w15.m2:Gloss": go
+    "Natugu text 2|s7.w15.m3:Gloss": COS
+    "Natugu text 2|s7.w15.m4:Gloss": bz(PDIR.YON).o(1MINI)

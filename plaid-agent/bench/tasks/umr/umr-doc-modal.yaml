@@ -1,0 +1,20 @@
+# The author's stance as modal triples, one affirmative and one negative.
+id: umr-doc-modal
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Add the author's stance to the document graph: the author is certain
+      that the shooting in sentence 7 (raya, s7r) happened, and certain that
+      the finding in sentence 13 (purara, s13p) did not happen.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  triples:
+    - [author, ":full-affirmative", s7r]
+    - [author, ":full-negative", s13p]
+  allow_triples:
+    - [root, ":modal", author]

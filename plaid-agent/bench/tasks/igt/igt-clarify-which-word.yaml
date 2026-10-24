@@ -1,0 +1,13 @@
+# Clarifying question: the request names no sentence, so the word cannot be
+# found. Nothing may be written, the reply must ask.
+id: igt-clarify-which-word
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 1}
+turns:
+  - say: Change the gloss of the third word to "son".
+check: igt_changes
+args:
+  plan: none
+  match: ['\?', 'sentence']

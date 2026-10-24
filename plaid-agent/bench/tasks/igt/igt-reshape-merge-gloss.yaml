@@ -1,0 +1,36 @@
+# Reshape then annotate, two turns: two halves of a wrongly split word merged
+# (merge_words), then the merged word segmented and glossed (set_analysis).
+# Setup splits word 9 of sentence 4 in two and removes its analysis.
+id: igt-reshape-merge-gloss
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 1}
+turns:
+  - say: >-
+      In sentence 4 of this text, words 9 and 10, "silin" and "asxwt.", are
+      really one word, silinasxwt., that was split in two by mistake. Merge them
+      back into one word.
+    approve: true
+  - say: >-
+      Now segment and gloss that merged word (sentence 4, word 9): the stem
+      silin glossed hunt, the suffix asxw glossed ANTIP, and the suffix t glossed 3.II.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Gitksan text 1|s4.w9": silinasxwt.
+    "Gitksan text 1|s4.w10": null
+    "Gitksan text 1|s4.w9.m1:form": silin
+    "Gitksan text 1|s4.w9.m1:Gloss": hunt
+    "Gitksan text 1|s4.w9.m2:form": asxw
+    "Gitksan text 1|s4.w9.m2:Gloss": ANTIP
+    "Gitksan text 1|s4.w9.m3:form": t
+    "Gitksan text 1|s4.w9.m3:Gloss": "3.II"
+  # Linking the new morphemes to their matching entries is no fault (glm-5.2
+  # did it in 2 of 3 baseline runs, as in igt-segment-word). A link to another
+  # entry or sense is.
+  optional:
+    "Gitksan text 1|s4.w9.m1:link": "silin|hunt"
+    "Gitksan text 1|s4.w9.m2:link": "asxw|ANTIP"
+    "Gitksan text 1|s4.w9.m3:link": "t|3.II"

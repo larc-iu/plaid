@@ -1,0 +1,22 @@
+# A structural count asked in words, with no Grew pattern given: deprel, UPOS
+# on both ends and a feature on the dependent, the shape grew_search answers
+# in one engine query (pattern { N [upos=NOUN]; A [upos=ADJ, Gender=Fem];
+# N -[amod]-> A }). Answer: 34 matches in 23 sentences. The user also asks
+# for the query, so the reply must show a Grew pattern with amod in it.
+# Nothing written.
+id: ud-fr-grew-fem-amod
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      How many feminine adjectives modify a noun in this treebank? I mean
+      words tagged ADJ with Gender=Fem attached to a NOUN by amod, over all
+      three documents. Give me the number, and the query you used so I can
+      run it in the Search tab myself.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: ['\b34\b', 'pattern\s*\{[^}]*amod']

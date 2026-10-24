@@ -1,0 +1,233 @@
+# Hard tier. Bulk work in the hundreds across three documents, with traps.
+# Setup set PronType=Dem on all 205 French articles (every word with
+# PronType=Art in the snapshot, each also carrying a Definite feature): 68 in
+# French 1, 70 in French 2, 67 in French 3. Right: PronType=Art back on all
+# 205, their other features kept. Traps: the 10 real demonstratives (ce,
+# cette, ceux, c') were Dem in the snapshot and must stay Dem, so a blind
+# replace of PronType=Dem is wrong.
+id: ud-fr-articles-bulk-hard
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      A conversion script we ran over this project mapped PronType=Art to
+      PronType=Dem, so now every article in all three documents (definite,
+      indefinite and partitive, the ones with a Definite feature) claims to
+      be a demonstrative. Put them back to PronType=Art. The real
+      demonstratives (ce, cette, ceux and the like) were Dem before the
+      script and should stay Dem.
+    approve: true
+  - say: Go on with the rest of what I asked, if anything is left.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "French 1|s1.w3:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s1.w6:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s2.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s2.w12:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s3.w5:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s4.w1:feats": Definite=Def|Number=Sing|PronType=Art
+    "French 1|s4.w9:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s4.w13:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s4.w17:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s4.w27:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s4.w31:feats": Definite=Ind|Number=Plur|PronType=Art
+    "French 1|s4.w46:feats": Definite=Ind|Number=Plur|PronType=Art
+    "French 1|s5.w8:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s6.w8:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s6.w19:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s6.w24:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s6.w29:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s6.w33:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s7.w6:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s8.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s8.w10:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s9.w5:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s9.w8:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s10.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s10.w7:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s10.w9:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s10.w20:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s10.w23:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s10.w26:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s10.w34:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s11.w3:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s11.w8:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s12.w1:feats": Definite=Def|Number=Sing|PronType=Art
+    "French 1|s12.w4:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s12.w10:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s13.w4:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s13.w11:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s13.w15:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s13.w18:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s13.w22:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s14.w5:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s14.w13:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s14.w21:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s14.w28:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s14.w31:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s14.w36:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s14.w39:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s15.w19:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s15.w22:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s16.w5:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s16.w9:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s16.w12:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s16.w27:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s17.w5:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s17.w12:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s17.w19:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s18.w5:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s18.w17:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s18.w29:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s19.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s19.w8:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s19.w12:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s19.w18:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s20.w13:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 1|s20.w16:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s20.w21:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 1|s20.w24:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 1|s20.w31:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s1.w1:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s1.w14:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s3.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s3.w5:feats": Definite=Def|Number=Sing|PronType=Art
+    "French 2|s3.w8:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s3.w14:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s3.w19:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s3.w22:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s4.w3:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s4.w6:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s4.w15:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s5.w1:feats": Definite=Def|Number=Sing|PronType=Art
+    "French 2|s5.w9:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s5.w15:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s5.w20:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s5.w26:feats": Definite=Ind|Number=Plur|PronType=Art
+    "French 2|s5.w41:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s5.w44:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s5.w47:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s6.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s6.w3:feats": Definite=Def|ExtPos=ADV|Number=Plur|PronType=Art
+    "French 2|s6.w7:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s6.w10:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s6.w15:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s6.w18:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s7.w4:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s8.w1:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s8.w5:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s8.w8:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s8.w18:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s8.w21:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s8.w25:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s8.w29:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s8.w33:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s9.w8:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s9.w16:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s10.w7:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s10.w15:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s10.w19:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s10.w26:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s11.w2:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s11.w20:feats": Definite=Ind|Number=Plur|PronType=Art
+    "French 2|s11.w29:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s12.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s12.w8:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s13.w6:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s13.w13:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s13.w20:feats": Definite=Ind|Number=Plur|PronType=Art
+    "French 2|s14.w3:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s15.w5:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s15.w10:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s15.w18:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s16.w9:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s16.w14:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s16.w18:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s16.w23:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s16.w26:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s16.w31:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s18.w1:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s18.w8:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s18.w11:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s18.w18:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s18.w24:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s18.w27:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s19.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s19.w14:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 2|s19.w19:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s19.w27:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 2|s20.w3:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 2|s20.w14:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s1.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s1.w8:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s1.w11:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s1.w16:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s1.w22:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s1.w25:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s1.w30:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s1.w35:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s1.w40:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s2.w7:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s3.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s3.w9:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s4.w3:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s4.w5:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s5.w4:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s6.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s6.w6:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s6.w10:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s7.w10:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s7.w19:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s8.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s8.w4:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s8.w7:feats": Definite=Ind|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s8.w11:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s8.w14:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s9.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s9.w6:feats": Definite=Ind|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s9.w13:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s9.w16:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s9.w19:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s9.w23:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s10.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s10.w10:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s10.w17:feats": Definite=Def|Number=Sing|PronType=Art
+    "French 3|s10.w22:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s10.w29:feats": Definite=Def|Number=Sing|PronType=Art
+    "French 3|s11.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s11.w9:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s12.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s12.w10:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s12.w18:feats": Definite=Ind|Number=Sing|PronType=Art
+    "French 3|s13.w2:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s13.w8:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s14.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s14.w9:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s15.w5:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s15.w20:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s15.w27:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s15.w34:feats": Definite=Ind|ExtPos=ADV|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s15.w36:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s15.w41:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s16.w1:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s16.w7:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s17.w1:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s17.w7:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s18.w5:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s19.w1:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s19.w6:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s19.w18:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s19.w21:feats": Definite=Def|Number=Plur|PronType=Art
+    "French 3|s19.w27:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s19.w30:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s19.w36:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s19.w39:feats": Definite=Def|Gender=Fem|Number=Sing|PronType=Art
+    "French 3|s19.w46:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s19.w49:feats": Definite=Def|Gender=Masc|Number=Sing|PronType=Art
+    "French 3|s20.w1:feats": Definite=Def|Number=Sing|PronType=Art

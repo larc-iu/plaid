@@ -1,0 +1,15 @@
+# A question across the document, answered by sentence numbers.
+id: umr-q-negative
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Which sentences of this document have a node with :modal-strength
+      full-negative? List the sentence numbers. Don't change anything.
+check: umr_answer
+args:
+  reader: umr
+  # A number may be written bare (9) or as a reference (s9).
+  match: ['(?<!\d)9(?!\d)', '(?<!\d)13(?!\d)', '(?<!\d)14(?!\d)', '(?<!\d)17(?!\d)']

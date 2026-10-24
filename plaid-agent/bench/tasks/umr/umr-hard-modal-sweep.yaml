@@ -1,0 +1,58 @@
+# Hard tier. Bulk: :modal-strength wiped from all 33 nodes with an :aspect
+# and put back, full-negative on the four events the text negates (found by
+# meaning: ni "NEG" in the line), full-affirmative on the rest. Traps: a
+# concept-wide write (set_attribute_for_concept) also reaches the aya and
+# ichima nodes with no aspect, and purara is negated in two of its four
+# sentences.
+id: umr-hard-modal-sweep
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Ugh, a script I ran stripped the modal strength off every event in this
+      story. Can you put it back? By event I mean every node that has an
+      aspect, whatever its concept, and nothing else. They're all
+      full-affirmative except the things the story says did not happen
+      (the ones with ni, "not"): him not remembering where his way was, him
+      not finding his way (both times, also where it's the reason he's
+      scared), and him not knowing how he got in. Those are full-negative.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s1.s1x::modal-strength": full-affirmative
+    "s1.s1u::modal-strength": full-affirmative
+    "s1.s1c::modal-strength": full-affirmative
+    "s2.s2i2::modal-strength": full-affirmative
+    "s2.s2e::modal-strength": full-affirmative
+    "s2.s2x::modal-strength": full-affirmative
+    "s3.s3u::modal-strength": full-affirmative
+    "s3.s3c::modal-strength": full-affirmative
+    "s4.s4p::modal-strength": full-affirmative
+    "s4.s4u::modal-strength": full-affirmative
+    "s5.s5p::modal-strength": full-affirmative
+    "s6.s6r::modal-strength": full-affirmative
+    "s7.s7r::modal-strength": full-affirmative
+    "s8.s8u::modal-strength": full-affirmative
+    "s8.s8c::modal-strength": full-affirmative
+    "s8.s8a2::modal-strength": full-affirmative
+    "s9.s9y::modal-strength": full-negative
+    "s9.s9a::modal-strength": full-affirmative
+    "s9.s9c::modal-strength": full-affirmative
+    "s10.s10t::modal-strength": full-affirmative
+    "s10.s10p2::modal-strength": full-affirmative
+    "s11.s11y::modal-strength": full-affirmative
+    "s11.s11a2::modal-strength": full-affirmative
+    "s12.s12c::modal-strength": full-affirmative
+    "s13.s13p::modal-strength": full-negative
+    "s14.s14h::modal-strength": full-affirmative
+    "s14.s14p::modal-strength": full-negative
+    "s15.s15u::modal-strength": full-affirmative
+    "s16.s16h::modal-strength": full-affirmative
+    "s17.s17i2::modal-strength": full-negative
+    "s17.s17r::modal-strength": full-affirmative
+    "s18.s18h::modal-strength": full-affirmative
+    "s19.s19y::modal-strength": full-affirmative

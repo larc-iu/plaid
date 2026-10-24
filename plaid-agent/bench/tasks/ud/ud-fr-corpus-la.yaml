@@ -1,0 +1,54 @@
+# A corpus-wide consistent fix: 33 lemmas in three documents. Setup gave
+# every determiner "la" the lemma "la". One "la" in the project is not a
+# determiner (Spanish, UPOS X, French 2 sentence 2) and keeps its lemma "la",
+# so a blind replace of the lemma "la" is wrong.
+id: ud-fr-corpus-la
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      Someone gave the definite article "la" the lemma "la" all over this
+      project. In this treebank every form of the definite article (le, la,
+      l', les) has the lemma "le". Set the lemma back to "le" for every
+      determiner (UPOS DET) "la", in all three documents.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "French 1|s1.w6:lemma": le
+    "French 1|s6.w29:lemma": le
+    "French 1|s8.w10:lemma": le
+    "French 1|s12.w10:lemma": le
+    "French 1|s13.w15:lemma": le
+    "French 1|s14.w36:lemma": le
+    "French 1|s18.w29:lemma": le
+    "French 1|s19.w18:lemma": le
+    "French 1|s20.w31:lemma": le
+    "French 2|s1.w1:lemma": le
+    "French 2|s4.w6:lemma": le
+    "French 2|s5.w15:lemma": le
+    "French 2|s6.w18:lemma": le
+    "French 2|s8.w21:lemma": le
+    "French 2|s15.w5:lemma": le
+    "French 2|s15.w10:lemma": le
+    "French 2|s16.w9:lemma": le
+    "French 2|s16.w18:lemma": le
+    "French 2|s16.w26:lemma": le
+    "French 2|s18.w27:lemma": le
+    "French 2|s20.w14:lemma": le
+    "French 3|s1.w8:lemma": le
+    "French 3|s1.w35:lemma": le
+    "French 3|s6.w6:lemma": le
+    "French 3|s8.w11:lemma": le
+    "French 3|s9.w16:lemma": le
+    "French 3|s9.w19:lemma": le
+    "French 3|s9.w23:lemma": le
+    "French 3|s15.w20:lemma": le
+    "French 3|s16.w1:lemma": le
+    "French 3|s18.w5:lemma": le
+    "French 3|s19.w27:lemma": le
+    "French 3|s19.w39:lemma": le

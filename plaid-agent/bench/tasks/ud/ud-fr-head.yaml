@@ -1,0 +1,19 @@
+# set_head: one word re-attached to another head with a new relation.
+# Setup attaches "buts" to the wrong noun.
+id: ud-fr-head
+app: ud
+project: ud-french
+as: B
+where: {document: French 3}
+turns:
+  - say: >-
+      In sentence 11 of French 3, "buts" (word 13) is attached to "ballon".
+      It should depend on the infinitive "filer" (word 8) as obl:mod.
+    approve: true
+check: ud_tree
+args:
+  document: French 3
+  base: snapshot
+  expect:
+    "s11.w13:head": 8
+    "s11.w13:deprel": obl:mod

@@ -1,0 +1,20 @@
+# set_field lemma on three words of one sentence, each its own value.
+id: ud-ru-lemmas
+app: ud
+project: ud-russian
+as: B
+where: {document: Russian 2}
+turns:
+  - say: >-
+      In sentence 18 of Russian 2, three nouns have their inflected form as
+      their lemma. Fix them: "якобитами" (word 4) has the lemma якобит,
+      "замке" (word 9) has замок, and "тюрьму" (word 10) has тюрьма.
+    approve: true
+check: ud_tree
+args:
+  document: Russian 2
+  base: snapshot
+  expect:
+    "s18.w4:lemma": якобит
+    "s18.w9:lemma": замок
+    "s18.w10:lemma": тюрьма

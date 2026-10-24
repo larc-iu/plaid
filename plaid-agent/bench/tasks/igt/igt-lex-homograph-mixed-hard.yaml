@@ -1,0 +1,22 @@
+# Hard tier. A question and a change in one message, on a homograph. Setup
+# frees the NMLZ.POSS sense of kr as a homograph headword of its own (kr 2,
+# beside kr 1 with the senses 1AUGI and RPRN2) and links every kr morpheme
+# to the entry its gloss names. The answer is 31 (links to the nominalizer),
+# and only that homograph gets pos "suffix".
+id: igt-lex-homograph-mixed-hard
+app: igt
+project: igt-natugu
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      Quick one about kr. How many morphemes in the texts are linked to the
+      kr that's the possessive nominalizer, not the person marker? And while
+      you're in there, set that nominalizer entry's part of speech (pos) to
+      suffix. Leave the other kr alone.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "kr|NMLZ.POSS:pos": suffix
+  match: ['(?<![\d.])31(?![\d.]?\d)']

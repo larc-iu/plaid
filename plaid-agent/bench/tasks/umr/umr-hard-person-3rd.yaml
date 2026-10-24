@@ -1,0 +1,35 @@
+# Hard tier. Bulk: :refer-person 3 (a planted bad value) back to 3rd on the
+# 14 person nodes for him, the request worded loosely. Traps: the person
+# concept also holds the narrator (1st) and the listener (2nd) in the
+# opening sentences, so a concept-wide overwrite breaks them, and the man
+# (awa) nodes have no :refer-person and must not get one.
+id: umr-hard-person-3rd
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Something mangled the person value on the nodes for him, the hunter:
+      they say :refer-person 3 now, which isn't a value. It should be 3rd,
+      like it was. Fix every one of them please, and leave everything else
+      alone.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s4.s4p2::refer-person": 3rd
+    "s5.s5p2::refer-person": 3rd
+    "s6.s6p::refer-person": 3rd
+    "s7.s7p::refer-person": 3rd
+    "s8.s8p::refer-person": 3rd
+    "s9.s9p::refer-person": 3rd
+    "s10.s10p::refer-person": 3rd
+    "s11.s11p::refer-person": 3rd
+    "s12.s12p::refer-person": 3rd
+    "s13.s13p2::refer-person": 3rd
+    "s15.s15p::refer-person": 3rd
+    "s16.s17p::refer-person": 3rd
+    "s18.s18p::refer-person": 3rd
+    "s19.s19p::refer-person": 3rd

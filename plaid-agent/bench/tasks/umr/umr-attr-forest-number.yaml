@@ -1,0 +1,19 @@
+# One attribute over every node of a concept, only where it is missing.
+id: umr-attr-forest-number
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Every ɨwɨrati ("forest") node in this document should carry
+      :refer-number singular. Add it to the ones that are missing it, and
+      leave the others as they are.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s1.s1x2::refer-number": singular
+    "s4.s4x::refer-number": singular
+    "s15.s15x::refer-number": singular

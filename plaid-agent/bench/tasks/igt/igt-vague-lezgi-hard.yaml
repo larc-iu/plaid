@@ -1,0 +1,24 @@
+# Hard tier. Vague addressing by meaning and position: three morpheme glosses
+# in one sentence of text 3, found by its translation. Traps: the same
+# sentence word for word is s13 of text 2 (it must stay), and the sentence
+# has three лагьана, of which only the last one changes.
+id: igt-vague-lezgi-hard
+app: igt
+project: igt-lezgi
+as: B
+where: {document: Lezgi text 3}
+turns:
+  - say: >-
+      In this text, the sentence where the third son tells his father he'll
+      bring it now has a few glossing slips. The гада in it should be glossed
+      son, not boy. The е at the end of the "will bring" word isn't the
+      inessive, gloss it FUT. And the last "said" in the sentence, the one
+      after "now I will bring it", is the aorist converb, so its на should be
+      AOC. The other two "said" there are fine.
+    approve: true
+check: igt_changes
+args:
+  expect:
+    "Lezgi text 3|s10.w3.m1:Gloss": son
+    "Lezgi text 3|s10.w15.m2:Gloss": FUT
+    "Lezgi text 3|s10.w17.m2:Gloss": AOC

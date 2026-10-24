@@ -1,0 +1,38 @@
+# Hard tier. Bulk glossing across five texts, 222 changes, said the way a
+# linguist would say it. Four affixes get new abbreviations, by form AND
+# gloss: tq, pe and nz have other meanings that must keep their glosses
+# (tq "three", pe "plant", nz 3AUG and PAS), and the fused realis glosses on
+# tz (RL.3AUG, RL.PAS) must not be touched by a substring replace of RL.
+id: igt-bulk-abbrev-hard
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      We're tidying up the abbreviations before the grammar sketch goes out.
+      Across all five texts: the subordinator kx should be SBRD instead of
+      SUBR, the realis prefix tq should be REAL instead of RL, the
+      change-of-state pe should be CS instead of COS, and the nominalizer nz
+      should be plain NMLZ instead of NMLZ1. Only those uses, mind. tq, pe and
+      nz also turn up with other meanings (the numeral "three", "plant", and
+      the 3AUG and passive nz), and those keep their glosses. The fused realis
+      glosses on tz aren't part of this either.
+    approve: true
+check: igt_changes
+args:
+  # The abbreviation set for the grammar sketch is a stated project-wide
+  # convention, as in igt-migrate-glosses-hard, so a drafted guideline is
+  # allowed.
+  allow_guidelines: true
+  rules:
+    - gloss: {form: kx, from: SUBR, to: SBRD}
+    - gloss: {form: tq, from: RL, to: REAL}
+    - gloss: {form: pe, from: COS, to: CS}
+    - gloss: {form: nz, from: NMLZ1, to: NMLZ}
+  # Renaming the matching lexicon senses too is no fault (as in igt-gloss-rename).
+  optional:
+    "LEX|kx|SUBR:gloss": SBRD
+    "LEX|tq|RL:gloss": REAL
+    "LEX|pe|COS:gloss": CS
+    "LEX|nz|NMLZ1:gloss": NMLZ

@@ -1,0 +1,58 @@
+# A corpus-wide replacement with one value kept out of it. Setup gave every
+# determiner
+# "la" the lemma "la", as in ud-fr-corpus-la. The Spanish "la" (UPOS X,
+# French 2 sentence 2) has the lemma "la" too, and the user keeps it out by
+# name. The shortest plan is a replace of the lemma "la" with a keep on that
+# word: approval must leave it as it is, its provenance included (a
+# restating write would restamp it, a keep that loses to the replace
+# would rewrite it).
+id: ud-fr-corpus-la-keep
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      Someone gave the definite article "la" the lemma "la" all over this
+      project, and it should be "le". Replace the lemma "la" with "le"
+      everywhere, in all three documents, except for the Spanish word "la"
+      in French 2, sentence 2, which keeps its lemma "la" as it is.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "French 1|s1.w6:lemma": le
+    "French 1|s6.w29:lemma": le
+    "French 1|s8.w10:lemma": le
+    "French 1|s12.w10:lemma": le
+    "French 1|s13.w15:lemma": le
+    "French 1|s14.w36:lemma": le
+    "French 1|s18.w29:lemma": le
+    "French 1|s19.w18:lemma": le
+    "French 1|s20.w31:lemma": le
+    "French 2|s1.w1:lemma": le
+    "French 2|s4.w6:lemma": le
+    "French 2|s5.w15:lemma": le
+    "French 2|s6.w18:lemma": le
+    "French 2|s8.w21:lemma": le
+    "French 2|s15.w5:lemma": le
+    "French 2|s15.w10:lemma": le
+    "French 2|s16.w9:lemma": le
+    "French 2|s16.w18:lemma": le
+    "French 2|s16.w26:lemma": le
+    "French 2|s18.w27:lemma": le
+    "French 2|s20.w14:lemma": le
+    "French 3|s1.w8:lemma": le
+    "French 3|s1.w35:lemma": le
+    "French 3|s6.w6:lemma": le
+    "French 3|s8.w11:lemma": le
+    "French 3|s9.w16:lemma": le
+    "French 3|s9.w19:lemma": le
+    "French 3|s9.w23:lemma": le
+    "French 3|s15.w20:lemma": le
+    "French 3|s16.w1:lemma": le
+    "French 3|s18.w5:lemma": le
+    "French 3|s19.w27:lemma": le
+    "French 3|s19.w39:lemma": le

@@ -1,0 +1,19 @@
+# Attribute fix on one node: set_attributes replaces the whole line, so the
+# node's :aspect must survive the change.
+id: umr-attr-negation
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 13 (ni rapurara rape, "He doesn't find his way"), word 1,
+      ni, is the negation. The finding event purara (s13p) has
+      :modal-strength full-affirmative, but because it is negated it should
+      be full-negative. Please fix it.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s13.s13p::modal-strength": full-negative

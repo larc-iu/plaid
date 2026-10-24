@@ -1,0 +1,15 @@
+# Search with a checkable answer: the sentences of one document a morpheme occurs in.
+id: igt-search-sentences
+app: igt
+project: igt-gitksan
+as: B
+where: {document: Gitksan text 2}
+turns:
+  - say: >-
+      In which sentences of this text does the morpheme bisde'y ("grouse")
+      occur? End your answer with one line of the form "Sentences: 3, 7, 12"
+      listing every such sentence number of this text.
+check: igt_changes
+args:
+  plan: none
+  numbers: {after: 'Sentences?\W*:', expect: [1, 2, 8, 10, 13, 14, 15, 17, 18]}

@@ -1,0 +1,29 @@
+# set_words then annotation in the next plan. Setup collapsed the multiword
+# token "aux" (à + les) into one plain word. Turn 1 makes it a multiword
+# token again, turn 2 annotates the two new words. The end state is the
+# snapshot's own sentence.
+id: ud-fr-mwt-aux
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 7 of French 1, "aux" (word 5) is a single word, but in this
+      treebank "aux" is a multiword token holding the two words "à" and
+      "les". Make it one, with those two words. Only that for now, I will
+      give you their annotation next.
+    approve: true
+  - say: >-
+      Now annotate the two new words of "aux" in sentence 7. "à" is ADP with
+      the lemma à and no features, attached to "tueurs" as case. "les" is DET
+      with the lemma le and the features Definite=Def|Number=Plur|PronType=Art,
+      attached to "tueurs" as det.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  restore: [s7.w5, s7.w6]
+  # set_words seeds the lemma of à from its form, already right.
+  prov_skip: [s7.w5:lemma]

@@ -1,0 +1,29 @@
+# split_token on a token whose text holds a space (survey 13). Setup glued
+# "imprimeur artisan" in sentence 5 into one token with one word, imprimeur's,
+# as a tokenizer that missed the space would leave it, and artisan's word and
+# its values are gone. Turn 1 splits it: imprimeur keeps its word and values,
+# artisan gets a bare word. Turn 2 annotates artisan, which a plan can do only
+# once the word exists.
+id: ud-fr-split-token-glued
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 5 of French 1, "imprimeur artisan" is a single token, but it
+      is two: imprimeur and artisan. Split it into those two tokens. Keep the
+      annotation imprimeur has. Only that for now, I will give you artisan's
+      annotation next.
+    approve: true
+  - say: >-
+      Now annotate artisan in sentence 5: lemma artisan, UPOS NOUN, features
+      Gender=Masc|Number=Sing, attached to imprimeur as nmod.
+    approve: true
+check: ud_tokens
+args:
+  document: French 1
+  base: snapshot
+  restore: [s5.w10]
+  tokens:
+    s5: [Travail, de, très, grande, qualité, exécuté, par, un, imprimeur, artisan, passionné, .]

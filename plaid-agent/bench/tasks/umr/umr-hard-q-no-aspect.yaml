@@ -1,0 +1,27 @@
+# Hard tier. A loose question about the graph: which events have no aspect
+# yet. The answer must name the shooting in s9 (aya, rayanpu, "the shot")
+# and the getting out in s10 (ichima, "get out"), the two event nodes with
+# no attributes (s10i2 ichima: the source puts its :aspect and
+# :modal-strength under its :goal pe, s10p2, so pe has them and ichima
+# does not). have-location-91 and the like may be named too. Nothing
+# may be written. A list of every node with no aspect, nouns included, is
+# not an answer: it names the latex hunter (shiringuero, shirinkero) or the
+# shiringa tree, which no answer about events has reason to name.
+id: umr-hard-q-no-aspect
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      Which events in this story don't have an aspect yet? Just tell me, I'll
+      do them myself.
+check: umr_answer
+args:
+  reader: umr
+  match: ['(\baya\b|rayanpu|shoot|shot)', '(ichima|get(ting)? out)']
+  # A line naming the hunter or the tree fails the reply, unless that line
+  # sets them aside as nouns, arguments or non-events (a reply that names
+  # both events and then "everything else ... is a noun/argument (...,
+  # shiringuero, ...)" passes).
+  reject: '(?m)^(?![^\n]*\b(nouns?|arguments?|not (an? )?events?|non-events?|leave (those|them|these)|people and things)\b)[^\n]*(shiringuero|shirinkero|shiringa\b)'

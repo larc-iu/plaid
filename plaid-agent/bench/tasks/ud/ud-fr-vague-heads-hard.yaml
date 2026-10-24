@@ -1,0 +1,31 @@
+# Hard tier. Two head fixes in two sentences, every word named by its
+# meaning or its position, none by number. Setup attached "importante"
+# (French 1 s4.w20) to obscurité (w14) instead of pression (w18), and
+# "terminer" (s20.w20) to the main verb narre (w12) instead of the
+# participle engagé (w18). Right: both back, relations unchanged (amod,
+# advcl). Traps: "totale" (amod of obscurité) and "hydrostatique" (amod of
+# pression) are right and must stay.
+id: ud-fr-vague-heads-hard
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      Two attachment mistakes in this document. In the sentence about the
+      "oasis de vie" on the sea floor, the adjective after hydrostatique
+      describes the pressure, not the darkness, so it should hang from the
+      pressure noun. And in the sentence about his last film, the one with
+      Ewan McGregor and Pierce Brosnan, the infinitive that says what the
+      ghostwriter was hired to do is attached to the main verb. It belongs
+      under the participle meaning "hired", still as advcl.
+    approve: true
+check: ud_tree
+args:
+  document: French 1
+  base: snapshot
+  expect:
+    "s4.w20:head": 18
+    "s4.w20:deprel": amod
+    "s20.w20:head": 18
+    "s20.w20:deprel": advcl

@@ -1,0 +1,18 @@
+# Links, corpus-wide: 70 links moved from a headword to the sense their gloss
+# names (link_entry over five documents). Setup links every на to the headword.
+id: igt-lex-relink-senses
+app: igt
+project: igt-lezgi
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      Every morpheme на in the project is linked to the headword на, which has
+      two senses, AOR and AOC. Link each of those morphemes to the sense that
+      matches its own gloss instead: the AOR sense where the morpheme is glossed
+      AOR, the AOC sense where it is glossed AOC.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - link_by_gloss: {form: на}

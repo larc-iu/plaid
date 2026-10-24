@@ -1,0 +1,16 @@
+# Lexicon: two fields of one entry changed (set_entry_field), from the lexicon page.
+id: igt-lex-edit-entry
+app: igt
+project: igt-lezgi
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      The lexicon entry руш is glossed "girl". Change its gloss to "girl, daughter"
+      and set its part of speech (the pos field) to n.
+    approve: true
+check: igt_changes
+args:
+  lexicon:
+    "руш|girl:gloss": "girl, daughter"
+    "руш|girl:pos": n

@@ -1,0 +1,19 @@
+# frequency_list folds case for runs of forms and keeps it for single forms,
+# and each header says which.
+# "c'est" is 3 word bigrams (no multiword token in them), 2 of them "C'est".
+# A model that reads the bigram count as case sensitive, or the unigram one
+# as folded, gets one of the two numbers wrong. Nothing may be written.
+id: ud-fr-bigram-case
+app: ud
+project: ud-french
+as: B
+turns:
+  - say: >-
+      How many times does "c'est" (the word c' followed by the word est) occur
+      in this project, whatever its capitalisation? And how many of those
+      begin with a capital C? Just tell me, don't change anything.
+    approve: true
+check: answer
+args:
+  reader: ud
+  match: ['\b(3|three)\b', '\b(2|two)\b']

@@ -1,0 +1,21 @@
+# Hard tier. Lexicon homographs, asked loosely. Setup makes three headwords
+# spelled ka (homographs 1 to 3: the demonstrative DEM2.PROΧ, the verb "give",
+# the particle "not yet") and links all 9 ka morphemes to the demonstrative.
+# The 4 "not yet" links and the 1 "give" link must move to their own
+# homograph. The 4 demonstratives stay.
+id: igt-lex-homograph-link-hard
+app: igt
+project: igt-natugu
+as: B
+where: {lexicon: Lexicon}
+turns:
+  - say: >-
+      Somebody linked every ka in the texts to the demonstrative ka. That's
+      wrong for the ones that mean "not yet" and for the one that means
+      "give". Can you point those at the right ka, the "not yet" particle and
+      the verb "give"? The demonstrative ones are fine as they are.
+    approve: true
+check: igt_changes
+args:
+  rules:
+    - link_by_gloss: {form: ka}

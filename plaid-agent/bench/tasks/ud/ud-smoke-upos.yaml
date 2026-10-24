@@ -1,0 +1,18 @@
+# Smoke: one UPOS changed on request, in the open document.
+id: ud-smoke-upos
+app: ud
+project: ud-french
+as: B
+where: {document: French 1}
+turns:
+  - say: >-
+      In sentence 2 of this document, change the UPOS of "donc" (word 10) to
+      CCONJ.
+    approve: true
+check: exact_changes
+args:
+  reader: ud
+  document: French 1
+  expect:
+    "s2.w10:upos": CCONJ
+  prov: verified

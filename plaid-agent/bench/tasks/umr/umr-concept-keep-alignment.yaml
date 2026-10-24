@@ -1,0 +1,19 @@
+# A concept corrected on an aligned node: the node keeps its variable, its
+# alignment and its relations.
+id: umr-concept-keep-alignment
+app: umr
+project: umr-kukama
+as: B
+where: {document: Kukama text 2}
+turns:
+  - say: >-
+      In sentence 15 (ay nua rauwata ɨwɨrati, "He has already walked a
+      lot"), the event s15u, aligned to word 3 rauwata, has the concept utsu
+      "go". The verb is uwata "walk", as in sentence 4. Change its concept to
+      uwata, keeping the node with its alignment and its relations.
+    approve: true
+check: umr_graph
+args:
+  document: Kukama text 2
+  expect:
+    "s15.s15u:concept": uwata

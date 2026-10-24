@@ -1,0 +1,15 @@
+# Question with a count as the answer: a two-morpheme sequence inside words, project-wide.
+id: igt-count-sequence
+app: igt
+project: igt-natugu
+as: B
+where: {document: Natugu text 1}
+turns:
+  - say: >-
+      Across the whole project, in how many words is the morpheme pe glossed COS
+      immediately followed by the morpheme kr, inside the same word? Count words,
+      not sentences.
+check: igt_changes
+args:
+  plan: none
+  match: ['(?<![\d.])9(?![\d.]?\d)']
