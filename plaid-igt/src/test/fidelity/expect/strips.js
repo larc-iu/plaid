@@ -162,15 +162,15 @@ export const STRIPS = {
     }
   },
   'layers.ignoredTokensPunctuation': (s) => {
-    const cfg = wordLayer(s)?.config?.igt;
+    const cfg = wordLayer(s)?.config?.plaid;
     if (cfg?.ignoredTokens?.type === 'unicodePunctuation') delete cfg.ignoredTokens;
   },
   'layers.ignoredTokensLetterLike': (s) => {
-    const rule = wordLayer(s)?.config?.igt?.ignoredTokens;
+    const rule = wordLayer(s)?.config?.plaid?.ignoredTokens;
     if (rule?.whitelist) rule.whitelist = [];
   },
   'layers.ignoredTokensBlacklist': (s) => {
-    const cfg = wordLayer(s)?.config?.igt;
+    const cfg = wordLayer(s)?.config?.plaid;
     if (cfg?.ignoredTokens?.type === 'blacklist') delete cfg.ignoredTokens;
   },
   'layers.tokenizeNewTextOff': (s) => {
@@ -398,7 +398,7 @@ export const STRIPS = {
   // An export reads a word the exported project's rule skips as the text it
   // covers (ruling 29), so the word and its morphemes are not in the file.
   'token.ignoredWord': (s, ctx) => {
-    const rule = wordLayer(ctx.source)?.config?.igt?.ignoredTokens ?? null;
+    const rule = wordLayer(ctx.source)?.config?.plaid?.ignoredTokens ?? null;
     for (const d of docs(s)) {
       const body = [...(baselineOf(d)?.body ?? '')];
       const gone = new Set(
@@ -656,4 +656,4 @@ export const STRIPS = {
 
 /** Whether a project's own ignored-tokens rule skips a word. */
 export const isIgnored = (s, text) =>
-  isTokenIgnored(text, wordLayer(s)?.config?.igt?.ignoredTokens ?? null);
+  isTokenIgnored(text, wordLayer(s)?.config?.plaid?.ignoredTokens ?? null);

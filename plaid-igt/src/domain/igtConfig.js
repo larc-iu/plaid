@@ -2,19 +2,20 @@
 // the shared substrate and its own private configuration.
 //
 // Two namespaces:
-//  - `plaid`  — RESERVED for cross-app conventions. plaid-igt writes/reads ONLY
-//               the shared layer ROLE here (config.plaid.role). Substrate layers
-//               (text + token layers) are bound by role, so a project set up by
-//               another Plaid app resolves the same way.
-//  - `igt`    — plaid-igt's OWN private config (scope, orthographies, ignored
-//               tokens, document metadata, the initialized flag, vocab fields).
+//  - `plaid`  — RESERVED for cross-app conventions: the shared layer ROLE
+//               (config.plaid.role), what a split keeps, and the word layer's
+//               splitOnSpace and ignored-tokens rule. Substrate layers (text +
+//               token layers) are bound by role, so a project set up by another
+//               Plaid app resolves the same way.
+//  - `igt`    — plaid-igt's OWN private config (scope, orthographies, document
+//               metadata, the initialized flag, vocab fields).
 //
 // Role mapping: text → baseline, sentence layer → sentence, primary word layer →
 // word, morpheme layer → morpheme, alignment layer → time-alignment. IGT has no
 // `syntactic-word` layer (that's UD's; it's a sibling of IGT's morpheme layer
 // under the shared word layer).
 
-import { ROLES, findByRole } from '@larc-iu/plaid-client';
+import { ROLES, findByRole, readIgnoredTokens } from '@larc-iu/plaid-client';
 import { ZERO_MORPH } from './zeroMorph.js';
 // The ignore rule itself is shared (plaid-ui domain/igtWordBreaks.js): another
 // app's Tokenize makes a token only of what it ignores. By the real path, as
@@ -22,6 +23,9 @@ import { ZERO_MORPH } from './zeroMorph.js';
 import { isIgnoredCharacter, isTokenIgnored } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 
 export { isTokenIgnored };
+
+/** A word token layer's ignored-tokens rule (`config.plaid.ignoredTokens`): {type, ...}, or null. */
+export { readIgnoredTokens };
 
 /** plaid-igt's private config namespace (distinct from the reserved `plaid`). */
 export const IGT_NAMESPACE = 'igt';
@@ -66,9 +70,6 @@ export const readLexiconField = (config) => readIgt(config, LEXICON_FIELD_KEY) ?
 /** A word token layer's non-baseline orthographies: [{name}], or null. */
 export const readOrthographies = (config) => readIgt(config, 'orthographies') ?? null;
 
-/** A word token layer's ignored-tokens config: {type, ...}, or null. */
-export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ?? null;
-
 /**
  * The word token layer's config key (under `igt`) for whether a Baseline save
  * gives the text it adds words from the built-in tokenizer. On unless it holds
@@ -80,7 +81,7 @@ export const readTokenizeNewText = (config) => readIgt(config, TOKENIZE_NEW_TEXT
 /**
  * The ignored-tokens rule a new project starts with: a word made only of
  * punctuation is skipped. `DEFAULT_IGNORED_TOKENS` is the stored shape, the
- * word layer's `config.igt.ignoredTokens`. `defaultIgnoredTokensSetup()` is the
+ * word layer's `config.plaid.ignoredTokens`. `defaultIgnoredTokensSetup()` is the
  * setup wizard's form of it, which project setup turns into the stored one; a
  * fresh object each time, since the wizard edits what it is given.
  */

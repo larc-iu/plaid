@@ -14,7 +14,9 @@ from plaid_client import (
     ROLES,
     PLAID_NAMESPACE,
     ROLE_KEY,
+    IGNORED_TOKENS_KEY,
     read_role,
+    read_ignored_tokens,
     find_by_role,
 )
 
@@ -28,6 +30,15 @@ def test_role_values_match_the_interop_contract():
     assert ROLES.SYNTACTIC_WORD == 'syntactic-word'
     assert ROLES.MORPHEME == 'morpheme'
     assert ROLES.TIME_ALIGNMENT == 'time-alignment'
+
+
+def test_read_ignored_tokens_reads_the_plaid_namespace_only():
+    rule = {'type': 'unicodePunctuation', 'whitelist': ["'"]}
+    assert IGNORED_TOKENS_KEY == 'ignoredTokens'
+    assert read_ignored_tokens({'plaid': {'ignoredTokens': rule}}) == rule
+    assert read_ignored_tokens({'igt': {'ignoredTokens': rule}}) is None
+    assert read_ignored_tokens({}) is None
+    assert read_ignored_tokens(None) is None
 
 
 def test_read_role():

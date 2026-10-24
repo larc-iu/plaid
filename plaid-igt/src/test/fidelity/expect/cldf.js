@@ -485,8 +485,8 @@ export default {
         const wl = layer(expected, 'token:word');
         if (!wl) return;
         wl.config ??= {};
-        wl.config.igt = {
-          ...wl.config.igt,
+        wl.config.plaid = {
+          ...wl.config.plaid,
           ignoredTokens: { type: 'unicodePunctuation', whitelist: [], blacklist: [] },
         };
       },

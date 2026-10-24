@@ -70,7 +70,7 @@ the upload's media type is validated from its filename.
 | `project` | `{id, name}` of the source project |
 | `schema.orthographies` | `[{name}]` — non-baseline orthographies on the word layer |
 | `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?, lang?, lexiconField?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does; `lang` is the writing system the field records its values are in (`config.igt.lang`), absent when it records none. `lexiconField` is the lexicon entry field the field pairs with (`config.igt.lexiconField`), null when none. An import gives a field whose record lacks the key the Lexicon field its name proposes, as setup does |
-| `schema.ignoredTokens` | the word layer's ignored-token config (`{type, whitelist, blacklist}`: `type` is `'unicodePunctuation'` or `'blacklist'` and names the list in force, and the other list is kept for switching back), or `null` |
+| `schema.ignoredTokens` | the word layer's ignored-token config (`config.plaid.ignoredTokens`, `{type, whitelist, blacklist}`: `type` is `'unicodePunctuation'` or `'blacklist'` and names the list in force, and the other list is kept for switching back), or `null` |
 | `schema.documentMetadata` | `[{name, tagset?}]` enabled document metadata fields, or `[]` |
 | `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset |
 | `schema.tagsets` | the project's tagsets, `{name: {delimiters, mode, values}}`, `null` when unset |
@@ -280,9 +280,10 @@ that owns a layer finds it again by whatever it looks for.
   is carried.
 - `otherLayers.config` holds what this app's own text and token layers keep under
   namespaces other than `igt`, keyed by role (`baseline`, `sentence`, `word`,
-  `morpheme`, `time-alignment`), `plaid` without `role` (a word layer's
-  `splitOnSpace` and `preserveOnSplit` are carried). Project setup writes `igt`
-  and the roles itself, and the import does not write a `plaid.review`, a
+  `morpheme`, `time-alignment`), `plaid` without `role` and without
+  `ignoredTokens`, which is `schema.ignoredTokens` (a word layer's `splitOnSpace`
+  and `preserveOnSplit` are carried). Project setup writes `igt`, the roles and
+  the ignored-tokens rule itself, and the import does not write a `plaid.review`, a
   `plaid.research` or a `plaid.role` an archive names.
 - `otherLayers.spanLayers` lists the span layers on this app's own token layers
   that are no annotation field (`scope` null), and any field that carries relation

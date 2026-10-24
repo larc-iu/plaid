@@ -16,6 +16,7 @@
 // Returns { projectId, resources, failures, alreadyInitialized }.
 
 import {
+  IGNORED_TOKENS_KEY,
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
@@ -410,8 +411,8 @@ async function executeProjectSetupImpl({
     updateProgress(60, 'Configuring ignored tokens…');
     await client.tokenLayers.setConfig(
       tokenLayerId,
-      IGT_NAMESPACE,
-      'ignoredTokens',
+      PLAID_NAMESPACE,
+      IGNORED_TOKENS_KEY,
       storedIgnoredTokens(setupData.fields.ignoredTokens),
     );
   }

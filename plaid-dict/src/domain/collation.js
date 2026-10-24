@@ -18,11 +18,8 @@
 // A position is a GRAPHEME CLUSTER, not a code point, so a letter keeps the
 // combining marks written on it. See splitClusters.
 
-import {
-  findBaselineTextLayer,
-  findWordTokenLayer,
-  readIgnoredTokens,
-} from '@igt/domain/igtConfig.js';
+import { readIgnoredTokens } from '@larc-iu/plaid-client';
+import { findBaselineTextLayer, findWordTokenLayer } from '@igt/domain/igtConfig.js';
 
 // Every unlisted grapheme ranks after every listed one, and among themselves by
 // code point, so they gather after Z instead of scattering.
@@ -262,8 +259,8 @@ export const suggestAlphabet = (forms, collator = new Intl.Collator(), letterLik
 
 /**
  * The characters the projects using a vocabulary declare letter-like: the
- * exceptions list of each word layer's punctuation rule, plaid-igt's
- * `config.igt.ignoredTokens`. A vocabulary has no orthography of its own, so
+ * exceptions list of each word layer's punctuation rule,
+ * `config.plaid.ignoredTokens`. A vocabulary has no orthography of its own, so
  * the union over every project the reader can see that links it.
  */
 export const letterLikeCharacters = (projects, vocabularyId) => {

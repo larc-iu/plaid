@@ -253,7 +253,7 @@ describe('letterLikeCharacters', () => {
     textLayers: [
       {
         config: { plaid: { role: 'baseline' } },
-        tokenLayers: [{ config: { plaid: { role: 'word' }, igt: { ignoredTokens } } }],
+        tokenLayers: [{ config: { plaid: { role: 'word', ignoredTokens } } }],
       },
     ],
   });

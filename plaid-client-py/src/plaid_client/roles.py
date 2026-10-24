@@ -38,6 +38,15 @@ PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit'
 #: See the manual's "Changing a text's body".
 SPLIT_ON_SPACE_KEY = 'splitOnSpace'
 
+#: Word layer config key holding the ignored-tokens rule, ``{type, whitelist,
+#: blacklist}``: under ``type: 'unicodePunctuation'`` a word made only of
+#: punctuation is ignored and each one-character entry of ``whitelist`` is a
+#: letter, under ``type: 'blacklist'`` the entries of ``blacklist`` are the
+#: words ignored and its one-character entries the only characters that part
+#: words. Plaid's text rules and the built-in tokenizer read it. See the
+#: manual's "Changing a text's body".
+IGNORED_TOKENS_KEY = 'ignoredTokens'
+
 
 class ROLES:
     """The fixed role inventory (attribute access mirrors JS ``ROLES.BASELINE``)."""
@@ -58,6 +67,16 @@ def read_role(config):
     if not config:
         return None
     return (config.get(PLAID_NAMESPACE) or {}).get(ROLE_KEY)
+
+
+def read_ignored_tokens(config):
+    """The ignored-tokens rule on a word layer's ``config`` (see
+    ``IGNORED_TOKENS_KEY``), or ``None``. The one reader of the key in Python.
+
+    Args:
+        config: a token layer's ``config`` dict (or None).
+    """
+    return ((config or {}).get(PLAID_NAMESPACE) or {}).get(IGNORED_TOKENS_KEY)
 
 
 def find_by_role(layers, role):

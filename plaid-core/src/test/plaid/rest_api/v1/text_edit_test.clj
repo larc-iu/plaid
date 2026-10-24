@@ -45,7 +45,7 @@
         ;; igt's ignored-tokens rule on the words
         _ (when ignored
             (assert-status 204 (api-call admin-request {:method :put
-                                                        :path (str "/api/v1/token-layers/" words "/config/igt/ignoredTokens")
+                                                        :path (str "/api/v1/token-layers/" words "/config/plaid/ignoredTokens")
                                                         :body ignored})))
         ;; another app's layer: beside the words, or (`:child`) nested under them
         others (when other

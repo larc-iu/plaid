@@ -1109,9 +1109,9 @@
            (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))))))
 
 (deftest a-layer-config-names-its-letter-like-characters
-  (is (= #{(int \') 0x2019} (ta/ignored-letter-like {"igt" {"ignoredTokens" {"type" "unicodePunctuation"
-                                                                             "whitelist" ["'" "\u2019" "ab" ""]}}})))
-  (let [ll (ta/ignored-letter-like {"igt" {"ignoredTokens" {"type" "blacklist" "whitelist" ["'"] "blacklist" ["." "..."]}}})]
+  (is (= #{(int \') 0x2019} (:letter-like (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "unicodePunctuation"
+                                                                                      "whitelist" ["'" "\u2019" "ab" ""]}}}))))
+  (let [ll (:letter-like (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "blacklist" "whitelist" ["'"] "blacklist" ["." "..."]}}}))]
     ;; under an explicit list every punctuation character but the listed
     ;; ones is a letter, and nothing else is letter-like
     (is (ll (int \')))
@@ -1119,7 +1119,9 @@
     (is (not (ll (int \.))))
     (is (not (ll (int \a))))
     (is (not (ll (int \space)))))
-  (is (= #{} (ta/ignored-letter-like {})))
+  (is (= #{} (:letter-like (ta/ignored-rule {}))))
+  (testing "the rule under another namespace is no rule"
+    (is (= #{} (:letter-like (ta/ignored-rule {"igt" {"ignoredTokens" {"type" "unicodePunctuation" "whitelist" ["'"]}}})))))
   (is (= #{(int \')} (:letter-like (ta/layer-roles [{:id :w :overlap-mode "non-overlapping" :parent :s :letter-like #{(int \')}}
                                                     {:id :s :overlap-mode "partitioning"}])))))
 
@@ -1159,7 +1161,7 @@
   ;; project where `=` is letter-like, or under an explicit list without
   ;; `;`, or an empty one, a letter typed after a lone `=`, `;` or `...`
   ;; stayed apart, where igt's Tokenize makes one word of them
-  (let [rule (fn [r] (ta/ignored-letter-like {"igt" {"ignoredTokens" r}}))
+  (let [rule (fn [r] (:letter-like (ta/ignored-rule {"plaid" {"ignoredTokens" r}})))
         doc (fn [body spans] (into [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
                                    (map-indexed (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e}) spans)))]
     (doseq [[id r body spans op want]
@@ -1190,7 +1192,7 @@
                                {:token/id [:s 1] :token/layer :s :token/begin cut :token/end (cp/cp-count body)}
                                {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end cut}
                                {:token/id [:w 1] :token/layer :w :token/begin cut :token/end (cp/cp-count body)}])
-        ll (ta/ignored-letter-like {"igt" {"ignoredTokens" {"type" "unicodePunctuation" "whitelist" ["'"]}}})]
+        ll (:letter-like (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "unicodePunctuation" "whitelist" ["'"]}}}))]
     (is (= ["ab'x" "cd"] (sents (th/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))
     (is (= ["ab'" "xcd"] (sents (th/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w}))))
     (is (= ["ab." "xcd"] (sents (th/plain-edits "ab.cd" (tokens "ab.cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))))

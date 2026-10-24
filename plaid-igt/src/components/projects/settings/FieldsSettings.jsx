@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { uuidv7 } from '@larc-iu/plaid-client';
+import { IGNORED_TOKENS_KEY, PLAID_NAMESPACE, uuidv7 } from '@larc-iu/plaid-client';
 import { FieldsManager } from './FieldsManager';
 import { fieldKey } from '@/domain/fieldNames';
 import { notifyError } from '@/utils/feedback';
@@ -261,7 +261,7 @@ export const FieldsSettings = ({
     const layerOf = new Map(managed.map((l) => [layerKey(l), l]));
 
     if (change.ignoredTokens) {
-      const raw = storedConfig(primary, IGT_NAMESPACE, 'ignoredTokens');
+      const raw = storedConfig(primary, PLAID_NAMESPACE, IGNORED_TOKENS_KEY);
       const stored = storedIgnoredTokens(
         raw ? ignoredTokensSetup(raw) : defaultIgnoredTokensSetup(),
       );
@@ -270,7 +270,7 @@ export const FieldsSettings = ({
         if (!sameConfig(stored, storedIgnoredTokens(data.previous.ignoredTokens))) {
           throw changedElsewhere();
         }
-        b.tokenLayers.setConfig(primary.id, IGT_NAMESPACE, 'ignoredTokens', next, undefined, {
+        b.tokenLayers.setConfig(primary.id, PLAID_NAMESPACE, IGNORED_TOKENS_KEY, next, undefined, {
           expected: raw,
         });
       }

@@ -5213,8 +5213,10 @@ export {
   ROLE_KEY,
   PRESERVE_ON_SPLIT_KEY,
   SPLIT_ON_SPACE_KEY,
+  IGNORED_TOKENS_KEY,
   ROLES,
   readRole,
+  readIgnoredTokens,
   findByRole,
 } from "./roles.js";
 // Service self-description helpers: filter discovered services by task, read a

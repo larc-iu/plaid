@@ -13,11 +13,11 @@ import { COPY_FORMATS, formatSentence } from '../domain/igtExport.js';
 
 const role = (r) => ({ plaid: { role: r } });
 // "uh" is on the project's explicit ignore list, and was glossed before it was.
-const IGNORED = { igt: { ignoredTokens: { type: 'blacklist', blacklist: ['uh'] } } };
+const IGNORED = { ignoredTokens: { type: 'blacklist', blacklist: ['uh'] } };
 
 const wordLayer = (extra = {}) => ({
   id: 'wordL',
-  config: { ...role('word'), ...IGNORED },
+  config: { plaid: { ...role('word').plaid, ...IGNORED } },
   spanLayers: [{ id: 'glossL', name: 'Gloss', config: { igt: { scope: 'Word' } }, ...extra.gloss }],
   ...extra.layer,
 });

@@ -74,8 +74,8 @@
 
 (defn- tokenize-spec
   "What \"Tokenize new text\" on token layer `layer-id` reads, for a text of
-  text layer `text-layer-id`: the layer, its ignored-tokens rule
-  (`config.igt.ignoredTokens`) and the text layer's partition layers (the
+  text layer `text-layer-id`: the layer, its ignored-tokens rule (see
+  `ta/ignored-rule`) and the text layer's partition layers (the
   sentences), which no new word crosses. Throws a 400 when `layer-id` is not
   a token layer of that text layer."
   [db text-layer-id layer-id]
@@ -87,7 +87,7 @@
       (throw (ex-info (str "Token layer " layer-id " is not a token layer of this text's layer.")
                       {:code 400 :id layer-id})))
     {:layer (:id row)
-     :rule (get-in (some-> (:config row) psc/parse-config) ["igt" "ignoredTokens"])
+     :rule (ta/ignored-rule (some-> (:config row) psc/parse-config))
      :partitions (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) rows)}))
 
 (defn- tokenize-words
@@ -236,7 +236,7 @@
           ;; the word placed by where they stand, or dealt one to each part
           ;; on a layer of role `syntactic-word`. A character a layer's
           ;; ignored-tokens rule calls letter-like is a letter to the
-          ;; punctuation rule (see ta/ignored-letter-like). A diffed body's
+          ;; punctuation rule (see ta/ignored-rule). A diffed body's
           ;; edits are first moved to where they disturb the fewest tokens
           ;; when they could stand in several places for the same result (see
           ;; ta/plain-body-gaps). Ops sent as the body are applied as sent.
@@ -252,7 +252,7 @@
                                           :parent (:parent_token_layer_id r)
                                           :split-on-space (true? (clojure.core/get plaid "splitOnSpace"))
                                           :role (clojure.core/get plaid "role")
-                                          :letter-like (ta/ignored-letter-like config)}))
+                                          :letter-like (:letter-like (ta/ignored-rule config))}))
                                layer-rows))
           opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers :letter-like])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)

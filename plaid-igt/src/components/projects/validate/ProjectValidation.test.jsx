@@ -872,7 +872,8 @@ describe('units holding more than one annotation', () => {
     };
     const { findDoubles } = await import('@/domain/doubles');
     const ignoring = structuredClone(withWords);
-    ignoring.textLayers[0].tokenLayers[2].config.igt = {
+    ignoring.textLayers[0].tokenLayers[2].config.plaid = {
+      ...ignoring.textLayers[0].tokenLayers[2].config.plaid,
       ignoredTokens: { type: 'unicodePunctuation', whitelist: [] },
     };
     ignoredClient.documents.get = vi.fn(async () => structuredClone(ignoring));
@@ -908,8 +909,10 @@ describe('units holding more than one annotation', () => {
             {
               id: 'wl-1',
               config: {
-                plaid: { role: 'word' },
-                igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } },
+                plaid: {
+                  role: 'word',
+                  ignoredTokens: { type: 'unicodePunctuation', whitelist: [] },
+                },
               },
               tokens: words,
               spanLayers: [
@@ -976,8 +979,10 @@ describe('units holding more than one annotation', () => {
             {
               id: 'wl-1',
               config: {
-                plaid: { role: 'word' },
-                igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } },
+                plaid: {
+                  role: 'word',
+                  ignoredTokens: { type: 'unicodePunctuation', whitelist: [] },
+                },
               },
               tokens: words,
               spanLayers: [
@@ -1047,8 +1052,10 @@ describe('units holding more than one annotation', () => {
             {
               id: 'wl-1',
               config: {
-                plaid: { role: 'word' },
-                igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } },
+                plaid: {
+                  role: 'word',
+                  ignoredTokens: { type: 'unicodePunctuation', whitelist: [] },
+                },
               },
               tokens: words,
               spanLayers: [

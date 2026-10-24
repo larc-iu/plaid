@@ -59,9 +59,6 @@ describe('igtConfig private readers (igt namespace only)', () => {
     expect(readOrthographies({ igt: { orthographies: [{ name: 'IPA' }] } })).toEqual([
       { name: 'IPA' },
     ]);
-    expect(readIgnoredTokens({ igt: { ignoredTokens: { type: 'blacklist' } } })).toEqual({
-      type: 'blacklist',
-    });
     expect(readDocumentMetadata({ igt: { documentMetadata: [{ name: 'Date' }] } })).toEqual([
       { name: 'Date' },
     ]);
@@ -75,6 +72,13 @@ describe('igtConfig private readers (igt namespace only)', () => {
     expect(readScope({ plaid: { scope: 'Word' } })).toBeNull();
     expect(readInitialized({ plaid: { initialized: true } })).toBe(false);
     expect(readOrthographies({ plaid: { orthographies: [{ name: 'IPA' }] } })).toBeNull();
+  });
+
+  it('reads the ignored-tokens rule from the plaid namespace only', () => {
+    expect(readIgnoredTokens({ plaid: { ignoredTokens: { type: 'blacklist' } } })).toEqual({
+      type: 'blacklist',
+    });
+    expect(readIgnoredTokens({ igt: { ignoredTokens: { type: 'blacklist' } } })).toBeNull();
   });
 
   it('returns null / false on missing config', () => {

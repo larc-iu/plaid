@@ -42,6 +42,17 @@ export const PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit';
  */
 export const SPLIT_ON_SPACE_KEY = 'splitOnSpace';
 
+/**
+ * Word layer config key holding the ignored-tokens rule,
+ * `{type, whitelist, blacklist}`: under `type: 'unicodePunctuation'` a word made
+ * only of punctuation is ignored and each one-character entry of `whitelist` is
+ * a letter, under `type: 'blacklist'` the entries of `blacklist` are the words
+ * ignored and its one-character entries the only characters that part words.
+ * Plaid's text rules and the built-in tokenizer read it. See the manual's
+ * `Changing a text's body`.
+ */
+export const IGNORED_TOKENS_KEY = 'ignoredTokens';
+
 export const ROLES = Object.freeze({
   BASELINE: 'baseline',
   SENTENCE: 'sentence',
@@ -59,6 +70,16 @@ export const ROLES = Object.freeze({
 export function readRole(config) {
   const v = config?.[PLAID_NAMESPACE]?.[ROLE_KEY];
   return v == null ? null : v;
+}
+
+/**
+ * The ignored-tokens rule on a word layer's `config` (see
+ * `IGNORED_TOKENS_KEY`), or null if none. The one reader of the key in JS.
+ * @param {object} [config] a token layer's `config` object
+ * @returns {{type: string, whitelist?: string[], blacklist?: string[]}|null}
+ */
+export function readIgnoredTokens(config) {
+  return config?.[PLAID_NAMESPACE]?.[IGNORED_TOKENS_KEY] ?? null;
 }
 
 /**

@@ -61,7 +61,7 @@ const allComments = (s) => [
 const wordLayer = (s) => layer(s, 'token:word');
 const orthographyNames = (s) =>
   new Set((wordLayer(s)?.config?.igt?.orthographies || []).map((o) => o.name));
-const ignoredConfig = (s) => wordLayer(s)?.config?.igt?.ignoredTokens ?? null;
+const ignoredConfig = (s) => wordLayer(s)?.config?.plaid?.ignoredTokens ?? null;
 const vocabFieldEntries = (s) =>
   vocabs(s).flatMap((v) => Object.entries(v.config?.igt?.fields || {}));
 // Status is seeded on every new vocabulary (statusFieldSeed) and lexemeForm is

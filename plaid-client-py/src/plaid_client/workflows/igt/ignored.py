@@ -5,7 +5,8 @@ a word reference agrees with the editor's only while this agrees with the app.
 ``plaid-agent/tests/test_igt_tokens_mirror.py`` runs the app's rule over a
 case table and compares.
 
-The word layer's ``config.igt.ignoredTokens`` is one of two rules:
+The word layer's ``config.plaid.ignoredTokens`` (``read_ignored_tokens``) is one
+of two rules:
 
 * ``unicodePunctuation``: a token made only of punctuation is ignored.
   Punctuation is Unicode P or S, except pictographs (an emoji may be a word a
@@ -59,7 +60,7 @@ def is_ignorable_char(c: str, cfg) -> bool:
 
 def is_token_ignored(content, cfg) -> bool:
     """Is this word token left out of annotation by the word layer's
-    ``config.igt.ignoredTokens`` rule? (``isTokenIgnored``)."""
+    ``config.plaid.ignoredTokens`` rule? (``isTokenIgnored``)."""
     if not cfg:
         return False
     if cfg.get('type') == 'unicodePunctuation':

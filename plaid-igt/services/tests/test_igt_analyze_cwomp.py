@@ -194,7 +194,7 @@ def _document():
                                   'spans': [{'id': 'tr1', 'tokens': ['s1'], 'value': 'the house comes'}]}],
                  'vocabs': []},
                 {'id': 'wordL', 'name': 'Words',
-                 'config': {'igt': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
+                 'config': {'plaid': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
                  'tokens': [{'id': 'w1', 'text': 't', 'begin': 0, 'end': 2, 'metadata': {}},
                             {'id': 'w2', 'text': 't', 'begin': 3, 'end': 10, 'metadata': {}},
                             {'id': 'w3', 'text': 't', 'begin': 11, 'end': 12, 'metadata': {}}],

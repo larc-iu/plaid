@@ -173,8 +173,8 @@ const schemaSteps = [
       const wl = layer(expected, 'token:word');
       if (!wl) return;
       wl.config ??= {};
-      wl.config.igt ??= {};
-      wl.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [], blacklist: [] };
+      wl.config.plaid ??= {};
+      wl.config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [], blacklist: [] };
     },
   },
   {

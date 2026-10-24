@@ -8,7 +8,13 @@
 // holds is plain Plaid data (layers, config, tokens, spans, relations), which
 // an archive can carry as it is without asking whose it is.
 
-import { PLAID_NAMESPACE, REVIEW_KEY, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
+import {
+  IGNORED_TOKENS_KEY,
+  PLAID_NAMESPACE,
+  REVIEW_KEY,
+  ROLE_KEY,
+  ROLES,
+} from '@larc-iu/plaid-client';
 import {
   findAlignmentTokenLayer,
   findMorphemeTokenLayer,
@@ -58,11 +64,15 @@ export const configWithout = (config, drop = []) =>
  * people, so it goes with permissions. The research telemetry opt-in is
  * consent to collection, which belongs to the project where the collection
  * happens (ruled 2026-10-02). A layer's role is what setup finds this app's
- * layers by, and setup writes it. Everything else under `plaid` (the tartan,
- * a word layer's splitOnSpace and preserveOnSplit) is the project's own and
- * goes with it.
+ * layers by, and setup writes it. A word layer's ignored-tokens rule goes in
+ * the archive's `schema.ignoredTokens`, which setup writes. Everything else
+ * under `plaid` (the tartan, a word layer's splitOnSpace and preserveOnSplit)
+ * is the project's own and goes with it.
  */
-export const UNCARRIED_PLAID_KEYS = { project: [REVIEW_KEY, 'research'], layer: [ROLE_KEY] };
+export const UNCARRIED_PLAID_KEYS = {
+  project: [REVIEW_KEY, 'research'],
+  layer: [ROLE_KEY, IGNORED_TOKENS_KEY],
+};
 
 /** `config` without the `plaid` keys in `keys`. */
 export const withoutPlaidKeys = (config, keys) => {

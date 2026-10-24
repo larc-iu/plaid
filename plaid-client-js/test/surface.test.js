@@ -9,6 +9,8 @@ import {
   stampInferred,
   confirmedInferred,
   stampContributed,
+  IGNORED_TOKENS_KEY,
+  readIgnoredTokens,
 } from "../src/index.js";
 import { reportRequestEvent } from "../src/services.js";
 
@@ -173,4 +175,12 @@ test("the index exports what the Python package exports", () => {
   assert.equal(isMachine(stampContributed("u")), false);
   assert.equal(isMachine(null), false);
   assert.equal(isMachine({ gloss: "dog" }), false);
+});
+
+test("the ignored-tokens rule is read from the plaid namespace only", () => {
+  const rule = { type: "unicodePunctuation", whitelist: ["'"] };
+  assert.equal(IGNORED_TOKENS_KEY, "ignoredTokens");
+  assert.deepEqual(readIgnoredTokens({ plaid: { ignoredTokens: rule } }), rule);
+  assert.equal(readIgnoredTokens({ igt: { ignoredTokens: rule } }), null);
+  assert.equal(readIgnoredTokens(undefined), null);
 });

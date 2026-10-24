@@ -35,7 +35,7 @@ def _document():
                               'spans': [{'id': 'tr1', 'tokens': ['s1'], 'value': 'the house is coming'}]}],
              'vocabs': []},
             {'id': 'wordL',
-             'config': {'igt': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
+             'config': {'plaid': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
              'tokens': [word('w1', 0, 2, 'EV'), word('w2', 3, 10, 'GELIYOR'), word('w3', 11, 12, None)],
              'span_layers': [], 'vocabs': []},
             {'id': 'morphL',

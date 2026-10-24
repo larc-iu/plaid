@@ -650,10 +650,10 @@
 
 (defn- punct?
   "Whether code point `c` is punctuation to the text rules: a character
-  igt's ignore rule skips (plaid-ui `isIgnoredCharacter`), Unicode
+  the ignore rule skips (plaid-ui `isIgnoredCharacter`), Unicode
   punctuation or a symbol, but not a pictograph, not U+2205, the zero
   morph, and not one `letter-like` holds, the code points the project's
-  rule calls letters (see `ignored-letter-like`). Typed right after it,
+  rule calls letters (see `ignored-rule`). Typed right after it,
   with no whitespace, text goes to the sentence after (see
   `typed-to-next?`), and a word token made only of it takes no text typed
   against it (see `apply-plain-gaps`)."
@@ -3245,7 +3245,7 @@
   layer's id or nil, `:split-on-space` whether its config sets
   `splitOnSpace`, `:role` its `config.plaid.role`, `:letter-like` the code
   points its ignored-tokens rule calls letter-like, see
-  `ignored-letter-like`). Besides those settings nothing but the layers'
+  `ignored-rule`). Besides those settings nothing but the layers'
   shape is read, so a layer any app or script made takes an edit the same
   way.
   - `:partitioning`: the partition layers (sentences).
@@ -3312,28 +3312,48 @@
                             (.codePointAt ^String x 0))))
         xs))
 
-(defn ignored-letter-like
-  "The code points a word layer's ignored-tokens rule (`config.igt.ignoredTokens`,
-  plaid-igt's) calls letters, which are then no punctuation to the text
-  rules (see `punct?`), as a set or a predicate of code points:
-  - under the punctuation rule (`unicodePunctuation`), each exception of
-    one code point. An exception longer than that matches nothing, as in
-    igt (plaid-ui `isLetterLike`).
-  - under an explicit list (`blacklist`), every punctuation character but
-    the entries of one code point, since igt breaks a word only at those and
-    reads the rest as letters (plaid-ui `shouldTokenizeCharacter`). An empty
-    list makes every one a letter.
-  - under no rule, nothing: the default punctuation rule holds."
+(defn ignored-rule
+  "A token layer's ignored-tokens rule, read from its parsed `config` at
+  `config.plaid.ignoredTokens` (the only reader of that key in core), as
+  `{:letter-like :break? :ignored-word?}`:
+  - `:letter-like`: the code points the rule calls letters, which are then
+    no punctuation to the text rules (see `punct?`), as a set or a
+    predicate of code points. Under the punctuation rule
+    (`unicodePunctuation`) each exception of one code point, an exception
+    longer than that matching nothing (plaid-igt `isLetterLike`). Under an
+    explicit list (`blacklist`) every punctuation character but the entries
+    of one code point, since the built-in tokenizer breaks a word only at
+    those and reads the rest as letters (plaid-ui
+    `shouldTokenizeCharacter`), so an empty list makes every one a letter.
+    Under no rule, none.
+  - `:break?`: whether a code point ends a word to the built-in tokenizer
+    (plaid-ui `shouldTokenizeCharacter`): the break class less the
+    letter-like characters under the punctuation rule, the entries of an
+    explicit list, and the break class under no rule.
+  - `:ignored-word?`: whether a word spelled with the given code points is
+    one the rule ignores (plaid-ui `isTokenIgnored`): under the punctuation
+    rule, all of it punctuation to the text rules (see `punct?`), and under
+    an explicit list, an entry of it. Under no rule, none is."
   [config]
-  (let [rule (get-in config ["igt" "ignoredTokens"])
-        type (when (map? rule) (get rule "type"))]
-    (cond
-      (and (= "unicodePunctuation" type) (sequential? (get rule "whitelist")))
-      (single-code-points (get rule "whitelist"))
-      (= "blacklist" type)
-      (let [listed (single-code-points (when (sequential? (get rule "blacklist")) (get rule "blacklist")))]
-        (fn [c] (and (in-ranges? (punct-classes "punct") c) (not (contains? listed (int c))))))
-      :else #{})))
+  (let [rule (get-in config ["plaid" "ignoredTokens"])
+        type (when (map? rule) (get rule "type"))
+        entries (fn [k] (when (sequential? (get rule k)) (get rule k)))
+        break-class? (fn [c] (in-ranges? (punct-classes "break") c))]
+    (case type
+      "unicodePunctuation"
+      (let [letter-like (single-code-points (entries "whitelist"))]
+        {:letter-like letter-like
+         :break? (fn [c] (and (break-class? c) (not (contains? letter-like (int c)))))
+         :ignored-word? (fn [cps] (every? (partial punct? letter-like) cps))})
+      "blacklist"
+      (let [listed (single-code-points (entries "blacklist"))
+            words (set (filter string? (entries "blacklist")))]
+        {:letter-like (fn [c] (and (in-ranges? (punct-classes "punct") c) (not (contains? listed (int c)))))
+         :break? (fn [c] (contains? listed (int c)))
+         :ignored-word? (fn [cps] (contains? words (String. (int-array cps) 0 (count cps))))})
+      {:letter-like #{}
+       :break? break-class?
+       :ignored-word? (constantly false)})))
 
 ;; ---------------------------------------------------------------------------
 ;; Tokenize new text
@@ -3344,39 +3364,6 @@
 ;; tokenizer's (plaid-igt `tokenizationUtils.js`, which the Tokenize tab runs):
 ;; a word is a run of code points that are neither whitespace nor a break
 ;; character under the layer's ignored-tokens rule.
-
-(defn- breaks?
-  "Whether code point `c` ends a word to the built-in tokenizer under the
-  ignored-tokens rule `rule` (`config.igt.ignoredTokens`, plaid-ui
-  `shouldTokenizeCharacter`): the break class, less the letter-like
-  characters under the punctuation rule, or the entries of an explicit list."
-  [rule c]
-  (let [type (when (map? rule) (get rule "type"))
-        listed (fn [k] (contains? (single-code-points (when (sequential? (get rule k)) (get rule k))) (int c)))]
-    (cond
-      (= "blacklist" type) (listed "blacklist")
-      (= "unicodePunctuation" type) (and (in-ranges? (punct-classes "break") c) (not (listed "whitelist")))
-      :else (in-ranges? (punct-classes "break") c))))
-
-(defn- ignored-word?
-  "Whether a word spelled `cps` (code points) is one igt ignores under
-  `rule` (plaid-ui `isTokenIgnored`): under the punctuation rule, all of it
-  punctuation, no pictograph, no zero morph and nothing letter-like, and
-  under an explicit list, an entry of it."
-  [rule cps]
-  (let [type (when (map? rule) (get rule "type"))]
-    (cond
-      (= "unicodePunctuation" type)
-      (let [letter-like (single-code-points (when (sequential? (get rule "whitelist")) (get rule "whitelist")))]
-        (every? (fn [c] (and (in-ranges? (punct-classes "punct") c)
-                             (not (in-ranges? (punct-classes "picto") c))
-                             (not= c 0x2205)
-                             (not (letter-like c))))
-                cps))
-      (= "blacklist" type)
-      (let [s (String. (int-array cps) 0 (count cps))]
-        (boolean (some #{s} (when (sequential? (get rule "blacklist")) (get rule "blacklist")))))
-      :else false)))
 
 (defn typed-ranges
   "Where in the body `gaps` (old-body order, never touching, see
@@ -3396,9 +3383,9 @@
   `{:token/layer :token/begin :token/end}`) standing on it after the save:
   each stretch no token of `layer` covers, cut at every token begin of the
   `partitions` layers (the sentences), is cut into words at whitespace and
-  at the break class under `rule`, the layer's ignored-tokens rule (see
-  `breaks?`). A word is made when it holds a typed code point, is not one
-  igt ignores (see `ignored-word?`), and holds no letter of a script written
+  at the code points `rule`, the layer's ignored-tokens rule (see
+  `ignored-rule`), breaks at. A word is made when it holds a typed code point,
+  is not one the rule ignores, and holds no letter of a script written
   without spaces between words (Han, kana, Thai and the like), whose words
   are the user's to cut. Returns `[{:token/layer :token/begin :token/end}]`
   in order."
@@ -3414,7 +3401,8 @@
       (cond
         (= l layer) (doseq [x (range (max 0 begin) (min n end))] (aset covered x true))
         (partitions l) (when (< 0 begin n) (aset cut begin true))))
-    (let [stop? (fn [x] (or (aget covered x) (space? (aget o x)) (breaks? rule (aget o x))))]
+    (let [{:keys [break? ignored-word?]} rule
+          stop? (fn [x] (or (aget covered x) (space? (aget o x)) (break? (aget o x))))]
       (loop [x 0 out []]
         (cond
           (>= x n) out
@@ -3424,6 +3412,6 @@
                 cps (map #(aget o %) (range x y))]
             (recur y (cond-> out
                        (and (some #(aget typed? %) (range x y))
-                            (not (ignored-word? rule cps))
+                            (not (ignored-word? cps))
                             (not-any? #(in-ranges? (punct-classes "spaceless") %) cps))
                        (conj {:token/layer layer :token/begin x :token/end y})))))))))

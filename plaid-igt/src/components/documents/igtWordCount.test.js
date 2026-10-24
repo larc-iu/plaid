@@ -6,7 +6,7 @@ describe('igtWordCount', () => {
     body: 'Ana runs... home.',
     layerInfo: {
       primaryTokenLayer: {
-        config: { igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } },
+        config: { plaid: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } },
         tokens,
       },
     },

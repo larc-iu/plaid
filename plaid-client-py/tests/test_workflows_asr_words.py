@@ -19,10 +19,9 @@ WORD_LAYER = 'word-layer'
 
 
 def _with_words(doc, words=(), tokenize=None):
-    config = {'plaid': {'role': 'word'},
-              'igt': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}}
+    config = {'plaid': {'role': 'word', 'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}}
     if tokenize is not None:
-        config['igt']['tokenizeNewText'] = tokenize
+        config['igt'] = {'tokenizeNewText': tokenize}
     doc['text_layers'][0]['token_layers'].append(
         {'id': WORD_LAYER, 'name': 'Words', 'config': config,
          'tokens': [{'id': f'w{i}', 'begin': b, 'end': e} for i, (b, e) in enumerate(words)]})

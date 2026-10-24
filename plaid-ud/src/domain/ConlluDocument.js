@@ -11,6 +11,7 @@ import {
   applyTextOps,
   composeText,
   gapsToOps,
+  readIgnoredTokens,
   stampInferred,
   wasReplayed,
 } from '@larc-iu/plaid-client';
@@ -48,7 +49,6 @@ import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows, isVirtualWordId, sentenceHoldsWords } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
-import { readIgnoredTokensOf } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
 
@@ -412,7 +412,7 @@ export class ConlluDocument extends DocumentModel {
       sentenceRanges,
       wordTokens,
       tokenizerLocale,
-      readIgnoredTokensOf(wordTokenLayer.config),
+      readIgnoredTokens(wordTokenLayer.config),
     );
     if (keepSentences && wordRanges.length === 0) {
       this.refuse('No untokenized text.');
@@ -593,7 +593,7 @@ export class ConlluDocument extends DocumentModel {
       ranges,
       wordTokenLayer?.tokens || [],
       locale,
-      readIgnoredTokensOf(wordTokenLayer?.config),
+      readIgnoredTokens(wordTokenLayer?.config),
     ).length;
   }
 

@@ -335,7 +335,7 @@ describe('punctuation inside a multi-word expression', () => {
     const raw = buildRawDoc({ body, words });
     if (ignore) {
       const wordLayer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
-      wordLayer.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+      wordLayer.config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
     }
     const client = makeFakeClient();
     client.query = async () => ({ results: [] });

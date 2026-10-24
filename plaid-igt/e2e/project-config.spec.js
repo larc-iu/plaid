@@ -158,7 +158,7 @@ test('B11-01/02/03 + B5-03/01: unicode-punctuation rule with a `?` whitelist', a
 });
 
 test('B5-12: a blacklist rule trims nothing; listed tokens are inert', async ({ page }) => {
-  await client.tokenLayers.setConfig(wordLayerId, 'igt', 'ignoredTokens', {
+  await client.tokenLayers.setConfig(wordLayerId, 'plaid', 'ignoredTokens', {
     type: 'blacklist',
     blacklist: ['...'],
   });
@@ -170,12 +170,12 @@ test('B5-12: a blacklist rule trims nothing; listed tokens are inert', async ({ 
 });
 
 test('B5-13: no ignore config at all: nothing is ignored, nothing trimmed', async ({ page }) => {
-  await client.tokenLayers.deleteConfig(wordLayerId, 'igt', 'ignoredTokens');
+  await client.tokenLayers.deleteConfig(wordLayerId, 'plaid', 'ignoredTokens');
   await openAnalyze(page);
   await expect(opener(page, ids.w[W.dots])).toHaveCount(1);
   expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create "derechos\."/);
   // Restore the original rule for any later run in this file.
-  await client.tokenLayers.setConfig(wordLayerId, 'igt', 'ignoredTokens', {
+  await client.tokenLayers.setConfig(wordLayerId, 'plaid', 'ignoredTokens', {
     type: 'unicodePunctuation',
     whitelist: ['?'],
   });

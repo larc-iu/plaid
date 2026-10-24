@@ -296,7 +296,7 @@ describe('a split with punctuation tokens ud made', () => {
       ],
     });
     const layer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
-    layer.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+    layer.config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
     return makeIgtDoc({ raw });
   };
 

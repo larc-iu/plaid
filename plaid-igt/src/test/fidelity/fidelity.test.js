@@ -484,7 +484,7 @@ const CONFIG_KEYS = {
   'textLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.preserveOnSplit': notData('written by setup on every token layer'),
-  'tokenLayers igt.ignoredTokens': covers(
+  'tokenLayers plaid.ignoredTokens': covers(
     'layers.ignoredTokensPunctuation',
     'layers.ignoredTokensLetterLike',
     'layers.ignoredTokensBlacklist',
@@ -521,6 +521,7 @@ const IDENTIFIERS = {
   namespace: 'igt',
   ROLE_KEY: 'role',
   PRESERVE_ON_SPLIT_KEY: 'preserveOnSplit',
+  IGNORED_TOKENS_KEY: 'ignoredTokens',
   REVIEW_KEY: 'review',
   CONFIDENCE_KEY: 'confidence',
   IMPORT_KEY: 'import',

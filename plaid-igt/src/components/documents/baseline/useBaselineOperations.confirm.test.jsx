@@ -112,7 +112,7 @@ describe('useBaselineOperations, the counts in the confirm', () => {
   afterEach(() => {
     document.body.innerHTML = '';
   });
-  const PUNCT = { igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } };
+  const PUNCT = { plaid: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } };
   const withLayers = (body, tokens, spans = []) => {
     const words = { id: 'w', config: PUNCT, tokens, spanLayers: [{ id: 'g', spans }] };
     return fakeDocument({

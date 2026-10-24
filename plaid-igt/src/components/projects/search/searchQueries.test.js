@@ -126,7 +126,7 @@ describe('a words search under the ignored-tokens rule', () => {
     ...LAYER_INFO,
     primaryTokenLayer: {
       id: 'wordL',
-      config: { igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } },
+      config: { plaid: { ignoredTokens: { type: 'unicodePunctuation', whitelist: [] } } },
     },
   };
   const words = searchDomains(info, []).find((d) => d.id === 'words');

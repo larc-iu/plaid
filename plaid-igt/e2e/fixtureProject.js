@@ -117,7 +117,7 @@ async function initLayers(client, projectId) {
   }
 
   // 6. Ignored tokens (unicode punctuation, no whitelist) — igt namespace.
-  await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'ignoredTokens', {
+  await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'ignoredTokens', {
     type: 'unicodePunctuation',
     whitelist: [],
   });

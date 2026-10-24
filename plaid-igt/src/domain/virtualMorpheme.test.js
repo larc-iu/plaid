@@ -60,7 +60,7 @@ describe('derive', () => {
       morphemes: [],
     });
     const wordLayer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
-    wordLayer.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+    wordLayer.config.plaid.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
     const doc = makeDoc(raw, makeFakeClient());
     const [a, b] = doc.sentences[0].tokens;
     expect(doc.sentences[0].tokens).toHaveLength(2);

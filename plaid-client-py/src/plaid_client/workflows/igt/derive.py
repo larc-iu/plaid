@@ -11,6 +11,7 @@ the ignored-token rule is :mod:`.ignored`.
 from typing import Dict, List, Tuple
 
 from plaid_client.provenance import prov_state, MACHINE
+from plaid_client.roles import read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
 
 from .ignored import is_token_ignored
@@ -124,7 +125,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     body = (tl.get('text') or {}).get('body') or ''
     text_id = (tl.get('text') or {}).get('id')
     chars = list(body)
-    ignored_cfg = ((word_layer.get('config') or {}).get('igt') or {}).get('ignoredTokens')
+    ignored_cfg = read_ignored_tokens(word_layer.get('config'))
     orth_key = f'orthog:{orthography}' if orthography else None
 
     word_spans = _spans_by_token(word_layer)

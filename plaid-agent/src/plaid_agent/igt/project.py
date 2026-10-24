@@ -24,7 +24,7 @@ from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client import ROLES, find_by_role
+from plaid_client import ROLES, find_by_role, read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.igt import precedence, read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 # A clitic, as plaid-client-py's glossing reads one (the one Python copy).
@@ -341,7 +341,7 @@ def load_project(client, project_id: str) -> IgtProject:
         morpheme_layer_id=morph['id'] if morph else None,
         fields=fields,
         orthographies=[o['name'] for o in (_igt(word.get('config'), 'orthographies') or [])],
-        ignored_cfg=_igt(word.get('config'), 'ignoredTokens'),
+        ignored_cfg=read_ignored_tokens(word.get('config')),
         tokenize_new_text=_igt(word.get('config'), 'tokenizeNewText') is not False,
         vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
         document_metadata=[m['name'] for m in metadata],

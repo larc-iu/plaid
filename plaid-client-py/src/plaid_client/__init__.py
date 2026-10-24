@@ -63,8 +63,10 @@ from plaid_client.roles import (
     ROLE_KEY,
     PRESERVE_ON_SPLIT_KEY,
     SPLIT_ON_SPACE_KEY,
+    IGNORED_TOKENS_KEY,
     ROLES,
     read_role,
+    read_ignored_tokens,
     find_by_role,
 )
 from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_ops, compose_text
@@ -133,8 +135,10 @@ __all__ = [
     "ROLE_KEY",
     "PRESERVE_ON_SPLIT_KEY",
     "SPLIT_ON_SPACE_KEY",
+    "IGNORED_TOKENS_KEY",
     "ROLES",
     "read_role",
+    "read_ignored_tokens",
     "find_by_role",
     "compose_text_edits",
     "gaps_to_ops",

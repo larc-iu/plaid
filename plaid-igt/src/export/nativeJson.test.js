@@ -513,6 +513,16 @@ describe('buildProjectFile', () => {
     expect(out.schema.compose).toEqual({ codes: [{ code: "b'", char: 'ɓ' }] });
   });
 
+  it('carries the ignored-tokens rule once, in the schema', () => {
+    const project = buildProject();
+    const rule = { type: 'unicodePunctuation', whitelist: ["'"], blacklist: [] };
+    const word = project.textLayers[0].tokenLayers.find((l) => l.id === 'wl');
+    word.config = { ...word.config, plaid: { ...word.config?.plaid, ignoredTokens: rule } };
+    const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
+    expect(out.schema.ignoredTokens).toEqual(rule);
+    expect(out.otherLayers.config.word?.plaid?.ignoredTokens).toBeUndefined();
+  });
+
   it("carries each field's tagset reference, on the field", () => {
     // A tagset that arrives without knowing which field it governs is a list
     // that enforces nothing.

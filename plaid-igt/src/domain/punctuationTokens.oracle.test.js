@@ -16,7 +16,7 @@ import { readIgnoredTokens } from './igtConfig.js';
 import { tokenizeText, findUntokenizedRanges } from '../utils/tokenizationUtils.js';
 
 const role = (r) => ({ plaid: { role: r } });
-const PUNCT = { igt: { ignoredTokens: { type: 'unicodePunctuation', whitelist: ["'"] } } };
+const PUNCT = { ignoredTokens: { type: 'unicodePunctuation', whitelist: ["'"] } };
 
 const PROJECT = {
   id: 'p1',
@@ -28,7 +28,7 @@ const PROJECT = {
       tokenLayers: [
         {
           id: 'wordL',
-          config: { ...role('word'), ...PUNCT },
+          config: { plaid: { ...role('word').plaid, ...PUNCT } },
           spanLayers: [{ id: 'glossL', name: 'Gloss', config: { igt: { scope: 'Word' } } }],
         },
         {

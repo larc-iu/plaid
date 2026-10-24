@@ -1,5 +1,6 @@
 // Where IGT's built-in tokenizer breaks a word, under the ignored-tokens
-// config on the shared word layer (`config.igt.ignoredTokens`). It is here, in
+// config on the shared word layer (`config.plaid.ignoredTokens`, read by
+// plaid-client's `readIgnoredTokens`). It is here, in
 // the shared package, because another app reads it too: plaid-ud's Tokenize
 // on a text that has words adds tokens only where this rule leaves a run out
 // of a word, so a token it adds never splits what IGT would make one word and
@@ -88,9 +89,6 @@ export function shouldTokenizeCharacter(char, config) {
   return isUnicodePunctuation(char);
 }
 
-/** The word layer's ignored-tokens config, or null when it has none. */
-export const readIgnoredTokensOf = (layerConfig) => layerConfig?.igt?.ignoredTokens ?? null;
-
 // "Punctuation" for the ignore rule: Unicode punctuation and symbols, EXCEPT
 // pictographs (emoji) and the zero morph. An emoji token in an object-language
 // transcript is a word-like unit a linguist may well want to gloss (an
@@ -137,7 +135,7 @@ export const isIgnoredCharacter = (c, cfg) =>
 
 /**
  * Is a token excluded from word-level annotation under an ignored-tokens config
- * (`readIgnoredTokensOf` shape)? `content` is the token's surface text. IGT's
+ * (`readIgnoredTokens` shape)? `content` is the token's surface text. IGT's
  * editor render and reconcile read it, so "ignored" means the same in both:
  * ignored tokens get no annotation cells and no healed morpheme. Another app
  * makes a token in an IGT project's word layer only where this holds.

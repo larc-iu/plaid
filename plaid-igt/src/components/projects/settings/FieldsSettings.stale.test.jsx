@@ -109,6 +109,30 @@ describe('Settings > Fields on a page opened before another maintainer saved', (
     await unmount();
   });
 
+  it('a letter-like character is written to the word layer under plaid', async () => {
+    const client = fakeClient();
+    const { container, step, unmount } = await mount(client);
+    const box = all(container, 'input').find((i) =>
+      (i.placeholder || '').includes('Separate with commas'),
+    );
+    await step(async () => {
+      typeInto(box, "'");
+      await settle();
+    });
+    expect(client.writes).toEqual([
+      [
+        'tokenLayers.setConfig',
+        'word',
+        'plaid',
+        'ignoredTokens',
+        { type: 'unicodePunctuation', whitelist: ["'"], blacklist: [] },
+        undefined,
+        { expected: undefined },
+      ],
+    ]);
+    await unmount();
+  });
+
   it('removing a field deletes that field only', async () => {
     const client = fakeClient();
     const { container, step, unmount } = await mount(client);

@@ -95,7 +95,7 @@ export function newlineSentenceRanges(text) {
  * leaves untokenized (ruling 28 and 29, 2026-10-16). With no tokens it is
  * `basicTokenize` of the whole text, cut at `sentenceRanges`.
  *
- * Where IGT has set the word layer up (`ignoredTokens` is its config there),
+ * Where the word layer has an ignored-tokens rule (`config.plaid.ignoredTokens`),
  * the new tokens are exactly what IGT reads the stretch as: each of its words
  * as IGT's tokenizer cuts it (`can't`, `3.14` and `10,000` in pieces where
  * IGT breaks at `'`, `.` and `,`), and a token for each run of what is left
@@ -110,7 +110,7 @@ export function newlineSentenceRanges(text) {
  * @param {[number, number][]} sentenceRanges in code points, in order
  * @param {{begin: number, end: number}[]} tokens the tokens there are
  * @param {string} locale
- * @param {object|null} ignoredTokens the word layer's `config.igt.ignoredTokens`
+ * @param {object|null} ignoredTokens the word layer's `config.plaid.ignoredTokens`
  * @returns {[number, number][]} the new tokens' ranges in document order
  */
 export function gapTokenize(text, sentenceRanges, tokens, locale = 'und', ignoredTokens = null) {

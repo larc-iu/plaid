@@ -38,7 +38,7 @@
                              "\n<body>document-id</body>: the text's associated document."
                              "\n<body>body</body>: the string which is the content of this text."
                              "\n<body>id</body>: optional, the new text's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a text since deleted, is refused with 409 and <body>id-taken</body>."
-                             "\n<body>tokenize-layer</body>: optional, a token layer of the text's layer: the body gets words on it as the built-in tokenizer cuts them, at whitespace and at the break characters of the layer's ignored-tokens rule (<body>config.igt.ignoredTokens</body>), leaving out a word that rule ignores and one holding a letter of a script written without spaces between words."
+                             "\n<body>tokenize-layer</body>: optional, a token layer of the text's layer: the body gets words on it as the built-in tokenizer cuts them, at whitespace and at the break characters of the layer's ignored-tokens rule (<body>config.plaid.ignoredTokens</body>), leaving out a word that rule ignores and one holding a letter of a script written without spaces between words."
                              "\n<body>token-edges</body>: optional, the code-point offsets where the tokens the client makes next on this text begin and end. The body is stored composed (NFC), except a character one of these falls inside, which stays as sent, so a mark that is a token of its own keeps its place.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]

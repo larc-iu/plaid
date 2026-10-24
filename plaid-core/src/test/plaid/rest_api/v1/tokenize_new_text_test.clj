@@ -26,7 +26,7 @@
                   :body :id)
         _ (when ignored
             (assert-status 204 (api-call admin-request {:method :put
-                                                        :path (str "/api/v1/token-layers/" words "/config/igt/ignoredTokens")
+                                                        :path (str "/api/v1/token-layers/" words "/config/plaid/ignoredTokens")
                                                         :body ignored})))
         text-id (-> (create-text admin-request tl doc body) :body :id)
         _ (when (seq body)
@@ -79,10 +79,33 @@
   (is (= [{:token/layer :w :token/begin 0 :token/end 3} {:token/layer :w :token/begin 3 :token/end 6}]
          (ta/new-words "abcdef" [[0 6]] [{:token/layer :s :token/begin 0 :token/end 3}
                                          {:token/layer :s :token/begin 3 :token/end 6}]
-                       :w #{:s} nil)))
+                       :w #{:s} (ta/ignored-rule nil))))
   (testing "and only text the save typed is cut, an old run beside it with it"
     (is (= [{:token/layer :w :token/begin 3 :token/end 5}]
-           (ta/new-words "ab cd ef" [[4 5]] [] :w #{} nil)))))
+           (ta/new-words "ab cd ef" [[4 5]] [] :w #{} (ta/ignored-rule nil))))))
+
+(deftest the-rule-is-read-once-into-breaks-and-ignored-words
+  (let [cp (fn [s] (.codePointAt ^String s 0))
+        word (fn [s] (vec (.toArray (.codePoints ^String s))))
+        {:keys [break? ignored-word?]} (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "unicodePunctuation"
+                                                                                   "whitelist" ["'"]}}})]
+    (is (break? (cp ".")))
+    (is (not (break? (cp "'"))))
+    (is (ignored-word? (word "...")))
+    (is (not (ignored-word? (word "'"))))
+    (is (not (ignored-word? (word "\u2205")))))
+  (let [cp (fn [s] (.codePointAt ^String s 0))
+        word (fn [s] (vec (.toArray (.codePoints ^String s))))
+        {:keys [break? ignored-word?]} (ta/ignored-rule {"plaid" {"ignoredTokens" {"type" "blacklist"
+                                                                                   "blacklist" ["." "--"]}}})]
+    (is (break? (cp ".")))
+    (is (not (break? (cp ","))))
+    (is (ignored-word? (word "--")))
+    (is (not (ignored-word? (word ",")))))
+  (testing "under no rule the break class breaks and no word is ignored"
+    (let [{:keys [break? ignored-word?]} (ta/ignored-rule {})]
+      (is (break? (.codePointAt "," 0)))
+      (is (not (ignored-word? [(int \.)]))))))
 
 (deftest the-other-forms-of-a-save-take-it-too
   (testing "a whole new body"

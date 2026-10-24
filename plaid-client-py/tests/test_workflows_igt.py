@@ -98,7 +98,7 @@ def raw_doc(*, word_meta=None, gloss_meta=None, morph2=None):
             {'id': 'sentL', 'tokens': [{'id': 's1', 'begin': 0, 'end': 12}],
              'span_layers': [{'id': 'trL', 'name': 'Translation', 'config': {'igt': {'scope': 'Sentence'}},
                               'spans': [{'id': 'tr1', 'tokens': ['s1'], 'value': 'the house is coming'}]}]},
-            {'id': 'wordL', 'config': {'igt': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
+            {'id': 'wordL', 'config': {'plaid': {'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
              'tokens': words, 'span_layers': [], 'vocabs': []},
             {'id': 'morphL', 'tokens': morphs,
              'span_layers': [{'id': 'glossL', 'name': 'Gloss', 'config': {'igt': {'scope': 'Morpheme'}},
