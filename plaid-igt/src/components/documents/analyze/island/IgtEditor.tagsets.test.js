@@ -666,6 +666,33 @@ describe('after a refusal', () => {
     expect(spy.mock.calls[0][2]).toBe('PL');
   });
 
+  // HUNT-igt R3: putting focus back after a CLICK elsewhere cancelled the
+  // click, and the next typing replaced the refused text and was saved into
+  // the refused cell, over its stored value, instead of the cell clicked.
+  it('a click on another cell keeps that click, and the refused cell shows its saved value', async () => {
+    const doc = mount();
+    const morphId = glossCell().dataset.cellKey.split(':')[1];
+    await doc.updateMorphemeSpan(morphId, 'Gloss', 'PL', null);
+    await flush();
+    const second = host.querySelectorAll('input[data-cell-key^="ma:"]')[1];
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan');
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'ABL');
+    second.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    second.focus();
+    await flush();
+    await flush();
+    expect(document.activeElement).toBe(second);
+    expect(cell.value).toBe('PL');
+    expect(cell.classList.contains('igt-field--invalid')).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenLastCalledWith(
+      '"ABL" is not in the Leipzig tagset. Not saved',
+      'Value not allowed',
+    );
+  });
+
   it('leaving again with the same refused text is refused again, not silently dropped', async () => {
     const doc = mount();
     const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);

@@ -266,6 +266,16 @@ export class IgtEditor {
     this._flushBeatOnInput = () => this._flushBeat();
     this.container.addEventListener('keydown', this._flushBeatOnInput, true);
     this.container.addEventListener('pointerdown', this._flushBeatOnInput, true);
+    // Whether the focus change under way is a click's (cells.js _commitField:
+    // a refused value never takes back focus a click moved). The click's
+    // focus change happens in the same task as its pointerdown.
+    this._onPointerLeave = () => {
+      this._pointerLeaving = true;
+      setTimeout(() => {
+        this._pointerLeaving = false;
+      }, 0);
+    };
+    document.addEventListener('pointerdown', this._onPointerLeave, true);
     // Backslash codes (`\sw` -> ə, `\0/` -> ∅) in every text field of the grid.
     // Delegated: `beforeinput` bubbles, and every text field here holds language
     // data, so there is nothing in the island to opt out. See lib/composeInput.js
@@ -429,6 +439,7 @@ export class IgtEditor {
     this.container.removeEventListener('keydown', this._predictionKeydown);
     this.container.removeEventListener('keydown', this._flushBeatOnInput, true);
     this.container.removeEventListener('pointerdown', this._flushBeatOnInput, true);
+    document.removeEventListener('pointerdown', this._onPointerLeave, true);
     // A beat left running past teardown would move focus in a grid that is
     // gone; drop it rather than let it fire.
     if (this._beat) clearTimeout(this._beat.timer);

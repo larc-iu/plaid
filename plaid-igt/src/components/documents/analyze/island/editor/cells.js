@@ -450,10 +450,20 @@ export const cells = {
       next !== (el.dataset.orig ?? '') &&
       !isValueAllowed(next, tagset)
     ) {
-      notifyError(
-        `${this._violationText(validateValue(next, tagset), tagset)}. Escape to put the saved value back`,
-        'Value not allowed',
-      );
+      const why = this._violationText(validateValue(next, tagset), tagset);
+      // A click elsewhere keeps its focus (HUNT-igt R3). Putting focus back
+      // cancelled the click, and what was typed next replaced the refused
+      // text and was saved into this cell over its stored value. So the cell
+      // shows its saved value, as a value core refuses does (the 422 rule),
+      // and the toast names what was not saved.
+      if (this._pointerLeaving) {
+        const saved = el.dataset.orig ?? '';
+        el.value = saved;
+        this._syncCellClasses(el, saved, tagset);
+        notifyError(`${why}. Not saved`, 'Value not allowed');
+        return;
+      }
+      notifyError(`${why}. Escape to put the saved value back`, 'Value not allowed');
       // Nothing re-renders after a refusal; the class sync above has already
       // squiggled the cell, so it cannot read as committed. The next commit's
       // sync takes the squiggle off again once the text is a legal value.
