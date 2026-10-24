@@ -207,3 +207,19 @@ describe('sortVocabItems and letters outside ASCII', () => {
     expect(filterVocabItems(mixed, { query: 'ẹran' }).map((i) => i.id)).toEqual(['2']);
   });
 });
+
+// REV-W2B-OPENS L3: the entry list's empty-only filter reads a field as the
+// form does, so one holding only a reference to an entry that is gone is
+// empty (VocabularyItems passes its reader as `emptyOf`).
+describe('filterVocabItems with a reader of emptiness', () => {
+  it('keeps the entries the reader finds empty', () => {
+    const items = [
+      { id: 'a', form: 'uno', metadata: { see: 'gone' } },
+      { id: 'b', form: 'dos', metadata: { see: 'a' } },
+    ];
+    const live = new Set(items.map((it) => it.id));
+    const emptyOf = (it, field) => !live.has(it.metadata?.[field]);
+    const kept = filterVocabItems(items, { field: 'see', emptyOnly: true, emptyOf });
+    expect(kept.map((it) => it.id)).toEqual(['a']);
+  });
+});

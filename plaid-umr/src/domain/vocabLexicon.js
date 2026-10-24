@@ -50,20 +50,35 @@ export async function loadVocabularies(client, project) {
   return buildLexicon(got.filter(Boolean));
 }
 
+// The entry each item is a sense of, or null, as plaid-igt's vocabulary
+// reads it (vocabDictionary.js validateVocabRefs): its parent while that is
+// another item of the vocabulary and the chain above it reaches an entry. An
+// item whose parent is gone, or whose chain loops, is an entry of its own.
+const liveParents = (items, byId) => {
+  const parentIn = (item) => {
+    const p = item?.metadata?.parent;
+    return typeof p === 'string' && byId.has(p) ? p : null;
+  };
+  const out = new Map();
+  items.forEach((item) => {
+    const p = parentIn(item);
+    const seen = new Set([item.id]);
+    let cur = p;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      cur = parentIn(byId.get(cur));
+    }
+    out.set(item.id, p && !cur ? p : null);
+  });
+  return out;
+};
+
 // The headword an item belongs to: its own form for an entry, the form at
-// the top of its parent chain for a sense. A chain that loops or dangles
-// stops at the item itself.
-const headwordOf = (item, byId) => {
+// the top of its parent chain for a sense.
+const headwordOf = (item, byId, parents) => {
   let cur = item;
-  const seen = new Set();
-  while (cur && !seen.has(cur.id)) {
-    seen.add(cur.id);
-    const parent = cur.metadata?.parent;
-    const up = parent ? byId.get(parent) : null;
-    if (!up) return cur.form ?? '';
-    cur = up;
-  }
-  return item.form ?? '';
+  while (parents.get(cur.id)) cur = byId.get(parents.get(cur.id));
+  return cur.form ?? '';
 };
 
 /**
@@ -80,11 +95,12 @@ export function buildLexicon(vocabularies) {
   (vocabularies || []).forEach((vocab) => {
     const items = vocab?.items || [];
     const itemsById = new Map(items.map((it) => [it.id, it]));
+    const parents = liveParents(items, itemsById);
     items.forEach((it) => {
       const type = entryMorphType(
         it.id,
         (id) => itemsById.get(id)?.metadata?.morphType,
-        (id) => itemsById.get(id)?.metadata?.parent,
+        (id) => parents.get(id) ?? null,
       );
       if (type) entryTypes.set(it.id, type);
       const umr = it.metadata?.umr || {};
@@ -93,8 +109,8 @@ export function buildLexicon(vocabularies) {
         id: it.id,
         vocabulary: vocab.name || '',
         form: it.form ?? '',
-        headword: headwordOf(it, itemsById),
-        sense: Boolean(it.metadata?.parent && itemsById.has(it.metadata.parent)),
+        headword: headwordOf(it, itemsById, parents),
+        sense: Boolean(parents.get(it.id)),
         gloss: typeof gloss === 'string' ? gloss.trim() : '',
         concept: typeof umr.roleset === 'string' && umr.roleset.trim() ? umr.roleset.trim() : null,
         args: umr.args && typeof umr.args === 'object' ? umr.args : null,

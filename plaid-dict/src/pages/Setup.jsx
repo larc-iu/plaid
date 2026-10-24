@@ -29,7 +29,7 @@ import {
   parseAlphabet,
   suggestAlphabet,
 } from '@/domain/collation';
-import { parentOf } from '@igt/domain/vocabDictionary.js';
+import { buildSenseTree } from '@igt/domain/vocabDictionary.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -232,9 +232,10 @@ export const Setup = () => {
   }, [client, items]);
 
   // Only a headword gets a place in the index, so only headwords are measured
-  // against the alphabet.
+  // against the alphabet: the roots of the sense tree, which an entry whose
+  // parent is gone or loops is one of.
   const headwordForms = useMemo(
-    () => (items || []).filter((it) => !parentOf(it)).map((it) => it.form ?? ''),
+    () => buildSenseTree(items || []).roots.map((it) => it.form ?? ''),
     [items],
   );
   const stray = useMemo(

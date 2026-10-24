@@ -284,10 +284,25 @@ export const VocabularyItems = ({
   // How many entries have nothing in the scoped field, and whether the
   // empty-only filter applies right now: it exists for a real field with
   // something to show, and is dropped by the reducer when the field changes.
+  // Each entry's metadata as the form reads it: a reference to an entry that
+  // is gone, a parent that is gone or loops back, and a stray sense order
+  // read as none (validateVocabRefs). Reading writes nothing. The next save
+  // of the entry stores what the form showed, since it sends what changed
+  // from the entry as stored.
+  const readMetadata = useMemo(
+    () => new Map(validateVocabRefs(items, fields).patches.map((p) => [p.id, p.metadata])),
+    [items, fields],
+  );
+  // A field holding only references to entries that are gone is empty, as
+  // the form reads it.
+  const emptyOf = useCallback(
+    (it, field) => fieldEmpty({ ...it, metadata: readMetadata.get(it.id) ?? it.metadata }, field),
+    [readMetadata],
+  );
   const emptyField = emptyFieldOf(scope.field);
   const emptyCount = useMemo(
-    () => (emptyField ? items.filter((it) => fieldEmpty(it, emptyField)).length : 0),
-    [items, emptyField],
+    () => (emptyField ? items.filter((it) => emptyOf(it, emptyField)).length : 0),
+    [items, emptyField, emptyOf],
   );
   useEffect(() => {
     if (!emptyField || emptyCount === 0) dispatch({ type: 'scope/clearEmptyOnly' });
@@ -301,15 +316,6 @@ export const VocabularyItems = ({
     const id = settledId(selectedId);
     return items.find((i) => i.id === id) || null;
   }, [items, selectedId, isNew]);
-  // Each entry's metadata as the form reads it: a reference to an entry that
-  // is gone, a parent that is gone or loops back, and a stray sense order
-  // read as none (validateVocabRefs). Reading writes nothing. The next save
-  // of the entry stores what the form showed, since it sends what changed
-  // from the entry as stored.
-  const readMetadata = useMemo(
-    () => new Map(validateVocabRefs(items, fields).patches.map((p) => [p.id, p.metadata])),
-    [items, fields],
-  );
   const selectedAsRead = useMemo(
     () =>
       selectedItem && {
@@ -426,6 +432,7 @@ export const VocabularyItems = ({
     offTagsetIds,
     fieldNames,
     searchTextOf,
+    emptyOf,
     numbers,
     usageCounts,
     tree,

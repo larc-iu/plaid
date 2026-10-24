@@ -174,3 +174,33 @@ test('without the entry, two senses that disagree offer neither', () => {
     [':ARG0'],
   );
 });
+
+// REV-W2B-OPENS L3: an entry whose parent is gone, or whose parent chain
+// loops, is an entry of its own, as plaid-igt's vocabulary reads it
+// (vocabDictionary.js validateVocabRefs): its own form is its headword, it is
+// no sense, and it goes by its own morph type alone.
+test('an entry whose parent is gone or loops is an entry of its own', () => {
+  const lexicon = buildLexicon([
+    {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [
+        { id: 'a', form: 'ka', metadata: { parent: 'b' } },
+        { id: 'b', form: 'kb', metadata: { parent: 'a', morphType: 'suffix' } },
+        { id: 'c', form: 'kc', metadata: { parent: 'gone' } },
+        { id: 'd', form: 'kd', metadata: { parent: 'a' } },
+        { id: 'e', form: 'ke', metadata: { morphType: 'prefix' } },
+        { id: 'f', form: 'kf', metadata: { parent: 'e' } },
+      ],
+    },
+  ]);
+  const read = (id) => {
+    const e = lexicon.byId.get(id);
+    return [e.headword, e.sense, lexicon.entryTypes.get(id) ?? null];
+  };
+  assert.deepEqual(read('a'), ['ka', false, null]);
+  assert.deepEqual(read('b'), ['kb', false, 'suffix']);
+  assert.deepEqual(read('c'), ['kc', false, null]);
+  assert.deepEqual(read('d'), ['kd', false, null]);
+  assert.deepEqual(read('f'), ['ke', true, 'prefix']);
+});

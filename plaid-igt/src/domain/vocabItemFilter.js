@@ -36,15 +36,23 @@ export const fieldEmpty = (item, field) =>
  *
  * `textOf` overrides what a field reads as. An Entry field holds ids, and the
  * screen shows the entries they name, so the list passes a reader that does
- * the same.
+ * the same. `emptyOf` overrides whether a field is empty, so a field holding
+ * only references to entries that are gone reads as empty there too.
  */
 export function filterVocabItems(
   items,
-  { query = '', field = ANY_FIELD, emptyOnly = false, fieldNames = [], textOf = fieldText },
+  {
+    query = '',
+    field = ANY_FIELD,
+    emptyOnly = false,
+    fieldNames = [],
+    textOf = fieldText,
+    emptyOf = fieldEmpty,
+  },
 ) {
   const scoped = field && field !== ANY_FIELD ? field : null;
   const gaps = scoped && emptyOnly;
-  const list = gaps ? items.filter((it) => fieldEmpty(it, scoped)) : items;
+  const list = gaps ? items.filter((it) => emptyOf(it, scoped)) : items;
   const q = query.trim();
   if (!q) return list;
   const columns = gaps ? ['form'] : scoped ? [scoped] : ['form', ...fieldNames];

@@ -246,12 +246,15 @@ export const vocabPopover = {
     // spelled like an existing one. Preview the number it would get (existing
     // count + 1) and say so, since a duplicate is usually a mis-click on the
     // existing entry. Only ENTRIES count, since a new one is an entry.
-    const newFormDupes =
-      canCreate && effectiveForm
-        ? (activeVocab.items || []).filter(
-            (it) => it.form === effectiveForm && !it.metadata?.parent,
-          ).length
-        : 0;
+    // An entry whose parent is gone, or whose parent chain loops, is an
+    // entry, as the sense tree reads it.
+    const liveParent =
+      canCreate && effectiveForm ? this._senseTreeFor(activeVocab.id).parentOf : null;
+    const newFormDupes = liveParent
+      ? (activeVocab.items || []).filter(
+          (it) => it.form === effectiveForm && !liveParent.get(it.id),
+        ).length
+      : 0;
     const newFormSub = newFormDupes >= 1 ? String(newFormDupes + 1) : null;
     // Rows on a WORD's popover for its multi-word expressions: one per MWE it
     // belongs to (opens that one), then "Part of a longer expression…", which

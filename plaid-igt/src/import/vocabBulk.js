@@ -663,6 +663,9 @@ export const planVocabImport = ({
   // answer to a row. The numbers tell them apart on the comparison, and the
   // headword is what a bare form means (see `heads` below).
   const numbers = buildItemNumbers(existingItems);
+  // An entry whose parent is gone, or whose parent chain loops, is a
+  // headword, as the sense tree reads it.
+  const liveParent = buildSenseTree(existingItems).parentOf;
 
   // The row's own answer wins over its bucket's, as long as it still makes
   // sense for how the row classified this time round. A targeted answer also
@@ -695,7 +698,7 @@ export const planVocabImport = ({
       id: item.id,
       form: item.form,
       values,
-      root: !item?.metadata?.parent,
+      root: !liveParent.get(item.id),
       number: numbers.get(item.id) ?? '',
     });
   }

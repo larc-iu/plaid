@@ -8,7 +8,7 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // shows what is stored: a second Save must not put back the keys the other
 // maintainer changed and this one never touched.
 
-const server = vi.hoisted(() => ({ dict: null, writes: [] }));
+const server = vi.hoisted(() => ({ dict: null, writes: [], items: [] }));
 
 vi.mock('@ui/lib/notify.js', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
 
@@ -23,7 +23,7 @@ vi.mock('@/contexts/AuthContext', () => {
     withOperation: async (_label, fn) => fn(),
     projects: { list: async () => [] },
     vocabLayers: {
-      get: async () => ({ items: [] }),
+      get: async () => ({ items: server.items }),
       setConfig: async (_id, _ns, key, value, _msg, options) => {
         cas(key, options);
         server.dict = { ...server.dict, [key]: value };
@@ -141,6 +141,31 @@ describe('dictionary Setup against another maintainer', () => {
     await view.step(() => saveButton(view.container).click());
     expect(server.writes).toEqual([]);
     expect(server.dict).toEqual({ title: 'Sena', slug: 'sena', about: 'Theirs' });
+    await view.unmount();
+  });
+});
+
+// REV-W2B-OPENS L3: an entry whose parent is gone is a headword, as the
+// sense tree reads it, so the alphabet check measures it.
+describe('dictionary Setup alphabet', () => {
+  it('measures an entry whose parent is gone as a headword', async () => {
+    server.dict = { title: 'Sena', slug: 'sena' };
+    server.writes = [];
+    server.items = [
+      { id: 'a', form: 'apple', metadata: {} },
+      { id: 'z', form: 'zeta', metadata: { parent: 'gone' } },
+    ];
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/setup/v1']}>
+        <Routes>
+          <Route path="/setup/:vocabularyId" element={<Setup />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    await view.step(() => type(view.container.querySelector('#alphabet'), 'a b'));
+    expect(view.container.textContent).toContain('1 headword starts outside it.');
+    server.items = [];
     await view.unmount();
   });
 });

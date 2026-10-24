@@ -617,6 +617,22 @@ describe('matched entries on a decision', () => {
     expect(plan([entry(1, 'kan', { gloss: 'house' })], two).decisions[0].kind).toBe('ambiguous');
   });
 
+  // REV-W2B-OPENS L3: an entry whose parent is gone, or whose parent chain
+  // loops, is a headword, as the sense tree reads it.
+  it('reads an entry whose parent is gone or loops as a headword', () => {
+    const orphan = [
+      { id: 'a', form: 'kan', metadata: {} },
+      { id: 'b', form: 'kan', metadata: { parent: 'gone' } },
+    ];
+    expect(plan([entry(1, 'kan', { gloss: 'house' })], orphan).decisions[0].kind).toBe('ambiguous');
+    const loop = [
+      { id: 'a', form: 'kan', metadata: {} },
+      { id: 'b', form: 'kan', metadata: { parent: 'c' } },
+      { id: 'c', form: 'kun', metadata: { parent: 'b' } },
+    ];
+    expect(plan([entry(1, 'kan', { gloss: 'house' })], loop).decisions[0].kind).toBe('ambiguous');
+  });
+
   // A headword that contradicts the row is a disagreement even when a blank
   // sense under it could take the row: the row names the entry, and an
   // enrichment of the sense would be a write nothing on the comparison lets
