@@ -705,8 +705,9 @@
     (let [ids (mapv :id (crud/select-in tx table "id" :document_id index [eid]))]
       (crud/delete-ids! tx table ids)
       (crud/delete-entity-metadata! tx entity-type ids)))
-  ;; Document's own metadata + row.
-  (metadata/delete-metadata! tx "document" eid)
+  ;; Document's own metadata, swept unaudited like every other parent's
+  ;; (plaid.sql.metadata's parent-owned :delete contract), then the row.
+  (crud/delete-entity-metadata! tx "document" [eid])
   (crud/delete-by-id! tx :documents eid))
 
 (defn delete

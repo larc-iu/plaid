@@ -177,3 +177,30 @@
         (let [post (psc/read-json (:post_image (first user-writes)))]
           (is (string? (:deactivated_at post))
               "post-image carries deactivated_at"))))))
+
+;; ============================================================
+;; R2-CORE-18 — a document delete follows the parent-owned contract
+;; ============================================================
+
+(deftest document-delete-writes-no-metadata-row
+  (testing "deleting a document that has metadata writes its :delete row and
+            no :update row clearing the metadata (plaid.sql.metadata's
+            parent-owned :delete contract), and the metadata rows are gone"
+    (let [proj (create-test-project admin-request "DocDeleteMetaProj")
+          doc  (create-test-document admin-request proj "DocDeleteMetaDoc")
+          _    (is (= 200 (:status (update-document-metadata admin-request doc {"genre" "story"}))))
+          _    (is (= 204 (:status (api-call admin-request {:method :delete
+                                                            :path (str "/api/v1/documents/" doc)}))))
+          op   (psc/q1 db {:select [:*] :from [:operations]
+                           :where [:= :op_type "document/delete"]
+                           :order-by [[:ts :desc]] :limit 1})
+          doc-writes (psc/q db {:select [:change_type] :from [:audit_writes]
+                                :where [:and
+                                        [:= :op_id (:id op)]
+                                        [:= :target_table "documents"]
+                                        [:= :target_id (str doc)]]
+                                :order-by [:seq]})]
+      (is (= ["delete"] (mapv :change_type doc-writes)))
+      (is (empty? (psc/q db {:select [:*] :from [:entity_metadata]
+                             :where [:and [:= :entity_type "document"]
+                                     [:= :entity_id (str doc)]]}))))))
