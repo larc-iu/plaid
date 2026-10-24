@@ -75,7 +75,7 @@ export const tokenMutations = {
     const idSet = new Set(ids);
     const toMerge = wordTokens.filter((t) => idSet.has(t.id)).sort((a, b) => a.begin - b.begin);
     if (toMerge.length <= 1) {
-      this.setError('Not enough tokens to merge');
+      this.refuse('Not enough tokens to merge');
       return false;
     }
     const label = 'Failed to merge tokens';
@@ -172,7 +172,7 @@ export const tokenMutations = {
     const info = this.layerInfo;
     const target = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!target) {
-      this.setError('Word not found');
+      this.refuse('Word not found');
       return false;
     }
     const label = 'Failed to delete token';
@@ -194,14 +194,14 @@ export const tokenMutations = {
     const primaryTokenLayer = info.primaryTokenLayer;
     const text = info.primaryTextLayer?.text;
     if (!primaryTokenLayer?.id || !text?.id) {
-      this.setError(notSetUp('Token layer is not configured'));
+      this.refuse(notSetUp('Token layer is not configured'));
       return false;
     }
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
     if (sentenceTokens.length > 0) {
       const fits = sentenceTokens.some((s) => begin >= s.begin && end <= s.end);
       if (!fits) {
-        this.setError('Selection must be inside an existing sentence');
+        this.refuse('Selection must be inside an existing sentence');
         return false;
       }
     }
@@ -239,12 +239,12 @@ export const tokenMutations = {
     const primaryTokenLayer = info.primaryTokenLayer;
     const text = info.primaryTextLayer?.text;
     if (!primaryTokenLayer?.id || !text?.id) {
-      this.setError(notSetUp('Token layer is not configured'));
+      this.refuse(notSetUp('Token layer is not configured'));
       return null;
     }
     const body = this.body;
     if (!body || !body.trim()) {
-      this.setError('No text to tokenize');
+      this.refuse('No text to tokenize');
       return null;
     }
     const label = 'Failed to tokenize';
@@ -255,7 +255,7 @@ export const tokenMutations = {
     const validation = validateTokenization(newTokens, body);
     if (!validation.isValid) {
       console.error(`Tokenization validation failed: ${validation.errors.join(', ')}`);
-      this.setError('Could not split the text into words.');
+      this.refuse('Could not split the text into words.');
       return null;
     }
     if (newTokens.length === 0) return 0;

@@ -2,7 +2,7 @@
 // `this` API (_queueWrite, _applyRawPatch, _settle, layerInfo, body, etc.).
 //
 // Convention: resolve + guard the target span layer BEFORE the patch
-// (setError + return false) so a misconfigured-field edit reports failure
+// (refuse + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding".
 
 import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
@@ -120,7 +120,7 @@ const makeSpanUpdater = (scope) =>
   ) {
     const layer = findSpanLayer(this, scope, fieldName);
     if (!layer) {
-      this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
+      this.refuse(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
     const label = `Failed to update ${fieldName}`;
@@ -132,7 +132,7 @@ const makeSpanUpdater = (scope) =>
       creates,
     } = this._planMorphemes([targetId]);
     if (!id) {
-      this.setError('Morpheme not found');
+      this.refuse('Morpheme not found');
       return false;
     }
     const plan = planSpan(this, layer, id, value, metadata, prob);
@@ -191,7 +191,7 @@ export const spanMutations = {
   async discardSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {
-      this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
+      this.refuse(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
     const span = (layer.spans || []).find(
@@ -215,7 +215,7 @@ export const spanMutations = {
   async confirmSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {
-      this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
+      this.refuse(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
     const span = (layer.spans || []).find(

@@ -271,7 +271,7 @@ export const analysisCopyMutations = {
   _planAnalysisApply(proposals) {
     const info = this.layerInfo;
     if (!info.morphemeTokenLayer?.id || !info.primaryTextLayer?.text?.id) {
-      this.setError(notSetUp('Morpheme layer not configured'));
+      this.refuse(notSetUp('Morpheme layer not configured'));
       return false;
     }
     const todo = [];
@@ -627,7 +627,7 @@ export const analysisCopyMutations = {
   async discardWordAnalysis(wordTokenId) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
-      this.setError('Word not found');
+      this.refuse('Word not found');
       return false;
     }
     const linkIds = [];
@@ -839,7 +839,7 @@ export const analysisCopyMutations = {
   async confirmWordAnalysis(wordTokenId, adoptions = []) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
-      this.setError('Word not found');
+      this.refuse('Word not found');
       return false;
     }
     // One writer, one stamp: what it merges does not depend on the entity.

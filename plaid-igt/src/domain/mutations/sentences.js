@@ -48,12 +48,12 @@ export const sentenceMutations = {
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
     const sentence = sentenceTokens.find((s) => s.id === sentenceId);
     if (!sentence) {
-      this.setError('Sentence not found');
+      this.refuse('Sentence not found');
       return false;
     }
     const prev = sentenceTokens.find((s) => s.end === sentence.begin);
     if (!prev) {
-      this.setError('Cannot merge: no previous sentence');
+      this.refuse('Cannot merge: no previous sentence');
       return false;
     }
     const label = 'Failed to merge sentence';
@@ -179,18 +179,18 @@ export const sentenceMutations = {
     const sentenceTokens = this.layerInfo.sentenceTokenLayer?.tokens || [];
     const containing = sentenceTokens.find((s) => s.begin <= charPos && charPos < s.end);
     if (!containing) {
-      if (!quiet) this.setError('No sentence contains the split position');
+      if (!quiet) this.refuse('No sentence contains the split position');
       return null;
     }
     if (charPos === containing.begin) {
-      if (!quiet) this.setError('Cannot split at the first character of a sentence');
+      if (!quiet) this.refuse('Cannot split at the first character of a sentence');
       return null;
     }
     // A word belongs to one sentence. A cut through it would split its
     // morphemes and leave both halves with no form or gloss.
     const words = this.layerInfo.primaryTokenLayer?.tokens || [];
     if (words.some((w) => w.begin < charPos && charPos < w.end)) {
-      if (!quiet) this.setError('Cannot split a sentence inside a word');
+      if (!quiet) this.refuse('Cannot split a sentence inside a word');
       return null;
     }
     return containing;
@@ -238,7 +238,7 @@ export const sentenceMutations = {
     const sentenceLayer = info.sentenceTokenLayer;
     const sentenceTokens = [...(sentenceLayer?.tokens || [])].sort((a, b) => a.begin - b.begin);
     if (!sentenceLayer?.id) {
-      this.setError(notSetUp('Sentence layer not configured'));
+      this.refuse(notSetUp('Sentence layer not configured'));
       return false;
     }
     if (sentenceTokens.length === 0) return false;
@@ -247,7 +247,7 @@ export const sentenceMutations = {
     // One batch or nothing: split past the cap, a failure after the first
     // part would leave the translations deleted and the sentences half merged.
     if (!clearSentencesFits(info)) {
-      this.setError(TOO_MANY_SENTENCES);
+      this.refuse(TOO_MANY_SENTENCES);
       return false;
     }
 

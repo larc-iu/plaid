@@ -571,7 +571,7 @@ export class IgtDocument extends DocumentModel {
   //
   // - Every edit shows before the server answers, creates included. Validate
   //   inputs (id lookups, layer presence) first: guard failures use
-  //   `setError + return false`. Then `_canWrite(label)`, the patch
+  //   `refuse(message) + return false`. Then `_canWrite(label)`, the patch
   //   (`_applyRawPatch`), and `_queueWrite(label, send)` with the server
   //   calls, which runs after any write still in flight.
   // - A row the edit creates goes in under a pending id and `_settle` swaps

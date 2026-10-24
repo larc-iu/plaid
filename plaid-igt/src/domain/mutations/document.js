@@ -118,11 +118,11 @@ export const documentMutations = {
     const sentenceTokenLayer = info.sentenceTokenLayer;
 
     if (!primaryTextLayer) {
-      this.setError(notSetUp('No primary text layer found'));
+      this.refuse(notSetUp('No primary text layer found'));
       return false;
     }
     if (!sentenceTokenLayer?.id) {
-      this.setError(notSetUp('No sentence layer found'));
+      this.refuse(notSetUp('No sentence layer found'));
       return false;
     }
 
@@ -168,11 +168,11 @@ export const documentMutations = {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     if (!primaryTextLayer) {
-      this.setError(notSetUp('No primary text layer found'));
+      this.refuse(notSetUp('No primary text layer found'));
       return false;
     }
     if (!info.sentenceTokenLayer?.id) {
-      this.setError(notSetUp('No sentence layer found'));
+      this.refuse(notSetUp('No sentence layer found'));
       return false;
     }
     // A text not made yet has no edits to send: it is created whole.

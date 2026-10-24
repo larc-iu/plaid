@@ -7,7 +7,7 @@
 // renumber so precedence stays gap-free.
 //
 // Guard convention (matches the rest of src/domain/mutations): "couldn't
-// resolve this id" / "no-op condition" guards do `setError + return false`
+// resolve this id" / "no-op condition" guards do `refuse + return false`
 // outside `_queueWrite` so we don't trigger a needless `_reload` for an
 // invalid input. `throw` inside `_queueWrite` is reserved for unexpected
 // failure paths the server is reporting.
@@ -88,12 +88,12 @@ export const morphemeMutations = {
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
     if (!morphemeLayer?.id || !textId) {
-      this.setError(notSetUp('Morpheme layer not configured'));
+      this.refuse(notSetUp('Morpheme layer not configured'));
       return false;
     }
     const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
     if (!word) {
-      this.setError('Word not found');
+      this.refuse('Word not found');
       return false;
     }
     const label = forms.length === 1 ? 'Failed to create morpheme' : 'Failed to create morphemes';
@@ -151,19 +151,19 @@ export const morphemeMutations = {
   async splitMorphemeMulti(morphemeId, segments, { joiners = [] } = {}) {
     if (!Array.isArray(segments) || segments.length < 2) {
       console.error('splitMorphemeMulti needs at least two segments', segments);
-      this.setError('Could not split the morpheme.');
+      this.refuse('Could not split the morpheme.');
       return false;
     }
     const info = this.layerInfo;
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
     if (!morphemeLayer?.id || !textId) {
-      this.setError(notSetUp('Morpheme layer not configured'));
+      this.refuse(notSetUp('Morpheme layer not configured'));
       return false;
     }
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.setError('Morpheme not found');
+      this.refuse('Morpheme not found');
       return false;
     }
     const label = 'Failed to split morpheme';
@@ -300,7 +300,7 @@ export const morphemeMutations = {
     if (isVirtualMorphemeId(morphemeId)) return false;
     const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
-      this.setError('Morpheme not found');
+      this.refuse('Morpheme not found');
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
@@ -363,17 +363,17 @@ export const morphemeMutations = {
     // A virtual morpheme is its word's last one, and it holds nothing to throw
     // away, the same refusal a sole real morpheme gets, for the same reason.
     if (isVirtualMorphemeId(morphemeId)) {
-      this.setError('Cannot delete the last morpheme of a word');
+      this.refuse('Cannot delete the last morpheme of a word');
       return false;
     }
     const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
-      this.setError('Morpheme not found');
+      this.refuse('Morpheme not found');
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
     if (siblings.length <= 1) {
-      this.setError('Cannot delete the last morpheme of a word');
+      this.refuse('Cannot delete the last morpheme of a word');
       return false;
     }
     const label = 'Failed to delete morpheme';
@@ -418,7 +418,7 @@ export const morphemeMutations = {
   async updateMorphemeForm(morphemeId, form) {
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.setError('Morpheme not found');
+      this.refuse('Morpheme not found');
       return false;
     }
     return this._writeMorphemeMeta(resolved, 'Failed to update morpheme form', (target) => ({
@@ -433,12 +433,12 @@ export const morphemeMutations = {
   // be violated; display-side affix joints react automatically.
   async setMorphemeType(morphemeId, morphType) {
     if (!isValidMorphType(morphType)) {
-      this.setError(`Unknown morpheme type "${morphType}"`);
+      this.refuse(`Unknown morpheme type "${morphType}"`);
       return false;
     }
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.setError('Morpheme not found');
+      this.refuse('Morpheme not found');
       return false;
     }
     // Clearing the type of a morpheme that has none asks for nothing, so it

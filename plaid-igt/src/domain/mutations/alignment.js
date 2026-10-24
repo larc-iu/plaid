@@ -508,11 +508,11 @@ export const alignmentMutations = {
     // composed, as the server stores it, so the segment is measured on it
     const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
-      this.setError('Segment text is required');
+      this.refuse('Segment text is required');
       return false;
     }
     if (timeEnd < timeBegin) {
-      this.setError('Invalid time range: end must be at or after start');
+      this.refuse('Invalid time range: end must be at or after start');
       return false;
     }
     const info = this.layerInfo;
@@ -520,23 +520,23 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
-      this.setError(notSetUp('Required layers not found'));
+      this.refuse(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError(notSetUp('Text layer not found'));
+      this.refuse(notSetUp('Text layer not found'));
       return false;
     }
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
     if (overlap) {
-      this.setError(overlap);
+      this.refuse(overlap);
       return false;
     }
 
     const plan = planCreate(info, trimmed, timeBegin);
     if (plan.error) {
-      this.setError(plan.error);
+      this.refuse(plan.error);
       return false;
     }
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
@@ -576,11 +576,11 @@ export const alignmentMutations = {
     // composed, as the server stores it, so the segment is measured on it
     const trimmed = composeText((text || '').trim()).text;
     if (!trimmed) {
-      this.setError('Segment text is required');
+      this.refuse('Segment text is required');
       return false;
     }
     if (timeEnd < timeBegin) {
-      this.setError('Invalid time range: end must be at or after start');
+      this.refuse('Invalid time range: end must be at or after start');
       return false;
     }
     const info = this.layerInfo;
@@ -588,18 +588,18 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
-      this.setError(notSetUp('Required layers not found'));
+      this.refuse(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError(notSetUp('Text layer not found'));
+      this.refuse(notSetUp('Text layer not found'));
       return false;
     }
     const alignmentTokens = alignmentTokenLayer.tokens || [];
     const existingAlignment = alignmentTokens.find((t) => t.id === existingAlignmentId);
     if (!existingAlignment) {
-      this.setError('Segment not found');
+      this.refuse('Segment not found');
       return false;
     }
 
@@ -611,7 +611,7 @@ export const alignmentMutations = {
     const was = existingAlignment.metadata;
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker }, existingAlignment);
     if (overlap) {
-      this.setError(overlap);
+      this.refuse(overlap);
       return false;
     }
     if (!gaps.length) {
@@ -623,7 +623,7 @@ export const alignmentMutations = {
     }
     const plan = planEdit(info, existingAlignment, gaps, next, timeBegin);
     if (plan.error) {
-      this.setError(plan.error);
+      this.refuse(plan.error);
       return false;
     }
 
@@ -676,7 +676,7 @@ export const alignmentMutations = {
   // and may not overlap another segment.
   async alignBaseline({ begin, end, timeBegin, timeEnd, speaker }) {
     if (timeEnd < timeBegin) {
-      this.setError('Invalid time range: end must be at or after start');
+      this.refuse('Invalid time range: end must be at or after start');
       return false;
     }
     const info = this.layerInfo;
@@ -684,12 +684,12 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
-      this.setError(notSetUp('Required layers not found'));
+      this.refuse(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError(notSetUp('Text layer not found'));
+      this.refuse(notSetUp('Text layer not found'));
       return false;
     }
 
@@ -702,7 +702,7 @@ export const alignmentMutations = {
       begin < end &&
       end <= bodyLength;
     if (!inRange || !cpSlice(fullText, begin, end).trim()) {
-      this.setError('Select the text this segment covers.');
+      this.refuse('Select the text this segment covers.');
       return false;
     }
 
@@ -714,18 +714,18 @@ export const alignmentMutations = {
       timeEnd,
     );
     if (begin < leftBoundary || end > rightBoundary) {
-      this.setError(
+      this.refuse(
         'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.',
       );
       return false;
     }
     if (findOverlappingAlignment(alignmentTokens, begin, end)) {
-      this.setError('The selected text overlaps an existing segment.');
+      this.refuse('The selected text overlaps an existing segment.');
       return false;
     }
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
     if (overlap) {
-      this.setError(overlap);
+      this.refuse(overlap);
       return false;
     }
 
@@ -769,17 +769,17 @@ export const alignmentMutations = {
     const primaryTextLayer = info.primaryTextLayer;
     const alignmentTokenLayer = info.alignmentTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer) {
-      this.setError(notSetUp('Required layers not found'));
+      this.refuse(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError(notSetUp('Text layer not found'));
+      this.refuse(notSetUp('Text layer not found'));
       return false;
     }
     const existingAlignment = (alignmentTokenLayer.tokens || []).find((t) => t.id === alignmentId);
     if (!existingAlignment) {
-      this.setError('Segment not found');
+      this.refuse('Segment not found');
       return false;
     }
 
@@ -871,11 +871,11 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const token = (alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!token) {
-      this.setError('Segment not found');
+      this.refuse('Segment not found');
       return false;
     }
     if (timeEnd < timeBegin) {
-      this.setError('Invalid time range: end must be at or after start');
+      this.refuse('Invalid time range: end must be at or after start');
       return false;
     }
     // Bounds are metadata-only with no _reload, so a temporal/positional
@@ -887,7 +887,7 @@ export const alignmentMutations = {
       alignmentId,
     );
     if (inversion) {
-      this.setError(
+      this.refuse(
         `The new time range would put this segment out of order with the ${inversion} segment.`,
       );
       return false;
@@ -906,7 +906,7 @@ export const alignmentMutations = {
       },
     );
     if (problem) {
-      this.setError(problem);
+      this.refuse(problem);
       return false;
     }
 
@@ -940,7 +940,7 @@ export const alignmentMutations = {
     const info = this.layerInfo;
     const token = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!token) {
-      this.setError('Segment not found');
+      this.refuse('Segment not found');
       return false;
     }
     const value = (speaker || '').trim();
@@ -950,7 +950,7 @@ export const alignmentMutations = {
     const timeEnd = token.metadata?.timeEnd ?? timeBegin;
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker: value }, token);
     if (overlap) {
-      this.setError(overlap);
+      this.refuse(overlap);
       return false;
     }
     const label = 'Failed to update speaker';
@@ -1030,12 +1030,12 @@ export const alignmentMutations = {
   async splitSegment(alignmentId, { time, at = null } = {}) {
     const plan = this.segmentSplitPlan(alignmentId, { time, at });
     if (plan.error) {
-      this.setError(plan.error);
+      this.refuse(plan.error);
       return false;
     }
     const textId = this.layerInfo.primaryTextLayer?.text?.id;
     if (!textId) {
-      this.setError(notSetUp('Text layer not found'));
+      this.refuse(notSetUp('Text layer not found'));
       return false;
     }
     const label = 'Failed to split segment';
@@ -1146,7 +1146,7 @@ export const alignmentMutations = {
   async mergeSegment(alignmentId) {
     const plan = this.segmentMergePlan(alignmentId);
     if (plan.error) {
-      this.setError(plan.error);
+      this.refuse(plan.error);
       return false;
     }
     const label = 'Failed to merge segments';
