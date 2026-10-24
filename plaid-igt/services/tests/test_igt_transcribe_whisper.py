@@ -420,6 +420,20 @@ def test_a_recording_with_no_speech_in_it_is_an_empty_result(monkeypatch):
     assert service.client.writes == []
 
 
+def test_a_stop_during_a_transcription_that_found_no_speech_ends_as_stopped(monkeypatch):
+    # REV-W3F F5: Stop pressed while Whisper runs, and the recording has no
+    # speech. The run is stopped, not a failure and not a result.
+    _media(monkeypatch)
+    helper = servicetest.Helper()
+    module, _ = load_whisper(segments=[], before_return=helper.stop)
+    service = _service(module)
+    servicetest.run(service, REQUEST, helper)
+
+    assert helper.errors == []
+    assert helper.reports[-1] == ('completed', {'stopped': True})
+    assert service.client.writes == []
+
+
 def test_the_requested_model_loads_before_the_document_is_held(monkeypatch):
     _media(monkeypatch)
     module, _ = load_whisper()

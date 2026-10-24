@@ -28,6 +28,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from plaid_client.client import PlaidClient
+from plaid_client.document_lock import DocumentLockLost
 from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.service_schema import build_extras, coerce
 # requester_message and UNKNOWN_FAILURE live in services.py, beside the code
@@ -132,9 +133,10 @@ def locked_for_writes(client, document_id, read_version=None, response_helper=No
     the requester presses Stop and no ``critical()`` block is open, the lock
     is no longer renewed: a run stuck in a model call that never reaches a
     checkpoint lets the document go within the lock window, and a write it
-    makes after that is refused (:class:`~plaid_client.document_lock.DocumentLockLost`).
-    A stopped run writes nothing before its next checkpoint, so nothing is
-    left half done.
+    makes after that is refused. A lock a stop let lapse ends the block in
+    :class:`ServiceCancelled`, so the run is reported as stopped. A stopped
+    run writes nothing before its next checkpoint, so nothing is left half
+    done.
 
     Yields the :class:`~plaid_client.document_lock.DocumentLock`. Strict mode
     is put back as it was on the way out.
@@ -142,17 +144,25 @@ def locked_for_writes(client, document_id, read_version=None, response_helper=No
     should_renew = None
     if response_helper is not None:
         should_renew = lambda: not response_helper.stopping  # noqa: E731
-    with client.documents.locked(document_id, should_renew=should_renew) as lock:
-        current = (client.documents.get(document_id) or {}).get('version')
-        check_unchanged(client, document_id, read_version, current=current)
-        previous = client.strict_mode_document_id
-        if current:
-            client.document_versions[document_id] = current
-        client.enter_strict_mode(document_id)
-        try:
-            yield lock
-        finally:
-            client.strict_mode_document_id = previous
+    try:
+        with client.documents.locked(document_id, should_renew=should_renew) as lock:
+            current = (client.documents.get(document_id) or {}).get('version')
+            check_unchanged(client, document_id, read_version, current=current)
+            previous = client.strict_mode_document_id
+            if current:
+                client.document_versions[document_id] = current
+            client.enter_strict_mode(document_id)
+            try:
+                yield lock
+            finally:
+                client.strict_mode_document_id = previous
+    except DocumentLockLost as lost:
+        # A lock a stop let lapse (no renewal failed, so no cause) ends the
+        # run as stopped, whether the body then finished with no checkpoint
+        # or a write of it was refused.
+        if response_helper is not None and lost.cause is None:
+            raise ServiceCancelled('The requester stopped this request') from lost
+        raise
 
 
 class HeldRun:

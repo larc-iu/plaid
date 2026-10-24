@@ -273,7 +273,9 @@ class WhisperASRService(BaseService):
                 audio_file, model_size=model_size, language=language, model=model)
 
         if not alignments:
-            # An ordinary result (Luke's ruling R23): the app words it.
+            # An ordinary result (Luke's ruling R23): the app words it. A stop
+            # pressed during the transcription still ends the run as stopped.
+            response_helper.raise_if_cancelled()
             return {"document_id": document_id, "status": "success", "reason": "no-speech",
                     "tokens_created": 0, "segments_transcribed": 0,
                     "segments_added": 0, "segments_skipped": 0}

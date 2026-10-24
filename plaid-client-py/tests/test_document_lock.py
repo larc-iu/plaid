@@ -163,12 +163,68 @@ def test_a_stopped_run_stops_renewing_and_loses_the_lock_once_the_window_is_out(
         return clock.sleep(delay)
     keeper._sleep = sleep
     keeper.run()
-    # Renewed at 30, then asked every 6 s and renewed nothing, lost at 90:
-    # the window the 30 s renewal gave.
+    # Renewed at 30, then asked every 6 s and renewed nothing, lost at 84:
+    # the last tick whose next one would be past the 90 s the renewal gave,
+    # less a margin for the renewal's latency (REV-W3F F1).
     assert calls == ['d1']
-    assert clock.t == 90.0
+    assert clock.t == 84.0
     assert keeper.lost is not None and lost == [keeper.lost]
     assert 'stopped' in str(keeper.lost)
+
+
+def test_a_stopped_run_is_lost_while_the_server_still_holds_the_lock():
+    # REV-W3F F1: a run whose stop lands after its last checkpoint enters
+    # critical() whenever its planning ends. The keeper must have declared the
+    # lock lost before the server's expiry, or that critical() writes unheld.
+    # Every tick that does not declare it lost must leave the next tick inside
+    # the lock the server holds, so a critical() entered then is renewed live.
+    clock = FakeClock(stop_after=40)
+    server = {'expires': TTL_S}
+    lost, ticks = [], []
+
+    def refresh(_document_id):
+        server['expires'] = clock.t + TTL_S    # the server stamps on receipt
+        clock.t += 0.3                         # and the answer takes 0.3 s back
+
+    stopping = []
+    keeper = LockKeeper(refresh, 'd1', TTL_S, clock=clock.now, sleep=clock.sleep,
+                        on_lost=lost.append,
+                        should_renew=lambda: ticks.append(clock.t) or not stopping)
+
+    def sleep(delay):
+        if clock.t >= 30:
+            stopping.append(True)
+        return clock.sleep(delay)
+    keeper._sleep = sleep
+    keeper.run()
+    assert lost == [keeper.lost]
+    lost_at = ticks[-1]
+    assert lost_at < server['expires']
+    for t in ticks[:-1]:
+        assert t + keeper.retry_s < server['expires']
+
+
+def test_a_short_window_still_leaves_room_before_the_expiry():
+    # The probe's numbers (REV-W3F F1): a 2 s lock, a 0.3 s renewal.
+    clock = FakeClock(stop_after=40)
+    server = {'expires': 2.0}
+    stopping = []
+
+    def refresh(_document_id):
+        server['expires'] = clock.t + 2.0
+        clock.t += 0.3
+
+    keeper = LockKeeper(refresh, 'd1', 2.0, clock=clock.now, sleep=clock.sleep,
+                        should_renew=lambda: not stopping)
+
+    def sleep(delay):
+        if clock.t >= 1.0:
+            stopping.append(True)
+        return clock.sleep(delay)
+    keeper._sleep = sleep
+    keeper.run()
+    assert keeper.lost is not None
+    assert clock.t + keeper.retry_s <= server['expires']
 
 
 def test_renewal_goes_on_once_the_run_is_inside_its_writes_again():
@@ -206,6 +262,36 @@ def test_locked_for_writes_stops_renewing_once_a_stop_is_pending_outside_the_wri
             assert should_renew() is True     # the writes are under way
     with locked_for_writes(client, 'd1'):
         assert _ManualKeeper.made[1].should_renew is None
+
+
+def test_a_lock_a_stop_let_lapse_ends_the_run_as_stopped(monkeypatch):
+    # REV-W3F F5: a stopped run whose body ends with no checkpoint after the
+    # lapse (Whisper finding no speech) is a stop, not a failure. So is a
+    # write the lost lock refused.
+    from plaid_client.service import locked_for_writes
+    from plaid_client.services import ServiceCancelled
+    from plaid_client.testing import Helper
+    client, _ = _client(monkeypatch, _ManualKeeper)
+    monkeypatch.setattr(client.documents, 'get', lambda *a, **k: {'id': 'd1', 'version': 3})
+    helper = Helper()
+    with pytest.raises(ServiceCancelled):
+        with locked_for_writes(client, 'd1', response_helper=helper):
+            helper.stop()
+            _ManualKeeper.made[-1].lose()
+    with pytest.raises(ServiceCancelled):
+        with locked_for_writes(client, 'd1', response_helper=helper):
+            _ManualKeeper.made[-1].lose()
+            client.spans.update('s1', 'NOUN')
+
+
+def test_a_lock_lost_to_a_failed_renewal_is_still_a_failure(monkeypatch):
+    from plaid_client.service import locked_for_writes
+    from plaid_client.testing import Helper
+    client, _ = _client(monkeypatch, _ManualKeeper)
+    monkeypatch.setattr(client.documents, 'get', lambda *a, **k: {'id': 'd1', 'version': 3})
+    with pytest.raises(DocumentLockLost):
+        with locked_for_writes(client, 'd1', response_helper=Helper()):
+            _ManualKeeper.made[-1].lose(PlaidAPIError('Locked', status=423))
 
 
 def _raise(error):
@@ -277,8 +363,8 @@ class _ManualKeeper:
     def stop(self):
         self.stopped = True
 
-    def lose(self):
-        self.lost = DocumentLockLost('lapsed', document_id=self.document_id)
+    def lose(self, cause=None):
+        self.lost = DocumentLockLost('lapsed', document_id=self.document_id, cause=cause)
         self._on_lost(self.lost)
 
 

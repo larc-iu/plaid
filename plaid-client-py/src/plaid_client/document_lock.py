@@ -87,10 +87,14 @@ class LockKeeper:
 
     ``should_renew``, when given, is asked before each renewal. While it
     answers False the keeper renews nothing and asks again every
-    :attr:`retry_s`, and once the window it last renewed has run out the lock
-    is lost as if a renewal had failed. A stopped service run uses it to let
-    the document go while its main thread is stuck in a call that never
-    reaches a checkpoint.
+    :attr:`retry_s`, and the lock is lost at the last of those asks that
+    comes before the window it last renewed runs out, less
+    :attr:`margin_s` for the renewal's latency. So the server still holds the
+    lock when the keeper gives it up: a ``critical()`` block entered before
+    that is renewed at the next ask on a live lock, and one entered after it
+    has its first write refused before anything is written. A stopped service
+    run uses it to let the document go while its main thread is stuck in a
+    call that never reaches a checkpoint.
 
     ``clock`` and ``sleep`` exist so the whole policy can be run on a fake
     clock: ``sleep(delay)`` returns True once the block has exited.
@@ -122,17 +126,27 @@ class LockKeeper:
         run that the server still considers the holder of."""
         return max(0.5, self._ttl_s / 10)
 
+    @property
+    def margin_s(self) -> float:
+        """How long before the window ends a run that stopped renewing gives
+        the lock up, beyond the next ask: room for a renewal's answer, which
+        the server's expiry does not wait for."""
+        return min(1.0, self._ttl_s / 4)
+
     def run(self) -> None:
         """The beat. Returns when the block exits or the lock is lost."""
         deadline = self._clock() + self._ttl_s
         delay = self.interval_s
         while not self._sleep(delay):
             if self._should_renew is not None and not self._should_renew():
-                if self._clock() >= deadline:
+                if self._clock() + self.retry_s + self.margin_s >= deadline:
                     self._fail(None)
                     return
                 delay = self.retry_s
                 continue
+            # The window is counted from when the renewal was sent, since the
+            # server starts it on receipt, not when its answer gets back.
+            sent = self._clock()
             try:
                 self._refresh(self._document_id)
             except Exception as error:
@@ -145,7 +159,7 @@ class LockKeeper:
                     return
                 delay = self.retry_s
                 continue
-            deadline = self._clock() + self._ttl_s
+            deadline = sent + self._ttl_s
             delay = self.interval_s
 
     def start(self) -> None:
