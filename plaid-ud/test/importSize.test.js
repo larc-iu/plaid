@@ -101,3 +101,39 @@ test('a part over the cap is refused 413 and the document is taken back', async 
   );
   assert.equal(client.deleted(), true);
 });
+
+// R4-3-9: past the sentences, every bulk create goes in requests of at most
+// CHUNK rows, so no request holds the write lock for a whole document's rows.
+test('the words, spans and relations of a large import go in chunks', async () => {
+  const input = treebank(120);
+  const info = getUdLayerInfo(rawDocFromConllu(input, 'm', { enhanced: true }));
+  const rows = [];
+  const client = cappedClient(Infinity);
+  const batched = client.batched;
+  client.batched = (fn) =>
+    batched(async (b) => {
+      const count = (name) => (specs) => rows.push([name, specs.length]);
+      await fn({
+        ...b,
+        tokens: { bulkCreate: (specs) => (count('tokens')(specs), b.tokens.bulkCreate(specs)) },
+        spans: { bulkCreate: (specs) => (count('spans')(specs), b.spans.bulkCreate(specs)) },
+        relations: {
+          bulkCreate: (specs) => (count('relations')(specs), b.relations.bulkCreate(specs)),
+        },
+      });
+    });
+  await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
+  // The 120 sentences, then 1,200 words and 1,200 morphemes in chunks of 500.
+  assert.deepEqual(rows.slice(0, 7), [
+    ['tokens', 120],
+    ['tokens', 500],
+    ['tokens', 500],
+    ['tokens', 200],
+    ['tokens', 500],
+    ['tokens', 500],
+    ['tokens', 200],
+  ]);
+  assert.ok(rows.every(([, n]) => n <= 500));
+  assert.ok(rows.some(([name]) => name === 'spans'));
+  assert.ok(rows.some(([name]) => name === 'relations'));
+});

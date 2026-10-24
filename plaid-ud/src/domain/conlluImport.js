@@ -10,6 +10,7 @@ import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
+import { sendInChunks } from '../../../plaid-ui/src/domain/bulkChunks.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -430,12 +431,14 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
       if (n > 0) importWarnings.push(`${count(n, one, many)} dropped: ${why}`);
     }
 
-    // Three requests, one after another: the text with sentences -> words ->
-    // morphemes, then the annotation spans, then the relations. One request
-    // for the whole would have to fit the server's cap on a request's body
-    // (about 870 bytes a word), which a document of 12,000 words does not.
-    // A refusal of any of them is taken back by the catch, which deletes the
-    // document.
+    // The text with its sentences in one request (a sentence layer
+    // partitions its text, so they arrive together), then the words, the
+    // morphemes, the annotation spans and the relations, each in bulk
+    // requests of CHUNK rows (plaid-ui bulkChunks.js), so no request holds
+    // the write lock for a whole document's rows or passes the server's cap
+    // on a request's body. Every row is made under an id minted here, so the
+    // later requests name the earlier rows without waiting. A refusal of any
+    // of them is taken back by the catch, which deletes the document.
     await client.batched(async (b) => {
       b.texts.create(textLayer.id, createdDocumentId, hierarchy.text, undefined, undefined, {
         id: textId,
@@ -446,18 +449,18 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
         }),
       });
       b.tokens.bulkCreate(sentenceOps);
-      if (wordOps.length > 0) b.tokens.bulkCreate(wordOps);
-      if (morphemeOps.length > 0) b.tokens.bulkCreate(morphemeOps);
     });
-    await client.batched(async (b) => {
-      for (const ops of [formOps, lemmaOps, uposOps, xposOps, featOps]) {
-        if (ops.length) b.spans.bulkCreate(ops);
-      }
-    });
-    await client.batched(async (b) => {
-      if (relationOps.length > 0) b.relations.bulkCreate(relationOps);
-      if (enhancedOps.length > 0) b.relations.bulkCreate(enhancedOps);
-    });
+    for (const ops of [wordOps, morphemeOps]) {
+      await sendInChunks(ops, (slice) => client.batched(async (b) => b.tokens.bulkCreate(slice)));
+    }
+    for (const ops of [formOps, lemmaOps, uposOps, xposOps, featOps]) {
+      await sendInChunks(ops, (slice) => client.batched(async (b) => b.spans.bulkCreate(slice)));
+    }
+    for (const ops of [relationOps, enhancedOps]) {
+      await sendInChunks(ops, (slice) =>
+        client.batched(async (b) => b.relations.bulkCreate(slice)),
+      );
+    }
 
     return { documentId: createdDocumentId, importWarnings };
   } catch (err) {

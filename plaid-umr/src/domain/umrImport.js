@@ -19,6 +19,7 @@ import {
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { pendingId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
+import { CHUNK, sendInChunks } from '../../../plaid-ui/src/domain/bulkChunks.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -112,12 +113,19 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       textId = textResponse.id;
     }
 
-    // Tokens: sentences, words, node anchors and the sentences' records, and
-    // the nodes on the anchors, in one atomic batch, so no anchor is stored
-    // without its node. Onto an existing document, the anchors, records and
-    // nodes alone: a sentence that has a record takes what the file said in
-    // it. Every row is made under an id minted here, so the nodes name their
-    // anchors, sentences and words without waiting for an answer.
+    // Tokens: sentences, words, node anchors and the sentences' records, then
+    // the nodes on the anchors. Onto an existing document, the anchors,
+    // records and nodes alone: a sentence that has a record takes what the
+    // file said in it. Every row is made under an id minted here, so the
+    // nodes name their anchors, sentences and words without waiting for an
+    // answer. The sentences go in one request (a sentence layer partitions
+    // its text) and every other list in requests of about CHUNK rows
+    // (plaid-ui bulkChunks.js), so no request holds the write lock for a
+    // whole document's rows. Each request of nodes makes the anchors they
+    // stand on, so no anchor is ever stored without its node, whatever cuts
+    // the import off after it. A request refused part way is taken back by
+    // the catch, with the document, or on an existing one with the anchors
+    // and records this run put there.
     const sentenceOps = existing
       ? []
       : plan.sentences.map((s) => ({
@@ -188,22 +196,54 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       value: n.concept,
       metadata: { [UMR_NAMESPACE]: metaOf(n) },
     }));
-    await client.batched(async (b) => {
-      if (sentenceOps.length) b.tokens.bulkCreate(sentenceOps);
-      if (wordOps.length) b.tokens.bulkCreate(wordOps);
-      if (pieceOps.length) b.tokens.bulkCreate(pieceOps);
-      if (spanOps.length) b.spans.bulkCreate(spanOps);
-      if (recordOps.length) b.tokens.bulkCreate(recordOps);
-      plan.sentences.forEach((s) => {
-        const record = had[s.index - 1]?.recordToken;
-        if (record) {
+    const tokensIn = (ops, mine) =>
+      sendInChunks(ops, (slice) => {
+        // Named before the send: a request whose answer is lost may have
+        // made them, and a bulk delete skips an id that is not there.
+        if (mine) createdTokenIds.push(...slice.map((op) => op.id));
+        return client.batched(async (b) => b.tokens.bulkCreate(slice));
+      });
+    if (sentenceOps.length) await client.batched(async (b) => b.tokens.bulkCreate(sentenceOps));
+    await tokensIn(wordOps, false);
+    // The nodes in groups of at most CHUNK rows, each with the anchors its
+    // nodes are the first to name.
+    const pieceById = new Map(pieceOps.map((op) => [op.id, op]));
+    const groups = [];
+    let group = { anchors: [], nodes: [] };
+    for (const op of spanOps) {
+      const anchors = op.tokens.map((id) => pieceById.get(id)).filter(Boolean);
+      for (const a of anchors) pieceById.delete(a.id);
+      const size = group.anchors.length + group.nodes.length;
+      if (group.nodes.length && size + anchors.length + 1 > CHUNK) {
+        groups.push(group);
+        group = { anchors: [], nodes: [] };
+      }
+      group.anchors.push(...anchors);
+      group.nodes.push(op);
+    }
+    if (group.nodes.length) groups.push(group);
+    for (const { anchors, nodes } of groups) {
+      createdTokenIds.push(...anchors.map((op) => op.id));
+      await client.batched(async (b) => {
+        if (anchors.length) b.tokens.bulkCreate(anchors);
+        b.spans.bulkCreate(nodes);
+      });
+    }
+    // An anchor no node stands on: none is planned, and it would go alone.
+    await tokensIn([...pieceById.values()], true);
+    await tokensIn(recordOps, Boolean(existing));
+    const recordWrites = plan.sentences
+      .map((s) => [had[s.index - 1]?.recordToken, s])
+      .filter(([record]) => record);
+    await sendInChunks(recordWrites, (slice) =>
+      client.batched(async (b) => {
+        for (const [record, s] of slice) {
           b.tokens.patchMetadata(record, [
             { op: 'set', path: [UMR_NAMESPACE], value: recordOf(s) },
           ]);
         }
-      });
-    });
-    createdTokenIds = [...pieceIds, ...(existing ? recordOps.map((r) => r.id) : [])];
+      }),
+    );
     const spanIds = spanOps.map((op) => op.id);
     const createdIndex = new Map(toCreate.map((n, i) => [n.key, i]));
     const spanOf = (key) => {
@@ -211,7 +251,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       return node?.existingId || spanIds[createdIndex.get(key)];
     };
 
-    // Edges and triples: two layers, so two bulk creates in one batch.
+    // Edges and triples, on two layers, in requests of CHUNK rows.
     const edgeOps = plan.edges.map((e) => ({
       relationLayerId: layerInfo.relationLayer.id,
       source: spanOf(e.source),
@@ -227,11 +267,10 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       value: t.rel,
       metadata: { [UMR_NAMESPACE]: t.meta },
     }));
-    if (edgeOps.length || tripleOps.length) {
-      await client.batched(async (b) => {
-        if (edgeOps.length) b.relations.bulkCreate(edgeOps);
-        if (tripleOps.length) b.relations.bulkCreate(tripleOps);
-      });
+    for (const ops of [edgeOps, tripleOps]) {
+      await sendInChunks(ops, (slice) =>
+        client.batched(async (b) => b.relations.bulkCreate(slice)),
+      );
     }
 
     return {

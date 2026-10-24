@@ -418,3 +418,55 @@ test('the report says when the saved Gloss lines show none of the lines the file
   // A file with no gloss lines loses nothing.
   assert.equal(await run(glossed.replace(/^Word Gloss.*\n/m, ''), saved), false);
 });
+
+// R4-3-9: a large import goes in requests of about CHUNK rows past the
+// sentences, and each request of nodes still makes the anchors under them.
+test('a large import goes in chunks, each request of nodes with its anchors', async () => {
+  const one = {
+    words: 'the cat sleeps',
+    graph: '(s1s / sleep-01\n    :ARG0 (s1c / cat))',
+    alignment: 's1s: 3-3\ns1c: 2-2',
+  };
+  const text = file(
+    ...Array.from({ length: 300 }, (_, i) => ({
+      ...one,
+      graph: one.graph.replaceAll('s1', `s${i + 1}`),
+      alignment: one.alignment.replaceAll('s1', `s${i + 1}`),
+    })),
+  );
+  const raw = rawFromPlan(planImport(parseUmrFile(file(one)).sentences, []));
+  const { client, calls } = recordingClient();
+  client.documents.create = async () => ({ id: 'd-new' });
+  client.documents.delete = async () => {};
+  client.texts = { create: async () => ({ id: 't-new' }) };
+  const sent = [];
+  const batches = [];
+  const batched = client.batched;
+  client.batched = async (fn) => {
+    const from = calls.length;
+    try {
+      return await batched(fn);
+    } finally {
+      batches.push(calls.slice(from));
+      sent.push(calls.slice(from).map((c) => [c.name, c.args[0].length]));
+    }
+  };
+  await importUmrDocument(client, 'p', 'big', text, getUmrLayerInfo(raw));
+  // No request carries more than CHUNK rows.
+  for (const b of sent) assert.ok(b.reduce((n, [, k]) => n + k, 0) <= 500, JSON.stringify(sent));
+  const spanBatches = sent.filter((b) => b.some(([name]) => name === 'spans.bulkCreate'));
+  assert.ok(spanBatches.length > 1);
+  // Every node's anchors were made by its own request or an earlier one.
+  const made = new Set();
+  let nodes = 0;
+  for (const b of batches) {
+    for (const c of b) if (c.name === 'tokens.bulkCreate') c.args[0].forEach((t) => made.add(t.id));
+    for (const c of b) {
+      if (c.name !== 'spans.bulkCreate') continue;
+      nodes += c.args[0].length;
+      assert.ok(c.args[0].every((sp) => sp.tokens.every((t) => made.has(t))));
+    }
+  }
+  for (const b of spanBatches) assert.equal(b[0][0], 'tokens.bulkCreate');
+  assert.equal(nodes, 600);
+});
