@@ -110,7 +110,8 @@ async function ensureFixture() {
 
 // A second fixture, glossed the way IGT lays a project out: a morpheme layer
 // under Words, a Morpheme-scoped Gloss and a Sentence-scoped Translation
-// (IGT's `config.igt.scope`), with one sentence's morphemes and glosses
+// stored as the translation (IGT's `config.igt.scope` and `sentenceRole`, as
+// IGT's setup stores them), with one sentence's morphemes and glosses
 // filled in. What the token row and an export read through the gloss-line
 // mapping.
 const GLOSSED_NAME = 'E2E UMR Glossed';
@@ -234,6 +235,12 @@ async function createGlossedProject(client) {
   const translation = await client.spanLayers.create(info.sentenceTokenLayer.id, 'Translation');
   await client.spanLayers.setConfig(translation?.id || translation, 'igt', 'scope', 'Sentence');
   await client.spanLayers.setConfig(translation?.id || translation, 'igt', 'lang', 'en');
+  await client.spanLayers.setConfig(
+    translation?.id || translation,
+    'igt',
+    'sentenceRole',
+    'translation',
+  );
   project = await client.projects.get(project.id);
   return project;
 }
@@ -264,6 +271,15 @@ async function ensureGlossedFixture() {
   }
   if (!project) project = await createGlossedProject(client);
   else project = await client.projects.get(project.id);
+  // A fixture made before fields stored their role gets it, as setup now
+  // stores it, so the proposed lines below keep the Sentence Gloss.
+  const unroled = getUmrLayerInfo(project).glossLayers.find(
+    (g) => g.scope === 'sentence' && g.layer.name === 'Translation' && !g.sentenceRole,
+  );
+  if (unroled) {
+    await client.spanLayers.setConfig(unroled.layer.id, 'igt', 'sentenceRole', 'translation');
+    project = await client.projects.get(project.id);
+  }
   const projectId = project.id;
   await ensureIlg(client, project);
   const info = getUmrLayerInfo(project);

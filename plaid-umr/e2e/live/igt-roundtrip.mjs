@@ -390,11 +390,31 @@ try {
       sentenceOfNode('ev5-01') === sentenceOfNode('ev6-01'),
     'two merged sentences keep both graphs, in one sentence',
   );
-  // The merged-away sentence's unaligned node is bound to the one it joined.
+  // The merged-away sentence's unaligned node stands in the one it joined.
+  // Its row still names the sentence that went, since opening writes nothing
+  // (R3): the reader reads it in the merged sentence, and the next UMR write
+  // to that sentence stores the merged one.
   const merged = umr.sentence(sentenceOfNode('ev5-01'));
   check(
+    sentenceOfNode('person6') === merged?.index,
+    "the merged sentence's unaligned node is read in the sentence it joined",
+    `sentence ${sentenceOfNode('person6')}, merged ${merged?.index}`,
+  );
+  check(
+    planSettle(umr.graph, null)?.meta.get(node('person6')?.id)?.sentence === merged?.tokenId,
+    'and a write would record that sentence',
+    JSON.stringify(planSettle(umr.graph, null)?.meta.get(node('person6')?.id)),
+  );
+  check(
+    await umr.setAttrs(node('person6').id, [{ rel: ':refer-number', value: 'singular' }]),
+    'UMR gives the unaligned node an attribute',
+    umr.error,
+  );
+  await umr.whenSaved();
+  umr = await loadUmr();
+  check(
     node('person6')?.metadata?.umr?.sentence === merged?.tokenId,
-    "the merged sentence's unaligned node records the sentence it joined",
+    'and the next write to the sentence stores it',
     JSON.stringify(node('person6')?.metadata?.umr),
   );
   // Sentence 7, deleted.
@@ -496,9 +516,35 @@ try {
     `${umrB.graph.nodesById.size} of ${umr.graph.nodesById.size}`,
   );
   check(umrB.toUmr() === umr.toUmr(), "and UMR's export of it is the same, byte for byte");
+  // The settings name layers by id, and the archive gives each layer of the
+  // new project its own, so they come back with each id the new project's
+  // layer of the same place and name.
+  const layerIds = (project) => {
+    const ids = new Map();
+    for (const text of project.textLayers || []) {
+      ids.set(`${text.name}`, text.id);
+      for (const tokens of text.tokenLayers || []) {
+        ids.set(`${text.name}/${tokens.name}`, tokens.id);
+        for (const spans of tokens.spanLayers || []) {
+          ids.set(`${text.name}/${tokens.name}/${spans.name}`, spans.id);
+          for (const relations of spans.relationLayers || []) {
+            ids.set(`${text.name}/${tokens.name}/${spans.name}/${relations.name}`, relations.id);
+          }
+        }
+      }
+    }
+    return ids;
+  };
+  const idsB = layerIds(projectB);
+  const settingsB = JSON.stringify(projectB.config?.umr ?? null);
+  const settingsSource = [...layerIds(source)].reduce(
+    (json, [place, id]) => json.replaceAll(id, idsB.get(place) ?? id),
+    JSON.stringify(source.config?.umr ?? null),
+  );
   check(
-    JSON.stringify(projectB.config?.umr ?? null) === JSON.stringify(source.config?.umr ?? null),
+    settingsB === settingsSource,
     "UMR's project settings come back",
+    `${settingsB} for ${settingsSource}`,
   );
 } finally {
   await cleanup();
