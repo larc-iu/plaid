@@ -42,7 +42,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';
-import { priorImports } from '../../import/resume';
+import { ImportCancelled, priorImports } from '../../import/resume';
 import { elanTally } from '../../import/elan/tally';
 import {
   addOrthographies,
@@ -265,7 +265,7 @@ export const ImportElanDocuments = () => {
       priorImports(client, projectId)
         .then(setPrior)
         .catch((err) => console.error('Could not read what is already imported:', err));
-      if (!/cancelled/i.test(e.message)) notifyError(humanizeError(e), 'Failed to import');
+      if (!(e instanceof ImportCancelled)) notifyError(humanizeError(e), 'Failed to import');
     }
   };
 

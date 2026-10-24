@@ -123,7 +123,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
     } catch (e) {
       const notYours = e instanceof NotYoursToFinish;
       if (!notYours) console.error(`${kind} import failed:`, e);
-      const cancelled = e instanceof ImportCancelled || e.message === 'Import cancelled';
+      const cancelled = e instanceof ImportCancelled;
       setRunError(humanizeError(e));
       setRetryable(!notYours);
       setStopped(cancelled);

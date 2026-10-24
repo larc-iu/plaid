@@ -357,12 +357,24 @@ export function readerNotes(parsed) {
 // read keeps its graph and alignment blocks as text on the sentence, so the
 // export writes them back and nothing is lost; its document-level triples
 // are read all the same.
+/**
+ * A file whose sentences or words are not the document's it was to go onto.
+ * The import page imports it as a document of its own instead, and says why
+ * in this error's message.
+ */
+export class WordsDiffer extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WordsDiffer';
+  }
+}
+
 export function planImport(parsedSentences, warnings = [], { existing = null } = {}) {
   const shown = shownNumbers(parsedSentences);
   const byFile = fileNumbersItsSentences(parsedSentences);
   if (existing) {
     if (existing.sentences.length !== parsedSentences.length) {
-      throw new Error(
+      throw new WordsDiffer(
         `The file has ${parsedSentences.length} sentences and the document ${existing.sentences.length}.`,
       );
     }
@@ -374,7 +386,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       // accents still holds the file's words.
       const have = existing.sentences[i].words.map((w) => nfc(wordForFile(w)));
       if (have.length !== ps.words.length || have.some((w, k) => w !== ps.words[k])) {
-        throw new Error(
+        throw new WordsDiffer(
           `Sentence ${shown(i + 1)} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
         );
       }

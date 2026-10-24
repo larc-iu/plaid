@@ -1,6 +1,6 @@
 // One import of UMR files into a project, file by file, for the Import and
 // export page (ProjectImportExport.jsx).
-import { importTarget, importUmrDocument } from '../../domain/umrImport.js';
+import { WordsDiffer, importTarget, importUmrDocument } from '../../domain/umrImport.js';
 import { getUmrLayerInfo, readIlgConfig } from '../../utils/umrLayerUtils.js';
 import { sameName } from '@ui/lib/nameKey.js';
 
@@ -69,7 +69,7 @@ export const prepareImport = async ({ client, project, projectId }) => {
     } catch (err) {
       // Words that differ from the document of that name: the file is a
       // document of its own, and the row says why.
-      if (!into || !/differs|sentences and the document/.test(err?.message || '')) throw err;
+      if (!into || !(err instanceof WordsDiffer)) throw err;
       result = asNew(err.message)(
         await importUmrDocument(client, projectId, name, text, layerInfo, {
           mint: mintOf(key),
