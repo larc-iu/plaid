@@ -29,6 +29,7 @@ const LAYERS = {
   sentFields: ['Translation', 'Note'],
   hasMorphemes: true,
   fieldLangs: {},
+  fieldRoles: { 'Sentence:Translation': 'translation', 'Sentence:Note': 'note' },
 };
 const SEL = latexSelection(defaultLatexOptions(LAYERS), LAYERS);
 const NO_ORTHOGRAPHY = { ...SEL, rows: SEL.rows.filter((r) => r.kind !== 'orthography') };
@@ -227,6 +228,27 @@ describe('formatExample', () => {
     ]);
   });
 
+  // REV-FIX5 L4: the quoted line is the field whose role is translation,
+  // never the first filled one, and of several translation fields the first
+  // filled for the sentence.
+  it('quotes the field whose role is translation, and sets a note under its name only', () => {
+    const s = sentenceOf([word('a')], { Note: span('said twice') });
+    expect(lineOf(formatExample(s, SEL), 'glft')).toEqual([
+      '{\\PlaidSentenceField{Note}{said twice}}',
+    ]);
+    const layers = {
+      ...LAYERS,
+      sentFields: ['Translation (en)', 'Translation (es)', 'Note'],
+      fieldRoles: {
+        'Sentence:Translation (en)': 'translation',
+        'Sentence:Translation (es)': 'translation',
+      },
+    };
+    const sel = latexSelection(defaultLatexOptions(layers), layers);
+    const es = sentenceOf([word('a')], { 'Translation (es)': span('Una.') });
+    expect(lineOf(formatExample(es, sel), 'glft')).toEqual(['{\\PlaidTranslation{Una.}}']);
+  });
+
   it('sets running text as prose and the cells as typed: quotation marks turned, dashes made', () => {
     const s = sentenceOf([word('"a--b\'', [['a--b', 'x--y']])], {
       Translation: span("He said \"it's 'mine'\" -- twice---no."),
@@ -243,11 +265,6 @@ describe('formatExample', () => {
   it('leaves the quotation marks of right-to-left running text as they are', () => {
     const s = sentenceOf([word('a')], { Translation: span('قال "نعم"') });
     expect(lineOf(formatExample(s, SEL), 'glft')[0]).toContain('"\\PlaidScript{Arabic}{نعم}"');
-  });
-
-  it('takes the first sentence field with a value as the translation', () => {
-    const s = sentenceOf([word('a')], { Note: span('only a note') });
-    expect(lineOf(formatExample(s, SEL), 'glft')).toEqual(['{\\PlaidTranslation{only a note}}']);
   });
 
   it('leaves out a line with nothing in it, and the morphemes when nothing is segmented', () => {

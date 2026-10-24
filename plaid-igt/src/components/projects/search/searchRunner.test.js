@@ -93,4 +93,9 @@ describe('buildContextRows', () => {
       translation: '',
     });
   });
+
+  it('takes the first translation field the sentence fills', () => {
+    const layers = [layer('En', 'translation'), layer('Es', 'translation')];
+    expect(rowOf(doc(layers, { Es: { id: 'e-1', value: 'perros' } })).translation).toBe('perros');
+  });
 });

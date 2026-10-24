@@ -9,7 +9,7 @@ const F = {
   morphFields: ['Gloss'],
   wordFields: [],
   sentFields: ['Translation'],
-  translationField: 'Translation',
+  translationFields: ['Translation'],
 };
 const sentence = (words, translation = '') => ({
   annotations: translation ? { Translation: { value: translation } } : {},

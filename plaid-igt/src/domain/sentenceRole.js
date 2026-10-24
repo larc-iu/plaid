@@ -56,10 +56,20 @@ export const withSentenceRoles = (fields) =>
   });
 
 /**
- * The name of the free translation field among a document's sentence span
- * layers: the first whose stored role is translation, else null. A sentence
- * with no such field has no free translation.
+ * The names of the fields whose stored role is translation among a
+ * document's sentence span layers, in their order. A project with a
+ * translation per language has several.
  */
-export const translationFieldOf = (sentenceLayers) =>
-  (sentenceLayers || []).find((l) => readSentenceRole(l.config) === SENTENCE_ROLES.TRANSLATION)
-    ?.name ?? null;
+export const translationFieldsOf = (sentenceLayers) =>
+  (sentenceLayers || [])
+    .filter((l) => readSentenceRole(l.config) === SENTENCE_ROLES.TRANSLATION)
+    .map((l) => l.name);
+
+/**
+ * The free translation field of one sentence: the first of `names` (the
+ * fields whose role is translation, translationFieldsOf) that holds a value
+ * in the sentence's `annotations`, else null. A sentence translated only
+ * into the second language takes that translation.
+ */
+export const translationFieldOf = (names, annotations) =>
+  (names || []).find((name) => annotations?.[name]?.value) ?? null;

@@ -32,7 +32,8 @@ import { morphFormOf, texCell, texGloss, texWord, wordCells } from '../domain/ig
 import { canNameWord, joinerBetween, morphTypeLabel } from '../domain/affixMarkers.js';
 import { texEscape, texLine } from '../domain/tex.js';
 import { readTagsets } from '../domain/tagsets.js';
-import { readVocabFields } from '../domain/igtConfig.js';
+import { SENTENCE_ROLES, readVocabFields } from '../domain/igtConfig.js';
+import { translationFieldOf } from '../domain/sentenceRole.js';
 import {
   ENTRY_ROLES,
   FIELD_TYPES,
@@ -134,15 +135,21 @@ export function latexLayout(options, layers) {
 
 /**
  * What an export prints: the lines that are on, in order, the sentence
- * fields that are on, in order, and whether each chapter lists its metadata.
+ * fields that are on, in order, those of them whose stored role is
+ * translation (`translationFields`, from the layers' `fieldRoles`), and
+ * whether each chapter lists its metadata.
  */
 export function latexSelection(options, layers) {
   const { rows, sentenceFields } = latexLayout(options, layers);
+  const sentFields = sentenceFields.filter((f) => f.on).map((f) => f.name);
   return {
     rows: rows
       .filter((r) => r.on)
       .map(({ kind, name }) => (name == null ? { kind } : { kind, name })),
-    sentFields: sentenceFields.filter((f) => f.on).map((f) => f.name),
+    sentFields,
+    translationFields: sentFields.filter(
+      (name) => layers.fieldRoles?.[`Sentence:${name}`] === SENTENCE_ROLES.TRANSLATION,
+    ),
     includeHeader: options?.includeHeader !== false,
   };
 }
@@ -553,9 +560,10 @@ function glossLines(columns, selection, docDir, entries) {
 }
 
 /**
- * One sentence as an ExPex example. The first sentence field with a value is
- * the free translation, in quotes. Every other one follows on its own line
- * under its field name.
+ * One sentence as an ExPex example. The free translation, in quotes, is the
+ * first field whose role is translation that holds a value for the sentence
+ * (translationFieldOf). Every other sentence field with a value follows under
+ * its field name.
  */
 export function formatExample(
   sentence,
@@ -564,7 +572,9 @@ export function formatExample(
 ) {
   const columns = sentenceColumns(sentence, selection);
   const lines = glossLines(columns, selection, docDir, entries);
-  const free = selection.sentFields
+  const translated = translationFieldOf(selection.translationFields, sentence.annotations);
+  const others = selection.sentFields
+    .filter((name) => name !== translated)
     .map((name) => ({ name, value: texLine(sentence.annotations?.[name]?.value ?? '') }))
     .filter((f) => f.value !== '');
   const out = ['\\ex', '\\begingl'];
@@ -574,9 +584,9 @@ export function formatExample(
   const [first = ['{}'], ...rest] = lines;
   out.push(`\\gla ${first.join(' ')} //`);
   for (const line of rest) out.push(`\\glb ${line.join(' ')} //`);
-  if (free.length) {
-    const [translation, ...others] = free;
-    const parts = [runText(translation.value, docDir, 'PlaidTranslation')];
+  const translation = translated ? texLine(sentence.annotations[translated].value) : '';
+  if (translation || others.length) {
+    const parts = translation ? [runText(translation, docDir, 'PlaidTranslation')] : [];
     for (const f of others) {
       parts.push(`\\PlaidSentenceField{${runText(f.name, docDir)}}{${runText(f.value, docDir)}}`);
     }

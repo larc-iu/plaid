@@ -6,7 +6,7 @@ const FIELDS = {
   morphFields: ['Gloss'],
   wordFields: ['POS'],
   sentFields: ['Translation'],
-  translationField: 'Translation',
+  translationFields: ['Translation'],
 };
 
 const span = (v) => ({ value: v });
@@ -253,7 +253,7 @@ describe('LaTeX gloss small caps', () => {
     morphFields: ['Gloss'],
     wordFields: [],
     sentFields: ['Translation'],
-    translationField: 'Translation',
+    translationFields: ['Translation'],
   };
   const glossLine = (s) => formatGb4e(s, F).split('\n')[3].trim().replace(/\\\\$/, '');
 
@@ -379,8 +379,13 @@ describe('the free translation line reads the field whose role is translation', 
     tokens: [{ content: 'perros', annotations: {}, morphemes: [] }],
   };
   const sentFields = ['Note', 'Literal Translation', 'Translation'];
-  const withRole = { morphFields: [], wordFields: [], sentFields, translationField: 'Translation' };
-  const noRole = { morphFields: [], wordFields: [], sentFields, translationField: null };
+  const withRole = {
+    morphFields: [],
+    wordFields: [],
+    sentFields,
+    translationFields: ['Translation'],
+  };
+  const noRole = { morphFields: [], wordFields: [], sentFields, translationFields: [] };
 
   it('is empty when the translation field is, whatever the other fields hold', () => {
     expect(formatGb4e(s, withRole)).toContain("\\glt `'");
@@ -399,5 +404,20 @@ describe('the free translation line reads the field whose role is translation', 
     expect(formatGb4e(filled, withRole)).toContain("\\glt `The dogs run.'");
     expect(formatExpex(filled, withRole)).toContain("\\glft {`The dogs run.'} //");
     expect(formatLeipzig(filled, withRole)).toContain('<p>‘The dogs run.’</p>');
+  });
+
+  // REV-FIX5 L4: a translation per language, and a sentence translated only
+  // into the second.
+  it('takes the first translation field the sentence fills', () => {
+    const two = {
+      morphFields: [],
+      wordFields: [],
+      sentFields: ['Translation (en)', 'Translation (es)'],
+      translationFields: ['Translation (en)', 'Translation (es)'],
+    };
+    const es = { ...s, annotations: { 'Translation (es)': span('Los perros corren.') } };
+    expect(formatGb4e(es, two)).toContain("\\glt `Los perros corren.'");
+    expect(formatExpex(es, two)).toContain("\\glft {`Los perros corren.'} //");
+    expect(formatLeipzig(es, two)).toContain('<p>‘Los perros corren.’</p>');
   });
 });

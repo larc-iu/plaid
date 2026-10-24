@@ -23,6 +23,7 @@ import { boundByPieces, glossSmallCaps } from './tagsets.js';
 import { isTexSpecial, texEscape, texLine } from './tex.js';
 import { displayWidth, padToWidth } from '../../../plaid-ui/src/lib/displayWidth.js';
 import { tsvCell } from '../export/vocabTsv.js';
+import { translationFieldOf } from './sentenceRole.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -156,10 +157,13 @@ export function tiers(sentence, fields) {
   return lines;
 }
 
-// The free translation: the value of the field whose role is translation
-// (`fields.translationField`, translationFieldOf), '' when none holds it.
-const freeTranslation = (sentence, fields) =>
-  (fields.translationField && sentence.annotations?.[fields.translationField]?.value) || '';
+// The free translation: the value of the first field whose role is
+// translation that holds one (`fields.translationFields`, translationFieldOf),
+// '' when none does.
+const freeTranslation = (sentence, fields) => {
+  const field = translationFieldOf(fields.translationFields, sentence.annotations);
+  return (field && sentence.annotations[field].value) || '';
+};
 
 function translations(sentence, fields) {
   return fields.sentFields

@@ -37,6 +37,7 @@ const LAYERS = {
   sentFields: ['Translation', 'Note'],
   hasMorphemes: true,
   fieldLangs: {},
+  fieldRoles: { 'Sentence:Translation': 'translation' },
 };
 
 describe.skipIf(!haveTex)('the LaTeX book compiled with LuaLaTeX', () => {

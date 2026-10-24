@@ -9,7 +9,7 @@
 
 import { cpSlice } from '@larc-iu/plaid-client';
 import { morphemeGlossReading } from '@/domain/tagsets';
-import { translationFieldOf } from '@/domain/sentenceRole';
+import { translationFieldOf, translationFieldsOf } from '@/domain/sentenceRole';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
@@ -154,13 +154,14 @@ function keptHits(doc, domain, hitIds, keep) {
 // Sentence fields come from the doc's OWN layerInfo, so this works for documents
 // from any project (the vocab concordance spans projects).
 export function buildContextRows(doc, domain, hitIds) {
-  const translationField = translationFieldOf(doc.layerInfo.spanLayers?.sentence);
+  const translationFields = translationFieldsOf(doc.layerInfo.spanLayers?.sentence);
   return locateHits(doc, domain, hitIds)
     .map((r) => {
       const s = r.sentence;
       const base = s.begin;
       const text = cpSlice(doc.body || '', s.begin, s.end);
-      const translation = (translationField && s.annotations?.[translationField]?.value) || '';
+      const field = translationFieldOf(translationFields, s.annotations);
+      const translation = (field && s.annotations[field].value) || '';
       return {
         sentenceId: r.sentenceId,
         sentenceIndex: r.sentenceIndex,
