@@ -1,10 +1,8 @@
 import { projectRole } from '@larc-iu/plaid-client';
-import { notifySuccess, notifyError } from '../lib/notify.js';
 import { MAINTAINER_HINT, NO_ACCESS_HINT } from './permissions.js';
 
-// The project ACL as the Access screens work with it. It toasts, so it belongs
-// to the screens rather than to a domain layer a node suite loads directly: see
-// plaid-ud's note about `@ui` imports from its own `domain/`.
+// The project ACL as the Access screens work with it. It reports to its
+// callers and never toasts: the screens say what happened.
 
 // Most access first, so a Project role column groups the way someone scanning
 // it expects rather than alphabetically.
@@ -59,7 +57,8 @@ export const aclMemberIds = (project) => [
  * Move a user to `newRole` on a project, or off it with 'none'.
  *
  * The server has no single "set the role" call, so this is remove-then-add, and
- * both halves have to run in that order or a user briefly holds two roles.
+ * both halves have to run in that order or a user briefly holds two roles. The
+ * two are one operation with a label, so History shows one change of role.
  * Refuses to change the caller's own role: the Select is disabled on that row,
  * but the search-to-add menu is another way in and a guard belongs where every
  * path reaches it.
@@ -68,6 +67,8 @@ export const aclMemberIds = (project) => [
  * than `project`: after a change that landed and a refetch that failed, the
  * project read is stale, and removing the role it names would leave the user
  * holding two.
+ *
+ * Answers `{ changed }`, with `refused` saying why when it would not try.
  */
 export const setProjectRole = async ({
   client,
@@ -80,42 +81,22 @@ export const setProjectRole = async ({
   current = roleOf(project, userId),
 }) => {
   if (userId === currentUserId) {
-    notifyError('You cannot change your own role.');
-    return;
+    return { changed: false, refused: 'You cannot change your own role.' };
   }
-  if (current === newRole) return;
+  if (current === newRole) return { changed: false };
 
-  if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
-  else if (current === 'writer') await client.projects.removeWriter(projectId, userId);
-  else if (current === 'reader') await client.projects.removeReader(projectId, userId);
+  const label =
+    newRole === 'none' ? `Remove ${userId} from the project` : `Make ${userId} a ${newRole}`;
+  await client.withOperation(label, async () => {
+    if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
+    else if (current === 'writer') await client.projects.removeWriter(projectId, userId);
+    else if (current === 'reader') await client.projects.removeReader(projectId, userId);
 
-  if (newRole === 'maintainer') await client.projects.addMaintainer(projectId, userId);
-  else if (newRole === 'writer') await client.projects.addWriter(projectId, userId);
-  else if (newRole === 'reader') await client.projects.addReader(projectId, userId);
+    if (newRole === 'maintainer') await client.projects.addMaintainer(projectId, userId);
+    else if (newRole === 'writer') await client.projects.addWriter(projectId, userId);
+    else if (newRole === 'reader') await client.projects.addReader(projectId, userId);
+  });
 
   await onDataUpdate(); // re-resolves the members
-  notifySuccess('Permissions updated');
-};
-
-/**
- * `setProjectRole`, with its failure described rather than thrown. A refused
- * change says why, and the project is read again, since a role change is a
- * remove then an add and the remove may be the half that landed. A refetch
- * that fails after the change landed is not the change failing: it is logged.
- */
-export const setProjectRoleReporting = async (args) => {
-  const refetch = async () => {
-    try {
-      await args.onDataUpdate();
-    } catch (err) {
-      console.error('Error refreshing the project:', err);
-    }
-  };
-  try {
-    await setProjectRole({ ...args, onDataUpdate: refetch });
-  } catch (err) {
-    console.error('Error updating role:', err);
-    notifyError(err, 'Failed to update permissions');
-    await refetch();
-  }
+  return { changed: true };
 };

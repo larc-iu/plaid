@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { DataTable } from './data-table';
 import { UserAvatar } from './UserAvatar';
 import { notifyError } from '../../lib/notify.js';
-import { ROLE_RANK, aclMemberIds, roleOf, setProjectRole } from '../../domain/projectRoles.js';
+import { ROLE_RANK, aclMemberIds, roleOf } from '../../domain/projectRoles.js';
+import { setProjectRoleNotifying } from './reportRoleChange.js';
 import { isConfigConflict, storedConfig } from '../../domain/configCells.js';
 import { TYPE } from '../../lib/typeScale.js';
 
@@ -144,7 +145,7 @@ export const ProjectMembers = ({
     setShownRole((m) => withEntry(m, userId, newRole));
     setSendingRole((s) => new Set(s).add(userId));
     try {
-      await setProjectRole({
+      await setProjectRoleNotifying({
         client,
         project,
         projectId,

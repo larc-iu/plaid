@@ -31,6 +31,7 @@ const USERS = {
 };
 
 const makeClient = () => ({
+  withOperation: async (_label, fn) => fn(() => {}),
   users: { get: async (id) => USERS[id], avatarUrl: () => null },
   projects: {
     removeWriter: vi.fn(async () => {}),
@@ -115,9 +116,9 @@ describe('ProjectMembers', () => {
 
   it('refuses a role change aimed at the caller, wherever it comes from', async () => {
     const { client, unmount } = await mount();
-    const { setProjectRole } = await import('../../domain/projectRoles.js');
+    const { setProjectRoleNotifying } = await import('./reportRoleChange.js');
 
-    await setProjectRole({
+    await setProjectRoleNotifying({
       client,
       project: PROJECT,
       projectId: 'p1',

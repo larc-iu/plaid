@@ -1,63 +1,75 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('../lib/notify.js', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
-
-import { notifyError, notifySuccess } from '../lib/notify.js';
-import { setProjectRoleReporting } from './projectRoles.js';
+import { describe, it, expect, vi } from 'vitest';
+import { setProjectRole } from './projectRoles.js';
 
 const project = { id: 'p', maintainers: ['me@x.com'], writers: [], readers: ['r@x.com'] };
 
-const client = () => ({
-  projects: {
-    removeReader: vi.fn(async () => {}),
-    addWriter: vi.fn(async () => {}),
-  },
+// Records each write, and the label of the operation it ran under.
+const client = () => {
+  const calls = [];
+  let open = null;
+  const write = (name) =>
+    vi.fn(async (...args) => {
+      calls.push({ name, args, operation: open });
+    });
+  return {
+    calls,
+    withOperation: vi.fn(async (label, fn) => {
+      open = label;
+      try {
+        return await fn(() => {});
+      } finally {
+        open = null;
+      }
+    }),
+    projects: {
+      removeReader: write('removeReader'),
+      addWriter: write('addWriter'),
+      removeWriter: write('removeWriter'),
+      addMaintainer: write('addMaintainer'),
+    },
+  };
+};
+
+const args = (c, extra) => ({
+  client: c,
+  project,
+  projectId: 'p',
+  userId: 'r@x.com',
+  newRole: 'writer',
+  currentUserId: 'me@x.com',
+  onDataUpdate: async () => {},
+  ...extra,
 });
 
-beforeEach(() => {
-  vi.mocked(notifyError).mockClear();
-  vi.mocked(notifySuccess).mockClear();
-});
-
-describe('setProjectRoleReporting', () => {
-  it('says why a refused change failed, and reads the project again', async () => {
+describe('setProjectRole', () => {
+  it('makes the remove and the add one labelled operation', async () => {
     const c = client();
-    const refused = Object.assign(new Error('HTTP 403'), { status: 403 });
-    c.projects.addWriter = vi.fn(async () => {
-      throw refused;
-    });
-    const onDataUpdate = vi.fn(async () => {});
-    await setProjectRoleReporting({
-      client: c,
-      project,
-      projectId: 'p',
-      userId: 'r@x.com',
-      newRole: 'writer',
-      currentUserId: 'me@x.com',
-      onDataUpdate,
-    });
-    expect(notifyError).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifyError).mock.calls[0][0]).toBe(refused);
-    // The remove half landed, so the table must show the project as it is.
-    expect(onDataUpdate).toHaveBeenCalled();
+    const result = await setProjectRole(args(c));
+    expect(result).toEqual({ changed: true });
+    expect(c.withOperation).toHaveBeenCalledTimes(1);
+    expect(c.calls.map((w) => w.name)).toEqual(['removeReader', 'addWriter']);
+    const [label] = c.withOperation.mock.calls[0];
+    expect(label).toBe('Make r@x.com a writer');
+    expect(c.calls.every((w) => w.operation === label)).toBe(true);
   });
 
-  it('does not report a landed change as failed when only the refetch fails', async () => {
+  it('names a removal from the project as one', async () => {
     const c = client();
-    const onDataUpdate = vi.fn(async () => {
-      throw new Error('Failed to fetch');
-    });
-    await setProjectRoleReporting({
-      client: c,
-      project,
-      projectId: 'p',
-      userId: 'r@x.com',
-      newRole: 'writer',
-      currentUserId: 'me@x.com',
-      onDataUpdate,
-    });
-    expect(c.projects.addWriter).toHaveBeenCalled();
-    expect(notifyError).not.toHaveBeenCalled();
-    expect(notifySuccess).toHaveBeenCalled();
+    await setProjectRole(args(c, { newRole: 'none' }));
+    expect(c.withOperation.mock.calls[0][0]).toBe('Remove r@x.com from the project');
+    expect(c.calls.map((w) => w.name)).toEqual(['removeReader']);
+  });
+
+  it('refuses the caller their own role, saying so to the screen rather than toasting', async () => {
+    const c = client();
+    const result = await setProjectRole(args(c, { userId: 'me@x.com' }));
+    expect(result).toEqual({ changed: false, refused: 'You cannot change your own role.' });
+    expect(c.calls).toEqual([]);
+  });
+
+  it('writes nothing for the role someone already has', async () => {
+    const c = client();
+    expect(await setProjectRole(args(c, { newRole: 'reader' }))).toEqual({ changed: false });
+    expect(c.calls).toEqual([]);
   });
 });

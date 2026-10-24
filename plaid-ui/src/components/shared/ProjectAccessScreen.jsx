@@ -14,12 +14,8 @@ import { UserSearch } from './UserSearch.jsx';
 import { useUserAdmin } from '../../hooks/useUserAdmin.js';
 import { useUserSearch } from '../../hooks/useUserSearch.js';
 import { canManageProject } from '../../domain/permissions.js';
-import {
-  GRANT_ROLES,
-  aclMemberIds,
-  grantRoleHints,
-  setProjectRoleReporting,
-} from '../../domain/projectRoles.js';
+import { GRANT_ROLES, aclMemberIds, grantRoleHints } from '../../domain/projectRoles.js';
+import { setProjectRoleReporting } from './reportRoleChange.js';
 import { TYPE } from '../../lib/typeScale.js';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
