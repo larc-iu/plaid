@@ -42,25 +42,39 @@ splits each sentence into **words** with the Treebank word tokenizer.
 """
 
 
+def _punkt_tokenizer_class():
+    """NLTK's PunktTokenizer, which reads the punkt_tab data, or None on an
+    NLTK older than 3.8.2, which has only the punkt pickles. From 3.9 the
+    pickles no longer load."""
+    return getattr(getattr(getattr(nltk, 'tokenize', None), 'punkt', None), 'PunktTokenizer', None)
+
+
 class NLTKPunktTokenizer(TokenizerModel):
     def __init__(self):
         self._cache: Dict[str, Any] = {}
+        self._punkt = _punkt_tokenizer_class()
         self._ensure_punkt_downloaded()
+
+    def _load(self, language: str):
+        if self._punkt is not None:
+            return self._punkt(language)
+        return nltk.data.load(f'tokenizers/punkt/{language}.pickle')
 
     def _ensure_punkt_downloaded(self):
         try:
-            self._cache['english'] = nltk.data.load('tokenizers/punkt/english.pickle')
+            self._cache['english'] = self._load('english')
         except LookupError:
-            print("Downloading NLTK punkt tokenizer...")
-            nltk.download('punkt')
-            self._cache['english'] = nltk.data.load('tokenizers/punkt/english.pickle')
+            package = 'punkt_tab' if self._punkt is not None else 'punkt'
+            print(f"Downloading NLTK {package} tokenizer...")
+            nltk.download(package)
+            self._cache['english'] = self._load('english')
 
     def _get_tokenizer(self, language: str = 'english'):
         """Load (and cache) the Punkt model for a language, falling back to
         English if that language's model isn't available."""
         if language not in self._cache:
             try:
-                self._cache[language] = nltk.data.load(f'tokenizers/punkt/{language}.pickle')
+                self._cache[language] = self._load(language)
             except LookupError:
                 print(f"Punkt model for '{language}' unavailable; falling back to English.")
                 self._cache[language] = self._cache['english']

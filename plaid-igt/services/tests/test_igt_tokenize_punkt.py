@@ -139,3 +139,50 @@ def test_the_text_is_read_and_tokenized_with_the_document_held():
     assert kinds.count('lock') == 1 and kinds.index('lock') < min(reads)
     assert kinds[-1] == 'unlock'
     assert helper.results[0]['status'] == 'success'
+
+
+# --- the Punkt models (HUNT-recent 19) ------------------------------------------
+
+def _nltk_3_9(available):
+    """An NLTK 3.9 or later: the models are the punkt_tab data, loaded by
+    PunktTokenizer, and the old punkt pickles no longer load. ``available``
+    is the set of data packages on disk, and a download adds to it."""
+    module = types.ModuleType('nltk')
+    module.__version__ = '3.10.3'
+    module.downloaded = []
+
+    def download(package, **kwargs):
+        module.downloaded.append(package)
+        available.add(package)
+
+    class PunktTokenizer:
+        def __init__(self, lang='english'):
+            if 'punkt_tab' not in available or lang not in ('english', 'german'):
+                raise LookupError(f"Resource 'punkt_tab' not found ({lang})")
+            self.lang = lang
+
+    def load(path):
+        raise LookupError("Resource 'punkt_tab' not found")
+
+    module.download = download
+    module.data = types.SimpleNamespace(load=load)
+    module.tokenize = types.SimpleNamespace(punkt=types.SimpleNamespace(PunktTokenizer=PunktTokenizer))
+    return module
+
+
+def test_punkt_starts_on_nltk_3_9_and_later_by_downloading_punkt_tab():
+    nltk = _nltk_3_9(set())
+    module = servicetest.load_service(SERVICES / 'igt_tokenize_punkt.py', {'nltk': nltk})
+    model = module.NLTKPunktTokenizer()
+    assert nltk.downloaded == ['punkt_tab']
+    assert model._get_tokenizer('english').lang == 'english'
+    assert model._get_tokenizer('german').lang == 'german'
+    # A language with no model reads as English.
+    assert model._get_tokenizer('klingon').lang == 'english'
+
+
+def test_punkt_downloads_nothing_when_punkt_tab_is_there():
+    nltk = _nltk_3_9({'punkt_tab'})
+    module = servicetest.load_service(SERVICES / 'igt_tokenize_punkt.py', {'nltk': nltk})
+    module.NLTKPunktTokenizer()
+    assert nltk.downloaded == []
