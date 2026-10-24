@@ -1319,7 +1319,9 @@ class PlaidClient {
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage }),
       /**
-       * Update a vocab layer's name.
+       * Update a vocab layer's name. A new name restates every document
+       * linking the vocabulary: their versions are bumped and taken up from
+       * X-Document-Versions.
        * @param {string} id - The resource ID
        * @param {string} name - The name
        * @param {string} [auditMessage] - Audit message for this write
@@ -1373,7 +1375,8 @@ class PlaidClient {
           body: bodyOf({ id, name }),
         }),
       /**
-       * Assign a user as a maintainer for this vocab layer.
+       * Assign a user as a maintainer for this vocab layer. Every document
+       * linking the vocabulary has its version bumped (X-Document-Versions).
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
@@ -1386,7 +1389,9 @@ class PlaidClient {
           { auditMessage },
         ),
       /**
-       * Remove a user's maintainer privileges for this vocab layer.
+       * Remove a user's maintainer privileges for this vocab layer. Every
+       * document linking the vocabulary has its version bumped
+       * (X-Document-Versions).
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
@@ -1959,7 +1964,9 @@ class PlaidClient {
        * rejects their logins and tokens, strips their project memberships
        * and vocab maintainerships, and revokes their API tokens. The user
        * stays visible in listings with a deactivated-at timestamp.
-       * Reversible via activate(), which restores login only.
+       * Reversible via activate(), which restores login only. Every
+       * document linking a vocabulary they maintained has its version
+       * bumped (X-Document-Versions).
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<void>}

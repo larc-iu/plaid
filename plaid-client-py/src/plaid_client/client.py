@@ -587,6 +587,9 @@ class VocabLayersResource(_ConfigMethods, _Resource):
     def update(self, id: str, name: str, audit_message=None) -> Any:
         """Update a vocab layer's name.
 
+        A new name restates every document linking the vocabulary: their
+        versions are bumped and taken up from X-Document-Versions.
+
         Args:
             id: The resource ID
             name: The name
@@ -639,6 +642,9 @@ class VocabLayersResource(_ConfigMethods, _Resource):
     def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Assign a user as a maintainer for this vocab layer.
 
+        Every document linking the vocabulary has its version bumped
+        (X-Document-Versions).
+
         Args:
             id: The resource ID
             user_id: The user ID
@@ -647,6 +653,9 @@ class VocabLayersResource(_ConfigMethods, _Resource):
 
     def remove_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's maintainer privileges for this vocab layer.
+
+        Every document linking the vocabulary has its version bumped
+        (X-Document-Versions).
 
         Args:
             id: The resource ID
@@ -1068,7 +1077,8 @@ class UsersResource(_Resource):
         tokens, strips their project memberships and vocab maintainerships,
         and revokes their API tokens. The user stays visible in listings with
         a ``deactivated-at`` timestamp. Reversible via :meth:`activate`,
-        which restores login only.
+        which restores login only. Every document linking a vocabulary they
+        maintained has its version bumped (X-Document-Versions).
 
         Args:
             id: The resource ID

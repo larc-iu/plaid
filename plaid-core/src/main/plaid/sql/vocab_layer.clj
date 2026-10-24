@@ -255,8 +255,20 @@
                          (psaw/record-audit-write! tx :vocab_layers new-id :insert nil post-image))
                        new-id)))
 
+(defn linked-document-ids
+  "Ids of every document holding a link to an entry of `vocab-id`. A deep
+  document read names each linked vocabulary's name and maintainers, so a
+  write to either restates exactly these documents and bumps them (R14)."
+  [tx vocab-id]
+  (->> (psc/q tx {:select-distinct [:vl.document_id]
+                  :from [[:vocab_links :vl]]
+                  :join [[:vocab_items :vi] [:= :vi.id :vl.vocab_item_id]]
+                  :where [:= :vi.vocab_layer_id vocab-id]})
+       (mapv :document_id)))
+
 (defn merge
-  "Update mutable vocab fields. Currently supports :vocab/name."
+  "Update mutable vocab fields. Currently supports :vocab/name. A new name
+  bumps every document linking the vocabulary (`linked-document-ids`)."
   [db eid m user-id]
   (submit-operation! [tx db {:type :vocab/update
                              :project nil
@@ -279,6 +291,8 @@
                            ;; both the new name and the new modified_at.
                            (crud/update-by-id! tx :vocab_layers eid
                                                (assoc attrs :modified_at (op/op-ts))))
+                         (when (and (contains? attrs :name) (not= (:name attrs) (:name existing)))
+                           (op/bump-document-versions! tx (linked-document-ids tx eid)))
                          eid))))
 
 (defn fetch-vocab-maintainer-ids
@@ -319,7 +333,10 @@
   when pre == post (no-op add/remove, mirroring update-by-id!'s noise
   rule).
 
-  Public so cross-namespace callers (e.g. `plaid.sql.user/delete`)
+  A real change bumps every document linking the vocabulary, whose deep
+  read names the maintainers (`linked-document-ids`).
+
+  Public so cross-namespace callers (e.g. `plaid.sql.user/deactivate`)
   can emit the same synthetic audit shape on FK cascade losses."
   [tx vocab-id pre-maintainers]
   (let [post-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
@@ -335,7 +352,8 @@
       (let [vl-row (psc/fetch-by-id tx :vocab_layers vocab-id)
             pre-image (assoc vl-row :maintainers pre-maintainers)
             post-image (assoc vl-row :maintainers post-maintainers)]
-        (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
+        (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image))
+      (op/bump-document-versions! tx (linked-document-ids tx vocab-id)))))
 
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items

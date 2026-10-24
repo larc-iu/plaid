@@ -127,17 +127,19 @@
                                                  "Vocab layer not found")}}))
                             (catch clojure.lang.ExceptionInfo e (history-error e))))))}
 
-     :patch {:summary "Update a vocab layer's name."
+     :patch {:summary (str "Update a vocab layer's name. A new name restates every document linking the vocabulary: "
+                           "their versions are bumped and returned in X-Document-Versions.")
              :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
              :plaid/vocabulary-admin true
              :parameters {:body [:map [:name string?]]}
              :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters
                             db :db
                             user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (vocab/merge db id {:vocab/name name} user-id)]
+                        (let [{:keys [success code error documents]} (vocab/merge db id {:vocab/name name} user-id)]
                           (if success
-                            {:status 200
-                             :body (vocab/get db id)}
+                            ;; A new name restates every linking document.
+                            (prm/assoc-document-versions-in-header
+                             {:status 200 :body (vocab/get db id)} db documents)
                             {:status (or code 500)
                              :body {:error error}})))}
 
@@ -233,25 +235,29 @@
     {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
      :plaid/vocabulary-admin true}
     ["/maintainers/:user-id"
-     {:post {:summary "Assign a user as a maintainer for this vocab layer."
+     {:post {:summary (str "Assign a user as a maintainer for this vocab layer. A new maintainer restates every "
+                           "document linking the vocabulary: their versions are bumped and returned in "
+                           "X-Document-Versions.")
              :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
              :handler (fn [{{{:keys [id user-id]} :path} :parameters
                             db :db
                             actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (vocab/add-maintainer db id user-id actor-user-id)]
+                        (let [{:keys [success code error documents]} (vocab/add-maintainer db id user-id actor-user-id)]
                           (if success
-                            {:status 204}
+                            (prm/assoc-document-versions-in-header {:status 204} db documents)
                             {:status (or code 500)
                              :body {:error error}})))}
 
-      :delete {:summary "Remove a user's maintainer privileges for this vocab layer."
+      :delete {:summary (str "Remove a user's maintainer privileges for this vocab layer. Removing a maintainer "
+                             "restates every document linking the vocabulary: their versions are bumped and "
+                             "returned in X-Document-Versions.")
                :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
                :handler (fn [{{{:keys [id user-id]} :path} :parameters
                               db :db
                               actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (vocab/remove-maintainer db id user-id actor-user-id)]
+                          (let [{:keys [success code error documents]} (vocab/remove-maintainer db id user-id actor-user-id)]
                             (if success
-                              {:status 204}
+                              (prm/assoc-document-versions-in-header {:status 204} db documents)
                               {:status (or code 500)
                                :body {:error error}})))}}]]
 
