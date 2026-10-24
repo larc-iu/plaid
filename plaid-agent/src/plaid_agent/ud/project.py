@@ -903,11 +903,11 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
         # The treebank's own id, which the export writes and a user may quote.
         stored = s.metadata.get('sent_id')
         if isinstance(stored, str) and stored.strip():
-            out.append(f'# {STORED_SENT_ID} = {stored.strip()}')
+            out.append(f'# {STORED_SENT_ID} = {visible(stored.strip())}')
         out.append(f'# text = {visible(s.text)}')
         for k in sorted(s.metadata):
             if k not in ('sent_id', 'text') and isinstance(s.metadata[k], str) and s.metadata[k]:
-                out.append(f'# {k} = {s.metadata[k]}')
+                out.append(f'# {visible(k)} = {visible(s.metadata[k])}')
     out.append('\t'.join(columns_of(s)))
     for r in rows:
         out.append('\t'.join(r))

@@ -146,6 +146,25 @@ def test_a_sentence_renders_as_conllu_with_a_range_line(doc):
     assert body[3].split() == ['2', 'a', 'a', 'ADP', '_', '_', '4', 'case']
 
 
+def test_a_metadata_line_stays_one_line(project):
+    # A6-6: a metadata value written through the API with a line break in it
+    # put an extra line into the read, which can look like a word row.
+    raw = document_raw()
+    raw['text_layers'][0]['token_layers'][0]['tokens'][0]['metadata'] = {
+        'sent_id': 'train-1\n1\tx', 'note': 'one\n2\tlemma', 'odd\tkey': 'v'}
+    out = render_sentence(parse_document(raw, project).sentences[0])
+    lines = out.splitlines()
+    header = [l for l in lines if l.startswith('#')]
+    # sent_id, stored sent_id, text, note and the odd key, and then the rows,
+    # each with as many columns as the column line.
+    assert len(header) == 5
+    body = lines[len(header):]
+    assert all(l.count('\t') == body[0].count('\t') for l in body)
+    assert '# stored sent_id = train-1\\n1\\tx' in header
+    assert '# note = one\\n2\\tlemma' in header
+    assert '# odd\\tkey = v' in header
+
+
 def test_an_unconfirmed_machine_value_is_marked(doc):
     out = render_sentence(doc.sentences[0])
     assert 'NOUN~' in out          # the parser's UPOS, nobody has confirmed it
