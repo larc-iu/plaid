@@ -4,7 +4,7 @@
 // and the toast that confirms the restore offers Undo.
 //
 // Undo of an entry the restore brought back is deleting it again, the app's
-// own delete. Undo of a form or fields set back is another restore, to the
+// own delete, references to it cleared with it. Undo of a form or fields set back is another restore, to the
 // moment just before the first.
 
 import { useEffect, useRef, useState } from 'react';
@@ -27,6 +27,9 @@ import {
   humanizeError,
 } from '@/utils/feedback';
 import { entryRestoreLines, entryRestoreMessage, latestVocabState } from '@/domain/vocabRestore';
+import { planDeleteRefs } from '@/domain/vocabDictionary';
+import { metadataUpdates } from '@/domain/metadataPatch';
+import { CHUNK } from '@/domain/bulk';
 
 export const EntryRestoreDialog = ({
   open,
@@ -93,6 +96,25 @@ export const EntryRestoreDialog = ({
     }
   };
 
+  // Deleting the entry the restore brought back, as the Entries screen deletes
+  // one: what refers to it now (a sense added under it, a reference field
+  // pointed at it since the restore) is cleared in the same operation, read
+  // from the vocabulary as it is when the undo runs.
+  const deleteAgain = (links) =>
+    client.withOperation(`Delete entry “${label}”`, async () => {
+      const { items = [] } = (await client.vocabLayers.get(vocabularyId, true)) || {};
+      const updates = metadataUpdates(
+        planDeleteRefs(items, fields, [itemId]),
+        new Map(items.map((it) => [it.id, it.metadata])),
+      );
+      await client.batched(async (b) => {
+        for (let i = 0; i < updates.length; i += CHUNK) {
+          b.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
+        }
+        b.vocabItems.delete(itemId, undefined, { expectedLinkCount: links ?? undefined });
+      });
+    });
+
   const undo = async (before, after, inserted) => {
     const now = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
     const edited = !!(now && after && now.id !== after.id);
@@ -122,9 +144,7 @@ export const EntryRestoreDialog = ({
       if (!ok) return;
     }
     const run = inserted
-      ? client.vocabItems.delete(itemId, `Delete entry “${label}”`, {
-          expectedLinkCount: links ?? undefined,
-        })
+      ? deleteAgain(links)
       : restoreAt(before.time, entryRestoreMessage(label, before.time));
     notifyPromise(
       run.finally(() => onRestoredRef.current?.()),

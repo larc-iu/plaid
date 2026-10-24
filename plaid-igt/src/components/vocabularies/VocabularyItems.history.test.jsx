@@ -44,11 +44,16 @@ const THEN_ITEMS = [
   { id: 'b', form: 'kai2', metadata: { gloss: 'food' } },
 ];
 
-const makeClient = () => {
+const makeClient = (nowItems = NOW_ITEMS) => {
   const calls = [];
   const client = {
     calls,
-    withOperation: (_label, fn) => fn(() => {}),
+    withOperation: vi.fn((_label, fn) => fn(() => {})),
+    // A batch's writes go out as the client's own here.
+    batched(fn) {
+      calls.push(['batch']);
+      return fn(this);
+    },
     query: vi.fn(async () => ({ results: [[0]] })),
     projects: { list: async () => [] },
     vocabLayers: {
@@ -57,7 +62,7 @@ const makeClient = () => {
         name: 'Lexicon',
         config: {},
         timeModified: null,
-        ...(withItems ? { items: structuredClone(NOW_ITEMS) } : {}),
+        ...(withItems ? { items: structuredClone(nowItems) } : {}),
       }),
       auditPage: async () => ({ entries: [{ id: 'op1', time: 't', endTime: 't' }] }),
       restoreItem: vi.fn(async (id, itemId, asOf, opts, message) => {
@@ -70,7 +75,10 @@ const makeClient = () => {
       delete: vi.fn(async (id, message) => {
         calls.push(['delete', id, message]);
       }),
-      bulkUpdate: vi.fn(async () => ({})),
+      bulkUpdate: vi.fn(async (updates) => {
+        calls.push(['bulkUpdate', updates]);
+        return {};
+      }),
     },
   };
   return client;
@@ -194,9 +202,48 @@ describe('the Entries tab at a past state', () => {
     await settle(view);
     // It names the links it said it would take (none), so a link made since
     // refuses it.
-    expect(client.vocabItems.delete).toHaveBeenCalledWith('b', 'Delete entry “kai2”', {
+    expect(client.vocabItems.delete).toHaveBeenCalledWith('b', undefined, {
       expectedLinkCount: 0,
     });
+    expect(client.withOperation).toHaveBeenCalledWith('Delete entry “kai2”', expect.any(Function));
+    await view.unmount();
+  });
+
+  it("clears what refers to the entry when its Undo deletes it again, in the delete's batch (R4-5-9)", async () => {
+    // A sense was added under the restored entry before the Undo.
+    const client = makeClient([
+      ...NOW_ITEMS,
+      { id: 'b', form: 'kai2', metadata: { gloss: 'food' } },
+      { id: 'c', form: 'kai2', metadata: { gloss: 'meal', parent: 'b', senseOrder: 1 } },
+    ]);
+    const view = await mount(client, '/vocabularies/v1?item=b');
+    await view.step(() => button('Restore').click());
+    await settle(view);
+    const confirm = all(document.body, '[role="dialog"] button').find(
+      (b) => b.textContent.trim() === 'Restore',
+    );
+    await view.step(() => confirm.click());
+    await settle(view);
+    const [, , action] = feedback.notifyWithAction.mock.calls[0];
+    await view.step(() => action.onClick());
+    await settle(view);
+    const at = client.calls.findIndex((c) => c[0] === 'batch');
+    expect(client.calls.slice(at)).toEqual([
+      ['batch'],
+      [
+        'bulkUpdate',
+        [
+          {
+            id: 'c',
+            metadata: [
+              { op: 'delete', path: ['parent'] },
+              { op: 'delete', path: ['senseOrder'] },
+            ],
+          },
+        ],
+      ],
+      ['delete', 'b', undefined],
+    ]);
     await view.unmount();
   });
 
