@@ -429,7 +429,7 @@ def test_the_model_is_told_an_analysis_took_the_changes_planned_on_its_morphemes
 
 
 @pytest.mark.parametrize('tool, args', [
-    ('add_sense', {'entry_id': 'vi-gam', 'fields': {'gloss': 'fishing'}}),
+    ('senses', {'action': 'add', 'entry_id': 'vi-gam', 'fields': {'gloss': 'fishing'}}),
     ('make_sense_of', {'entry_id': 'vi-gam2', 'under_id': 'vi-gam'}),
 ])
 def test_a_sense_under_an_entry_gone_is_refused(tool, args):

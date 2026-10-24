@@ -281,7 +281,7 @@ def project_brief(label: str, shape: str, titles: Sequence[str],
     """One other project's paragraph: its shape as the app renders it, and the
     titles of its guidelines. Titles only, pinned ones included: a body in the
     prompt reads as a rule for the project the user is working in, and it is
-    one read_guideline call away.
+    one guidelines read away.
 
     Cut at ``budget`` characters on a line boundary, and a cut paragraph says
     where the rest is, because a budgeted render states what it showed. The
@@ -290,7 +290,7 @@ def project_brief(label: str, shape: str, titles: Sequence[str],
     the line says how many more there are."""
     heading = f'PROJECT: "{label}"'
     shape_lines = [line for line in shape.split('\n') if line]
-    where = f' (read_guideline with project="{label}")'
+    where = f' (guidelines action "read" with project="{label}")'
     quoted = ['"' + t + '"' for t in titles]
     guidelines = ('- Guidelines: ' + ', '.join(quoted) + where) if titles else '- Guidelines: none written'
     full = '\n'.join([heading, *shape_lines, guidelines])

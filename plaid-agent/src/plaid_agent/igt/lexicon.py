@@ -54,7 +54,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     if parent is not None:
         # The tree is the lexicon as the SERVER has it, so the senses this plan
         # has already added to the same entry are counted here as well: without
-        # that, two add_sense calls in one plan both take the same number.
+        # that, two senses added in one plan both take the same number.
         planned = sum(1 for e in ws.new_entries.values()
                       if (e.get('metadata') or {}).get('parent') == parent['id'])
         metadata = with_parent(metadata, parent['id'],
@@ -87,11 +87,12 @@ def _new_entry_label(v: dict, view, form: str, metadata: dict) -> Dict[str, Any]
 
 # Which tool owns each reserved key, for the refusal when one is set as a field.
 _RESERVED_HINTS = {
-    'parent': 'Where an entry sits is changed with add_sense, make_sense_of or free_sense.',
-    'senseorder': 'A sense is renumbered with move_sense.',
-    'examples': 'Usage examples are added with promote_example and dropped with remove_example.',
+    'parent': 'Where an entry sits is changed with make_sense_of, or senses action "add" or "free".',
+    'senseorder': 'A sense is renumbered with senses action "move".',
+    'examples': 'Usage examples are added with senses action "promote_example" and dropped with '
+                '"remove_example".',
     'form': 'A headword is changed with rename_entry.',
-    'homograph': 'The order of entries spelled the same is set with order_homographs.',
+    'homograph': 'The order of entries spelled the same is set with senses action "order_homographs".',
 }
 
 _FREE_FIELD = {'name': '', 'inline': False, 'immutable': False, 'tagset': None, 'lang': None,
@@ -491,4 +492,65 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
                            f'drop usage example [{i}] ' + _example_line(ws, exs[i]),
                            place=f'entry {view.label(target["id"])}'))
     return ws.planned_note(1)
+
+
+# --- one tool for the sense tree, its manual behind action "help" -------------------
+# Most conversations never touch the sense tree, so its six actions cost one
+# short schema (Luke's ruling R35).
+
+SENSES_HELP = '''The senses tool, by action. Every action but help names the entry it acts on with entry_form \
+(and entry_gloss to tell homographs apart, lexicon where the project has several) or entry_id. Senses count \
+from 1 at every level. Each action PLANS a change.
+- add (fields, form, type): add a sense under the entry, numbered after the senses it already has. fields \
+maps field names to values for the new sense, e.g. {"gloss": "to simmer"}. The new sense carries the \
+entry's headword unless form says otherwise. type is the morph type (stem, suffix, ...).
+- move (number): put a sense at the number it should be shown with among its siblings, renumbering them to \
+match. number is its place among its own siblings, counting from 1. The last segment of a dotted number is \
+taken, so "2" and "1.2" both mean second among its siblings.
+- free: make a sense a headword of its own, keeping the senses below it.
+- order_homographs (order): set the order of the headwords spelled the same. That order is the first segment \
+of the number they and all their senses are shown with, so it renumbers the whole group. order names every \
+one of them, in the order they should be numbered, by the number each is shown with now (or by id), e.g. \
+["2", "1", "3"].
+- promote_example (document, ref): mark a word in a document as a usage example of the entry. ref is one \
+word reference, e.g. "s3.w2". The example is a reference, so it follows the word and is shown with its \
+sentence.
+- remove_example (index): drop one of the entry's usage examples, by its position as lexicon_entry lists it.
+To move an entry, with everything under it, under another entry, use make_sense_of.'''
+
+_SENSE_ACTIONS = {'add': t_add_sense, 'move': t_move_sense, 'free': t_free_sense,
+                  'order_homographs': t_order_homographs, 'promote_example': t_promote_example,
+                  'remove_example': t_remove_example}
+
+
+def t_senses(ws: Workspace, action: str, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+             entry_id: Optional[str] = None, entry_gloss: Optional[str] = None, fields: Optional[dict] = None,
+             form: Optional[str] = None, type: Optional[str] = None, number=None, order=None,
+             document: Optional[str] = None, ref: Optional[str] = None, index=None) -> str:
+    """PLAN: the sense tree, behind one action argument (see SENSES_HELP)."""
+    import inspect
+    given = {'entry_form': entry_form, 'lexicon': lexicon, 'entry_id': entry_id, 'entry_gloss': entry_gloss,
+             'fields': fields, 'form': form, 'type': type, 'number': number, 'order': order,
+             'document': document, 'ref': ref, 'index': index}
+    args = {k: v for k, v in given.items() if v is not None}
+    act = action.strip().lower() if isinstance(action, str) else ''
+    if act == 'help':
+        return SENSES_HELP
+    fn = _SENSE_ACTIONS.get(act)
+    if fn is None:
+        raise ToolError('action is one of help, ' + ', '.join(_SENSE_ACTIONS) + '. Call with action "help" first.',
+                        kind='invalid-argument')
+    params = inspect.signature(fn).parameters
+    # "form" names the entry for every action but add, whose form is the new
+    # sense's own (``entry_form_named_form``).
+    if 'form' in args and 'form' not in params and 'entry_form' not in args:
+        args['entry_form'] = args.pop('form')
+    # What the action does not take is not read, as a tool ignores what its
+    # schema does not declare.
+    taken = {k: v for k, v in args.items() if k in params}
+    missing = [p for p, v in params.items()
+               if p != 'ws' and v.default is inspect.Parameter.empty and p not in taken]
+    if missing:
+        raise ToolError(f'Action "{act}" needs {" and ".join(missing)}.', kind='invalid-argument')
+    return fn(ws, **taken)
 

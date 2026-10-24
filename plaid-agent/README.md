@@ -221,7 +221,7 @@ body). `core/guidelines.py` gives them to the model.
 Every title is in the system prompt on **every** turn, so the model always
 knows what the project has decided, even about something it was not asked. The bodies go in too whenever the whole manual fits
 `GUIDELINES_INLINE_CHARS`, and a **pinned** guideline goes in whole whatever
-the budget says. What is left over is behind `read_guideline`, which asks by
+the budget says. What is left over is behind the `guidelines` tool's `read` action, which asks by
 title and is answered from memory (the bodies arrive with the index, in one
 request, when the project is loaded). A guideline held back is shown with its
 opening line, derived from the body, so there is something to choose on.
@@ -242,7 +242,7 @@ Each reply carries a line saying how much of the manual that turn actually had
 (`Guidelines: all 6 in context`, or `Guidelines: 2 of 5 in context, 3 to open`),
 which is what makes the failure above visible.
 
-**Drafting one.** `add_guideline`, `revise_guideline` and `rewrite_guideline` are PLAN tools, so the
+**Drafting one.** The `guidelines` tool's `add`, `revise` and `rewrite` actions plan, so the
 assistant proposes and a person approves, exactly like a gloss. They exist
 because a convention is usually stated in passing: somebody says "we never
 segment loanwords" while asking about something else, and nobody thinks to go
@@ -250,10 +250,13 @@ and write it down. The prompt tells the model to draft one unprompted in that
 case, and tells it not to for a one-off decision or for anything it worked out
 from the data itself. A project with an empty manual is told it may start one,
 or the first guideline would never be offered.
+The guideline actions are one tool whose manual is behind action `help`, as
+every rarely used capability is (`tagsets`, igt's `senses`), so a turn that
+writes no guideline pays for one short schema.
 
-Changing one that exists is `revise_guideline`, a find/replace on one passage,
+Changing one that exists is `revise`, a find/replace on one passage,
 worked out at staging so the plan card can show `"old" → "new"` and the rest of
-the guideline stays byte-for-byte. `rewrite_guideline` replaces the whole body
+the guideline stays byte-for-byte. `rewrite` replaces the whole body
 and is what the card's Rewrite badge is for: approving one means agreeing to
 lose wording somebody wrote, sight unseen. The prompt tells the model to prefer
 the targeted one. (That badge is `opkind.PROSE` now, shared, because UD had no
@@ -468,11 +471,11 @@ The modules below are `igt/` unless they say otherwise.
   and `unlink_phrase` (a multi-word expression: one lexicon link shared by
   two or more words, which a member's own link never displaces),
   `create_entry`, `set_entry_field`, `set_document_metadata`,
-  `create_document`, `add_comment`, the lexicon-structure tools `add_sense`,
-  `move_sense`, `make_sense_of`, `free_sense`, `order_homographs`,
-  `promote_example` and `remove_example` (the sense tree, the order of entries
-  spelled the same, entry references and usage examples, which are structure on
-  an entry rather than fields), and the corpus-wide `replace_in_field`
+  `create_document`, `add_comment`, `make_sense_of` and the lexicon-structure tool
+  `senses` (actions add, move, free, order_homographs, promote_example and
+  remove_example: the sense tree, the order of entries spelled the same, entry
+  references and usage examples, which are structure on an entry rather than
+  fields), and the corpus-wide `replace_in_field`
   (also on stored morpheme forms) and `set_field_for_form` (both held, with
   `where`, to words meeting one `sequence_search` step's conditions, still one
   rule), `respell_all`

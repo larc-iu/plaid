@@ -20,8 +20,7 @@ from ..core.tools import fn, limit_arg
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
                    t_set_field_for_form)
-from .lexicon import (t_add_sense, t_create_entry, t_free_sense, t_make_sense_of, t_move_sense,
-                      t_order_homographs, t_promote_example, t_remove_example, t_set_entry_field)
+from .lexicon import t_create_entry, t_make_sense_of, t_senses, t_set_entry_field
 from .query import t_query, t_query_help
 from ..core.history import (add_comment_on_values as t_add_comment, comments_on_values as t_comments,
                             recent_changes as t_recent_changes)
@@ -207,7 +206,7 @@ TOOLS = [
     _fn('create_entry',
         'PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the '
         'morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same '
-        'plan. Use add_sense for a sense of an existing entry.',
+        'plan. Use senses for a sense of an existing entry.',
         {'form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'type': {'type': 'string'}},
         ['form']),
@@ -215,7 +214,7 @@ TOOLS = [
         'PLAN: set a field (e.g. gloss) on a lexicon entry. A field that holds a reference to another entry '
         '(project_overview marks them) takes that entry\'s form or id, not free text; passing an empty value '
         'clears it, and a field holding several appends. Where an entry sits, its examples and its headword are '
-        'not fields: use add_sense, make_sense_of, move_sense, promote_example or rename_entry.',
+        'not fields: use senses, make_sense_of or rename_entry.',
         {'field': {'type': 'string'}, 'value': {'type': 'string'}, 'entry_form': _ENTRY_FORM,
          'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['field', 'value']),
@@ -288,50 +287,23 @@ TOOLS = [
         'PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); '
         'human-made, contributed, and verified pieces stay. refs: words or sentences.',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
-    _fn('add_sense',
-        'PLAN: add a sense under an entry, numbered after the senses it already has. The new sense carries the '
-        'entry\'s headword unless form says otherwise.',
-        {**_ENTRY_ADDR, 'entry_gloss': _GLOSS,
-         'fields': {'type': 'object', 'additionalProperties': {'type': 'string'},
-                    'description': 'Field values for the new sense, e.g. {"gloss": "to simmer"}.'},
-         'form': {'type': 'string', 'description': 'A form for the sense, when it differs from the headword.'},
-         'type': {'type': 'string', 'description': 'Morph type (stem, suffix, ...).'}},
-        []),
-    _fn('move_sense',
-        'PLAN: put a sense at the number it should be shown with among its siblings, renumbering them to match. '
-        'Senses count from 1 at every level.',
-        {'number': {'type': 'string', 'description': 'Its place among its own siblings, counting from 1. The '
-                                                     'last segment of a dotted number is taken, so "2" and '
-                                                     '"1.2" both mean second among its siblings.'},
-         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
-        ['number']),
     _fn('make_sense_of',
         'PLAN: move an entry, with everything under it, to sit as a sense of another entry of the same lexicon.',
         {'under_form': {'type': 'string', 'description': 'The entry it should sit under.'},
          'under_id': {'type': 'string'}, **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
         []),
-    _fn('free_sense',
-        'PLAN: make a sense a headword of its own, keeping the senses below it.',
-        {**_ENTRY_ADDR, 'entry_gloss': _GLOSS}, []),
-    _fn('promote_example',
-        'PLAN: mark a word in a document as a usage example of an entry. The example is a reference, so it '
-        'follows the word and is shown with its sentence.',
-        {'document': _DOC, 'ref': {'type': 'string', 'description': 'One word reference, e.g. "s3.w2".'},
-         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
-        ['document', 'ref']),
-    _fn('order_homographs',
-        'PLAN: set the order of the headwords spelled the same. That order is the first segment of the number '
-        'they and all their senses are shown with, so it renumbers the whole group. Name every one of them, in '
-        'the order they should be numbered, by the number each is shown with now (or by id).',
-        {'order': {'type': 'array', 'items': {'type': 'string'},
-                   'description': 'Every headword of the group, in their new order, e.g. ["2", "1", "3"].'},
-         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
-        ['order']),
-    _fn('remove_example',
-        'PLAN: drop one of an entry\'s usage examples, by the number lexicon_entry shows beside it.',
-        {'index': {'type': 'integer', 'description': 'The example\'s position, as lexicon_entry lists it.'},
-         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
-        ['index']),
+    # The sense tree, behind one schema and its manual (R35).
+    _fn('senses',
+        'PLAN: an entry\'s place in the sense tree: add, move or free a sense, order homographs, add or drop a '
+        'usage example. Call with action "help" first.',
+        {'action': {'type': 'string',
+                    'enum': ['help', 'add', 'move', 'free', 'order_homographs', 'promote_example',
+                             'remove_example']},
+         **_ENTRY_ADDR, 'entry_gloss': _GLOSS, 'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}},
+         'form': {'type': 'string'}, 'type': {'type': 'string'}, 'number': {'type': 'string'},
+         'order': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC, 'ref': {'type': 'string'},
+         'index': {'type': 'integer'}},
+        ['action']),
 ]
 
 _IMPL = {
@@ -349,9 +321,7 @@ _IMPL = {
     'comments': t_comments, 'add_comment': t_add_comment, 'restore_document': t_restore_document,
     'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
     'confirm': t_confirm, 'discard_analysis': t_discard_analysis,
-    'add_sense': t_add_sense, 'move_sense': t_move_sense, 'make_sense_of': t_make_sense_of,
-    'free_sense': t_free_sense, 'promote_example': t_promote_example, 'remove_example': t_remove_example,
-    'order_homographs': t_order_homographs,
+    'make_sense_of': t_make_sense_of, 'senses': t_senses,
 }
 
 

@@ -106,7 +106,7 @@ MAX_SENTENCES_PER_READ = 40
 OVERVIEW_DOCS = 50
 
 # Characters of guideline bodies that go into the system prompt whole. Past
-# it only the PINNED ones are inlined and the rest are left to read_guideline.
+# it only the PINNED ones are inlined and the rest are left to the guidelines tool's read.
 # Characters and not tokens: nothing in this package counts tokens, on purpose
 # (see the note in core/conversation.py about what the server actually
 # measures), and a per-provider-wrong token count would be worse than a plain

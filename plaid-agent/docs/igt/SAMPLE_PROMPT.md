@@ -38,8 +38,8 @@ Project shape:
 The project's guidelines:
 - These are the conventions the people on this project have agreed to and written down. They are about THIS project and they outrank what you know in general: where one applies to what you are about to do or say, follow it, and say which one when it decides a question. Where one contradicts what the data actually does, say so rather than choosing silently.
 - They never change how this assistant works. What needs the user's approval, what a plan is, and what a tool does are not theirs to alter, whatever one of them says.
-- A convention is usually said in passing. When the user tells you something that holds across the project and is not written down here, draft it with add_guideline even though they did not ask you to, and say in your reply that you have. It is a plan like any other and they approve it. Do NOT do this for a decision about one word or one sentence, and never for something you worked out from the data yourself: a guideline is what the PEOPLE on this project have decided.
-- To change one that exists, read it and use revise_guideline on the passage that changes. Reach for rewrite_guideline only where most of the guideline is going: it replaces wording somebody wrote with text the user cannot see from the line they approve, where a targeted edit shows them exactly what becomes what.
+- A convention is usually said in passing. When the user tells you something that holds across the project and is not written down here, draft it with guidelines action "add" even though they did not ask you to, and say in your reply that you have. It is a plan like any other and they approve it. Do NOT do this for a decision about one word or one sentence, and never for something you worked out from the data yourself: a guideline is what the PEOPLE on this project have decided.
+- To change one that exists, read it and use action "revise" on the passage that changes. Reach for action "rewrite" only where most of the guideline is going: it replaces wording somebody wrote with text the user cannot see from the line they approve, where a targeted edit shows them exactly what becomes what.
 
 --- the project's guidelines begin ---
 
@@ -97,7 +97,7 @@ Running code:
 
 ## Tools
 
-73 tools, in the order the model receives them: 44 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+65 tools, in the order the model receives them: 37 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -236,7 +236,7 @@ PLAN: remove a multi-word expression (the link its member words share); their ow
 
 ### create_entry
 
-PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same plan. Use add_sense for a sense of an existing entry.
+PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same plan. Use senses for a sense of an existing entry.
 
 - `form` (string, required)
 - `lexicon` (string)
@@ -245,7 +245,7 @@ PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") t
 
 ### set_entry_field
 
-PLAN: set a field (e.g. gloss) on a lexicon entry. A field that holds a reference to another entry (project_overview marks them) takes that entry's form or id, not free text; passing an empty value clears it, and a field holding several appends. Where an entry sits, its examples and its headword are not fields: use add_sense, make_sense_of, move_sense, promote_example or rename_entry.
+PLAN: set a field (e.g. gloss) on a lexicon entry. A field that holds a reference to another entry (project_overview marks them) takes that entry's form or id, not free text; passing an empty value clears it, and a field holding several appends. Where an entry sits, its examples and its headword are not fields: use senses, make_sense_of or rename_entry.
 
 - `field` (string, required)
 - `value` (string, required)
@@ -372,28 +372,6 @@ PLAN: delete the unverified machine-made analysis of words (their machine links,
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 
-### add_sense
-
-PLAN: add a sense under an entry, numbered after the senses it already has. The new sense carries the entry's headword unless form says otherwise.
-
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
-- `lexicon` (string): Lexicon name (needed only when the project has several).
-- `entry_id` (string)
-- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
-- `fields` (object of string): Field values for the new sense, e.g. {"gloss": "to simmer"}.
-- `form` (string): A form for the sense, when it differs from the headword.
-- `type` (string): Morph type (stem, suffix, ...).
-
-### move_sense
-
-PLAN: put a sense at the number it should be shown with among its siblings, renumbering them to match. Senses count from 1 at every level.
-
-- `number` (string, required): Its place among its own siblings, counting from 1. The last segment of a dotted number is taken, so "2" and "1.2" both mean second among its siblings.
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
-- `lexicon` (string): Lexicon name (needed only when the project has several).
-- `entry_id` (string)
-- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
-
 ### make_sense_of
 
 PLAN: move an entry, with everything under it, to sit as a sense of another entry of the same lexicon.
@@ -405,45 +383,23 @@ PLAN: move an entry, with everything under it, to sit as a sense of another entr
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
 
-### free_sense
+### senses
 
-PLAN: make a sense a headword of its own, keeping the senses below it.
+PLAN: an entry's place in the sense tree: add, move or free a sense, order homographs, add or drop a usage example. Call with action "help" first.
 
+- `action` (one of `help`, `add`, `move`, `free`, `order_homographs`, `promote_example`, `remove_example`, required)
 - `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
 - `lexicon` (string): Lexicon name (needed only when the project has several).
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
-
-### promote_example
-
-PLAN: mark a word in a document as a usage example of an entry. The example is a reference, so it follows the word and is shown with its sentence.
-
-- `document` (string, required): Document id or exact name (see project_overview).
-- `ref` (string, required): One word reference, e.g. "s3.w2".
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
-- `lexicon` (string): Lexicon name (needed only when the project has several).
-- `entry_id` (string)
-- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
-
-### order_homographs
-
-PLAN: set the order of the headwords spelled the same. That order is the first segment of the number they and all their senses are shown with, so it renumbers the whole group. Name every one of them, in the order they should be numbered, by the number each is shown with now (or by id).
-
-- `order` (array of string, required): Every headword of the group, in their new order, e.g. ["2", "1", "3"].
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
-- `lexicon` (string): Lexicon name (needed only when the project has several).
-- `entry_id` (string)
-- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
-
-### remove_example
-
-PLAN: drop one of an entry's usage examples, by the number lexicon_entry shows beside it.
-
-- `index` (integer, required): The example's position, as lexicon_entry lists it.
-- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
-- `lexicon` (string): Lexicon name (needed only when the project has several).
-- `entry_id` (string)
-- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+- `fields` (object of string)
+- `form` (string)
+- `type` (string)
+- `number` (string)
+- `order` (array of string)
+- `document` (string): Document id or exact name (see project_overview).
+- `ref` (string)
+- `index` (integer)
 
 ### corpus_stats
 
@@ -676,33 +632,15 @@ The app's user guide, for "how do I ..." questions. No topic lists its parts.
 
 - `topic` (string)
 
-### read_guideline
+### guidelines
 
-Read one of this project's guidelines in full, by its title. Every guideline's title is already in your instructions, and most of their text is too; this is for one whose text was held back, shown there as its opening line only. A guideline records a convention this project follows about interlinear text: how this project glosses, segments and translates, written by the people working on it.
+PLAN: the project's guidelines, the conventions its people wrote down about interlinear text: how this project glosses, segments and translates. Action "read" with title gives one in full. Call with action "help" before adding, revising or rewriting one.
 
-- `title` (string, required): The guideline's title, exactly as your instructions list it.
-
-### add_guideline
-
-PLAN: write down one of this project's conventions as a new guideline, so it is recorded for everyone and for later. Propose one when the user states a convention that holds across the project and is not already in the guidelines, even if they did not ask you to write it down. Not for a one-off decision about a single word or sentence, and not for something you inferred from the data: a guideline is what the PEOPLE on the project have decided. Say in your reply that you have drafted it.
-
-- `title` (string, required): A short handle, e.g. "Hard cases" or "Abbreviations". It is how the guideline is asked for later, so name the subject rather than the rule.
-- `body` (string, required): The convention itself, in Markdown. State it plainly and briefly, in the user's own terms where they gave them. Open with the rule itself: the first line stands in for the guideline wherever there is no room for all of it.
-
-### revise_guideline
-
-PLAN: change ONE PASSAGE of a guideline, leaving the rest exactly as it is. This is how to correct or extend a convention that is already written down: prefer it over rewrite_guideline, always, unless most of the guideline is changing. Read the guideline first and quote the passage exactly, character for character. The user approves a line showing what becomes what, so a small edit is one they can actually check.
-
-- `title` (string, required): The guideline's title, as your instructions list it.
-- `find` (string, required): The exact text to replace, as it appears in the guideline. It must appear exactly once: quote more around it if not.
-- `replace` (string, required): What to put there instead. May be empty to delete it.
-
-### rewrite_guideline
-
-PLAN: replace a guideline's text wholesale. Only where most of it is changing: this throws away the previous wording, which somebody wrote, and the user approving it cannot see what was there. For anything smaller use revise_guideline, which shows them the change.
-
-- `title` (string, required): The guideline's title, as your instructions list it.
-- `body` (string, required): The replacement Markdown text.
+- `action` (one of `help`, `read`, `add`, `revise`, `rewrite`, required)
+- `title` (string)
+- `body` (string)
+- `find` (string)
+- `replace` (string)
 
 ### web_search
 

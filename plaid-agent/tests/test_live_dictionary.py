@@ -76,9 +76,9 @@ def test_writes_land_in_the_shape_the_app_reads(lex):
     w = ws_of(lex)
     # A reference given as a form, a sense renumbered, a sense added, an example.
     call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'variantOf', 'value': 'kwatha#1.2'})
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.2', 'number': '1'})
-    call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
-    call_tool(w, 'promote_example', {'entry_form': 'phika', 'document': 'Text 1', 'ref': 's1.w2'})
+    call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.2', 'number': '1'})
+    call_tool(w, 'senses', {'action': 'add', 'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
+    call_tool(w, 'senses', {'action': 'promote_example', 'entry_form': 'phika', 'document': 'Text 1', 'ref': 's1.w2'})
     run(lex, w)
 
     got = items_of(lex)

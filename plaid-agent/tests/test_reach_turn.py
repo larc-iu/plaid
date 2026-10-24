@@ -54,7 +54,7 @@ def test_read_and_plan_tools_take_the_project_and_the_rest_do_not(app):
     assert r.writers == names & write
     assert not takes & set(PLAN_TOOLS) and not takes & LOCAL_TOOLS
     assert not {n for n in takes if n.endswith('_help')}
-    for must in ('project_overview', 'list_documents', 'read_document', 'read_guideline', 'query'):
+    for must in ('project_overview', 'list_documents', 'read_document', 'guidelines', 'query'):
         assert must in takes, must
     one = next(t for t in offered if t['function']['name'] == 'read_document')
     prop = one['function']['parameters']['properties']['project']
@@ -81,7 +81,7 @@ def test_a_brief_is_cut_at_its_budget_and_says_where_the_rest_is():
     assert brief.endswith('project_overview with project="B" shows the rest.')
     short = shared.project_brief('B', '- Field: Gloss', ['T1'])
     assert short == ('PROJECT: "B"\n- Field: Gloss\n'
-                     '- Guidelines: "T1" (read_guideline with project="B")')
+                     '- Guidelines: "T1" (guidelines action "read" with project="B")')
     assert shared.project_brief('B', '- Field: Gloss', []).endswith('- Guidelines: none written')
 
 
@@ -91,7 +91,7 @@ def test_a_cut_brief_keeps_the_guideline_titles_which_the_overview_does_not_show
     shape = '\n'.join(f'- Field {i}: ' + 'x' * 80 for i in range(200))
     brief = shared.project_brief('B', shape, ['Loanwords', 'Tense'])
     assert len(brief) <= OTHER_PROJECT_CHARS
-    assert '- Guidelines: "Loanwords", "Tense" (read_guideline with project="B")' in brief
+    assert '- Guidelines: "Loanwords", "Tense" (guidelines action "read" with project="B")' in brief
     assert brief.endswith('project_overview with project="B" shows the rest.')
     # A manual whose titles alone overrun the budget names as many as fit, and says how many more.
     many = [f'Guideline number {i}' for i in range(400)]
@@ -103,7 +103,7 @@ def test_a_cut_brief_keeps_the_guideline_titles_which_the_overview_does_not_show
     # Cut in its titles alone, the shape is whole and the tail is not said.
     short = shared.project_brief('B', '- Field: Gloss', many)
     assert len(short) <= OTHER_PROJECT_CHARS and '- Field: Gloss' in short
-    assert 'shows the rest' not in short and short.endswith('(read_guideline with project="B")')
+    assert 'shows the rest' not in short and short.endswith('(guidelines action "read" with project="B")')
 
 
 @pytest.mark.parametrize('app', APPS)
@@ -115,7 +115,7 @@ def test_another_projects_guidelines_are_titles_only(app):
     assert f'PROJECT: "{OTHER_NAME}"' in note
     assert '"Loanwords"' in note and '"Tense"' in note
     assert 'PINNED-FOREIGN-BODY' not in note and 'Mark tense' not in note
-    assert f'(read_guideline with project="{OTHER_NAME}")' in note
+    assert f'(guidelines action "read" with project="{OTHER_NAME}")' in note
 
 
 @pytest.mark.parametrize('app', APPS)

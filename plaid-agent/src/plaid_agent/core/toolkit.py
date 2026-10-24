@@ -88,11 +88,9 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
 
     ``rewrite(fn, args)`` is the app's last word on a call's arguments before
     the tool runs."""
-    tools = (list(tools) + guidelines.schemas(manual) + guidelines.write_schemas() + webtools.schemas(web)
+    tools = (list(tools) + guidelines.schemas(manual) + webtools.schemas(web)
              + filetools.schemas() + sandbox.schemas(code, code_functions))
-    impl.update({'read_guideline': guidelines.t_read_guideline, 'add_guideline': guidelines.t_add_guideline,
-                 'revise_guideline': guidelines.t_revise_guideline,
-                 'rewrite_guideline': guidelines.t_rewrite_guideline,
+    impl.update({guidelines.TOOL: guidelines.t_guidelines,
                  'web_search': webtools.t_web_search, 'read_url': webtools.t_read_url,
                  'read_file': filetools.t_read_file})
     # A tool that plans a change says so in the first word of its description,
@@ -111,14 +109,18 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
             return refused(f'there is no tool named {name}.', 'invalid-argument')
         # The project the call names, in a turn that may read several: its own
         # workspace, and the arguments without the name (see core/reach.py).
+        # An action of a plan tool that only reads may read another project.
+        reading = (name == guidelines.TOOL and isinstance(args, dict)
+                   and str(args.get('action') or '').strip().lower() in guidelines.READ_ACTIONS)
         try:
-            ws, args = route(ws, name, args)
+            ws, args = route(ws, name, args, reading=reading)
         except ToolError as e:
             return refused_for(e)
         # A change this turn planned over one an earlier call planned is worth
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.
         after = (lambda out: out + ws.superseded_note()) if name in write else None
-        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after, schema=schemas.get(name))
+        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after, schema=schemas.get(name),
+                        reading=reading)
 
     return Kit(tools, write, tools_for, call_tool)

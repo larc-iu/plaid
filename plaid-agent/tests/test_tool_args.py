@@ -32,7 +32,8 @@ UD_ARGS = {'document': 'Viaje', 'pattern': 'mar', 'field': 'lemma', 'ref': 's1.w
 # pattern that matches nothing answers "no documents" without reading a
 # number.
 # `query` is a Plaid query object to the query tool and a phrase to the web.
-OVERRIDES = {'igt': {'list_documents': {'pattern': 'Text'}, 'web_search': {'query': 'ergative alignment'}},
+OVERRIDES = {'igt': {'list_documents': {'pattern': 'Text'}, 'web_search': {'query': 'ergative alignment'},
+                     'senses': {'action': 'remove_example'}},
              'ud': {'list_documents': {'pattern': 'Viaje'}, 'web_search': {'query': 'ergative alignment'}}}
 
 # What a Python exception looks like when it reaches the model instead of a

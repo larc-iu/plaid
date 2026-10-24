@@ -55,7 +55,7 @@ class Tracer:
 # META in one app and READ in the other, so the same tool counted as a look at
 # the data in one Assistant tab and not in the other.
 META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'query_help',
-                        'discard_plan', 'read_guideline'})
+                        'discard_plan'})
 
 # The reads the summary calls searches: a look for a pattern across the data.
 # Every other READ (a count, a worklist, a check, a run of code) is a read. An
@@ -100,7 +100,7 @@ def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]],
         return f'{name}…'
 
     def kind_of(name: str, args: Dict[str, Any]) -> str:
-        fn = (reading or {}).get(name)
+        fn = (reading or {}).get(name) or SHARED_READING.get(name)
         return (fn(args) if fn else None) or kind(name)
 
     searching = SEARCH_TOOLS | frozenset(searches)
@@ -465,14 +465,28 @@ def _on_ref(a: Dict[str, Any]) -> str:
     return f' on {a["ref"]}' if a.get('ref') else ''
 
 
+def _act(a: Dict[str, Any]) -> str:
+    v = a.get('action')
+    return v.strip().lower() if isinstance(v, str) else ''
+
+
+# The kind of a shared tool's call where its action decides it: the guidelines
+# tool plans with add, revise and rewrite, and reads with help and read.
+SHARED_READING: Dict[str, Callable[[Dict[str, Any]], Optional[str]]] = {
+    'guidelines': lambda a: META if _act(a) in ('help', 'read') else None,
+}
+
+
 SHARED_DESCRIBE: Dict[str, Callable[[Dict[str, Any]], str]] = {
     'project_overview': lambda a: 'Looked at the project overview',
     'list_documents': lambda a: 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else ''),
     'read_document': read_document_label,
-    'read_guideline': lambda a: f'Read the guideline {q(a.get("title"))}',
-    'add_guideline': lambda a: f'Drafted a guideline, {q(a.get("title"))}',
-    'revise_guideline': lambda a: f'Edited the guideline {q(a.get("title"))}',
-    'rewrite_guideline': lambda a: f'Rewrote the guideline {q(a.get("title"))}',
+    'guidelines': lambda a: {
+        'help': 'Read how to write guidelines',
+        'read': f'Read the guideline {q(a.get("title"))}',
+        'add': f'Drafted a guideline, {q(a.get("title"))}',
+        'revise': f'Edited the guideline {q(a.get("title"))}',
+        'rewrite': f'Rewrote the guideline {q(a.get("title"))}'}.get(_act(a), 'Used the guidelines'),
     'query_help': lambda a: 'Looked up the query language',
     'query': lambda a: 'Ran a query',
     'recent_changes': lambda a: f'Read the change history{in_doc(a)}',
@@ -492,10 +506,12 @@ SHARED_PROGRESS: Dict[str, Callable[[Dict[str, Any]], str]] = {
     'project_overview': lambda a: 'Looking at the project…',
     'list_documents': lambda a: 'Listing the documents…',
     'read_document': reading_line,
-    'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
-    'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
-    'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
-    'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
+    'guidelines': lambda a: {
+        'help': 'Reading how to write guidelines…',
+        'read': f'Reading the guideline "{a.get("title", "")}"…',
+        'add': f'Drafting a guideline, "{a.get("title", "")}"…',
+        'revise': f'Editing the guideline "{a.get("title", "")}"…',
+        'rewrite': f'Rewriting the guideline "{a.get("title", "")}"…'}.get(_act(a), 'Working on guidelines…'),
     'query_help': lambda a: 'Reading the query language…',
     'query': lambda a: 'Running a query…',
     'recent_changes': lambda a: 'Reading the change history…',

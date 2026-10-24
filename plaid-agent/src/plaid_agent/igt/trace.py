@@ -32,7 +32,7 @@ def in_doc(a: Dict[str, Any]) -> str:
 
 
 def _action(a: Dict[str, Any]) -> str:
-    """The tagsets action as the tool reads it (`tagsets.t_tagsets`)."""
+    """The action of a tool with several, as the tool reads it."""
     return str(a.get('action') or '').strip().lower()
 
 
@@ -146,20 +146,25 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
         return f'Planned a new lexicon entry {q(a.get("form"))}'
     if name == 'set_entry_field':
         return f'Planned {a.get("field")} = {q(a.get("value"))} on entry {_entry(a)}'
-    if name == 'add_sense':
-        return f'Planned a sense under {_entry(a)}'
-    if name == 'move_sense':
-        return f'Planned {_entry(a)} as sense {a.get("number")}'
+    if name == 'senses':
+        act = _action(a)
+        if act == 'help':
+            return 'Read how to change the sense tree'
+        if act == 'add':
+            return f'Planned a sense under {_entry(a)}'
+        if act == 'move':
+            return f'Planned {_entry(a)} as sense {a.get("number")}'
+        if act == 'order_homographs':
+            return f'Planned an order for the entries spelled like {_entry(a)}'
+        if act == 'free':
+            return f'Planned freeing {_entry(a)} into an entry of its own'
+        if act == 'promote_example':
+            return f'Planned a usage example for {_entry(a)}{in_doc(a)}'
+        if act == 'remove_example':
+            return f'Planned dropping a usage example from {_entry(a)}'
+        return f'Planned a change to the sense tree of {_entry(a)}'
     if name == 'make_sense_of':
         return f'Planned {_entry(a)} as a sense of {q(a.get("under_form") or a.get("under_id"))}'
-    if name == 'order_homographs':
-        return f'Planned an order for the entries spelled like {_entry(a)}'
-    if name == 'free_sense':
-        return f'Planned freeing {_entry(a)} into an entry of its own'
-    if name == 'promote_example':
-        return f'Planned a usage example for {_entry(a)}{in_doc(a)}'
-    if name == 'remove_example':
-        return f'Planned dropping a usage example from {_entry(a)}'
     if name == 'merge_entries':
         return (f'Planned merging {q(a.get("remove_form") or a.get("remove_id"))} into '
                 f'{q(a.get("keep_form") or a.get("keep_id"))}')
@@ -224,13 +229,12 @@ _PROGRESS = {
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
     'check_lexicon': lambda a: 'Checking the lexicon…',
     'tagsets': lambda a: 'Checking a tagset…' if _action(a) == 'check' else 'Working on tagsets…',
-    'add_sense': lambda a: 'Adding a sense…',
-    'move_sense': lambda a: 'Renumbering a sense…',
+    'senses': lambda a: {'help': 'Reading how to change the sense tree…', 'add': 'Adding a sense…',
+                         'move': 'Renumbering a sense…', 'free': 'Freeing a sense…',
+                         'order_homographs': 'Ordering the entries spelled the same…',
+                         'promote_example': 'Marking a usage example…',
+                         'remove_example': 'Dropping a usage example…'}.get(_action(a), 'Working on senses…'),
     'make_sense_of': lambda a: 'Moving an entry under another…',
-    'free_sense': lambda a: 'Freeing a sense…',
-    'order_homographs': lambda a: 'Ordering the entries spelled the same…',
-    'promote_example': lambda a: 'Marking a usage example…',
-    'remove_example': lambda a: 'Dropping a usage example…',
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
     'app_guide': lambda a: 'Reading the app guide…',
@@ -240,6 +244,7 @@ _PROGRESS = {
 # The tagsets tool plans with edit and assign, and only reads with help (its
 # manual) and check.
 _READING = {'tagsets': lambda a: {'help': META, 'check': READ}.get(_action(a)),
+            'senses': lambda a: META if _action(a) == 'help' else None,
             'app_guide': lambda a: META}
 
 TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, _own, _PROGRESS, searches=('sequence_search', 'concordance'),

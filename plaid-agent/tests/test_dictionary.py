@@ -90,8 +90,8 @@ def test_two_new_senses_in_one_plan_are_numbered_apart():
     too. And a sense just planned carries its entry's form, which must not make
     that form ambiguous for the next call."""
     w = dict_ws()
-    call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
-    out = call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'brew'}})
+    call_tool(w, 'senses', {'action': 'add', 'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
+    out = call_tool(w, 'senses', {'action': 'add', 'entry_form': 'kwatha', 'fields': {'gloss': 'brew'}})
     assert 'Several entries match' not in out
     orders = [e['metadata']['senseOrder'] for e in w.new_entries.values()]
     assert orders == [3, 4]  # after the two senses the entry has
@@ -190,9 +190,9 @@ def test_an_entry_scope_field_is_refused_on_a_sense():
 
 
 @pytest.mark.parametrize('name,says', [
-    ('parent', 'add_sense, make_sense_of or free_sense'),
-    ('senseOrder', 'move_sense'),
-    ('examples', 'promote_example'),
+    ('parent', 'make_sense_of, or senses action "add" or "free"'),
+    ('senseOrder', 'senses action "move"'),
+    ('examples', 'senses action "promote_example"'),
     ('form', 'rename_entry'),
 ])
 def test_a_reserved_key_is_never_a_field(name, says):
@@ -204,7 +204,7 @@ def test_a_reserved_key_is_never_a_field(name, says):
 
 def test_add_sense_numbers_after_the_senses_there_are():
     w = dict_ws()
-    out = call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
+    out = call_tool(w, 'senses', {'action': 'add', 'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
     assert 'Planned 1 change' in out
     op = ops_of(w, 'create_entry')[0]
     assert op['form'] == 'kwatha' and op['metadata'] == {'gloss': 'stew', 'parent': 'd-kwatha', 'senseOrder': 3}
@@ -213,7 +213,7 @@ def test_add_sense_numbers_after_the_senses_there_are():
 
 def test_move_sense_renumbers_the_siblings():
     w = dict_ws()
-    out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.2', 'number': '1'})
+    out = call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.2', 'number': '1'})
     assert 'Planned 2 changes' in out
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'d-ferment': {'senseOrder': 1}, 'd-boil': {'senseOrder': 2}}
@@ -222,7 +222,7 @@ def test_move_sense_renumbers_the_siblings():
 
 def test_moving_a_sense_nowhere_says_so_and_plans_nothing():
     w = dict_ws()
-    out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1.1', 'number': '1'})
+    out = call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.1.1', 'number': '1'})
     assert 'Planned 0 changes' in out and 'no siblings to move among' in out
     assert not w.ops
 
@@ -230,7 +230,7 @@ def test_moving_a_sense_nowhere_says_so_and_plans_nothing():
 def test_the_move_is_described_on_the_sense_that_moves():
     """The plan card is the only place a user says no, so it has to be true."""
     w = dict_ws()
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '2'})
+    call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.1', 'number': '2'})
     by_id = {o['item_id']: o['label'] for o in ops_of(w, 'set_entry_metadata')}
     # d-boil is sense 1.1, the one asked to move. d-ferment is the sibling that
     # gets renumbered, and used to carry the move's own description.
@@ -242,7 +242,7 @@ def test_the_move_is_described_on_the_sense_that_moves():
 
 def test_a_number_past_the_end_is_planned_as_the_place_it_lands():
     w = dict_ws()
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '9'})
+    call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.1', 'number': '9'})
     by_id = {o['item_id']: o for o in ops_of(w, 'set_entry_metadata')}
     assert by_id['d-boil']['patch'] == {'senseOrder': 2}
     assert 'becomes sense 1.2' in by_id['d-boil']['label']
@@ -258,7 +258,7 @@ def test_a_move_that_renumbers_only_its_siblings_still_says_it_moved():
         {'id': 'c', 'form': 'kwatha', 'metadata': {'gloss': 'three', 'parent': 'p', 'senseOrder': 5}},
     ]
     w = dict_ws(items=items)
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '9'})
+    call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.1', 'number': '9'})
     labels = [o['label'] for o in ops_of(w, 'set_entry_metadata')]
     assert any('becomes sense' in l for l in labels), labels
 
@@ -267,15 +267,14 @@ def test_a_new_sense_names_the_headword_that_can_hold_the_field():
     """The parent of a subsense is a sense, which refuses the same write, so
     naming it sends the model somewhere that says no."""
     w = dict_ws()
-    out = call_tool(w, 'add_sense',
-                    {'entry_form': 'kwatha#1.1', 'form': 'kwatha',
+    out = call_tool(w, 'senses', {'action': 'add', 'entry_form': 'kwatha#1.1', 'form': 'kwatha',
                      'fields': {'gloss': 'x', 'etymology': 'Proto-Bantu'}})
     assert 'Set it on "kwatha"' in out, out
     assert 'kwatha#1.1' not in out.split('Set it on')[1]
 
 
 def test_a_number_that_is_not_a_number_is_refused():
-    out = call_tool(dict_ws(), 'move_sense', {'entry_form': 'kwatha#1.1', 'number': 'first'})
+    out = call_tool(dict_ws(), 'senses', {'action': 'move', 'entry_form': 'kwatha#1.1', 'number': 'first'})
     assert 'is not a sense number' in out
 
 
@@ -309,7 +308,7 @@ def test_a_lone_headword_answers_to_hash_one():
 
 
 def test_an_entry_cannot_be_renumbered():
-    out = call_tool(dict_ws(), 'move_sense', {'entry_form': 'phika', 'number': '2'})
+    out = call_tool(dict_ws(), 'senses', {'action': 'move', 'entry_form': 'phika', 'number': '2'})
     assert 'is a headword, and a headword is not numbered among senses' in out
 
 
@@ -319,7 +318,7 @@ def test_make_sense_of_and_free_sense():
     assert w.ops[-1]['patch'] == {'parent': 'd-kwatha', 'senseOrder': 3}
     assert 'becomes a sense of "kwatha"' in w.ops[-1]['label']
     w2 = dict_ws()
-    call_tool(w2, 'free_sense', {'entry_form': 'kwatha#1.1'})
+    call_tool(w2, 'senses', {'action': 'free', 'entry_form': 'kwatha#1.1'})
     # The subsense below it comes along: only the parent link is cut.
     assert w2.ops[-1]['patch'] == {'parent': None, 'senseOrder': None}
     assert 'with 1 sense below it' in w2.ops[-1]['label']
@@ -342,7 +341,7 @@ def test_a_change_to_an_entry_and_a_delete_of_it_refuse_each_other():
     for tool, args, kind in (('set_entry_field', {'entry_form': 'phika', 'field': 'gloss', 'value': 'boil'},
                               'set_entry_field'),
                              ('rename_entry', {'entry_form': 'phika', 'new_form': 'fika'}, 'rename_entry'),
-                             ('add_sense', {'entry_form': 'phika', 'fields': {'gloss': 'stew'}}, 'create_entry')):
+                             ('senses', {'action': 'add', 'entry_form': 'phika', 'fields': {'gloss': 'stew'}}, 'create_entry')):
         w = dict_ws()
         assert 'Planned 1 change' in call_tool(w, tool, args), tool
         out = call_tool(w, 'delete_entry', {'entry_form': 'phika'})
@@ -359,7 +358,7 @@ def test_a_change_to_an_entry_and_a_delete_of_it_refuse_each_other():
 
 def test_structural_tools_compose_within_one_plan():
     w = dict_ws()
-    call_tool(w, 'free_sense', {'entry_form': 'kwatha#1.1'})
+    call_tool(w, 'senses', {'action': 'free', 'entry_form': 'kwatha#1.1'})
     # d-boil is a headword now, so its own former subsense sits under it.
     out = call_tool(w, 'read_lexicon', {})
     assert '4 headwords, 2 senses' in out
@@ -369,29 +368,32 @@ def test_structural_tools_compose_within_one_plan():
 
 def test_promote_and_remove_an_example():
     w = dict_ws()
-    out = call_tool(w, 'promote_example', {'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
+    out = call_tool(w, 'senses', {'action': 'promote_example', 'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
     assert 'Planned 1 change' in out
     assert w.ops[-1]['patch'] == {'examples': [{'document': 'd1', 'token': 'w-2'}]}
     assert 'usage example "Text 1" s1.w2 "gam"' in w.ops[-1]['label']
     # It shows up numbered, and that number is what removes it.
     assert '[0] "Text 1" s1.w2' in call_tool(w, 'lexicon_entry', {'entry_form': 'phika'})
-    call_tool(w, 'remove_example', {'entry_form': 'phika', 'index': 0})
+    call_tool(w, 'senses', {'action': 'remove_example', 'entry_form': 'phika', 'index': 0})
     assert w.ops[-1]['patch'] == {'examples': None}
 
 
 def test_a_duplicate_example_is_ignored_and_a_bad_index_says_the_range():
     w = dict_ws()
-    call_tool(w, 'promote_example', {'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
-    out = call_tool(w, 'promote_example', {'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
+    call_tool(w, 'senses', {'action': 'promote_example', 'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
+    out = call_tool(w, 'senses', {'action': 'promote_example', 'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
     assert 'already has that example' in out
-    assert 'numbered 0 to 0' in call_tool(w, 'remove_example', {'entry_form': 'phika', 'index': 4})
+    assert 'numbered 0 to 0' in call_tool(w, 'senses', {'action': 'remove_example', 'entry_form': 'phika', 'index': 4})
     # A number the tool cannot read gets the same sentence, not int()'s. 0.5
     # is in that list because `int(0.5)` is 0: the fraction used to drop the
     # first example for an argument that named no example at all, and True
     # did the same.
-    for bad in ('two', None, '1.5', [0], 0.5, True):
-        out = call_tool(w, 'remove_example', {'entry_form': 'phika', 'index': bad})
+    for bad in ('two', '1.5', [0], 0.5, True):
+        out = call_tool(w, 'senses', {'action': 'remove_example', 'entry_form': 'phika', 'index': bad})
         assert 'numbered 0 to 0' in out and 'int()' not in out, (bad, out)
+    # A null index is no index, which the action needs.
+    out = call_tool(w, 'senses', {'action': 'remove_example', 'entry_form': 'phika', 'index': None})
+    assert 'needs index' in out, out
     assert len([o for o in w.ops if o.get('kind') == 'set_entry_metadata']) == 1
 
 
@@ -467,7 +469,7 @@ def test_senses_of_an_attested_entry_are_reported_apart():
 def test_a_structural_change_on_a_doomed_entry_is_refused():
     w = dict_ws()
     call_tool(w, 'delete_entry', {'entry_form': 'kwatha'})
-    out = call_tool(w, 'add_sense', {'entry_id': 'd-kwatha', 'fields': {'gloss': 'stew'}})
+    out = call_tool(w, 'senses', {'action': 'add', 'entry_id': 'd-kwatha', 'fields': {'gloss': 'stew'}})
     assert 'deleted or merged away by this same plan' in out
     assert not ops_of(w, 'create_entry')
 
@@ -501,7 +503,7 @@ def test_a_refusal_names_the_entry_the_way_a_tool_takes_it_back():
     it could only name the entry by its id: no line the user could copy."""
     w = dict_ws()
     call_tool(w, 'delete_entry', {'entry_id': 'd-boil'})
-    out = call_tool(w, 'add_sense', {'entry_id': 'd-boil', 'fields': {'gloss': 'stew'}})
+    out = call_tool(w, 'senses', {'action': 'add', 'entry_id': 'd-boil', 'fields': {'gloss': 'stew'}})
     assert '"kwatha#1.1" is deleted or merged away' in out and 'd-boil' not in out
 
 
@@ -517,7 +519,7 @@ def test_a_form_naming_an_entry_this_plan_removes_gets_the_plan_aware_refusal():
     """
     for tool, args in (('set_entry_field', {'field': 'gloss', 'value': 'stew'}),
                        ('rename_entry', {'new_form': 'phiika'}),
-                       ('add_sense', {'fields': {'gloss': 'stew'}})):
+                       ('senses', {'action': 'add', 'fields': {'gloss': 'stew'}})):
         w = dict_ws()
         call_tool(w, 'delete_entry', {'entry_form': 'phika'})
         before = list(w.ops)
@@ -634,7 +636,7 @@ def test_entries_sharing_a_form_are_told_apart_by_their_shown_number():
 def test_move_sense_takes_the_last_segment_of_a_dotted_number():
     """A sense is shown with a dotted number, but it moves among its siblings."""
     w = dict_ws()
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.2', 'number': '1.1'})
+    call_tool(w, 'senses', {'action': 'move', 'entry_form': 'kwatha#1.2', 'number': '1.1'})
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'d-ferment': {'senseOrder': 1}, 'd-boil': {'senseOrder': 2}}
 
@@ -669,7 +671,7 @@ def test_the_number_follows_the_stored_homograph_order_not_creation_order():
 
 def test_order_homographs_renumbers_the_group():
     w = dict_ws(items=HOMOGRAPHS)
-    out = call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['3', '1', '2']})
+    out = call_tool(w, 'senses', {'action': 'order_homographs', 'entry_form': 'x#1', 'order': ['3', '1', '2']})
     assert 'Planned 3 changes' in out
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'h-none': {'homograph': 1}, 'h-early': {'homograph': 2}, 'h-late': {'homograph': 3}}
@@ -679,23 +681,23 @@ def test_order_homographs_renumbers_the_group():
 
 def test_order_homographs_checks_the_group_is_named_in_full():
     w = dict_ws(items=HOMOGRAPHS)
-    assert 'Give all 3 headwords' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2']})
-    assert 'named twice' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '1', '2']})
-    out = call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2', '9']})
+    assert 'Give all 3 headwords' in call_tool(w, 'senses', {'action': 'order_homographs', 'entry_form': 'x#1', 'order': ['1', '2']})
+    assert 'named twice' in call_tool(w, 'senses', {'action': 'order_homographs', 'entry_form': 'x#1', 'order': ['1', '1', '2']})
+    out = call_tool(w, 'senses', {'action': 'order_homographs', 'entry_form': 'x#1', 'order': ['1', '2', '9']})
     assert 'not one of the 3 headwords spelled "x"' in out
     assert not w.ops
 
 
 def test_order_homographs_is_refused_for_a_lone_entry():
     w = dict_ws(items=HOMOGRAPHS)
-    out = call_tool(w, 'order_homographs', {'entry_form': 'y', 'order': ['1']})
+    out = call_tool(w, 'senses', {'action': 'order_homographs', 'entry_form': 'y', 'order': ['1']})
     assert 'only headword spelled that way' in out
 
 
 def test_the_homograph_key_is_not_a_field():
     out = call_tool(dict_ws(items=HOMOGRAPHS), 'set_entry_field',
                     {'entry_form': 'x#1', 'field': 'homograph', 'value': '3'})
-    assert '"homograph" is not an entry field' in out and 'order_homographs' in out
+    assert '"homograph" is not an entry field' in out and 'senses action "order_homographs"' in out
 
 
 def test_read_lexicon_shows_the_number_on_entries_too_and_orders_by_it():
@@ -805,13 +807,14 @@ def test_a_refused_field_leaves_the_entry_as_the_turn_found_it():
 LEXICON_PLANS = {
     'create_entry': ({'form': 'ndiwo', 'fields': {'gloss': 'relish'}}, None),
     'set_entry_field': ({'entry_form': 'phika', 'field': 'gloss', 'value': 'stew'}, None),
-    'add_sense': ({'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}}, None),
-    'move_sense': ({'entry_form': 'kwatha#1.2', 'number': '1'}, None),
     'make_sense_of': ({'entry_form': 'kwatha', 'under_form': 'phika'}, None),
-    'free_sense': ({'entry_form': 'kwatha#1.1'}, None),
-    'order_homographs': ({'entry_form': 'x#1', 'order': ['3', '1', '2']}, 'homographs'),
-    'promote_example': ({'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'}, None),
-    'remove_example': ({'entry_form': 'phika', 'index': 0}, 'examples'),
+    # The sense tree's actions, one tool (R35): "senses.<action>".
+    'senses.add': ({'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}}, None),
+    'senses.move': ({'entry_form': 'kwatha#1.2', 'number': '1'}, None),
+    'senses.free': ({'entry_form': 'kwatha#1.1'}, None),
+    'senses.order_homographs': ({'entry_form': 'x#1', 'order': ['3', '1', '2']}, 'homographs'),
+    'senses.promote_example': ({'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'}, None),
+    'senses.remove_example': ({'entry_form': 'phika', 'index': 0}, 'examples'),
 }
 
 # d-phika with a usage example already on it, for remove_example.
@@ -829,7 +832,8 @@ def test_a_refused_lexicon_tool_leaves_nothing_behind(tool):
     w = dict_ws(items={'homographs': HOMOGRAPHS, 'examples': EXAMPLED}.get(items))
     _fill_plan(w, 0)
     before = (len(w.ops), _copy.deepcopy(w.new_entries), _copy.deepcopy(w.item_patches))
-    out = call_tool(w, tool, dict(args))
+    name, _, action = tool.partition('.')
+    out = call_tool(w, name, {**({'action': action} if action else {}), **args})
     assert out.startswith('Error:'), f'{tool} was not refused: {out[:120]}'
     assert (len(w.ops), w.new_entries, w.item_patches) == before, f'{tool} left turn state behind'
 
@@ -838,7 +842,10 @@ def test_the_sweep_covers_every_lexicon_plan_tool():
     from plaid_agent.igt import lexicon
     from plaid_agent.igt.toolkit import _IMPL
     planned = {name for name, fn in _IMPL.items() if fn.__module__ == lexicon.__name__}
-    assert planned == set(LEXICON_PLANS), sorted(planned ^ set(LEXICON_PLANS))
+    swept = {k.partition('.')[0] for k in LEXICON_PLANS}
+    assert planned == swept, sorted(planned ^ swept)
+    actions = {k.partition('.')[2] for k in LEXICON_PLANS if k.startswith('senses.')}
+    assert actions == set(lexicon._SENSE_ACTIONS), sorted(actions ^ set(lexicon._SENSE_ACTIONS))
 
 
 def test_a_rollback_puts_back_an_entry_a_tool_had_edited():

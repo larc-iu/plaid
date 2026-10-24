@@ -203,14 +203,14 @@ def test_every_call_tool_routes_first(app):
     import importlib
     toolkit = importlib.import_module(f'plaid_agent.{app}.toolkit')
     src = inspect.getsource(toolkit.call_tool)
-    assert 'route(ws, name, args)' in src
-    assert src.index('route(ws, name, args)') < src.index('run_tool(')
+    assert 'route(ws, name, args' in src
+    assert src.index('route(ws, name, args') < src.index('run_tool(')
 
 
 # --- nothing is staged in another project, on any path ----------------------------
 
 def _write_cases():
-    from test_guard_coverage import IGT_ARGS, IGT_OVERRIDES, UD_ARGS, UD_OVERRIDES
+    from test_guard_coverage import ACTIONS, IGT_ARGS, IGT_OVERRIDES, UD_ARGS, UD_OVERRIDES
     from plaid_agent.igt.toolkit import WRITE_TOOLS as IGT_WRITE
     from plaid_agent.ud.toolkit import WRITE_TOOLS as UD_WRITE
     from plaid_agent.umr.toolkit import WRITE_TOOLS as UMR_WRITE
@@ -225,11 +225,14 @@ def _write_cases():
                                    ('ud', UD_WRITE, UD_ARGS, UD_OVERRIDES),
                                    ('umr', UMR_WRITE, umr_args, {})):
         title, passage = manual[app]
-        over = {**over, 'add_guideline': {'title': 'New', 'body': 'a note'},
-                'revise_guideline': {'title': title, 'find': passage, 'replace': 'x'},
-                'rewrite_guideline': {'title': title, 'body': 'a note'}}
+        # A tool with several actions is a case per action that plans.
+        actions = {**ACTIONS, 'guidelines': [
+            {'action': 'add', 'title': 'New', 'body': 'a note'},
+            {'action': 'revise', 'title': title, 'find': passage, 'replace': 'x'},
+            {'action': 'rewrite', 'title': title, 'body': 'a note'}]}
         for name in sorted(names):
-            cases.append((app, name, base, over.get(name, {})))
+            for o in actions.get(name) or [over.get(name, {})]:
+                cases.append((app, name, base, o))
     return cases
 
 
@@ -247,7 +250,8 @@ def _staged(ws, r):
 
 
 @pytest.mark.parametrize('app,name,base,override', _write_cases(),
-                         ids=[f'{c[0]}-{c[1]}' for c in _write_cases()])
+                         ids=[f'{c[0]}-{c[1]}' + (f'-{c[3]["action"]}' if 'action' in c[3] else '')
+                              for c in _write_cases()])
 def test_no_write_tool_stages_anything_in_another_project(app, name, base, override):
     """Every plan tool of every app, handed another project, leaves every
     workspace's plan empty. Asserted on the plans rather than on the reply,
@@ -393,7 +397,7 @@ def test_a_one_project_turn_answers_as_before(app):
     svc, ws = home_workspace(app, c)
     kit = svc.toolkit()
     kit.tools_for(ws)
-    _, name, base, override = next(x for x in _write_cases() if x[0] == app and x[1] == 'add_guideline')
+    _, name, base, override = next(x for x in _write_cases() if x[0] == app and x[1] == 'guidelines')
     out = kit.call_tool(ws, name, _args_for(app, name, base, override))
     assert ws.ops and out.startswith('Planned'), out
 
@@ -410,9 +414,9 @@ def test_the_codes_plan_for_another_project_gets_the_same_refusal(app):
     svc, c, ws, r = reached(app)
     svc.toolkit().tools_for(ws)
     api = sb.api(ws)
-    out = api['plan']('add_guideline', project=OTHER_NAME, title='New', body='a note')
+    out = api['plan']('guidelines', project=OTHER_NAME, action='add', title='New', body='a note')
     assert out.startswith(f'Error: This conversation plans changes in "{ws.project.name}" only.'), out
-    out = api['plan']('add_guideline', title='New', body='a note')
+    out = api['plan']('guidelines', action='add', title='New', body='a note')
     assert out.startswith(f'Project "{ws.project.name}"'), out
     assert len(ws.ops) == 1 and _staged(ws, r) == 1
 
@@ -435,3 +439,19 @@ def test_a_document_of_another_project_named_at_home_is_said_to_be_there(app):
     # A name no project has is refused as before, with this project's documents.
     with pytest.raises(ToolError, match=r'^No document "Nowhere"\.'):
         ws.resolve_document_id('Nowhere')
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_another_projects_guideline_is_read_by_the_plan_tools_read_action(app):
+    # R35: the guidelines are one plan tool, and its read action reads any
+    # project of the turn, where its writes plan at home only.
+    svc, c, ws, r = reached(app)
+    kit = svc.toolkit()
+    kit.tools_for(ws)
+    other = r.workspace(OTHER_NAME)
+    title = other.project.guidelines[0].title
+    out = kit.call_tool(ws, 'guidelines', {'action': 'read', 'title': title, 'project': OTHER_NAME})
+    assert not str(out).startswith('Error:') and title in out, out
+    assert not ws.ops
+    out = kit.call_tool(ws, 'guidelines', {'action': 'add', 'title': 'New', 'body': 'x', 'project': OTHER_NAME})
+    assert str(out).startswith('Error: This conversation plans changes in'), out

@@ -79,10 +79,10 @@ def test_the_project_carries_each_lexicons_maintainers():
 ENTRY_CALLS = [
     ('set_entry_field', {'entry_form': 'Ali', 'field': 'gloss', 'value': 'Ally'}),
     ('set_entry_field', {'entry_form': 'Ali', 'field': 'morphType', 'value': 'root'}),
-    ('add_sense', {'entry_form': 'Ali', 'fields': {'gloss': 'name'}}),
+    ('senses', {'action': 'add', 'entry_form': 'Ali', 'fields': {'gloss': 'name'}}),
     ('make_sense_of', {'under_id': 'vi-gam', 'entry_id': 'vi-gam2'}),
-    ('order_homographs', {'entry_form': 'gam#1', 'order': ['2', '1']}),
-    ('promote_example', {'entry_form': 'Ali', 'document': 'Text 1', 'ref': 's1.w1'}),
+    ('senses', {'action': 'order_homographs', 'entry_form': 'gam#1', 'order': ['2', '1']}),
+    ('senses', {'action': 'promote_example', 'entry_form': 'Ali', 'document': 'Text 1', 'ref': 's1.w1'}),
 ]
 
 

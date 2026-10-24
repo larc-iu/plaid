@@ -212,7 +212,7 @@ def target(ws, project: Any):
     raise ToolError(f'No project "{wanted}" in this conversation. It reads "{ws.project.name}" only.', kind='not-found')
 
 
-def route(ws, name: str, args: Any) -> Tuple[Any, Any]:
+def route(ws, name: str, args: Any, reading: bool = False) -> Tuple[Any, Any]:
     """``(workspace, args)`` for one tool call: the workspace of the project the
     call names, and its arguments without ``project``. Called first in every
     app's ``call_tool``, so the model's calls and the code's ``plan()`` both
@@ -221,7 +221,9 @@ def route(ws, name: str, args: Any) -> Tuple[Any, Any]:
 
     A turn that reads one project has no reach, and its calls pass through
     untouched. The arguments are copied rather than changed, because the
-    caller records them in the step trace as the model wrote them.
+    caller records them in the step trace as the model wrote them. ``reading``
+    is a call of a plan tool by an action that only reads, which reads the
+    project it names as any read does.
     """
     reach = getattr(ws, 'reach', None)
     if reach is None or not isinstance(args, dict) or 'project' not in args:
@@ -233,7 +235,7 @@ def route(ws, name: str, args: Any) -> Tuple[Any, Any]:
     there = reach.workspace(args['project'])
     # What the call reads is noted where the loop looks for it.
     there.reads = ws.reads
-    if name in reach.writers:
+    if name in reach.writers and not reading:
         # Refused before the tool runs, not only where it stages: a tool
         # that reads its target first answered about the other project's
         # fields ("No field named ...") and never reached the refusal.

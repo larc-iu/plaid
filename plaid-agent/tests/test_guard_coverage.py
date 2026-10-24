@@ -43,14 +43,25 @@ IGT_OVERRIDES = {
     'link_phrase': {'refs': ['s1.w1', 's1.w2']},
     'unlink_phrase': {'refs': ['s1.w2', 's1.w3']},
     'make_sense_of': {'under_id': 'vi-ali', 'entry_id': 'vi-gam'},
-    'free_sense': {'entry_id': 'vi-gam'},
-    'move_sense': {'entry_id': 'vi-gam', 'number': 1},
-    'remove_example': {'entry_id': 'vi-gam', 'index': 0},
     'merge_entries': {'keep_id': 'vi-gam', 'remove_id': 'vi-ali'},
     'set_document_metadata': {'field': 'Date', 'value': '2021'},
     'confirm': {'documents': ['all']},
 }
 UD_OVERRIDES = {}
+
+# A tool with several actions is swept once per action that plans, each with
+# the arguments it takes (R35 folded the sense tree and the guidelines into one
+# tool each).
+_GUIDELINE_ACTIONS = [{'action': 'add', 'title': 'Loanwords', 'body': 'Not segmented.'}]
+ACTIONS = {
+    'senses': [{'action': 'add', 'entry_id': 'vi-gam', 'fields': {'gloss': 'x'}},
+               {'action': 'move', 'entry_id': 'vi-gam', 'number': 1},
+               {'action': 'free', 'entry_id': 'vi-gam'},
+               {'action': 'order_homographs', 'entry_form': 'gam', 'order': ['1', '2']},
+               {'action': 'promote_example', 'entry_id': 'vi-gam', 'document': 'Text 1', 'ref': 's1.w2'},
+               {'action': 'remove_example', 'entry_id': 'vi-gam', 'index': 0}],
+    'guidelines': _GUIDELINE_ACTIONS,
+}
 
 IGT_RESTORE = {'kind': 'restore_document', 'document_id': 'd1', 'as_of': '2026-01-01T00:00:00Z',
                'doc': 'd1', 'label': 'Text 1: restore'}
@@ -77,17 +88,28 @@ def _ud_ws():
 
 
 def _args(tool, tools, values, overrides):
+    if isinstance(tool, tuple):
+        return dict(ACTIONS[tool[0]][tool[1]])
     spec = next(t['function'] for t in tools if t['function']['name'] == tool)
     props = (spec.get('parameters') or {}).get('properties') or {}
     return {**{k: values[k] for k in props if k in values}, **overrides.get(tool, {})}
 
 
+def _name(tool):
+    return tool[0] if isinstance(tool, tuple) else tool
+
+
 def _write_tools(app):
     if app == 'igt':
         from plaid_agent.igt.toolkit import TOOLS
-        return sorted(IGT_WRITE), TOOLS
-    from plaid_agent.ud.toolkit import TOOLS
-    return sorted(UD_WRITE), TOOLS
+        names = IGT_WRITE
+    else:
+        from plaid_agent.ud.toolkit import TOOLS
+        names = UD_WRITE
+    out = []
+    for name in sorted(names):
+        out += [(name, i) for i in range(len(ACTIONS[name]))] if name in ACTIONS else [name]
+    return out, TOOLS
 
 
 IGT_TOOLS, IGT_TABLE = _write_tools('igt')
@@ -99,23 +121,23 @@ UD_TOOLS, UD_TABLE = _write_tools('ud')
 TAKES_AWAY = {'discard_plan'}
 
 
-@pytest.mark.parametrize('tool', IGT_TOOLS, ids=IGT_TOOLS)
+@pytest.mark.parametrize('tool', IGT_TOOLS, ids=[str(t) for t in IGT_TOOLS])
 def test_no_igt_tool_joins_a_plan_that_holds_a_restore(tool):
     if tool in TAKES_AWAY:
         pytest.skip('it only removes changes')
     ws = _igt_ws()
     ws.ops.append(dict(IGT_RESTORE))
-    igt_call(ws, tool, _args(tool, IGT_TABLE, IGT_ARGS, IGT_OVERRIDES))
+    igt_call(ws, _name(tool), _args(tool, IGT_TABLE, IGT_ARGS, IGT_OVERRIDES))
     assert ws.ops == [IGT_RESTORE], f'{tool} added to a plan holding a restore'
 
 
-@pytest.mark.parametrize('tool', UD_TOOLS, ids=UD_TOOLS)
+@pytest.mark.parametrize('tool', UD_TOOLS, ids=[str(t) for t in UD_TOOLS])
 def test_no_ud_tool_joins_a_plan_that_holds_a_restore(tool):
     if tool in TAKES_AWAY:
         pytest.skip('it only removes changes')
     ws = _ud_ws()
     ws.ops.append(dict(UD_RESTORE))
-    ud_call(ws, tool, _args(tool, UD_TABLE, UD_ARGS, UD_OVERRIDES))
+    ud_call(ws, _name(tool), _args(tool, UD_TABLE, UD_ARGS, UD_OVERRIDES))
     assert ws.ops == [UD_RESTORE], f'{tool} added to a plan holding a restore'
 
 
@@ -189,7 +211,7 @@ def _reached(app):
             continue
         ws = ws_of()
         ws.ops.append(dict(restore))
-        if phrase in call(ws, tool, _args(tool, table, args, over)):
+        if phrase in call(ws, _name(tool), _args(tool, table, args, over)):
             out.append(tool)
     return out
 

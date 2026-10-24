@@ -161,7 +161,8 @@ def mistyped(args: Optional[Dict[str, Any]], schema: Optional[Dict[str, Any]]) -
 
 
 def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
-             after: Optional[Callable[[str], str]] = None, schema: Optional[Dict[str, Any]] = None) -> str:
+             after: Optional[Callable[[str], str]] = None, schema: Optional[Dict[str, Any]] = None,
+             reading: bool = False) -> str:
     """Run one tool and answer with text, whatever happens.
 
     Every failure reaches the model as a sentence in the tools' own
@@ -171,7 +172,9 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
     problem), and an unexpected failure is answered by saying so, with the
     traceback going to the operator's log where it is of use.
 
-    ``after`` is what the app appends to a successful answer. ``schema`` is
+    ``after`` is what the app appends to a successful answer, and ``reading``
+    a plan tool's call by an action that only reads, whose answer is a read's.
+    ``schema`` is
     the tool's declared parameters: a failure on an argument of another JSON
     type than it declares is the request's, not the tool's.
     """
@@ -184,7 +187,7 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
                        'invalid-argument')
     try:
         out = truncate(fn_(*bound.args, **bound.kwargs))
-        return planned_where(ws, name, after(out) if after else out)
+        return out if reading else planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
         return refused_for(e)
     except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
@@ -239,7 +242,8 @@ def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools,
     # before they run and run_tool() answers for with the project they
     # planned in.
     reach.writers = frozenset(t['function']['name'] for t in offered if plans(t))
-    return [with_project(t, reach, plan=plans(t))
+    from .guidelines import TOOL as GUIDELINES   # it imports this module
+    return [with_project(t, reach, plan=plans(t), reads=t['function']['name'] == GUIDELINES)
             if plans(t) or reads_a_project(t, web_tools, code_tools, file_tools) else t
             for t in offered]
 
@@ -263,7 +267,7 @@ def reads_a_project(tool: Dict[str, Any], *local) -> bool:
     return not any(name in names for names in local)
 
 
-def with_project(tool: Dict[str, Any], reach, plan: bool = False) -> Dict[str, Any]:
+def with_project(tool: Dict[str, Any], reach, plan: bool = False, reads: bool = False) -> Dict[str, Any]:
     """A copy of ``tool`` that also takes ``project``: one of the projects this
     turn may read, named as :meth:`core.reach.Reach.labels` names them.
 
@@ -274,7 +278,9 @@ def with_project(tool: Dict[str, Any], reach, plan: bool = False) -> Dict[str, A
     labels = reach.labels()
     f = tool['function']
     params = f['parameters']
-    what = (f'Which project the change is for. Changes are planned in "{labels[0]}" only. Leave it out '
+    what = (f'Which project to read, or the change is for. Changes are planned in "{labels[0]}" only. '
+            f'Leave it out for "{labels[0]}".' if plan and reads else
+            f'Which project the change is for. Changes are planned in "{labels[0]}" only. Leave it out '
             f'for "{labels[0]}".' if plan else
             f'Which project to read. Leave it out for "{labels[0]}".')
     prop = {'type': 'string', 'enum': labels, 'description': what}

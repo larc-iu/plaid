@@ -57,7 +57,7 @@ def test_a_project_with_no_guidelines_is_still_told_it_may_start_one():
     # would never offer to start the first one.
     out = section([])
     assert 'has not written any down yet' in out
-    assert 'add_guideline' in out
+    assert 'guidelines action "add"' in out
     # Nothing to report about context when there is no manual.
     assert in_context([]) == ''
 
@@ -71,7 +71,7 @@ def test_the_whole_manual_is_inlined_when_it_fits():
     small = [g('A', body='aaa'), g('B', body='bbb')]
     out = section(small)
     assert 'aaa' in out and 'bbb' in out
-    assert 'read_guideline' not in out, 'nothing was held back, so nothing should point at the tool'
+    assert 'action "read"' not in out, 'nothing was held back, so nothing should point at the tool'
     assert in_context(small) == 'Guidelines: all 2 in context'
 
 
@@ -81,7 +81,7 @@ def test_past_the_budget_only_the_pinned_body_is_inlined():
     out = section(big)
     assert 'p' * 100 in out
     assert 'o' * GUIDELINES_INLINE_CHARS not in out
-    assert 'read_guideline("Other")' in out
+    assert 'guidelines action "read", title "Other"' in out
     assert in_context(big) == 'Guidelines: 1 of 2 in context, 1 to open'
 
 
@@ -98,7 +98,7 @@ def test_it_is_all_or_none_and_never_half_the_manual():
     # What the small one DOES get is its opening line, which is the whole point
     # of it: the model has to choose what to open without being able to see it.
     assert 'Loanwords are not segmented.' in out
-    assert 'read_guideline("A")' in out and 'read_guideline("B")' in out
+    assert 'guidelines action "read", title "A"' in out and 'guidelines action "read", title "B"' in out
     assert in_context(over) == 'Guidelines: none of 2 in context'
 
 
@@ -134,13 +134,13 @@ def test_an_inlined_guideline_is_not_previewed_as_well_as_shown():
 
 def test_exactly_at_the_budget_still_fits():
     exact = [g('A', body=body_of(GUIDELINES_INLINE_CHARS))]
-    assert 'read_guideline' not in section(exact)
+    assert 'action "read"' not in section(exact)
     assert in_context(exact) == 'Guidelines: all 1 in context'
 
 
 def test_one_character_over_does_not():
     over = [g('A', body=body_of(GUIDELINES_INLINE_CHARS + 1))]
-    assert 'read_guideline("A")' in section(over)
+    assert 'guidelines action "read", title "A"' in section(over)
     assert in_context(over) == 'Guidelines: none of 1 in context'
 
 
@@ -159,7 +159,7 @@ def test_an_empty_guideline_is_not_something_to_go_and_read():
     # after text that does not exist, and it counts as in context.
     empty = [g('Later', body='')]
     out = section(empty)
-    assert 'read_guideline' not in out
+    assert 'action "read"' not in out
     assert 'nothing written under this heading yet' in out
     assert in_context(empty) == 'Guidelines: all 1 in context'
 
@@ -252,7 +252,7 @@ def test_load_reads_one_request_with_the_bodies_on_it():
     got = load(client, PID)
     assert [x.title for x in got] == ['Glossing', 'Orthography', 'Translations']
     assert got[0].pinned is True
-    assert got[0].body, 'the bodies come with the index, so read_guideline is a memory lookup'
+    assert got[0].body, 'the bodies come with the index, so a read is a memory lookup'
     # What a revision is written conditionally on.
     assert got[0].updated_at == '2026-09-10T09:00:00Z'
 
@@ -386,7 +386,7 @@ def test_revising_a_title_that_names_two_is_refused_rather_than_guessed(ws):
 def test_revising_one_that_does_not_exist_points_at_the_other_tool(ws):
     with pytest.raises(ToolError) as e:
         t_rewrite_guideline(ws, 'Ergativity', body='x')
-    assert 'add_guideline' in str(e.value)
+    assert 'action "add"' in str(e.value)
 
 
 def test_the_mark_reaches_the_card_row_in_both_apps():

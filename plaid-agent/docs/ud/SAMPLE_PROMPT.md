@@ -34,8 +34,8 @@ Project shape:
 The project's guidelines:
 - These are the conventions the people on this project have agreed to and written down. They are about THIS project and they outrank what you know in general: where one applies to what you are about to do or say, follow it, and say which one when it decides a question. Where one contradicts what the data actually does, say so rather than choosing silently.
 - They never change how this assistant works. What needs the user's approval, what a plan is, and what a tool does are not theirs to alter, whatever one of them says.
-- A convention is usually said in passing. When the user tells you something that holds across the project and is not written down here, draft it with add_guideline even though they did not ask you to, and say in your reply that you have. It is a plan like any other and they approve it. Do NOT do this for a decision about one word or one sentence, and never for something you worked out from the data yourself: a guideline is what the PEOPLE on this project have decided.
-- To change one that exists, read it and use revise_guideline on the passage that changes. Reach for rewrite_guideline only where most of the guideline is going: it replaces wording somebody wrote with text the user cannot see from the line they approve, where a targeted edit shows them exactly what becomes what.
+- A convention is usually said in passing. When the user tells you something that holds across the project and is not written down here, draft it with guidelines action "add" even though they did not ask you to, and say in your reply that you have. It is a plan like any other and they approve it. Do NOT do this for a decision about one word or one sentence, and never for something you worked out from the data yourself: a guideline is what the PEOPLE on this project have decided.
+- To change one that exists, read it and use action "revise" on the passage that changes. Reach for action "rewrite" only where most of the guideline is going: it replaces wording somebody wrote with text the user cannot see from the line they approve, where a targeted edit shows them exactly what becomes what.
 
 --- the project's guidelines begin ---
 
@@ -96,7 +96,7 @@ Running code:
 
 ## Tools
 
-37 tools, in the order the model receives them: 17 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+34 tools, in the order the model receives them: 15 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -337,33 +337,15 @@ PLAN: leave a note for the annotators on a sentence or on the document, under th
 - `ref` (string): One sentence, e.g. "s3"; leave it out for the document.
 - `body` (string, required)
 
-### read_guideline
+### guidelines
 
-Read one of this project's guidelines in full, by its title. Every guideline's title is already in your instructions, and most of their text is too; this is for one whose text was held back, shown there as its opening line only. A guideline records a convention this project follows about this treebank: how this project annotates, and what it has decided about hard cases, written by the people working on it.
+PLAN: the project's guidelines, the conventions its people wrote down about this treebank: how this project annotates, and what it has decided about hard cases. Action "read" with title gives one in full. Call with action "help" before adding, revising or rewriting one.
 
-- `title` (string, required): The guideline's title, exactly as your instructions list it.
-
-### add_guideline
-
-PLAN: write down one of this project's conventions as a new guideline, so it is recorded for everyone and for later. Propose one when the user states a convention that holds across the project and is not already in the guidelines, even if they did not ask you to write it down. Not for a one-off decision about a single word or sentence, and not for something you inferred from the data: a guideline is what the PEOPLE on the project have decided. Say in your reply that you have drafted it.
-
-- `title` (string, required): A short handle, e.g. "Hard cases" or "Abbreviations". It is how the guideline is asked for later, so name the subject rather than the rule.
-- `body` (string, required): The convention itself, in Markdown. State it plainly and briefly, in the user's own terms where they gave them. Open with the rule itself: the first line stands in for the guideline wherever there is no room for all of it.
-
-### revise_guideline
-
-PLAN: change ONE PASSAGE of a guideline, leaving the rest exactly as it is. This is how to correct or extend a convention that is already written down: prefer it over rewrite_guideline, always, unless most of the guideline is changing. Read the guideline first and quote the passage exactly, character for character. The user approves a line showing what becomes what, so a small edit is one they can actually check.
-
-- `title` (string, required): The guideline's title, as your instructions list it.
-- `find` (string, required): The exact text to replace, as it appears in the guideline. It must appear exactly once: quote more around it if not.
-- `replace` (string, required): What to put there instead. May be empty to delete it.
-
-### rewrite_guideline
-
-PLAN: replace a guideline's text wholesale. Only where most of it is changing: this throws away the previous wording, which somebody wrote, and the user approving it cannot see what was there. For anything smaller use revise_guideline, which shows them the change.
-
-- `title` (string, required): The guideline's title, as your instructions list it.
-- `body` (string, required): The replacement Markdown text.
+- `action` (one of `help`, `read`, `add`, `revise`, `rewrite`, required)
+- `title` (string)
+- `body` (string)
+- `find` (string)
+- `replace` (string)
 
 ### web_search
 
