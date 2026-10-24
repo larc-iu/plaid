@@ -29,6 +29,7 @@ import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { entryTagsetFor, isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
 import { buildItemNumbers, buildSenseTree, morphTypeOf } from '../domain/vocabDictionary.js';
 import { parseDelimited } from './delimited.js';
+import { tsvCell } from '../export/vocabTsv.js';
 
 /** Mapping sentinels: a column becomes the item's form, or is left out. */
 export const FORM = '__form__';
@@ -1109,7 +1110,6 @@ export const describeChange = (c) =>
  * run did.
  */
 export const serializeImportReport = (decisions) => {
-  const cell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
   const outcome = (d) => {
     if (d.action === 'create') return 'Added';
     if (d.action === 'update') return d.kind === 'conflict' ? 'Replaced' : 'Expanded';
@@ -1119,7 +1119,7 @@ export const serializeImportReport = (decisions) => {
   for (const d of decisions) {
     lines.push(
       [d.line, d.form, outcome(d), d.detail, (d.changes || []).map(describeChange).join(' · ')]
-        .map(cell)
+        .map(tsvCell)
         .join('\t'),
     );
   }

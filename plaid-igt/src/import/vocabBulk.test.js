@@ -795,6 +795,12 @@ describe('serializeImportReport', () => {
       '',
     ]);
   });
+
+  it('keeps a form that begins with a quote as it was', () => {
+    const p = plan([entry(1, '"ka', { gloss: 'go' })], []);
+    const rows = parseDelimited(serializeImportReport(p.decisions), '\t');
+    expect(rows[1].cells[1]).toBe('"ka');
+  });
 });
 
 describe('makeValueNormalizer', () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatPlain, formatTsv, formatGb4e, formatExpex, formatLeipzig } from './igtExport.js';
+import { parseDelimited } from '../import/delimited.js';
 
 const FIELDS = { morphFields: ['Gloss'], wordFields: ['POS'], sentFields: ['Translation'] };
 
@@ -104,6 +105,18 @@ describe('formatTsv', () => {
     };
     const out = formatTsv(s, { morphFields: [], wordFields: [], sentFields: [] });
     expect(out).toBe('a b');
+  });
+
+  it('keeps a cell that begins with a quote as it was, read back by a delimited-text reader', () => {
+    const s = {
+      annotations: { Translation: span('"Go away," he said.') },
+      tokens: [{ content: '"Go', annotations: {}, morphemes: [] }],
+    };
+    const out = formatTsv(s, { morphFields: [], wordFields: [], sentFields: ['Translation'] });
+    expect(parseDelimited(out, '\t').map((r) => r.cells)).toEqual([
+      ['"Go'],
+      ['"Go away," he said.'],
+    ]);
   });
 });
 

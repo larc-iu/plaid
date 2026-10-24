@@ -22,6 +22,7 @@ import { canNameWord, joinMorphemes } from './affixMarkers.js';
 import { boundByPieces, glossSmallCaps } from './tagsets.js';
 import { isTexSpecial, texEscape, texLine } from './tex.js';
 import { displayWidth, padToWidth } from '../../../plaid-ui/src/lib/displayWidth.js';
+import { tsvCell } from '../export/vocabTsv.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -179,7 +180,7 @@ export function formatPlain(sentence, fields) {
 }
 
 // ---- tsv ------------------------------------------------------------------
-const tsvCell = (s) => String(s ?? '').replace(/[\t\r\n]+/g, ' ');
+// Cells through the one TSV escaper (vocabTsv.js tsvCell).
 
 export function formatTsv(sentence, fields) {
   const out = tiers(sentence, fields).map((l) => l.cells.map(tsvCell).join('\t'));
