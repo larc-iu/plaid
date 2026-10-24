@@ -53,6 +53,17 @@ test('a :quote back into the root relabelled as another role is refused', async 
   assert.equal(calls.filter((c) => c.name.startsWith('relations.')).length, 0);
 });
 
+// B5-5: the same refusal a second time in a row is said again. It went
+// through setError, which says a message once while it stands.
+test('an edge refused twice in a row is refused out loud both times', async () => {
+  const { doc, errors } = load();
+  const a = doc.graph.sentences[0].nodes.find((n) => n.var === 's1a');
+  assert.equal(await doc.createEdge(a.id, a.id, ':ARG1'), false);
+  assert.equal(await doc.createEdge(a.id, a.id, ':ARG1'), false);
+  assert.equal(errors.length, 2);
+  assert.match(errors[1], /would close a cycle/);
+});
+
 test('a relabel between two cycle roles, or of an edge on no cycle, goes through', async () => {
   const { doc } = load();
   assert.equal(await doc.setRole(edge(doc, ':quote').id, ':modal-predicate'), true);

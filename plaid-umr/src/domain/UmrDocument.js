@@ -1062,7 +1062,7 @@ export class UmrDocument extends DocumentModel {
     if (node.concept === concept && !entryChanges) return false;
     const refused = conceptProblem(concept) || this._newlyUnderProblem(node, concept);
     if (refused) {
-      this.setError(refused);
+      this.refuse(refused);
       return false;
     }
     const label = 'Failed to change the concept';
@@ -1185,7 +1185,7 @@ export class UmrDocument extends DocumentModel {
   // one: a write method refuses with it.
   _refused(...problems) {
     const why = problems.find(Boolean);
-    if (why) this.setError(why);
+    if (why) this.refuse(why);
     return !!why;
   }
 
@@ -1225,7 +1225,7 @@ export class UmrDocument extends DocumentModel {
     if (!node || node.var === variable) return false;
     const problem = this.variableProblem(nodeId, variable);
     if (problem) {
-      this.setError(problem);
+      this.refuse(problem);
       return false;
     }
     return this._patchNodeMeta(nodeId, { var: variable }, `Rename ${node.var} to ${variable}`, {
@@ -1403,17 +1403,17 @@ export class UmrDocument extends DocumentModel {
       return false;
     }
     if (source.sentence !== target.sentence) {
-      this.setError('An edge joins two nodes of one sentence.');
+      this.refuse('An edge joins two nodes of one sentence.');
       return false;
     }
     // The same edge twice, as createTriple refuses it: the file would write
     // the relation twice.
     if (this.hasEdge(source.id, target.id, role)) {
-      this.setError(`${source.var} ${role} ${target.var} is already there.`);
+      this.refuse(`${source.var} ${role} ${target.var} is already there.`);
       return false;
     }
     if (this.wouldCycle(source.id, target.id, role)) {
-      this.setError(`${role} from ${source.var} to ${target.var} would close a cycle.`);
+      this.refuse(`${role} from ${source.var} to ${target.var} would close a cycle.`);
       return false;
     }
     const label = 'Failed to add the edge';
@@ -1485,9 +1485,7 @@ export class UmrDocument extends DocumentModel {
     // role was allowed to, which is refused as adding it would be.
     if (CYCLE_ROLES.has(edge.role) && this.wouldCycle(edge.source, edge.target, role)) {
       const name = (id) => this.node(id)?.var;
-      this.setError(
-        `${role} from ${name(edge.source)} to ${name(edge.target)} would close a cycle.`,
-      );
+      this.refuse(`${role} from ${name(edge.source)} to ${name(edge.target)} would close a cycle.`);
       return false;
     }
     const label = 'Failed to change the relation';
@@ -1621,11 +1619,11 @@ export class UmrDocument extends DocumentModel {
     if (!edge || !source || edge.source === source.id) return false;
     const target = this.node(edge.target);
     if (source.sentence !== target.sentence) {
-      this.setError('An edge joins two nodes of one sentence.');
+      this.refuse('An edge joins two nodes of one sentence.');
       return false;
     }
     if (this.wouldCycle(source.id, edge.target, edge.role)) {
-      this.setError(`Moving ${edge.role} under ${source.var} would close a cycle.`);
+      this.refuse(`Moving ${edge.role} under ${source.var} would close a cycle.`);
       return false;
     }
     // Only a move that puts the node where it may not stand: an edge an
@@ -2039,7 +2037,7 @@ export class UmrDocument extends DocumentModel {
       (s && t && s.docOut.some((x) => same(x, s.id, t.id))) ||
       (g === 'coref' && s && t && t.docOut.some((x) => same(x, t.id, s.id)));
     if (there) {
-      this.setError(`${s?.var || source} ${rel} ${t?.var || target} is already there.`);
+      this.refuse(`${s?.var || source} ${rel} ${t?.var || target} is already there.`);
       return false;
     }
     const failed = 'Failed to add the document-level relation';
@@ -2204,7 +2202,7 @@ export class UmrDocument extends DocumentModel {
     );
     if (twin) {
       const name = (x) => this.node(x)?.var || x;
-      this.setError(`${name(t.source)} ${rel} ${name(t.target)} is already there.`);
+      this.refuse(`${name(t.source)} ${rel} ${name(t.target)} is already there.`);
       return false;
     }
     const label = 'Failed to change the document-level relation';
@@ -2607,7 +2605,7 @@ export class UmrDocument extends DocumentModel {
     const sentence = this.sentence(sentenceIndex);
     const plan = this.planPenman(sentenceIndex, text);
     if (plan.errors) {
-      this.setError(plan.errors[0].message);
+      this.refuse(plan.errors[0].message);
       return false;
     }
     if (!plan.changes) return 0;

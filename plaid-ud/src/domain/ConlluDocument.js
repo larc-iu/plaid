@@ -373,15 +373,15 @@ export class ConlluDocument extends DocumentModel {
     const wordTokens = wordTokenLayer?.tokens || [];
 
     if (!textContent.trim()) {
-      this.setError('No text to tokenize.');
+      this.refuse('No text to tokenize.');
       return false;
     }
     if (!text?.id) {
-      this.setError('The text is not saved.');
+      this.refuse('The text is not saved.');
       return false;
     }
     if (!sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
-      this.setError(notSetUp('UD token layers missing'));
+      this.refuse(notSetUp('UD token layers missing'));
       return false;
     }
     const label = 'Failed to create tokens';
@@ -416,7 +416,7 @@ export class ConlluDocument extends DocumentModel {
       readIgnoredTokensOf(wordTokenLayer.config),
     );
     if (keepSentences && wordRanges.length === 0) {
-      this.setError('No untokenized text.');
+      this.refuse('No untokenized text.');
       return false;
     }
 
@@ -888,7 +888,7 @@ export class ConlluDocument extends DocumentModel {
     const { textLayer, morphemeTokenLayer, lemmaLayer, formLayer } = this.layerInfo;
     const text = textLayer?.text;
     if (!morphemeTokenLayer?.id || !text?.id) {
-      this.setError(notSetUp('UD word layer missing'));
+      this.refuse(notSetUp('UD word layer missing'));
       return false;
     }
     if (!this._canWrite(label)) return false;
@@ -1197,7 +1197,7 @@ export class ConlluDocument extends DocumentModel {
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
 
     if (!text?.id || !sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
-      this.setError(notSetUp('UD token layers missing'));
+      this.refuse(notSetUp('UD token layers missing'));
       return false;
     }
 
@@ -1208,7 +1208,7 @@ export class ConlluDocument extends DocumentModel {
     // do we transparently create one covering the whole text.
     const selRange = { begin, end };
     if (sentenceTokens.length > 0 && !sentenceTokens.some((s) => containsToken(s, selRange))) {
-      this.setError('Selection must be inside an existing sentence.');
+      this.refuse('Selection must be inside an existing sentence.');
       return false;
     }
 
@@ -1300,7 +1300,7 @@ export class ConlluDocument extends DocumentModel {
       features: info.featuresLayer,
     };
     if (!Object.prototype.hasOwnProperty.call(layerByField, field)) {
-      this.setError(`Unknown field: ${field}`);
+      this.refuse(`Unknown field: ${field}`);
       return false;
     }
     const targetLayer = layerByField[field];
@@ -1315,12 +1315,12 @@ export class ConlluDocument extends DocumentModel {
     if (field === 'features') {
       feature = normalizeFeature(value);
       if (!feature) {
-        this.setError('A feature is written Key=Value.');
+        this.refuse('A feature is written Key=Value.');
         return false;
       }
       const refusal = featureRefusal(feature.pair);
       if (refusal) {
-        this.setError(refusal);
+        this.refuse(refusal);
         return false;
       }
     }
@@ -1590,11 +1590,11 @@ export class ConlluDocument extends DocumentModel {
   async createRelation(sourceSpanId, targetSpanId, deprel) {
     const info = this.layerInfo;
     if (!info.relationLayer) {
-      this.setError(notSetUp('UD relation layer missing'));
+      this.refuse(notSetUp('UD relation layer missing'));
       return false;
     }
     if (!info.lemmaLayer) {
-      this.setError(notSetUp('UD lemma layer missing'));
+      this.refuse(notSetUp('UD lemma layer missing'));
       return false;
     }
 
@@ -1691,11 +1691,11 @@ export class ConlluDocument extends DocumentModel {
   async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
-      this.setError(notSetUp('UD enhanced relation layer missing'));
+      this.refuse(notSetUp('UD enhanced relation layer missing'));
       return false;
     }
     if (!info.lemmaLayer) {
-      this.setError(notSetUp('UD lemma layer missing'));
+      this.refuse(notSetUp('UD lemma layer missing'));
       return false;
     }
 
@@ -1783,7 +1783,7 @@ export class ConlluDocument extends DocumentModel {
     const relationId = settledId(rawRelationId);
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
-      this.setError(notSetUp('UD enhanced relation layer missing'));
+      this.refuse(notSetUp('UD enhanced relation layer missing'));
       return false;
     }
     const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);
@@ -2241,25 +2241,16 @@ const namesStandIn = (arg) => {
   return Boolean(arg && typeof arg === 'object' && isVirtualWordId(arg.id));
 };
 
-// Said every time, as a refused write is: a second try gets an answer too.
-const refuse = (doc, message) => {
-  doc._error = message;
-  doc._errorCause = null;
-  if (doc.onError) doc.onError(message);
-  doc._emit();
-  return false;
-};
-
 for (const name of UD_WRITES) {
   const write = ConlluDocument.prototype[name];
   ConlluDocument.prototype[name] = async function guarded(...args) {
     if (!this._asOf && !this.layerInfo.isConfigured) {
-      return refuse(this, 'This project is not set up for UD.');
+      return this.refuse('This project is not set up for UD.');
     }
     if (SKIPS_STAND_INS.has(name)) {
       args[0] = (args[0] || []).filter((id) => !isVirtualWordId(id));
     } else if (args.some(namesStandIn)) {
-      return refuse(this, 'Reopen the document to annotate this word.');
+      return this.refuse('Reopen the document to annotate this word.');
     }
     if (BY_ENTITY.has(name)) return this.resendsByEntity(() => write.apply(this, args));
     return write.apply(this, args);

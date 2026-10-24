@@ -671,6 +671,18 @@ export class DocumentModel {
     this._emit();
   }
 
+  // A guard's refusal of an edit, said every time, as a refused write is: the
+  // same gesture refused twice in a row is answered twice, where `setError`,
+  // for a message that stands, says it once. Answers false, for the guard to
+  // return.
+  refuse(message) {
+    this._error = message;
+    this._errorCause = null;
+    if (this.onError) this.onError(message);
+    this._emit();
+    return false;
+  }
+
   clearError() {
     if (!this._error) return;
     this._dropError();
