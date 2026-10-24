@@ -1855,12 +1855,15 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     b = at(b)
 
     raw = client.documents.get(doc_id, include_body=True)
-    _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    stored_tl, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents:
         # A text with no sentence (an empty one, or an edit that took them
-        # all) gets its partition seeded, as the app's save seeds it.
-        sents = _seed_sentences(client, project, text_id, new_body, new_id)
+        # all) gets its partition seeded, as the app's save seeds it. It is
+        # measured on the body the server stored, since core refuses a
+        # partition that does not end at the text's length.
+        stored = ((stored_tl or {}).get('text') or {}).get('body') or ''
+        sents = _seed_sentences(client, project, text_id, stored, new_id)
     for p in _line_starts(new_body, b, region_end):
         hit = next((s for s in sents if s[0] < p < s[1]), None)
         # Only a boundary that leaves text on both sides: never a blank sentence.
