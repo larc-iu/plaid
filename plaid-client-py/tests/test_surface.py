@@ -212,6 +212,9 @@ JS_ONLY = {
                     'an app reads what a service declares, Python declares it (build_extras)'),
     **dict.fromkeys(['events.record', 'events.flush', 'events.setEnabled'],
                     'the browser telemetry recorder'),
+    **dict.fromkeys(['MORPH_TYPES', 'entryForm', 'readAffixMarkers', 'decorateWithAffixMarkers'],
+                    'Python keeps the entry-form rule with the other igt rules, in '
+                    'plaid_client.workflows.igt.entry_forms (test_entry_forms_mirror.py)'),
 }
 PY_ONLY = {
     **dict.fromkeys(['BaseService', 'Param', 'build_extras', 'ServiceRegistrationError', 'StreamClosed'],

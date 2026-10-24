@@ -42,7 +42,9 @@ const igtExport = await import(
 const GLOSS_PART = /\\textsc\{([^}]*)\}|[\p{L}\p{M}\p{N}]+/gu;
 const MIXED = { delimiters: ".:;\\-=~<>", mode: "mixed", values: [] };
 const readLine = (line) => {
+  // As the derived view hands them out: the type each goes by.
   const morphemes = line.map(([gloss, morphType, form]) => ({
+    morphType,
     metadata: { form, morphType },
     annotations: { Gloss: { value: gloss } },
   }));
