@@ -13,6 +13,8 @@ import unicodedata
 from collections import Counter
 from typing import Dict, List, Optional
 
+from plaid_client.provenance import PROVENANCE_KEYS
+
 from ..core.args import clamp_limit, read_int
 from ..core.limits import MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
 from ..core.tools import ToolError, document_page, documents_page, named_sentences, truncate
@@ -511,7 +513,7 @@ def _entry_in_full(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
     hidden = view.hidden_fields(target) if view is not None else set()
     for k, v in meta.items():
-        if (k in RESERVED_ITEM_KEYS or k in ref_names or k in hidden or k.startswith('prov')
+        if (k in RESERVED_ITEM_KEYS or k in ref_names or k in hidden or k in PROVENANCE_KEYS
                 or v in (None, '', [], {})):
             continue
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')

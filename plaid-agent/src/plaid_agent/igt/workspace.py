@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import uuid7
+from plaid_client.provenance import PROVENANCE_KEYS
 
 from ..core import docload, opkind
 from ..core.bidi import plain_quote, qname, qv
@@ -582,7 +583,7 @@ class Workspace(BaseWorkspace):
                 return True
             names = ([f['name'] for f in fields_for_item(view.fields, {'metadata': meta})] if view is not None
                      else [k for k in (meta or {})
-                           if k not in RESERVED_ITEM_KEYS and k != 'morphType' and not k.startswith('prov')])
+                           if k not in RESERVED_ITEM_KEYS and k != 'morphType' and k not in PROVENANCE_KEYS])
             return any(isinstance((meta or {}).get(n), str) and meta[n].strip().casefold() == g for n in names)
         # With a gloss to go on, the senses are searched too: a bare form means
         # the entry, but the value that tells two apart is usually a sense's.

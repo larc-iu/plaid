@@ -10,7 +10,7 @@ import json
 from collections import Counter
 from typing import Any, Callable, Dict, List, Optional
 
-from plaid_client.provenance import prov_state
+from plaid_client.provenance import PROVENANCE_KEYS, prov_state
 
 from ..core import filetools, sandbox
 from ..core.tools import ToolError
@@ -171,7 +171,7 @@ def entry(view: LexView, it: dict, links: int) -> Dict[str, Any]:
         fields[f['name']] = ref_ids(it, f) if f['name'] in refs else _plain(meta.get(f['name']))
     for k, v in meta.items():
         if k not in fields and k not in RESERVED_ITEM_KEYS and k != 'morphType' and k not in hidden \
-                and not k.startswith('prov') and v not in (None, '', [], {}):
+                and k not in PROVENANCE_KEYS and v not in (None, '', [], {}):
             fields[k] = _plain(v)
     iid = it['id']
     return {'id': iid, 'lexicon': view.vocab['name'], 'form': it.get('form') or '',

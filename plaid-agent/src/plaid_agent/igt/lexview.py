@@ -10,6 +10,8 @@ import json
 from collections import Counter
 from typing import List, Optional
 
+from plaid_client.provenance import PROVENANCE_KEYS
+
 from ..core.tools import ToolError
 
 from .vocab import (PARENT_KEY, RESERVED_ITEM_KEYS, all_examples, build_item_numbers,
@@ -173,7 +175,7 @@ def entry_line(it: dict, view: Optional[LexView] = None) -> str:
               - {f['name'] for f in fields_for_item(view.fields if view is not None else [], it)})
     for k, v in meta.items():
         if (k in RESERVED_ITEM_KEYS or k == 'morphType' or k in ref_names or k in hidden
-                or k.startswith('prov') or v in (None, '', [], {})):
+                or k in PROVENANCE_KEYS or v in (None, '', [], {})):
             continue
         if isinstance(v, (list, dict)):
             v = json.dumps(v, ensure_ascii=False)

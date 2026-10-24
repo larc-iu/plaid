@@ -23,13 +23,12 @@ import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from plaid_client.provenance import prov_state
+from plaid_client.provenance import PROVENANCE_KEYS as PROV_KEYS, prov_state
 
 from .pseudo import Pseudonyms, clip
 from .records import seconds_between
 
 TABLES = ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items')
-PROV_KEYS = ('prov', 'provSource', 'provConfirmed', 'provProb', 'provDetail')
 
 # Who a unit's writes count as.
 ACTOR = {

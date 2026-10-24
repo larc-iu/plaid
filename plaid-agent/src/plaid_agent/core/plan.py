@@ -34,8 +34,8 @@ from plaid_client.service import locked_for_writes
 from .keep import is_keep, kept_value
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
-from plaid_client.provenance import (confirmed_inferred, contribute_on_edit, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
-                                     PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
+from plaid_client.provenance import (PROVENANCE_KEYS, PROV_CONFIRMED_KEY, WriterPolicy, stamp_contributed,
+                                     stamp_inferred)
 
 # How an approval is recorded. 'verified' is the default: the assistant made
 # it, a reviewer confirmed it. 'human' is the reviewer saying the work is
@@ -43,8 +43,7 @@ from plaid_client.provenance import (confirmed_inferred, contribute_on_edit, sta
 # unreviewed work rather than a confirmation of anyone's.
 STAMP_MODES = ('verified', 'human', 'contributed')
 # Fragments, sent with metadata_ops, which turns a None into a delete.
-CLEAR_PROV = {PROV_KEY: None, PROV_SOURCE_KEY: None, PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: None,
-              PROV_DETAIL_KEY: None}
+CLEAR_PROV = {k: None for k in PROVENANCE_KEYS}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
 
 BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops (MAX_BATCH_OPS)
@@ -966,8 +965,12 @@ class Stamps:
     ``detail`` is the provDetail of the plan's machine work: the model and
     the version of the turn that proposed it. A verified write carries it as
     it is. A contributor's approval is their own work, and keeps it with the
-    assistant as ``guess``, as a contributor adopting a service's guess does
-    (``WriterPolicy.adopt_stamp``). A write recorded as human carries none.
+    assistant as ``guess``, as a contributor adopting a service's guess does.
+    A write recorded as human carries none.
+
+    'verified' and 'contributed' are the editor's rules, read from the
+    writer's policy (``WriterPolicy``) for a verifier or for the contributor.
+    'human' is the agent's own mode.
     """
 
     def __init__(self, mode: str, source: str, contributor: Optional[str] = None,
@@ -980,6 +983,7 @@ class Stamps:
         self.source = source
         self.contributor = contributor
         self.detail = dict(detail) if detail else None
+        self.policy = WriterPolicy(contributor if mode == 'contributed' else None)
 
     @property
     def human(self) -> bool:
@@ -992,12 +996,7 @@ class Stamps:
     def stamp(self) -> Dict[str, Any]:
         if self.human:
             return {}
-        if self.contributed:
-            frag = stamp_contributed(self.contributor)
-            if self.detail:
-                frag[PROV_DETAIL_KEY] = {**self.detail, 'guess': self.source}
-            return frag
-        return confirmed_inferred(self.source, detail=self.detail)
+        return self.policy.adopt_stamp(self.source, self.detail)
 
     def restamp(self) -> Dict[str, Any]:
         # Every key goes: what an earlier producer recorded (its detail, its
@@ -1013,11 +1012,10 @@ class Stamps:
         accepting a machine proposal makes it their own contribution, never a
         verification, and a contributor reviews no one's work, theirs or
         another contributor's. Any other approval confirms it."""
-        if not self.contributed:
+        if self.human:
             return dict(CONFIRM)
-        if contributed_work:
-            return None
-        return contribute_on_edit(None, self.contributor)
+        piece = stamp_contributed('someone') if contributed_work else stamp_inferred(self.source)
+        return self.policy.confirm_stamp(piece)
 
 
 def confirm_preview(machine: int, theirs: int) -> str:

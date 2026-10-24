@@ -74,12 +74,14 @@ def test_contributed_stamp_mode_stamps_the_approver_and_drops_confirmations():
            {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T2', 'span_id': 'S', 'value': 'upd', 'label': ''},
            {'kind': 'link', 'token_id': 'w-1', 'item_id': 'vi-erg', 'new_entry_key': None, 'existing_link_id': None, 'label': ''}]
     execute_plan(c, ops, source='src', label='l', stamp_mode='contributed', contributor='ann@x.com')
-    contributed = {'prov': 'contributed', 'provSource': 'user:ann@x.com'}
+    # The writer's policy's adopt stamp: the assistant is kept as the guess,
+    # as a contributor adopting a service's guess in the editor.
+    contributed = {'prov': 'contributed', 'provSource': 'user:ann@x.com', 'provDetail': {'guess': 'src'}}
     assert c.payloads('spans.create')[0]['args'][3] == contributed
     # a rewrite drops the confirmation and any machine keys, then stamps
     [(_, span_patch)] = c.patches('spans')
     assert as_fragment(span_patch) == {'prov': 'contributed', 'provSource': 'user:ann@x.com',
-                                       'provConfirmed': None, 'provProb': None, 'provDetail': None}
+                                       'provConfirmed': None, 'provProb': None, 'provDetail': {'guess': 'src'}}
     assert c.payloads('vocab_links.create')[0]['args'][2] == contributed
     with pytest.raises(ValueError, match='contributor'):
         execute_plan(c, ops, source='src', label='l', stamp_mode='contributed')

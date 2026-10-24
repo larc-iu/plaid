@@ -69,7 +69,7 @@ from plaid_client.document_lock import DocumentLock
 from plaid_client.http import BatchRef, PlaidAPIError
 from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.metadata_ops import apply_metadata_ops
-from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_protected
+from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_machine, is_protected
 from plaid_client.services import CancelScope, requester_message
 from plaid_client.transforms import transform_request, transform_response
 
@@ -254,9 +254,7 @@ def _refused_values(documents, layer_id, rule, limit):
             if node.get('id') == layer_id:
                 for row in (node.get('spans') or []) + (node.get('relations') or []):
                     v, meta = row.get('value'), row.get('metadata') or {}
-                    prov = meta.get('prov')
-                    if value_set_allows(rule, v) or (
-                            prov is not None and prov != 'contributed' and meta.get('provConfirmed') is not True):
+                    if value_set_allows(rule, v) or is_machine(meta):
                         continue
                     key = json.dumps(v, sort_keys=True)
                     counts[key] = counts.get(key, 0) + 1
