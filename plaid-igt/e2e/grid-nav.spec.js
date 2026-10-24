@@ -70,11 +70,14 @@ async function openAnalyze(page) {
 }
 const cell = (page, key) => page.locator(`.igt-field[data-cell-key="${key}"]`);
 const focusedKey = (page) => page.evaluate(() => document.activeElement?.dataset?.cellKey ?? null);
+// Every write the page sends. A query is a POST that reads, and the editor
+// sends some on its own after it opens, so it is not counted.
 const writes = (page) => {
   const seen = [];
   page.on('request', (r) => {
-    if (r.method() !== 'GET' && r.url().includes('/api/v1/'))
-      seen.push(`${r.method()} ${new URL(r.url()).pathname}`);
+    const path = new URL(r.url()).pathname;
+    if (r.method() !== 'GET' && path.startsWith('/api/v1/') && path !== '/api/v1/query')
+      seen.push(`${r.method()} ${path}`);
   });
   return seen;
 };
