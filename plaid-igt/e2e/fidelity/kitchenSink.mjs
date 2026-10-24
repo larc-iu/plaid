@@ -823,6 +823,12 @@ async function buildBlacklist(client, name) {
     },
   });
   if (setup.failures.length) throw new Error(`setup of ${name}: ${setup.failures.join('; ')}`);
+  // The rule as an older screen stored it, with only the list in force.
+  const { byRole } = layerIds(await client.projects.get(setup.projectId));
+  await client.tokenLayers.setConfig(byRole('word').id, PLAID_NAMESPACE, 'ignoredTokens', {
+    type: 'blacklist',
+    blacklist: ['--'],
+  });
   const created = await client.documents.create(setup.projectId, 'Dashes');
   let doc = await reload(client, setup.projectId, created.id);
   await must(doc, 'blacklist baseline', doc.saveBaselineText('uno -- dos'));

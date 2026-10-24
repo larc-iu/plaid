@@ -26,7 +26,16 @@
 // or document whose metadata has no room for those marks is named on the
 // project's import record instead (`unmarkedLedger`).
 
-import { ROLES, cpLength, createdIds, entryForm, uuidv7 } from '@larc-iu/plaid-client';
+import {
+  IGNORED_TOKENS_KEY,
+  PLAID_NAMESPACE,
+  ROLES,
+  cpLength,
+  createdIds,
+  entryForm,
+  uuidv7,
+} from '@larc-iu/plaid-client';
+import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
 import { documentProgress } from '../progress.js';
 import {
   IMPORT_STAMP_KEYS,
@@ -63,7 +72,6 @@ import {
   findBaselineTextLayer,
   findWordTokenLayer,
   readScope,
-  ignoredTokensSetup,
   readImportState,
   recordImportUnmarked,
 } from '../../domain/igtConfig.js';
@@ -110,7 +118,6 @@ const manifestFields = (manifest) => {
  */
 export function deriveSetupData(manifest, projectName, vocabularies = []) {
   const schema = manifest.schema || {};
-  const ignored = schema.ignoredTokens;
   const entryFields = lexiconFieldChoices(
     vocabularies.map((v) => ({
       config: {
@@ -125,9 +132,10 @@ export function deriveSetupData(manifest, projectName, vocabularies = []) {
     projectName,
     orthographies: (schema.orthographies || []).map((o) => o.name),
     fields: manifestFields(manifest),
-    // No rule at all when the archive names none, so setup writes nothing
-    // rather than the default over whatever the project has.
-    ignoredTokens: ignored == null ? null : ignoredTokensSetup(ignored),
+    // None here: the engine writes the archive's rule as it is stored, which
+    // the wizard's shape would rewrite (it writes all three keys), and an
+    // archive that names none leaves the project's alone.
+    ignoredTokens: null,
     vocabularies: (manifest.vocabularies || []).map((v) => ({ id: `new-${v.id}`, name: v.name })),
     documentMetadata: (schema.documentMetadata || []).map((m) => m.name),
     // The archive's own service defaults are written as they were, or none.
@@ -1045,12 +1053,19 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const unmarked = unmarkedLedger({ client, projectId, project });
 
   const schema = archive.manifest.schema || {};
+  const words = findWordTokenLayer(findBaselineTextLayer(project.textLayers || [])?.tokenLayers);
   // "Tokenize new text" is on unless the word layer says false.
-  if (schema.tokenizeNewText === false) {
-    const words = findWordTokenLayer(findBaselineTextLayer(project.textLayers || [])?.tokenLayers);
-    if (words) {
-      await client.tokenLayers.setConfig(words.id, IGT_NAMESPACE, TOKENIZE_NEW_TEXT_KEY, false);
-    }
+  if (schema.tokenizeNewText === false && words) {
+    await client.tokenLayers.setConfig(words.id, IGT_NAMESPACE, TOKENIZE_NEW_TEXT_KEY, false);
+  }
+  // The ignored-tokens rule exactly as the archive stores it, keys and all.
+  const ignored = schema.ignoredTokens;
+  if (
+    ignored != null &&
+    words &&
+    !sameConfig(words.config?.[PLAID_NAMESPACE]?.[IGNORED_TOKENS_KEY], ignored)
+  ) {
+    await client.tokenLayers.setConfig(words.id, PLAID_NAMESPACE, IGNORED_TOKENS_KEY, ignored);
   }
 
   // The project's annotation manual. Nothing in the archive points at a

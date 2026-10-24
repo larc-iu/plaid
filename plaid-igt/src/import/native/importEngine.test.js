@@ -505,28 +505,13 @@ describe('deriveSetupData', () => {
     ]);
   });
 
-  it('maps both ignoredTokens shapes, and names none where the archive names none', () => {
+  it('hands setup no ignored-tokens rule, which the engine writes as stored', () => {
     const base = buildArchive().manifest;
-    const withWl = {
-      ...base,
-      schema: { ...base.schema, ignoredTokens: { type: 'unicodePunctuation', whitelist: ['-'] } },
-    };
-    expect(deriveSetupData(withWl, 'x').fields.ignoredTokens).toEqual({
-      mode: 'unicode-punctuation',
-      unicodePunctuationExceptions: ['-'],
-      explicitIgnoredTokens: [],
-    });
     const withBl = {
       ...base,
       schema: { ...base.schema, ignoredTokens: { type: 'blacklist', blacklist: ['.'] } },
     };
-    expect(deriveSetupData(withBl, 'x').fields.ignoredTokens).toEqual({
-      mode: 'explicit-list',
-      unicodePunctuationExceptions: [],
-      explicitIgnoredTokens: ['.'],
-    });
-    const none = { ...base, schema: { ...base.schema, ignoredTokens: undefined } };
-    expect(deriveSetupData(none, 'x').fields.ignoredTokens).toBeUndefined();
+    expect(deriveSetupData(withBl, 'x').fields.ignoredTokens).toBeUndefined();
   });
 });
 
@@ -2695,6 +2680,28 @@ describe('runNativeImport — "Tokenize new text"', () => {
       (a) => a[2] === 'tokenizeNewText',
     );
     expect(writes).toEqual([]);
+  });
+});
+
+describe('runNativeImport, the ignored-tokens rule', () => {
+  const rules = (client) =>
+    argsOf(client, 'tokenLayers.setConfig').filter((a) => a[2] === 'ignoredTokens');
+
+  it('writes the rule exactly as the archive stores it, a key it lacks left out', async () => {
+    const archive = buildArchive();
+    const rule = { type: 'blacklist', blacklist: ['--'] };
+    archive.manifest.schema = { ...archive.manifest.schema, ignoredTokens: rule };
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    expect(rules(client)).toEqual([['new-wl', 'plaid', 'ignoredTokens', rule]]);
+  });
+
+  it('writes none when the archive names none', async () => {
+    const archive = buildArchive();
+    archive.manifest.schema = { ...archive.manifest.schema, ignoredTokens: null };
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    expect(rules(client)).toEqual([]);
   });
 });
 

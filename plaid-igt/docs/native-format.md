@@ -70,7 +70,7 @@ the upload's media type is validated from its filename.
 | `project` | `{id, name}` of the source project |
 | `schema.orthographies` | `[{name}]` — non-baseline orthographies on the word layer |
 | `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?, lang?, lexiconField?, sentenceRole?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does; `lang` is the writing system the field records its values are in (`config.igt.lang`), absent when it records none. `lexiconField` is the lexicon entry field the field pairs with (`config.igt.lexiconField`), null when none. An import gives a field whose record lacks the key the Lexicon field its name proposes, as setup does. `sentenceRole`, on sentence fields only, is what the field holds (`config.igt.sentenceRole`: `translation`, `literalTranslation` or `note`), null when none, and a sentence field whose record lacks the key gets the role its name proposes |
-| `schema.ignoredTokens` | the word layer's ignored-token config (`config.plaid.ignoredTokens`, `{type, whitelist, blacklist}`: `type` is `'unicodePunctuation'` or `'blacklist'` and names the list in force, and the other list is kept for switching back), or `null` |
+| `schema.ignoredTokens` | the word layer's ignored-token config as stored (`config.plaid.ignoredTokens`, `{type, whitelist, blacklist}`, a list it lacks left out: `type` is `'unicodePunctuation'` or `'blacklist'` and names the list in force, and the other list is kept for switching back), or `null` |
 | `schema.documentMetadata` | `[{name, tagset?}]` enabled document metadata fields, or `[]` |
 | `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset |
 | `schema.tagsets` | the project's tagsets, `{name: {delimiters, mode, values}}`, `null` when unset |
@@ -408,8 +408,9 @@ entered it. The exporter never rewrites these. Whose work is reviewed
 Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project →
 "Import a Plaid IGT archive"); mirrors the FLEx importer's operation inventory:
 
-1. Project setup from `schema` (orthographies, fields by scope, ignored tokens,
-   document metadata; one vocabulary per `vocabularies/*.json`), then the stored
+1. Project setup from `schema` (orthographies, fields by scope, document
+   metadata; one vocabulary per `vocabularies/*.json`), then `ignoredTokens` on the
+   word layer exactly as the archive stores it (none when it is null), then the stored
    project config the wizard does not cover, written verbatim: `autoAnalysis`,
    `tagsets`, `languages`, `speakers`, `serviceDefaults`, `compose`, `export`, and
    `documentMetadata` again (the wizard creates it as bare `{name}` rows, so the
