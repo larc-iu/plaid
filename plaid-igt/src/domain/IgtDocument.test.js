@@ -1153,6 +1153,17 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     );
   });
 
+  it('createAndLinkVocabItem stores the form without its markers, the type they name with it (R27)', async () => {
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: vocabularies(),
+    });
+    expect(await doc.createAndLinkVocabItem('w-1', 'v1', '-s', { gloss: 'PL' })).toBe(true);
+    const [create] = doc.client.calls.filter((c) => c.kind === 'vocabItems.create');
+    expect(create.args.slice(0, 3)).toEqual(['v1', 's', { gloss: 'PL', morphType: 'suffix' }]);
+    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('s');
+  });
+
   // A morpheme linked to a typed entry goes by the entry's type, and the
   // link writes nothing on the morpheme (R2, 2026-10-24): no copy of the
   // entry's type is stored on it.

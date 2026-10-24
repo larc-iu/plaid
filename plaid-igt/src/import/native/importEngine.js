@@ -26,7 +26,7 @@
 // or document whose metadata has no room for those marks is named on the
 // project's import record instead (`unmarkedLedger`).
 
-import { ROLES, cpLength, createdIds, uuidv7 } from '@larc-iu/plaid-client';
+import { ROLES, cpLength, createdIds, entryForm, uuidv7 } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import {
   IMPORT_STAMP_KEYS,
@@ -287,10 +287,16 @@ export async function importVocabulary({
       `"${vocabData.name}": ${countOf(unmarkedCount, 'entry')} imported without ${unmarkedCount === 1 ? 'its archive id' : 'their archive ids'} (metadata at the 500-key limit)`,
     );
   }
+  // An entry form is stored without its affix or clitic markers, and markers
+  // that name a type set it, an archive's as anyone's.
+  const asStored = (it) => {
+    const read = entryForm(it.metadata?.morphType ?? null, it.form);
+    const metadata = { ...(it.metadata || {}) };
+    if (read.morphType) metadata.morphType = read.morphType;
+    return { form: read.form, metadata };
+  };
   const stamped = (it) =>
-    fitsMark(it)
-      ? { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id }
-      : { ...(it.metadata || {}) };
+    fitsMark(it) ? { ...asStored(it).metadata, [ITEM_SOURCE_KEY]: it.id } : asStored(it).metadata;
   let done = 0;
   for (let i = 0; i < pending.length; i += CHUNK) {
     check();
@@ -304,7 +310,7 @@ export async function importVocabulary({
         withMintedIds(
           chunk.map((it) => ({
             vocabLayerId: vocabId,
-            form: it.form,
+            form: asStored(it).form,
             metadata: stamped(it),
           })),
         ),

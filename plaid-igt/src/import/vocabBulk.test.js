@@ -282,6 +282,22 @@ describe('rowsToEntries', () => {
   it('keeps the first row when it is not a header', () => {
     expect(rowsToEntries(rows, [FORM], { hasHeader: false })).toHaveLength(3);
   });
+
+  it('stores an entry form without its markers, and markers set the type (R27)', () => {
+    const marked = parseTable(
+      'Form\tType\tGloss\n-s\tsuffix\tPL\nka-\t\tSBJ\n-ta\tstem\tX\nperro\t\tdog\n',
+    ).rows;
+    const entries = rowsToEntries(marked, [FORM, 'morphType', 'gloss'], {
+      hasHeader: true,
+      normalizeValue: makeValueNormalizer(),
+    });
+    expect(entries.map((e) => [e.form, e.values.morphType ?? null])).toEqual([
+      ['s', 'suffix'],
+      ['ka', 'prefix'],
+      ['ta', 'suffix'],
+      ['perro', null],
+    ]);
+  });
 });
 
 // --- merge planning --------------------------------------------------------

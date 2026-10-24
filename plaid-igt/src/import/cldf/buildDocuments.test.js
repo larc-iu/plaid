@@ -380,6 +380,29 @@ describe('buildCldfDocuments — languages and lexicon', () => {
     ]);
   });
 
+  it('stores a headword without its affix markers, the markers naming its type (R27)', () => {
+    const ds = dataset(
+      'ID,Primary_Text\r\n1,x\r\n',
+      BASIC_COLUMNS,
+      [
+        {
+          url: 'entries.csv',
+          'dc:conformsTo': `${TERMS}EntryTable`,
+          tableSchema: {
+            columns: [col('ID', 'id'), col('Headword', 'headword'), col('morphType', null)],
+          },
+        },
+      ],
+      { 'entries.csv': 'ID,Headword,morphType\r\ne1,-s,suffix\r\ne2,ka-,\r\ne3,perro,stem\r\n' },
+    );
+    const { lexicon } = buildCldfDocuments(ds);
+    expect(lexicon.map((e) => [e.form, e.metadata.morphType])).toEqual([
+      ['s', 'suffix'],
+      ['ka', 'prefix'],
+      ['perro', 'stem'],
+    ]);
+  });
+
   it("reads a sense's own part of speech, definition and fields", () => {
     const ds = dataset(
       'ID,Primary_Text\r\n1,x\r\n',
@@ -533,6 +556,23 @@ describe('deriveImportOptions', () => {
     });
     expect(customColumns.Word_POS).toMatchObject({ name: 'Word_POS', enabled: false });
     expect(customColumnChoices(ds).every((c) => c.suggested === null)).toBe(true);
+  });
+
+  it("offers a foreign dataset's Speaker column, and leaves our own export's off", () => {
+    const foreign = dataset('ID,Primary_Text,Analyzed_Word,Gloss,Speaker\r\n1,ab,ab,x,Ana\r\n', [
+      ...BASIC_COLUMNS,
+      col('Speaker', null),
+    ]);
+    expect(deriveImportOptions(foreign).customColumns.Speaker).toEqual({
+      scope: 'Sentence',
+      name: 'Speaker',
+      enabled: false,
+    });
+    const own = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Speaker,Plaid_ID\r\n1,ab,ab,x,Ana,p\r\n',
+      [...BASIC_COLUMNS, col('Speaker', null), col('Plaid_ID', null)],
+    );
+    expect(deriveImportOptions(own).customColumns.Speaker).toBeUndefined();
   });
 });
 

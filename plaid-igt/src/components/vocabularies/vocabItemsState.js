@@ -1,3 +1,4 @@
+import { entryForm } from '@larc-iu/plaid-client';
 import { ANY_FIELD } from '@/domain/vocabItemFilter';
 import { editableMetadata } from '@/domain/vocabFields';
 
@@ -27,6 +28,16 @@ export const cleanMeta = (obj) => {
     if (v != null && String(v).trim() !== '') out[k] = v;
   }
   return out;
+};
+
+// What a save of the entry form stores: the typed form without its affix or
+// clitic markers, and the type markers name ("-s" saved as a stem is the
+// suffix "s"), with the draft's other values as cleanMeta keeps them.
+export const entryToSave = (typedForm, fields) => {
+  const metadata = cleanMeta(fields);
+  const read = entryForm(metadata.morphType ?? null, String(typedForm ?? '').trim());
+  if (read.morphType) metadata.morphType = read.morphType;
+  return { form: read.form, metadata };
 };
 
 // A value as it compares: a string by its text, anything else by its shape

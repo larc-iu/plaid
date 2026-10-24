@@ -524,6 +524,25 @@ describe('importVocabulary', () => {
     ]);
   });
 
+  it('stores an archived entry form without its affix markers (R27)', async () => {
+    const client = stubClient();
+    await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: serializeVocabularyNative({
+        ...VOCAB,
+        items: [
+          { id: 'm1', form: '-s', metadata: { morphType: 'suffix' } },
+          { id: 'm2', form: 'ni=' },
+        ],
+      }),
+    });
+    expect(createdItems(client).map((c) => [c.form, c.metadata.morphType])).toEqual([
+      ['s', 'suffix'],
+      ['ni', 'proclitic'],
+    ]);
+  });
+
   it("writes each field's tagset / lang and the vocabulary's tagsets before the items", async () => {
     const tagsets = { POS: { delimiters: '', mode: 'closed', values: [{ value: 'n' }] } };
     const client = stubClient();

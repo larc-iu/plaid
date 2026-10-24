@@ -13,6 +13,7 @@ import {
   metadataOps,
   createdId,
   createdIds,
+  entryForm,
 } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -23,6 +24,20 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 // rather than a bulk endpoint, and a link replacement emits 2 ops apiece
 // (delete + create), so it is plaid-core's 1000-op cap that bounds it.
 const REPLACE_CHUNK = 400;
+
+// An entry made here stores its form without affix or clitic markers, and
+// markers that name a type set it (entryForm).
+const asEntry = (form, metadata) => {
+  const read = entryForm(metadata?.morphType ?? null, form);
+  const meta = metadata || {};
+  return {
+    form: read.form,
+    metadata:
+      read.morphType && read.morphType !== meta.morphType
+        ? { ...meta, morphType: read.morphType }
+        : meta,
+  };
+};
 
 // Locate the existing single-token vocab link for `tokenId` across all
 // vocabularies. By convention there is at most one.
@@ -658,6 +673,7 @@ export const vocabMutations = {
   // retire in the same batch (the popover's "+ Create" on an already-linked
   // expression).
   async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}, replaceLinkId = null) {
+    ({ form, metadata } = asEntry(form, metadata));
     if (!this._vocabularies[vocabId]) {
       this.refuse('Vocabulary not found');
       return false;
@@ -876,6 +892,7 @@ export const vocabMutations = {
   },
 
   async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}, { alsoLink = [] } = {}) {
+    ({ form, metadata } = asEntry(form, metadata));
     if (!this._vocabularies[vocabId]) {
       this.refuse('Vocabulary not found');
       return false;

@@ -485,6 +485,29 @@ describe('importLexicon', () => {
     ]);
   });
 
+  it('stores a citation form typed with affix markers without them (R27)', async () => {
+    const client = makeFakeClient();
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [
+        {
+          guid: 'e9',
+          forms: { [BASE_WS]: 'ар' },
+          citationForm: { [BASE_WS]: '-ар' },
+          morphType: 'suffix',
+          homograph: 0,
+          senses: [{ guid: 's9', gloss: { en: 'PL' }, senseIndex: 0 }],
+        },
+      ],
+      baselineWs: BASE_WS,
+    });
+    const [item] = createdItems(client);
+    expect(item.form).toBe('ар');
+    expect(item.metadata).toMatchObject({ morphType: 'suffix' });
+    expect(item.metadata).not.toHaveProperty('lexemeForm');
+  });
+
   it('writes variants and complex forms as references between entries', async () => {
     const client = makeFakeClient();
     const withRefs = [

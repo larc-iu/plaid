@@ -25,6 +25,7 @@
 //
 // Everything in this module is pure and synchronous. The dialog owns the I/O.
 
+import { entryForm } from '@larc-iu/plaid-client';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { entryTagsetFor, isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
 import { buildItemNumbers, buildSenseTree, morphTypeOf } from '../domain/vocabDictionary.js';
@@ -530,16 +531,20 @@ export const rowsToEntries = (
         .replace(/[^\S\r\n]*(?:\r\n|\r|\n)\s*/g, ' ')
         .trim();
     const formAt = mapping.lastIndexOf(FORM);
-    const form = formAt < 0 ? '' : cellOf(formAt);
     // The morph type the row ends up with: the last column that gives a usable one.
-    let morphType = null;
+    let givenType = null;
     for (const [field, raw] of given) {
-      if (field === 'morphType') morphType = clean(field, String(raw).trim(), {}) || null;
+      if (field === 'morphType') givenType = clean(field, String(raw).trim(), {}) || null;
     }
     mapping.forEach((target, i) => {
       if (target === 'morphType' && cellOf(i))
-        morphType = clean(target, cellOf(i), {}) || morphType;
+        givenType = clean(target, cellOf(i), {}) || givenType;
     });
+    // An entry form is stored without its affix or clitic markers, and markers
+    // that name a type set it: "-s" is the suffix "s".
+    const read = entryForm(givenType, formAt < 0 ? '' : cellOf(formAt));
+    const form = read.form;
+    const morphType = read.morphType;
     const values = {};
     const rejected = [];
     mapping.forEach((target, i) => {
@@ -555,6 +560,7 @@ export const rowsToEntries = (
       if (value) values[field] = value;
       else rejected.push({ field, value: String(raw).trim() });
     }
+    if (morphType !== givenType) values.morphType = morphType;
     return { line, form, values, rejected };
   });
 };

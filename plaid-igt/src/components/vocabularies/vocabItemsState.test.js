@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   NEW_ID,
   cleanMeta,
+  entryToSave,
   emptyFieldOf,
   initialState,
   isDirty,
@@ -194,5 +195,22 @@ describe('dialogs', () => {
   });
   it('closing with nothing open is a no-op that keeps the state identity', () => {
     expect(reducer(initialState, { type: 'dialog/close' })).toBe(initialState);
+  });
+});
+
+describe('entryToSave', () => {
+  it('stores the form without its markers and the type they name', () => {
+    expect(entryToSave(' -s ', { gloss: 'PL', note: '' })).toEqual({
+      form: 's',
+      metadata: { gloss: 'PL', morphType: 'suffix' },
+    });
+    expect(entryToSave('ka-', { morphType: 'prefix' })).toEqual({
+      form: 'ka',
+      metadata: { morphType: 'prefix' },
+    });
+    expect(entryToSave('perro', { morphType: 'stem' })).toEqual({
+      form: 'perro',
+      metadata: { morphType: 'stem' },
+    });
   });
 });

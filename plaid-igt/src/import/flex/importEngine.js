@@ -11,7 +11,13 @@
 // half-imported ones are deleted and redone. Lexicon items are deduped by
 // their FLEx sense guid (metadata.flexSense).
 
-import { stampInferred, confirmedInferred, createdIds, metadataOps } from '@larc-iu/plaid-client';
+import {
+  stampInferred,
+  confirmedInferred,
+  createdIds,
+  metadataOps,
+  entryForm,
+} from '@larc-iu/plaid-client';
 import {
   ImportCancelled,
   importStamp,
@@ -348,14 +354,19 @@ export async function importLexicon({
     // when one exists, else the lexeme form; when they differ, the lexeme
     // form is kept as metadata.
     const lexemeForm = pickWs(entry.forms);
-    const form = pickWs(entry.citationForm) ?? lexemeForm;
+    // Stored without affix or clitic markers, the markers naming the type
+    // when a citation form was typed with them.
+    const { form, morphType } = entryForm(
+      entry.morphType ?? null,
+      pickWs(entry.citationForm) ?? lexemeForm,
+    );
     if (!form) continue;
     // FLEx custom-field values (entry-level + sense-level) become item
     // metadata under the custom field's own name; so do the opt-in extra
     // fields, entry-level ones on every sense of the entry. A sense-level
     // value wins over an entry-level one under the same name.
     const entryMeta = (sense) => ({
-      ...(entry.morphType != null && { morphType: entry.morphType }),
+      ...(morphType != null && { morphType }),
       ...(entry.homograph ? { homograph: entry.homograph } : {}),
       ...(lexemeForm != null && lexemeForm !== form && { lexemeForm }),
       ...(entry.custom ?? {}),

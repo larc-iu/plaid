@@ -69,7 +69,7 @@ import { anchorCaption } from '@/domain/commentAnchors';
 import { saveBlob, sanitizeFilename } from '@ui/lib/download.js';
 import {
   NEW_ID,
-  cleanMeta,
+  entryToSave,
   emptyFieldOf,
   initialState,
   isDirty,
@@ -813,11 +813,20 @@ export const VocabularyItems = ({
     // or an example added while the form was open is not written back over
     // by this save. Read as the form reads it, so a parent that is gone is
     // stored as none.
+    const toSave = entryToSave(draft.form, draft.fields);
     const metadata = {
       ...(isNew ? {} : reservedMetadata(selectedAsRead?.metadata)),
-      ...cleanMeta(draft.fields),
+      ...toSave.metadata,
     };
-    const form = draft.form.trim();
+    const form = toSave.form;
+    // The draft shows what was stored: the form without its markers, and the
+    // type they named.
+    const showSaved = () => {
+      dispatch({ type: 'draft/form', form });
+      const morphType = toSave.metadata.morphType;
+      if (morphType && morphType !== draft.fields.morphType)
+        dispatch({ type: 'draft/fields', fields: { ...draft.fields, morphType } });
+    };
     // The saved entry is folded into `items` locally rather than re-fetching
     // the vocabulary: a re-fetch pulls every entry in the lexicon back over
     // the wire (thousands, for a FLEx import) to learn what we just wrote,
@@ -849,7 +858,7 @@ export const VocabularyItems = ({
       creatingRef.current = id;
       await dropUnsavedDrafts();
       goItem(id, { replace: true });
-      dispatch({ type: 'draft/form', form });
+      showSaved();
       // Back to the new-entry form holding what is typed there, so Create
       // sends it again.
       const backToNew = ({ form: typedForm, fields: typedFields }) => {
@@ -894,7 +903,7 @@ export const VocabularyItems = ({
     }
     const item = selectedItem;
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
-    dispatch({ type: 'draft/form', form });
+    showSaved();
     // Only the keys the save changes are sent, so one written elsewhere
     // since this entry was loaded stays.
     const ops = metadataPatchTo(item.metadata, metadata);

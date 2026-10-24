@@ -21,7 +21,7 @@
 // and both read the pattern through translatePattern (plaid-ui domain/javaRegex.js),
 // so they match the same values.
 
-import { cpSlice } from '@larc-iu/plaid-client';
+import { cpSlice, entryForm } from '@larc-iu/plaid-client';
 import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemory.js';
 import { morphemeJoiner } from '../../../domain/affixMarkers.js';
 import { morphemeGlossReading } from '../../../domain/tagsets.js';
@@ -151,7 +151,9 @@ export function chainText(chain, includeMorphemes) {
 }
 
 // Lexicon entries whose form changes under `apply`. `vocabularies` is the
-// { [vocabId]: { id, name, items } } table IgtDocument uses.
+// { [vocabId]: { id, name, items } } table IgtDocument uses. The new form is
+// the one an entry stores (entryForm), and a row whose markers name a type
+// other than the entry's carries it as `morphType`.
 export function collectLexiconRows(vocabularies, apply, canRespellIn = () => true) {
   const rows = [];
   for (const vocab of Object.values(vocabularies || {})) {
@@ -159,8 +161,14 @@ export function collectLexiconRows(vocabularies, apply, canRespellIn = () => tru
     // another's vocabulary are still listed, as a match nobody here can apply.
     const locked = !canRespellIn(vocab);
     for (const it of vocab.items || []) {
-      const next = apply(it.form);
-      if (next == null) continue;
+      const respelled = apply(it.form);
+      if (respelled == null) continue;
+      // Stored without affix or clitic markers, the type they name with it.
+      const own = it.metadata?.morphType ?? null;
+      const read = blank(respelled)
+        ? { form: respelled, morphType: own }
+        : entryForm(own, respelled);
+      const next = read.form;
       rows.push({
         id: it.id,
         kind: 'lexicon',
@@ -168,6 +176,7 @@ export function collectLexiconRows(vocabularies, apply, canRespellIn = () => tru
         vocabName: vocab.name,
         old: it.form,
         new: next,
+        ...(read.morphType !== own ? { morphType: read.morphType } : {}),
         ...(blank(next) ? { invalid: 'empty' } : {}),
         ...(locked ? { locked: true } : {}),
       });
@@ -195,7 +204,7 @@ const glossReadingAfter = (morphemes, m, field, apply) =>
     morphemes.map((x) => {
       const old = x.annotations?.[field]?.value ?? '';
       return {
-        morphType: x.morphType ?? x.metadata?.morphType,
+        morphType: x.morphType,
         form: morphFormOf(x),
         gloss: x.annotations?.[field]?.id ? (apply(old) ?? old) : old,
       };

@@ -225,6 +225,30 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('stores a typed form without its affix markers, and the type they name (R27)', async () => {
+    const { client, calls } = stub([{ id: 'a', form: 'uno', metadata: { gloss: 'one' } }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    await view.step(() => setValue(formInput(), '-s'));
+    await view.step(async () => {
+      button('Save').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls).toEqual([
+      [
+        'bulkUpdate',
+        [
+          {
+            id: 'a',
+            form: 's',
+            metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }],
+          },
+        ],
+      ],
+    ]);
+    expect(formInput().value).toBe('s');
+    await view.unmount();
+  });
+
   it('saves on Enter in any one-line field and on Ctrl+Enter, and only when something changed', async () => {
     const { client, calls } = stub([{ id: 'a', form: 'uno', metadata: { gloss: 'one' } }]);
     const view = await mount(client, '/vocabularies/v1?item=a');

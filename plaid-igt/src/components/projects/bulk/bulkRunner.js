@@ -309,7 +309,15 @@ export async function applyRespell(
           out.entriesSkipped += 1;
         }
         for (const part of chunk(kept)) {
-          await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
+          await client.vocabItems.bulkUpdate(
+            part.map((r) => ({
+              id: r.id,
+              form: r.new,
+              ...(r.morphType
+                ? { metadata: [{ op: 'set', path: ['morphType'], value: r.morphType }] }
+                : {}),
+            })),
+          );
           part.forEach((r) => (r.applied = true));
           out.entriesChanged += part.length;
         }

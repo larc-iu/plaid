@@ -965,15 +965,15 @@ describe('the vocabulary chapter', () => {
     expect(forms('not a tag!')).toEqual(['Äbu', 'ana1', 'ana2', 'zapa']);
   });
 
-  it('files an affix under its letters, and puts the gloss first', () => {
+  it('prints an affix with its markers, files it under its letters, and puts the gloss first', () => {
     const affixes = {
       id: 'v4',
       name: 'Affixes',
       config: { igt: { fields: { pos: { role: 'pos' }, gloss: { role: 'gloss' } } } },
       items: [
-        { id: 's', form: '-s', metadata: { gloss: 'PL', pos: 'sfx' } },
+        { id: 's', form: 's', metadata: { gloss: 'PL', pos: 'sfx', morphType: 'suffix' } },
         { id: 'r', form: 'ra', metadata: { gloss: 'go' } },
-        { id: 'a', form: 'a=', metadata: { gloss: 'DEF' } },
+        { id: 'a', form: 'a', metadata: { gloss: 'DEF', morphType: 'proclitic' } },
       ],
     };
     const tex = vocabularyTex({
@@ -981,9 +981,9 @@ describe('the vocabulary chapter', () => {
       choice: choiceFor({ vocabulary: { scope: 'all' } }, [affixes]),
     });
     expect(tex.split('\n').filter((l) => l.startsWith('\\PlaidEntry{'))).toEqual([
-      '\\PlaidEntry{\\PlaidEntryForm{a=}}{\\PlaidEntryGloss{\\textsc{def}}}',
+      '\\PlaidEntry{\\PlaidEntryForm{a=}}{\\PlaidEntryGloss{\\textsc{def}} \\PlaidEntryField{Morph Type}{proclitic}}',
       '\\PlaidEntry{\\PlaidEntryForm{ra}}{\\PlaidEntryGloss{go}}',
-      '\\PlaidEntry{\\PlaidEntryForm{-s}}{\\PlaidEntryGloss{\\textsc{pl}} \\PlaidEntryField{POS}{sfx}}',
+      '\\PlaidEntry{\\PlaidEntryForm{-s}}{\\PlaidEntryGloss{\\textsc{pl}} \\PlaidEntryField{POS}{sfx} \\PlaidEntryField{Morph Type}{suffix}}',
     ]);
   });
 

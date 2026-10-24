@@ -33,6 +33,7 @@ import {
   placingSpelling,
 } from '../align.js';
 import { sameName } from '@ui/lib/nameKey.js';
+import { entryForm } from '@larc-iu/plaid-client';
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { DEFAULT_IGNORED_TOKENS, SENTENCE_ROLES, isTokenIgnored } from '../../domain/igtConfig.js';
@@ -71,12 +72,13 @@ const morphTypeOf = (pieces, i) => (pieces[i].before === '=' ? 'enclitic' : null
 
 // ---- options ----------------------------------------------------------------
 
-// Columns our own exporter writes that are bookkeeping, not annotation.
-const SKIP_COLUMNS = new Set(['Plaid_ID', 'Speaker']);
-// Where our own export says each word stands in the text (see alignSurfaces).
-// It places words and is not a field, in our own datasets only.
+// Columns our own exporter writes that are bookkeeping, not annotation, in
+// our own datasets only: Surface_Word says where each word stands in the text
+// (see alignSurfaces), and Speaker is derived from the media timeline. In
+// someone else's dataset a column of either name is their data.
 const SURFACE_COLUMN = 'Surface_Word';
-const skipColumn = (name, own) => SKIP_COLUMNS.has(name) || (own && name === SURFACE_COLUMN);
+const OWN_SKIP_COLUMNS = new Set(['Speaker', SURFACE_COLUMN]);
+const skipColumn = (name, own) => name === 'Plaid_ID' || (own && OWN_SKIP_COLUMNS.has(name));
 // Our exporter's custom-column prefixes, so a round trip lands back where it
 // started rather than flattening everything to sentence scope.
 const PREFIXES = [
@@ -892,7 +894,11 @@ export function buildCldfDocuments(dataset, options = {}) {
     // with several lexicons comes back as several.
     const vocabulary =
       typeof row.Vocabulary === 'string' && row.Vocabulary.trim() ? row.Vocabulary.trim() : null;
-    lexicon.push({ id, form, metadata, senses: entrySenses, vocabulary });
+    // An entry form is stored without its affix or clitic markers, and markers
+    // that name a type set it: a headword "-s" is the suffix "s".
+    const read = entryForm(metadata.morphType ?? null, form);
+    if (read.morphType) metadata.morphType = read.morphType;
+    lexicon.push({ id, form: read.form, metadata, senses: entrySenses, vocabulary });
   }
 
   // --- schema for the setup wizard ---

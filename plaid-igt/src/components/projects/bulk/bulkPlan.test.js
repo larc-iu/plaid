@@ -147,6 +147,28 @@ describe('collectRespellRows / respellOps', () => {
     ]);
   });
 
+  it('respells an entry to the form it stores, without markers, the type they name with it (R27)', () => {
+    const vocabs = {
+      v1: {
+        id: 'v1',
+        name: 'Lex',
+        items: [{ id: 'i1', form: 's', metadata: { morphType: 'stem' } }],
+      },
+    };
+    const { apply } = buildReplacer('^s$', 'regex', '-s');
+    expect(collectLexiconRows(vocabs, apply)).toEqual([
+      {
+        id: 'i1',
+        kind: 'lexicon',
+        vocabId: 'v1',
+        vocabName: 'Lex',
+        old: 's',
+        new: 's',
+        morphType: 'suffix',
+      },
+    ]);
+  });
+
   // Renaming an entry needs a maintainer of its vocabulary (acl-shared-vocab-
   // writers, ruled b). The entries of a vocabulary the person does not
   // maintain are still listed, locked, and never sent.

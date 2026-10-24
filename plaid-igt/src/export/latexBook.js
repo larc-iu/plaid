@@ -29,7 +29,12 @@
 // Pure functions: no DOM, no client.
 
 import { morphFormOf, texCell, texGloss, texWord, wordCells } from '../domain/igtExport.js';
-import { canNameWord, joinerBetween, morphTypeLabel } from '../domain/affixMarkers.js';
+import {
+  canNameWord,
+  decorateWithAffixMarkers,
+  joinerBetween,
+  morphTypeLabel,
+} from '../domain/affixMarkers.js';
 import { texEscape, texLine } from '../domain/tex.js';
 import { readTagsets } from '../domain/tagsets.js';
 import { SENTENCE_ROLES, readVocabFields } from '../domain/igtConfig.js';
@@ -1121,9 +1126,12 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
   const fields = all
     .filter((f) => on.has(f.name))
     .sort((a, b) => (b.name === glossKey) - (a.name === glossKey));
+  // An entry's form is stored bare and printed with its type's markers
+  // (-s for a suffix), as the dictionary pages print it.
+  const shown = (item) => decorateWithAffixMarkers(morphTypeOf(tree, item.id), item.form ?? '');
   const nameOf = (id) => {
     const target = tree.byId.get(id);
-    return target ? entryName(target.form ?? '', numbers.get(id)) : '';
+    return target ? entryName(shown(target), numbers.get(id)) : '';
   };
   // The gloss in small caps by the rule the texts' glosses follow, read as
   // an affix's when the entry can never name a word.
@@ -1179,8 +1187,8 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
   if (!listed.length) return null;
   const position = new Map(items.map((it, i) => [it.id, i]));
   const homographNo = (it) => Number.parseInt(numbers.get(it.id) || '0', 10);
-  // An affix files under its letters: -s with s, not before a.
-  const sortKey = (it) => texLine(it.form ?? '').replace(/^[-=]+|[-=]+$/g, '');
+  // Filed by the stored form, so an affix files under its letters: -s with s.
+  const sortKey = (it) => texLine(it.form ?? '');
   listed.sort(
     (a, b) =>
       collator.compare(sortKey(a), sortKey(b)) ||
@@ -1195,14 +1203,14 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
       // A sense goes by its whole number, as the texts write it (kai 2.1).
       // One spelled like its headword shows no form of its own.
       const form =
-        texLine(sense.form ?? '') !== texLine(root.form ?? '')
-          ? `${entryName(sense.form ?? '', '', 'PlaidEntryForm')} `
+        texLine(shown(sense)) !== texLine(shown(root))
+          ? `${entryName(shown(sense), '', 'PlaidEntryForm')} `
           : '';
       body.push(
         `\\PlaidSense{${target(sense.id, numbers.get(sense.id))}}{${form}${parts(sense).join(' ')}}`,
       );
     }
-    return `\\PlaidEntry{${target(root.id, entryName(root.form ?? '', numbers.get(root.id), 'PlaidEntryForm'))}}{${body.join(' ')}}`;
+    return `\\PlaidEntry{${target(root.id, entryName(shown(root), numbers.get(root.id), 'PlaidEntryForm'))}}{${body.join(' ')}}`;
   });
 }
 

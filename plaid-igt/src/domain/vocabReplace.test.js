@@ -32,6 +32,18 @@ describe('planVocabReplace', () => {
     ]);
   });
 
+  it('stores a replaced form without its markers, the type they name with it (R27)', () => {
+    const { apply } = buildReplacer('^perr', 'regex', '-perr');
+    const rows = planVocabReplace(items, { field: 'form', apply });
+    expect(rows.map((r) => [r.new, r.morphType])).toEqual([
+      ['perro', 'suffix'],
+      ['perra', 'suffix'],
+    ]);
+    expect(replaceWrites(rows.slice(0, 1), { field: 'form' })).toEqual([
+      { id: 'a', form: 'perro', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+    ]);
+  });
+
   it('flags a replacement that would empty the form', () => {
     const { apply } = buildReplacer('x', 'exact', '');
     expect(planVocabReplace(items, { field: 'form', apply })).toEqual([
