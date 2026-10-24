@@ -26,7 +26,7 @@
 //   stored.
 // - A text write naming `tokenizeLayer` gets a word on that layer over each
 //   run without whitespace that no token of the layer touches, named in its
-//   answer's reshape with its layer and text: a stand-in for the core's
+//   answer's reshape with its layer, text and metadata: a stand-in for the core's
 //   "Tokenize new text" (`new-words`), which the core's own tests hold.
 //
 // `other` writes as another user, with an entry in the audit log naming the
@@ -165,7 +165,7 @@ function madeWords(raw, textId, layerId, mint) {
     if (!layer.tokens.some((t) => t.begin < y && x < t.end)) {
       const word = { id: mint(), text: textId, begin: x, end: y };
       layer.tokens.push(word);
-      made.push({ ...word, layer: layerId });
+      made.push({ ...word, layer: layerId, metadata: {} });
     }
     x = y;
   }
