@@ -19,6 +19,9 @@ const UNDERSCORE = '_';
  * What a CoNLL-U file cannot say about these sentences, one line each, or an
  * empty list when it can say everything.
  *
+ * Text no token covers is not in any row, so the rows do not spell the
+ * sentence's `# text`, and a UD validator refuses the file.
+ *
  * A word with no enhanced head writes `_` in its DEPS column, and a sentence
  * where every word writes `_` is exactly what a sentence nobody annotated for
  * the enhanced graph writes. So a sentence whose enhanced graph leaves out
@@ -26,9 +29,39 @@ const UNDERSCORE = '_';
  * with every relation in place again. The notation has no way to tell the two
  * apart, so the export says so rather than losing the decision quietly.
  */
+// The text of a sentence no token covers (a comma another app left out of its
+// words, by the ignored-token rule), as its distinct characters in order, or
+// an empty list. The rows cannot spell it, so the `# text` line, which is the
+// sentence's text, says what the rows do not.
+const uncoveredText = (sentence) => {
+  const chars = [...(sentence.text || '')];
+  const base = sentence.sentenceToken?.begin ?? 0;
+  const covered = new Array(chars.length).fill(false);
+  for (const entry of sentence.tokens || []) {
+    const t = entry.word || entry.token;
+    if (!t) continue;
+    for (let k = Math.max(t.begin, base); k < Math.min(t.end, base + chars.length); k += 1) {
+      covered[k - base] = true;
+    }
+  }
+  const out = [];
+  chars.forEach((c, k) => {
+    if (!covered[k] && !/\s/u.test(c) && !out.includes(c)) out.push(c);
+  });
+  return out;
+};
+
 export function conlluLosses({ sentences } = {}) {
   const out = [];
   (sentences || []).forEach((sentence, i) => {
+    const gaps = uncoveredText(sentence);
+    if (gaps.length) {
+      out.push(
+        `Sentence ${i + 1} has text in no token (${gaps.map((c) => `“${c}”`).join(', ')}), ` +
+          'so its # text line does not match its rows. Tokenize in the Text Editor to give ' +
+          'that text tokens.',
+      );
+    }
     const rows = sentence.enhancedRelations || [];
     if (!rows.some(isSuppressor)) return;
     const edges = enhancedEdges(sentence.relations, rows);
