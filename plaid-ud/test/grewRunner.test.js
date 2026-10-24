@@ -524,3 +524,28 @@ for (const [what, refusal, partial, unsure] of [
     assert.equal(out.failed.unsure, unsure);
   });
 }
+
+// A moved head makes the relation the person's, as a re-point in the editor
+// does: a parser's arc a rule re-attaches is no longer the parser's to
+// replace, and no longer a guess to review.
+test("apply: a moved head clears the parser's stamp from the relation", async () => {
+  const { raw, client, project, layerInfo } = setup();
+  for (const r of getUdLayerInfo(raw).relationLayer.relations) {
+    if (r.value === 'det')
+      r.metadata = { prov: 'inferred', provSource: 'parser', provProb: 0.8, provDetail: { m: 1 } };
+  }
+  const grs = parseGrs(`pattern { T [form="the"]; A [form="a"]; e: C -[det]-> A }
+    commands { del_edge e; shift_in T ==> A } strat main { rule }`);
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const moved = client.calls.find((c) => c.op === 'relations.setTarget');
+  const patch = client.calls.find((c) => c.op === 'relations.patchMetadata');
+  assert.ok(patch, 'the moved relation is stamped');
+  assert.equal(patch.args[0], moved.args[0]);
+  assert.deepEqual(patch.args[1], [
+    { op: 'delete', path: ['prov'] },
+    { op: 'delete', path: ['provSource'] },
+    { op: 'delete', path: ['provProb'] },
+    { op: 'delete', path: ['provDetail'] },
+  ]);
+});

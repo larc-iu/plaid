@@ -9,7 +9,14 @@
 //   XPOS  -> provDetail.xposProbs
 //   deprel-> provDetail.deprelProbs
 
-import { provState, provOrigin, PROV_STATES, PROV, isDoubtful } from '@larc-iu/plaid-client';
+import {
+  provState,
+  provOrigin,
+  PROV_STATES,
+  PROV,
+  PROVENANCE_KEYS,
+  isDoubtful,
+} from '@larc-iu/plaid-client';
 import { confidenceNote } from '../../../plaid-ui/src/domain/confidence.js';
 
 const FIELD_PROBS_KEY = {
@@ -94,9 +101,7 @@ export function probLabel(probs, value) {
 // prediction extras describe the ORIGINAL prediction, not necessarily the
 // current value).
 /** Every reserved provenance metadata key (the convention's flat slots). */
-const PROV_KEYS = Object.freeze(
-  new Set([PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey]),
-);
+const PROV_KEYS = new Set(PROVENANCE_KEYS);
 
 // Whether a machine value is below the project's confidence threshold
 // (session.confidenceThreshold), which draws its mark heavier: the

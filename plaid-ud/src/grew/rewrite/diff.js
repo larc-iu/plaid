@@ -263,12 +263,14 @@ export function diffGraphs(before, after, layerInfo) {
     if (a.label !== b.label) {
       ops.push({ op: 'updateRelation', id, value: bareLabel(a.label), metadata: b.metadata });
     }
+    // A moved head makes the relation the person's (the runner stamps it
+    // from the metadata it had).
     if (a.tgt !== b.tgt) {
-      ops.push({ op: 'setTarget', id, node: a.tgt });
+      ops.push({ op: 'setTarget', id, node: a.tgt, metadata: b.metadata });
       needs.push(a.tgt);
     }
     if (serverSrc(a) !== serverSrc(b)) {
-      ops.push({ op: 'setSource', id, node: serverSrc(a) });
+      ops.push({ op: 'setSource', id, node: serverSrc(a), metadata: b.metadata });
       needs.push(serverSrc(a));
     }
     // An extra the rule left alone is left alone: only what it touched is

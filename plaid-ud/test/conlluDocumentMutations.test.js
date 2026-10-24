@@ -592,6 +592,39 @@ test('a typed value drops provProb, on an annotation and on a relation', async (
   assert.equal(relAfter.metadata.provConfirmed, true);
 });
 
+// A value the parser weighed carries the parser's probability for it, on a
+// tag and on a relation label, as a pick of a producer's alternative does in
+// igt.
+test("a value the parser weighed carries the parser's probability for it", async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  span.metadata = {
+    prov: 'inferred',
+    provSource: 'service:stanza-parser',
+    provProb: 0.7,
+    provDetail: { uposProbs: { NOUN: 0.7, PROPN: 0.2 } },
+  };
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  assert.deepEqual(client.calls[1][2], [
+    { op: 'set', path: ['provConfirmed'], value: true },
+    { op: 'set', path: ['provProb'], value: 0.2 },
+  ]);
+
+  const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
+  rel.metadata = {
+    prov: 'inferred',
+    provSource: 'service:stanza-parser',
+    provProb: 0.6,
+    provDetail: { deprelProbs: { det: 0.6, nmod: 0.3 } },
+  };
+  assert.equal(await doc.updateRelation(rel.id, 'nmod'), true);
+  const relAfter = doc.layerInfo.relationLayer.relations.find((r) => r.id === rel.id);
+  assert.equal(relAfter.metadata.provProb, 0.3);
+  assert.equal(relAfter.metadata.provConfirmed, true);
+});
+
 test('a human annotation with a provProb loses it on a typed value too', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();

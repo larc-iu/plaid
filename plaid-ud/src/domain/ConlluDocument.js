@@ -5,10 +5,8 @@ import {
   cpSlice,
   cpSlicer,
   isMachine,
-  isProtected,
   mergeMetadata,
   metadataOps,
-  PROV,
   isReservedMetadataKey,
   applyTextOps,
   composeText,
@@ -16,7 +14,6 @@ import {
   stampInferred,
   wasReplayed,
 } from '@larc-iu/plaid-client';
-import { valueEditStamp } from './valueEditStamp.js';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import {
   getUdLayerInfo,
@@ -37,7 +34,7 @@ import {
   countPartitionLoss,
   countSplitLoss,
   dropRelations,
-  hasOwnContent,
+  holdsPersonsWork,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from './otherLoss.js';
 import {
@@ -54,6 +51,7 @@ import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { readIgnoredTokensOf } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
+import { readFieldProbs } from '../utils/provenanceUi.js';
 
 // The lemma a new word starts with is a copy of its form, made by a rule and
 // by no person, so a parser may replace it (provenance write contract rule 1).
@@ -630,9 +628,7 @@ export class ConlluDocument extends DocumentModel {
     if (!sentenceTokenLayer || sentences.length > 1) return { annotations: 0, links: 0 };
     const layers = textLayer?.tokenLayers || [];
     const ids = sentences.map((t) => t.id);
-    const content = (t) =>
-      hasOwnContent(t) || (PROV.key in (t.metadata || {}) && isProtected(t.metadata));
-    const reset = countDeleteLoss(layers, ids, { content });
+    const reset = countDeleteLoss(layers, ids, { content: holdsPersonsWork });
     const cut = countPartitionLoss(layers, sentenceTokenLayer.id, 'any', { deleting: ids });
     return { annotations: reset.annotations + cut.annotations, links: reset.links };
   }
@@ -1033,7 +1029,7 @@ export class ConlluDocument extends DocumentModel {
           kind: 'update',
           span,
           value: want,
-          stamp: this._valueEditStamp(span.metadata),
+          stamp: this.writer.valueEditStamp(span.metadata),
         });
       } else if (!span && want != null && formLayer?.id) {
         const stamp = this.writer.createStamp;
@@ -1345,7 +1341,9 @@ export class ConlluDocument extends DocumentModel {
       if (existingFeat) {
         // A person's edit carries the writer's stamp (see the existing-span
         // branch below for the full rationale).
-        const verifyFeat = this._valueEditStamp(existingFeat.metadata, existingFeat.value !== pair);
+        const verifyFeat = this.writer.valueEditStamp(existingFeat.metadata, {
+          changes: existingFeat.value !== pair,
+        });
         // Optimistic overwrite: update the tag locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
           const layerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
@@ -1437,7 +1435,11 @@ export class ConlluDocument extends DocumentModel {
       // in ONE optimistic patch (single _dataVersion bump, so the styling
       // changes with the value, no double repaint) and one atomic batch
       // (single document-version bump, OCC-safe).
-      const verify = this._valueEditStamp(existingSpan.metadata, existingSpan.value !== value);
+      // A value the producer weighed carries its probability for it.
+      const verify = this.writer.valueEditStamp(existingSpan.metadata, {
+        changes: existingSpan.value !== value,
+        prob: readFieldProbs(existingSpan.metadata, field)?.[value] ?? null,
+      });
       // Optimistic: update the value (+ metadata) locally before the round trip.
       this._applyRawPatch((next, infoNext) => {
         const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
@@ -1828,17 +1830,6 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
-  /**
-   * The stamp a person's edit of a value carries: the writer's (a verifier's
-   * confirms machine-made material, a contributor's marks it contributed),
-   * and, when the value `changes`, provProb removed, since it was the
-   * probability of the value replaced (the provenance convention). Null when
-   * there is nothing to write.
-   */
-  _valueEditStamp(metadata, changes = true) {
-    return valueEditStamp(this.writer, metadata, changes);
-  }
-
   // A relation's label, in the tree or in the enhanced layer: the id says which.
   async updateRelation(rawRelationId, deprel) {
     const relationId = settledId(rawRelationId);
@@ -1850,7 +1841,10 @@ export class ConlluDocument extends DocumentModel {
     const existing = dependencyRelationLayers(this.layerInfo)
       .flatMap((layer) => layer.relations || [])
       .find((r) => r.id === relationId);
-    const verify = this._valueEditStamp(existing?.metadata, existing?.value !== deprel);
+    const verify = this.writer.valueEditStamp(existing?.metadata, {
+      changes: existing?.value !== deprel,
+      prob: readFieldProbs(existing?.metadata, 'deprel')?.[deprel] ?? null,
+    });
     // Optimistic: reflect the new value immediately, BEFORE the round trip,
     // so the label doesn't flash the previous value while the save is in
     // flight. On failure, the queue reloads from the server and reverts.

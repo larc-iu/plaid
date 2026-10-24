@@ -10,7 +10,6 @@
 // sentence matches after every application, and a rule whose pattern the
 // query language cannot express visits every document instead.
 
-import { valueEditStamp } from '../../domain/valueEditStamp.js';
 import { metadataOps, uuidv7, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { compileGrew } from '../compile.js';
@@ -363,13 +362,25 @@ const inWriteOrder = (main) =>
     .map(([w]) => w);
 
 // Every span and relation write. A person's edit of a machine or contributed
-// value carries the writer's stamp, in the same batch as the value.
+// value carries the writer's stamp, in the same batch as the value. A
+// relation whose head moved becomes the person's, as a re-point in the editor
+// does (writer.repointStamp), which also covers a label changed with it.
 function queueMain(b, main, writer, createStamp, lemmaOf) {
+  const moved = new Set(
+    main.filter((w) => w.op === 'setSource' || w.op === 'setTarget').map((w) => w.id),
+  );
+  const repointed = new Set();
+  const repoint = (w) => {
+    if (repointed.has(w.id)) return;
+    repointed.add(w.id);
+    const stamp = writer.repointStamp(w.metadata);
+    if (stamp) b.relations.patchMetadata(w.id, metadataOps(stamp));
+  };
   for (const w of inWriteOrder(main)) {
     switch (w.op) {
       case 'updateSpan': {
         b.spans.update(w.id, w.value);
-        const stamp = valueEditStamp(writer, w.metadata);
+        const stamp = writer.valueEditStamp(w.metadata);
         if (stamp) b.spans.patchMetadata(w.id, metadataOps(stamp));
         break;
       }
@@ -381,15 +392,18 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
         break;
       case 'updateRelation': {
         b.relations.update(w.id, w.value);
-        const stamp = valueEditStamp(writer, w.metadata);
+        if (moved.has(w.id)) break;
+        const stamp = writer.valueEditStamp(w.metadata);
         if (stamp) b.relations.patchMetadata(w.id, metadataOps(stamp));
         break;
       }
       case 'setSource':
         b.relations.setSource(w.id, lemmaOf.get(w.node));
+        repoint(w);
         break;
       case 'setTarget':
         b.relations.setTarget(w.id, lemmaOf.get(w.node));
+        repoint(w);
         break;
       case 'deleteRelation':
         b.relations.delete(w.id);
