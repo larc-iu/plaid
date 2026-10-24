@@ -116,6 +116,18 @@ def test_a_gloss_is_read_into_its_lexical_part_and_its_attributes():
     assert boot.concept_from('Go Away ') == 'go-away'
 
 
+def test_a_period_joined_gloss_is_read_whole():
+    """HUNT-recent 6: a Leipzig one-to-many gloss is one meaning, and the
+    skeleton took its first word alone (`be.born-3PL.PRS` made `be`)."""
+    table = boot.ABBREVIATIONS
+    for gloss, concept in [('be.born-3PL.PRS', 'be-born'), ('go.away', 'go-away'),
+                           ('take.out-PST', 'take-out'), ('pass.PST', 'pass'),
+                           ('sbj:3.pfv-go', 'go')]:
+        assert boot.concept_from(boot.read_gloss(gloss, table)['lexical']) == concept, gloss
+    assert boot.read_gloss('be.born-3PL.PRS', table)['attrs'][:2] == [
+        (':refer-person', '3rd'), (':refer-number', 'plural')]
+
+
 def test_a_language_table_adds_and_removes_abbreviations(tmp_path):
     path = tmp_path / 'arapaho.json'
     path.write_text(json.dumps({'OBV': [':refer-person', '4th'], 'AFF': ['root'], 'Q': None}))
@@ -298,6 +310,17 @@ def test_a_sentence_with_a_graph_is_skipped_unless_overwritten():
     assert umr['var'] == 's1b'
 
 
+def test_a_redraft_that_is_the_stored_graph_counts_as_unchanged(monkeypatch):
+    """HUNT-recent 20: an Overwrite redraft that comes out as the graph the
+    sentence has writes nothing (write_graphs keeps every stored row), and the
+    run said it drafted the sentence."""
+    from plaid_client.workflows.umr import write
+    monkeypatch.setattr(write, 'write_graphs', lambda *args, **kwargs: 0)
+    service = _service()
+    [result] = servicetest.run(service, REQUEST).results
+    assert (result['drafted'], result['unchanged']) == (0, 1)
+
+
 # The same rule as the drafting service, from the same reader: `overwrite`
 # replaces the machine's own skeletons, never a person's graph.
 @pytest.mark.parametrize('node_metadata, why', [
@@ -347,7 +370,8 @@ def test_both_services_choose_and_report_the_same_sentences(document, why, overw
 
 
 @pytest.mark.parametrize('request_data', [{**REQUEST, 'scope': 'sentence', 'sentence': 2},
-                                          {**REQUEST, 'document_id': None}])
+                                          {**REQUEST, 'document_id': None},
+                                          {**REQUEST, 'project_id': None}])
 def test_both_services_refuse_the_same_requests(request_data):
     outcomes = []
     for service in _both(_document()):
@@ -355,6 +379,16 @@ def test_both_services_refuse_the_same_requests(request_data):
         outcomes.append((helper.results, helper.errors, service.client.writes))
     assert outcomes[0] == outcomes[1]
     assert outcomes[0][0] == [] and outcomes[0][1]
+
+
+def test_a_request_with_no_project_is_refused_as_such():
+    """HUNT-recent 16: the gloss lines are the project's, and a request
+    naming none read as a project with no gloss line (`no-link-no-gloss-line`)."""
+    service = _service()
+    helper = servicetest.run(service, {**REQUEST, 'project_id': None})
+    assert helper.results == []
+    assert helper.errors == ['Missing required parameter: projectId']
+    assert service.client.writes == []
 
 
 # --- segmented words: the lexical morpheme names the word ----------------------------
@@ -545,7 +579,8 @@ def test_the_case_rule_still_holds_without_a_grammatical_part_beside():
     assert boot.read_gloss('lay.pfv', table) == {
         'lexical': 'lay', 'attrs': [], 'marked': [], 'eventive': False, 'possessive': False,
         'agreement': False}
-    assert boot.read_gloss('come.out', table)['lexical'] == 'come'
+    # Two words of one meaning are read whole (HUNT-recent 6).
+    assert boot.read_gloss('come.out', table)['lexical'] == 'come out'
     assert boot.read_gloss('pass', table)['lexical'] == 'pass'
     assert boot.read_gloss('3SG-pfv', table)['lexical'] == 'pfv'
     assert boot.read_gloss('3SG-pfv', table)['eventive'] is False
@@ -718,7 +753,8 @@ def test_a_gloss_in_a_script_with_no_case_is_lexical(gloss):
     """The case rule asks for a capital, as igt's isLexicalPart does: a script
     with no letter case has none, so its gloss is a word and names the node."""
     read = boot.read_gloss(gloss, boot.ABBREVIATIONS)
-    assert read['lexical'] == gloss.split('.')[0]
+    # Every part a word, so read whole (HUNT-recent 6).
+    assert read['lexical'] == ' '.join(gloss.split('.'))
     # A capital with no lower case beside it is still grammatical.
     assert boot.read_gloss('水.DEM', boot.ABBREVIATIONS)['lexical'] == '水'
     assert boot.read_gloss('DEM', boot.ABBREVIATIONS)['lexical'] is None

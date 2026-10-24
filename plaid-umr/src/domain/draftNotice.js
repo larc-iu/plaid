@@ -8,7 +8,8 @@
 // `status: success` with zeros. Announcing "Drafted" over an untouched
 // document is the bug this exists to prevent.
 //
-// The counts: `drafted`; `skipped`, the sentences with a machine-made graph
+// The counts: `drafted`, the sentences written; `unchanged`, the ones whose
+// new draft is the graph they already have, so nothing was written; `skipped`, the sentences with a machine-made graph
 // left alone with Overwrite off (the only ones the Overwrite hint is true
 // of); `kept`, the ones a person made, contributed to or accepted something
 // in; `linked`, the ones another sentence's graph links into;
@@ -61,12 +62,20 @@ const failureLine = (failures) => {
 
 export const draftNotice = (summary) => {
   const drafted = count(summary?.drafted);
+  const unchanged = count(summary?.unchanged);
   const skipped = count(summary?.skipped);
   const kept = count(summary?.kept);
   const linked = count(summary?.linked);
   const failures = Array.isArray(summary?.sentencesFailed) ? summary.sentencesFailed : [];
   const notAsked = Array.isArray(summary?.sentencesNotDrafted) ? summary.sentencesNotDrafted : [];
 
+  const same = unchanged
+    ? [
+        unchanged === 1
+          ? '1 sentence was drafted as the graph it already has.'
+          : `${unchanged} sentences were drafted as the graphs they already have.`,
+      ]
+    : [];
   const held = [
     ...(kept ? [`Kept ${countOf(kept, 'sentence')} a person had worked on.`] : []),
     ...(linked ? [`Kept ${countOf(linked, 'sentence')} that another sentence links to.`] : []),
@@ -96,8 +105,15 @@ export const draftNotice = (summary) => {
     return notice(
       failed.length ? 'warning' : 'success',
       `Drafted ${countOf(drafted, 'sentence')}`,
-      [...skippedLine, ...held, ...failed],
+      [...same, ...skippedLine, ...held, ...failed],
     );
+  }
+  if (unchanged && !skipped) {
+    return notice(failed.length ? 'warning' : 'success', 'Document not modified', [
+      ...same,
+      ...held,
+      ...failed,
+    ]);
   }
   if (skipped) {
     const [subject, them] =
@@ -108,6 +124,7 @@ export const draftNotice = (summary) => {
           : [`All ${skipped} sentences already have graphs`, 'them'];
     return notice('warning', 'Document not modified', [
       `${subject}. Turn on “Overwrite existing graphs” to draft over ${them}.`,
+      ...same,
       ...held,
       ...failed,
     ]);

@@ -145,3 +145,18 @@ test('a notice text a result carries is not shown: the words are the app’s', (
   const notice = draftNotice({ notice: { level: 'success', title: 'Drafted', message: 'M' } });
   assert.equal(notice.title, 'Nothing to draft');
 });
+
+// HUNT-recent 20: an Overwrite redraft that came out as the stored graph
+// writes nothing, and the notice said "Drafted 1 sentence".
+test('a redraft that is the graph a sentence has is not called drafted', () => {
+  assert.deepEqual(draftNotice(run({ unchanged: 1 })), {
+    level: 'success',
+    title: 'Document not modified',
+    message: '1 sentence was drafted as the graph it already has.',
+  });
+  assert.deepEqual(draftNotice(run({ drafted: 2, unchanged: 3 })), {
+    level: 'success',
+    title: 'Drafted 2 sentences',
+    message: '3 sentences were drafted as the graphs they already have.',
+  });
+});

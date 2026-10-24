@@ -407,7 +407,7 @@ def _queue_sentences(b, units: Sequence[dict], progress: DraftProgress, alone: b
 
 
 def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
-                 progress: Optional[DraftProgress] = None, taken=()) -> None:
+                 progress: Optional[DraftProgress] = None, taken=()) -> int:
     """Anchors, then nodes, then edges, one atomic batch per group of sentences.
 
     A node names its anchors, and an edge its nodes, by a ref to the ids an
@@ -432,6 +432,8 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     the canvas write it. Each node's ``provDetail`` also records the concept
     and attributes it was drafted with, and each edge's its role.
     ``taken`` is every variable a new node may not take (``DraftRun.taken``).
+    Returns how many sentences it wrote: a plan that is the graph its
+    sentence already has writes nothing.
     """
     progress = progress or DraftProgress(None)
     kept = [plan['sentence'].number for plan in plans
@@ -441,7 +443,7 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     units = [_keep_stored(plan, _sentence_writes(layers, plan, frag), taken) for plan in plans]
     units = [unit for unit in units if _writes_anything(unit)]
     if not units:
-        return
+        return 0
 
     budget = batch_body_budget(client)
     groups: List[List[dict]] = []
@@ -468,6 +470,7 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
         if written:
             raise partly_written(written, len(units), 'drafted', error) from error
         raise
+    return written
 
 
 def draft_params() -> List[Param]:
@@ -502,7 +505,7 @@ class DraftRun:
     ``result`` is what :func:`finish_draft` reports, sent by :func:`drafting`
     once the document is let go."""
     document_id: str
-    project_id: Optional[str]
+    project_id: str
     layers: UmrLayers
     document: UmrDocument
     progress: DraftProgress
@@ -521,9 +524,10 @@ def drafting(client, request_data: Dict[str, Any], response_helper):
     the plans are made from and held through the last write (Luke's ruling
     R17, 2026-10-24: one rule for every service, so no edit can land while
     the model drafts, and no sentence has to be planned again). Yields the
-    :class:`DraftRun` read under the lock, or None after reporting a missing
-    document id. The body ends in :func:`finish_draft`, and the result it
-    leaves on the run is sent once the document is free again::
+    :class:`DraftRun` read under the lock, or None after refusing a request
+    that names no document or no project. The body ends in
+    :func:`finish_draft`, and the result it leaves on the run is sent once
+    the document is free again::
 
         with drafting(client, request_data, response_helper) as run:
             if run is None:
@@ -534,6 +538,11 @@ def drafting(client, request_data: Dict[str, Any], response_helper):
     document_id = request_data.get('document_id')
     if not document_id:
         response_helper.error('Missing required parameter: documentId')
+        yield None
+        return
+    # The gloss lines, the vocabularies and the language are the project's.
+    if not request_data.get('project_id'):
+        response_helper.error('Missing required parameter: projectId')
         yield None
         return
     with held_run(client, response_helper, document_id) as held:
@@ -608,13 +617,15 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     names the sentences it never asked about in ``not_drafted``.
 
     The result is counts alone (the core manual, "Service results"): the app
-    words what the person is told.
+    words what the person is told. ``drafted`` counts the sentences written,
+    and ``unchanged`` the ones whose new draft is the graph they have.
     """
     require_held(client, run.document_id)
     for failure in failures:
         print(f"Sentence {failure['sentence']} not drafted: {failure.get('reason') or failure.get('code')}")
     if not_drafted:
         print(f'Not asked: sentences {", ".join(str(n) for n in not_drafted)}')
+    written = 0
     if plans:
         run.progress.report(DraftProgress.WRITE, 0.0, writing)
         if frag.get(PROV_KEY):
@@ -623,9 +634,12 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
             label = operation(plans) if callable(operation) else operation
             with client.operation(run.requester.label(label), kind='service-run',
                                   ref=service_source(service_id)):
-                write_graphs(client, run.layers, plans, frag, run.progress, run.taken)
+                written = write_graphs(client, run.layers, plans, frag, run.progress, run.taken)
+    # A redraft that came out as the graph the sentence has wrote nothing: it
+    # is counted apart, so the app does not say it drafted the sentence.
     run.result = {'document_id': run.document_id, 'status': 'success',
-                  'sentences': len(run.document.sentences), 'drafted': len(plans),
+                  'sentences': len(run.document.sentences), 'drafted': written,
+                  'unchanged': len(plans) - written,
                   'skipped': run.skipped, 'kept': run.kept,
                   'linked': run.linked, 'failed': len(failures),
                   'sentences_failed': list(failures),

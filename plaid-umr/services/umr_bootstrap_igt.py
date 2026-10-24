@@ -6,18 +6,19 @@ For every sentence it makes one node per word that the project already says
 something about: a word linked to a vocabulary entry takes the entry's
 HEADWORD as its concept (UMR's stage 0, "use the lemma as is"), and a word
 with a gloss but no link takes the lexical part of its gloss. A headword of
-several words is joined with hyphens, UMR's multi-word concept (`take-out`).
+several words, or a gloss of several joined by periods (`take.out`), is
+joined with hyphens, UMR's multi-word concept (`take-out`).
 Grammatical gloss abbreviations (Leipzig rules, plus whatever a language adds)
 become the attributes they stand for: `3SG` is `:refer-person 3rd
 :refer-number singular`, `NEG` is `:polarity -`, `HAB` is `:aspect habitual`.
 The word whose glosses carry tense or aspect is marked as the sentence's root,
 else the first node is.
 
-A gloss is a line the project's gloss-line mapping (`config.umr.ilg`, or the
-one proposed from the layers' names, as the canvas reads it) files as a word
-or morpheme gloss. A gloss in the project's language is read first whatever
-its scope, then the lexical morpheme's gloss before the word's. A part of
-speech, a category or a note never names a node.
+A gloss is a line the project's stored gloss-line mapping (`config.umr.ilg`,
+as the canvas reads it) files as a word or morpheme gloss. A gloss in the
+project's language is read first whatever its scope, then the lexical
+morpheme's gloss before the word's. A part of speech, a category or a note
+never names a node.
 
 In a segmented word the concept comes from its LEXICAL morpheme: never an
 affix, a clitic or a zero morph (`∅`), and of the rest the first with a morph
@@ -214,7 +215,9 @@ def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
 def read_glosses(glosses: List[str], table,
                  names: Optional[List[bool]] = None) -> List[Dict[str, Any]]:
     """Glosses read as one unit, each into what it says: the lexical part
-    (the first part that is not grammatical), the attributes its
+    (the parts that are not grammatical in the first morpheme that has any,
+    so a period-joined gloss is read whole: `be.born` is `be born`, the
+    concept `be-born`), the attributes its
     abbreviations stand for, whether one of them marks tense or aspect, and
     whether one marks possession. Which part is a word is plaid-igt's rule
     (`line_flags`): a lower-case abbreviation counts beside a grammatical
@@ -244,10 +247,13 @@ def read_glosses(glosses: List[str], table,
         for parts in morphemes:
             found: List[tuple] = []
             person = owner = False
+            words: List[str] = []
             for part, is_lexical in zip(parts, next(flags_at)):
                 if is_lexical:
-                    if lexical is None:
-                        lexical = part
+                    # A lower-case abbreviation read as a word by the case
+                    # rule (`lay.pfv`) names no part of the meaning.
+                    if not words or not any(table.get(k.upper()) for k in _keys(part)):
+                        words.append(part)
                     continue
                 for k in _keys(part):
                     what = table.get(k.upper())
@@ -261,6 +267,11 @@ def read_glosses(glosses: List[str], table,
                             person = True
                         if what[0] == ':aspect':
                             eventive = True
+            # A Leipzig one-to-many gloss is one meaning (`be.born`,
+            # `take.out`): the lexical parts of the first morpheme that has
+            # any are the word's, read whole as a multi-word concept.
+            if lexical is None and words:
+                lexical = ' '.join(words)
             attrs.extend(found)
             marked.extend((person or owner) for _ in found)
             agreement = agreement or (person and not owner)
@@ -533,16 +544,12 @@ class UmrBootstrapService(BaseService):
             # and its gloss-line mapping, for which layers are glosses. A read that
             # fails fails the run: skeletons named from the wrong gloss lines cost
             # more to clean up than a second request.
-            headwords: Dict[str, str] = {}
-            entry_types: Dict[str, str] = {}
-            project = None
-            if run.project_id:
-                run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
-                project = self.client.projects.get(run.project_id)
-                vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
-                                for v in (project.get('vocabs') or []) if v.get('id')]
-                headwords = headwords_of(vocabularies)
-                entry_types = entry_types_of(vocabularies)
+            run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
+            project = self.client.projects.get(run.project_id)
+            vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
+                            for v in (project.get('vocabs') or []) if v.get('id')]
+            headwords = headwords_of(vocabularies)
+            entry_types = entry_types_of(vocabularies)
             links = links_by_token(run.layers)
             listed = listed_forms(headwords)
             glosses = lexical_gloss_layers(project, run.layers)

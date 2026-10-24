@@ -506,6 +506,19 @@ def test_a_redraft_with_one_role_changed_updates_that_edge_alone():
     assert [(u['id'], u['value']) for u in batch[0][1]] == [('r1', ':ARG1')]
 
 
+def test_a_redraft_of_the_stored_graph_writes_nothing_and_says_so():
+    """HUNT-recent 20: the count write_graphs returns is what the run
+    reports as drafted, so a redraft identical to the stored graph is not."""
+    from plaid_client.testing import FakeClient
+    raw = _stored_graph()
+    client = FakeClient([raw])
+    assert write_graphs(client, resolve_layers(raw), _stored_plan(_read(raw)),
+                        {'prov': 'inferred'}) == 0
+    assert client.batches == []
+    assert write_graphs(client, resolve_layers(raw), _stored_plan(_read(raw), role=':ARG1'),
+                        {'prov': 'inferred'}) == 1
+
+
 def test_a_redraft_that_drops_a_node_deletes_its_anchor_alone():
     from plaid_client.testing import FakeClient
     raw = _stored_graph()

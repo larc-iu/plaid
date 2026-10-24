@@ -440,10 +440,8 @@ class UmrDraftService(BaseService):
             # document does not carry. Context only: a project that has not set one
             # is drafted without it rather than refused. A read that fails fails
             # the run.
-            language = ''
-            if run.project_id:
-                progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
-                language = project_language(self.client.projects.get(run.project_id))
+            progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
+            language = project_language(self.client.projects.get(run.project_id))
             progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
             stamp_detail = machine_detail(self.version, **self.model.describe(),
