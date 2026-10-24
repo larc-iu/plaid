@@ -71,9 +71,17 @@ def _strips(form, morph_type):
     return None
 
 
+# JS's \s spelled out, which Python's \s is not (it adds \x1c to \x1f and
+# \x85 and leaves out \ufeff), so both clients read the same forms as free text.
+_SPACE = re.compile('[\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]')
+
+
 def _marked_type(form):
+    # A form whose bare middle holds whitespace is free text ("-du, du-"), so
+    # its markers name no type and stay.
     m = _MARKED.fullmatch(form)
-    morph_type = m and _TYPE_BY_MARKERS.get((m.group(1), m.group(3)))
+    morph_type = (m and not _SPACE.search(m.group(2))
+                  and _TYPE_BY_MARKERS.get((m.group(1), m.group(3))))
     return {'form': m.group(2), 'morphType': morph_type} if morph_type else None
 
 
@@ -82,15 +90,22 @@ def entry_form(morph_type, form):
     person, a file or a model gave, as ``{'form', 'morphType'}``.
 
     A form carrying its type's markers loses them ("-s" of a suffix is "s"). A
-    form carrying "-" or "=" markers that name a type loses them and takes
-    that type, whatever type came with it: "-s" given as a stem, or with no
-    type, is the suffix "s". Any other form is kept as written with the type
-    it came with, returned as given ("*kwa" with no type stays "*kwa").
+    form carrying "-" or "=" markers that name a type loses them. When a type
+    in MORPH_TYPES came with the form, that type is kept ("theŋjən-" given as
+    a bound stem is the bound stem "theŋjən"), and only when none came do the
+    markers set it ("-s" with no type is the suffix "s"). Any other form, a
+    free-text one with whitespace inside its markers among them, is kept as
+    written with the type it came with, returned as given ("*kwa" with no type
+    stays "*kwa").
     """
     if not isinstance(form, str) or form == '':
         return {'form': form, 'morphType': morph_type}
     own = morph_type.lower() if isinstance(morph_type, str) else ''
-    bare = _strips(form, own) if own in MORPH_TYPES else None
+    given = own in MORPH_TYPES
+    bare = _strips(form, own) if given else None
     if bare is not None:
         return {'form': bare, 'morphType': morph_type}
-    return _marked_type(form) or {'form': form, 'morphType': morph_type}
+    marked = _marked_type(form)
+    if not marked:
+        return {'form': form, 'morphType': morph_type}
+    return {'form': marked['form'], 'morphType': morph_type} if given else marked

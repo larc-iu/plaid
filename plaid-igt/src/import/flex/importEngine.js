@@ -354,8 +354,7 @@ export async function importLexicon({
     // when one exists, else the lexeme form; when they differ, the lexeme
     // form is kept as metadata.
     const lexemeForm = pickWs(entry.forms);
-    // Stored without affix or clitic markers, the markers naming the type
-    // when a citation form was typed with them.
+    // Stored without affix or clitic markers, FLEx's type kept (R38).
     const { form, morphType } = entryForm(
       entry.morphType ?? null,
       pickWs(entry.citationForm) ?? lexemeForm,

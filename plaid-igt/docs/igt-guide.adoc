@@ -392,7 +392,7 @@ Every entry has a **Form**, its reference form or headword, which is required.
 Beyond the form, an entry carries a set of fields.
 A new vocabulary starts with a few built in:
 
-* **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines. An entry's form is stored without affix markers: typed or imported as -s, it is the suffix s.
+* **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines. An entry's form is stored without affix markers. Typed or imported as -s with no morph type, it is the suffix s. Given a morph type, as a FLEx import or the entry form gives one, it keeps that type: a bound stem written theŋjən- is the bound stem theŋjən. A form with spaces inside its markers, such as -du, du-, is kept as written.
 * **Gloss**: the entry's gloss, offered as a guess in each field whose lexicon field is Gloss.
 * **POS**: the entry's part of speech.
 * **Definition**: a fuller definition or note.

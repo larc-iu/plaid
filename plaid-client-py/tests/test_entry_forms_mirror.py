@@ -22,7 +22,10 @@ JS = os.path.abspath(os.path.join(HERE, '..', '..', 'plaid-client-js', 'src', 'e
 
 TYPES = [None, '', 'Suffix', 'Martian', 3, *MORPH_TYPES]
 FORMS = ['s', '-s', 's-', '-s-', '=ni', 'ni=', '=ni=', '*kwa', '~H~', '-', '=', '--', '-=', 'a-b',
-         '=a-', '-a=', '\n-s', '-s\n', '-𝑥', '𝑥', 'ka- ', '', None, '--s', 'ʔ-']
+         '=a-', '-a=', '\n-s', '-s\n', '-𝑥', '𝑥', 'ka- ', '', None, '--s', 'ʔ-',
+         # R38: a given type stays, and free text with whitespace inside its markers is left alone.
+         'theŋjən-', '=čhí', '*pa-', '-du, du-', 'nai (preferred: năi) / na-', '-a b',
+         '-a\u00a0b', '-a\ufeffb', '-a\x85b', '-a\x1cb', '-a\u3000b']
 CASES = [[t, f] for t in TYPES for f in FORMS]
 
 
@@ -55,7 +58,10 @@ def test_a_form_is_decorated_as_the_js_client_decorates_it(js):
 def test_the_rule():
     assert entry_form('suffix', '-s') == {'form': 's', 'morphType': 'suffix'}
     assert entry_form(None, 'ni=') == {'form': 'ni', 'morphType': 'proclitic'}
-    assert entry_form('stem', '-s') == {'form': 's', 'morphType': 'suffix'}
+    assert entry_form('stem', '-s') == {'form': 's', 'morphType': 'stem'}
+    assert entry_form('bound stem', 'theŋjən-') == {'form': 'theŋjən', 'morphType': 'bound stem'}
+    assert entry_form('', '-s') == {'form': 's', 'morphType': 'suffix'}
+    assert entry_form(None, '-du, du-') == {'form': '-du, du-', 'morphType': None}
     assert entry_form('bound root', '*pa') == {'form': 'pa', 'morphType': 'bound root'}
     assert entry_form(None, '*kwa') == {'form': '*kwa', 'morphType': None}
     assert entry_form('stem', 'perro') == {'form': 'perro', 'morphType': 'stem'}

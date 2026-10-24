@@ -24,13 +24,34 @@ test("a form carrying its type's markers loses them", () => {
   }
 });
 
-test("dash and equals markers set the type, whatever type came with the form", () => {
+test("dash and equals markers set the type only when no type came with the form", () => {
   assert.deepEqual(entryForm(null, "-s"), { form: "s", morphType: "suffix" });
   assert.deepEqual(entryForm(undefined, "ni="), { form: "ni", morphType: "proclitic" });
-  assert.deepEqual(entryForm("stem", "-s"), { form: "s", morphType: "suffix" });
-  assert.deepEqual(entryForm("suffix", "=ni"), { form: "ni", morphType: "enclitic" });
-  assert.deepEqual(entryForm("clitic", "=ni"), { form: "ni", morphType: "enclitic" });
+  assert.deepEqual(entryForm("", "-s"), { form: "s", morphType: "suffix" });
+  assert.deepEqual(entryForm("Martian", "-s"), { form: "s", morphType: "suffix" });
   assert.deepEqual(entryForm(null, "-um-"), { form: "um", morphType: "infix" });
+});
+
+test("a given type is kept and dash or equals markers are stripped (R38)", () => {
+  assert.deepEqual(entryForm("stem", "-s"), { form: "s", morphType: "stem" });
+  assert.deepEqual(entryForm("bound stem", "theŋjən-"), {
+    form: "theŋjən",
+    morphType: "bound stem",
+  });
+  assert.deepEqual(entryForm("Bound Root", "pa-"), { form: "pa", morphType: "Bound Root" });
+  assert.deepEqual(entryForm("stem", "=čhí"), { form: "čhí", morphType: "stem" });
+  assert.deepEqual(entryForm("suffix", "=ni"), { form: "ni", morphType: "suffix" });
+  assert.deepEqual(entryForm("clitic", "=ni"), { form: "ni", morphType: "clitic" });
+});
+
+test("a form whose middle holds whitespace keeps its markers (R38)", () => {
+  assert.deepEqual(entryForm(null, "-du, du-"), { form: "-du, du-", morphType: null });
+  assert.deepEqual(entryForm(null, "nai (preferred: năi) / na-"), {
+    form: "nai (preferred: năi) / na-",
+    morphType: null,
+  });
+  assert.deepEqual(entryForm("stem", "-a b"), { form: "-a b", morphType: "stem" });
+  assert.deepEqual(readAffixMarkers(null, "-a b"), { form: "-a b", morphType: null });
 });
 
 test("any other form is kept as written with the type it came with", () => {

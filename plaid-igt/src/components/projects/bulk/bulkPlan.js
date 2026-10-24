@@ -152,8 +152,8 @@ export function chainText(chain, includeMorphemes) {
 
 // Lexicon entries whose form changes under `apply`. `vocabularies` is the
 // { [vocabId]: { id, name, items } } table IgtDocument uses. The new form is
-// the one an entry stores (entryForm), and a row whose markers name a type
-// other than the entry's carries it as `morphType`.
+// the one an entry stores (entryForm), and a row of an untyped entry whose
+// markers name a type carries it as `morphType`.
 export function collectLexiconRows(vocabularies, apply, canRespellIn = () => true) {
   const rows = [];
   for (const vocab of Object.values(vocabularies || {})) {
@@ -163,7 +163,7 @@ export function collectLexiconRows(vocabularies, apply, canRespellIn = () => tru
     for (const it of vocab.items || []) {
       const respelled = apply(it.form);
       if (respelled == null) continue;
-      // Stored without affix or clitic markers, the type they name with it.
+      // Stored without affix or clitic markers, which type an untyped entry.
       const own = it.metadata?.morphType ?? null;
       const read = blank(respelled)
         ? { form: respelled, morphType: own }

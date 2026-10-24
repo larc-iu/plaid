@@ -508,6 +508,28 @@ describe('importLexicon', () => {
     expect(item.metadata).not.toHaveProperty('lexemeForm');
   });
 
+  it("keeps FLEx's type for a bound stem written with a hyphen, the hyphen stripped (R38)", async () => {
+    const client = makeFakeClient();
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [
+        {
+          guid: 'e9',
+          forms: { [BASE_WS]: 'theŋjən-' },
+          citationForm: null,
+          morphType: 'bound stem',
+          homograph: 0,
+          senses: [{ guid: 's9', gloss: { en: 'collide' }, senseIndex: 0 }],
+        },
+      ],
+      baselineWs: BASE_WS,
+    });
+    const [item] = createdItems(client);
+    expect(item.form).toBe('theŋjən');
+    expect(item.metadata).toMatchObject({ morphType: 'bound stem' });
+  });
+
   it('writes variants and complex forms as references between entries', async () => {
     const client = makeFakeClient();
     const withRefs = [

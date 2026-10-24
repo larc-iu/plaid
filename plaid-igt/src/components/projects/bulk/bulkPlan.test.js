@@ -147,18 +147,22 @@ describe('collectRespellRows / respellOps', () => {
     ]);
   });
 
-  it('respells an entry to the form it stores, without markers, the type they name with it (R27)', () => {
+  it('respells an entry to the form it stores, without markers, the type they name only for an untyped entry (R27, R38)', () => {
     const vocabs = {
       v1: {
         id: 'v1',
         name: 'Lex',
-        items: [{ id: 'i1', form: 's', metadata: { morphType: 'stem' } }],
+        items: [
+          { id: 'i1', form: 's', metadata: { morphType: 'stem' } },
+          { id: 'i2', form: 's', metadata: {} },
+        ],
       },
     };
     const { apply } = buildReplacer('^s$', 'regex', '-s');
     expect(collectLexiconRows(vocabs, apply)).toEqual([
+      { id: 'i1', kind: 'lexicon', vocabId: 'v1', vocabName: 'Lex', old: 's', new: 's' },
       {
-        id: 'i1',
+        id: 'i2',
         kind: 'lexicon',
         vocabId: 'v1',
         vocabName: 'Lex',

@@ -283,7 +283,7 @@ describe('rowsToEntries', () => {
     expect(rowsToEntries(rows, [FORM], { hasHeader: false })).toHaveLength(3);
   });
 
-  it('stores an entry form without its markers, and markers set the type (R27)', () => {
+  it('stores an entry form without its markers, and markers set the type only where none was given (R27, R38)', () => {
     const marked = parseTable(
       'Form\tType\tGloss\n-s\tsuffix\tPL\nka-\t\tSBJ\n-ta\tstem\tX\nperro\t\tdog\n',
     ).rows;
@@ -294,7 +294,7 @@ describe('rowsToEntries', () => {
     expect(entries.map((e) => [e.form, e.values.morphType ?? null])).toEqual([
       ['s', 'suffix'],
       ['ka', 'prefix'],
-      ['ta', 'suffix'],
+      ['ta', 'stem'],
       ['perro', null],
     ]);
   });
