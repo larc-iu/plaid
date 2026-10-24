@@ -233,12 +233,23 @@ def _lexicon_renames(ws: Workspace, rep, earlier=()) -> List[Dict[str, Any]]:
             if it['id'] in gone:
                 continue
             stored = it.get('form') or ''
-            old = (renamed[it['id']].get('form') or '') if it['id'] in renamed else stored
-            new = rep(old)
-            if new == old or not new.strip():
+            before = renamed.get(it['id']) or {}
+            old = (before.get('form') or '') if it['id'] in renamed else stored
+            # The entry's own type, as Bulk Edit reads it, or the one an
+            # earlier rule gave it.
+            own = before.get('morph_type') or (it.get('metadata') or {}).get('morphType')
+            spelled = rep(old)
+            if spelled == old or not spelled.strip():
                 continue
-            out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new, STORED: stored,
-                        **labelled(v['name'], f'rename entry {qv(stored)} → {qv(new)}')})
+            # Stored as every entry writer stores it (R27, Bulk Edit's
+            # collectLexiconRows): without markers, the type they name where
+            # the entry's differs.
+            new, typed = stored_entry_form(spelled, own)
+            extra = {'morph_type': typed} if typed and typed != own else {}
+            if new == old and not extra:
+                continue
+            out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new, **extra, STORED: stored,
+                        **labelled(v['name'], f'rename entry {qv(stored)} → {qv(new)}{_typed_label(extra)}')})
     return out
 
 
