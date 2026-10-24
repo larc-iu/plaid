@@ -69,8 +69,8 @@ describe('Leipzig and plain text', () => {
 
   it('keeps a cell holding a tab or newline as one Leipzig word', () => {
     const out = formatLeipzig(s, F);
-    expect(out).toContain('<p>a b c</p>');
-    expect(out).toContain('<p>x y z</p>');
+    expect(out).toContain('<p>{a b} c</p>');
+    expect(out).toContain('<p>{x y} z</p>');
   });
 
   it('keeps the plain-text columns on their lines', () => {

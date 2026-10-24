@@ -298,6 +298,7 @@ const EXEMPT_NAMES = {
   // from a file it was handed at `register()`: there is no importer anywhere and
   // there cannot be one.
   'plaid-igt/e2e/live/aliasHooks.mjs:resolve': 'a node loader hook, called by the runtime',
+  'plaid-igt/e2e/live/aliasHooks.mjs:load': 'a node loader hook, called by the runtime',
   // plaid-umr's feedback.jsx is plaid-ud's, and re-exports the full set for the
   // same reason: it is the one import site for a screen's toasts.
   'plaid-umr/src/utils/feedback.jsx:notifyInfo': 'one import site for every toast form',
