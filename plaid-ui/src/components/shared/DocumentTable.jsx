@@ -18,9 +18,9 @@ import { EmptyState } from './EmptyState.jsx';
  * layer, and the column reads as a dash rather than as zero.
  *
  * `seedLayerId` is plaid-ud's token layer. A document with no words yet counts
- * its tokens instead, because opening it gives each token a word (reconcile's
- * back-fill). Without it, a project just set up for UD would read zero words
- * in every document until each was opened. A document that already has words
+ * its tokens instead, because every reader shows each token as a word until a
+ * write makes it. Without it, a document whose words another app made after
+ * the project was set up for UD would read zero words. A document that already has words
  * and gained tokens elsewhere since is not caught: asking for the tokens with
  * no word of their extent is an anti-join that took two seconds on a 250,000
  * token treebank, against 50ms for the plain counts.

@@ -312,7 +312,7 @@ try {
   // and the next UMR write to a sentence stores it (umrSettle.js).
   umr = await loadUmr();
   const version = umr.raw.version;
-  await umr.reconcileOnOpen();
+  await umr.validateOnOpen();
   umr = await loadUmr();
   check(umr.raw.version === version, 'the open writes nothing', `${version} to ${umr.raw.version}`);
   const toStore = planSettle(umr.graph, null);

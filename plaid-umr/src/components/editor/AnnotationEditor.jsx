@@ -3,8 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
 import { setupHref } from '../projects/setup.jsx';
-import { Loading } from '@ui/components/shared/Loading.jsx';
-import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
+import { useValidateOnOpen } from '@ui/hooks/useValidateOnOpen.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -37,7 +36,6 @@ export const AnnotationEditor = () => {
     project,
     services,
     writeLockHeld,
-    setChromeBusy,
     focusNonce = 0,
     comments,
     canComment,
@@ -57,13 +55,13 @@ export const AnnotationEditor = () => {
 
   useDocumentTitle('Annotate', doc?.name, project?.name);
 
-  // The open's gate, which writes nothing (what another app's edit left is
+  // The check on open, which writes nothing (what another app's edit left is
   // read right and stored by the next UMR write, umrSettle.js), and enters
   // strict mode. Strict mode OCC-guards annotation edits, as in plaid-ud:
   // every write carries the document's version, so an edit made over another
   // person's newer one is refused with a 409 and the page resyncs, where it
   // silently overwrote theirs (or minted a variable they had just taken).
-  const reconciling = useReconcileOnOpen({
+  useValidateOnOpen({
     doc,
     asOf,
     canWrite: canEditProject(project, user),
@@ -93,14 +91,6 @@ export const AnnotationEditor = () => {
   // or it leaks onto unrelated writes (a copy on Details, a rename) with a
   // stale document-version and spurious 409s.
   useEffect(() => () => getClient()?.exitStrictMode(), [documentId, getClient]);
-
-  // Lock the shell's tab strip for as long as the body is a spinner: a tab
-  // switch mid-repair would leave the repair writing under a screen that has
-  // moved on.
-  useEffect(() => {
-    setChromeBusy(reconciling);
-    return () => setChromeBusy(false);
-  }, [reconciling, setChromeBusy]);
 
   const activeDocument = shown?.raw;
 
@@ -158,7 +148,7 @@ export const AnnotationEditor = () => {
   // Read the PROJECT's layers, never the open document's. During time travel
   // `layerInfo` is the structure as it was at that moment, which for an early
   // enough entry predates the setup and is not a statement about the project.
-  if (!reconciling && project && !getUmrLayerInfo(project).isConfigured) {
+  if (project && !getUmrLayerInfo(project).isConfigured) {
     return (
       <div className="min-h-screen w-full">
         <div className="flex justify-center py-16">
@@ -175,15 +165,11 @@ export const AnnotationEditor = () => {
 
   return (
     <div className="min-h-screen w-full">
-      {/* Only the BODY waits here: the breadcrumbs and tab strip are the
-          shell's and stay on screen throughout. */}
-      {reconciling && <Loading label="Checking this document…" className={DOC_GUTTER} />}
-
-      {!reconciling && !activeDocument && (
+      {!activeDocument && (
         <p className="py-10 text-center text-muted-foreground">Document not found</p>
       )}
 
-      {!reconciling && activeDocument && (
+      {activeDocument && (
         <>
           {/* The canvas reads the same `shown` document, so it draws a past
               state as readily as the live one. */}

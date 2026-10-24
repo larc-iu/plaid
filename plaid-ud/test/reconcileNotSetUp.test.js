@@ -45,7 +45,7 @@ test("a maintainer's open of a document in a project not set up for UD writes no
   });
   assert.equal(doc.layerInfo.isConfigured, false);
   assert.ok(doc.layerInfo.wordTokenLayer, 'the word layer the back-fill wrote to is there');
-  const result = await doc.reconcileOnOpen();
+  const result = await doc.validateOnOpen();
   assert.deepEqual(result.findings, []);
   assert.equal(result.error, undefined);
   assert.deepEqual(

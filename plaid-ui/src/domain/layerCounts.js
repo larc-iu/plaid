@@ -10,9 +10,10 @@
  *
  * `seedLayerId(project)` is plaid-ud's token layer, and counts the way
  * DocumentTable's `seedLayerId` does: a document with no words yet counts its
- * tokens, because opening it gives each token a word (reconcile's back-fill).
- * Without it, a project just set up for UD from another app reads zero words
- * on this list and the token count on its own document list. That takes the
+ * tokens, because every reader shows each token as a word until a write makes
+ * it. Without it, a document whose words another app made after the project
+ * was set up for UD reads zero words on this list and the token count on its
+ * own document list. That takes the
  * counts per document, which is several times slower than per layer across
  * every project, so it is asked only for a project with fewer words than
  * tokens. A project whose multi-word tokens make up for an unopened

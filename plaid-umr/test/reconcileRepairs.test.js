@@ -122,7 +122,7 @@ function replay(raw, calls) {
 // it after, which has nothing left to store.
 async function storedByAWrite(loaded, index) {
   const { doc, calls, raw } = loaded;
-  await doc.reconcileOnOpen();
+  await doc.validateOnOpen();
   assert.deepEqual(
     calls.filter((c) => c.name !== 'operation'),
     [],
@@ -196,7 +196,7 @@ test('an open leaves a node-layer token with no node on it alone', async () => {
   const { doc, calls } = load((raw, L) => {
     L.nodes.tokens.push({ id: 'bare', begin: 0, end: 10 });
   });
-  await doc.reconcileOnOpen();
+  await doc.validateOnOpen();
   assert.equal(calls.filter((c) => c.name !== 'operation').length, 0);
 });
 

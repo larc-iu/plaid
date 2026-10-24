@@ -245,8 +245,8 @@ try {
 
   // the IGT invariant holds as imported: no findings on open, and no
   // morpheme linked to a typed entry stores a type of its own
-  const heal = await doc.reconcileOnOpen();
-  check((heal.findings ?? []).length === 0, 'reconcileOnOpen finds nothing', JSON.stringify(heal));
+  const heal = await doc.validateOnOpen();
+  check((heal.findings ?? []).length === 0, 'validateOnOpen finds nothing', JSON.stringify(heal));
   const copies = sentences
     .flatMap((s) => s.tokens)
     .flatMap((t) => t.morphemes ?? [])

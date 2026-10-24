@@ -246,8 +246,8 @@ describe('the details screen over a document that adds nothing of its own', () =
 });
 
 // A study reads the audit log as its record, so an operation says what kind
-// it is where the lifecycle knows: a repair on open, and whatever kind a
-// subclass hands a queued write (igt's guess adoption).
+// it is where the lifecycle knows: whatever kind a subclass hands a queued
+// write (igt's guess adoption).
 describe('the kind of operation a document writes under', () => {
   const tagging = () => {
     const opts = [];
@@ -259,18 +259,6 @@ describe('the kind of operation a document writes under', () => {
     };
     return { opts, client };
   };
-
-  it('a repair on open is one operation of kind repair', async () => {
-    const { opts, client } = tagging();
-    class Healing extends Doc {
-      async _reconcile() {
-        return {};
-      }
-    }
-    const doc = new Healing({ raw: { id: 'd1', name: 'One', metadata: {} }, client });
-    await doc.reconcileOnOpen();
-    expect(opts).toEqual([['Repair on open', { kind: 'repair' }]]);
-  });
 
   it('a queued write carries the kind and ref it was given', async () => {
     const { opts, client } = tagging();

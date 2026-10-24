@@ -102,8 +102,8 @@ const IGT_SHELL = {
     query: { fallback: 'baseline', landing },
   },
   renderTab: (tab, context) => <DocumentBody tab={tab} context={context} />,
-  // The repair on open is about the document, whatever tab it opens on.
-  reconcileOnOpen: true,
+  // The check on open is about the document, whatever tab it opens on.
+  validateOnOpen: true,
   // The Analyze grid says how its saves are going itself.
   saveStatus: false,
   roleWords: TOKEN_ROLE_WORDS,

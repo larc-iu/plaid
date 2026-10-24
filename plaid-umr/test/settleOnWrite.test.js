@@ -107,7 +107,7 @@ test('opening a document with something of every kind to store writes nothing', 
   // A real open on a recording client sends nothing either.
   const { client, calls } = recordingClient();
   const open = new UmrDocument({ raw: structuredClone(raw), client, lexicon });
-  await open.reconcileOnOpen();
+  await open.validateOnOpen();
   assert.deepEqual(
     calls.filter((c) => c.name !== 'operation'),
     [],

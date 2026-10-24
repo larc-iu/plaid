@@ -74,7 +74,7 @@ const renamed = (doc) =>
 const stores = (doc) => planSettle(doc.graph, null, { lexicon: doc.lexicon });
 // Whether the open sent any write.
 const openWrites = async (doc, calls) => {
-  await doc.reconcileOnOpen();
+  await doc.validateOnOpen();
   return calls.filter((c) => c.name !== 'operation').length > 0;
 };
 

@@ -185,12 +185,6 @@ describe('DocumentTabStrip', () => {
       globalThis.ResizeObserver = Real;
     }
   });
-
-  it('turns every tab into a disabled button while the body is busy', async () => {
-    await mount({ document: { name: 'One' }, disabled: true });
-    const tabs = all(view.container, '[role="tab"]');
-    expect(tabs.every((t) => t.tagName === 'BUTTON' && t.disabled)).toBe(true);
-  });
 });
 
 describe('the pinned row, once the heading has scrolled away', () => {

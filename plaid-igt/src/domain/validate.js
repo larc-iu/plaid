@@ -1,6 +1,6 @@
 // Load-time invariant checker for IGT documents.
 //
-// Runs when a document opens (IgtDocument._reconcile, which writes nothing)
+// Runs when a document opens (IgtDocument.validateOnOpen, which writes nothing)
 // and reports anything wrong. It is deliberately NARROW: plaid-core already
 // enforces the structural invariants at write time — token extent bounds
 // (begin<=end, within text), referential integrity (spans reference existing

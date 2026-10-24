@@ -362,7 +362,7 @@ export const nothingToStore = async (raw, options) => {
 export const openWritesNothing = async (raw) => {
   const before = JSON.stringify(raw);
   const doc = new UmrDocument({ raw: structuredClone(raw), client: memoryClient(raw) });
-  await doc.reconcileOnOpen();
+  await doc.validateOnOpen();
   return JSON.stringify(raw) === before;
 };
 

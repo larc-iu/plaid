@@ -182,7 +182,7 @@ test('an open declares no rule, repairs nothing, sets no key and deletes no supp
         metadata: { suppress: true },
       },
     ];
-    const result = await doc._reconcile();
+    const result = await doc.validateOnOpen();
     assert.equal(result.error, undefined);
     return calls;
   };

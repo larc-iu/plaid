@@ -22,7 +22,7 @@ const writes = (client) =>
       !/\.get$/.test(c.kind),
   );
 
-describe('IgtDocument.reconcileOnOpen', () => {
+describe('IgtDocument.validateOnOpen', () => {
   it('writes nothing for a bare word, which derives a morpheme of its own', async () => {
     const raw = buildRawDoc({ words: twoWords, morphemes: [m('m-1', 0, 3)] });
     const client = makeFakeClient();
@@ -32,7 +32,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
       client,
     });
 
-    const res = await doc.reconcileOnOpen();
+    const res = await doc.validateOnOpen();
 
     expect(res.findings).toEqual([]);
     expect(writes(client)).toEqual([]);
@@ -65,7 +65,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
       client,
     });
 
-    const res = await doc.reconcileOnOpen();
+    const res = await doc.validateOnOpen();
 
     expect(res.findings).toEqual([]);
     expect(writes(client)).toEqual([]);

@@ -149,7 +149,7 @@ const settleQueue = async () => {
 test("a writer's open of a document whose words lack a UD word writes nothing", async () => {
   const { client, sent } = recording();
   const { doc } = writer(bare(['the', 'dog', 'barks']), client);
-  const result = await doc.reconcileOnOpen();
+  const result = await doc.validateOnOpen();
   assert.deepEqual(result.findings, []);
   assert.deepEqual(sent, []);
   // Each word still has its row, under its stand-in.

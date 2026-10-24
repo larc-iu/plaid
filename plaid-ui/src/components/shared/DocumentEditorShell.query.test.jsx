@@ -18,14 +18,12 @@ vi.mock('../../lib/integrityToast.js', () => ({
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), logout: vi.fn(), user: { id: 'u1' } }));
 vi.mock('../../contexts/useAuth.js', () => ({ useAuth: () => auth }));
 vi.mock('../../domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
-// The strip as data: which tab it marks, whether it is inert, and each tab's
-// address.
+// The strip as data: which tab it marks and each tab's address.
 vi.mock('./DocumentTabStrip.jsx', () => ({
-  DocumentTabStrip: ({ tabs, active, disabled, project, failed }) => (
+  DocumentTabStrip: ({ tabs, active, project, failed }) => (
     <div
       data-testid="strip"
       data-active={active}
-      data-disabled={String(disabled)}
       data-project={project?.name ?? ''}
       data-failed={String(!!failed)}
     >
@@ -60,10 +58,7 @@ vi.mock('../assistant/subject.js', () => ({
   useAskAssistant: () => () => {},
   useAssistantSubject: () => {},
 }));
-const repair = vi.hoisted(() => ({ running: false }));
-vi.mock('../../hooks/useReconcileOnOpen.js', () => ({
-  useReconcileOnOpen: () => repair.running,
-}));
+vi.mock('../../hooks/useValidateOnOpen.js', () => ({ useValidateOnOpen: () => {} }));
 const past = vi.hoisted(() => ({ asOf: null }));
 vi.mock('../../hooks/useHistoryView.js', () => ({
   useHistoryView: () => ({
@@ -160,7 +155,6 @@ const href = (value) =>
 
 beforeEach(() => {
   past.asOf = null;
-  repair.running = false;
   auth.getClient.mockReturnValue({
     projects: { get: vi.fn(async () => ({ id: 'p1', name: 'Project' })) },
   });
@@ -239,24 +233,6 @@ describe('a document whose tab is in the query', () => {
   });
 });
 
-describe('the repair on open', () => {
-  it('holds the body and the tabs while the shell runs it', async () => {
-    repair.running = true;
-    await mount(['/p/p1/d/d1?tab=analyze'], { config: app({ reconcileOnOpen: true }) });
-    expect(body()).toBe(null);
-    expect(strip().dataset.disabled).toBe('true');
-    await view.unmount();
-  });
-
-  it('holds nothing where the app runs it from a tab', async () => {
-    repair.running = true;
-    await mount(['/p/p1/d/d1?tab=analyze']);
-    expect(body()).toBe('analyze');
-    expect(strip().dataset.disabled).toBe('false');
-    await view.unmount();
-  });
-});
-
 describe('a document whose tab is in the path', () => {
   it('leaves a `?tab=` it does not own alone', async () => {
     const config = app({ tabs: { ...app().tabs, query: undefined }, renderTab: undefined });
@@ -285,23 +261,19 @@ describe('a document whose tab is in the path', () => {
 describe('a document that fails to load', () => {
   const refused = (status) =>
     app({
-      reconcileOnOpen: true,
+      validateOnOpen: true,
       loadDocument: async () => {
         throw Object.assign(new Error(`HTTP ${status}`), { status });
       },
     });
 
   it('shows the error alone, under its project, with nothing loading and no toast', async () => {
-    // The repair hook answers true until it has a document.
-    repair.running = true;
     stores.made = 0;
     notify.notifyError.mockClear();
     await mount(['/p/p1/d/d1?tab=media'], { config: refused(403) });
     await view.step(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(view.container.textContent).not.toContain('Checking this document');
-    expect(strip().dataset.disabled).toBe('false');
     expect(strip().dataset.project).toBe('Project');
     expect(strip().dataset.failed).toBe('true');
     expect(view.container.querySelector('[role="alert"]').textContent).toBe(

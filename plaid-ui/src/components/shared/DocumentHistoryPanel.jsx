@@ -10,8 +10,6 @@ import { RestoreDialog } from './RestoreDialog.jsx';
  * which the restore compares the past state against. `canRestore` is the app's
  * (maintainers, and never while a service run is writing). `roleWords` and
  * `layerWords` name the app's layers in the restore's list of changes.
- * `afterRestore` is what the app writes once a restore (or its Undo) lands,
- * see RestoreDialog.
  */
 export const DocumentHistoryPanel = ({
   history,
@@ -21,7 +19,6 @@ export const DocumentHistoryPanel = ({
   canRestore,
   roleWords,
   layerWords,
-  afterRestore,
 }) => (
   <>
     <HistoryDrawer
@@ -49,7 +46,6 @@ export const DocumentHistoryPanel = ({
       layerWords={layerWords}
       entry={history.restoreEntry}
       onRestored={history.handleRestored}
-      afterRestore={afterRestore}
     />
   </>
 );

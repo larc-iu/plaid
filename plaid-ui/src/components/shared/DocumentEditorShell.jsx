@@ -15,9 +15,8 @@ import { useAskAssistant, useAssistantSubject } from '../assistant/subject.js';
 import { useResumedRun } from '../../hooks/useResumedRun.js';
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 import { useTabParam } from '../../hooks/useTabParam.js';
-import { useDelayedFlag } from '../../hooks/useDelayedFlag.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
-import { useReconcileOnOpen } from '../../hooks/useReconcileOnOpen.js';
+import { useValidateOnOpen } from '../../hooks/useValidateOnOpen.js';
 import { RunBanner } from '../services/RunBanner.jsx';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { dismissIntegrityFindings } from '../../lib/integrityToast.js';
@@ -79,12 +78,11 @@ import { cn } from '../../lib/utils.js';
 //   none (or nothing, to stay on the fallback). Every tab writes itself there,
 //   the fallback included, since a bare address means "no tab chosen".
 // - `renderTab(tab, context)`: the body, where the tab is in the query.
-// - `reconcileOnOpen`: true to repair the document on open here, for every
-//   tab, holding the body behind a spinner and the tabs inert meanwhile. An
-//   app that repairs from one tab does it there (`setChromeBusy`).
+// - `validateOnOpen`: true to have the shell check the document when it
+//   opens (useValidateOnOpen), for every tab. An app that checks from one tab
+//   does it there.
 // - `saveStatus`: false for an app whose editor shows a save pill of its own.
-// - `roleWords`, `layerWords`, `afterRestore(doc)`: History's words for the
-//   app's rows, and what the app writes once a restore lands.
+// - `roleWords`, `layerWords`: History's words for the app's rows.
 // - `focusParams(focus)`: the URL params a citation's focus opens, or null
 //   when it names nothing on this page. Or `useFocusHere({ documentId,
 //   onEditor })`, a hook answering the citation itself (`onFocusHere`).
@@ -114,7 +112,7 @@ const loadErrorText = (err) => {
 };
 
 // Keyed by document, so opening another document starts from nothing: no
-// history rail, no past state and no busy flag carried over from the last one.
+// history rail and no past state carried over from the last one.
 export const DocumentEditorShell = ({ app, client }) => {
   const { documentId } = useParams();
   return <DocumentEditor key={documentId} app={app} documentClient={client} />;
@@ -133,10 +131,6 @@ const DocumentEditor = ({ app, documentClient }) => {
   const [loadedProject, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  // The tab strip is chrome, so it survives a tab switch, but it must not be
-  // clickable while the body is repairing the document (DocumentTabStrip). The
-  // child raises this through the outlet context.
-  const [chromeBusy, setChromeBusy] = useState(false);
   // authService keeps one client, so this is the same object every render.
   const client = documentClient ?? (user ? getClient() : null);
 
@@ -338,26 +332,16 @@ const DocumentEditor = ({ app, documentClient }) => {
     if (to && to !== queryTab) setQueryTab(to, { replace: true });
   }, [doc, history.asOf, query, queryTab, setQueryTab]);
 
-  // The repair on open, where the app has the shell run it: the tabs are inert
-  // and the body waits, since the repair writes and no tab may be edited while
-  // it is still healing. A document with nothing to heal plans entirely
-  // locally and lowers the gate in a microtask, so the SPINNER waits on a
-  // delayed flag: a pass over before anyone could read it shows nothing.
-  const reconciling =
-    useReconcileOnOpen({
-      doc: app.reconcileOnOpen ? doc : null,
-      asOf: history.asOf,
-      canWrite: canEditProject(project, user),
-    }) &&
-    !!app.reconcileOnOpen &&
-    // Nothing to check without a document: one that failed to load shows its
-    // error alone.
-    !!doc;
-  const showReconcileSpinner = useDelayedFlag(reconciling);
-  const busy = chromeBusy || reconciling;
+  // The check on open, where the app has the shell run it. It writes
+  // nothing, so nothing waits on it.
+  useValidateOnOpen({
+    doc: app.validateOnOpen ? doc : null,
+    asOf: history.asOf,
+    canWrite: canEditProject(project, user),
+  });
 
-  // The integrity notice the editor raises never expires, because an
-  // unrepaired document is a standing fact. It is about one DOCUMENT, not about
+  // The integrity notice the check raises never expires, because what it
+  // found is a standing fact. It is about one DOCUMENT, not about
   // one tab: it belongs to the shell, which survives a tab switch. Leaving the
   // document, or opening another one, takes it with us.
   useEffect(() => () => dismissIntegrityFindings(), [documentId]);
@@ -467,7 +451,6 @@ const DocumentEditor = ({ app, documentClient }) => {
     services,
     writeLockHeld: writeLock.held,
     acquireWriteLock: writeLock.acquire,
-    setChromeBusy,
     assistantAvailable,
     askAssistant,
     focusNonce,
@@ -487,13 +470,12 @@ const DocumentEditor = ({ app, documentClient }) => {
         canRestore={canManageProject(project, user) && !writeLock.held}
         roleWords={app.roleWords}
         layerWords={app.layerWords}
-        afterRestore={app.afterRestore && (() => app.afterRestore(docRef.current))}
       />
 
       {/* The way into History at the window's left edge, the twin of the
           assistant's on the right (EdgeRail). The button in the tab row is
           the named way in. */}
-      {!history.drawerOpen && doc && !busy && (
+      {!history.drawerOpen && doc && (
         <EdgeRail
           side="left"
           label="Open history"
@@ -521,7 +503,6 @@ const DocumentEditor = ({ app, documentClient }) => {
           count: t.value === 'comments' ? (comments?.count ?? 0) : 0,
         }))}
         active={tab}
-        disabled={busy}
         status={doc && app.saveStatus !== false ? <SaveStatus doc={doc} /> : null}
         sticky
         inset={DOC_GUTTER}
@@ -534,7 +515,7 @@ const DocumentEditor = ({ app, documentClient }) => {
             className="gap-1.5"
             onClick={history.drawerOpen ? history.closeHistory : history.openHistory}
             aria-expanded={history.drawerOpen}
-            disabled={!doc || busy}
+            disabled={!doc}
           >
             <History className="h-4 w-4" /> History
           </Button>
@@ -554,9 +535,7 @@ const DocumentEditor = ({ app, documentClient }) => {
         </div>
       )}
 
-      {(loading || showReconcileSpinner) && (
-        <Loading label={loading ? undefined : 'Checking this document…'} className={DOC_GUTTER} />
-      )}
+      {loading && <Loading className={DOC_GUTTER} />}
 
       {!loading && (loadError || !doc || !project) && (
         <div className={wide ? DOC_GUTTER : cn('max-w-[1320px]', DOC_GUTTER)}>
@@ -569,7 +548,7 @@ const DocumentEditor = ({ app, documentClient }) => {
       {/* The PAGE scrolls, whether or not the assistant is open. The panel is
           fixed in the shell and takes a gutter on the right, so this layout
           does not change when it opens. */}
-      {!loading && !reconciling && !loadError && doc && project && (
+      {!loading && !loadError && doc && project && (
         // Always this div, its class alone changing with the tab: a
         // wrapper that came and went would remount the tab under it.
         <div className={wide ? undefined : cn('max-w-[1320px] pb-8', DOC_GUTTER)}>
