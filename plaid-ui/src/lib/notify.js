@@ -1,5 +1,10 @@
 import { toast } from 'sonner';
-import { humanizeError, isUnknownOutcome, UNKNOWN_OUTCOME_TITLE } from './errors.js';
+import {
+  humanizeError,
+  isUnknownOutcome,
+  saysUnknownOutcome,
+  UNKNOWN_OUTCOME_TITLE,
+} from './errors.js';
 
 // The package's own toast primitives, for the screens that live here and for
 // both apps, whose `utils/feedback` modules re-export them. No domain class
@@ -14,15 +19,16 @@ export const notifySuccess = (message, title, options) =>
 // message where there is not, so a status reads as one sentence in every app
 // and no toast shows an internal URL or a bare id. A write whose answer was
 // lost did not fail as far as anyone knows, so its title says so instead of
-// the caller's "Failed to ...".
+// the caller's "Failed to ...", whether the caller handed over the error or
+// the sentence humanizeError made of it.
 //
 // With no title the message itself is the title: a generic "Error" or
 // "Warning" says nothing the toast's colour does not.
 export const notifyError = (message, title, options) => {
-  if (isUnknownOutcome(message)) {
-    return toast.error(UNKNOWN_OUTCOME_TITLE, { description: humanizeError(message), ...options });
-  }
   const said = humanizeError(message);
+  if (isUnknownOutcome(message) || saysUnknownOutcome(said)) {
+    return toast.error(UNKNOWN_OUTCOME_TITLE, { description: said, ...options });
+  }
   return toast.error(title || said, { ...(title ? { description: said } : {}), ...options });
 };
 

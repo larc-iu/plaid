@@ -8,6 +8,7 @@ const toast = Object.assign(vi.fn(), {
 vi.mock('sonner', () => ({ toast }));
 
 const { notifyError, notifyWarning } = await import('./notify.js');
+const { humanizeError } = await import('./errors.js');
 
 beforeEach(() => toast.error.mockClear());
 
@@ -55,5 +56,25 @@ describe('notifyError', () => {
     expect(toast.error).toHaveBeenCalledWith('Not confirmed', {
       description: 'The server did not answer in time. This change may or may not have been saved.',
     });
+  });
+
+  // R4-3-1: about 78 callers hand over humanizeError(err), a string, and the
+  // title was theirs ("Failed to delete project") over a body that said the
+  // change may have been saved.
+  it.each([502, 504, 0])('titles a humanized %s write "Not confirmed" too', (status) => {
+    const err = Object.assign(new Error(`HTTP ${status} at http://x/api/v1/projects/p1`), {
+      status,
+      method: 'DELETE',
+    });
+    notifyError(humanizeError(err), 'Failed to delete project');
+    expect(toast.error).toHaveBeenCalledWith('Not confirmed', {
+      description: 'The server did not answer in time. This change may or may not have been saved.',
+    });
+  });
+
+  it("keeps the caller's title on a humanized refusal", () => {
+    const err = Object.assign(new Error('HTTP 423 Locked'), { status: 423, method: 'POST' });
+    notifyError(humanizeError(err), 'Failed to save');
+    expect(toast.error.mock.calls[0][0]).toBe('Failed to save');
   });
 });

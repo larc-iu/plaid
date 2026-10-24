@@ -123,6 +123,11 @@ const GONE = 'Changed or removed by someone else.';
 const UNKNOWN_OUTCOME =
   'The server did not answer in time. This change may or may not have been saved.';
 
+// The sentence humanizeError words an unknown outcome with, read back: most
+// callers hand notifyError that string, not the error.
+export const saysUnknownOutcome = (message) =>
+  typeof message === 'string' && message.includes(UNKNOWN_OUTCOME);
+
 // A message that names a record by its id was written for a developer. A
 // sentence with the id swapped for a stand-in word reads broken ("Vocab item
 // this item not found"), so such a message is replaced whole: a missing
