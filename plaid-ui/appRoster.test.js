@@ -25,7 +25,6 @@ const ROSTER_FILES = {
   middleware: 'plaid-core/src/main/plaid/server/middleware.clj',
   siblingApps: 'plaid-ui/src/domain/siblingApps.js',
   appOwners: 'plaid-ui/src/domain/appOwners.js',
-  devLayout: 'dev.kdl',
 };
 
 const all = (re, text) => [...text.matchAll(re)].map((m) => m[1]);
@@ -33,7 +32,7 @@ const sorted = (xs) => [...new Set(xs)].sort();
 const tagOf = (dir) => dir.replace(/^plaid-/, '');
 
 /** Each roster, read out of its file, as sorted app tags. */
-export const readRosters = ({ pipeline, middleware, siblingApps, appOwners, devLayout }) => {
+export const readRosters = ({ pipeline, middleware, siblingApps, appOwners }) => {
   const spaDef = /\(def \^:private spa-apps (\[.*\])\)/.exec(pipeline)?.[1] ?? '';
   const spaPairs = [...spaDef.matchAll(/\["(plaid-[\w-]+)" "([\w-]+)"\]/g)];
   const rootsDef =
@@ -43,11 +42,6 @@ export const readRosters = ({ pipeline, middleware, siblingApps, appOwners, devL
     'bb/pipeline.clj spa-apps directories': sorted(spaPairs.map((m) => tagOf(m[1]))),
     'middleware.clj bundled-spa-roots': sorted(all(/"\/([\w-]+)" "[\w-]+"/g, rootsDef)),
     'middleware.clj landing page': sorted(all(/href=\\"\/([\w-]+)\/\\"/g, middleware)),
-    'dev.kdl': sorted(
-      all(/cwd "(plaid-[\w-]+)"\s*\n\s*command "npm"\s*\n\s*args "run" "dev"/g, devLayout).map(
-        tagOf,
-      ),
-    ),
     'siblingApps.js': sorted(all(/VITE_(\w+)_URL \|\|/g, siblingApps).map((t) => t.toLowerCase())),
     'siblingApps.js admin area': sorted(
       all(/adminUrl = \(\) => `\$\{(\w+)_URL\}/g, siblingApps).map((t) => t.toLowerCase()),
@@ -82,7 +76,6 @@ export const rosterProblems = (rosters, { live, withServices }) => {
   same('bb/pipeline.clj spa-apps directories', bundled, 'each app served under its own tag');
   same('middleware.clj bundled-spa-roots', bundled, why);
   same('middleware.clj landing page', bundled, why);
-  same('dev.kdl', bundled, why);
   same('siblingApps.js', sorted(live), 'the live apps');
   const admin = rosters['siblingApps.js admin area'];
   if (admin.length !== 1 || !live.includes(admin[0]))
@@ -124,7 +117,7 @@ describe('every list of the apps agrees', () => {
       `The lists of apps disagree:\n  ${problems.join('\n  ')}\n` +
         'Adding, renaming or dropping an app means every one of these: bb/pipeline.clj (spa-apps, the ' +
         'services compileall, pytest step and bundle glob), plaid-core middleware.clj (bundled-spa-roots ' +
-        'and the landing page), plaid-ui siblingApps.js, appOwners.js and src/test/apps.js, and dev.kdl. ' +
+        'and the landing page), plaid-ui siblingApps.js, appOwners.js and src/test/apps.js. ' +
         'A difference that is on purpose goes in plaid-ui/appRoster.test.js with its reason.',
     ).toEqual([]);
   });
@@ -142,7 +135,6 @@ describe('every list of the apps agrees', () => {
     const planted = {
       ...sources,
       middleware: sources.middleware.replace('"/umr" "umr"', ''),
-      devLayout: sources.devLayout.replace('cwd "plaid-dict"', 'cwd "plaid-dictionary"'),
       appOwners: sources.appOwners.replace(/\{\s*tag: 'umr'[^\n]*\n/, ''),
     };
     const problems = rosterProblems(readRosters(planted), {
@@ -151,7 +143,6 @@ describe('every list of the apps agrees', () => {
     });
     expect(problems.map((p) => p.split(' has ')[0])).toEqual([
       'middleware.clj bundled-spa-roots',
-      'dev.kdl',
       'appOwners.js',
       'bb/pipeline.clj compileall',
       'bb/pipeline.clj services pytest',
