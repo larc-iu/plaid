@@ -21,8 +21,12 @@ CORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'pl
 # after that.
 APP_WORDS = re.compile(
     r'\b(igt|interlinear|morpheme|gloss(?:ed|es|ing)?|lexicon'
-    r'|conllu|deprel|upos|lemma|treebank|dependency|feats|head'
-    r'|umr|penman|concept|coreference|re-entrancy)\b', re.I)
+    r'|ud|conll-?u|deprel|upos|lemma|treebank|dependency|feats|head'
+    r'|umr|concept|coreference|re-entrancy)\b'
+    # A name inside an identifier: `\b` cannot see `apply_penman`.
+    r'|(?<![^\W_])penman(?![^\W_])', re.I)
+# Grew is UD's query language and also an English verb ("the reads grew").
+APP_NAMES = re.compile(r'\bGrew\b|\bgrew_')
 
 
 def _core_files():
@@ -35,12 +39,48 @@ def test_the_core_names_no_app():
     for name in _core_files():
         with open(os.path.join(CORE, name), encoding='utf-8') as fh:
             for n, line in enumerate(fh, 1):
-                found = APP_WORDS.search(line)
+                found = APP_WORDS.search(line) or APP_NAMES.search(line)
                 if found:
                     offences.append(f'{name}:{n}: {found.group(0)} in {line.strip()!r}')
     assert not offences, (
         'plaid_agent/core says what an app annotates:\n  ' + '\n  '.join(offences)
         + '\nMove the app\'s word to the app, and give the core a hook or a parameter for it.')
+
+
+def _app_only_names():
+    """Every tool and op-kind name one app alone declares and the core does
+    not: a core that names one knows that app."""
+    import importlib
+    from collections import Counter
+    apps = Counter()
+    for app in ('igt', 'ud', 'umr'):
+        tools = importlib.import_module(f'plaid_agent.{app}.toolkit').TOOLS
+        apps.update({t['function']['name'] for t in tools} | set(importlib.import_module(f'plaid_agent.{app}.plan').KIND))
+    names = {n for n, count in apps.items() if count == 1}
+    core = ''
+    for name in _core_files():
+        with open(os.path.join(CORE, name), encoding='utf-8') as fh:
+            core += fh.read()
+    declared = set(re.findall(r"\bdef (\w+)\(|'(?:name|kind)': '(\w+)'", core))
+    declared = {a or b for a, b in declared}
+    # A plain word ("keep", "confirm", "link") is English as well as a name.
+    return {n for n in names - declared if '_' in n}
+
+
+def test_the_core_names_no_tool_or_kind_only_an_app_declares():
+    """APP_WORDS catches an app's vocabulary, not its tool names, so a core
+    that knew ud's ``set_head`` or ``grew_search`` passed it."""
+    names = _app_only_names()
+    assert {'set_head', 'grew_search', 'apply_penman'} <= names
+    pattern = re.compile(r'(?<!\w)(' + '|'.join(sorted(map(re.escape, names), key=len, reverse=True)) + r')(?!\w)')
+    offences = []
+    for name in _core_files():
+        with open(os.path.join(CORE, name), encoding='utf-8') as fh:
+            for n, line in enumerate(fh, 1):
+                found = pattern.search(line)
+                if found:
+                    offences.append(f'{name}:{n}: {found.group(0)} in {line.strip()!r}')
+    assert not offences, 'plaid_agent/core names an app\'s tool or kind:\n  ' + '\n  '.join(offences)
 
 
 def test_the_core_imports_no_app():

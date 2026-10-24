@@ -777,6 +777,8 @@ class Workspace(BaseWorkspace):
         return names
 
     def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
+        if op.get('kind') == 'set_span':
+            return [(op.get('layer_id'), op.get('value'))]
         if op.get('kind') == 'set_analysis':
             return [(fv.get('layer_id'), fv.get('value'))
                     for m in op.get('morphemes') or [] for fv in m.get('fields') or []]

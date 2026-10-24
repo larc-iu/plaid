@@ -179,6 +179,8 @@ class Workspace(BaseWorkspace):
         self.refuse_cycle(op, replacing=replacing)
 
     def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
+        if op.get('kind') == 'set_span':
+            return [(op.get('layer_id'), op.get('value'))]
         if op.get('kind') in ('set_head', 'set_deprel'):
             return [(self.project.relation_layer_id, op.get('deprel'))]
         return super().staged_values(op)

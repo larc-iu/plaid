@@ -2,7 +2,7 @@
 
 The tools print ``s3.w2`` (and an app's deeper parts after it). What a model
 types back is that or close to it: ``S3.W2``, ``s3:w2``, ``s3.2`` (the number a
-row carries, as CoNLL-U's ID column shows it), ``s3.w2 "casa"`` with the form
+row carries, as a tab-separated export's ID column shows it), ``s3.w2 "casa"`` with the form
 it read beside the number, or ``s3."casa"`` naming a word by its form, with
 ``#2`` for the second one spelled that way. Each of those says one thing, so
 each is read.

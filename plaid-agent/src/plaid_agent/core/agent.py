@@ -568,7 +568,7 @@ def claims_a_plan(text: Optional[str]) -> bool:
 
 # A reply that writes a tool call out as text instead of making it: small
 # local models do this often (52 of Gemma's 137 failed bench runs, BENCH-GEMMA),
-# as `set_head(...)`, `<apply_penman document=...>`, `<action>set_head</action>`
+# as `set_value(...)`, `<plan_change document=...>`, `<action>set_value</action>`
 # or a JSON object naming the tool. Only a tool this turn offers counts, and
 # only in call syntax, so a reply naming a tool in prose is not one.
 def _call_shapes(names: Iterable[str]) -> List[re.Pattern]:
@@ -580,8 +580,9 @@ def _call_shapes(names: Iterable[str]) -> List[re.Pattern]:
         rf'<\s*({n})(?=[\s>/])',
         rf'<(?:action|tool|tool_name|function|name)>\s*({n})\s*</',
         rf'"(?:name|tool|tool_name|function|action)"\s*:\s*"({n})"',
-        # A JSON object after the name, not a Grew pattern a ud reply shows
-        # under the tool's name (`grew_search {` then `pattern { ... }`).
+        # A JSON object after the name, not a pattern in an app's own query
+        # syntax that a reply shows under the tool's name (`search_tool {`
+        # then `pattern { ... }`).
         rf'(?m)^[ \t]*`?({n})`?[ \t]*\{{\s*"',
     )]
 

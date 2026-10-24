@@ -878,10 +878,8 @@ class BaseWorkspace:
         self.refuse_off_list(op)
 
     def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
-        """``(layer id, value)`` for each annotation value ``op`` writes. A
-        span's value here; an app adds the kinds of its own that carry one."""
-        if op.get('kind') == 'set_span':
-            return [(op.get('layer_id'), op.get('value'))]
+        """``(layer id, value)`` for each annotation value ``op`` writes. None
+        here: an app names the kinds of its own that carry one."""
         return []
 
     def value_rules(self, layer_id: str) -> tuple:
