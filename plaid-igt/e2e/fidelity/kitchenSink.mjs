@@ -263,8 +263,6 @@ async function addForeignLayers(client, projectId) {
   const { text, byRole } = layerIds(project);
   const words = await client.tokenLayers.create(text.id, 'Words', 'any', byRole('word').id);
   await client.tokenLayers.setConfig(words.id, PLAID_NAMESPACE, 'role', 'syntactic-word');
-  // plaid-ud's editing rule on the shared word layer (udProjectSetup.js).
-  await client.tokenLayers.setConfig(byRole('word').id, PLAID_NAMESPACE, 'splitOnSpace', true);
   const lemma = await client.spanLayers.create(words.id, 'Lemma');
   await client.spanLayers.setConfig(lemma.id, 'ud', 'lemma', true);
   const upos = await client.spanLayers.create(words.id, 'UPOS');

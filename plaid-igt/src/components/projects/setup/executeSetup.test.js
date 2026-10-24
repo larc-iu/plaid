@@ -341,6 +341,45 @@ describe('a resumed setup, token layers', () => {
   });
 });
 
+// R8 (Luke 2026-10-24): every app's setup has a space typed inside a word of
+// the shared word layer split it, on the layer it makes and on one it finds.
+describe('setup and the word layer’s splitOnSpace', () => {
+  const splits = (calls) =>
+    calls.config
+      .filter((c) => c.kind === 'token' && c.ns === PLAID_NAMESPACE && c.key === 'splitOnSpace')
+      .map((c) => [c.id, c.value]);
+
+  it('writes it on the word layer it makes, and on no other layer', async () => {
+    const { client, calls } = stub(withText([]));
+    const result = await run(client, 'p1');
+    expect(result.failures).toEqual([]);
+    const word = calls.config.find((c) => c.key === ROLE_KEY && c.value === ROLES.WORD);
+    expect(splits(calls)).toEqual([[word.id, true]]);
+  });
+
+  it('writes it on a word layer another app made without it, once', async () => {
+    const project = withText([
+      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
+      { id: 'tk-word', name: 'Tokens', config: tagged(ROLES.WORD), spanLayers: [] },
+    ]);
+    const { client, calls } = stub(project);
+    await run(client, 'p1');
+    expect(splits(calls)).toEqual([['tk-word', true]]);
+  });
+
+  it('leaves a word layer that has it alone', async () => {
+    const word = tagged(ROLES.WORD);
+    word[PLAID_NAMESPACE].splitOnSpace = true;
+    const project = withText([
+      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
+      { id: 'tk-word', name: 'Tokens', config: word, spanLayers: [] },
+    ]);
+    const { client, calls } = stub(project);
+    await run(client, 'p1');
+    expect(splits(calls)).toEqual([]);
+  });
+});
+
 describe('a resumed setup, vocabularies', () => {
   const TWO = {
     ...SETUP_DATA,

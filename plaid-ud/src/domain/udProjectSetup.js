@@ -25,9 +25,6 @@
 
 import {
   PLAID_NAMESPACE,
-  PRESERVE_ON_SPLIT_KEY,
-  SPLIT_ON_SPACE_KEY,
-  PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
   findByRole,
@@ -35,17 +32,6 @@ import {
   uuidv7,
 } from '@larc-iu/plaid-client';
 
-// Provenance survives a split, including one made by another app sharing this
-// substrate that has never heard of these keys. Declared on the layer because
-// a token born of a split is otherwise born bare, and what is lost that way
-// leaves nothing for a later reconcile to find. See the manual's "Metadata
-// Preserved Across a Split".
-// Takes whatever it writes through: the batch the bootstrap queues on, or the
-// client itself when `adoptSubstrate` writes one layer at a time.
-const declarePreserveOnSplit = (target, layerId) =>
-  target.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
-    ...PROVENANCE_KEYS,
-  ]);
 import {
   UD_NAMESPACE,
   UD_SPAN_CONFIG_KEYS,
@@ -56,12 +42,11 @@ import {
 import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js';
 import { wordsNeedingSyntacticWord } from '../utils/udReconcile.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
-
-// A space typed inside a word splits it (see the manual's "Changing a text's
-// body").
-const declareSplitOnSpace = (target, layerId) => {
-  target.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, SPLIT_ON_SPACE_KEY, true);
-};
+import {
+  declarePreserveOnSplit,
+  declareSplitOnSpace,
+  splitsOnSpace,
+} from '../../../plaid-ui/src/domain/substrateConfig.js';
 
 export const SPAN_LAYER_SPECS = [
   ['Form', UD_SPAN_CONFIG_KEYS.form],
@@ -259,7 +244,7 @@ export const adoptSubstrate = (client, page) =>
       // On a project another app made, the word layer is shared, and a space
       // typed inside one of its words then splits it for both.
       const wordLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.WORD);
-      if (wordLayer?.config?.[PLAID_NAMESPACE]?.[SPLIT_ON_SPACE_KEY] !== true) {
+      if (!splitsOnSpace(wordLayer)) {
         declareSplitOnSpace(b, wordLayerId);
       }
       const morphemeLayerId = ensureTokenLayer(ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayerId);

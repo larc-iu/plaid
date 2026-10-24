@@ -114,7 +114,7 @@ export default {
     'layers.fieldLang': PROJECT_CONFIG,
     'layers.fieldLexiconField': PROJECT_CONFIG,
     'layers.fieldTagset': PROJECT_CONFIG,
-    'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
+    'layers.splitOnSpace': PROJECT_CONFIG,
     'layers.foreignTokenLayer': foreign(
       'A token layer another app uses. The export reads the IGT roles only.',
     ),

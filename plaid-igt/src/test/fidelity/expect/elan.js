@@ -166,6 +166,16 @@ const RESERVED_PROPERTIES = new Set(['documentName', 'lastUsedAnnotationId', 'UR
 
 const schemaSteps = [
   {
+    keys: ['layers.splitOnSpace'],
+    // Setup's word layer splits a word at a typed space, whatever the source had.
+    apply(expected) {
+      const wl = layer(expected, 'token:word');
+      if (!wl) return;
+      wl.config ??= {};
+      wl.config.plaid = { ...wl.config.plaid, splitOnSpace: true };
+    },
+  },
+  {
     keys: ['layers.ignoredTokensPunctuation'],
     // The setup wizard's default rule, whatever the project had. The letter-like
     // and blacklist strips have already taken out what the rule held.

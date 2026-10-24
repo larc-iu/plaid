@@ -22,8 +22,15 @@ import {
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
+  SPLIT_ON_SPACE_KEY,
   uuidv7,
 } from '@larc-iu/plaid-client';
+import {
+  declarePreserveOnSplit,
+  declareSplitOnSpace,
+  preservesOnSplit,
+  splitsOnSpace,
+} from '../../../../../plaid-ui/src/domain/substrateConfig.js';
 // Relative (not @/) import keeps this module loadable from plain-node e2e
 // scripts, which drive the real setup against the live core.
 import {
@@ -191,10 +198,12 @@ async function executeProjectSetupImpl({
         updateProgress(pct, msg);
         const id = uuidv7();
         const plaid = { [ROLE_KEY]: role, [PRESERVE_ON_SPLIT_KEY]: [...PROVENANCE_KEYS] };
+        if (role === ROLES.WORD) plaid[SPLIT_ON_SPACE_KEY] = true;
         await client.batched((b) => {
           b.tokenLayers.create(textLayerId, name, overlapMode, parentId, undefined, { id });
           b.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
-          b.tokenLayers.setConfig(id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [...PROVENANCE_KEYS]);
+          declarePreserveOnSplit(b, id);
+          if (role === ROLES.WORD) declareSplitOnSpace(b, id);
           if (rules) {
             b.tokenLayers.setConstraints(id, IGT_NAMESPACE, rules, undefined, { expected: null });
           }
@@ -202,18 +211,15 @@ async function executeProjectSetupImpl({
         layer = { id, name, config: { [PLAID_NAMESPACE]: plaid } };
         resources[resourceKey] = layer;
       }
-      const config = layer.config?.[PLAID_NAMESPACE] || {};
       // Provenance survives a split, including one made by another app that
       // has never heard of these keys. See the manual's "Metadata Preserved
       // Across a Split" for why the layer has to say so rather than each app
       // remembering at each call site. Written whenever it is missing, so a
       // run that stopped between the two config writes is put right rather
-      // than leaving the layer without it for good.
-      if (!Array.isArray(config[PRESERVE_ON_SPLIT_KEY])) {
-        await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
-          ...PROVENANCE_KEYS,
-        ]);
-      }
+      // than leaving the layer without it for good. The word layer another
+      // app made splits a word at a typed space, as one made here does.
+      if (!preservesOnSplit(layer)) await declarePreserveOnSplit(client, layer.id);
+      if (role === ROLES.WORD && !splitsOnSpace(layer)) await declareSplitOnSpace(client, layer.id);
       return layer.id;
     };
 

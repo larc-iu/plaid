@@ -347,9 +347,9 @@ export const FEATURES = [
   },
   {
     key: 'layers.splitOnSpace',
-    what: 'the word layer splits a word at a typed space (plaid-ud declares it)',
+    what: 'the word layer splits a word at a typed space',
     detect: (s) => (wordLayer(s)?.config?.plaid?.splitOnSpace === true ? 1 : 0),
-    foreign: true,
+    bare: true,
   },
   {
     key: 'layers.foreignTokenLayer',

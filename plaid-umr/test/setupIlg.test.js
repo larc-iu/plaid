@@ -83,3 +83,33 @@ test('a project with no lines set shows none, whatever its layers are called', (
   assert.deepEqual(resolveIlg(null), []);
   assert.deepEqual(resolveIlg(undefined), []);
 });
+
+// R8 (Luke 2026-10-24): every app's setup has a space typed inside a word of
+// the shared word layer split it.
+const splitWrites = (calls) =>
+  calls.filter(
+    (c) =>
+      c.name === 'tokenLayers.setConfig' && c.args[1] === 'plaid' && c.args[2] === 'splitOnSpace',
+  );
+
+test('a new UMR project and an adopted word layer split a word at a typed space', async () => {
+  const made = fakeClient();
+  await createUmrProject(made, 'New');
+  assert.equal(splitWrites(made.calls).length, 1);
+  assert.equal(splitWrites(made.calls)[0].args[3], true);
+
+  const adopted = fakeClient();
+  await adoptSubstrate(adopted, { id: 'p4', config: {} }, substrate());
+  assert.deepEqual(
+    splitWrites(adopted.calls).map((c) => c.args),
+    [['w', 'plaid', 'splitOnSpace', true]],
+  );
+
+  const already = fakeClient();
+  const info = {
+    ...substrate(),
+    wordTokenLayer: { id: 'w', config: { plaid: { splitOnSpace: true } } },
+  };
+  await adoptSubstrate(already, { id: 'p5', config: {} }, info);
+  assert.equal(splitWrites(already.calls).length, 0);
+});

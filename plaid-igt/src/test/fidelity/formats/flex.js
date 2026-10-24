@@ -199,9 +199,8 @@ export default {
       ruling: TAGSET_RULING,
     },
     'layers.splitOnSpace': {
-      carried: false,
-      kind: 'foreign',
-      why: 'plaid-ud’s editing rule on the word layer.',
+      carried: 'changed',
+      how: "Not written. The import's setup gives the word layer splitOnSpace, as setup gives every new project.",
     },
     'layers.foreignTokenLayer': {
       carried: false,

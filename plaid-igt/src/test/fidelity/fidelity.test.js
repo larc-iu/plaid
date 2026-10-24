@@ -484,6 +484,7 @@ const CONFIG_KEYS = {
   'textLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.preserveOnSplit': notData('written by setup on every token layer'),
+  'tokenLayers plaid.splitOnSpace': covers('layers.splitOnSpace'),
   'tokenLayers plaid.ignoredTokens': covers(
     'layers.ignoredTokensPunctuation',
     'layers.ignoredTokensLetterLike',
@@ -522,6 +523,7 @@ const IDENTIFIERS = {
   ROLE_KEY: 'role',
   PRESERVE_ON_SPLIT_KEY: 'preserveOnSplit',
   IGNORED_TOKENS_KEY: 'ignoredTokens',
+  SPLIT_ON_SPACE_KEY: 'splitOnSpace',
   REVIEW_KEY: 'review',
   CONFIDENCE_KEY: 'confidence',
   IMPORT_KEY: 'import',

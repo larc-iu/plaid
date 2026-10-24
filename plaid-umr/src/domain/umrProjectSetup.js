@@ -21,24 +21,15 @@
  * layer, so its lines are the ones an import stores.
  */
 
-import {
-  PLAID_NAMESPACE,
-  PRESERVE_ON_SPLIT_KEY,
-  PROVENANCE_KEYS,
-  ROLE_KEY,
-  ROLES,
-  uuidv7,
-} from '@larc-iu/plaid-client';
+import { PLAID_NAMESPACE, ROLE_KEY, ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, UMR_LAYER_FLAGS, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { relationRules } from './umrConstraints.js';
 import { proposeIlg } from './ilg.js';
-
-// Provenance survives a split made by any app on this substrate. See the
-// manual's "Metadata Preserved Across a Split".
-const declarePreserveOnSplit = (batch, layerId) =>
-  batch.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
-    ...PROVENANCE_KEYS,
-  ]);
+import {
+  declarePreserveOnSplit,
+  declareSplitOnSpace,
+  splitsOnSpace,
+} from '../../../plaid-ui/src/domain/substrateConfig.js';
 
 // A relation of the sentence graph stays inside its sentence (umrConstraints.js).
 // The layer is new and empty, so the declaration cannot be refused.
@@ -132,6 +123,7 @@ const bootstrap = async (client, projectName) => {
       );
       b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
       declarePreserveOnSplit(b, wordLayerId);
+      declareSplitOnSpace(b, wordLayerId);
 
       // The node layer is a ROOT layer (no parent): see umrLayerUtils.js.
       b.tokenLayers.create(textLayerId, LAYER_NAMES.nodes, 'any', undefined, undefined, {
@@ -209,6 +201,12 @@ export const adoptSubstrate = async (client, project, layerInfo) => {
           hasRelations: !!layerInfo.relationLayer,
           hasDocumentGraph: !!layerInfo.documentGraphLayer,
         }) || created;
+      // A space typed inside a word of the shared word layer splits it.
+      const { wordTokenLayer } = layerInfo;
+      if (wordTokenLayer && !splitsOnSpace(wordTokenLayer)) {
+        declareSplitOnSpace(b, wordTokenLayer.id);
+        created = true;
+      }
       if (!readIlgConfig(project)) {
         b.projects.setConfig(project.id, UMR_NAMESPACE, 'ilg', proposeIlg(layerInfo), undefined, {
           expected: null,

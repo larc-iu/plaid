@@ -81,7 +81,7 @@ export default {
     'layers.fieldLang': NOT_A_VOCABULARY,
     'layers.fieldLexiconField': NOT_A_VOCABULARY,
     'layers.fieldTagset': NOT_A_VOCABULARY,
-    'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
+    'layers.splitOnSpace': NOT_A_VOCABULARY,
     'layers.foreignTokenLayer': foreign('A token layer another app uses.'),
     'layers.unscopedSpanLayer': foreign('A span layer another app made.'),
     'layers.relationLayer': foreign('Relations belong to plaid-ud.'),

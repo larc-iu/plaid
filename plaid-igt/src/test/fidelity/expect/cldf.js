@@ -479,6 +479,16 @@ export default {
       },
     },
     {
+      keys: ['layers.splitOnSpace'],
+      // Setup's word layer splits a word at a typed space, whatever the source had.
+      apply(expected) {
+        const wl = layer(expected, 'token:word');
+        if (!wl) return;
+        wl.config ??= {};
+        wl.config.plaid = { ...wl.config.plaid, splitOnSpace: true };
+      },
+    },
+    {
       keys: ['layers.ignoredTokensPunctuation'],
       // Setup's default rule, whatever rule the source had.
       apply(expected) {
