@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import services as svc_mod  # noqa: E402
+from plaid_client.http import PlaidAPIError  # noqa: E402
 
 
 class Client:
@@ -72,7 +73,7 @@ def server(monkeypatch):
 def test_a_lost_answer_with_no_request_id_is_still_running(server, status):
     answers, calls = server
     answers['submit'] = [status]
-    with pytest.raises(RuntimeError) as e:
+    with pytest.raises(PlaidAPIError) as e:
         svc_mod.request_service(Client(), 'p1', 's1', {}, timeout=5)
     assert e.value.pending is True and e.value.status == status
     assert calls == ['submit']
@@ -104,7 +105,7 @@ def test_a_request_the_server_never_had_gives_the_first_error(server):
     answers, _ = server
     answers['submit'] = [502]
     answers['attach'] = [404]
-    with pytest.raises(RuntimeError) as e:
+    with pytest.raises(PlaidAPIError) as e:
         svc_mod.request_service(Client(), 'p1', 's1', {}, timeout=5, request_id='r1')
     assert e.value.pending is True and e.value.status == 502
 
@@ -112,7 +113,7 @@ def test_a_request_the_server_never_had_gives_the_first_error(server):
 def test_a_server_error_is_the_end_of_it(server):
     answers, calls = server
     answers['submit'] = [500]
-    with pytest.raises(RuntimeError) as e:
+    with pytest.raises(PlaidAPIError) as e:
         svc_mod.request_service(Client(), 'p1', 's1', {}, timeout=5, request_id='r1')
     assert not getattr(e.value, 'pending', False)
     assert calls == ['submit']

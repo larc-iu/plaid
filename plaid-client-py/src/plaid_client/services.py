@@ -680,7 +680,9 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     how long the service may say nothing. Every event it sends starts the clock
     again, so this does not cap a long run. None, 0 or a negative number is no
     limit, as for every other timeout. Raises ``RuntimeError`` if no
-    service is currently connected (503) or the service reports an error;
+    service is currently connected (503) or the service reports an error,
+    :class:`PlaidAPIError` when the server refuses the request (its message
+    ends with the server's reason, its ``response_data`` is the body), and
     ``TimeoutError`` on timeout.
     ``on_progress``, if given, is called with each progress payload
     (``{'percent', 'message'}``).
@@ -748,14 +750,7 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
             err.not_live, err.service_id = True, service_id
             raise err
         if not resp.ok:
-            detail = _response_text(resp)
-            status = resp.status_code
-            resp.close()
-            err = RuntimeError(f'Service request failed: HTTP {status} {detail}')
-            err.status = status
-            # A proxy's 502 or 504 is no answer from the server: the request may
-            # have been taken, and the service may be running it.
-            raise _lost_answer(err) if status in (502, 504) else err
+            raise _refusal(resp, 'Service request', url, 'POST')
         return _await_stream(resp, timeout, on_progress, on_accepted)
 
     # A request whose id is known is rejoined when its answer goes missing, so
@@ -784,12 +779,7 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
     except Exception as e:
         raise _lost_answer(RuntimeError(f'Failed to attach to service request: {e}'))
     if not resp.ok:
-        detail = _response_text(resp)
-        status = resp.status_code
-        resp.close()
-        err = PlaidAPIError(f'Attach to service request failed: HTTP {status} {detail}',
-                            status=status, url=url, method='GET')
-        raise _lost_answer(err) if status in (502, 504) else err
+        raise _refusal(resp, 'Attach to service request', url, 'GET')
     return _await_stream(resp, timeout, on_progress, None)
 
 
@@ -815,11 +805,25 @@ def _stream_headers(client):
     }
 
 
-def _response_text(resp):
+def _refusal(resp, what, url, method):
+    """The error for a service route's answer that is not ok, as the JS
+    client builds it: a :class:`PlaidAPIError` whose message ends with the
+    server's reason (``{error}`` in the body), with the body as
+    ``response_data``. A proxy's 502 or 504 is no answer from the server: the
+    request may have been taken, and the service may be running it, so that
+    error is marked still running (:func:`_lost_answer`)."""
+    status = resp.status_code
+    reason = getattr(resp, 'reason', '') or ''
     try:
-        return resp.text
-    except Exception:
-        return ''
+        said = resp.json()
+    except Exception:  # noqa: BLE001 - a body that is not JSON says nothing
+        said = None
+    resp.close()
+    said = said if isinstance(said, dict) else None
+    why = f": {said['error']}" if said and isinstance(said.get('error'), str) else ''
+    err = PlaidAPIError(f'{what} failed: HTTP {status} {reason}{why}', status=status, url=url,
+                        method=method, response_data=said, status_text=reason)
+    return _lost_answer(err) if status in (502, 504) else err
 
 
 def _still_running(exc):
