@@ -6,6 +6,7 @@ import {
   serviceSource, userSource,
   REVIEW_KEY, readReview, projectRole, isReviewed, withReviewedUser, writerPolicy,
   DEFAULT_CONFIDENCE_THRESHOLD, readConfidenceThreshold, machineProb, isDoubtful,
+  VALUE_PROBS_KEY, FORM_PROBS_KEY, readValueProbs,
 } from '../src/provenance.js';
 import { mergeMetadata } from '../src/metadataOps.js';
 
@@ -229,6 +230,45 @@ test('valueEditStamp: a typed change drops provProb, a pick writes its own, a re
     { ...CONTRIBUTED, provConfirmed: null, provProb: 0.15 });
   // provDetail stays: the fragment never names it.
   assert.equal('provDetail' in v.valueEditStamp(machine), false);
+});
+
+// R5 and REV-PROV-3: provProb is the producer's probability for the value now
+// held, however it was entered, read from the entity's own distribution.
+// Mirrored row for row in test_provenance.py.
+test('valueEditStamp reads the producer\'s probability for the new value from provDetail', () => {
+  const v = writerPolicy(null);
+  const machine = stampInferred('service:x', {
+    prob: 0.6,
+    detail: { value: 'NOUN', valueProbs: { NOUN: 0.6, PROPN: 0.3, X: 2, '': 0.1 }, formProbs: { kat: 0.7 } },
+  });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'PROPN' }), { provConfirmed: true, provProb: 0.3 });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'VERB' }), { provConfirmed: true, provProb: null });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'X' }), { provConfirmed: true, provProb: null });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'constructor' }),
+    { provConfirmed: true, provProb: null });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'PROPN', prob: 0.25 }),
+    { provConfirmed: true, provProb: 0.25 });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'PROPN', changes: false }), PROV_CONFIRMED);
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'kat', probsKey: FORM_PROBS_KEY }),
+    { provConfirmed: true, provProb: 0.7 });
+  assert.deepEqual(v.valueEditStamp(machine, { value: 'PROPN', probsKey: FORM_PROBS_KEY }),
+    { provConfirmed: true, provProb: null });
+  const c = writerPolicy('ann@x.com');
+  assert.deepEqual(c.valueEditStamp(machine, { value: 'PROPN' }),
+    { ...CONTRIBUTED, provConfirmed: null, provProb: 0.3 });
+  // A verified value the producer weighed at 0 still says so.
+  const verified = { ...stampInferred('service:x', { detail: { valueProbs: { a: 0 } } }), provConfirmed: true };
+  assert.deepEqual(v.valueEditStamp(verified, { value: 'a' }), { provProb: 0 });
+});
+
+test('readValueProbs keeps only the probabilities, under the key asked for', () => {
+  const md = { provDetail: { valueProbs: { a: 0.5, b: 2, c: 'x', d: NaN, '': 0.2, e: 0 }, formProbs: { f: 1 } } };
+  assert.deepEqual(readValueProbs(md), { a: 0.5, e: 0 });
+  assert.deepEqual(readValueProbs(md, VALUE_PROBS_KEY), { a: 0.5, e: 0 });
+  assert.deepEqual(readValueProbs(md, FORM_PROBS_KEY), { f: 1 });
+  for (const bad of [null, undefined, {}, { provDetail: null }, { provDetail: { valueProbs: [0.5] } },
+    { provDetail: { valueProbs: { a: 3 } } }, { provDetail: { valueProbs: 'x' } }])
+    assert.equal(readValueProbs(bad), null);
 });
 
 // REV-PROV-5: provProb is a probability, in [0, 1], and both clients take

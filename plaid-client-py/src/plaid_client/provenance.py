@@ -70,13 +70,14 @@ else it considered, in two reserved slots split along the queryability line:
   queryable); keep it small (top-k, not whole-vocabulary dumps).
 
 ``provDetail`` describes the machine's ORIGINAL prediction and is kept after
-human edits (history is valuable). ``provProb`` is the probability of the value
-the entity holds: when a person picks another of the alternatives the producer
-weighed, the app writes that alternative's probability, and when a person
-types a value it removes ``provProb`` (:meth:`WriterPolicy.value_edit_stamp`
-is the one implementation). A consumer still must not present
-``provProb`` as the machine's confidence once the entity is verified
-(``provConfirmed`` is exactly the flag to check).
+human edits (history is valuable). ``provProb`` is the producer's probability
+for the value the entity holds, however a person entered it: a value the
+producer weighed (one in ``provDetail.valueProbs``, or ``formProbs`` for a
+morpheme's form) carries that probability, and a value it never weighed
+carries none (:meth:`WriterPolicy.value_edit_stamp` is the one
+implementation, and it reads the distribution itself). A consumer still must
+not present ``provProb`` as the machine's confidence once the entity is
+verified (``provConfirmed`` is exactly the flag to check).
 
 Recommended ``provDetail`` keys, so consumers (review dashboards, ranked
 alternatives) can read any producer's output:
@@ -342,6 +343,25 @@ def is_doubtful(metadata, threshold=DEFAULT_CONFIDENCE_THRESHOLD):
     return p is not None and p < threshold
 
 
+#: The ``provDetail`` key of a producer's distribution over a span's or relation's value.
+VALUE_PROBS_KEY = 'valueProbs'
+#: The ``provDetail`` key of a producer's distribution over a morpheme's form.
+FORM_PROBS_KEY = 'formProbs'
+
+
+def read_value_probs(metadata, key=VALUE_PROBS_KEY):
+    """The distribution a producer recorded under ``provDetail[key]``
+    (``valueProbs`` by default, ``formProbs`` for a morpheme's form), as a
+    ``{label: probability}`` dict holding only the entries whose number is a
+    probability, or ``None`` when there is none."""
+    detail = (metadata or {}).get(PROV_DETAIL_KEY)
+    raw = detail.get(key) if isinstance(detail, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    probs = {v: p for v, p in raw.items() if isinstance(v, str) and v != '' and is_probability(p)}
+    return probs or None
+
+
 # --- the writer's policy: what a person's writes carry --------------------------
 
 class WriterPolicy:
@@ -371,20 +391,27 @@ class WriterPolicy:
             return contribute_on_edit(metadata, self.contributor_id)
         return verify_on_edit(metadata)
 
-    def value_edit_stamp(self, metadata, changes=True, prob=None):
+    def value_edit_stamp(self, metadata, changes=True, value=None, probs_key=VALUE_PROBS_KEY,
+                         prob=None):
         """The fragment a person's edit of a VALUE merges: :meth:`edit_stamp`,
-        plus what the edit means for ``provProb``, which is the producer's
-        probability for the value it describes. A pick of one of the
-        alternatives a producer weighed (``prob``, its probability) writes
-        that number, when it is a probability in [0, 1], and is a typed value
-        otherwise. A typed value that ``changes`` the value removes it. A
-        re-typed value that changes nothing keeps it. ``provDetail`` stays, as
-        history. ``None`` when there is nothing to merge."""
+        plus what the edit means for ``provProb``, the producer's probability
+        for the value the entity holds, however it was entered. A new
+        ``value`` the producer weighed, found in the entity's own
+        ``provDetail[probs_key]`` (``valueProbs``, or ``formProbs`` for a
+        morpheme's form), carries that probability. A ``prob`` in [0, 1] is
+        used instead when the caller knows the number from elsewhere (a gloss
+        alternative's own ``valueLinks`` entry). A new value the producer
+        never weighed removes ``provProb``. A value that ``changes`` nothing
+        keeps it. ``provDetail`` stays, as history. ``None`` when there is
+        nothing to merge."""
         stamp = self.edit_stamp(metadata)
         if not changes:
             return stamp
-        if is_probability(prob):
-            return {**(stamp or {}), PROV_PROB_KEY: prob}
+        probs = read_value_probs(metadata, probs_key)
+        weighed = probs.get(value) if probs and isinstance(value, str) else None
+        p = prob if is_probability(prob) else weighed
+        if p is not None:
+            return {**(stamp or {}), PROV_PROB_KEY: p}
         if (metadata or {}).get(PROV_PROB_KEY) is None:
             return stamp
         return {**(stamp or {}), PROV_PROB_KEY: None}

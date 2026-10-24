@@ -68,11 +68,12 @@
  *     distributions, model name/version, raw scores. Deliberately nested
  *     (not queryable); keep it small (top-k, not whole-vocabulary dumps).
  * provDetail describes the machine's ORIGINAL prediction and is kept after
- * human edits (history is valuable). provProb is the probability of the value
- * the entity holds: when a person picks another of the alternatives the
- * producer weighed, the app writes that alternative's probability, and when a
- * person types a value it removes provProb (writerPolicy's valueEditStamp
- * is the one implementation). A consumer still must not present
+ * human edits (history is valuable). provProb is the producer's probability
+ * for the value the entity holds, however a person entered it: a value the
+ * producer weighed (one in provDetail.valueProbs, or formProbs for a
+ * morpheme's form) carries that probability, and a value it never weighed
+ * carries none (writerPolicy's valueEditStamp is the one implementation,
+ * and it reads the distribution itself). A consumer still must not present
  * provProb as the machine's confidence once the entity is verified
  * (provConfirmed is exactly the flag to check).
  *
@@ -407,6 +408,27 @@ export const isDoubtful = (metadata, threshold = DEFAULT_CONFIDENCE_THRESHOLD) =
   return p != null && p < threshold;
 };
 
+/** The provDetail key of a producer's distribution over a span's or relation's value. */
+export const VALUE_PROBS_KEY = 'valueProbs';
+/** The provDetail key of a producer's distribution over a morpheme's form. */
+export const FORM_PROBS_KEY = 'formProbs';
+
+/**
+ * The distribution a producer recorded under provDetail[key] (valueProbs by
+ * default, formProbs for a morpheme's form), as a {label: probability} map
+ * holding only the entries whose number is a probability, or null when there
+ * is none.
+ * @param {object|null|undefined} metadata
+ * @param {string} [key]
+ * @returns {Object<string, number>|null}
+ */
+export const readValueProbs = (metadata, key = VALUE_PROBS_KEY) => {
+  const raw = metadata?.[PROV.detailKey]?.[key];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const entries = Object.entries(raw).filter(([v, p]) => v !== '' && isProbability(p));
+  return entries.length ? Object.fromEntries(entries) : null;
+};
+
 // ---- the writer's policy: what a person's writes carry ----
 
 /**
@@ -422,7 +444,7 @@ export const isDoubtful = (metadata, threshold = DEFAULT_CONFIDENCE_THRESHOLD) =
  *   isContributor: boolean,
  *   createStamp: Object|null,
  *   editStamp: (metadata: Object) => Object|null,
- *   valueEditStamp: (metadata: Object, opts?: {changes?: boolean, prob?: number|null}) => Object|null,
+ *   valueEditStamp: (metadata: Object, opts?: {changes?: boolean, value?: string, probsKey?: string, prob?: number|null}) => Object|null,
  *   repointStamp: (metadata: Object) => Object|null,
  *   confirmStamp: (metadata: Object) => Object|null,
  *   adoptStamp: (source: string, detail?: Object) => Object,
@@ -457,18 +479,27 @@ export const writerPolicy = (contributorId = null) => {
     editStamp,
     /**
      * The fragment a person's edit of a VALUE merges: editStamp, plus what
-     * the edit means for provProb, which is the producer's probability for
-     * the value it describes. A pick of one of the alternatives a producer
-     * weighed (`prob`, its probability) writes that number, when it is a
-     * probability in [0, 1], and is a typed value otherwise. A typed value
-     * that `changes` the value removes it. A re-typed value that changes
-     * nothing keeps it. provDetail stays, as history. Null when there is
-     * nothing to merge.
+     * the edit means for provProb, the producer's probability for the value
+     * the entity holds, however it was entered. A new `value` the producer
+     * weighed, found in the entity's own provDetail[probsKey] (valueProbs,
+     * or formProbs for a morpheme's form), carries that probability. A
+     * `prob` in [0, 1] is used instead when the caller knows the number
+     * from elsewhere (a gloss alternative's own valueLinks entry). A new
+     * value the producer never weighed removes provProb. A value that
+     * `changes` nothing keeps it. provDetail stays, as history. Null when
+     * there is nothing to merge.
      */
-    valueEditStamp: (metadata, { changes = true, prob = null } = {}) => {
+    valueEditStamp: (
+      metadata,
+      { changes = true, value, probsKey = VALUE_PROBS_KEY, prob = null } = {},
+    ) => {
       const stamp = editStamp(metadata);
       if (!changes) return stamp;
-      if (isProbability(prob)) return { ...(stamp || {}), [PROV.probKey]: prob };
+      const probs = readValueProbs(metadata, probsKey);
+      const weighed =
+        probs && typeof value === 'string' && Object.hasOwn(probs, value) ? probs[value] : null;
+      const p = isProbability(prob) ? prob : weighed;
+      if (p != null) return { ...(stamp || {}), [PROV.probKey]: p };
       if (metadata?.[PROV.probKey] == null) return stamp;
       return { ...(stamp || {}), [PROV.probKey]: null };
     },

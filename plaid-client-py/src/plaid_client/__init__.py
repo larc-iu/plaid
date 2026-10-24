@@ -43,6 +43,9 @@ from plaid_client.provenance import (
     read_confidence_threshold,
     machine_prob,
     is_doubtful,
+    VALUE_PROBS_KEY,
+    FORM_PROBS_KEY,
+    read_value_probs,
     WriterPolicy,
 )
 from plaid_client.constraints import value_set_allows, violation_count_of, violations_of
@@ -122,6 +125,9 @@ __all__ = [
     "read_confidence_threshold",
     "machine_prob",
     "is_doubtful",
+    "VALUE_PROBS_KEY",
+    "FORM_PROBS_KEY",
+    "read_value_probs",
     "WriterPolicy",
     "PLAID_NAMESPACE",
     "ROLE_KEY",

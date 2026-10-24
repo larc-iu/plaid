@@ -17,6 +17,7 @@ from plaid_client.provenance import (
     is_protected, needs_review, verify_on_edit, contribute_on_edit,
     service_source, user_source,
     REVIEW_KEY, read_review, project_role, is_reviewed, with_reviewed_user, WriterPolicy,
+    VALUE_PROBS_KEY, FORM_PROBS_KEY, read_value_probs,
 )
 from plaid_client.metadata_ops import apply_metadata_ops, metadata_ops
 
@@ -149,6 +150,41 @@ def test_value_edit_stamp_matches_the_js_client():
     c = WriterPolicy('ann@x.com')
     assert c.value_edit_stamp(m) == {**CONTRIB, 'provConfirmed': None, 'provProb': None}
     assert c.value_edit_stamp(m, prob=0.15) == {**CONTRIB, 'provConfirmed': None, 'provProb': 0.15}
+
+
+# R5 and REV-PROV-3: provProb is the producer's probability for the value now
+# held, however it was entered, read from the entity's own distribution.
+# Mirrors provenance.test.js row for row.
+def test_value_edit_stamp_reads_the_producers_probability_for_the_new_value():
+    v = WriterPolicy(None)
+    m = stamp_inferred('service:x', prob=0.6, detail={
+        'value': 'NOUN', 'valueProbs': {'NOUN': 0.6, 'PROPN': 0.3, 'X': 2, '': 0.1},
+        'formProbs': {'kat': 0.7}})
+    assert v.value_edit_stamp(m, value='PROPN') == {'provConfirmed': True, 'provProb': 0.3}
+    assert v.value_edit_stamp(m, value='VERB') == {'provConfirmed': True, 'provProb': None}
+    assert v.value_edit_stamp(m, value='X') == {'provConfirmed': True, 'provProb': None}
+    assert v.value_edit_stamp(m, value='constructor') == {'provConfirmed': True, 'provProb': None}
+    assert v.value_edit_stamp(m, value='PROPN', prob=0.25) == {'provConfirmed': True, 'provProb': 0.25}
+    assert v.value_edit_stamp(m, value='PROPN', changes=False) == {'provConfirmed': True}
+    assert v.value_edit_stamp(m, value='kat', probs_key=FORM_PROBS_KEY) == {
+        'provConfirmed': True, 'provProb': 0.7}
+    assert v.value_edit_stamp(m, value='PROPN', probs_key=FORM_PROBS_KEY) == {
+        'provConfirmed': True, 'provProb': None}
+    c = WriterPolicy('ann@x.com')
+    assert c.value_edit_stamp(m, value='PROPN') == {**CONTRIB, 'provConfirmed': None, 'provProb': 0.3}
+    verified = {**stamp_inferred('service:x', detail={'valueProbs': {'a': 0}}), 'provConfirmed': True}
+    assert v.value_edit_stamp(verified, value='a') == {'provProb': 0}
+
+
+def test_read_value_probs_keeps_only_the_probabilities_under_the_key_asked_for():
+    md = {'provDetail': {'valueProbs': {'a': 0.5, 'b': 2, 'c': 'x', 'd': float('nan'), '': 0.2, 'e': 0},
+                         'formProbs': {'f': 1}}}
+    assert read_value_probs(md) == {'a': 0.5, 'e': 0}
+    assert read_value_probs(md, VALUE_PROBS_KEY) == {'a': 0.5, 'e': 0}
+    assert read_value_probs(md, FORM_PROBS_KEY) == {'f': 1}
+    for bad in [None, {}, {'provDetail': None}, {'provDetail': {'valueProbs': [0.5]}},
+                {'provDetail': {'valueProbs': {'a': 3}}}, {'provDetail': {'valueProbs': 'x'}}]:
+        assert read_value_probs(bad) is None, bad
 
 
 # REV-PROV-5: provProb is a probability, in [0, 1], and both clients take

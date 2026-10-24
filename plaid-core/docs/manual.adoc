@@ -1613,7 +1613,9 @@ Both clients offer `isReviewed` / `is_reviewed` for reading it.
 
 A machine writer may also record how confident it was.
 `provProb` is a single number between 0 and 1, the probability of the value it chose, and since it is flat a query can sort by it to put the least confident output first.
+A morpheme's alternative forms go in `provDetail.formProbs` the same way.
 It should be calibrated on held-out data, so that values given 70% are right about 70% of the time.
+Plaid UD lists a tag's or a relation's alternatives first in its selector, with their percentages.
 A writer that cannot calibrate leaves `provProb` out.
 Everything else, such as the top few alternatives, goes in the open map `provDetail`.
 The alternatives a producer weighed for a value go in `provDetail.valueProbs`, a map from each value to its probability, and on a gloss `provDetail.valueLinks` can name the lexicon entry each alternative stands for, as a list of `{value, item, prob}` (a list, since two senses may share a gloss).
@@ -1632,7 +1634,8 @@ Both clients read it with `readConfidenceThreshold` and test a value with `isDou
 
 A machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and every one records the version of its own code in `provDetail.version`.
 `provDetail` describes the original prediction and is kept after a person edits the value.
-`provProb` is the probability of the value the entity holds: when a person picks another of the alternatives the producer weighed, the app writes that alternative's probability, and when a person types a value it removes `provProb`.
+`provProb` is the producer's probability for the value the entity holds, however a person entered it.
+When a person picks or types another value that the producer weighed, the app writes that value's probability from `provDetail.valueProbs` (`provDetail.formProbs` for a morpheme's form), and when the producer never weighed the new value the app removes `provProb`.
 So once `provConfirmed` is set, do not present `provProb` as the machine's confidence in the value.
 
 === The write contract
