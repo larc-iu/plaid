@@ -665,6 +665,68 @@ def test_begin_operation_takes_every_kind_the_server_takes():
         assert client._operation_group['kind'] == kind
 
 
+# Beta review B1-9: the closed list is written in five places, and the test
+# above only holds the clients to accepting core's. One kind added to a client
+# alone, or to the manual alone, passed everything.
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+_KIND_SOURCES = {
+    'core': 'plaid-core/src/main/plaid/sql/operation_group.clj',
+    'js': 'plaid-client-js/src/index.js',
+    'python': 'plaid-client-py/src/plaid_client/client.py',
+    'manual': 'plaid-core/docs/manual.adoc',
+}
+
+
+def _kind_lists(texts):
+    """Each written list of operation kinds, read out of its file's text."""
+    core = re.search(r'\(def kinds.*?#\{([^}]*)\}', texts['core'], re.S).group(1)
+    js_array = re.search(r'const OPERATION_KINDS = \[([^\]]*)\]', texts['js']).group(1)
+    js_type = re.search(r'@typedef \{([^}]*)\} OperationKind', texts['js']).group(1)
+    py = re.search(r'_OPERATION_KINDS = \(([^)]*)\)', texts['python']).group(1)
+    section = texts['manual'].split('=== Kinds of operation', 1)[1]
+    table = section.split('|===', 2)[1]
+    # One row per blank-line-separated block, after the header; its first
+    # cell is the kind.
+    rows = [block.strip().split('\n')[0] for block in table.strip().split('\n\n')[1:]]
+    return {
+        'core operation_group.clj kinds': re.findall(r'"([^"]+)"', core),
+        'plaid-client-js OPERATION_KINDS': re.findall(r'"([^"]+)"', js_array),
+        'plaid-client-js OperationKind typedef': re.findall(r'"([^"]+)"', js_type),
+        'plaid-client-py _OPERATION_KINDS': re.findall(r"'([^']+)'", py),
+        'the manual\'s Kinds of operation table': [re.match(r'\|`([^`]+)`', r).group(1) for r in rows],
+    }
+
+
+def _kind_disagreements(lists):
+    want = sorted(lists['core operation_group.clj kinds'])
+    return [f'{name} has {sorted(kinds)}, core has {want}'
+            for name, kinds in lists.items() if sorted(kinds) != want or len(set(kinds)) != len(kinds)]
+
+
+def _kind_texts():
+    return {k: open(os.path.join(_REPO, p), encoding='utf-8').read() for k, p in _KIND_SOURCES.items()}
+
+
+def test_every_list_of_operation_kinds_is_cores():
+    lists = _kind_lists(_kind_texts())
+    assert all(len(kinds) >= 7 for kinds in lists.values()), lists
+    problems = _kind_disagreements(lists)
+    assert problems == [], (
+        'The operation kinds disagree:\n  ' + '\n  '.join(problems) + '\nA kind is added or removed in '
+        'all five at once: core plaid.sql.operation-group/kinds, plaid-client-js OPERATION_KINDS and the '
+        'OperationKind typedef, plaid-client-py _OPERATION_KINDS, and the manual\'s "Kinds of operation" table.')
+
+
+def test_a_kind_in_one_list_alone_is_named():
+    texts = _kind_texts()
+    texts['js'] = texts['js'].replace('const OPERATION_KINDS = [', 'const OPERATION_KINDS = [\n  "export",', 1)
+    texts['python'] = texts['python'].replace("'review')", "'reviews')", 1)
+    texts['manual'] = texts['manual'].replace('|`guess-adoption`', '|`guess`', 1)
+    named = [p.split(' has ')[0] for p in _kind_disagreements(_kind_lists(texts))]
+    assert named == ['plaid-client-js OPERATION_KINDS', 'plaid-client-py _OPERATION_KINDS',
+                     'the manual\'s Kinds of operation table']
+
+
 def test_an_unknown_kind_raises_before_anything_is_written():
     client = _client()
     with pytest.raises(ValueError, match=r'Unknown operation kind "imports"\. It is one of: assistant-plan, service-run'):
