@@ -178,12 +178,19 @@ describe('Copy-as-IGT uses morphType joints', () => {
           content: 'рушакайни',
           annotations: {},
           morphemes: [
-            { metadata: { form: 'руша', morphType: 'stem' }, annotations: { Gloss: span('girl') } },
+            // As the derived view hands them out: the type each goes by.
             {
+              morphType: 'stem',
+              metadata: { form: 'руша', morphType: 'stem' },
+              annotations: { Gloss: span('girl') },
+            },
+            {
+              morphType: 'suffix',
               metadata: { form: 'кай', morphType: 'suffix' },
               annotations: { Gloss: span('SBEL') },
             },
             {
+              morphType: 'enclitic',
               metadata: { form: 'ни', morphType: 'enclitic' },
               annotations: { Gloss: span('ADD') },
             },
