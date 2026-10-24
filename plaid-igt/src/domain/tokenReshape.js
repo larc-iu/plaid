@@ -25,14 +25,12 @@
 // the new value for them, so we leave theirs alone. (This was briefly the other
 // way round, clearing `orthog:*`; the user's call, and the right one.)
 
-import { PROV, mergeMetadata, needsReview } from '@larc-iu/plaid-client';
-
-const PROV_KEYS = [PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey];
+import { PROV, PROVENANCE_KEYS, mergeMetadata, needsReview } from '@larc-iu/plaid-client';
 
 /** Just the provenance keys of a metadata map. */
 export const provenanceOf = (metadata) => {
   const out = {};
-  for (const key of PROV_KEYS) {
+  for (const key of PROVENANCE_KEYS) {
     if (metadata && metadata[key] !== undefined) out[key] = metadata[key];
   }
   return out;

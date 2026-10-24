@@ -10,6 +10,7 @@
 // the way snapshot.mjs does and rewrites every reference with it. Anything new
 // an expectation adds needs a key no other row has (`newKey`).
 
+import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
 import { stableStringify } from '../stable.js';
 
 const byString = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -39,7 +40,7 @@ export const cps = (str) => [...(str ?? '')];
 export const surface = (d, t) => cps(baselineOf(d)?.body).slice(t.begin, t.end).join('');
 export const spanLayers = (s) => (s.layers || []).filter((l) => l.key.startsWith('span:'));
 export const scopeOfLayer = (s, key) => layer(s, key)?.config?.igt?.scope ?? null;
-export const isProvKey = (k) => k.startsWith('prov');
+export const isProvKey = (k) => PROVENANCE_KEYS.includes(k);
 
 /** Words in text order, each with its morphemes in precedence order. */
 export function wordsWithMorphemes(d) {

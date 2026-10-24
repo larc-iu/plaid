@@ -25,6 +25,7 @@
 // detector that is true of everything.
 
 import { provState } from '@larc-iu/plaid-client';
+import { isProvKey } from './expect/snap.js';
 import { sanitizeFilename } from '@ui/lib/download.js';
 import { fieldNameLang } from '../../domain/fieldNames.js';
 import { hasLanguageIdentity, isTokenIgnored } from '../../domain/igtConfig.js';
@@ -626,7 +627,7 @@ export const FEATURES = [
                 !declared.has(k) &&
                 !RESERVED_ITEM_KEYS.has(k) &&
                 !ITEM_STAMPS.has(k) &&
-                !k.startsWith('prov'),
+                !isProvKey(k),
             ),
           )
         );
@@ -899,7 +900,7 @@ export const FEATURES = [
     detect: (s) =>
       sum(s, (d) =>
         count(tokensIn(d, 'word'), (t) =>
-          Object.keys(t.metadata).some((k) => !k.startsWith('orthog:') && !k.startsWith('prov')),
+          Object.keys(t.metadata).some((k) => !k.startsWith('orthog:') && !isProvKey(k)),
         ),
       ),
   },
@@ -998,9 +999,7 @@ export const FEATURES = [
     what: 'sentence metadata beyond provenance',
     detect: (s) =>
       sum(s, (d) =>
-        count(tokensIn(d, 'sentence'), (t) =>
-          Object.keys(t.metadata).some((k) => !k.startsWith('prov')),
-        ),
+        count(tokensIn(d, 'sentence'), (t) => Object.keys(t.metadata).some((k) => !isProvKey(k))),
       ),
   },
   {
@@ -1083,7 +1082,7 @@ export const FEATURES = [
       sum(s, (d) =>
         count(tokensIn(d, 'time-alignment'), (t) =>
           Object.keys(t.metadata).some(
-            (k) => !['timeBegin', 'timeEnd', 'speaker'].includes(k) && !k.startsWith('prov'),
+            (k) => !['timeBegin', 'timeEnd', 'speaker'].includes(k) && !isProvKey(k),
           ),
         ),
       ),
@@ -1151,8 +1150,7 @@ export const FEATURES = [
   {
     key: 'span.extraMetadata',
     what: 'annotation metadata beyond provenance',
-    detect: (s) =>
-      count(allSpans(s), (sp) => Object.keys(sp.metadata).some((k) => !k.startsWith('prov'))),
+    detect: (s) => count(allSpans(s), (sp) => Object.keys(sp.metadata).some((k) => !isProvKey(k))),
   },
   {
     key: 'span.offTagset',

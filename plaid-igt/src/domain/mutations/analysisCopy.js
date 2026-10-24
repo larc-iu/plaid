@@ -21,6 +21,7 @@ import {
   mergeMetadata,
   metadataOps,
   PROV,
+  PROVENANCE_KEYS,
   createdId,
   createdIds,
 } from '@larc-iu/plaid-client';
@@ -38,15 +39,10 @@ const ANALYSIS_BATCH_BUDGET = 800;
 
 // The metadata ops that return a surviving default morpheme to a bare slot:
 // no form, no type, no provenance.
-const RESET_MORPHEME_OPS = [
-  'form',
-  'morphType',
-  'prov',
-  'provSource',
-  'provDetail',
-  'provProb',
-  'provConfirmed',
-].map((key) => ({ op: 'delete', path: [key] }));
+const RESET_MORPHEME_OPS = ['form', 'morphType', ...PROVENANCE_KEYS].map((key) => ({
+  op: 'delete',
+  path: [key],
+}));
 
 // Entities one word's copy writes: the default-morpheme patch, a create per
 // extra morpheme, and a link + fields for every slot and the word. Words are

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';
@@ -38,7 +39,7 @@ import { isChangedElsewhere } from '@ui/lib/errors.js';
 // Provenance keys are bookkeeping rather than content. The structural keys
 // (the sense tree, the examples, the import identity) are set apart by
 // editableMetadata, and the two the panel draws itself are drawn below.
-const isBookkeepingKey = (k) => k.startsWith('prov');
+const isBookkeepingKey = (k) => PROVENANCE_KEYS.includes(k);
 
 // The whole of one lexicon entry (minus its attestations): every configured
 // field in schema order, then any other content the entry carries (custom
