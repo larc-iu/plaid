@@ -9,6 +9,7 @@ import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -75,12 +76,18 @@ export function offListWarnings(parsedData, layerInfo) {
 // tokens + annotation spans + dependency relations, and returns the newly
 // created document id. On any failure, attempts to delete the partial
 // document so the project isn't left polluted.
+//
+// The document is created under a minted id that `options.mint` (a
+// `{ current }`) keeps across imports of the same file, so an import made
+// again after a create whose answer was lost names the same id and goes on
+// into the document the first made, never a second (createOnce.js).
 export async function importConlluDocument(
   client,
   projectId,
   name,
   conlluText,
   precomputedLayerInfo = null,
+  options = {},
 ) {
   if (!name || !name.trim()) throw new Error('Document name is required');
   if (!conlluText || !conlluText.trim()) throw new Error('No content to import');
@@ -128,9 +135,9 @@ export async function importConlluDocument(
   try {
     // Names are unique in a project: a name another document holds becomes
     // the first free "Name (2)", which the server picks.
-    const documentResponse = await client.documents.create(projectId, name, undefined, undefined, {
-      freeName: true,
-    });
+    const documentResponse = await createOnce(options.mint ?? { current: null }, (id) =>
+      client.documents.create(projectId, name, undefined, undefined, { id, freeName: true }),
+    );
     createdDocumentId = documentResponse.id;
     // Layer config is project-level and identical for every document, so a
     // bulk-import caller can pass it in to skip a per-document round trip.

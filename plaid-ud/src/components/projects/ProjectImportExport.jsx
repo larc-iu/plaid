@@ -29,6 +29,17 @@ async function mapWithConcurrency(items, limit, fn, onProgress) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
+// Per document of a file, the id its new document is created under, kept
+// while the page is open across every import of that file (the same name,
+// size and time), so an import made again after a create whose answer was
+// lost names the same id and cannot make a second document (createOnce.js).
+// Dropped once the document is imported.
+const mints = new Map();
+const mintOf = (key) => {
+  if (!mints.has(key)) mints.set(key, { current: null });
+  return mints.get(key);
+};
+
 const prepareImport = async ({ client, project, projectId }) => {
   // Layer config is the same for every document, so it is read once and passed
   // in. Otherwise importFromConllu re-fetches it (a full includeBody read) per
@@ -36,7 +47,7 @@ const prepareImport = async ({ client, project, projectId }) => {
   const layerInfo = getUdLayerInfo(project);
 
   // A file holds one document, or several split at `# newdoc`.
-  return async ({ text, index, name: base, push }) => {
+  return async ({ file, text, index, name: base, push }) => {
     const chunks = splitConlluByNewdoc(text);
     if (chunks.length === 0) {
       push({ key: `${index}-empty`, name: base, status: 'rejected', reason: 'File is empty' });
@@ -45,14 +56,19 @@ const prepareImport = async ({ client, project, projectId }) => {
     for (let c = 0; c < chunks.length; c++) {
       const chunk = chunks[c];
       const name = chunk.id || (chunks.length > 1 ? `${base} (${c + 1})` : base);
+      const key = [projectId, base, c, name, file?.size ?? '', file?.lastModified ?? ''].join('\n');
       try {
         // One audit-log operation per imported document (text, tokens and
         // annotations), labeled with the document name, of kind import.
         const { documentId, importWarnings } = await client.withOperation(
           `Import CoNLL-U document "${name}"`,
-          () => ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo),
+          () =>
+            ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo, {
+              mint: mintOf(key),
+            }),
           { kind: 'import', ref: 'format:conllu' },
         );
+        mints.delete(key);
         push({
           key: `${index}-${c}`,
           name,

@@ -83,8 +83,15 @@ export class ConlluDocument extends DocumentModel {
   // Import a CoNLL-U text into a new document in the given project. The work
   // is `importConlluDocument`, which reads no loaded document at all: this is
   // the name every caller knows it by.
-  static importFromConllu(client, projectId, name, conlluText, precomputedLayerInfo = null) {
-    return importConlluDocument(client, projectId, name, conlluText, precomputedLayerInfo);
+  static importFromConllu(
+    client,
+    projectId,
+    name,
+    conlluText,
+    precomputedLayerInfo = null,
+    options,
+  ) {
+    return importConlluDocument(client, projectId, name, conlluText, precomputedLayerInfo, options);
   }
 
   // ----- layer info (cached per data version) -----
