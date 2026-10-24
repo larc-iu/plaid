@@ -301,6 +301,22 @@ test('apply: a document changed since the preview stops the run after the ones b
   assert.equal(client.operationGroup, null);
 });
 
+test('apply: every span and relation it makes is made under a minted id', async () => {
+  // A batch whose answer was lost can then be read back by id (R2-RULES-5).
+  const { client, project, layerInfo } = setup();
+  const grs = parseGrs(`pattern { V [upos=VERB]; A [upos=ADV]; X [upos=DET] }
+    commands { add_edge V -[advmod]-> A; X.Seen = Yes } strat main { rule }`);
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const spans = client.calls.filter((c) => c.op === 'spans.create');
+  const relations = client.calls.filter((c) => c.op === 'relations.create');
+  assert.ok(spans.length >= 2, 'a lemma span and a feature span');
+  assert.ok(relations.length >= 1);
+  for (const c of spans) assert.match(c.args[5]?.id ?? '', UUIDV7);
+  for (const c of relations) assert.match(c.args[6]?.id ?? '', UUIDV7);
+});
+
 test('apply as a reviewed contributor: creates and edits are marked contributed', async () => {
   const { raw, client, project } = setup();
   project.config = { plaid: { review: { users: ['u1'] } } };

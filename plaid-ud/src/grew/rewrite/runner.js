@@ -361,7 +361,7 @@ const inWriteOrder = (main) =>
     .sort(([a, i], [b, j]) => (WRITE_ORDER[a.op] ?? 3) - (WRITE_ORDER[b.op] ?? 3) || i - j)
     .map(([w]) => w);
 
-// Every span and relation write. A person's edit of a machine or contributed
+// Every span and relation write, each create under an id minted here. A person's edit of a machine or contributed
 // value carries the writer's stamp, in the same batch as the value. A
 // relation whose head moved becomes the person's, as a re-point in the editor
 // does (writer.repointStamp), which also covers a label changed with it.
@@ -385,7 +385,7 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
         break;
       }
       case 'createSpan':
-        b.spans.create(w.layer, w.tokens, w.value, createStamp);
+        b.spans.create(w.layer, w.tokens, w.value, createStamp, undefined, { id: uuidv7() });
         break;
       case 'deleteSpan':
         b.spans.delete(w.id);
@@ -417,6 +417,8 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
           // A suppressor is a statement about the graph and carries its
           // own metadata, never a provenance stamp.
           'metadata' in w ? w.metadata : createStamp,
+          undefined,
+          { id: uuidv7() },
         );
         break;
       default:
