@@ -36,3 +36,16 @@ def test_the_igt_snapshot_is_current():
 
 def test_the_umr_snapshot_is_current():
     _check('umr')
+
+
+def test_the_packaged_igt_guide_is_the_apps():
+    """The copy an install without plaid-igt's sources answers app_guide from
+    (R2-DICT-6, R2-TEST-13). In a checkout every test reads the repository's
+    guide, so only this says the copy fell behind."""
+    import pytest
+    from plaid_agent.igt.guide import PACKAGED_GUIDE, REPO_GUIDE
+    if not REPO_GUIDE.is_file():
+        pytest.skip('no plaid-igt checkout beside the package')
+    assert PACKAGED_GUIDE.read_bytes() == REPO_GUIDE.read_bytes(), (
+        'The packaged igt guide differs from plaid-igt/docs/igt-guide.adoc. Run `bb sample-prompts` '
+        '(from the repo root) in the same change as the guide edit.')
