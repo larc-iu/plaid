@@ -285,11 +285,13 @@ const htmlEscape = (s) =>
     .replace(/>/g, '&gt;');
 
 // leipzig.js: <div data-gloss> with one <p> per aligned line + a final <p>
-// for the free translation. Words split on whitespace, so multiword cells
-// are kept intact with non-breaking spaces.
+// for the free translation. leipzig.js splits a line into words with
+// /{(.*?)}|([^\s]+)/g, so a blank cell is `{}` and a cell holding whitespace
+// is braced whole, as in gb4e and ExPex. A non-breaking space will not do:
+// \s matches it.
 export function formatLeipzig(sentence, fields) {
-  const nbsp = (s) => htmlEscape(s === '' ? '\u00a0' : s).replace(/ /g, '\u00a0');
-  const lines = tiers(sentence, fields).map((l) => `  <p>${l.cells.map(nbsp).join(' ')}</p>`);
+  const cell = (s) => (s === '' || /\s/.test(s) ? `{${htmlEscape(s)}}` : htmlEscape(s));
+  const lines = tiers(sentence, fields).map((l) => `  <p>${l.cells.map(cell).join(' ')}</p>`);
   const tr = freeTranslation(sentence, fields);
   if (tr) lines.push(`  <p>‘${htmlEscape(tr)}’</p>`);
   return ['<div data-gloss>', ...lines, '</div>'].join('\n');

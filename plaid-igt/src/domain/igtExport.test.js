@@ -131,14 +131,14 @@ describe('formatLeipzig', () => {
     expect(out.split('\n')).toEqual([
       '<div data-gloss>',
       '  <p>perro-s corr-en .</p>',
-      '  <p>dog-PL run-3PL \u00a0</p>',
-      '  <p>NOUN VERB \u00a0</p>',
+      '  <p>dog-PL run-3PL {}</p>',
+      '  <p>NOUN VERB {}</p>',
       '  <p>‘The dogs run.’</p>',
       '</div>',
     ]);
   });
 
-  it('escapes HTML and holds multiword cells together with NBSP', () => {
+  it('escapes HTML and braces a multiword cell, as leipzig.js groups words', () => {
     const s = {
       annotations: {},
       tokens: [
@@ -150,7 +150,41 @@ describe('formatLeipzig', () => {
       ],
     };
     const out = formatLeipzig(s, { morphFields: [], wordFields: ['POS'], sentFields: [] });
-    expect(out).toContain('<p>a\u00a0&lt;b&gt;\u00a0&amp;\u00a0c</p>');
+    expect(out).toContain('<p>{a &lt;b&gt; &amp; c}</p>');
+  });
+
+  // HUNT-igt R2: leipzig.js splits a line with /{(.*?)}|([^\s]+)/g, and \s
+  // matches U+00A0, so a blank cell written as NBSP vanished and an NBSP-joined
+  // cell split in two, shifting the rest of the line left.
+  it('keeps every line aligned through a blank cell and a multiword cell', () => {
+    const s = {
+      annotations: {},
+      tokens: [
+        {
+          content: 'Las',
+          annotations: {},
+          morphemes: [{ metadata: { form: 'Las' }, annotations: {} }],
+        },
+        {
+          content: 'perras',
+          annotations: {},
+          morphemes: [{ metadata: { form: 'perras' }, annotations: { Gloss: span('dogs') } }],
+        },
+        {
+          content: 'comen',
+          annotations: {},
+          morphemes: [{ metadata: { form: 'comen' }, annotations: { Gloss: span('eat much') } }],
+        },
+      ],
+    };
+    const out = formatLeipzig(s, { morphFields: ['Gloss'], wordFields: [], sentFields: [] });
+    const words = (p) => [...p.matchAll(/{(.*?)}|([^\s]+)/g)].map((m) => m[1] ?? m[2]);
+    const [forms, gloss] = out
+      .split('\n')
+      .filter((l) => l.startsWith('  <p>'))
+      .map((l) => words(l.slice(5, -4)));
+    expect(forms).toEqual(['Las', 'perras', 'comen']);
+    expect(gloss).toEqual(['', 'dogs', 'eat much']);
   });
 });
 
