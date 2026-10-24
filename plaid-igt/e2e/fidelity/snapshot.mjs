@@ -29,9 +29,19 @@
 // Ids INSIDE metadata are rewritten too, where the app defines them: an
 // entry's `parent`, every `type: "item"` field, each `{document, token}`
 // example, and the span layer each service default field names in the
-// project config (`<app>.serviceDefaults.<task>.fieldParams`). Any other
-// id-shaped value is left alone and will differ after an import, which is the
-// point.
+// project config (`<app>.serviceDefaults.<task>.fieldParams`).
+//
+// Then every other id inside metadata and config, wherever an app keeps one,
+// alone or inside a longer string: each UUID in a string value (never a key)
+// that is the id of something in THIS project is replaced by a reference
+// marker, `«["kind", ...key parts]»`, naming what it is. The kinds are a
+// layer, a vocabulary, an entry, a document, a text, a token, an annotation,
+// a relation and a link. An import gives everything a new id, so a value it
+// remapped to the new entity reads the same as the source's, and a value it
+// did not remap names something of the SOURCE project, which is not this
+// project's, so it stays a raw id and differs. A UUID that names nothing here
+// (a FLEx guid, an archive id stamped on purpose) is left as it is.
+// expect/snap.js `finalize` moves the markers with the keys it recomputes.
 //
 // Left out, because no format is meant to carry them: document version and
 // timestamps, permissions (readers, writers, maintainers), comment ids. Comment
@@ -85,6 +95,8 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
   // ---- layers ---------------------------------------------------------------
   const layerKeyById = new Map();
   const layers = [];
+  // id -> the marker a metadata or config value naming it becomes.
+  const named = new Map();
   // `position` is a layer's place among its siblings. Core keeps it (order_idx)
   // and the editor shows annotation fields in that order, so it is data.
   (project.textLayers || []).forEach((tl, tlPos) => {
@@ -107,6 +119,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
       });
     });
   });
+  for (const [id, key] of layerKeyById) named.set(id, marker('layer', key));
 
   // ---- vocabularies: items first, since documents refer to them ----------------
   const vocabsRaw = await Promise.all(
@@ -121,11 +134,13 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     const vn = (vocabNameCounts.get(v.name) ?? 0) + 1;
     vocabNameCounts.set(v.name, vn);
     vocabKeyById.set(v.id, `${v.name}#${vn}`);
+    named.set(v.id, marker('vocabulary', `${v.name}#${vn}`));
     const seen = new Map();
     for (const it of v.items || []) {
       const n = (seen.get(it.form) ?? 0) + 1;
       seen.set(it.form, n);
       itemKeyById.set(it.id, `${it.form}#${n}`);
+      named.set(it.id, marker('item', `${v.name}#${vn}`, `${it.form}#${n}`));
     }
   }
   const itemRef = (id) => (id == null ? null : (itemKeyById.get(id) ?? `missing-item:${id}`));
@@ -146,6 +161,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     // Every document key carries its ordinal, so a name that itself ends in
     // '#2' cannot collide with the second of two documents sharing a name.
     docNameById.set(ref.id, `${ref.name}#${n}`);
+    named.set(ref.id, marker('document', `${ref.name}#${n}`));
   }
 
   for (const ref of docRefs) {
@@ -160,6 +176,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     for (const tl of raw.textLayers || []) {
       if (tl.text) {
         textRefById.set(tl.text.id, `${docName}|text:${layerLabel(tl)}`);
+        named.set(tl.text.id, marker('text', docName, `text:${layerLabel(tl)}`));
         texts.push({
           layer: `text:${layerLabel(tl)}`,
           body: tl.text.body ?? '',
@@ -183,6 +200,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
           dup.set(base, n);
           const key = n === 1 ? base : `${base}#${n}`;
           tokenKeyById.set(t.id, key);
+          named.set(t.id, marker('token', docName, key));
           tokens.push({
             key,
             layer: `token:${label}`,
@@ -216,12 +234,14 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
         for (const v of tkl.vocabs || []) {
           for (const l of v.vocabLinks || []) {
             if (links.has(l.id)) continue;
-            links.set(l.id, {
+            const link = {
               vocab: vocabKeyById.get(v.id) ?? `missing-vocabulary:${v.id}`,
               item: itemRef(l.vocabItem?.id ?? l.vocabItem),
               tokens: (l.tokens || []).map(tokenRef).sort(byString),
               metadata: l.metadata || {},
-            });
+            };
+            links.set(l.id, link);
+            named.set(l.id, marker('link', docName, link.vocab, link.item, link.tokens.join(',')));
           }
         }
       }
@@ -242,6 +262,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
       ordered.forEach((sp, i) => {
         const key = i === 0 ? base : `${base}#${i + 1}`;
         spanRefById.set(sp.id, key);
+        named.set(sp.id, marker('span', docName, key));
         snapSpans.push({
           key,
           order: sp.order,
@@ -256,6 +277,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     const snapRelations = relations.map(({ layer, raw: r }) => {
       const ref = `${layer}|${spanRefById.get(r.source) ?? r.source}>${spanRefById.get(r.target) ?? r.target}`;
       relationRefById.set(r.id, ref);
+      named.set(r.id, marker('relation', docName, ref));
       return {
         layer,
         source: spanRefById.get(r.source) ?? `missing-span:${r.source}`,
@@ -379,7 +401,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     config[ns] = { ...settings, serviceDefaults: rewritten };
   }
 
-  return {
+  const snap = {
     name: project.name,
     config,
     layers: sortByKey(layers, (l) => l.key),
@@ -391,4 +413,46 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     unplacedComments: sortByKey(unplaced, stableStringify),
     guidelines,
   };
+  markReferences(snap, named);
+  return snap;
+}
+
+// ---- ids inside metadata and config ------------------------------------------------
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** The marker a reference to an entity becomes (see the header). */
+export const marker = (...parts) => `«${JSON.stringify(parts)}»`;
+
+/** `value` with every UUID `named` knows, in any string at any depth, replaced. */
+function markIn(value, named) {
+  if (typeof value === 'string') {
+    return value.replace(UUID, (id) => named.get(id.toLowerCase()) ?? id);
+  }
+  if (Array.isArray(value)) return value.map((v) => markIn(v, named));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, markIn(v, named)]));
+  }
+  return value;
+}
+
+/** Every metadata map and config in a snapshot, with its ids marked. */
+function markReferences(snap, named) {
+  if (!named.size) return;
+  snap.config = markIn(snap.config, named);
+  for (const l of snap.layers) l.config = markIn(l.config, named);
+  for (const v of snap.vocabularies) {
+    v.config = markIn(v.config, named);
+    for (const it of v.items) it.metadata = markIn(it.metadata, named);
+  }
+  for (const d of snap.documents) {
+    d.metadata = markIn(d.metadata, named);
+    for (const rows of [d.texts, d.tokens, d.spans, d.relations, d.links]) {
+      for (const r of rows) r.metadata = markIn(r.metadata, named);
+    }
+    // Token and link rows were sorted with their raw metadata, so again now.
+    d.tokens = sortByKey(d.tokens, (t) => t.key);
+    d.links = sortByKey(d.links, stableStringify);
+    d.relations = sortByKey(d.relations, stableStringify);
+  }
 }

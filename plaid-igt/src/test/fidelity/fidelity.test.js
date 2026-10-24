@@ -212,6 +212,29 @@ describe('round-trip expectations', () => {
     ]);
   });
 
+  it('finalize moves the reference markers inside metadata and config with their keys', () => {
+    const s = sample();
+    const m = (...parts) => `«${JSON.stringify(parts)}»`;
+    s.config = { umr: { docs: [m('document', 'D#1')] } };
+    s.documents[0].spans[0].metadata = {
+      provDetail: { valueLinks: [{ item: m('item', 'Lex#1', 'a#1') }] },
+      at: `token ${m('token', 'D#1', 'word:2-3')}`,
+      on: m('span', 'D#1', 'span:word/Gloss|word:2-3'),
+    };
+    const moved = s.documents[0].tokens[1];
+    moved.begin = 3;
+    moved.end = 4;
+    s.documents[0].name = 'E';
+    s.vocabularies[0].items[0].form = 'b';
+    const out = finalize(s);
+    expect(out.config.umr.docs).toEqual([m('document', 'E#1')]);
+    expect(out.documents[0].spans[0].metadata).toEqual({
+      provDetail: { valueLinks: [{ item: m('item', 'Lex#1', 'b#1') }] },
+      at: `token ${m('token', 'E#1', 'word:3-4')}`,
+      on: m('span', 'E#1', 'span:word/Gloss|word:3-4'),
+    });
+  });
+
   it('a strip takes a token with everything hanging off it', () => {
     const s = sample();
     removeTokens(s, s.documents[0], (t) => t.key === 'word:2-3');

@@ -218,6 +218,49 @@ export function renameSpanLayer(s, key, name) {
 
 // ---- recomputing keys --------------------------------------------------------------
 
+// A reference marker snapshot.mjs writes in place of an id inside metadata or
+// config: `«["kind", ...key parts]»`.
+const MARKER = /«(\[.*?\])»/g;
+
+function remarkIn(value, remark) {
+  if (typeof value === 'string') {
+    if (!value.includes('«')) return value;
+    return value.replace(MARKER, (m, json) => {
+      let parts;
+      try {
+        parts = JSON.parse(json);
+      } catch {
+        return m;
+      }
+      return `«${JSON.stringify(remark(parts))}»`;
+    });
+  }
+  if (Array.isArray(value)) return value.map((v) => remarkIn(v, remark));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, remarkIn(v, remark)]));
+  }
+  return value;
+}
+
+/** Every marker in a snapshot's metadata and config passed through `remark`. */
+function remarkReferences(s, remark) {
+  if (s.config) s.config = remarkIn(s.config, remark);
+  for (const l of s.layers || []) if (l.config) l.config = remarkIn(l.config, remark);
+  for (const v of s.vocabularies || []) {
+    if (v.config) v.config = remarkIn(v.config, remark);
+    for (const it of v.items) if (it.metadata) it.metadata = remarkIn(it.metadata, remark);
+  }
+  for (const d of docs(s)) {
+    if (d.metadata) d.metadata = remarkIn(d.metadata, remark);
+    for (const rows of [d.texts, d.tokens, d.spans, d.relations, d.links]) {
+      for (const r of rows || []) if (r.metadata) r.metadata = remarkIn(r.metadata, remark);
+    }
+    d.tokens = sortByKey(d.tokens, (t) => t.key);
+    d.links = sortByKey(d.links, stableStringify);
+    d.relations = sortByKey(d.relations, stableStringify);
+  }
+}
+
 const relationRef = (r) => `${r.layer}|${r.source}>${r.target}`;
 
 /**
@@ -260,6 +303,8 @@ export function finalize(s) {
   }
 
   const tokenMapByDoc = new Map();
+  const spanMapByDoc = new Map();
+  const relationMapByDoc = new Map();
   for (const d of docs(s)) {
     // Tokens: `${role}:${begin}-${end}[@precedence][#n]`.
     const tokenMap = new Map();
@@ -306,6 +351,8 @@ export function finalize(s) {
       r.target = spanMap.get(r.target) ?? r.target;
       relationMap.set(old, relationRef(r));
     }
+    spanMapByDoc.set(d.key, spanMap);
+    relationMapByDoc.set(d.key, relationMap);
     for (const l of d.links) {
       l.tokens = l.tokens.map(tok).sort(byString);
       l.item = itemMap.get(`${l.vocab}|${l.item}`) ?? l.item;
@@ -359,6 +406,39 @@ export function finalize(s) {
     }
     v.comments = sortByKey(v.comments || [], stableStringify);
   }
+  // The reference markers snapshot.mjs puts in metadata and config, moved
+  // with the keys recomputed above.
+  const tokenIn = (d, k) => tokenMapByDoc.get(d)?.get(k) ?? k;
+  const remark = (parts) => {
+    const [kind, a, b, c, e] = parts;
+    const doc = (k) => docMap.get(k) ?? k;
+    const item = (v, k) => itemMap.get(`${v}|${k}`) ?? k;
+    const vocab = (v) => vocabMap.get(v) ?? v;
+    switch (kind) {
+      case 'document':
+        return [kind, doc(a)];
+      case 'text':
+        return [kind, doc(a), b];
+      case 'token':
+        return [kind, doc(a), tokenIn(a, b)];
+      case 'span':
+        return [kind, doc(a), spanMapByDoc.get(a)?.get(b) ?? b];
+      case 'relation':
+        return [kind, doc(a), relationMapByDoc.get(a)?.get(b) ?? b];
+      case 'item':
+        return [kind, vocab(a), item(a, b)];
+      case 'vocabulary':
+        return [kind, vocab(a)];
+      case 'link': {
+        const tokens = (e ? e.split(',') : []).map((k) => tokenIn(a, k)).sort(byString);
+        return [kind, doc(a), vocab(b), item(b, c), tokens.join(',')];
+      }
+      default:
+        return parts;
+    }
+  };
+  remarkReferences(s, remark);
+
   for (const v of s.vocabularies || []) {
     for (const it of v.items) it.key = itemMap.get(`${v.key}|${it.key}`);
     v.key = vocabMap.get(v.key);
