@@ -675,6 +675,7 @@ _KIND_SOURCES = {
     'js': 'plaid-client-js/src/index.js',
     'python': 'plaid-client-py/src/plaid_client/client.py',
     'manual': 'plaid-core/docs/manual.adoc',
+    'ui': 'plaid-ui/src/lib/auditText.js',
 }
 
 
@@ -688,12 +689,14 @@ def _kind_lists(texts):
     # One row per blank-line-separated block, after the header; its first
     # cell is the kind.
     rows = [block.strip().split('\n')[0] for block in table.strip().split('\n\n')[1:]]
+    labels = re.search(r'const KIND_LABELS = \{([^}]*)\}', texts['ui']).group(1)
     return {
         'core operation_kinds.json': texts['core'],
         'plaid-client-js OPERATION_KINDS': re.findall(r'"([^"]+)"', js_array),
         'plaid-client-js OperationKind typedef': re.findall(r'"([^"]+)"', js_type),
         'plaid-client-py _OPERATION_KINDS': re.findall(r"'([^']+)'", py),
         'the manual\'s Kinds of operation table': [re.match(r'\|`([^`]+)`', r).group(1) for r in rows],
+        'plaid-ui KIND_LABELS': re.findall(r"^\s*'?([\w-]+)'?:", labels, re.M),
     }
 
 
@@ -714,8 +717,9 @@ def test_every_list_of_operation_kinds_is_cores():
     problems = _kind_disagreements(lists)
     assert problems == [], (
         'The operation kinds disagree:\n  ' + '\n  '.join(problems) + '\nA kind is added or removed in '
-        'all five at once: core plaid.sql.operation-group/kinds (and its case file, operation_kinds.json), plaid-client-js OPERATION_KINDS and the '
-        'OperationKind typedef, plaid-client-py _OPERATION_KINDS, and the manual\'s "Kinds of operation" table.')
+        'all six at once: core plaid.sql.operation-group/kinds (and its case file, operation_kinds.json), plaid-client-js OPERATION_KINDS and the '
+        'OperationKind typedef, plaid-client-py _OPERATION_KINDS, the manual\'s "Kinds of operation" table, and plaid-ui '
+        'KIND_LABELS in auditText.js (what History calls the kind).')
 
 
 def test_a_kind_in_one_list_alone_is_named():
@@ -723,9 +727,10 @@ def test_a_kind_in_one_list_alone_is_named():
     texts['js'] = texts['js'].replace('const OPERATION_KINDS = [', 'const OPERATION_KINDS = [\n  "export",', 1)
     texts['python'] = texts['python'].replace("'review')", "'reviews')", 1)
     texts['manual'] = texts['manual'].replace('|`guess-adoption`', '|`guess`', 1)
+    texts['ui'] = texts['ui'].replace("  repair: 'Repair',\n", '', 1)
     named = [p.split(' has ')[0] for p in _kind_disagreements(_kind_lists(texts))]
     assert named == ['plaid-client-js OPERATION_KINDS', 'plaid-client-py _OPERATION_KINDS',
-                     'the manual\'s Kinds of operation table']
+                     'the manual\'s Kinds of operation table', 'plaid-ui KIND_LABELS']
 
 
 def test_an_unknown_kind_raises_before_anything_is_written():
