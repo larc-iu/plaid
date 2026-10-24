@@ -478,3 +478,14 @@ def test_a_gap_morpheme_is_not_found_or_targeted_by_its_word_form():
     # Alone in its word, a formless morpheme shows the surface and is found.
     alone = call_tool(ws(), 'search', {'pattern': 'gam', 'where': 'morpheme'})
     assert 's1.w2' in alone, alone
+
+
+def test_a_bulk_analysis_card_shows_a_formless_morpheme_beside_others_as_a_gap():
+    """The card's before reads a chain as the editor shows it: a morpheme with
+    no stored form beside others is ?, not its word's surface."""
+    c = FakeClient()
+    doc = c._documents['d1']
+    doc['text_layers'][0]['token_layers'][2]['tokens'].append({'id': 'm-2b', 'text': 'text1', 'begin': 7, 'end': 10, 'precedence': 2})
+    w = ws(c)
+    call_tool(w, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}]})
+    assert ': ?-? → ' in w.ops[0]['label'], w.ops[0]['label']

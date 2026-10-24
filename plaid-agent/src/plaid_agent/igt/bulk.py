@@ -1547,7 +1547,9 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     for w in words:
         chain = sorted(chains.get(w['id']) or [], key=lambda m: (precedence(m), m.get('id')))
         existing = [{'id': m['id'], 'span_ids': spans.get(m['id']) or []} for m in chain]
-        seg = join_morphemes([((m.get('metadata') or {}).get('form') or m.get('value') or '',
+        # A morpheme with no stored form beside others is a gap, as the editor shows it.
+        seg = join_morphemes([((m.get('metadata') or {}).get('form')
+                               or ((m.get('value') or '') if len(chain) == 1 else '?'),
                                morpheme_morph_type(m.get('metadata'), types.get(entries.get(m['id']))))
                               for m in chain])
         had_values = sum(len(spans.get(m['id']) or []) for m in chain)
