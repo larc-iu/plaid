@@ -276,6 +276,38 @@ describe('CommentStore writes', () => {
     expect(store.error).toMatch(/Failed to edit comment/);
   });
 
+  it('puts back the body the server holds when two edits of one comment are both refused', async () => {
+    // REV-BUGS-5: the second edit's rollback put back the first edit's
+    // refused text, which the server never had.
+    const client = fakeClient([comment({ id: 'c1', body: 'before' })]);
+    const store = makeStore(client);
+    await store.load();
+    client.comments.update.mockRejectedValue(new Error('nope'));
+    const a = store.edit('c1', 'first');
+    const b = store.edit('c1', 'second');
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    expect(store.threadFor('t1')[0].body).toBe('before');
+    expect(store.threadFor('t1')[0].edited).toBe(false);
+  });
+
+  it('keeps a landed edit when the edit queued behind it is refused', async () => {
+    const client = fakeClient([comment({ id: 'c1', body: 'before' })]);
+    const store = makeStore(client);
+    await store.load();
+    client.comments.update.mockImplementationOnce(async (id, body) => ({
+      ...client.state.rows[0],
+      body,
+      edited: true,
+    }));
+    client.comments.update.mockRejectedValueOnce(new Error('nope'));
+    const a = store.edit('c1', 'first');
+    const b = store.edit('c1', 'second');
+    expect(await a).toBe(true);
+    expect(await b).toBe(false);
+    expect(store.threadFor('t1')[0].body).toBe('first');
+  });
+
   it('marks an edited comment and keeps the server response', async () => {
     const client = fakeClient([comment({ id: 'c1', body: 'before' })]);
     const store = makeStore(client);
@@ -372,6 +404,63 @@ describe('CommentStore live updates', () => {
       entityType: 'token',
       entityId: 't1',
     });
+  });
+
+  it('keeps a queued edit and a queued delete on screen through a thread re-read', async () => {
+    // REV-BUGS-4: someone else's comment re-read the thread and put back what
+    // this store had edited or deleted and not yet sent.
+    const client = fakeClient([
+      comment({ id: 'a', entityId: 't1', body: 'old' }),
+      comment({ id: 'gone', entityId: 't1' }),
+    ]);
+    const store = makeStore(client);
+    await store.load();
+    const answers = [];
+    client.comments.update.mockImplementationOnce(
+      (id, body) =>
+        new Promise((resolve) => {
+          answers.push(() => {
+            const row = client.state.rows.find((r) => r.id === id);
+            Object.assign(row, { body, edited: true });
+            resolve({ ...row });
+          });
+        }),
+    );
+    client.comments.delete.mockImplementationOnce(
+      (id) =>
+        new Promise((resolve) => {
+          answers.push(() => {
+            client.state.rows = client.state.rows.filter((r) => r.id !== id);
+            resolve();
+          });
+        }),
+    );
+    const edited = store.edit('a', 'new');
+    const removed = store.remove('gone');
+    client.state.rows.push(comment({ id: 'b', entityId: 't1', authorId: THEM, body: 'theirs' }));
+    const applied = store.applyEvent({
+      type: 'comment',
+      action: 'created',
+      'comment-id': 'b',
+      'document-id': DOC,
+      'entity-type': 'token',
+      'entity-id': 't1',
+      'author-id': THEM,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const shown = () => store.threadFor('t1').map((c) => [c.id, c.body]);
+    expect(shown()).toEqual([['a', 'new']]);
+    answers.shift()();
+    await edited;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(shown()).toEqual([['a', 'new']]);
+    answers.shift()();
+    await removed;
+    expect(await applied).toBe(true);
+    expect(shown()).toEqual([
+      ['a', 'new'],
+      ['b', 'theirs'],
+    ]);
   });
 
   it('reflects a remote delete', async () => {

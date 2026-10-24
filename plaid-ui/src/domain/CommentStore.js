@@ -115,6 +115,9 @@ export class CommentStore {
       onSavingChange: () => this._emit(),
       onOfflineChange: () => this._emit(),
     });
+    // Per comment with an edit on its way: the comment as the server holds
+    // it, and how many of its edits are on their way (see `edit`).
+    this._confirmed = new Map();
     this._bodyMax = COMMENT_BODY_MAX_FALLBACK;
     this._listeners = new Set();
 
@@ -524,18 +527,30 @@ export class CommentStore {
     const text = String(body ?? '').trim();
     if (!existing || !text) return false;
     if (text === existing.body) return true;
-    const before = { ...existing };
+    // What the server holds, which a refusal puts back: the comment as it
+    // was before the first edit still on its way, or as the last one to land
+    // left it. Never the text of an earlier edit, which may be refused too.
+    const held = this._confirmed.get(commentId) ?? { comment: { ...existing }, edits: 0 };
+    held.edits += 1;
+    this._confirmed.set(commentId, held);
+    const settle = () => {
+      held.edits -= 1;
+      if (!held.edits) this._confirmed.delete(commentId);
+    };
     Object.assign(existing, { body: text, edited: true });
     this._emit();
     return this._queue(
       () => this._client.comments.update(commentId, text),
       (updated) => {
+        settle();
+        held.comment = { ...updated };
         Object.assign(existing, updated);
         this._emit();
         return true;
       },
       (err) => {
-        Object.assign(existing, before);
+        settle();
+        Object.assign(existing, held.comment);
         this._fail('Failed to edit comment', err);
         this._emit();
         return false;
@@ -704,7 +719,12 @@ export class CommentStore {
     if (evt.authorId && evt.authorId === this._currentUserId) return false;
 
     try {
-      const thread = await this._readThread(evt.entityType, evt.entityId);
+      // Read once this store's own edits and deletes have landed, and again
+      // if one was made while the read was on the wire: a thread read before
+      // them would put back what they changed.
+      const thread = await this._writes.readWhenIdle(() =>
+        this._readThread(evt.entityType, evt.entityId),
+      );
       // A remote comment can be the first one from this author in this
       // session, whose name `_replaceThread` looks up.
       this._replaceThread(evt.entityId, thread);
