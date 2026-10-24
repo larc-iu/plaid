@@ -6,6 +6,7 @@ import { parseGrs } from '../src/grew/parser.js';
 import { graphFromSentence } from '../src/grew/rewrite/graph.js';
 import { rewriteSentence } from '../src/grew/rewrite/engine.js';
 import { diffGraphs } from '../src/grew/rewrite/diff.js';
+import { LEMMA_FROM_FORM } from '../src/domain/newUdWord.js';
 
 const CONLLU = [
   '# text = del perro vio',
@@ -123,6 +124,32 @@ test('edges: relabel, delete, create, and endpoint moves; lemma spans come first
   const create = r.writes.main[3];
   assert.equal(create.tgt, r.writes.lemmaCreates[0].node);
   assert.equal(create.value, 'advmod');
+});
+
+// A lemma the rewrite makes only to hang an edge on is the rule's, as the
+// editor's arc makes it (newUdWord.js lemmaFromForm): the word's Form, not
+// its whole token's text, under the rule's stamp, so a parser may replace it.
+test("a lemma made to hang a new edge on is the lemma-from-form rule's", () => {
+  const conllu = [
+    '# text = del perro vio',
+    '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+    '1\tde\t_\tADP\t_\t_\t_\t_\t_\t_',
+    '2\tel\tel\tDET\t_\t_\t3\tdet\t_\t_',
+    '3\tperro\tperro\tNOUN\t_\t_\t4\tnsubj\t_\t_',
+    '4\tvio\tver\tVERB\t_\t_\t0\troot\t_\t_',
+  ].join('\n');
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(conllu) });
+  const before = graphFromSentence(doc.sentences[0]);
+  const { graph: after } = rewriteSentence(
+    parseGrs(`pattern { N [upos=NOUN]; C [upos=ADP] } without { N -> C } commands {
+    add_edge N -[case]-> C }`),
+    before,
+  );
+  const r = diffGraphs(before, after, doc.layerInfo);
+  const [made] = r.writes.lemmaCreates;
+  assert.equal(made.value, 'de');
+  assert.deepEqual(made.metadata, LEMMA_FROM_FORM);
+  assert.ok(r.changes.some((c) => c.text === 'de: lemma de added'));
 });
 
 test('del_node deletes the token (or just the word of a multi-word token) and nothing under it', () => {

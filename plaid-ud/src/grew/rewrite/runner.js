@@ -326,7 +326,7 @@ async function applyToDocument(client, docId, doc, rows) {
   for (const w of lemmas) lemmaOf.set(w.node, uuidv7());
   const queueChanges = (b) => {
     lemmas.forEach((w) =>
-      b.spans.create(w.layer, w.tokens, w.value, createStamp, undefined, {
+      b.spans.create(w.layer, w.tokens, w.value, w.metadata ?? createStamp, undefined, {
         id: lemmaOf.get(w.node),
       }),
     );

@@ -13,7 +13,8 @@
 //                 relations go with them, so nothing else is written for them)
 //   lemmaCreates  lemma spans for words that now need one, because a
 //                 dependency hangs on the lemma span and a word may have
-//                 gained one without ever having a lemma
+//                 gained one without ever having a lemma; one made only for
+//                 an edge carries the lemma-from-form rule's `metadata`
 //   main          every other span and relation write; relation creates and
 //                 endpoint moves name their words, and the runner resolves a
 //                 word to its lemma span (existing or just created)
@@ -25,6 +26,7 @@ import { SUPPRESS_KEY } from '../../domain/enhancedGraph.js';
 import { notSetUp } from '../../../../plaid-ui/src/domain/setupGuard.js';
 import { lossPhrase } from '../../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from '../../domain/otherLoss.js';
+import { lemmaFromForm } from '../../domain/newUdWord.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -418,7 +420,12 @@ export function diffGraphs(before, after, layerInfo) {
     const b = before.nodes.get(n.id);
     const gained = b.lemma === undefined && n.lemma !== undefined;
     if (b.spanIds.lemma || !(gained || needsLemma.has(n.id))) continue;
-    const value = n.lemma ?? n.substring;
+    // One the rule set is the writer's. One made only to hang an edge on is
+    // the lemma-from-form rule's, from the word's Form as the rewrite leaves
+    // it (graph.js reads the form through formOf), as the editor's arc makes it.
+    const { value, metadata } = gained
+      ? { value: n.lemma }
+      : lemmaFromForm(n.id, { form: n.form, text: n.form });
     if (!gained)
       changes.push({ kind: 'feat', node: n.id, ...line`${b.form}: lemma ${value} added` });
     writes.lemmaCreates.push({
@@ -426,6 +433,7 @@ export function diffGraphs(before, after, layerInfo) {
       layer: layer('lemmaLayer'),
       tokens: [n.id],
       value,
+      ...(metadata ? { metadata } : {}),
       node: n.id,
     });
   }

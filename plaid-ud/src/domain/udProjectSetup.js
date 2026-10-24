@@ -391,7 +391,12 @@ const wordBatches = (lacking, lemmaLayerId) => {
   for (const { textId, words: lackingWords } of lacking) {
     let entry = null;
     for (const { begin, end, form } of lackingWords) {
-      const made = newUdWord({ begin, end, precedence: 0 }, form, { id: lemmaLayerId }, uuidv7);
+      const made = newUdWord(
+        { begin, end, precedence: 0 },
+        { text: form },
+        { id: lemmaLayerId },
+        uuidv7,
+      );
       const size = encoder.encode(JSON.stringify(made)).length + ROW_IDS_BYTES;
       const full =
         words + 1 > WORDS_PER_BATCH ||

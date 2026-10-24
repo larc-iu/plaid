@@ -1,5 +1,5 @@
 {
   "model": "builtin:lemma-from-form",
   "sources": ["plaid-ud/src/domain/newUdWord.js"],
-  "hash": "757f4da3"
+  "hash": "0760f88a"
 }

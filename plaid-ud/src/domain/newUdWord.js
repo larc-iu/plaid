@@ -15,24 +15,30 @@ export const LEMMA_FROM_FORM = stampInferred('rule:lemma-from-form', {
   detail: { model: RULE.model, version: `${pkg.version}+${RULE.hash}` },
 });
 
-// The lemma the rule gives the word `wordId` whose form is `form`, under an id
-// minted by `mint`.
-export const lemmaFromForm = (wordId, form, mint = pendingId) => ({
+// What the rule copies a word's lemma from: its Form span's value, else its
+// text. A word of a multi-word token holds its own form in its Form span, as
+// its text is the whole token's. Every reader of a word's form (sentenceRows)
+// and every writer of the rule's lemma read it here.
+export const formOf = ({ form, text }) => (form != null && form !== '' ? form : text);
+
+// The lemma the rule gives the word `wordId` whose Form span holds `form` and
+// whose text is `text`, under an id minted by `mint`.
+export const lemmaFromForm = (wordId, { form, text }, mint = pendingId) => ({
   id: mint(),
   tokens: [wordId],
-  value: form,
+  value: formOf({ form, text }),
   metadata: LEMMA_FROM_FORM,
 });
 
 // What a new UD word carries, whichever write makes it: the word over `at`
 // (its token's extent, with its place among the token's words when given),
-// and, when the project has a Lemma layer, its lemma copied from `form`.
-// Both under ids minted by `mint`, pending ids by default. Tokenize, a token's
-// words typed, a token made from a selection, the first write on a word with
-// no UD word yet and the set-up of a project another app made all make their
-// words here.
-export const newUdWord = ({ begin, end, precedence }, form, lemmaLayer, mint = pendingId) => {
+// and, when the project has a Lemma layer, its lemma by the rule from
+// `{ form, text }`, its Form and its text. Both under ids minted by `mint`,
+// pending ids by default. Tokenize, a token's words typed, a token made from
+// a selection, the first write on a word with no UD word yet and the set-up
+// of a project another app made all make their words here.
+export const newUdWord = ({ begin, end, precedence }, forms, lemmaLayer, mint = pendingId) => {
   const word = { id: mint(), begin, end, ...(precedence != null ? { precedence } : {}) };
-  const lemma = lemmaLayer?.id ? lemmaFromForm(word.id, form, mint) : null;
+  const lemma = lemmaLayer?.id ? lemmaFromForm(word.id, forms, mint) : null;
   return { word, lemma };
 };

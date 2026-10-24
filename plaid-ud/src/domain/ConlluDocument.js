@@ -423,7 +423,7 @@ export class ConlluDocument extends DocumentModel {
     // One code-point spread of the body for every word, not one per word.
     const sliceBody = cpSlicer(body);
     const made = wordRanges.map(([begin, end]) =>
-      newUdWord({ begin, end }, sliceBody(begin, end), lemmaLayer),
+      newUdWord({ begin, end }, { text: sliceBody(begin, end) }, lemmaLayer),
     );
     const morphemes = made.map((m) => m.word);
     const lemmas = made.flatMap((m) => (m.lemma ? [m.lemma] : []));
@@ -854,7 +854,11 @@ export class ConlluDocument extends DocumentModel {
         .map((s) => s.id),
     );
     const made = cleanForms.map((form, i) =>
-      newUdWord({ begin: word.begin, end: word.end, precedence: i }, form, lemmaLayer),
+      newUdWord(
+        { begin: word.begin, end: word.end, precedence: i },
+        { form, text: wordSubstring },
+        lemmaLayer,
+      ),
     );
     const morphemes = made.map((m) => m.word);
     const lemmaSpans = made.flatMap((m) => (m.lemma ? [m.lemma] : []));
@@ -1142,7 +1146,7 @@ export class ConlluDocument extends DocumentModel {
     const wordRow = { id: pendingId(), begin, end };
     const { word: morpheme, lemma } = newUdWord(
       { begin, end },
-      cpSlice(textContent, begin, end),
+      { text: cpSlice(textContent, begin, end) },
       lemmaLayer,
     );
 
@@ -1490,10 +1494,10 @@ export class ConlluDocument extends DocumentModel {
       if (planned) return planned.id;
       const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
       const form = formSpans.find((sp) => sp.tokens?.includes(tokenId))?.value;
-      const span = lemmaFromForm(
-        tokenId,
-        form ?? (token ? cpSlice(textBody, token.begin, token.end) : ''),
-      );
+      const span = lemmaFromForm(tokenId, {
+        form,
+        text: token ? cpSlice(textBody, token.begin, token.end) : '',
+      });
       pending.push(span);
       return span.id;
     });
@@ -1564,7 +1568,7 @@ export class ConlluDocument extends DocumentModel {
       const form = cpSlice(this.body, token.begin, token.end);
       const { word, lemma } = newUdWord(
         { begin: token.begin, end: token.end, precedence: 0 },
-        form,
+        { text: form },
         lemmaLayer,
       );
       words.push(word);

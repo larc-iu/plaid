@@ -1,4 +1,5 @@
 import { cpLength, cpSlicer } from '@larc-iu/plaid-client';
+import { formOf } from './newUdWord.js';
 
 // The annotation grid's row model: the sentence > word > morpheme hierarchy,
 // with every annotation span already attached to its morpheme.
@@ -128,7 +129,7 @@ export function buildSentenceRows(body, layerInfo) {
     const xpos = (xposIndex.get(id) || [])[0] || null;
     const feats = (featuresIndex.get(id) || []).filter((span) => span.value);
 
-    const tokenForm = formSpan?.value != null && formSpan.value !== '' ? formSpan.value : substring;
+    const tokenForm = formOf({ form: formSpan?.value, text: substring });
 
     return {
       token: morphemeToken,
