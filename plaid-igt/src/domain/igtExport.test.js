@@ -92,6 +92,18 @@ describe('untokenized baseline runs', () => {
   });
 });
 
+describe('sentence fields in plain text and TSV', () => {
+  it('quote only the free translation and name every other field (HUNT-igt polish)', () => {
+    const s = { ...SENT, annotations: { ...SENT.annotations, Note: span('a note') } };
+    const fields = { ...FIELDS, sentFields: ['Translation', 'Note'] };
+    expect(formatPlain(s, fields).split('\n').slice(-2)).toEqual([
+      '‘The dogs run.’',
+      'Note: a note',
+    ]);
+    expect(formatTsv(s, fields).split('\n').slice(-2)).toEqual(['The dogs run.', 'Note\ta note']);
+  });
+});
+
 describe('formatTsv', () => {
   it('emits one tab-separated row per tier plus translation rows', () => {
     const out = formatTsv(SENT, FIELDS);
@@ -117,7 +129,12 @@ describe('formatTsv', () => {
       annotations: { Translation: span('"Go away," he said.') },
       tokens: [{ content: '"Go', annotations: {}, morphemes: [] }],
     };
-    const out = formatTsv(s, { morphFields: [], wordFields: [], sentFields: ['Translation'] });
+    const out = formatTsv(s, {
+      morphFields: [],
+      wordFields: [],
+      sentFields: ['Translation'],
+      translationFields: ['Translation'],
+    });
     expect(parseDelimited(out, '\t').map((r) => r.cells)).toEqual([
       ['"Go'],
       ['"Go away," he said.'],

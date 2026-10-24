@@ -163,9 +163,17 @@ const freeTranslation = (sentence, fields) => {
   return (field && sentence.annotations[field].value) || '';
 };
 
-function translations(sentence, fields) {
+// The sentence fields under the tiers, each with a value: the free
+// translation (freeTranslation's field) quoted, every other one, a note or a
+// literal translation, under its field name.
+function sentenceLines(sentence, fields) {
+  const translated = translationFieldOf(fields.translationFields, sentence.annotations);
   return fields.sentFields
-    .map((f) => ({ label: f, value: sentence.annotations?.[f]?.value ?? '' }))
+    .map((f) => ({
+      label: f,
+      value: sentence.annotations?.[f]?.value ?? '',
+      translation: f === translated,
+    }))
     .filter((t) => t.value !== '');
 }
 
@@ -182,7 +190,9 @@ export function formatPlain(sentence, fields) {
       .join('  ')
       .trimEnd(),
   );
-  for (const t of translations(sentence, fields)) out.push(`‘${t.value}’`);
+  for (const t of sentenceLines(sentence, fields)) {
+    out.push(t.translation ? `‘${t.value}’` : `${t.label}: ${t.value}`);
+  }
   return out.join('\n');
 }
 
@@ -191,7 +201,9 @@ export function formatPlain(sentence, fields) {
 
 export function formatTsv(sentence, fields) {
   const out = tiers(sentence, fields).map((l) => l.cells.map(tsvCell).join('\t'));
-  for (const t of translations(sentence, fields)) out.push(tsvCell(t.value));
+  for (const t of sentenceLines(sentence, fields)) {
+    out.push(t.translation ? tsvCell(t.value) : `${tsvCell(t.label)}\t${tsvCell(t.value)}`);
+  }
   return out.join('\n');
 }
 

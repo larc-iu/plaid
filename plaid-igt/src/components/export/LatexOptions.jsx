@@ -187,7 +187,7 @@ export const LatexOptions = ({ options, layers, vocabularies = [], onChange }) =
             onChange={(next) => set({ sentenceFields: next })}
           />
           <p className="text-xs text-muted-foreground">
-            The first sentence field with a value is the free translation.
+            The free translation is the first field with the Translation role that holds a value.
           </p>
         </div>
       )}
