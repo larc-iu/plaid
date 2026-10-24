@@ -31,6 +31,9 @@ test('prediction extras ride along only when given', () => {
     { prov: 'inferred', provSource: 'service:p', provProb: 0 });
   assert.deepEqual(stampInferred('service:p', {}),
     { prov: 'inferred', provSource: 'service:p' });
+  // An empty detail is no detail, as in the Python client (HUNT-recent 20).
+  assert.deepEqual(stampInferred('service:p', { detail: {} }),
+    { prov: 'inferred', provSource: 'service:p' });
   assert.deepEqual(
     confirmedInferred('flex-import', { detail: { model: 'flex' } }),
     { prov: 'inferred', provSource: 'flex-import', provConfirmed: true,

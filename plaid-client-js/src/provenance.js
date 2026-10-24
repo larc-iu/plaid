@@ -166,7 +166,10 @@ export const stampInferred = (source, { prob, detail } = {}) => ({
   [PROV.key]: PROV.INFERRED,
   [PROV.sourceKey]: source,
   ...(isProbability(prob) ? { [PROV.probKey]: prob } : {}),
-  ...(detail ? { [PROV.detailKey]: detail } : {}),
+  // An empty detail is no detail, as in the Python client.
+  ...(detail && !(typeof detail === 'object' && Object.keys(detail).length === 0)
+    ? { [PROV.detailKey]: detail }
+    : {}),
 });
 
 /**
