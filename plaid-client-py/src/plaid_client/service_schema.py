@@ -15,6 +15,7 @@ argument back under the same key you declared.
 """
 
 import math
+import re
 
 
 class TASKS:
@@ -226,6 +227,28 @@ def default_values(parameters):
     return out
 
 
+#: A decimal number as a person types one: an optional sign, digits with an
+#: optional fraction (or a bare fraction), an optional exponent, with spaces
+#: around it allowed. ASCII digits only, as in JS.
+_DECIMAL = re.compile(r'\s*[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\s*')
+
+
+def _number_of(v):
+    """``v`` as a finite number when it is one or a decimal string, else
+    None. An integral value comes back as an int."""
+    if isinstance(v, bool):
+        return None
+    if not (isinstance(v, (int, float)) or (isinstance(v, str) and _DECIMAL.fullmatch(v))):
+        return None
+    try:
+        n = float(v)
+    except OverflowError:     # an int past a float's range, as JS reads it
+        return None
+    if not math.isfinite(n):
+        return None
+    return int(n) if n.is_integer() else n
+
+
 def coerce(parameters, raw):
     """Coerce/validate raw values against the schema.
 
@@ -243,21 +266,12 @@ def coerce(parameters, raw):
         v = src.get(key, _default_for_param(param))
         ptype = param.get('type')
         if ptype == 'number':
-            # Blank / None counts as "missing" → the param's default (matches the
-            # JS client, where Number('') is 0 but we likewise route blanks to the
-            # default before clamping).
-            if v is None or (isinstance(v, str) and v.strip() == ''):
-                v = _default_for_param(param)
-            else:
-                try:
-                    v = float(v)
-                    # nan and inf are no number, as JS Number('inf') is NaN.
-                    if not math.isfinite(v):
-                        v = _default_for_param(param)
-                    elif v.is_integer():
-                        v = int(v)
-                except (TypeError, ValueError):
-                    v = _default_for_param(param)
+            # A finite number, or a string holding a decimal one; anything else
+            # (blank, a boolean, a list, hex, an underscore, Infinity, a value
+            # too large to be finite) is the param's default. The JS client's
+            # coerceParamValues reads the same rule.
+            n = _number_of(v)
+            v = _default_for_param(param) if n is None else n
             if isinstance(param.get('min'), (int, float)):
                 v = max(param['min'], v)
             if isinstance(param.get('max'), (int, float)):

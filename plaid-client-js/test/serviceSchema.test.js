@@ -140,6 +140,14 @@ test('coerce: blank/invalid number falls back to the declared default (JS/Py par
   assert.equal(v({ beam: '99' }), 10);   // clamped to max
 });
 
+test('coerce: a number is a finite number or a decimal string, nothing else (HUNT-recent 15)', () => {
+  const schema = [{ key: 'n', label: 'N', type: 'number', default: 3 }];
+  const v = (raw) => coerceParamValues(schema, { n: raw }).values.n;
+  assert.deepEqual(['5', ' 12 ', '+3', '.5', '1e3', 5, 2.5].map(v), [5, 12, 3, 0.5, 1000, 5, 2.5]);
+  assert.deepEqual(['Infinity', '1e999', '0x10', '0b11', '1_000', true, [7], {}, NaN].map(v),
+    Array(9).fill(3));
+});
+
 test('enum: an out-of-range declared default never escapes', () => {
   const schema = [{ key: 'x', label: 'X', type: 'enum', default: 'klingon',
     options: [{ value: 'en', label: 'E' }, { value: 'de', label: 'D' }] }];

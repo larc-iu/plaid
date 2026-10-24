@@ -263,6 +263,19 @@ export function buildDefaultValues(schema) {
  * @param {Record<string, any>} raw current form values
  * @returns {{values: Record<string, any>, errors: Record<string, string>}}
  */
+// A decimal number as a person types one: an optional sign, digits with an
+// optional fraction (or a bare fraction), an optional exponent, with spaces
+// around it allowed.
+const DECIMAL = /^\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?\s*$/;
+
+/** `v` as a finite number when it is one or a decimal string, else null. */
+function numberOf(v) {
+  let n = null;
+  if (typeof v === "number") n = v;
+  else if (typeof v === "string" && DECIMAL.test(v)) n = Number(v);
+  return n !== null && Number.isFinite(n) ? n : null;
+}
+
 export function coerceParamValues(schema, raw) {
   const values = {};
   const errors = {};
@@ -275,19 +288,12 @@ export function coerceParamValues(schema, raw) {
 
     switch (param.type) {
       case "number": {
-        // Blank / nullish counts as "missing" → the param's default (matches the
-        // Python client, where float('') raises and falls back to the default).
-        let n;
-        if (
-          v === "" ||
-          v == null ||
-          (typeof v === "string" && v.trim() === "")
-        ) {
-          n = defaultForParam(param);
-        } else {
-          n = typeof v === "number" ? v : Number(v);
-          if (Number.isNaN(n)) n = defaultForParam(param);
-        }
+        // A finite number, or a string holding a decimal one; anything else
+        // (blank, a boolean, a list, hex, an underscore, Infinity, a value too
+        // large to be finite) is the param's default. The Python client's
+        // `coerce` reads the same rule.
+        let n = numberOf(v);
+        if (n === null) n = defaultForParam(param);
         if (typeof param.min === "number") n = Math.max(param.min, n);
         if (typeof param.max === "number") n = Math.min(param.max, n);
         v = n;
