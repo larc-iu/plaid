@@ -520,14 +520,16 @@ async function importNativeDocument({
   const linkIdMap = new Map(); // archive vocab-link id → new link id
   let docId = null;
   // References in metadata, resolved through everything made so far, over the
-  // six kinds of row a document owns (see REFERENCE_KINDS). This document's own
-  // id is known from the moment the document row exists.
+  // six kinds of row a document owns (see REFERENCE_KINDS) and the entries of
+  // the archive's vocabularies, which are all made before any document. This
+  // document's own id is known from the moment the document row exists.
   const lookup = (id) =>
     tokenIdMap.get(id) ??
     spanIdMap.get(id) ??
     relationIdMap.get(id) ??
     textIdMap.get(id) ??
     linkIdMap.get(id) ??
+    itemIdMap.get(id) ??
     (id === docData.id ? docId : docIdMap.get(id));
   const refs = documentReferences({ client, lookup, ahead: archivedIds(docData), check });
 
@@ -574,7 +576,7 @@ async function importNativeDocument({
     name: docData.name,
     metadata: (id) =>
       stamp(
-        rewriteReferences(docMetadata, (ref) => docIdMap.get(ref)),
+        rewriteReferences(docMetadata, (ref) => itemIdMap.get(ref) ?? docIdMap.get(ref)),
         id,
       ),
     body,

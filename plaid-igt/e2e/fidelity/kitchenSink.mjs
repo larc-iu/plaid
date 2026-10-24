@@ -617,6 +617,29 @@ async function buildStory(ctx) {
   });
   // A link on a segment.
   await client.vocabLinks.create(e.vuelta, [overlap]);
+  // An annotation and a link whose provenance names lexicon entries, as a
+  // service that weighs alternatives writes them (provDetail.valueLinks).
+  await client.spans.create(
+    wordGloss,
+    [wordId('El', 0)],
+    'the',
+    stampInferred('cwomp', {
+      detail: { valueLinks: [{ value: 'the', item: e.saying }] },
+    }),
+  );
+  await client.vocabLinks.create(
+    e.perroHound,
+    [wordId('los')],
+    stampInferred('cwomp', {
+      prob: 0.5,
+      detail: {
+        valueLinks: [
+          { value: 'hound', item: e.perroHound },
+          { value: 'mutt', item: e.perroMutt },
+        ],
+      },
+    }),
+  );
   // A link on a morpheme with no morph type of its own, to an entry that has
   // one, as an importer writes it.
   await client.vocabLinks.create(e.parar, [word(doc, 'parar∅').morphemes[0].id]);

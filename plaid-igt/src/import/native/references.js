@@ -2,14 +2,17 @@
 //
 // An app may keep the id of another entity in an entity's metadata: a span
 // naming the sentence token it belongs to, a document naming another document
-// of the project. The archive writes metadata as it is, and an import gives
+// of the project, an annotation naming the lexicon entries its alternatives
+// came from. The archive writes metadata as it is, and an import gives
 // every entity a new id, so such a value would come back naming something that
 // no longer exists. So a metadata value that is EXACTLY the archive id of
 // something the archive carries is taken for a reference to it, and the new id
 // is written in its place. Only a whole string counts. A key, part of a
 // longer string, or a value of any other type is data, never a reference.
 //
-// See REFERENCE_KINDS for which ids those are.
+// See REFERENCE_KINDS for which ids those are. A vocabulary entry is one too:
+// the import makes every entry anew before any document, and the engine's
+// lookup finds those through its entry map.
 //
 // A reference can point forward, at something the import makes later than the
 // entity holding it: a token naming a span, a document naming the next one.
@@ -22,10 +25,13 @@
 import { bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 
 /**
- * The kinds of row whose id a metadata value can name and have rewritten: the
- * document itself and the five tables that hang off it. Every other id in an
- * archive is project-scoped (a layer, a vocabulary entry) and an import stays
- * inside its project, so those already name the right thing.
+ * The kinds of row a document holds whose id a metadata value can name and
+ * have rewritten: the document itself and the five tables that hang off it.
+ * An import gives every other id in an archive a new one too: a layer's is
+ * rewritten where config names it (otherLayers.js `remapIds`), and a
+ * vocabulary entry's wherever metadata names it, through the engine's entry
+ * map. Neither is on this list, which is the document-scoped half that core's
+ * document copy shares.
  *
  * THE SAME LIST core's document copy rewrites, which it holds as
  * `plaid.sql.document/metadata-reference-kinds` (plaid-core, `sql/document.clj`,
