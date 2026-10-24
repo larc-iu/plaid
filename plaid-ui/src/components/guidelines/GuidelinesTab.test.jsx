@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts, byText } from '../../test/renderComponent.jsx';
 import { GuidelinesTab } from './GuidelinesTab.jsx';
@@ -387,6 +388,71 @@ describe('a writer', () => {
     expect(client.guidelines.delete).toHaveBeenCalledWith('g2');
     await step(() => answer());
     expect(rowTitles(container)).toEqual(['Translations', 'Zeta']);
+    await unmount();
+  });
+});
+
+// REV-BUGS-2 and REV-BUGS-3: the queue a pin and a delete go through.
+describe('the queue behind a pin and a delete', () => {
+  it('reads the list again after a refused delete under StrictMode', async () => {
+    // StrictMode runs an effect, its cleanup and the effect again, so a queue
+    // let go in the cleanup and never held again skipped every refetch.
+    const client = fakeClient({
+      delete: vi.fn().mockRejectedValue(Object.assign(new Error('HTTP 403'), { status: 403 })),
+    });
+    const { container, step, unmount } = await renderComponent(
+      <StrictMode>
+        <ConfirmProvider>
+          <MemoryRouter>
+            <GuidelinesTab client={client} projectId="p1" canWrite />
+          </MemoryRouter>
+        </ConfirmProvider>
+      </StrictMode>,
+    );
+    await step(() => byText(container, 'a', 'Alpha').click());
+    await step(() => container.querySelector('[aria-label="Delete"]').click());
+    await step(async () => {});
+    const confirmDelete = all(document.body, '[role="alertdialog"] button').find(
+      (b) => b.textContent.trim() === 'Delete',
+    );
+    await step(() => confirmDelete.click());
+    await step(async () => {});
+    await step(async () => {});
+    expect(rowTitles(container)).toEqual(['Translations', 'Alpha', 'Zeta']);
+    await unmount();
+  });
+
+  it('saves an edit made before a pin was answered against what the pin left', async () => {
+    let answerPin;
+    const update = vi.fn(async (id, changes) => ({
+      ...INDEX.find((g) => g.id === id),
+      ...changes,
+    }));
+    update.mockImplementationOnce(
+      (id, changes) =>
+        new Promise((resolve) => {
+          answerPin = () =>
+            resolve({
+              ...INDEX.find((g) => g.id === id),
+              ...changes,
+              updatedAt: '2026-10-24T00:00:00Z',
+            });
+        }),
+    );
+    const client = fakeClient({ update });
+    const { container, step, unmount } = await mount({ canWrite: true, client });
+    await step(() => byText(container, 'a', 'Alpha').click());
+    await step(() => container.querySelector('[aria-label="Pin"]').click());
+    await step(() => byText(container, 'button', 'Edit').click());
+    await step(() => byText(container, 'button', 'Save').click());
+    // The save waits for the pin, and is checked against the pin's answer.
+    expect(update).toHaveBeenCalledTimes(1);
+    await step(() => answerPin());
+    await step(async () => {});
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ pinned: true, expectedUpdatedAt: '2026-10-24T00:00:00Z' }),
+    );
     await unmount();
   });
 });

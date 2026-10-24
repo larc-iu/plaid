@@ -91,6 +91,8 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [opened, setOpened] = useState(null);
+  const openedRef = useRef(opened);
+  openedRef.current = opened;
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   // Set when a save was refused because somebody else had saved first. The
@@ -108,7 +110,10 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   // the tab asks meanwhile. Save is a form with its own button, and waits.
   const [writes] = useState(() => new WriteQueue());
   useSavingGuard(writes);
-  useEffect(() => () => writes.letGo(), [writes]);
+  useEffect(() => {
+    writes.hold();
+    return () => writes.letGo();
+  }, [writes]);
 
   const selectedId = params.get('guideline');
   const selectedRef = useRef(selectedId);
@@ -224,13 +229,18 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
     setSaving(true);
     try {
       if (draft.id) {
+        // A pin or a delete pressed before Save is sent first, and the save
+        // is checked against what the pin left, not the guideline as Edit
+        // copied it, which would refuse the save over the person's own pin.
+        await writes.whenIdle();
+        const now = openedRef.current?.id === draft.id ? openedRef.current : draft;
         await client.guidelines.update(draft.id, {
           title,
           body: draft.body,
-          pinned: draft.pinned,
+          pinned: now.pinned,
           // What this draft was opened against. Leaving it off is what makes
           // the retry after a conflict an overwrite rather than another 409.
-          expectedUpdatedAt: overwrite ? undefined : draft.updatedAt,
+          expectedUpdatedAt: overwrite ? undefined : now.updatedAt,
         });
       } else {
         // The draft keeps the id of what it makes across presses, so Save
