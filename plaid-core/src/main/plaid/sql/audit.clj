@@ -545,7 +545,7 @@
 
 (defn- not-repair
   "WHERE that leaves out an operation in a group of kind `repair`: an app's
-  repair when a document opens, or a conversion of stored data run through
+  own repair of stored data, or a conversion of stored data run through
   the API (Luke's ruling, 2026-10-09). A repair is nobody's edit, so no
   per-person fact read from the log counts it. It stays in every audit read,
   labelled by its kind. `group-col` is the operation's `group_id` column."

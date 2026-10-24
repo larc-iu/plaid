@@ -26,7 +26,8 @@
     import          a file or archive read into a project
     bulk-edit       one change made across many places at once
     guess-adoption  a person taking a suggested value as their own
-    repair          a repair an app makes by itself when a document opens
+    repair          an app's own repair of stored data, such as the layer
+                    rules it sets up
     review          a person accepting machine or contributed work already
                     stored, as it stands"
   #{"assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review"})

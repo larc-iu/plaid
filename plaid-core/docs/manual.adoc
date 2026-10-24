@@ -284,7 +284,7 @@ with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
 |none
 
 |`repair`
-|A repair an app makes by itself when a document opens. It is never counted as anyone's edit.
+|Layer rules an app sets up by itself, with any repair of the stored data they need first (see <<layer-constraints>>). It is never counted as anyone's edit.
 |none
 
 |`review`
@@ -336,7 +336,7 @@ mine = c.projects.my_last_edits(project_id)
 ----
 
 A document the caller never wrote to is absent.
-Repairs an app makes when a document opens are not counted.
+Writes of kind `repair` are not counted.
 
 === Document Time Travel
 
@@ -1668,23 +1668,23 @@ However, on the UD side, it is a strict requirement that all dependency relation
 
 Plaid cannot know about this invariant by itself, because it is application-specific.
 The UD app can tell it, though, by declaring the rule on its relation layer (see <<layer-constraints>>), and then the split deletes the crossing relations itself.
-Any invariant that no declared rule expresses is left to the UD app to deal with the next time that document is opened.
+Any invariant that no declared rule expresses is left to the UD app's reader.
 
 The discipline that resolves this is easy to state, and in the interest of smooth interoperability, we encourage all app developers to adhere to it:
 
-**Every time an app opens a document, it should validate all its invariants and automatically repair any violations that may have been introduced by other apps.**
+**Opening a document writes nothing. An app reads what another app left as its own model says it should be, and the first real edit there stores that reading.**
 
-In our running example, the next time the document is opened in the UD app, the UD app would validate the data and realize that a relation is straddling a sentence boundary.
-The simplest thing to do at this point would be to delete the offending relation.
-Although information is lost this way, we are able to restore data integrity without requiring any human intervention.
-Ideally, the app would also loudly tell the user what happened, and perhaps even encourage or require review.
-And indeed, in general, some invariant violations in other situations might **require** human intervention in order to avoid worse consequences.
+The Plaid apps work this way.
+A word made in the IGT app has no UD word under it, so the UD app shows it as the one UD word over that word, and the first value, lemma or arc a person gives it makes that word in the same batch as the edit.
+A UMR node whose word another app split is read on the half that holds its letters, and the next UMR edit in that sentence stores that reading before its own change.
+An invariant the app cannot read its way past is reported to the person, who decides what to do.
 
-[NOTE]
-====
-It is worth running this same reconciliation not only when a document is first opened, but also whenever a document that is already on screen changes underneath you, for instance in response to a real-time update delivered through <<Real-time Messaging>>.
-Opening the document is the baseline; reconciling on a live update is the very same idea, applied at the moment the substrate comes back into view.
-====
+Writing nothing on open keeps a reader's visit out of the audit log, lets several people open a document at once without their pages racing to repair it, and leaves the stored data as the other app wrote it until someone edits it.
+A reader that computes the answer also stays right when the document changes on screen, for instance in response to a real-time update delivered through <<Real-time Messaging>>.
+
+The one exception is setting a project up for an app.
+When a person sets a project made in another app up for UD, the set-up makes the UD word of every word that has none, in the batch that makes UD's layers, since Grew search, Rewrite and the project's word counts read stored words.
+A word another app adds after that is read as a stand-in until it is edited.
 
 [[layer-constraints]]
 == Layer Constraints
@@ -1740,7 +1740,7 @@ client.relation_layers.set_constraints(deps_layer_id, "ud", [
 
 `check_constraints` lists what a list would break, without writing anything: the first 100 violations, or as many as `limit` asks, and `violation-count` counts them all.
 `repair_constraints` fixes what can be fixed and lists the rest, and a writer may run it on a single document by passing `document`.
-An app uses this when a writer opens a document whose layer does not hold its rules yet.
+An app uses this when it sets up a project, or a setting changes the rules it wants, on layers whose data does not hold them yet.
 
 === Rule violations
 
