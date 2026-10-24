@@ -88,7 +88,7 @@ Each also carries a human ``label`` for the approval UI.
 """
 
 from collections import Counter
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..core import guidelines as _guidelines
 from ..core import keep as _keep
@@ -1850,6 +1850,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     if body[b:e] != op['old']:
         raise ValueRefusal(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made',
                            kind='conflict')
+    before = _sole_forms(tl, project, body)
     new_body = body[:b] + new + body[e:]
     gaps = _region_gaps(op['old'], new, b)
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
@@ -1866,6 +1867,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
 
     raw = client.documents.get(doc_id, include_body=True)
     stored_tl, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    _follow_sole_forms(client, project, before, stored_tl)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents:
         # A text with no sentence (an empty one, or an edit that took them
@@ -1885,6 +1887,65 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         sents.remove(hit)
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
+
+
+# Forms written per request, as the app's Baseline save sends them.
+FORM_CHUNK = 500
+
+
+def _extent_morphemes(tl, project) -> Tuple[list, Dict[tuple, list]]:
+    """The words of text layer ``tl`` and its morphemes by their extent
+    (every igt morpheme has its word's extent)."""
+    words, by = [], {}
+    for layer in (tl or {}).get('token_layers') or []:
+        if layer.get('id') == project.word_layer_id:
+            words = layer.get('tokens') or []
+        elif layer.get('id') == project.morpheme_layer_id:
+            for m in layer.get('tokens') or []:
+                by.setdefault((m['begin'], m['end']), []).append(m)
+    return words, by
+
+
+def _sole_forms(tl, project, body: str) -> Dict[str, tuple]:
+    """The words with one morpheme whose stored form is the word's text in
+    ``body``: word id to ``(morpheme id, form)``. Mirror of plaid-igt's
+    ``domain/soleMorphemeForms.js`` ``soleForms``."""
+    words, by = _extent_morphemes(tl, project)
+    out = {}
+    for w in words:
+        ms = by.get((w['begin'], w['end'])) or []
+        if len(ms) != 1 or 'form' not in (ms[0].get('metadata') or {}):
+            continue
+        text = body[w['begin']:w['end']]
+        if ms[0]['metadata']['form'] == text:
+            out[w['id']] = (ms[0]['id'], text)
+    return out
+
+
+def _follow_sole_forms(client, project, before: Dict[str, tuple], tl) -> None:
+    """A word whose one morpheme's form spelled the whole word, respelled by
+    the edit, gets that form respelled with it (Luke, H17), unstamped as the
+    app's Baseline save writes it. ``tl`` is the text layer as stored after
+    the edit. A new spelling holding whitespace is not followed: a morpheme
+    form never holds a space. Mirror of ``followedForms``."""
+    if not before:
+        return
+    body = ((tl or {}).get('text') or {}).get('body') or ''
+    words, by = _extent_morphemes(tl, project)
+    writes = []
+    for w in words:
+        was = before.get(w['id'])
+        if not was:
+            continue
+        text = body[w['begin']:w['end']]
+        if text == was[1] or not text or any(ch.isspace() for ch in text):
+            continue
+        ms = by.get((w['begin'], w['end'])) or []
+        if len(ms) != 1 or ms[0]['id'] != was[0] or (ms[0].get('metadata') or {}).get('form') != was[1]:
+            continue
+        writes.append({'id': was[0], 'metadata': metadata_ops({'form': text})})
+    for i in range(0, len(writes), FORM_CHUNK):
+        client.tokens.bulk_update(writes[i:i + FORM_CHUNK])
 
 
 def _cut_after(p: int, gaps: List[Dict[str, Any]], end: bool) -> int:

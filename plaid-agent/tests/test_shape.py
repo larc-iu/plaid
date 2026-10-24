@@ -442,6 +442,34 @@ class _TextServer:
         tl['text']['body'] = body
 
 
+def test_execute_retype_respells_a_sole_morpheme_form_that_spelled_the_word():
+    # HUNT-recent 2: a word whose one morpheme's form is the word follows its
+    # new spelling, as the Baseline save does (H17, soleMorphemeForms.js).
+    from plaid_agent.igt.project import load_project
+    c = FakeClient()
+    _TextServer(c)
+    for layer in c._documents['d1']['text_layers'][0]['token_layers']:
+        for t in layer['tokens']:
+            if t['id'] == 'm-2':
+                t['metadata'] = {'form': 'gam'}
+    project = load_project(c, 'p1')
+    op = {'kind': 'edit_text', 'document_id': 'd1', 'text_id': 'text1', 'sentence_id': 's-1', 'begin': 0, 'end': 17,
+          'old': 'Ali-di gam akuna.', 'new': 'Ali-di gham akuna.', 'word_ids': ['w-1', 'w-2', 'w-3'],
+          'morpheme_ids': ['m-1a', 'm-1b', 'm-2'], 'label': ''}
+    execute_plan(c, [op], source='s', label='l', project=project)
+    assert c.payloads('tokens.bulk_update') == [[{'id': 'm-2', 'metadata': [
+        {'op': 'set', 'path': ['form'], 'value': 'gham'}]}]]
+    # A form that did not spell its word is not followed.
+    c2 = FakeClient()
+    _TextServer(c2)
+    for layer in c2._documents['d1']['text_layers'][0]['token_layers']:
+        for t in layer['tokens']:
+            if t['id'] == 'm-2':
+                t['metadata'] = {'form': 'ga'}
+    execute_plan(c2, [op], source='s', label='l', project=load_project(c2, 'p1'))
+    assert not c2.payloads('tokens.bulk_update')
+
+
 def test_execute_append_splits_the_gap_filled_sentence_and_names_the_word_layer():
     from plaid_agent.igt.project import load_project
     c = FakeClient()
