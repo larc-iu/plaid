@@ -1200,15 +1200,19 @@ export const VocabularyItems = ({
       `Add a headword over "${it.form}"`,
       async () => {
         const meta = followIds(headMeta);
-        const created = await client.vocabItems.create(
-          vocabularyId,
-          it.form,
-          Object.keys(meta).length ? meta : undefined,
-          undefined,
-          { id: headId },
-        );
-        settleEntries(new Map([[headId, createdId(created)]]));
-        await bulkRepoint([{ id, metadata: senseMeta }], new Map([[id, it.metadata]]));
+        // One batch, so a refused repoint leaves no headword without its
+        // sense. The headword is made under the id minted here.
+        await client.batched(async (b) => {
+          b.vocabItems.create(
+            vocabularyId,
+            it.form,
+            Object.keys(meta).length ? meta : undefined,
+            undefined,
+            { id: headId },
+          );
+          await bulkRepoint([{ id, metadata: senseMeta }], new Map([[id, it.metadata]]), b);
+        });
+        settleEntries(new Map([[headId, headId]]));
       },
       'Failed to add the headword',
     );
