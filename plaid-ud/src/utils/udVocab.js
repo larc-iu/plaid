@@ -261,7 +261,7 @@ export const cleanColorMap = (colorMap) =>
 
 // The feature inventory as stored: entries with a name, each value trimmed and
 // the empty ones dropped.
-export const cleanInventory = (inventory) =>
+const cleanInventory = (inventory) =>
   (inventory || [])
     .filter((e) => e.key.trim())
     .map((e) => ({
