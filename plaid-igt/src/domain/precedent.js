@@ -33,9 +33,9 @@
 // every document opened in the project. Only this project counts: a
 // vocabulary shared with other projects is counted from the links made here.
 //
-// KNOWN ASYMMETRY: the query engine exposes no vocab-link metadata, so link
-// rows from the project query carry no provenance and count as trusted;
-// only the open document's links are state-exact. Value rows are exact.
+// Link rows and value rows both carry their provenance (a link's prov and
+// provConfirmed are on the link itself), so an unverified machine link is
+// machine-made in the project counts as it is in the open document's.
 
 import { PROV, PROV_STATES, ROLES, isMachine } from '@larc-iu/plaid-client';
 import { nfc } from '@ui/domain/collation';
@@ -100,13 +100,14 @@ const addLink = (tally, kind, form, itemId, n, machine) => {
 // ---- project queries ----
 
 // One grouped query per vocab: how often each (form, item) pairing has been
-// linked, split by the kind of token that carries the link. Row shape:
-// [itemId, tokenValue, morphForm, role, morphType, count] — morphForm for
-// morpheme tokens (their value is just the parent word's slice), tokenValue
-// otherwise; morphType is the entry's, so rows from multi-word expressions
-// (one per member word, since a link over several tokens joins once per
-// token) can be left out of a single word's precedent. With `docId`, the
-// same counts for that one document alone.
+// linked, split by the kind of token that carries the link and by the link's
+// provenance. Row shape: [itemId, tokenValue, morphForm, role, morphType,
+// prov, provConfirmed, count] — morphForm for morpheme tokens (their value is
+// just the parent word's slice), tokenValue otherwise; morphType is the
+// entry's, so rows from multi-word expressions (one per member word, since a
+// link over several tokens joins once per token) can be left out of a single
+// word's precedent; prov and provConfirmed are the link's (null when absent).
+// With `docId`, the same counts for that one document alone.
 //
 // A vocabulary can be linked to several projects, and without a `scope` the
 // query counts the links of every project the login can read. The counts are
@@ -117,7 +118,8 @@ export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {})
     scope: { projectIds: [projectId] },
     where: [
       ['vocab', '?v', { layer: vid }],
-      ['vocab-link', '?t', '?v'],
+      ['link-item', '?l', '?v'],
+      ['link-token', '?l', '?t'],
       ['token', '?t', { layer: '?tl', ...(docId ? { doc: docId } : {}) }],
       ['token-layer', '?tl', {}],
     ],
@@ -128,6 +130,8 @@ export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {})
         '?t.metadata.form',
         '?tl.config.plaid.role',
         '?v.metadata.morphType',
+        '?l.metadata.prov',
+        '?l.metadata.provConfirmed',
       ],
       aggregates: [['count']],
     },
@@ -193,10 +197,17 @@ export function mergeTally(dst, src, sign = 1) {
 
 // ---- folding rows and documents into a tally ----
 
+// A row's provenance keys as the query groups them: machine-made and still
+// unverified unless a person made it (no prov), a contributor did, or it was
+// confirmed (a group key reads JSON true as 1).
+const isUnverifiedMachine = (prov, confirmed) =>
+  prov != null && prov !== PROV.CONTRIBUTED && !confirmed;
+
 /** Fold linkPrecedentQueries results (one per vocab) into `tally`. */
 export function foldLinkRows(tally, resultsPerVocab, ignoredCfg = null) {
   for (const res of resultsPerVocab || []) {
-    for (const [itemId, value, morphForm, role, morphType, n] of res?.results || []) {
+    for (const [itemId, value, morphForm, role, morphType, prov, confirmed, n] of res?.results ||
+      []) {
       // A phrase entry's links are multi-word expressions: not what this
       // single form has been given.
       if (isMweType(morphType)) continue;
@@ -204,7 +215,7 @@ export function foldLinkRows(tally, resultsPerVocab, ignoredCfg = null) {
         morphForm != null && morphForm !== ''
           ? String(morphForm)
           : trimIgnoredEdges((value ?? '').toString(), ignoredCfg);
-      addLink(tally, role, form, itemId, n, false);
+      addLink(tally, role, form, itemId, n, isUnverifiedMachine(prov, confirmed));
     }
   }
   return tally;
@@ -221,7 +232,7 @@ export function foldValueRows(tally, kind, field, rows, ignoredCfg = null) {
       value,
       n,
       {
-        machine: prov != null && prov !== PROV.CONTRIBUTED && !confirmed,
+        machine: isUnverifiedMachine(prov, confirmed),
       },
     );
   }

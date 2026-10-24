@@ -28,9 +28,9 @@ describe('link precedent from project rows', () => {
   it('uses morphForm over token value and takes the majority item', () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['item-a', 'perros', null, 'word', null, 3], // word token: form = value
-        ['item-a', 'whole', 's', 'morpheme', null, 4], // morpheme token: form = metadata.form
-        ['item-b', 'whole', 's', 'morpheme', null, 2], // minority for "s"
+        ['item-a', 'perros', null, 'word', null, null, null, 3], // word token: form = value
+        ['item-a', 'whole', 's', 'morpheme', null, null, null, 4], // morpheme token: form = metadata.form
+        ['item-b', 'whole', 's', 'morpheme', null, null, null, 2], // minority for "s"
       ]),
     ]);
     expect(winner(t, 'perros', 'word')).toBe('item-a');
@@ -46,8 +46,8 @@ describe('link precedent from project rows', () => {
   it('breaks count ties to the lexicographically smaller id (and refuses them without a tiebreak)', () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['item-b', null, 'la', 'morpheme', null, 2],
-        ['item-a', null, 'la', 'morpheme', null, 2],
+        ['item-b', null, 'la', 'morpheme', null, null, null, 2],
+        ['item-a', null, 'la', 'morpheme', null, null, null, 2],
       ]),
     ]);
     expect(winner(t, 'la', 'morpheme')).toBe('item-a');
@@ -56,10 +56,10 @@ describe('link precedent from project rows', () => {
 
   it('merges counts across vocabs', () => {
     const t = foldLinkRows(createTally(), [
-      res([['item-a', null, 'se', 'morpheme', null, 1]]),
+      res([['item-a', null, 'se', 'morpheme', null, null, null, 1]]),
       res([
-        ['item-a', null, 'se', 'morpheme', null, 2],
-        ['item-b', null, 'se', 'morpheme', null, 2],
+        ['item-a', null, 'se', 'morpheme', null, null, null, 2],
+        ['item-b', null, 'se', 'morpheme', null, null, null, 2],
       ]),
     ]);
     expect(winner(t, 'se', 'morpheme')).toBe('item-a'); // 3 > 2
@@ -68,9 +68,9 @@ describe('link precedent from project rows', () => {
   it('answers each kind with its own counts, and a kind without any with what every kind did', () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['item-w', 'se', null, 'word', null, 5],
-        ['item-m', 'whole', 'se', 'morpheme', null, 2],
-        ['item-x', 'se', null, 'other-app', null, 9], // another app's layer: overall only
+        ['item-w', 'se', null, 'word', null, null, null, 5],
+        ['item-m', 'whole', 'se', 'morpheme', null, null, null, 2],
+        ['item-x', 'se', null, 'other-app', null, null, null, 9], // another app's layer: overall only
       ]),
     ]);
     expect(winner(t, 'se', 'word')).toBe('item-w');
@@ -79,13 +79,32 @@ describe('link precedent from project rows', () => {
     expect(links(t, 'nope', 'word')).toBeNull();
   });
 
+  it("counts an unverified machine link as machine-made, a confirmed or a contributor's as trusted", () => {
+    const t = foldLinkRows(createTally(), [
+      res([
+        ['i-m', 'kai', null, 'word', null, 'inferred', null, 3],
+        ['i-c', 'kai', null, 'word', null, 'inferred', 1, 1],
+        ['i-k', 'kai', null, 'word', null, 'contributed', null, 1],
+        ['i-p', 'kai', null, 'word', null, null, null, 1],
+      ]),
+    ]);
+    expect(links(t, 'kai', 'word').get('i-m')).toBe(3);
+    expect(links(t, 'kai', 'word', { excludeMachine: true })).toEqual(
+      new Map([
+        ['i-c', 1],
+        ['i-k', 1],
+        ['i-p', 1],
+      ]),
+    );
+  });
+
   it('pools `derechos.` and `derechos` under the trimmed form', () => {
     const t = foldLinkRows(
       createTally(),
       [
         res([
-          ['i-a', 'derechos.', null, 'word', null, 2],
-          ['i-b', 'derechos', null, 'word', null, 1],
+          ['i-a', 'derechos.', null, 'word', null, null, null, 2],
+          ['i-b', 'derechos', null, 'word', null, null, null, 1],
         ]),
       ],
       ignored,
@@ -105,7 +124,11 @@ describe('queries', () => {
       '?t.metadata.form',
       '?tl.config.plaid.role',
       '?v.metadata.morphType',
+      '?l.metadata.prov',
+      '?l.metadata.provConfirmed',
     ]);
+    expect(qs[0].where).toContainEqual(['link-item', '?l', '?v']);
+    expect(qs[0].where).toContainEqual(['link-token', '?l', '?t']);
     expect(qs[0].where).toContainEqual(['token', '?t', { layer: '?tl' }]);
     const [q] = linkPrecedentQueries(['v1'], { projectId: 'p1', docId: 'doc-1' });
     expect(q.where).toContainEqual(['token', '?t', { layer: '?tl', doc: 'doc-1' }]);
@@ -192,7 +215,7 @@ describe('value precedent', () => {
 
   it('foldProject takes the editor fetch shape', () => {
     const t = foldProject(createTally(), {
-      links: [res([['item-a', 'la', null, 'word', null, 2]])],
+      links: [res([['item-a', 'la', null, 'word', null, null, null, 2]])],
       values: [{ kind: 'word', field: 'POS', results: res([['la', 'DET', null, null, 2]]) }],
     });
     expect(winner(t, 'la', 'word')).toBe('item-a');
@@ -235,7 +258,7 @@ describe('folding the open document', () => {
   it("folds the document's links onto project rows, keyed like the rows, machine links marked", () => {
     const t = foldLinkRows(
       createTally(),
-      [res([['item-a', 'perros', null, 'word', null, 3]])],
+      [res([['item-a', 'perros', null, 'word', null, null, null, 3]])],
       ignored,
     );
     foldDocumentLinks(t, sentences, ignored);
@@ -294,9 +317,9 @@ describe('multi-word expression links in project rows', () => {
   it("leaves a phrase entry out of a single form's precedent", () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['i-phrase', 'el', null, 'word', 'phrase', 5],
-        ['i-el', 'el', null, 'word', 'stem', 2],
-        ['i-disc', 'pelo', null, 'word', 'discontiguous phrase', 3],
+        ['i-phrase', 'el', null, 'word', 'phrase', null, null, 5],
+        ['i-el', 'el', null, 'word', 'stem', null, null, 2],
+        ['i-disc', 'pelo', null, 'word', 'discontiguous phrase', null, null, 3],
       ]),
     ]);
     expect(winner(t, 'el', 'word')).toBe('i-el');

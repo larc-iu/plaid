@@ -265,16 +265,26 @@ describe('runBuiltinAnalysis: link precedent', () => {
       projects: {
         listDocuments: async () => Object.keys(server).map((d) => ({ id: d, version: 1 })),
       },
-      // Link rows [item, ?, form, kind, ?, count] over the documents asked for.
+      // Link rows [item, ?, form, kind, ?, prov, confirmed, count] over the
+      // documents asked for. A link is an item id (a person's) or { id, prov }.
       query: vi.fn(async (q) => {
         const scope = q.where.map((c) => c[2]?.doc).find(Boolean);
-        if (!q.where.some((c) => c[0] === 'vocab-link')) return { results: [] };
+        if (!q.where.some((c) => c[0] === 'link-item')) return { results: [] };
         const counts = new Map();
         for (const [d, links] of Object.entries(server)) {
           if (scope && d !== scope) continue;
-          for (const id of links) counts.set(id, (counts.get(id) || 0) + 1);
+          for (const link of links) {
+            const { id, prov = null } = typeof link === 'string' ? { id: link } : link;
+            const key = JSON.stringify([id, prov]);
+            counts.set(key, (counts.get(key) || 0) + 1);
+          }
         }
-        return { results: [...counts].map(([id, n]) => [id, null, 'kai', 'word', null, n]) };
+        return {
+          results: [...counts].map(([key, n]) => {
+            const [id, prov] = JSON.parse(key);
+            return [id, null, 'kai', 'word', null, prov, null, n];
+          }),
+        };
       }),
     },
     bulkLinkVocab: vi.fn(async (proposals) => proposals.length),
@@ -302,10 +312,10 @@ describe('runBuiltinAnalysis: link precedent', () => {
       const own = await inProject(q);
       if (
         q.scope?.projectIds?.includes('p2') === false ||
-        !q.where.some((c) => c[0] === 'vocab-link')
+        !q.where.some((c) => c[0] === 'link-item')
       )
         return own;
-      return { results: [...own.results, ['kai2', null, 'kai', 'word', null, 3]] };
+      return { results: [...own.results, ['kai2', null, 'kai', 'word', null, null, null, 3]] };
     });
     const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
     expect(res.ok).toBe(true);
@@ -327,6 +337,17 @@ describe('runBuiltinAnalysis: link precedent', () => {
     const res = await runBuiltinAnalysis(doc, { copy: false, link: true, leave: ['t-copied'] });
     expect(res.ok).toBe(true);
     expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.tokenId)).toEqual(['t-open']);
+  });
+
+  it('follows no unverified machine link: with only those as precedent, the exact form decides (R28)', async () => {
+    // An earlier run linked kai to kai2 in a, unverified. Following it would
+    // let that run's pick spread, so b links kai by its form: the two
+    // entries share it and the smaller id wins.
+    const server = { a: [{ id: 'kai2', prov: 'inferred' }], b: [] };
+    const doc = makeLinkDoc(server);
+    const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
+    expect(res.ok).toBe(true);
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai1']);
   });
 
   it('fails the run when the project cannot be asked, rather than linking without it', async () => {

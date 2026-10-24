@@ -122,6 +122,26 @@
                       {"find" ["?l"] "where" [["link" "?l" {}]] "order-by" [["?l.doc"]]})]
         (is (= 4 (:count r)))))))
 
+(deftest link-counts-grouped-by-provenance
+  ;; The shape igt's link precedent reads (R28): each (entry, token surface)
+  ;; pairing counted apart by the link's prov and provConfirmed, so a reader
+  ;; can leave unconfirmed machine links out of what counts as precedent.
+  (let [{:keys [kemal other]} (build! "LinkPrec")
+        r (qe/run db "admin@example.com"
+                  {"where" [["vocab" "?v" {}]
+                            ["link-item" "?l" "?v"]
+                            ["link-token" "?l" "?t"]]
+                   "return" {"group" ["?v" "?t.value" "?l.metadata.prov" "?l.metadata.provConfirmed"]
+                             "aggregates" [["count"]]}})
+        ;; A group key reads a JSON true as SQLite's 1.
+        rows (set (map (fn [[v value prov confirmed n]]
+                         [(str v) value prov (when (contains? #{true 1} confirmed) true) n])
+                       (:results r)))]
+    (is (contains? rows [(str kemal) "aa" "inferred" nil 1]) "the unconfirmed machine link")
+    (is (contains? rows [(str other) "bb" "inferred" true 1]) "the confirmed one")
+    (is (contains? rows [(str kemal) "cc" nil nil 1]) "a person's link carries no stamp")
+    (is (= 5 (count rows)) "and the expression's two words")))
+
 (deftest links-are-scoped-by-project
   (let [c1 (build! "LinkAcl1")
         _  (build! "LinkAcl2")]

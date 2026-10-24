@@ -1,8 +1,9 @@
 // Built-in vocab linking (run ON DEMAND from the Auto-analyze dialog — not
 // automatically; see [[plaid-igt-provenance]] and the roadmap's P6). Policy:
 //   PRECEDENT FIRST — follow the most-linked same-form item across the project,
-//   preferring precedent set by the SAME KIND of token (a word follows what
-//   words linked, a morpheme what morphemes linked) over precedent of any kind;
+//   counting only the links a person made or confirmed, and preferring
+//   precedent set by the SAME KIND of token (a word follows what words
+//   linked, a morpheme what morphemes linked) over precedent of any kind;
 //   a tie on count breaks to the lexicographically smallest item id. With no
 //   precedent, link to a matching vocab item; if several share the form, again
 //   the lexicographically smallest id wins. A headword that has a sense of
@@ -58,9 +59,13 @@ const morphFormOf = (m) => {
 
 // The precedent for `form` as seen by a token of `kind`: the most-linked item
 // among what tokens of that kind linked before, else among what any token
-// did; a count tie breaks to the smallest id.
+// did; a count tie breaks to the smallest id. Only links a person made or
+// confirmed count: this writer links on its own, so following unverified
+// machine links would let one machine pass bootstrap the next.
 const precedentFor = (tally, form, kind) =>
-  pickMajority(precedentCounts(tally, kind, form, SLOT_LINK), { tieBreak: 'smallest' });
+  pickMajority(precedentCounts(tally, kind, form, SLOT_LINK, { excludeMachine: true }), {
+    tieBreak: 'smallest',
+  });
 
 // Keys go in NFC on both sides, so a dot below typed as a compose code matches
 // the same word imported precomposed from FLEx.

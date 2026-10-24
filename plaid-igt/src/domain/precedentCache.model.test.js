@@ -160,7 +160,7 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
       // over p1's Gloss layer.
       query: (q) => {
         const links = q.where[0][0] === 'vocab';
-        const docId = (links ? q.where[2] : q.where[0])[2].doc;
+        const docId = (links ? q.where.find((c) => c[0] === 'token') : q.where[0])[2].doc;
         return request(
           tab,
           () => {
@@ -180,7 +180,7 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
             return {
               results: [...counts].map(([k, n]) =>
                 links
-                  ? [...k.split('\u0000'), null, 'word', 'stem', n]
+                  ? [...k.split('\u0000'), null, 'word', 'stem', null, null, n]
                   : [...k.split('\u0000'), null, null, n],
               ),
             };

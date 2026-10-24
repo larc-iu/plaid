@@ -511,7 +511,7 @@ What a copy carries is set per project under **Settings → Services** (see <<_s
 == Linking to the lexicon
 
 The built-in linking rule of step 4 works word by word and morpheme by morpheme.
-A form that has been linked before follows **precedent**: the entry that form has most often been linked to in the project.
+A form that has been linked before follows **precedent**: the entry that form has most often been linked to in the project, counting only the links a person made or confirmed.
 A form never linked before is linked to the lexicon entry with the same form, if there is one.
 A whole word is never linked to an affix or clitic entry.
 The rule replaces only links nobody has confirmed: its own, links copied with an earlier analysis, and links to an entry that no longer has the word's or morpheme's form.

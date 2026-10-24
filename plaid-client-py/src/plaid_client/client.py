@@ -3779,6 +3779,14 @@ class PlaidClient:
         or path. To match a layer by name, bind it with a ``*-layer`` clause (e.g.
         ``['span-layer', '?sl', {'name': 'pos'}]``) and use the variable.
 
+        A vocab link's provenance is on the link itself: bind it as a ``link``
+        entity to filter or group by it, e.g. the machine-made links nobody
+        confirmed, with the tokens they sit on::
+
+            ['link', '?l', {'metadata': {'prov': 'inferred'}}],
+            ['not', ['link', '?l', {'metadata': {'provConfirmed': True}}]],
+            ['link-token', '?l', '?t'], ['link-item', '?l', '?v']
+
         Optional keys: ``scope`` (restrict to projects by id, ``{'project_ids': [...]}``),
         ``order_by`` (sort rows), and ``bindings`` (substitute ``?name`` placeholders
         with literals). ``return`` may also be an aggregate spec ``{group, aggregates}``.

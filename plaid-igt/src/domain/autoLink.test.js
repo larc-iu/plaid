@@ -34,7 +34,7 @@ const morph = (id, form, vocabItem = null) => ({ id, metadata: { form }, vocabIt
 
 describe('computeAutoLinkProposals', () => {
   it('links via precedent, item match, and casefold — breaking ties to the smaller id, skipping human-linked', () => {
-    const precedent = precedentOf(res([['i-prec', null, 'nac', 'morpheme', null, 2]]));
+    const precedent = precedentOf(res([['i-prec', null, 'nac', 'morpheme', null, null, null, 2]]));
     const sentences = sentence([
       word('w1', 'Todos'), // casefold item match -> i-all
       word('w2', 'se'), // two items share 'se' -> smaller id i-se1
@@ -59,7 +59,7 @@ describe('computeAutoLinkProposals', () => {
   it('leaves the words the same run just copied an analysis onto, with their morphemes (H17-IGT-EDIT-2)', () => {
     // The copy phase linked "se" to i-se2 with its glosses. The project's
     // precedent for "se" is i-se1, which would otherwise relink it.
-    const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, 9]]));
+    const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, null, null, 9]]));
     // Unverified links of this rule's own, which it would otherwise replace.
     const copied = { id: 'i-se2', prov: 'machine', provSource: AUTO_LINK_SOURCE };
     const sentences = sentence([
@@ -128,7 +128,7 @@ describe('computeAutoLinkProposals', () => {
   });
 
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
-    const precedent = precedentOf(res([['i-all', null, 'todos', 'word', null, 5]]));
+    const precedent = precedentOf(res([['i-all', null, 'todos', 'word', null, null, null, 5]]));
     const sentences = sentence([
       word('w1', 'todos', { id: 'i-se1', prov: 'machine', provSource: AUTO_LINK_SOURCE }), // own, rule says i-all -> replace
       word('w2', 'todos', { id: 'i-all', prov: 'machine', provSource: AUTO_LINK_SOURCE }), // own, already i-all -> no-op
@@ -141,7 +141,7 @@ describe('computeAutoLinkProposals', () => {
   });
 
   it("leaves a producer's unverified pick of an entry alone, but not a link copied by form or gone stale", () => {
-    const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, 9]]));
+    const precedent = precedentOf(res([['i-se1', null, 'se', 'morpheme', null, null, null, 9]]));
     const svc = { id: 'i-se2', prov: 'machine', provSource: 'service:cwomp-analyzer' };
     const sentences = sentence([
       // A service chose i-se2 for this occurrence: left alone.
@@ -168,7 +168,7 @@ describe('computeAutoLinkProposals', () => {
 
   it('never proposes an entry the lexicon no longer holds, whatever the precedent says', () => {
     // A precedent read before the entry was deleted or merged away.
-    const precedent = precedentOf(res([['i-gone', null, 'todos', 'word', null, 5]]));
+    const precedent = precedentOf(res([['i-gone', null, 'todos', 'word', null, null, null, 5]]));
     const sentences = sentence([word('w1', 'todos')]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
     expect(proposals).toEqual([
@@ -176,11 +176,37 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
+  it('follows only links a person made or confirmed: an unverified machine link is no precedent', () => {
+    // The project's only links of "todos" are this rule's own, unverified,
+    // to i-se1. Following them would let one run bootstrap the next, so the
+    // exact-form tier decides (R28).
+    const machineOnly = precedentOf(
+      res([['i-se1', null, 'todos', 'word', null, 'inferred', null, 5]]),
+    );
+    const run = (precedent) =>
+      computeAutoLinkProposals({
+        sentences: sentence([word('w1', 'todos')]),
+        vocabularies: VOCABS,
+        precedent,
+      }).map((p) => p.vocabItemId);
+    expect(run(machineOnly)).toEqual(['i-all']);
+    // Confirmed (a group key reads true as 1) or a contributor's: precedent.
+    for (const [prov, confirmed] of [
+      ['inferred', 1],
+      ['inferred', true],
+      ['contributed', null],
+    ]) {
+      expect(
+        run(precedentOf(res([['i-se1', null, 'todos', 'word', null, prov, confirmed, 5]]))),
+      ).toEqual(['i-se1']);
+    }
+  });
+
   it('a precedent tie breaks to the lexicographically smaller item id', () => {
     const precedent = precedentOf(
       res([
-        ['i-se1', null, 'todos', 'word', null, 1],
-        ['i-all', null, 'todos', 'word', null, 1],
+        ['i-se1', null, 'todos', 'word', null, null, null, 1],
+        ['i-all', null, 'todos', 'word', null, null, null, 1],
       ]),
     );
     const proposals = computeAutoLinkProposals({
@@ -225,7 +251,7 @@ describe('a form written either way is one form', () => {
   });
 
   it('pools precedent for both spellings under one key', () => {
-    const precedent = precedentOf(res([['i-prec', null, PRE, 'morpheme', null, 2]]));
+    const precedent = precedentOf(res([['i-prec', null, PRE, 'morpheme', null, null, null, 2]]));
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'whole', null, [morph('m1', DEC)])]),
       vocabularies: { v1: { id: 'v1', items: [{ id: 'i-prec', form: 'prec' }] } },
@@ -272,7 +298,7 @@ describe('a word never auto-links to a bound form', () => {
     },
   };
   it('skips affix and clitic entries for word tokens at every tier, morphemes still take them', () => {
-    const precedent = precedentOf(res([['i-s-affix', 's', null, 'word', null, 4]]));
+    const precedent = precedentOf(res([['i-s-affix', 's', null, 'word', null, null, null, 4]]));
     const proposals = computeAutoLinkProposals({
       sentences: sentence([
         word('w1', 's'),
@@ -335,8 +361,8 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
   it('a word follows what words linked, a morpheme what morphemes linked', () => {
     const precedent = precedentOf(
       res([
-        ['i-se2', 'se', null, 'word', null, 3],
-        ['i-se1', 'whole', 'se', 'morpheme', null, 9],
+        ['i-se2', 'se', null, 'word', null, null, null, 3],
+        ['i-se1', 'whole', 'se', 'morpheme', null, null, null, 9],
       ]),
     );
     const proposals = computeAutoLinkProposals({
@@ -350,7 +376,9 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
     ]);
   });
   it('falls back to precedent of any kind, then to the smallest-id homonym', () => {
-    const fromMorphemes = precedentOf(res([['i-se2', 'whole', 'se', 'morpheme', null, 9]]));
+    const fromMorphemes = precedentOf(
+      res([['i-se2', 'whole', 'se', 'morpheme', null, null, null, 9]]),
+    );
     expect(
       computeAutoLinkProposals({
         sentences: sentence([word('w1', 'se')]),
@@ -410,7 +438,7 @@ describe('phrase entries and single tokens', () => {
 
   it('never resolve to a phrase-typed entry, by precedent or by form', () => {
     expect(buildItemIndex(vocabs).phrase.has('i-phr')).toBe(true);
-    const precedent = precedentOf(res([['i-phr', 'sit', null, 'word', 'phrase', 9]]));
+    const precedent = precedentOf(res([['i-phr', 'sit', null, 'word', 'phrase', null, null, 9]]));
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'sit'), word('w2', 'Sit')]),
       vocabularies: vocabs,
