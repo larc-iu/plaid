@@ -1769,7 +1769,6 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     and the whitespace after it stay with the sentence before (as
     ``_line_starts`` says), and the last runs to the end of the text."""
     from plaid_client import compose_text
-    from .project import split_sentences
     # Composed, as the server stores it, so the sentences are measured on the
     # text that is stored.
     text = compose_text(text)[0]
@@ -1777,15 +1776,26 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     tokenize = project.word_layer_id if project.tokenize_new_text else None
     new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id,
                                             tokenize_layer=tokenize))
-    lines = split_sentences(text)
-    if not lines:
-        return text_id
-    starts = [0] + [b for b, _ in lines[1:]]
-    ends = starts[1:] + [len(text)]
-    sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e,
-                  'id': new_id()} for b, e in zip(starts, ends)]
-    new_id.once(lambda: client.tokens.bulk_create(sentences), whole=True)
+    _seed_sentences(client, project, text_id, text, new_id)
     return text_id
+
+
+def _seed_sentences(client, project, text_id: str, body: str, new_id) -> List[tuple]:
+    """The sentence partition of a text that has none, one sentence per
+    line, as igt's own saves seed it: made whole in one bulk create, since
+    the server refuses a single token on a partitioning layer. A text of
+    whitespace only is one sentence. Returns the (begin, end, id) made."""
+    from .project import split_sentences
+    if not body:
+        return []
+    lines = split_sentences(body)
+    starts = [0] + [b for b, _ in lines[1:]]
+    ends = starts[1:] + [len(body)]
+    made = [(b, e, new_id()) for b, e in zip(starts, ends)]
+    sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e,
+                  'id': i} for b, e, i in made]
+    new_id.once(lambda: client.tokens.bulk_create(sentences), whole=True)
+    return made
 
 
 def _line_starts(body: str, begin: int, end: int) -> List[int]:
@@ -1847,10 +1857,10 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     raw = client.documents.get(doc_id, include_body=True)
     _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
-    if not sents and new_body:
-        made = new_id()
-        new_id.once(lambda: client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body), id=made))
-        sents = [(0, len(new_body), made)]
+    if not sents:
+        # A text with no sentence (an empty one, or an edit that took them
+        # all) gets its partition seeded, as the app's save seeds it.
+        sents = _seed_sentences(client, project, text_id, new_body, new_id)
     for p in _line_starts(new_body, b, region_end):
         hit = next((s for s in sents if s[0] < p < s[1]), None)
         # Only a boundary that leaves text on both sides: never a blank sentence.

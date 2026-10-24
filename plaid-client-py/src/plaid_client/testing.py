@@ -546,6 +546,8 @@ class Resource:
         what it answers made on the client."""
         if method in ('create', 'bulk_create'):
             self._check_create_metadata(sent)
+        if method in ('create', 'delete'):
+            self._check_single_on_partition(method, first, sent)
         if method == 'create':
             # A create given the id to make it under answers that id.
             new = arguments.get('id') or writer.new_id(self._name)
@@ -609,6 +611,28 @@ class Resource:
                 raise _refusal(_root(self._client), 400,
                                'Request validation failed. metadata: invalid type',
                                sent.method, sent.path)
+
+    def _check_single_on_partition(self, method, first, sent):
+        """The server's refusal of one token made or deleted on its own on a
+        partitioning layer: the partition is made whole by a bulk create, and
+        changed by a split, a merge or a text edit."""
+        # name-ok: the fake client's own resource name
+        if self._name != 'tokens':
+            return
+        root = _root(self._client)
+        partitioning = root.partitioning_layers()
+        if method == 'create':
+            layer = first
+        else:
+            layer = next((kl.get('id') for _, layers in root._fixture_token_layers() for kl in layers
+                          if any(t.get('id') == first for t in kl.get('tokens') or [])), None)
+        if layer not in partitioning:
+            return
+        message = ('Single token creation is not allowed on partitioning layers. '
+                   'Use bulk-create to establish a partition.' if method == 'create' else
+                   'Single token deletion is not allowed on partitioning layers. '
+                   'Use merge-tokens endpoint.')
+        raise _refusal(root, 400, message, sent.method, sent.path)
 
     def _check_bulk_create(self, ops, sent):
         """The server's two rules on a bulk create: every entry in one layer,
