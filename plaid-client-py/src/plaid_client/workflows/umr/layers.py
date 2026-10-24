@@ -152,8 +152,9 @@ def resolve_layers(raw) -> UmrLayers:
     every missing one named in the operator's log, rather than failing
     somewhere deeper with an id of None.
     """
-    text_layers = (raw or {}).get('text_layers') or []
-    text_layer = find_by_role(text_layers, ROLES.BASELINE) or (text_layers[0] if text_layers else None)
+    # The text layer by its role only: one no Plaid setup stamped reads as
+    # not set up, never as whichever layer the server listed first.
+    text_layer = find_by_role((raw or {}).get('text_layers') or [], ROLES.BASELINE)
     token_layers = (text_layer or {}).get('token_layers') or []
     node_layer = find_flagged(token_layers, NODES)
     concept_layer = find_flagged((node_layer or {}).get('span_layers'), CONCEPTS)

@@ -197,6 +197,17 @@ def test_the_document_graph_layer_is_required_of_every_reader(caplog):
     assert 'UMR document graph layer' in caplog.text
 
 
+def test_a_text_layer_without_the_baseline_role_is_not_set_up(caplog):
+    """R2-RULES-7: the text layer is found by its role, with no fall back to
+    the first one listed, so a project no Plaid setup stamped reads as not
+    set up for UMR."""
+    raw = _document()
+    raw['text_layers'][0]['config'] = {}
+    with pytest.raises(ValueError, match=SETUP_INCOMPLETE):
+        resolve_layers(raw)
+    assert 'Text layer' in caplog.text
+
+
 def test_a_document_reads_back_as_sentences_with_their_graphs():
     doc = _read()
     assert [s.index for s in doc.sentences] == [1, 2]
