@@ -30,7 +30,7 @@ from ..core.bidi import qv
 from ..core.opkind import OpKind
 from plaid_client import metadata_ops
 
-from .project import LEMMA_FROM_FORM
+from .project import LEMMA_FROM_FORM, VIRTUAL_PREFIX, is_virtual
 
 from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher,
                          apply_add_comment, apply_restore_document, confirm_note, ConfirmRows,
@@ -109,6 +109,9 @@ class Context:
         # and the value the user approved becomes invisible to every tool.
         # Keyed in the first pass and consulted in the second.
         self.creating: Dict[tuple, str] = {}
+        # The UD word made for each stand-in the plan writes to, by its id
+        # (``_word``).
+        self.materialized: Dict[str, str] = {}
         # How many of the plan's ops certainly remove each id, for
         # `removed_by_others`.
         self._removals: Counter = Counter()
@@ -125,8 +128,58 @@ class Context:
 
 # --- what each kind does -----------------------------------------------------------
 
+def _word(ctx: Context, op, word_id: str, at_key: str = 'virtual_at') -> str:
+    """The word a write names: a stored one as it is, and the UD word a
+    stand-in (``virtual:<token id>``) stands for made first, in the write's own
+    batch, as the editor makes it (ConlluDocument ``_makeWords``): over its
+    token, first among its words, with its lemma copied from its form, which
+    a lemma or a relation the plan writes on it then uses. Made once, however
+    many writes name it. ``op[at_key]`` is where, noted as the op was staged
+    (tools ``place_virtual``)."""
+    if not is_virtual(word_id):
+        return word_id
+    if word_id in ctx.materialized:
+        return ctx.materialized[word_id]
+    at = op.get(at_key)
+    if not at:
+        raise ValueError(f'{op.get("label") or op.get("kind")}: names a word with no UD word yet '
+                         'without the token it is made on')
+    made = ctx.materialized[word_id] = ctx.b.new_id()
+    ctx.b.add(lambda batch: batch.tokens.create(at['layer_id'], at['text_id'], at['begin'], at['end'],
+                                                precedence=0, id=made))
+    lemma = ctx.lemma_at[made] = ctx.creating[(at['lemma_layer_id'], made)] = ctx.b.new_id()
+    ctx.b.add(lambda batch: batch.spans.create(at['lemma_layer_id'], [made], at['form'], dict(LEMMA_FROM_FORM),
+                                               id=lemma))
+    return made
+
+
+def _virtual_anchors(op) -> List[tuple]:
+    """Where a stand-in's word is made (``virtual_at``, ``head_virtual_at``),
+    read again from its token when the plan is applied
+    (``core.fingerprint.offset_anchors``), so an edit before its sentence does
+    not leave it where the token was."""
+    out = []
+    for at, key in (('virtual_at', 'token_id'), ('virtual_at', 'word_id'), ('head_virtual_at', 'head_id')):
+        if isinstance(op.get(at), dict) and is_virtual(op.get(key)):
+            out.append((at, op[key][len(VIRTUAL_PREFIX):]))
+    return out
+
+
 def _apply_set_span(ctx: Context, op) -> int:
     span_id, value = op.get('span_id'), op.get('value') or ''
+    if not span_id and is_virtual(op.get('token_id')):
+        if value == '':
+            return 0  # a stand-in holds nothing to clear
+        token = _word(ctx, op, op['token_id'])
+        made = ctx.creating.get((op['layer_id'], token))
+        if made is not None:
+            # The lemma the word was just made with takes the value.
+            ctx.b.update('spans', made, value=value, metadata=metadata_ops(ctx.restamp()))
+        else:
+            made = ctx.creating[(op['layer_id'], token)] = ctx.b.new_id()
+            ctx.b.add(lambda batch, o=op, v=value, i=made: batch.spans.create(
+                o['layer_id'], [token], v, ctx.stamp(), id=i))
+        return 1
     if span_id and value == '' and op.get('field') == 'lemma':
         # Clearing a UPOS or XPOS cell deletes its span. Lemma is the
         # exception, and it is not a cosmetic one: dependency relations hang
@@ -231,7 +284,7 @@ def _apply_del_relation(ctx: Context, op) -> int:
     return 1
 
 
-def _seed_lemmas(ctx: Context, op) -> None:
+def _seed_lemmas(ctx: Context, op, word_id: str, head_id: str) -> None:
     """The lemma spans a relation is going to need, now that ``creating``
     says which ones the plan already makes (every set_span has applied, in
     the pass before). A word with no lemma at all gets one valued with its
@@ -240,8 +293,8 @@ def _seed_lemmas(ctx: Context, op) -> None:
     wrong for a part of a multi-word token ("al" for both halves of a + el).
     The form is right in every case the surface is, and right in the case it
     is not."""
-    for wid, form, existing in ((op['word_id'], op.get('word_form') or '', op.get('lemma_span_id')),
-                                (op['head_id'], op.get('head_form') or '', op.get('head_lemma_span_id'))):
+    for wid, form, existing in ((word_id, op.get('word_form') or '', op.get('lemma_span_id')),
+                                (head_id, op.get('head_form') or '', op.get('head_lemma_span_id'))):
         if wid in ctx.lemma_at:
             continue
         if existing:
@@ -278,13 +331,16 @@ def _apply_set_head(ctx: Context, op) -> int:
         # not a removal and a creation.
         ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp()))
         return 1
-    _seed_lemmas(ctx, op)
+    # A stand-in at either end is made first, with its lemma (``_word``).
+    word_id = _word(ctx, op, op['word_id'])
+    head_id = _word(ctx, op, op['head_id'], 'head_virtual_at')
+    _seed_lemmas(ctx, op, word_id, head_id)
     # One head per word: the old relation went in the pass before
     # (``_unhead_set_head``), so no batch boundary finds the word twice
     # headed. Its ends are the words' lemma spans, one this plan creates
     # named by its id.
     ctx.b.add(lambda batch, o=op: batch.relations.create(
-        o['relation_layer_id'], ctx.lemma_at[o['head_id']], ctx.lemma_at[o['word_id']], o['deprel'],
+        o['relation_layer_id'], ctx.lemma_at[head_id], ctx.lemma_at[word_id], o['deprel'],
         ctx.stamp(), id=ctx.b.new_id()))
     return 1
 
@@ -484,20 +540,22 @@ KIND = ok.registry([
     # guideline has the same shape whatever the project annotates.
     *_guidelines.kinds(OpKind),
     OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
-           target=_span_entity, token_keys=('token_id',), extra={'entity': _span_entity},
+           target=_span_entity, token_keys=('token_id',),
+           extra={'entity': _span_entity, 'anchors': _virtual_anchors},
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
-           compact_each=('token_id', 'span_id', 'ref'), compact_label=_set_span_label,
+           compact_each=('token_id', 'span_id', 'ref', 'virtual_at'), compact_label=_set_span_label,
            summary=_set_span_summary),
     OpKind('set_head', _DEPENDENCY, stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id', 'head_id'),
-           extra={'entity': _relation_entity, UNHEAD: _unhead_set_head},
+           extra={'entity': _relation_entity, UNHEAD: _unhead_set_head, 'anchors': _virtual_anchors},
            deletes=lambda op: ([] if op.get('relabel') else [op.get('relation_id')])
            + list(op.get('suppressor_ids') or []),
            summary=lambda op, n: [(_RELABELED if op.get('relabel') else _DEPENDENCY, n)],
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
-                         'head_lemma_span_id', 'relation_id', 'suppressor_ids', 'ref'),
+                         'head_lemma_span_id', 'relation_id', 'suppressor_ids', 'ref', 'virtual_at',
+                         'head_virtual_at'),
            compact_label=_set_head_label),
     OpKind('del_relation', _REMOVED_DEP, stage=UNHEAD, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
@@ -530,7 +588,8 @@ KIND = ok.registry([
     # against a second reshape of the same token. A second split of the same
     # token restates every cut, so it replaces the first (UD.md, 2026-10-16).
     OpKind('split_token', ('split token', 'split tokens'), apply=_apply_split_token, shape=WORD_SHAPE,
-           required=('token_id', 'text_id', 'pieces', 'word_ids', 'word_layer_id'),
+           # A token with no UD word yet has no `word_ids` to move.
+           required=('token_id', 'text_id', 'pieces', 'word_layer_id'),
            target=lambda op: ('split_token', op.get('token_id')),
            extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,

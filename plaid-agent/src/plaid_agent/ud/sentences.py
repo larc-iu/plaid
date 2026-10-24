@@ -274,7 +274,6 @@ def _merged_root_op(ws: Workspace, doc, before, sentence, root_head, root_deprel
     word of either sentence, takes the OTHER sentence's root as its dependent
     with ``root_deprel``. Staged with the merge as one head write
     (``with_merge``): its ids name the same words before and after."""
-    from .tools import refuse_virtual
     roots = [_root_of(before), _root_of(sentence)]
     if root_head is None and not root_deprel:
         if all(roots):
@@ -299,7 +298,6 @@ def _merged_root_op(ws: Workspace, doc, before, sentence, root_head, root_deprel
         dependent, head_sentence = roots[0], sentence
     else:
         raise ToolError(f'{root_head} is in neither s{before.index} nor s{sentence.index}.')
-    refuse_virtual(head, str(root_head))
     lemma, head_lemma = dependent.fields.get('lemma'), head.fields.get('lemma')
     stale = [dependent.suppressor_id,
              doc.suppressor_over(head_lemma.id if head_lemma else None, lemma.id if lemma else None)]

@@ -334,9 +334,9 @@ class Word:
     #: what a writer names.
     extra_edges: List[Tuple[int, str]] = dc_field(default_factory=list)
     #: A stand-in for a surface token that has no UD word yet (another app
-    #: made it after the last UD open): the one word the seed on a writer's
-    #: open would make, with no annotation and an id that is no token's, as
-    #: plaid-ud's sentenceRows.js shows it. Read, numbered, never written.
+    #: made it): the one word the first write on it makes, with no annotation
+    #: and an id that is no token's, as plaid-ud's sentenceRows.js shows it.
+    #: A plan that writes to it makes it (``virtual_at``, plan.py ``_word``).
     virtual: bool = False
 
     def spans(self, name: str) -> List[Span]:
@@ -514,10 +514,18 @@ def virtual_word_id(token_id: str) -> str:
     return f'{VIRTUAL_PREFIX}{token_id}'
 
 
-#: What a write naming a stand-in word answers, as the app's grid answers it.
-VIRTUAL_REFUSAL = ('{ref} ("{form}") has no UD word yet: another app made it since the document was last '
-                   'opened for annotation. Tell the user to open the document in the app to annotate it, '
-                   'then ask again.')
+def is_virtual(word_id) -> bool:
+    """Whether ``word_id`` names a stand-in word (no UD word yet)."""
+    return isinstance(word_id, str) and word_id.startswith(VIRTUAL_PREFIX)
+
+
+def virtual_at(project: 'UdProject', doc: 'UdDoc', word: 'Word') -> Dict[str, Any]:
+    """Where the UD word a stand-in stands for is made, and what it starts
+    with, as the editor makes it (ConlluDocument ``_makeWords``): over its
+    token's extent, first among its words, with its lemma copied from its form
+    (``LEMMA_FROM_FORM``)."""
+    return {'layer_id': project.word_layer_id, 'text_id': doc.text_id, 'lemma_layer_id': project.layer('lemma'),
+            'begin': word.token.begin, 'end': word.token.end, 'form': word.form}
 
 
 def load_document(client, project: UdProject, document_id: str) -> UdDoc:

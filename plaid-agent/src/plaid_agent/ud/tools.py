@@ -28,9 +28,9 @@ from ..core.refs import clip, read_ref
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_clears, scope_taking)
-from .project import (FEATURES, VIRTUAL_REFUSAL, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
-                      by_stored_sent_id, feature_refusal, load_document, normalize_feature, render_document, resolve,
-                      word_ref, words_listing)
+from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
+                      by_stored_sent_id, feature_refusal, is_virtual, load_document, normalize_feature,
+                      render_document, resolve, virtual_at, word_ref, words_listing)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      left_phrase, per_field)
 
@@ -149,6 +149,28 @@ class Workspace(BaseWorkspace):
         raise ToolError('internal: word not in document')
 
     # --- the plan --------------------------------------------------------
+
+    def add_op(self, op: Dict[str, Any]) -> None:
+        self.place_virtual(op)
+        super().add_op(op)
+
+    def place_virtual(self, op: Dict[str, Any]) -> None:
+        """Note on ``op`` where the UD word of each stand-in it writes to is
+        made (``virtual_at`` for its word, ``head_virtual_at`` for a head
+        another than it), read from the document as the tool read it: the word
+        is stored nowhere, so the executor makes it from this when the plan is
+        applied, in the write's own batch."""
+        keys = {'set_span': (('token_id', 'virtual_at'),),
+                'set_head': (('word_id', 'virtual_at'), ('head_id', 'head_virtual_at'))}.get(op.get('kind'), ())
+        for key, at in keys:
+            wid = op.get(key)
+            if not is_virtual(wid) or op.get(at) or (key == 'head_id' and wid == op.get('word_id')):
+                continue
+            doc = self.doc(op['document_id'])
+            word = next((w for s in doc.sentences for w in s.words if w.id == wid), None)
+            if word is None:
+                raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn')
+            op[at] = virtual_at(self.project, doc, word)
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
@@ -604,15 +626,8 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
         if isinstance(thing, Token):
             raise ToolError(f'{ref} is a multi-word token, which carries no annotation of its own. '
                             f'Name its words: ' + ', '.join(f's?.w{w.index}' for w in thing.words))
-        refuse_virtual(thing, str(ref))
         out.append(thing)
     return out
-
-
-def refuse_virtual(word: Word, ref: str) -> None:
-    """A stand-in word (no UD word yet) is read, never written."""
-    if word.virtual:
-        raise ToolError(VIRTUAL_REFUSAL.format(ref=ref, form=word.form))
 
 
 def _field_layer(ws: Workspace, field: str) -> str:
@@ -1020,7 +1035,6 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     """Stage ``word``'s head ``head`` (a CoNLL-U id, 0 for the root) with
     ``deprel``, refusing what a tree cannot hold."""
     ref = word_ref(sentence, word)
-    refuse_virtual(word, ref)
     if head is None:
         raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
     given = head
@@ -1052,8 +1066,6 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     if head != 0 and deprel == 'root':
         raise ToolError('The deprel "root" belongs to head 0. Give the head word\'s id.')
     head_word = sentence.word(head) if head else word
-    if head_word.virtual:
-        refuse_virtual(head_word, word_ref(sentence, head_word))
     lemma, head_lemma = word.fields.get('lemma'), head_word.fields.get('lemma')
     # The suppressors this write leaves stranded: the one over the relation it
     # replaces, and one already lying over the pair it creates, which would

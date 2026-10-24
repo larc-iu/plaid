@@ -27,7 +27,7 @@ from typing import Any, Dict, List
 
 from ..core.bidi import qv
 from ..core.refs import clip
-from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, visible, word_ref
+from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, is_virtual, visible, word_ref
 from .tools import ToolError, Workspace, resolve_in
 
 
@@ -46,9 +46,6 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     from .tools import _guards
     _guards(ws, doc)
     token = _token_of(ws, doc, ref)
-    from .tools import refuse_virtual
-    for w in token.words:
-        refuse_virtual(w, ref)
     if isinstance(forms, str):
         forms = [forms]
     clean = [f.strip() for f in (forms or []) if isinstance(f, str) and f.strip()]
@@ -58,7 +55,10 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     if clean == [w.form for w in token.words]:
         raise ToolError(f'Nothing to change: "{token.surface}" in s{sentence.index} already holds '
                         + ' + '.join(f'"{f}"' for f in clean) + '.')
-    if len(clean) == len(token.words):
+    # A stand-in (no UD word yet) holds nothing, so its token's words are
+    # made, not respelled.
+    stored = [w for w in token.words if not w.virtual]
+    if len(clean) == len(token.words) and stored:
         return _respell(ws, doc, sentence, token, clean)
     if len(clean) > 1 and any(c.isspace() for c in token.surface):
         # Ten words for a token whose text held two lines, where the user
@@ -96,6 +96,9 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     ws.add_op({
         'kind': 'set_words', 'token_id': token.id, 'text_id': doc.text_id,
         'begin': token.begin, 'end': token.end, 'surface': token.surface,
+        # A stand-in among them goes as the stored ones do, so a change to it
+        # in the same plan is refused as it is staged. Nothing is deleted for
+        # it (``apply_set_words``).
         'forms': clean, 'existing_word_ids': [w.id for w in token.words],
         # The arcs the words' delete takes with it, so a change to one of them
         # in the same plan is refused as it is staged, not by the server.
@@ -150,8 +153,9 @@ def apply_set_words(op: Dict[str, Any], b, stamp) -> List[str]:
     change).
     """
     forms, surface = op['forms'], op.get('surface') or ''
-    if op.get('existing_word_ids'):
-        b.add(lambda batch, ids=list(op['existing_word_ids']): batch.tokens.bulk_delete(ids))
+    stored = [i for i in op.get('existing_word_ids') or [] if not is_virtual(i)]
+    if stored:
+        b.add(lambda batch, ids=stored: batch.tokens.bulk_delete(ids))
     # The words carry the plan's provenance, as a parser's syntactic words
     # carry its own (the substrate token above them carries none).
     prov = stamp()
@@ -251,23 +255,23 @@ def _example(surface: str) -> str:
 
 
 def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=None) -> str:
-    from .tools import _guards, refuse_virtual
+    from .tools import _guards
     doc = ws.doc(document)
     _guards(ws, doc)
     if not ref:
         raise ToolError('Give ref: the token, "s3.w2", or "s3.w2-3" for a multi-word token.')
     token = _token_of(ws, doc, ref)
-    for w in token.words:
-        refuse_virtual(w, ref)
     sentence = next(s for s in doc.sentences if any(t is token for t in s.tokens))
     pieces = _pieces(token.surface, parts)
     texts = [token.surface[x:y] for x, y in pieces]
-    words = list(token.words)
+    # A stand-in (no UD word yet) moves nothing: each part is a token with no
+    # UD word, read as a stand-in again.
+    words = [w for w in token.words if not w.virtual]
     dealt = len(words) > 1 and len(words) == len(pieces)
     sizes = [_letters(t) for t in texts]
     keep = sizes.index(max(sizes))
     home = list(range(len(words))) if dealt else [keep] * len(words)
-    new_parts = [i for i in range(len(pieces)) if i not in home]
+    new_parts = [i for i in range(len(pieces)) if i not in home] if words else []
 
     after = []
     for i, text in enumerate(texts):
@@ -290,6 +294,8 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
     shown = ' | '.join(qv(t) for t in texts)
     if dealt:
         what = 'each word on its own token, with its values and dependencies'
+    elif not words:
+        what = 'none has a UD word yet'
     else:
         many = len(words) > 1
         whose = f'its {len(words)} words' if many else f'its word {word_ref(sentence, words[0])}'
@@ -305,7 +311,7 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
         # Counted from the token's start, so they follow it wherever an edit
         # before it has moved it (the op's own begin and end are rebased).
         'pieces': [list(p) for p in pieces], 'keep': keep, 'dealt': dealt,
-        'word_ids': [w.id for w in words], 'existing_word_ids': [w.id for w in words],
+        'word_ids': [w.id for w in words], 'existing_word_ids': [w.id for w in token.words],
         'new_parts': new_parts,
         # The sentence's words once this runs, for the refusals that meet a
         # word it renumbers or makes (tools._after_plan).
@@ -323,6 +329,8 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
                 + ', '.join(f'"{clip(w.form)}" to "{visible(texts[i])}"' for i, w in enumerate(words))
                 + '), keeping its values and dependencies.')
         return out
+    if not words:
+        return out + 'None of them has a UD word yet.'
     out += (f'"{visible(texts[keep])}" keeps ' + ('its words' if len(words) > 1 else 'its word')
             + ' and every value and dependency on ' + ('them' if len(words) > 1 else 'it') + '. ')
     if new_parts:

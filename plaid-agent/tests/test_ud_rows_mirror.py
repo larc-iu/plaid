@@ -1,6 +1,6 @@
 """The ud assistant numbers a sentence's words as the app's grid does.
 
-A surface token another app made after the last UD open has no UD word, and
+A surface token another app made has no UD word until a write makes one, and
 plaid-ud's ``buildSentenceRows`` (sentenceRows.js) shows it as one stand-in
 word with no annotation, numbered in its place, in the grid, a reader's view
 and the export. The assistant's reader (``ud/project.py`` ``parse_document``)
@@ -9,7 +9,8 @@ must show the same words under the same CoNLL-U ids, or a plan row titled
 builder (``ud_rows_mirror.mjs``) over fixture documents with random syntactic
 words taken away and compares, word by word.
 
-Every write naming a stand-in is refused, as the app's grid refuses it.
+A write naming a stand-in makes its UD word first, in the same batch, as the
+app's grid does (ConlluDocument ``_makeWords``).
 
 A sentence holding no word at all (a punctuation-only line igt left
 untokenized) has no row in the app, so the rows after it number on without a
@@ -26,6 +27,7 @@ import tempfile
 
 import pytest
 
+from plaid_agent.ud.plan import execute_plan
 from plaid_agent.ud.project import load_project, parse_document
 from plaid_agent.ud.toolkit import call_tool
 from plaid_agent.ud.tools import Workspace
@@ -132,22 +134,91 @@ def test_the_assistant_numbers_every_word_as_the_grid_does(compared):
         assert _python_rows(raw) == rows
 
 
-def test_a_write_naming_a_stand_in_is_refused():
+def _bare_ws():
     client = ud_client(documents={'ud1': bare(document_raw(), ['uw-3'])})
     ws = Workspace(client, load_project(client, PID))
     out = call_tool(ws, 'read_document', {'document': 'Viaje'})
-    assert '\tmar\t' in out
-    refusal = 'has no UD word yet'
-    for name, args in (('set_field', {'refs': ['s1.w4'], 'field': 'lemma', 'value': 'mar'}),
+    assert '4\tmar\t_\t' in out
+    return ws
+
+
+def _ops(batch):
+    return [kind for kind, _ in batch]
+
+
+def test_a_write_naming_a_stand_in_makes_its_word_in_the_same_batch():
+    """A stand-in (s1.w4 "mar") is written as the editor writes it: the first
+    write on it makes the UD word over its token, first among its words, with
+    its lemma copied from its form, in the same batch (ConlluDocument
+    ``_makeWords``). A lemma planned on it is that lemma, and a head it is
+    given or gives hangs off it. The word is made once for the plan."""
+    ws = _bare_ws()
+    for name, args in (('set_field', {'refs': ['s1.w4'], 'field': 'upos', 'value': 'NOUN'}),
                        ('set_feature', {'refs': ['s1.w4'], 'feature': 'Number', 'value': 'Sing'}),
                        ('set_head', {'ref': 's1.w4', 'head': 1, 'deprel': 'obl'}),
-                       ('set_head', {'ref': 's1.w5', 'head': 4, 'deprel': 'punct'}),
-                       ('del_relation', {'refs': ['s1.w4']}),
-                       ('confirm', {'refs': ['s1.w4']}),
-                       ('set_words', {'ref': 's1.w4', 'forms': ['ma', 'r']})):
+                       ('set_head', {'ref': 's1.w5', 'head': 4, 'deprel': 'punct'})):
         got = call_tool(ws, name, {'document': 'Viaje', **args})
-        assert refusal in got and 'open the document in the app' in got, (name, got)
+        assert got.startswith('Planned'), (name, got)
+    assert all(op.get('virtual_at') or op.get('head_virtual_at') for op in ws.ops)
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    calls = [c for batch in ws.client.batches for c in batch]
+    made = [p for k, p in calls if k == 'tokens.create']
+    assert len(made) == 1
+    assert made[0]['args'] == ('u-word', 'u-text', 9, 12) and made[0]['kwargs']['precedence'] == 0
+    word = made[0]['kwargs']['id']
+    lemmas = [p for k, p in calls if k == 'spans.create' and p['args'][0] == 'u-lemma']
+    assert [(p['args'][1], p['args'][2], p['args'][3]['provSource']) for p in lemmas] == [
+        ([word], 'mar', 'rule:lemma-from-form')]
+    lemma = lemmas[0]['kwargs']['id']
+    values = [(p['args'][0], p['args'][2]) for k, p in calls
+              if k == 'spans.create' and p['args'][1] == [word] and p['args'][0] != 'u-lemma']
+    assert sorted(values) == [('u-feats', 'Number=Sing'), ('u-upos', 'NOUN')]
+    arcs = [p['args'][1:4] for k, p in calls if k == 'relations.create']
+    assert ('sp-l1', lemma, 'obl') in arcs and (lemma, 'sp-l4', 'punct') in arcs
+    # The word is made before anything names it.
+    first = _ops(ws.client.batches[0])
+    assert first[0] == 'tokens.create'
+
+
+def test_a_lemma_planned_on_a_stand_in_is_the_lemma_it_is_made_with():
+    ws = _bare_ws()
+    call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'lemma', 'value': 'marea'})
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    (batch,) = ws.client.batches
+    lemma = next(p for k, p in batch if k == 'spans.create')['kwargs']['id']
+    assert _ops(batch) == ['tokens.create', 'spans.create', 'spans.bulk_update']
+    (update,) = batch[2][1]
+    assert (update['id'], update['value']) == (lemma, 'marea')
+
+
+def test_reads_on_a_stand_in_plan_nothing():
+    ws = _bare_ws()
+    for name, args in (('del_relation', {'refs': ['s1.w4']}),
+                       ('confirm', {'refs': ['s1.w4']}),
+                       ('set_field', {'refs': ['s1.w4'], 'field': 'upos', 'value': ''})):
+        got = call_tool(ws, name, {'document': 'Viaje', **args})
+        assert got.startswith('Nothing'), (name, got)
     assert ws.ops == []
+
+
+def test_a_stand_in_s_token_is_reshaped_without_deleting_a_word():
+    ws = _bare_ws()
+    got = call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w4', 'forms': ['ma', 'r']})
+    assert got.startswith('Planned'), got
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    kinds = [k for batch in ws.client.batches for k, _ in batch]
+    assert 'tokens.bulk_delete' not in kinds and 'tokens.bulk_create' in kinds
+
+
+def test_a_stand_in_s_token_is_split_into_tokens_with_no_ud_word():
+    ws = _bare_ws()
+    got = call_tool(ws, 'split_token', {'document': 'Viaje', 'ref': 's1.w4', 'parts': ['m', 'ar']})
+    assert 'None of them has a UD word yet.' in got, got
+    (op,) = ws.ops
+    assert (op['word_ids'], op['new_parts']) == ([], [])
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    kinds = [k for batch in ws.client.batches for k, _ in batch]
+    assert 'tokens.bulk_create' not in kinds and 'tokens.split' in kinds
 
 
 def test_a_sentence_with_no_words_has_no_number(compared):
