@@ -264,13 +264,11 @@ test('the project page and its settings are the shared layout', async ({ page })
   ]);
   await expect(sections.first()).toHaveAttribute('aria-current', 'page');
 
-  // Access: the members and the API tokens, and the old tokens address lands there.
+  // Access: the members and the API tokens.
   await sections.filter({ hasText: 'Access' }).click();
   await expect(page).toHaveURL(/\/access$/);
   await expect(page.getByText('API tokens', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
-  await page.goto(`/#/projects/${projectId}/tokens`);
-  await expect(page).toHaveURL(/\/access$/);
 
   // A section's parts sit in cards, not between rules.
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);

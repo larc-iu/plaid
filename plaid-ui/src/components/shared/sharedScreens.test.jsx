@@ -410,8 +410,9 @@ describe('the shared chrome', () => {
     expect(view.container.querySelector('h1')).toBe(null);
   });
 
-  // A section folded into another keeps its old address working.
-  it('ProjectSettingsShell sends a folded section’s old path to the section that holds it', async () => {
+  // An old section's address is not kept: a path no section names opens the
+  // first section.
+  it('ProjectSettingsShell sends a path no section names to the first section', async () => {
     const Loc = () => <p data-testid="at">{useLocation().pathname}</p>;
     await mount(
       <>
@@ -427,7 +428,6 @@ describe('the shared chrome', () => {
                   {
                     value: 'management',
                     label: 'Access',
-                    aliases: ['tokens'],
                     body: () => <p>members and tokens</p>,
                   },
                 ]}
@@ -440,9 +440,9 @@ describe('the shared chrome', () => {
       '/projects/p1/tokens',
     );
     expect(view.container.querySelector('[data-testid="at"]').textContent).toBe(
-      '/projects/p1/management',
+      '/projects/p1/general',
     );
-    expect(text()).toContain('members and tokens');
+    expect(text()).toContain('general');
   });
 
   // Walking from one project to the next keeps the shell mounted. Until the

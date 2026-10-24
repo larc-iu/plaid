@@ -207,9 +207,7 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
 });
 
 test('C2-02: rename and delete from the Details tab', async ({ page }) => {
-  // The old slug still opens the page it named.
-  await openTab(page, 'metadata');
-  await expect(page).toHaveURL(/tab=details/);
+  await openTab(page, 'details');
   // By its label, not the first textbox on the tab: the page also draws a box
   // per configured field, and which one comes first in the DOM is the
   // project's configuration rather than this test's business.

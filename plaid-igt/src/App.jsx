@@ -157,29 +157,6 @@ function App() {
                   login form, from ProtectedRoute. */}
                 <Route path="*" element={<Navigate to="/projects" replace />} />
               </Route>
-
-              {/* Settings used to be one long scroll at /settings before it was
-              split into General / Text and vocab / Annotation, and the middle
-              section was briefly /orthography and then /lexicon. These keep the
-              specific destination, rather than letting the catch-all above send
-              an old bookmark to Projects. */}
-              <Route
-                path="/projects/:projectId/settings"
-                element={<Navigate to="../general" replace relative="path" />}
-              />
-              <Route
-                path="/projects/:projectId/orthography"
-                element={<Navigate to="../text-and-vocab" replace relative="path" />}
-              />
-              <Route
-                path="/projects/:projectId/lexicon"
-                element={<Navigate to="../text-and-vocab" replace relative="path" />}
-              />
-              {/* Access Tokens folded into Access. */}
-              <Route
-                path="/projects/:projectId/tokens"
-                element={<Navigate to="../access" replace relative="path" />}
-              />
             </Routes>
           </Suspended>
         </ConfirmProvider>

@@ -61,8 +61,11 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
     'Access',
     'Services',
   ]);
-  // Access holds the API tokens, and the old Access Tokens address lands there.
-  await page.goto(`${BASE}/#/projects/${PID}/tokens`);
+  // Access holds the API tokens.
+  await page
+    .getByRole('navigation', { name: 'Settings' })
+    .getByRole('link', { name: 'Access' })
+    .click();
   await expect(page).toHaveURL(/\/management$/);
   await expect(page.getByText('API tokens', { exact: true })).toBeVisible();
 

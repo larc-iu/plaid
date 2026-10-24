@@ -13,8 +13,7 @@ import { ROLE_OPTIONS } from '../../domain/roleGrants.js';
 // (registry and defaults). The same order as every app: what the project is,
 // what it annotates with, who may touch it.
 //
-// Access keeps the `management` path it had as Users & Permissions, and the
-// old Access Tokens path lands on it.
+// Access keeps the `management` path it had as Users & Permissions.
 //
 // The UD layer-structure setup form (ProjectConfiguration) is NOT here: it is a
 // standalone page at `/configuration`, which the document list's missing-layers
@@ -29,7 +28,6 @@ const SECTIONS = [
   {
     value: 'management',
     label: 'Access',
-    aliases: ['tokens'],
     body: ({ reload }) => (
       <ProjectAccessSettings
         roleOptions={ROLE_OPTIONS}

@@ -99,8 +99,7 @@ const IGT_SHELL = {
     // Comments hang live threads on the document, so a past state has none.
     past: TABS.map((t) => t.value).filter((t) => t !== 'comments'),
     long: ['baseline', 'analyze'],
-    // Details was called Metadata, and a link saved then still opens it.
-    query: { fallback: 'baseline', aliases: { metadata: 'details' }, landing },
+    query: { fallback: 'baseline', landing },
   },
   renderTab: (tab, context) => <DocumentBody tab={tab} context={context} />,
   // The repair on open is about the document, whatever tab it opens on.

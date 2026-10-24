@@ -64,10 +64,9 @@ const ExportEditor = lazyNamed(
 // is no auth state above it to read.
 const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
 
-// The Settings tab's sections (ProjectSettings.jsx's SECTIONS, with their
-// aliases). Every path renders the same view, and the active section follows
-// the path.
-const settingsPaths = ['management', 'customization', 'services', 'tokens', 'general'];
+// The Settings tab's sections (ProjectSettings.jsx's SECTIONS). Every path
+// renders the same view, and the active section follows the path.
+const settingsPaths = ['management', 'customization', 'services', 'general'];
 
 // A typed or shared `/settings` link opens the Settings tab's first section.
 const SettingsLink = () => {

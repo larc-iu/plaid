@@ -14,11 +14,9 @@ const endsWith = (path, slug) => path.endsWith(`/${slug}`);
  *
  * Each section is route-backed, so a deep link keeps working and the active one
  * is read off the path. Only the active section is rendered, so each fetches
- * lazily. `sections` is the app's, as data: `{ value, label, body, aliases }`,
- * where `body({ projectId, project, reload })` is that section's screen and
- * `aliases` are the old path suffixes that now land on it (a section that was
- * folded into this one). The first is the default, and the one an unknown path
- * redirects to.
+ * lazily. `sections` is the app's, as data: `{ value, label, body }`, where
+ * `body({ projectId, project, reload })` is that section's screen. The first is
+ * the default, and the one an unknown path redirects to.
  */
 export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   const { projectId } = useParams();
@@ -28,9 +26,6 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
 
   const path = location.pathname;
   const matched = sections.find((s) => endsWith(path, s.value));
-  const aliased = matched
-    ? null
-    : sections.find((s) => (s.aliases ?? []).some((a) => endsWith(path, a)));
   const active = matched ?? sections[0];
 
   // Walking from one project to another keeps this shell mounted, and the
@@ -60,7 +55,7 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   // Every hook above runs first, so these returns are unconditional as far as
   // React is concerned.
   if (!matched) {
-    return <Navigate to={href(projectId, (aliased ?? sections[0]).value)} replace />;
+    return <Navigate to={href(projectId, sections[0].value)} replace />;
   }
 
   return (
