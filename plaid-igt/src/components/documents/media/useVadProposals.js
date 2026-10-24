@@ -223,8 +223,8 @@ export function useVadProposals({
   const acceptServiceRegions = useCallback((segments) => {
     const regions = (segments || [])
       .map((s) => ({
-        timeBegin: Number(s.timeBegin ?? s.time_begin),
-        timeEnd: Number(s.timeEnd ?? s.time_end),
+        timeBegin: Number(s.timeBegin),
+        timeEnd: Number(s.timeEnd),
         speaker: s.speaker ?? undefined,
       }))
       .filter((r) => Number.isFinite(r.timeBegin) && Number.isFinite(r.timeEnd))

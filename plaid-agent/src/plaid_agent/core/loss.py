@@ -18,6 +18,8 @@ with no ``layers``), in the client's snake_case shape.
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from plaid_client.constraints import same_ancestor_layer
+
 
 def _token_layers(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [tl for text in (raw or {}).get('text_layers') or []
@@ -98,17 +100,6 @@ def count_delete_loss(raw: Dict[str, Any], token_ids: Iterable[str], *, under: b
     return out
 
 
-def _ancestor_layer(constraint) -> Optional[str]:
-    """The token layer a ``same-ancestor`` rule keeps a relation inside, or
-    None for any other rule. The read may spell the key either way."""
-    if not isinstance(constraint, dict) or constraint.get('type') != 'same-ancestor':
-        return None
-    for key in ('token_layer', 'tokenLayer', 'token-layer'):
-        if constraint.get(key):
-            return constraint[key]
-    return None
-
-
 def other_layers_crossing(raw: Dict[str, Any], sentence_layer_id: str, sentence_id: str,
                           char_pos: int, skip_layer_ids=()) -> List[str]:
     """The relations that core's ``same-ancestor`` rule deletes when the
@@ -143,7 +134,7 @@ def other_layers_crossing(raw: Dict[str, Any], sentence_layer_id: str, sentence_
             spans = {sp['id']: sp for sp in sl.get('spans') or []}
             for rl in sl.get('relation_layers') or []:
                 rules = (rl.get('constraints') or {}).values()
-                if not any(_ancestor_layer(c) == sentence_layer_id
+                if not any(same_ancestor_layer(c) == sentence_layer_id
                            for lst in rules if isinstance(lst, list) for c in lst):
                     continue
                 for r in rl.get('relations') or []:

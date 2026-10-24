@@ -282,7 +282,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         // hook's toast says so: it is read again while the lock is held.
         if (stopped(result)) return await reload();
         await reload();
-        const n = result?.sentencesWritten ?? result?.sentences_written;
+        const n = result?.sentencesWritten;
         if (n > 0) {
           parts.push(`proposed translations for ${countOf(n, 'sentence')}`);
           wrote = true;
@@ -352,7 +352,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         // hook's toast says so: it is read again while the lock is held.
         if (stopped(result)) return await reload();
         await reload();
-        const n = result?.wordsWritten ?? result?.words_written;
+        const n = result?.wordsWritten;
         if (n > 0) {
           parts.push(`proposed analyses for ${countOf(n, 'word')}`);
           wrote = true;

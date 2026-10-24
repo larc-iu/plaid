@@ -997,7 +997,7 @@ export const useMediaOperations = () => {
       }
       // A detect-speech service RETURNS its regions and writes nothing: a
       // segment is a stretch of the baseline and cannot exist without text.
-      vad.acceptServiceRegions(result.segments ?? result.proposals ?? []);
+      vad.acceptServiceRegions(result.segments ?? []);
     } catch (error) {
       // A lost connection is not a failed detection: the run may still be out
       // there, and the proposals already on the document are untouched either

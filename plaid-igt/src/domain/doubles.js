@@ -14,8 +14,7 @@ import { isTokenIgnored, readIgnoredTokens } from './igtConfig.js';
 /** How many units Validation lists for a field. */
 const SHOWN_DOUBLES = 20;
 
-const countOf = (answer) =>
-  answer?.violationCount ?? answer?.['violation-count'] ?? answer?.violations?.length ?? 0;
+const countOf = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
 
 /**
  * One unit as Validation shows it, or null for a unit whose every token is

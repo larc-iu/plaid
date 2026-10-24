@@ -10,6 +10,7 @@ import json
 import logging
 from typing import List, Dict, Optional
 
+from plaid_client.constraints import same_ancestor_layer
 from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, stamp_inferred, is_protected
 from plaid_client.service import (batch_body_budget, check_unchanged, locked_for_writes,
                                   requester_message)
@@ -537,8 +538,7 @@ class TokenProcessor:
         def keeps_within(rl):
             for rules in (rl.get('constraints') or {}).values():
                 for c in rules if isinstance(rules, list) else []:
-                    if isinstance(c, dict) and c.get('type') == 'same-ancestor' and \
-                            (c.get('token_layer') or c.get('tokenLayer') or c.get('token-layer')) == layer_id:
+                    if same_ancestor_layer(c) == layer_id:
                         return True
             return False
 

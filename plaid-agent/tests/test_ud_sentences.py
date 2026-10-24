@@ -178,7 +178,7 @@ def declared(raw, layers=None):
         if rl is None:
             rl = {'id': layer_id, 'relations': []}
             lemma['relation_layers'].append(rl)
-        rl['constraints'] = {'ud': [{'type': 'same-ancestor', 'token-layer': SENT_LAYER}]}
+        rl['constraints'] = {'ud': [{'type': 'same-ancestor', 'token_layer': SENT_LAYER}]}
     return raw
 
 

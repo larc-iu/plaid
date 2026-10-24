@@ -142,3 +142,10 @@ def test_the_fake_answers_refused_values_from_its_documents():
         {'value': 'dog.PL', 'parts': ['dog'], 'count': 2}]
     assert fake.span_layers.refused_values('L2', rule) == {'count': 0, 'value_count': 0, 'values': []}
     assert not hasattr(PlaidClient('http://localhost:0', 'dummy-token').token_layers, 'refused_values')
+
+
+def test_same_ancestor_layer_reads_the_rule_as_this_client_spells_it():
+    from plaid_client.constraints import same_ancestor_layer
+    assert same_ancestor_layer({'type': 'same-ancestor', 'token_layer': 'S'}) == 'S'
+    assert same_ancestor_layer({'type': 'acyclic'}) is None
+    assert same_ancestor_layer(None) is None

@@ -26,10 +26,13 @@ const DOMAIN = resolve(HERE, '../../plaid-igt/src/domain');
 const { writeTagsetPlan } = await import(`${DOMAIN}/tagsetPlan.js`);
 const { declareIgtRules } = await import(`${DOMAIN}/igtConstraints.js`);
 const { PlaidClient } = await import(resolve(HERE, '../../plaid-client-js/src/index.js'));
+const { transformResponse } = await import(resolve(HERE, '../../plaid-client-js/src/transforms.js'));
 
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
-const { url, token, projectId, ops, operation } = JSON.parse(input);
+const { url, token, projectId, ops: sent, operation } = JSON.parse(input);
+// The plan's ops as the page reads them off the record: camelCased.
+const ops = transformResponse(sent);
 const client = new PlaidClient(url, token);
 
 // putRulesInForce (plaid-igt settings/putRulesInForce.js) without its notice.

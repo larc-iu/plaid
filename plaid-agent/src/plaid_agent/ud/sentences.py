@@ -40,8 +40,10 @@ cut. One whose head points nowhere is left alone rather than guessed at.
 
 from typing import Any, Dict, List, Optional
 
+from plaid_client.constraints import same_ancestor_layer
+
 from ..core.bidi import qv
-from ..core.loss import _ancestor_layer, _token_layers, other_layers_crossing
+from ..core.loss import _token_layers, other_layers_crossing
 from ..core.refs import clip
 from .project import Sentence, UdDoc, Word, resolve, word_ref
 from .tools import ToolError, Workspace, resolve_in
@@ -145,7 +147,7 @@ def keeps_inside(raw: Dict[str, Any], relation_layer_id: Optional[str], sentence
         for sl in tl.get('span_layers') or []:
             for rl in sl.get('relation_layers') or []:
                 if rl.get('id') == relation_layer_id:
-                    return any(_ancestor_layer(c) == sentence_layer_id
+                    return any(same_ancestor_layer(c) == sentence_layer_id
                                for lst in (rl.get('constraints') or {}).values()
                                if isinstance(lst, list) for c in lst)
     return False

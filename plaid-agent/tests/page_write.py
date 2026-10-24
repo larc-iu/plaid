@@ -11,6 +11,7 @@ import subprocess
 from typing import Optional
 
 from node_exe import node_or_skip
+from plaid_client.transforms import transform_request
 
 RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tagset_page_write.mjs')
 
@@ -30,7 +31,9 @@ def page_write(client, project_id: str, ops, operation: Optional[dict] = None) -
     out of force. Raises :class:`PageRefused` when the page refuses."""
     node = node_or_skip("The tagset approval tests run igt's own write with it.")
     body = {'url': client.base_url, 'token': client.token, 'projectId': project_id,
-            'ops': ops, 'operation': operation}
+            # As the record carries them over the wire: kebab-cased, then
+            # camelCased by the JS client (tagset_page_write.mjs).
+            'ops': transform_request(ops), 'operation': operation}
     run = subprocess.run([node, RUNNER], input=json.dumps(body), capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
     out = json.loads(run.stdout)

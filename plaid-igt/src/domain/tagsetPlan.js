@@ -100,7 +100,7 @@ const toStore = (after, old) => {
   };
 };
 
-const fieldKind = (op) => op.fieldKind ?? op.field_kind;
+const fieldKind = (op) => op.fieldKind;
 
 // The name a field references now.
 const referenceOf = (op, { config, spanLayers, entryFields }) => {

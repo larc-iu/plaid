@@ -264,7 +264,7 @@ async function takeLock(client, documentId, lockId, retryMs) {
     if (error?.status === 423) {
       // The error body is raw JSON off the wire, so it is still kebab-cased.
       const body = error.responseData || {};
-      const holder = body.userId || body["user-id"] || "another user";
+      const holder = body["user-id"] || "another user";
       const readable = new Error(
         `This document is being edited by ${holder}. Try again once they're done.`,
       );

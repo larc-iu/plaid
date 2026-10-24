@@ -53,8 +53,7 @@ export const queueRepairOfBareLayer = (b, { kind, layerId, constraints, stored }
 /** The list a layer read holds for `namespace`, or null. */
 export const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
 
-const countOf = (answer) =>
-  answer?.violationCount ?? answer?.['violation-count'] ?? answer?.violations?.length ?? 0;
+const countOf = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
 
 const typesOf = (violations) => [...new Set((violations || []).map((v) => v.constraint))];
 

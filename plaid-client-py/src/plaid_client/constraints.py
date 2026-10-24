@@ -7,6 +7,14 @@ core manual, "Layer constraints". The JS twin is plaid-client-js's
 from plaid_client.transforms import transform_response
 
 
+def same_ancestor_layer(constraint):
+    """The token layer a ``same-ancestor`` rule keeps a relation inside, or
+    None for any other rule. A rule as this client reads it, snake_cased."""
+    if not isinstance(constraint, dict) or constraint.get('type') != 'same-ancestor':
+        return None
+    return constraint.get('token_layer') or None
+
+
 def violations_of(err):
     """The violations of a write refused by a layer constraint, snake_cased
     (``{'constraint', 'namespace', 'layer', 'layer_name', 'document', 'at',

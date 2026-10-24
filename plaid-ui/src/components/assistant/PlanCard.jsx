@@ -579,7 +579,7 @@ const RuleRow = ({ row, projectId, adapter, open: openFirst = false, written }) 
             indent
             // A rule's sample is spread over its documents: each row names its
             // own.
-            documentName={c.where?.documentName ?? c.where?.document_name ?? null}
+            documentName={c.where?.documentName ?? null}
           />
         ))}
     </>

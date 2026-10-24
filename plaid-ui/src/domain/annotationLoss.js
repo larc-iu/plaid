@@ -112,9 +112,7 @@ const keepsWithin = (rl, layerId) =>
   Object.values(rl.constraints || {}).some(
     (list) =>
       Array.isArray(list) &&
-      list.some(
-        (c) => c?.type === 'same-ancestor' && (c.tokenLayer ?? c['token-layer']) === layerId,
-      ),
+      list.some((c) => c?.type === 'same-ancestor' && c.tokenLayer === layerId),
   );
 
 // Where core places a span: the smallest begin of its tokens, or null.
