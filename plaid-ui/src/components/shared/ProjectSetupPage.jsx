@@ -22,10 +22,15 @@ import { TYPE } from '../../lib/typeScale.js';
  *
  * `layerInfo(project)` is the app's reading of the project's layers, and
  * `setup` the object the Documents tab takes, with what this page adds:
- * `{ app, adopt, blocked?, missingLabels(info), allSet, card: { title, body,
- * layers } }`. `allSet` is the line said when every layer is there, and
- * `card` describes what the button makes.
+ * `{ app, adopt, blocked?, unfinished?, missingLabels(info), allSet, card: {
+ * title, body, layers } }`. `allSet` is the line said when every layer is
+ * there, and `card` describes what the button makes. `unfinished(project)`
+ * says a set-up stopped after the layers landed, and the button stays until
+ * a run finishes it.
  */
+// What the page says of a set-up that stopped after the layers landed.
+const UNFINISHED = 'The last set-up stopped before it finished.';
+
 export const ProjectSetupPage = ({ layerInfo, setup }) => {
   const navigate = useNavigate();
   const { getClient, user } = useAuth();
@@ -79,6 +84,7 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
   }
 
   const missing = setup.missingLabels(info).join(', ');
+  const unfinished = info.isConfigured && !!setup.unfinished?.(project);
   const blocked = info.isConfigured ? null : setup.blocked?.(info, projectId, project);
 
   return (
@@ -87,7 +93,9 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
         <div className="flex flex-col gap-1">
           <h1 className={TYPE.page}>Set up {setup.app} layers</h1>
           <p className="text-sm text-muted-foreground">{project.name}</p>
-          {info.isConfigured ? (
+          {unfinished ? (
+            <p className="text-sm text-warning-foreground">{UNFINISHED}</p>
+          ) : info.isConfigured ? (
             <p className="text-sm text-success-foreground">{setup.allSet}</p>
           ) : (
             missing && <p className="text-sm text-warning-foreground">Missing: {missing}</p>
@@ -108,9 +116,13 @@ export const ProjectSetupPage = ({ layerInfo, setup }) => {
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">{setup.card.body}</p>
             <ul className="ml-5 list-disc space-y-1 text-sm">{setup.card.layers}</ul>
-            {!info.isConfigured && (
+            {(!info.isConfigured || unfinished) && (
               <Button className="self-start" onClick={handleSetUp} disabled={saving}>
-                {saving ? 'Saving…' : `Set up for ${setup.app}`}
+                {saving
+                  ? 'Saving…'
+                  : unfinished
+                    ? `Finish setting up for ${setup.app}`
+                    : `Set up for ${setup.app}`}
               </Button>
             )}
           </CardContent>

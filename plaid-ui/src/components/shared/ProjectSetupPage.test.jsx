@@ -28,6 +28,7 @@ const SETUP = {
   card: { title: 'XY layers', body: 'Added beside the text.', layers: <li>Nodes</li> },
   blocked: (info, projectId, p) =>
     p.blocked ? { title: 'No text to annotate', body: 'Make text first.' } : null,
+  unfinished: (p) => !!p.unfinished,
 };
 
 const layerInfo = (p) => ({ isConfigured: !!p?.done, missing: p?.done ? [] : ['Nodes'] });
@@ -75,6 +76,23 @@ describe('ProjectSetupPage', () => {
     await view.step(() => new Promise((r) => setTimeout(r, 0)));
     expect(get).toHaveBeenCalledTimes(2);
     expect(view.container.textContent).toContain('Every XY layer is set up.');
+    await view.unmount();
+  });
+
+  // REV-FIX5 M2: the layers landed and a later step did not, so the project
+  // reads as set up, and the button stays to finish it.
+  it('offers to finish a set-up that stopped after the layers', async () => {
+    const { view } = await mount([project({ done: true, unfinished: true })]);
+    expect(view.container.textContent).toContain('The last set-up stopped before it finished.');
+    expect(view.container.textContent).not.toContain('Every XY layer is set up.');
+    expect(byText(view.container, 'button', 'Finish setting up for XY')).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('offers no button once every layer is set up', async () => {
+    const { view } = await mount([project({ done: true })]);
+    expect(view.container.textContent).toContain('Every XY layer is set up.');
+    expect(view.container.querySelector('button')).toBeFalsy();
     await view.unmount();
   });
 

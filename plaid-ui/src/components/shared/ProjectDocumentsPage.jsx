@@ -37,6 +37,8 @@ import { SetupBlocked } from './SetupBlocked.jsx';
  *   button, `adopt` does the setting up. `blocked`, when it returns
  *   `{ title, body, action }`, is what a maintainer sees instead of the
  *   button (SetupBlocked): the project lacks something the app cannot make.
+ *   `unfinished?(project)` says a set-up stopped after the layers landed: a
+ *   maintainer is offered the button again above the list.
  * - `tableLayers(info)`: `{ wordLayerId, seedLayerId }` for `DocumentTable`.
  * - `rowHref(projectId, documentId, counts)`: where a row opens.
  * - `newDocument`: a component drawn beside the heading for a writer, given
@@ -138,6 +140,21 @@ export const ProjectDocumentsPage = ({
   return (
     <>
       <Tabs projectId={projectId} project={project} />
+
+      {canManage && setup.unfinished?.(project) && (
+        <div className="flex justify-center pt-4">
+          <Notice tone="warning" icon={Info} className="max-w-lg gap-3 p-4">
+            <div className="flex flex-col items-start gap-3">
+              <p className="font-medium">
+                The last set-up for {setup.app} stopped before it finished.
+              </p>
+              <Button size="sm" onClick={handleSetUp} disabled={settingUp}>
+                {settingUp ? 'Saving…' : `Finish setting up for ${setup.app}`}
+              </Button>
+            </div>
+          </Notice>
+        </div>
+      )}
 
       <ProjectDocumentsList
         projectId={projectId}

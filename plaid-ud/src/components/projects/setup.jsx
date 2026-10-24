@@ -1,5 +1,5 @@
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
-import { adoptSubstrate } from '../../domain/udProjectSetup.js';
+import { adoptSubstrate, setupUnfinished } from '../../domain/udProjectSetup.js';
 import { missingUdLayerLabels } from '../../utils/udLayerUtils.js';
 
 // UD's setup, for the Documents tab and the setup page (plaid-ui's
@@ -11,6 +11,8 @@ export const SETUP = {
   app: 'UD',
   note: 'Adds UD annotation. The text and tokens do not change.',
   adopt: (client, project) => adoptSubstrate(client, project),
+  // A set-up that stopped after the layers, with words still to make.
+  unfinished: setupUnfinished,
   // Two text layers with no baseline role between them is not a project any
   // Plaid app makes, and UD cannot tell which one it is meant to annotate.
   blocked: (info, projectId, project) => {

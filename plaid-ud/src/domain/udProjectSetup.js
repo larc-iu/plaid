@@ -50,6 +50,16 @@ import {
   splitsOnSpace,
 } from '../../../plaid-ui/src/domain/substrateConfig.js';
 
+// The project config key a set-up holds while it still has words to make,
+// set in the batch that makes the layers and cleared once it has made them
+// all, so a set-up that stopped after its layers can be finished from the
+// app (REV-FIX5 M2).
+const UNFINISHED_KEY = 'setupUnfinished';
+
+/** Whether the last set-up for UD stopped before it had made every word. */
+export const setupUnfinished = (project) =>
+  project?.config?.[UD_NAMESPACE]?.[UNFINISHED_KEY] === true;
+
 export const SPAN_LAYER_SPECS = [
   ['Form', UD_SPAN_CONFIG_KEYS.form],
   ['Lemma', UD_SPAN_CONFIG_KEYS.lemma],
@@ -192,7 +202,9 @@ export const createUdProject = (client, projectName) =>
  * form, of every word in every document that has none (R3a), read from the
  * documents first. They are sized well under the core's caps on a request's
  * body and op count, so a large project can be set up. A failure partway
- * leaves the words not yet made to a re-run, which finds only those.
+ * leaves the words not yet made to a re-run, which finds only those: the
+ * project says the set-up is unfinished (`setupUnfinished`) until a run makes
+ * the last of them, and the app offers the set-up again meanwhile.
  *
  * The plan is made from the project as it is now, read here, never from the
  * page's copy: a set-up another tab or maintainer ran since, or this page's
@@ -310,6 +322,7 @@ export const adoptSubstrate = (client, page) =>
           wordTokenLayer: { id: wordLayerId },
         }),
       );
+      if (lacking.length) b.projects.setConfig(project.id, UD_NAMESPACE, UNFINISHED_KEY, true);
     });
 
     // Every word with no UD word gets one now, with its lemma copied from its
@@ -331,6 +344,9 @@ export const adoptSubstrate = (client, page) =>
     // the data still breaks is left undeclared, and the rest are in force.
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
+    if (lacking.length || setupUnfinished(project)) {
+      await client.projects.deleteConfig(project.id, UD_NAMESPACE, UNFINISHED_KEY);
+    }
   });
 
 // The words `lacking` (wordsLackingUdWords) as batches of the rows that make

@@ -5,7 +5,7 @@
 // made a second set of them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptSubstrate } from '../src/domain/udProjectSetup.js';
+import { adoptSubstrate, setupUnfinished } from '../src/domain/udProjectSetup.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 
 const INPUT = [
@@ -131,6 +131,7 @@ const substrateDoc = (keep = []) => {
 const adoptClient = (project, docs) => {
   const batches = [];
   const read = [];
+  const cleared = [];
   const queue = (ops) =>
     new Proxy(
       {},
@@ -157,6 +158,7 @@ const adoptClient = (project, docs) => {
     projects: {
       get: async () => structuredClone(project),
       listDocuments: async () => docs.map((d) => ({ id: d.id })),
+      deleteConfig: async (...args) => cleared.push(args),
     },
     documents: {
       get: async (id) => {
@@ -171,7 +173,7 @@ const adoptClient = (project, docs) => {
       return ops.map(() => ({}));
     },
   };
-  return { client, batches, read };
+  return { client, batches, read, cleared };
 };
 
 const opsNamed = (batches, name) => batches.flat().filter((o) => o.op === name);
@@ -356,4 +358,36 @@ test('a set-up of a project lacking 30k UD words sends them in batches well unde
     lemmas.map((l) => l.tokens[0]),
     words.map((w) => w.id),
   );
+});
+
+// REV-FIX5 M2: the layers land in the first batch and the words after, so a
+// set-up that stops between them leaves a project that reads as set up. The
+// project says it is unfinished from the layers' batch until the last word
+// is made, and the app offers the set-up again meanwhile.
+test('a set-up says it is unfinished until its last word is made', async () => {
+  const flag = (batches) =>
+    batches[0].filter((o) => o.op === 'projects.setConfig').map((o) => o.args);
+  const done = adoptClient(substrateOnly(), [substrateDoc()]);
+  await adoptSubstrate(done.client, substrateOnly());
+  assert.deepEqual(flag(done.batches), [['p1', 'ud', 'setupUnfinished', true]]);
+  assert.deepEqual(done.cleared, [['p1', 'ud', 'setupUnfinished']]);
+
+  const stopped = adoptClient(substrateOnly(), [substrateDoc()]);
+  const batched = stopped.client.batched;
+  stopped.client.batched = async (fn) => {
+    if (stopped.batches.length) throw new Error('lost');
+    return batched(fn);
+  };
+  await assert.rejects(adoptSubstrate(stopped.client, substrateOnly()));
+  assert.deepEqual(flag(stopped.batches), [['p1', 'ud', 'setupUnfinished', true]]);
+  assert.deepEqual(stopped.cleared, []);
+
+  // The run that finishes it, and the reading the app offers it by.
+  const flagged = { ...fullProject(), config: { ud: { setupUnfinished: true } } };
+  assert.equal(setupUnfinished(flagged), true);
+  assert.equal(setupUnfinished(fullProject()), false);
+  const again = adoptClient(flagged, [rawDocFromConllu(INPUT, 'full')]);
+  await adoptSubstrate(again.client, flagged);
+  assert.deepEqual(flag(again.batches), []);
+  assert.deepEqual(again.cleared, [['p1', 'ud', 'setupUnfinished']]);
 });
