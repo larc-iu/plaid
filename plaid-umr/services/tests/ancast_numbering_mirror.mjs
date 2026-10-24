@@ -4,8 +4,8 @@
 // unless the document goes by its file's numbers (`fileNumbers` in
 // src/domain/sentenceGraph.js).
 //
-// Each case is an imported file, changed as IGT changes it and not yet healed
-// by opening it in the app, which is how a service reads it:
+// Each case is an imported file, changed as IGT changes it, with nothing the
+// reader reads right stored yet by a UMR write, which is how a service reads it:
 //   prepended  the released English corpus with a sentence typed in before
 //              the first and split off (test/igtInsertSentence.js)
 //   between    the same corpus with a sentence split off after the first

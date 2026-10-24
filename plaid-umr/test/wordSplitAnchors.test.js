@@ -1,8 +1,9 @@
 // A word split in two in IGT (Tokenize, `ikian,` into `ikian` and `,`) leaves
 // a node anchored to the word standing over both halves: core splits only
 // the layers under the word layer, and the node layer is a root layer
-// (H5-UMR-2). The open puts the node on the half its word's letters are in:
-// the half with the most letters, the first of them on a tie. The export
+// (H5-UMR-2). The reader reads the node on the half its word's letters are
+// in, the half with the most letters, the first of them on a tie, and the
+// next UMR write to its sentence stores it there (umrSettle.js). The export
 // then aligns it to that word alone. A node records the words it was
 // aligned to, and a split keeps a word's id on its left half, so only a
 // word the node does not record, touching a recorded one, is read as a half.
@@ -15,6 +16,7 @@ import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { importUmrDocument, planImport } from '../src/domain/umrImport.js';
 import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { wordsUnder } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { twoWriterCore } from './twoWriterCore.js';
 import {
@@ -22,7 +24,8 @@ import {
   deleteWord,
   mergeWords,
   layersOf,
-  openInUmr,
+  writeInUmr,
+  nothingToStore,
   openWritesNothing,
   splitWord,
   wordsOf,
@@ -63,18 +66,24 @@ const alignment = (raw) =>
     ]),
   );
 
+// How many nodes a write stores on one half of a split word (umrSettle.js).
+const cutNodes = (plan) =>
+  plan ? [...plan.meta.values()].filter((c) => Array.isArray(c.words)).length : 0;
+
 test('a node over a word split in two is put on the half with its letters, once', async () => {
   const raw = load();
   const w = word(raw, 'ikian,');
   splitWord(raw, w.id, w.begin + 5);
-  // Before the open the node stands over both halves, words 2 and 3.
-  assert.equal(alignment(raw).get('s1i'), '2-3');
-  const result = await openInUmr(raw);
+  // Read on the half with its letters before any write, and the open
+  // writes nothing.
+  assert.equal(alignment(raw).get('s1i'), '2-2');
+  assert.ok(await openWritesNothing(raw));
+  const result = await writeInUmr(raw);
   // `s1i`, and `both`, which stood over `tsa ikian,` (see below).
-  assert.equal(result.wordSplits, 2);
+  assert.equal(cutNodes(result), 2);
   assert.equal(alignment(raw).get('s1i'), '2-2');
   assert.match(new UmrDocument({ raw: structuredClone(raw) }).toUmr(), /\ns1i: 2-2\n/);
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
 });
 
 test('a tie in letters keeps the first half, and punctuation counts for none', async () => {
@@ -83,7 +92,7 @@ test('a tie in letters keeps the first half, and punctuation counts for none', a
   splitWord(raw, a.id, a.begin + 1);
   const t = word(raw, 'tsa');
   splitWord(raw, t.id, t.begin + 1);
-  await openInUmr(raw);
+  await writeInUmr(raw);
   const at = alignment(raw);
   // `a.` is `a` and `.`: the letter is in the first.
   assert.equal(at.get('s1a'), '4-4');
@@ -95,7 +104,7 @@ test('a node over two words keeps both, and drops the half split off its last', 
   const raw = load();
   const w = word(raw, 'ikian,');
   splitWord(raw, w.id, w.begin + 5);
-  await openInUmr(raw);
+  await writeInUmr(raw);
   // `both` stood over `tsa ikian,`, words 1 and 2, and is back over them.
   assert.equal(alignment(raw).get('s1b'), '1-2');
 });
@@ -103,19 +112,19 @@ test('a node over two words keeps both, and drops the half split off its last', 
 test('a node over two words a space apart, none split, is left as it is', async () => {
   const raw = load();
   assert.equal(alignment(raw).get('s1b'), '1-2');
-  await openInUmr(raw);
+  await writeInUmr(raw);
   assert.equal(alignment(raw).get('s1b'), '1-2');
 });
 
-test('the record follows the cut, so a second open writes nothing', async () => {
+test('the record follows the cut, so a second write stores nothing', async () => {
   const raw = load();
   const w = word(raw, 'ikian,');
   splitWord(raw, w.id, w.begin + 5);
-  await openInUmr(raw);
+  await writeInUmr(raw);
   const doc = new UmrDocument({ raw: structuredClone(raw) });
   const node = doc.graph.sentences[0].nodes.find((n) => n.var === 's1i');
   assert.deepEqual(node.metadata.umr.words, node.wordIds);
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
 });
 
 test('a node that records no words is never cut', async () => {
@@ -123,8 +132,8 @@ test('a node that records no words is never cut', async () => {
   layersOf(raw).concepts.spans.forEach((s) => delete s.metadata.umr.words);
   const w = word(raw, 'ikian,');
   splitWord(raw, w.id, w.begin + 5);
-  const result = await openInUmr(raw);
-  assert.ok(!result.wordSplits);
+  const result = await writeInUmr(raw);
+  assert.ok(!cutNodes(result));
   assert.equal(alignment(raw).get('s1i'), '2-3');
 });
 
@@ -165,7 +174,7 @@ test('a node aligned to touching words in a text with no spaces keeps them all',
   assert.equal(raw.textLayers[0].text.body.split('\n')[0], '能谈得来吗');
   assert.equal(alignment(raw).get('s1t'), '2-3');
   assert.equal(alignment(raw).get('s1p'), '1-2');
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
   assert.equal(alignment(raw).get('s1t'), '2-3');
 });
 
@@ -173,20 +182,20 @@ test('in a text with no spaces, only a word really split is cut', async () => {
   const raw = spaceless();
   const w = word(raw, '谈得');
   splitWord(raw, w.id, w.begin + 1);
-  const result = await openInUmr(raw);
+  const result = await writeInUmr(raw);
   // `s1d` stood on 谈得, and `s1p` on 能谈得, whose last word was split. `s1t`
   // stood on 谈得来, whose FIRST word was split: the halves 谈 and 得 tie on
   // letters, the first wins, and its anchor still begins where it did, so
   // nothing is cut (the next test has halves that do not tie).
-  assert.equal(result.wordSplits, 2);
+  assert.equal(cutNodes(result), 2);
   const at = alignment(raw);
   assert.equal(at.get('s1d'), '2-2');
   assert.equal(at.get('s1p'), '1-2');
   assert.equal(at.get('s1t'), '2-4');
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
 });
 
-test('a node anchored on the canvas to touching words keeps them on the next open', async () => {
+test('a node anchored on the canvas to touching words keeps them on the next write', async () => {
   const core = twoWriterCore(spaceless());
   const page = await core.open('a');
   const s = page.doc.sentence(1);
@@ -203,7 +212,7 @@ test('a node anchored on the canvas to touching words keeps them on the next ope
   const raw = core.raw;
   assert.equal(alignment(raw).get('s1n'), '2-4');
   assert.equal(alignment(raw).get('s1n2'), '1-2');
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
   assert.equal(alignment(raw).get('s1n'), '2-4');
 });
 
@@ -214,11 +223,14 @@ test('a node anchored again to both halves of a split word keeps them', async ()
   const core = twoWriterCore(raw);
   const page = await core.open('a');
   const node = page.doc.sentence(1).nodes.find((n) => n.var === 's1i');
-  // The same words as are under it already, but not the words it records.
-  assert.ok(await page.doc.setAnchor(node.id, [...node.wordIds]));
+  // The words its anchor stands over, both halves, not the one it records.
+  const halves = wordsUnder(node.pieces, page.doc.sentence(1).words);
+  assert.equal(halves.length, 2);
+  assert.ok(await page.doc.setAnchor(node.id, halves));
   page.release();
-  // `both`, on `tsa ikian,`, is cut. `s1i` is not.
-  assert.equal((await openInUmr(core.raw)).wordSplits, 1);
+  // `both`, on `tsa ikian,`, is cut, by that write to its sentence already.
+  // `s1i` is not.
+  assert.equal(cutNodes(await writeInUmr(core.raw)), 0);
   assert.equal(alignment(core.raw).get('s1i'), '2-3');
   assert.equal(alignment(core.raw).get('s1b'), '1-2');
 });
@@ -247,7 +259,7 @@ test('an import onto a document with words records the words each node is aligne
   const node = doc.graph.sentences[0].nodes.find((n) => n.var === 's1t');
   assert.deepEqual(node.metadata.umr.words, node.wordIds);
   assert.equal(node.wordIds.length, 2);
-  assert.ok(await openWritesNothing(core.raw));
+  assert.ok(await nothingToStore(core.raw));
 });
 
 const UNEQUAL = `${SEP}
@@ -273,13 +285,13 @@ test('a split word at the start of an anchor keeps its half with more letters, s
   const raw = spaceless(UNEQUAL);
   const w = word(raw, '谈得来');
   splitWord(raw, w.id, w.begin + 1);
-  await openInUmr(raw);
+  await writeInUmr(raw);
   const at = alignment(raw);
   // 谈|得来 at the start of `s1t`: 得来 has more letters, and 谈 is dropped.
   assert.equal(at.get('s1t'), '3-4');
   // At the end of `s1p` the half kept is the last, so its anchor is whole.
   assert.equal(at.get('s1p'), '1-3');
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
 });
 
 // REV-FX3-UMR F1: words reshaped under a node by something other than a
@@ -299,8 +311,8 @@ test('a merge then a split inside a two-word alignment cuts nothing', async () =
   const merged = word(fixed, '能谈得来');
   splitWord(fixed, merged.id, merged.begin + 3);
   assert.equal(alignment(fixed).get('s1n'), '1-2');
-  const result = await openInUmr(fixed);
-  assert.ok(!result.wordSplits);
+  const result = await writeInUmr(fixed);
+  assert.ok(!cutNodes(result));
   assert.equal(alignment(fixed).get('s1n'), '1-2');
 });
 
@@ -310,16 +322,16 @@ test('a word deleted and made again over its text at the end of an alignment cut
   deleteWord(raw, w.id);
   layersOf(raw).word.tokens.push({ id: 'remade', begin: w.begin, end: w.end });
   assert.equal(alignment(raw).get('s1t'), '2-3');
-  const result = await openInUmr(raw);
-  assert.ok(!result.wordSplits);
+  const result = await writeInUmr(raw);
+  assert.ok(!cutNodes(result));
   assert.equal(alignment(raw).get('s1t'), '2-3');
 });
 
-// REV-FX3-UMR F3: a node the open makes unaligned records its sentence and no words.
-test('a node whose word is deleted records no words once the open unaligns it', async () => {
+// REV-FX3-UMR F3: a node a write stores as unaligned records its sentence and no words.
+test('a node whose word is deleted records no words once a write stores it unaligned', async () => {
   const raw = spaceless(UNEQUAL);
   deleteWord(raw, word(raw, '能').id);
-  await openInUmr(raw);
+  await writeInUmr(raw);
   const span = layersOf(raw).concepts.spans.find((x) => x.metadata.umr.var === 's1n');
   assert.ok(span.metadata.umr.sentence);
   assert.equal(span.metadata.umr.words, undefined);
@@ -376,8 +388,8 @@ test('a vowel mark counts as a letter when a split word picks its half', async (
   const raw = rawFromPlan(planImport(parseUmrFile(MARKED).sentences, []));
   const w = word(raw, 'कींखग');
   splitWord(raw, w.id, w.begin + 3);
-  const result = await openInUmr(raw);
-  assert.equal(result.wordSplits, 1);
+  const result = await writeInUmr(raw);
+  assert.equal(cutNodes(result), 1);
   assert.equal(alignment(raw).get('s1k'), '1-1');
 });
 
@@ -400,7 +412,7 @@ test('the letter table is what tools/letterClasses.mjs writes, and the cut reads
   assert.equal(isLetterMarkOrNumber(','), false);
   assert.equal(isLetterMarkOrNumber(''), false);
   const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../src/domain/umrReconcile.js', import.meta.url), 'utf8');
-  const body = source.slice(source.indexOf('export function planWordSplits'));
+  const source = readFileSync(new URL('../src/domain/sentenceGraph.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('export function wordSplitCuts'));
   assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /\\p\{/);
 });

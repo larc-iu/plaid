@@ -8,7 +8,7 @@
 //   export writes each `# :: snt` number once (the official validator
 //   refuses a repeat: `non-unique-sent-id`).
 // - A record left on new text before the sentence it describes is read with
-//   its graph, and reconcile moves it there.
+//   its graph, and the next write to that sentence moves it there.
 // - A triple between two constants is listed in the records of its
 //   sentences, which follow them where a number would not.
 import { test } from 'node:test';
@@ -19,6 +19,7 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { isRecordToken, toUmrSentences } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
+import { storeAll } from './settle.js';
 import { recordingClient } from './recordingClient.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
 
@@ -125,7 +126,7 @@ test('a sentence typed in before the first leaves every record with its sentence
   assert.match(doc.toUmr(), /# :: snt1\n[^]*# :: snt2\n[^]*# :: snt3\n/);
 
   // Nothing of the records needs moving: only the variables are renumbered.
-  const result = await doc._reconcile();
+  const result = await storeAll(doc);
   assert.equal(result.recordsMoved, 0);
   assert.equal(result.renumbered, 4);
   assert.deepEqual(
@@ -142,7 +143,7 @@ test('a sentence typed in before the first leaves every record with its sentence
       [2, 1],
     ],
   );
-  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
+  assert.equal(await storeAll(again.doc), null);
 });
 
 test('a record left on new text typed in before its sentence goes back to it', async () => {
@@ -164,17 +165,13 @@ test('a record left on new text typed in before its sentence goes back to it', a
     toUmrSentences(doc.graph).map((s) => s.snt),
     [1, 2, 3],
   );
-  const result = await doc._reconcile();
+  const result = await storeAll(doc);
   assert.equal(result.recordsMoved, 1);
   assert.deepEqual(calls.find((c) => c.name === 'tokens.update').args, [
     cut.id,
     first.begin,
     first.end,
   ]);
-  assert.equal(
-    doc.describeReconcile(result),
-    'Repaired: moved the stored lines of 1 sentence to the sentence they describe, renumbered 4 variables to match the sentences',
-  );
   applyPatches(raw, calls);
   const again = open(raw);
   assert.deepEqual(
@@ -185,7 +182,7 @@ test('a record left on new text typed in before its sentence goes back to it', a
       [2, 1],
     ],
   );
-  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
+  assert.equal(await storeAll(again.doc), null);
 });
 
 test('a sentence split in two in IGT keeps its record on the half with its graph', () => {
@@ -292,7 +289,7 @@ test('a triple between constants follows its sentences past one typed in between
     [1, 0, 1, 1],
   );
   // The records list it, so nothing about it is written.
-  const result = await doc._reconcile();
+  const result = await storeAll(doc);
   assert.equal(result.recordsMoved, 0);
   assert.equal(
     calls.find((c) => c.name === 'relations.patchMetadata' || c.name === 'tokens.patchMetadata'),

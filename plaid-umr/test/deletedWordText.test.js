@@ -16,7 +16,14 @@ import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { isHoldToken, isRecordToken } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { twoWriterCore } from './twoWriterCore.js';
-import { deleteText, layersOf, openInUmr, openWritesNothing, wordsOf } from './igtEdits.js';
+import {
+  deleteText,
+  layersOf,
+  writeInUmr,
+  nothingToStore,
+  openWritesNothing,
+  wordsOf,
+} from './igtEdits.js';
 
 const SEP = '#'.repeat(80);
 const FILE = `${SEP}
@@ -91,9 +98,10 @@ test("a word's text deleted leaves its node as an unaligned node, edges and rela
   assert.equal(cat.sentence, 1);
   assert.deepEqual(edgesOf(doc), edgesOf(before));
   assert.deepEqual(triplesOf(doc), triplesOf(before));
-  // The open makes it an ordinary unaligned node and says so.
-  const result = await openInUmr(raw);
-  assert.equal(read(raw).describeReconcile(result), 'Repaired: 1 node lost its word (s1c)');
+  // The open writes nothing, and the next write to the sentence stores it
+  // as an ordinary unaligned node.
+  assert.ok(await openWritesNothing(raw));
+  await writeInUmr(raw);
   const after = read(raw);
   assert.equal(byVar(after, 's1c').metadata.umr.sentence, after.sentence(1).tokenId);
   assert.equal(byVar(after, 's1c').metadata.umr.words, undefined);
@@ -103,7 +111,7 @@ test("a word's text deleted leaves its node as an unaligned node, edges and rela
   assert.match(file, /\ns1c: 0-0\n/);
   assert.match(file, /\ns1s: 2-2\n/);
   assert.match(file, /:ARG0 \(s1c \/ cat/);
-  assert.ok(await openWritesNothing(raw));
+  assert.ok(await nothingToStore(raw));
 });
 
 test('the last word of a sentence, and its first, keep their nodes too', async () => {
@@ -121,9 +129,9 @@ test('the last word of a sentence, and its first, keep their nodes too', async (
     const doc = read(raw);
     assert.ok(byVar(doc, gone), `${text}: its node is kept`);
     assert.equal(byVar(doc, gone).aligned, false, text);
-    await openInUmr(raw);
+    await writeInUmr(raw);
     assert.ok(byVar(read(raw), gone).metadata.umr.sentence, text);
-    assert.ok(await openWritesNothing(raw), text);
+    assert.ok(await nothingToStore(raw), text);
   }
 });
 
@@ -180,7 +188,7 @@ test('a node made, re-anchored and deleted on the canvas has its hold made and t
   assert.equal(tokens(), count - s2d.tokenIds.length);
   assert.equal(s2d.tokenIds.length, 2);
   page.release();
-  assert.ok(await openWritesNothing(core.raw));
+  assert.ok(await nothingToStore(core.raw));
 });
 
 test("a node the canvas made keeps itself when its word's text is deleted", async () => {
@@ -202,6 +210,6 @@ test("a node the canvas made keeps itself when its word's text is deleted", asyn
   assert.ok(byVar(doc, 's2p'), 'the new node is kept');
   assert.ok(byVar(doc, 's2d'), 'the imported node is kept');
   assert.ok(edgesOf(doc).includes('s2d :part-of s2p'));
-  await openInUmr(raw);
-  assert.ok(await openWritesNothing(raw));
+  await writeInUmr(raw);
+  assert.ok(await nothingToStore(raw));
 });

@@ -30,22 +30,14 @@ import {
   groupOf,
   variablesSharedInSentence,
   keepUnchangedSentences,
-  keptVariables,
   KEPT_VARIABLE,
   wordsUnder,
   holdFor,
+  unalignedStretch,
 } from './sentenceGraph.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import { editScopes, resendableBySentence } from './umrRebase.js';
-import {
-  describeUmrReconcile,
-  planEntryUnlink,
-  planRecordExtents,
-  planRenumber,
-  planUnalignedHeal,
-  planWordSplits,
-  unalignedStretch,
-} from './umrReconcile.js';
+import { applySettle, planSettle, queueSettle, umrOps } from './umrSettle.js';
 import {
   serializeUmrFile,
   readAlignment,
@@ -122,9 +114,10 @@ export async function readEntryLexicon(client, project) {
   const lexicon = buildLexicon(read);
   // The vocabulary each entry is in, which a node picked from it records
   // (`entryVocab`): an entry missing later counts as deleted only when its
-  // vocabulary was read (umrReconcile.js planEntryUnlink).
+  // vocabulary was read (`readVocabs`, umrSettle.js).
   lexicon.vocabOf = new Map(read.flatMap((v) => (v.items || []).map((it) => [it.id, v.id])));
-  return { lexicon, vocabs: new Set(read.map((v) => v.id)) };
+  lexicon.readVocabs = new Set(read.map((v) => v.id));
+  return { lexicon, vocabs: lexicon.readVocabs };
 }
 
 // The metadata a node records of the vocabulary entry it was picked from:
@@ -161,16 +154,6 @@ const entryChangeMessage = (v, { form, from, to }) =>
 // mode's PENMAN is normalized where it is parsed.
 const nfcAttrs = (attrs) =>
   (attrs || []).map((a) => ({ ...a, rel: nfc(a.rel), value: nfc(a.value) }));
-
-// The metadata ops that write each key of `changes` into the `umr`
-// namespace, an undefined value deleting its key. The namespace's other keys
-// stay as they are.
-const umrOps = (changes) =>
-  Object.entries(changes).map(([k, v]) =>
-    v === undefined
-      ? { op: 'delete', path: [UMR_NAMESPACE, k] }
-      : { op: 'set', path: [UMR_NAMESPACE, k], value: v },
-  );
 
 // Findings the Validation tab reports and a sentence's own badge does not.
 // See problemsBySentence.
@@ -487,177 +470,41 @@ export class UmrDocument extends DocumentModel {
     return resendableBySentence(footprint, edit, unsent.base, now);
   }
 
-  // ----- reconcile on open -----
+  // ----- what the next write stores -----
 
-  // What another app's edit left in the document (umrReconcile.js), put
-  // right in ONE batch, so the audit entry names one repair. History keeps
-  // what was removed.
-  //
-  // - A node aligned to no word: a node whose sentence token is gone is bound
-  //   to the sentence it stands in, an anchor that no longer covers its
-  //   sentence is put back over it, and a node left outside every sentence
-  //   goes.
-  // - A node whose words were deleted (in IGT) becomes an ordinary unaligned
-  //   node, named in the entry.
-  // - A variable whose sentence number no longer matches its sentence (IGT
-  //   added or removed a sentence before it) is renumbered.
-  // - A sentence's record (its file number, gloss and metadata lines, held
-  //   relations) left on new text IGT split off before it moves to it, and
-  //   one left over part of its sentence is put back over its share.
-  // - A node over a word IGT split in two is put on one half.
-  // - A node picked from a vocabulary entry that was deleted forgets it.
-  //
-  // NOT stamped, deliberately: a repair that runs on open decides nothing
-  // and vouches for nothing, so it leaves provenance exactly as it found it
-  // (the same rule igt's morpheme heal follows).
-  async _reconcile() {
-    // A service holding the document's lock is part way through rewriting
-    // it, and every write here would be refused (423). The document is
-    // repaired the next time it is opened.
-    if (await this._lockedByAService()) return { findings: [], deferred: true };
-    const ruled = { findings: [] };
-    const graph = this.graph;
-    const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
-    const removed = new Set(remove);
-    // A graph kept as text still names its variables, and a renumbered node
-    // must not take one of them.
-    const keptNames = keptVariables(graph);
-    const renumber = planRenumber(graph, removed, keptNames);
-    const recordMoves = planRecordExtents(graph);
-    const wordSplits = planWordSplits(graph, UMR_NAMESPACE).filter((w) => !removed.has(w.nodeId));
-    // An entry counts as deleted only when the vocabulary the node picked it
-    // from was read and lacks it (planEntryUnlink). The vocabularies are read
-    // only when a node names an entry, so an open waits on no read it does
-    // not need.
-    const picked = [...graph.nodesById.values()].some((n) => umrOf(n).entry);
-    const read = picked ? await this.loadLexicon().catch(() => null) : null;
-    const unlink = read
-      ? planEntryUnlink(graph, UMR_NAMESPACE, read.lexicon, read.vocabs).filter(
-          (id) => !removed.has(id),
-        )
-      : [];
-    const nothing =
-      !remove.length &&
-      !rebind.length &&
-      !resize.length &&
-      !unanchor.length &&
-      !renumber.length &&
-      !recordMoves.length &&
-      !wordSplits.length &&
-      !unlink.length;
-    if (nothing) return ruled;
-    const unanchored = new Set(unanchor.map((u) => u.nodeId));
-    // A node that lost its word is named as it is called from now on.
-    const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
-    const tally = {
-      ...ruled,
-      removed: remove.length,
-      rebound: rebind.length,
-      resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
-      unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
-      renumbered: renumber.length,
-      unlinked: unlink.length,
-      recordsMoved: recordMoves.filter((r) => r.moved).length,
-      recordsFitted: recordMoves.filter((r) => !r.moved).length,
-      wordSplits: new Set(wordSplits.map((w) => w.nodeId)).size,
+  // Opening the document writes nothing (Luke's ruling R3, 2026-10-24). What
+  // another app's edit left UMR's rows not saying (a node whose sentence
+  // token or word is gone, an anchor off its sentence, a variable whose
+  // sentence number moved, a record off its share, a node over a split word,
+  // an entry that was deleted) the reader reads right (sentenceGraph.js),
+  // and the first UMR write to a sentence stores it there (umrSettle.js):
+  // shown in the write's own patch, and sent before its requests under the
+  // same operation. Unstamped: it decides nothing and vouches for nothing.
+  _queueWrite(label, send, named, options) {
+    const plan = this._settlePlan();
+    if (!plan) return super._queueWrite(label, send, named, options);
+    this._applyRawPatch((next, infoNext) => applySettle(this._layers(infoNext), plan));
+    const settled = async (...args) => {
+      await this._client.batched((b) => queueSettle(b, plan));
+      return send(...args);
     };
-    // The History entry takes its label from the first write, so the label
-    // goes on before any: past 1000 operations the batch is several requests,
-    // and a lock taken between them would otherwise leave the part already
-    // written under the generic label reconcileOnOpen opened with. Only the
-    // group reconcileOnOpen opened: an outer operation keeps its own label.
-    const group = this._client.operationGroup;
-    if (group?.depth === 1) group.message = describeUmrReconcile(tally);
-    try {
-      const tokenIds = remove.flatMap((id) => this.node(id).tokenIds);
-      // Every metadata change of one node in one patch.
-      const metaOf = new Map();
-      const change = (id, changes) => metaOf.set(id, { ...metaOf.get(id), ...changes });
-      rebind.forEach(({ nodeId, sentenceTokenId }) =>
-        change(nodeId, { sentence: sentenceTokenId }),
-      );
-      // Unaligned, it records its sentence and no words.
-      unanchor.forEach(({ nodeId, sentenceTokenId }) =>
-        change(nodeId, {
-          sentence: sentenceTokenId,
-          ...(umrOf(this.node(nodeId)).words ? { words: undefined } : {}),
-        }),
-      );
-      renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
-      // A node put on one half of its word records that half from then on.
-      wordSplits.forEach(({ nodeId, words }) => change(nodeId, { words }));
-      unlink.forEach((nodeId) => change(nodeId, entryRecord(null)));
-      const heldRenamed = this._heldRenamed(renumber);
-      await this._repairBatched(async (b) => {
-        if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
-        recordMoves.forEach(({ id, begin, end }) => b.tokens.update(id, begin, end));
-        wordSplits.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));
-        heldRenamed.forEach(([id, held]) => b.tokens.patchMetadata(id, umrOps({ held })));
-        metaOf.forEach((changes, nodeId) => b.spans.patchMetadata(nodeId, umrOps(changes)));
-        resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
-          b.tokens.update(pieceId, begin, end);
-          if (extra) {
-            // Its hold stays: it is what keeps the node if its text goes.
-            b.spans.setTokens(nodeId, [pieceId, ...this.node(nodeId).holdIds]);
-            b.tokens.bulkDelete(extra);
-          }
-        });
-      });
-    } catch (error) {
-      // A service took the lock after the check above. The requests before
-      // the refused one may have landed, so the pass counts as interrupted.
-      if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
-      return { findings: [], error };
-    }
-    // Every write has landed: the repair is whole, and only the screen is
-    // behind it when the refetch fails.
-    try {
-      await this._reload();
-    } catch (refreshError) {
-      return { ...tally, refreshError };
-    }
-    return tally;
+    return super._queueWrite(label, settled, named, options);
   }
 
-  // Whether someone holds the document's lock, which only a service run or a
-  // script takes: the editors never do.
-  async _lockedByAService() {
-    try {
-      const lock = await this._client.documents.checkLock(this.id);
-      return !!lock?.userId;
-    } catch {
-      return false;
-    }
-  }
-
-  // The held relations (sentenceGraph `held`) that name a renumbered node,
-  // with the new names: `[recordId, held]` for each record whose list
-  // changes, a record waiting in a joined sentence included. A name two
-  // renumbered nodes share is left as it is.
-  _heldRenamed(renumber) {
-    const to = new Map();
-    renumber.forEach((r) =>
-      to.set(r.from, to.has(r.from) && to.get(r.from) !== r.to ? null : r.to),
+  // What storing the reader's answer writes in the sentences the edit being
+  // queued writes (its patches since the last write), or null.
+  _settlePlan() {
+    if (!this._patches?.length || !this._patchBase || this._asOf) return null;
+    const edit = editScopes(this._patchBase, this._raw);
+    if (!edit) return null;
+    const graph = this.graph;
+    const indexes = new Set(
+      graph.sentences
+        .filter((s) => edit.scopes.has(`s:${settledId(s.tokenId)}`))
+        .map((s) => s.index),
     );
-    const rename = (name) => to.get(name) || name;
-    const out = [];
-    (this.graph.records || []).forEach(({ id, record }) => {
-      const had = Array.isArray(record.held) ? record.held : [];
-      if (!had.length) return;
-      const held = had.map((h) => ({
-        ...h,
-        source: rename(h.source),
-        target: rename(h.target),
-      }));
-      if (held.some((h, i) => h.source !== had[i].source || h.target !== had[i].target)) {
-        out.push([id, held]);
-      }
-    });
-    return out;
-  }
-
-  describeReconcile(result) {
-    return describeUmrReconcile(result);
+    if (!indexes.size) return null;
+    return planSettle(graph, indexes, { lexicon: this._lexicon });
   }
 
   // ----- reading helpers -----
@@ -684,8 +531,11 @@ export class UmrDocument extends DocumentModel {
   // Every variable in use, so a new one is unique per document.
   takenVariables() {
     const taken = new Set();
+    // The stored names too: a node read under its sentence's number keeps
+    // its stored one until a write to its sentence stores the new one.
     this.graph.nodesById.forEach((n) => {
       if (n.var) taken.add(n.var);
+      if (n.storedVar) taken.add(n.storedVar);
     });
     return taken;
   }
@@ -960,10 +810,10 @@ export class UmrDocument extends DocumentModel {
     }
     if (!parent && sentence.nodes.length === 0) meta.root = true;
     // A node aligned to no word records its sentence, which is what says so
-    // (see _reconcile): its anchor covers the whole sentence.
+    // (sentenceGraph.js): its anchor covers the whole sentence.
     if (!wordIds.length) meta.sentence = sentence.tokenId;
     // An aligned node records its words, which tells a word split under it
-    // later from words it was aligned to on purpose (planWordSplits).
+    // later from words it was aligned to on purpose (wordSplitCuts).
     else meta.words = wordsUnder(pieces, sentence.words);
     // The node and its edge are this writer's work: their create stamp, flat
     // beside the app's own `umr` namespace (null for a verifier).
@@ -1300,8 +1150,8 @@ export class UmrDocument extends DocumentModel {
     if (asked && !wordIds.length) return false;
     const sameAs = (ids) =>
       wordIds.length === ids.length && wordIds.every((id) => ids.includes(id));
-    // The words it records (planWordSplits) differ from the words under it
-    // when one was split since the last open: aligning it to both halves
+    // The words it records (wordSplitCuts) differ from the words under it
+    // when one was split since it was aligned: aligning it to both halves
     // then is a change.
     const recorded = umrOf(node).words;
     const same = sameAs(node.wordIds || []) && (!recorded || !wordIds.length || sameAs(recorded));
@@ -1309,7 +1159,7 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to change the anchor';
     if (!this._canWrite(label)) return false;
     // A node made unaligned keeps standing over the text it stood on, as
-    // reconcile puts an unaligned anchor (`unalignedStretch`), not over the
+    // the reader places an unaligned node (`unalignedStretch`), not over the
     // whole sentence: a split of the sentence elsewhere leaves it, and its
     // relations, on its own side.
     const pieces = this._pendingPieces(
@@ -1319,12 +1169,12 @@ export class UmrDocument extends DocumentModel {
     );
     const oldIds = node.tokenIds;
     const words = sentence.words.filter((w) => wordIds.includes(w.id)).map((w) => w.text);
-    // The sentence an unaligned node records (see _reconcile), set when it
+    // The sentence an unaligned node records (sentenceGraph.js), set when it
     // loses its words and dropped when it gains some.
     const span = this._layers(info).spans.find((s) => s.id === node.id);
     const home = umrOf(span).sentence;
     const recordedSentence = wordIds.length ? undefined : sentence.tokenId;
-    // The words an aligned node records (planWordSplits), gone when it has
+    // The words an aligned node records (wordSplitCuts), gone when it has
     // none.
     const wordRecord = wordIds.length ? wordsUnder(pieces, sentence.words) : undefined;
     // Anchoring a drafted node is a person's decision about it, so it
@@ -2051,7 +1901,7 @@ export class UmrDocument extends DocumentModel {
     // A triple between two constants belongs to no sentence by itself: the
     // one whose block it was made from writes it, so that sentence's record
     // lists it, in the same batch. A sentence with no record yet gets one
-    // over its share of the sentence (umrReconcile.js planRecordExtents).
+    // over its share of the sentence (sentenceGraph.js recordShares).
     const constantsOnly = isConst(source) && isConst(target);
     const block = constantsOnly ? this.sentence(sentenceIndex ?? 1) : null;
     if (constantsOnly && !block) return false;
@@ -2161,7 +2011,7 @@ export class UmrDocument extends DocumentModel {
 
   // Where a new record of `sentence` stands: from where the sentence begins
   // up to the first record waiting in it (a sentence joined to the one
-  // before), or to its end, as reconcile fits one (planRecordExtents).
+  // before), or to its end, as recordShares fits one.
   _recordShare(sentence) {
     const next = (this.graph.records || [])
       .filter((r) => r.sentence === sentence.index && r.begin > sentence.begin)
@@ -2446,7 +2296,8 @@ export class UmrDocument extends DocumentModel {
     // A graph kept as text is mended under its own names, whatever sentence
     // number they carry: IGT may have added or removed a sentence before it
     // since the import, and the relations held for it wait for those names.
-    // The next open renumbers them with the rest (planRenumber).
+    // The reader then reads them by their sentence's number with the rest
+    // (renumberMoves), and the next write to the sentence stores it.
     const keptNames = new Set();
     if (!sentence.nodes.length && typeof sentence.rawGraph === 'string') {
       for (const m of sentence.rawGraph.matchAll(KEPT_VARIABLE)) keptNames.add(m[1]);
@@ -2565,8 +2416,8 @@ export class UmrDocument extends DocumentModel {
     const add = (tokenId, changes) =>
       opsByToken.set(tokenId, { ...opsByToken.get(tokenId), ...changes });
     if (fresh.size) {
-      (this.graph.records || []).forEach(({ id, record }) => {
-        const held = Array.isArray(record.held) ? record.held : [];
+      // Under the names the reader gives the nodes they name.
+      (this.graph.records || []).forEach(({ id, held }) => {
         if (!held.length) return;
         const keep = held.filter((h) => {
           const source = idOf(h.source);
@@ -2700,7 +2551,7 @@ export class UmrDocument extends DocumentModel {
     // The words the kept block gives a variable, as anchor pieces: none for
     // a variable it aligns to nothing (`0-0`) or does not name.
     // With them, the ids of those words, which an aligned node records
-    // (planWordSplits).
+    // (wordSplitCuts).
     const keptPieces = (v) => {
       const ranges = keptWords?.get(v) || [];
       const pieces = [];
@@ -2715,7 +2566,7 @@ export class UmrDocument extends DocumentModel {
     const newNodes = plan.create.map((c) => {
       // Unaligned, like every node text mode makes unless the file it is
       // mending said which words it covers: only then does it record its
-      // sentence (see _reconcile), since the record is what says a node is
+      // sentence (sentenceGraph.js), since the record is what says a node is
       // aligned to nothing, whatever its anchor covers.
       const { pieces: words, ids } = keptPieces(c.var);
       const meta = { var: c.var, attrs: c.attrs };

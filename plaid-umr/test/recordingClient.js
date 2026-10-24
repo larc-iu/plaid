@@ -41,6 +41,7 @@ export function recordingClient() {
         return { ids: ops.map(() => id()) };
       },
       bulkDelete: async (ids) => record('tokens.bulkDelete', ids),
+      update: async (tokenId, begin, end) => record('tokens.update', tokenId, begin, end),
       patchMetadata: async (tokenId, ops) => {
         checkOps(ops);
         record('tokens.patchMetadata', tokenId, ops);
@@ -84,8 +85,8 @@ export function recordingClient() {
     },
     documents: {
       get: async () => null,
-      // Reads reconcile makes first: nobody holds the lock, and the audit log
-      // records nothing in the window it asks about.
+      // Nobody holds the lock, and the audit log records nothing in the
+      // window a read asks about.
       checkLock: async () => null,
       auditPage: async () => ({ entries: [], nextCursor: null }),
       update: async (documentId, name) => record('documents.update', documentId, name),
@@ -95,7 +96,7 @@ export function recordingClient() {
         return { id: id() };
       },
     },
-    // The server's clock, which reconcile judges an audit entry's age by.
+    // The server's clock, which an audit entry's age is judged by.
     serverNow: () => new Date(),
     // Not a round trip of its own: it only labels the ones inside it. Its
     // kind, when it has one, rides beside the label.

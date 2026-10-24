@@ -1,24 +1,21 @@
-"""What the Python reader makes of a document the UMR app has not healed.
+"""What the Python reader makes of a document no UMR write has stored the
+reader's answer in yet.
 
-RULED (Luke, 2026-09-20): reconcile-on-open is NOT ported to Python. It does
-not need to be, and these tests are why.
+RULED (Luke, 2026-09-20): no healing in Python. RULED (R3, 2026-10-24):
+opening a document in the app writes nothing either. Every reader reads the
+answer, and the first UMR write to a sentence stores it there (plaid-umr
+``src/domain/umrSettle.js``).
 
-`planUnalignedHeal` (plaid-umr/src/domain/umrReconcile.js) touches ONLY a node
-aligned to no word, which is the kind that records the sentence it belongs to
-(`umr.sentence`). It does three things: rebinds a node whose recorded sentence
-token is gone, puts an anchor back over the sentence it drifted off, and
-removes a node left outside every sentence.
-
-The reader here reads a node as the app's reader does (`buildDocumentGraph`),
-which is the answer the heal arrives at: in the sentence it records while that
-sentence token is alive, unless its anchor begins in a LATER sentence (IGT's
-split keeps a sentence's token, and the record, on new text typed in before
-it), and otherwise where its anchor BEGINS. A record naming a token that is
-gone is what a rebind repairs, and reading by position gives the same
-sentence. A node that begins inside no sentence and records none that is
-alive is attached to none, which is what a remove leaves behind. So an
-unhealed document reads the same as a healed one, and the app still heals it
-the moment somebody opens it.
+For a node aligned to no word, the kind that records the sentence it belongs
+to (``umr.sentence``): a node whose recorded sentence token is gone, an anchor
+off its sentence, and a node left outside every sentence. The reader here reads
+a node as the app's reader does (``buildDocumentGraph``): in the sentence it
+records while that sentence token is alive, unless its anchor begins in a
+LATER sentence (IGT's split keeps a sentence's token, and the record, on new
+text typed in before it), and otherwise where its anchor BEGINS. A node that
+begins inside no sentence and records none that is alive is read as not there,
+as the app reads it. The variables and the rest are held to the app by
+test_umr_graph_mirror.py.
 """
 
 import copy
@@ -64,8 +61,9 @@ def _node(document, var):
 
 def test_a_node_whose_recorded_sentence_is_gone_is_placed_by_its_anchor():
     """A boundary taken away and put back leaves the sentence under a NEW
-    token, so the record names one that no longer exists. That is what the
-    app's rebind repairs, and what reading by position never needed."""
+    token, so the record names one that no longer exists. The next write to
+    the sentence stores the new one, and reading by position never needed
+    it."""
     document = _load(_with_unaligned(SENT_2, 'ms-DELETED'))
     sentence, node = _node(document, 's2p')
     assert sentence is not None and sentence.index == 2
@@ -84,27 +82,29 @@ def test_a_node_standing_over_its_whole_sentence_is_aligned_to_no_word():
 
 
 def test_a_node_whose_anchor_drifted_off_its_sentence_stays_in_it():
-    """An anchor that no longer covers exactly its sentence is what the app's
-    resize puts back. Placement reads the begin alone, so it is unaffected."""
+    """An anchor that no longer covers exactly its sentence is what the next
+    write to the sentence puts back. Placement reads the begin alone, so it is
+    unaffected."""
     document = _load(_with_unaligned((17, 25), 'ms-2'))
     sentence, _node_ = _node(document, 's2p')
     assert sentence is not None and sentence.index == 2
 
 
-def test_a_node_outside_every_sentence_belongs_to_none_and_reads_fine():
-    """What the app's remove takes away. Here it lands in no sentence, which
-    is the same thing every reader downstream sees, and nothing raises."""
+def test_a_node_outside_every_sentence_is_read_as_not_there():
+    """It has no sentence to belong to: no sentence holds it, no edge or
+    triple names it, as the app reads it, and nothing raises."""
     document = _load(_with_unaligned((40, 40), 'ms-DELETED'))
     sentence, _node_ = _node(document, 's2p')
     assert sentence is None
+    assert 'mc-x' not in document.nodes_by_id
     # The rest of the document still reads: a stray is ignored, not fatal.
     assert [s.index for s in document.sentences] == [1, 2]
     assert sorted(n.var for n in document.sentences[0].nodes) == ['s1b', 's1d']
 
 
 def test_a_node_outside_every_sentence_that_records_a_live_one_is_in_it():
-    """The app reads it in the sentence it records, and its heal puts the
-    anchor back over that sentence rather than removing the node."""
+    """The app reads it in the sentence it records, and the next write to the
+    sentence puts the anchor back over it rather than removing the node."""
     document = _load(_with_unaligned((40, 40), 'ms-2'))
     sentence, _node_ = _node(document, 's2p')
     assert sentence is not None and sentence.index == 2

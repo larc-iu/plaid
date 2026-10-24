@@ -41,6 +41,7 @@ bundled UMR services and the assistant in ``plaid-agent``.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -172,6 +173,9 @@ class Triple:
 class Node:
     """One graph node: a span in the concept layer."""
     id: str
+    #: The variable it is read by: its sentence's number once another app
+    #: added or removed a sentence before it (``renumber_moves``). The stored
+    #: one is ``stored_var`` until a UMR write to its sentence stores this.
     var: str
     concept: str
     attrs: List[dict] = dc_field(default_factory=list)
@@ -189,6 +193,14 @@ class Node:
     #: Whether a word of its sentence lies under a piece of the anchor that
     #: has width. Set by :func:`read_document`, which has the words.
     over_word: bool = False
+    #: The variable as stored (see ``var``).
+    stored_var: str = ''
+    #: The ids of the words an aligned node records (``umr.words``).
+    recorded_words: List[str] = dc_field(default_factory=list)
+    #: The pieces as the reader reads them: an aligned node over a word
+    #: another app split in two stands on the half with its letters
+    #: (:func:`word_split_cuts`). Set by :func:`read_document`.
+    read_pieces: List[Piece] = dc_field(default_factory=list)
     out: List[Edge] = dc_field(default_factory=list)
     into: List[Edge] = dc_field(default_factory=list)
     doc_out: List[Triple] = dc_field(default_factory=list)
@@ -336,7 +348,10 @@ class UmrDocument:
         """Every variable the document already uses. Variables are unique per
         DOCUMENT, because the document graph cites an earlier sentence's nodes
         by name."""
-        return {n.var for n in self.nodes_by_id.values() if n.var}
+        names = {n.var for n in self.nodes_by_id.values() if n.var}
+        # The stored names too: a node read under its sentence's number keeps
+        # its stored one until a write to its sentence stores the new one.
+        return names | {n.stored_var for n in self.nodes_by_id.values() if n.stored_var}
 
     def by_number(self, number: int) -> Optional[Sentence]:
         """The sentence the app shows as ``number`` (``Sentence.number``)."""
@@ -396,7 +411,7 @@ def alignment_of(node: Node, words: List[Word]) -> List[Tuple[int, int]]:
     node aligned to words: one aligned to none stands over its whole sentence,
     and reading that would cover every word of it."""
     ranges: List[Tuple[int, int]] = []
-    for piece in node.pieces:
+    for piece in node.read_pieces or node.pieces:
         covered = [w for w in words if _overlaps(piece.begin, piece.end, w.begin, w.end)]
         if covered:
             ranges.append((covered[0].index, covered[-1].index))
@@ -563,6 +578,144 @@ def file_numbers(sentences: List[Sentence]) -> List[Any]:
     return out
 
 
+#: A variable a graph kept as text defines (``KEPT_VARIABLE``).
+_KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
+
+
+def kept_variables(sentences: List[Sentence], records: Dict[str, dict]) -> set:
+    """The variables the graphs kept as text still define (``keptVariables``):
+    a sentence's own, while it has no nodes, and that of every record waiting
+    in a sentence joined to the one before it. A renumbered node takes none of
+    them."""
+    names = set()
+    for s in sentences:
+        texts = [s.raw_graph] if not s.nodes else []
+        texts += [umr_metadata(records[r]).get('rawGraph') for r in s.other_records if r in records]
+        for text in texts:
+            if isinstance(text, str):
+                names.update(m.group(1) for m in _KEPT_VARIABLE.finditer(text))
+    return names
+
+
+def renumber_moves(sentences: List[Sentence], nodes_by_id: Dict[str, Node],
+                   reserved: set = frozenset()) -> List[Tuple[Node, str, str]]:
+    """The variables whose sentence number is not their node's sentence, after
+    another app added or removed sentences before them, each with the name
+    the reader reads it by: its sentence's number, the rest kept (``s2v`` in
+    sentence 1 is ``s1v``), a counter after it where that is taken (``s1v2``).
+    Constants, names not of this shape and a document numbered by its file
+    are left alone. Read off the stored names. ``renumberMoves`` in
+    sentenceGraph.js, held to it by test_umr_graph_mirror.py. The next UMR
+    write to the node's sentence stores the new name."""
+    if _numbered_by_file(sentences):
+        return []
+    moves = []
+    fixed = set(reserved)
+    for node in nodes_by_id.values():
+        stored = node.stored_var or node.var
+        if not stored:
+            continue
+        m = _NUMBERED.match(stored)
+        wrong = (not node.constant and node.sentence is not None and m is not None
+                 and int(m.group(1)) != node.sentence)
+        if wrong:
+            moves.append((node, stored, m.group(2)))
+        else:
+            fixed.add(stored)
+    taken = set(fixed)
+    out = []
+    for node, stored, rest in sorted(moves, key=lambda x: (x[0].sentence, x[1])):
+        to = base = f's{node.sentence}{rest}'
+        stem = re.sub(r'[0-9]+$', '', base)
+        n = 2
+        while to in taken:
+            to = f'{stem}{n}'
+            n += 1
+        taken.add(to)
+        out.append((node, stored, to))
+    return out
+
+
+def held_renames(moves) -> Dict[str, str]:
+    """Old name to new for held relations after ``moves``; a name two moved
+    nodes share is left as it is (``heldRenames``)."""
+    to: Dict[str, Optional[str]] = {}
+    for _node, frm, new in moves:
+        to[frm] = None if frm in to and to[frm] != new else new
+    return {k: v for k, v in to.items() if v}
+
+
+def _letters(text: str) -> int:
+    """Letters, marks and digits, as the app counts them to pick a half of a
+    split word (``letterClasses.js``)."""
+    return sum(1 for c in text if unicodedata.category(c)[0] in 'LMN')
+
+
+def word_split_cuts(node: Node, sentence: Sentence) -> List[Tuple[str, int, int]]:
+    """``(piece id, begin, end)`` for each piece of an aligned node standing
+    over a word another app split in two, cut to the half with the most
+    letters, the first on a tie, as ``wordSplitCuts`` in sentenceGraph.js
+    reads it. Only a word the node does not record, touching a recorded one,
+    is a half. A node that records no words, or one that is gone, is never
+    cut, nor the middle of a piece."""
+    recorded = set(node.recorded_words)
+    if node.constant or not node.aligned or not recorded:
+        return []
+    ids = {w.id for w in sentence.words}
+    if any(r not in ids for r in recorded):
+        return []
+    cuts = []
+    for piece in node.pieces:
+        if piece.hold:
+            continue
+        words = [w for w in sentence.words if w.begin < piece.end and piece.begin < w.end]
+        if len(words) < 2 or words[0].begin != piece.begin or words[-1].end != piece.end:
+            continue
+        groups: List[List[Word]] = []
+        for w in words:
+            group = groups[-1] if groups else None
+            half = group is not None and w.id not in recorded and group[-1].end == w.begin
+            if half and group[0].id in recorded:
+                group.append(w)
+            else:
+                groups.append([w])
+
+        def kept(run):
+            best = run[0]
+            for w in run[1:]:
+                if _letters(w.text) > _letters(best.text):
+                    best = w
+            return best
+        first, last = groups[0], groups[-1]
+        begin = kept(first).begin if len(first) > 1 else piece.begin
+        end = kept(last).end if len(last) > 1 else piece.end
+        if (begin, end) != (piece.begin, piece.end):
+            cuts.append((piece.id, begin, end))
+    return cuts
+
+
+def _cut(node: Node, cuts) -> List[Piece]:
+    at = {pid: (b, e) for pid, b, e in cuts}
+    return [Piece(id=p.id, begin=at[p.id][0], end=at[p.id][1], hold=p.hold) if p.id in at else p
+            for p in node.pieces]
+
+
+def _stands(node: Node, sentence: Sentence) -> int:
+    """Where a node is placed in its sentence's order: an unaligned node over
+    one stretch of its sentence (``unalignedStretch``), any other where its
+    anchor begins."""
+    if not node.pieces:
+        return 0
+    if node.aligned:
+        return node.pieces[0].begin
+    text = [p for p in node.pieces if p.end > p.begin]
+    if not text:
+        return sentence.begin
+    begin = max(sentence.begin, min(p.begin for p in text))
+    end = min(sentence.end, max(p.end for p in text))
+    return begin if end > begin else sentence.begin
+
+
 def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, dict],
                                  body: str) -> None:
     """A sentence's record left on new text IGT split off before it is read
@@ -695,7 +848,8 @@ def read_document(raw: dict, layers: UmrLayers,
             # keys beside it are what says whether a person made this node.
             metadata=span.get('metadata'), pieces=pieces,
             holds=[p for p in every if p.hold] if own else [],
-            sentence_token=meta.get('sentence') or None)
+            sentence_token=meta.get('sentence') or None, stored_var=meta.get('var') or '',
+            recorded_words=list(meta['words']) if isinstance(meta.get('words'), list) else [])
         # A node only its hold keeps is aligned to nothing.
         node.over_word = any(not p.hold and p.end > p.begin and _over_word(p) for p in pieces)
         nodes_by_id[span['id']] = node
@@ -715,7 +869,26 @@ def read_document(raw: dict, layers: UmrLayers,
             node.sentence = s.index
             s.nodes.append(node)
 
+    # A node that records a sentence and stands in none (its sentence token
+    # gone and its anchor outside every sentence) is read as not there: no
+    # edge, triple or tag names it. It stays stored. A document with no
+    # sentences at all keeps every node (sentenceGraph.js).
+    if sentences:
+        for nid in [nid for nid, n in nodes_by_id.items()
+                    if not n.constant and n.sentence is None and n.sentence_token]:
+            del nodes_by_id[nid]
+
     _records_follow_their_graphs(sentences, records, body)
+    # Each variable read by its sentence's number, and the relations a record
+    # holds for a graph kept as text renamed with them (renumberMoves).
+    moves = renumber_moves(sentences, nodes_by_id, kept_variables(sentences, records))
+    for node, _from, to in moves:
+        node.var = to
+    rename = held_renames(moves)
+    if rename:
+        for s in sentences:
+            s.held = [{**h, 'source': rename.get(h.get('source'), h.get('source')),
+                       'target': rename.get(h.get('target'), h.get('target'))} for h in s.held]
     for s, n in zip(sentences, file_numbers(sentences)):
         s.number = int(n) if re.fullmatch(r'[0-9]+', str(n)) else s.index
     # The triples between two constants each sentence's records list.
@@ -776,8 +949,9 @@ def read_document(raw: dict, layers: UmrLayers,
 
     for s in sentences:
         for node in s.nodes:
+            node.read_pieces = _cut(node, word_split_cuts(node, s)) if node.aligned else node.pieces
             node.alignment = alignment_of(node, s.words) if node.aligned else []
-        s.nodes.sort(key=lambda n: (n.pieces[0].begin if n.pieces else 0, n.var))
+        s.nodes.sort(key=lambda n: (_stands(n, s), n.var))
         s.edges.sort(key=lambda e: e.order)
         s.roots = roots_of(s, nodes_by_id)
 

@@ -313,7 +313,7 @@ The lines are kept in order of scope: word lines, then morpheme lines, then sent
 Select an entry to see the document as it was then, read-only.
 **Restore** returns the document to that state as a new change, so nothing is lost.
 
-Entries are marked by kind: **Import** for a `.umr` file, **Automatic** for a service run such as **Draft**, **Assistant** for an approved plan, **Review** for an accepted node or graph, and **Repair** for changes made on opening after the text was edited elsewhere.
+Entries are marked by kind: **Import** for a `.umr` file, **Automatic** for a service run such as **Draft**, **Assistant** for an approved plan, **Review** for an accepted node or graph, and **Repair** for changes an older version of the app made on opening a document after the text was edited elsewhere.
 A service run names the person who ran it.
 The Activity tab marks its entries the same way.
 
