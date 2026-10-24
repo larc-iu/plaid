@@ -5261,9 +5261,6 @@ export {
   provOrigin,
   isMachine,
   isProtected,
-  VALUE_PROBS_KEY,
-  FORM_PROBS_KEY,
-  readValueProbs,
   needsReview,
   contributeOnEdit,
   serviceSource,
@@ -5277,6 +5274,9 @@ export {
   readConfidenceThreshold,
   machineProb,
   isDoubtful,
+  VALUE_PROBS_KEY,
+  FORM_PROBS_KEY,
+  readValueProbs,
   writerPolicy,
 } from "./provenance.js";
 // Metadata ops: the body of a metadata PATCH and of a bulk update entry's

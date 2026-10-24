@@ -1617,13 +1617,13 @@ Both clients offer `isReviewed` / `is_reviewed` for reading it.
 
 A machine writer may also record how confident it was.
 `provProb` is a single number between 0 and 1, the probability of the value it chose, and since it is flat a query can sort by it to put the least confident output first.
-A morpheme's alternative forms go in `provDetail.formProbs` the same way.
 It should be calibrated on held-out data, so that values given 70% are right about 70% of the time.
-Plaid UD lists a tag's or a relation's alternatives first in its selector, with their percentages.
 A writer that cannot calibrate leaves `provProb` out.
 Everything else, such as the top few alternatives, goes in the open map `provDetail`.
 The alternatives a producer weighed for a value go in `provDetail.valueProbs`, a map from each value to its probability, and on a gloss `provDetail.valueLinks` can name the lexicon entry each alternative stands for, as a list of `{value, item, prob}` (a list, since two senses may share a gloss).
+A morpheme's alternative forms go in `provDetail.formProbs` the same way.
 Plaid IGT lists these alternatives under **Alt+↓** on the cell and in the lexicon popover, and offers each alternative together with its entry as one choice.
+Plaid UD lists a tag's or a relation's alternatives first in its selector, with their percentages.
 
 The apps draw a heavier, darker underline under a machine value whose `provProb` is below the project's confidence threshold, and its tooltip gives the percentage.
 A maintainer sets the threshold on Plaid IGT's Services settings page, and it is stored as a number between 0 and 1:
