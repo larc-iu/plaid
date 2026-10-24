@@ -369,6 +369,22 @@ describe('a word of punctuation only', () => {
       '1 analyzed word of punctuation only stays plain text, without its analysis.',
     );
   });
+  // lamkang.fwbackup's "--" words hold one morpheme "--" and nothing else
+  // (REV-R4-IGT D6).
+  it('is said to lose nothing when its morphemes hold no gloss, category or link', () => {
+    const start = TEXT.indexOf('<word guid="w-1">');
+    const end = TEXT.indexOf('</word>', start) + '</word>'.length;
+    const xml = `${TEXT.slice(0, start)}<word guid="w-1">
+                <item type="txt" lang="xx">--</item>
+                <morphemes>
+                  <morph guid="mt-1"><item type="txt" lang="xx">--</item></morph>
+                </morphemes>
+              </word>${TEXT.slice(end)}`;
+    const [doc] = buildDocuments(parseFlextextFiles([{ name: 'dash.flextext', xml }])).documents;
+    expect(doc.words.some((w) => w.forms.xx === '--')).toBe(false);
+    expect(doc.body.startsWith('--')).toBe(true);
+    expect(doc.warnings.filter((w) => /punctuation only/.test(w))).toEqual([]);
+  });
 });
 
 describe('a .flextext Plaid wrote, read back', () => {

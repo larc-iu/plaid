@@ -192,14 +192,22 @@ export function buildDocuments(ir, opts = {}) {
       // A word the new project's punctuation rule leaves as text (FLEx
       // stores a lone "-" as a word when its writing system does not call it
       // punctuation) stays text, as core's tokenizer and the grid leave it.
-      // Said only of one that carried an analysis, which is then lost.
+      // Said only of one that carried an analysis, which is then lost: a
+      // gloss or category on the word, or a gloss, category or link on one of
+      // its morphemes (a lone "--" morpheme holding nothing more is none).
       for (const w of r.words) {
         if (!isTokenIgnored(body.slice(w.beginU16, w.endU16), ignored)) {
           words.push(w);
           continue;
         }
         punctuationWords += 1;
-        if (w.morphemes?.length || hasValue(w.gloss) || hasValue(w.pos)) leftAsText += 1;
+        const analyzed =
+          hasValue(w.gloss) ||
+          hasValue(w.pos) ||
+          (w.morphemes || []).some(
+            (m) => hasValue(m.gloss) || hasValue(m.pos) || m.senseGuid || m.entryGuid,
+          );
+        if (analyzed) leftAsText += 1;
       }
       warnings.push(...r.warnings);
     }
