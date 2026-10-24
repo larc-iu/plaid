@@ -41,6 +41,7 @@ from ..core.project import declares, find_layer, value_set_rules, word_ref  # no
 from ..core.provenance import review_mark
 from ..core.args import sentence_number
 from ..core.refs import clip, read_ref, same_form
+from ..core.tools import ToolError
 from ..core.tools import ValueRefusal
 
 UD = 'ud'
@@ -952,6 +953,11 @@ def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int =
         lo = max(1, from_sentence or 1)
         hi = min(len(sentences), to_sentence or len(sentences))
         wanted = list(range(lo, hi + 1))
+        if not wanted:
+            # The words igt's read answers with.
+            raise ToolError(f'The document has only {len(sentences)} sentences: from_sentence={lo} is past the '
+                            f'end.' if lo > len(sentences) else
+                            f'to_sentence={to_sentence} comes before from_sentence={lo}.', kind='invalid-argument')
 
     rendered: List[str] = []
     shown: List[int] = []

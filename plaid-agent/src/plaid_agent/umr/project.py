@@ -30,7 +30,7 @@ from plaid_client.workflows.umr import layers as umr_layers
 from ..core.bidi import plain_quote, visible
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer  # noqa: F401  (re-exported for the tools)
-from ..core.tools import ValueRefusal
+from ..core.tools import ToolError, ValueRefusal
 
 
 # --- project ----------------------------------------------------------------
@@ -329,6 +329,11 @@ def render_document(doc: UmrDoc, project: UmrProject, values: Dict[str, Dict[str
         lo = max(1, from_sentence or 1)
         hi = min(len(sentences), to_sentence or len(sentences))
         wanted = list(range(lo, hi + 1))
+        if not wanted:
+            # The words igt's read answers with.
+            raise ToolError(f'The document has only {len(sentences)} sentences: from_sentence={lo} is past the '
+                            f'end.' if lo > len(sentences) else
+                            f'to_sentence={to_sentence} comes before from_sentence={lo}.', kind='invalid-argument')
 
     mapping = resolve_ilg(project)
     rendered: List[str] = []
