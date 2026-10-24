@@ -257,8 +257,9 @@
 
 (defn linked-document-ids
   "Ids of every document holding a link to an entry of `vocab-id`. A deep
-  document read names each linked vocabulary's name and maintainers, so a
-  write to either restates exactly these documents and bumps them (R14)."
+  document read names each linked vocabulary's name and config, so a write
+  to either restates exactly these documents and bumps them (R14). A
+  maintainer change bumps none of them, by ruling (R22)."
   [tx vocab-id]
   (->> (psc/q tx {:select-distinct [:vl.document_id]
                   :from [[:vocab_links :vl]]
@@ -333,9 +334,6 @@
   when pre == post (no-op add/remove, mirroring update-by-id!'s noise
   rule).
 
-  A real change bumps every document linking the vocabulary, whose deep
-  read names the maintainers (`linked-document-ids`).
-
   Public so cross-namespace callers (e.g. `plaid.sql.user/deactivate`)
   can emit the same synthetic audit shape on FK cascade losses."
   [tx vocab-id pre-maintainers]
@@ -352,8 +350,7 @@
       (let [vl-row (psc/fetch-by-id tx :vocab_layers vocab-id)
             pre-image (assoc vl-row :maintainers pre-maintainers)
             post-image (assoc vl-row :maintainers post-maintainers)]
-        (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image))
-      (op/bump-document-versions! tx (linked-document-ids tx vocab-id)))))
+        (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
 
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items

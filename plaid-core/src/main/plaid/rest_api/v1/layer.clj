@@ -31,7 +31,9 @@
 (defn- config-handlers [table id-keyword]
   {:put    {:summary    (str "Set a configuration value for a layer in an editor namespace. Intended for storing "
                              "metadata about how the layer is intended to be used, e.g. for morpheme tokenization "
-                             "or sentence boundary marking. With <query>if-unchanged</query>=true the body is "
+                             "or sentence boundary marking. A vocabulary's config is part of every document read "
+                             "linking it, so a change bumps those documents and returns their versions in "
+                             "X-Document-Versions. With <query>if-unchanged</query>=true the body is "
                              "{expected, value} and the write answers 409 when the stored value is no longer "
                              "expected (null for a value that was absent).")
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
@@ -39,11 +41,12 @@
                          :body any?}
             :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path
                                {:keys [if-unchanged]} :query
-                               body :body} :parameters db :db user-id :user/id}]
+                               body :body} :parameters db :db user-id :user/id :as req}]
                           (if-let [[config-value check] (config-check if-unchanged body false)]
-                            (let [{:keys [success code error]} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id check)]
+                            (let [{:keys [success code error documents]} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id check)]
                               (if success
-                                {:status 204}
+                                (prm/assoc-document-versions-in-header
+                                 {:status 204} db (pra/readable-document-ids req documents))
                                 {:status (or code 500)
                                  :body   {:error (or error "Internal server error")}}))
                             bad-envelope))}
@@ -55,11 +58,12 @@
                          :body any?}
             :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path
                                {:keys [if-unchanged]} :query
-                               body :body} :parameters db :db user-id :user/id}]
+                               body :body} :parameters db :db user-id :user/id :as req}]
                           (if-let [[_ check] (config-check if-unchanged body true)]
-                            (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db table id namespace config-key user-id check)]
+                            (let [{:keys [success code error documents]} (prj/dissoc-editor-config-pair db table id namespace config-key user-id check)]
                               (if success
-                                {:status 204}
+                                (prm/assoc-document-versions-in-header
+                                 {:status 204} db (pra/readable-document-ids req documents))
                                 {:status (or code 500)
                                  :body   {:error (or error "Internal server error")}}))
                             bad-envelope))}})

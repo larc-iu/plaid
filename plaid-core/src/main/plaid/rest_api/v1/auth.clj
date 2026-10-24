@@ -1019,6 +1019,24 @@
         (boolean (or (user/admin? (:user/record request))
                      (member-at? db key project-id user-id)))))))
 
+(defn readable-document-ids
+  "The ids among `doc-ids` whose project the request's user may read, by the
+  same test the reader gate applies. A vocabulary write bumps documents in
+  every project linking the vocabulary, and its X-Document-Versions names
+  only these (REV-W3-REST C4). One read for the documents' projects, one
+  privilege check per project."
+  [{db :db :as request} doc-ids]
+  (if (empty? doc-ids)
+    []
+    (let [project-of (->> (psc/q db {:select [:id :project_id]
+                                     :from [:documents]
+                                     :where [:in :id (vec (distinct doc-ids))]})
+                          (into {} (map (juxt (comp str :id) :project_id))))
+          readable (into #{}
+                         (filter #(holds-privilege? request :project/readers %))
+                         (distinct (vals project-of)))]
+      (filterv #(contains? readable (project-of (str %))) doc-ids))))
+
 (defn privileged?
   "Does the request's user hold at least `key` (`:project/readers`,
   `:project/writers`, or `:project/maintainers`) on the project that

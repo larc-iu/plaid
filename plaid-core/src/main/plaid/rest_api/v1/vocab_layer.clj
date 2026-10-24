@@ -139,7 +139,7 @@
                           (if success
                             ;; A new name restates every linking document.
                             (prm/assoc-document-versions-in-header
-                             {:status 200 :body (vocab/get db id)} db documents)
+                             {:status 200 :body (vocab/get db id)} db (pra/readable-document-ids req documents))
                             {:status (or code 500)
                              :body {:error error}})))}
 
@@ -156,7 +156,7 @@
                              ;; versions: a client told nothing here is
                              ;; refused on its own next write.
                              (prm/assoc-document-versions-in-header
-                              {:status 204} db documents)
+                              {:status 204} db (pra/readable-document-ids req documents))
                              {:status (or code 500)
                               :body {:error (or error "Internal server error")}})))}}]
 
@@ -210,7 +210,7 @@
                                  [:dry-run {:optional true} boolean?]]}
             :handler (fn [{{{:keys [id item-id]} :path {:keys [as-of dry-run]} :query} :parameters
                            db :db
-                           user-id :user/id}]
+                           user-id :user/id :as req}]
                        (let [ts (parse-as-of as-of)]
                          (cond
                            (nil? ts)
@@ -226,7 +226,7 @@
                                  (vrestore/restore db id item-id ts user-id)]
                              (if success
                                (prm/assoc-document-versions-in-header
-                                {:status 200 :body extra} db documents)
+                                {:status 200 :body extra} db (pra/readable-document-ids req documents))
                                {:status (or code 500)
                                 :body {:error (or error "Internal server error")}})))))}}]
 
@@ -235,29 +235,25 @@
     {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
      :plaid/vocabulary-admin true}
     ["/maintainers/:user-id"
-     {:post {:summary (str "Assign a user as a maintainer for this vocab layer. A new maintainer restates every "
-                           "document linking the vocabulary: their versions are bumped and returned in "
-                           "X-Document-Versions.")
+     {:post {:summary "Assign a user as a maintainer for this vocab layer."
              :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
              :handler (fn [{{{:keys [id user-id]} :path} :parameters
                             db :db
                             actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error documents]} (vocab/add-maintainer db id user-id actor-user-id)]
+                        (let [{:keys [success code error]} (vocab/add-maintainer db id user-id actor-user-id)]
                           (if success
-                            (prm/assoc-document-versions-in-header {:status 204} db documents)
+                            {:status 204}
                             {:status (or code 500)
                              :body {:error error}})))}
 
-      :delete {:summary (str "Remove a user's maintainer privileges for this vocab layer. Removing a maintainer "
-                             "restates every document linking the vocabulary: their versions are bumped and "
-                             "returned in X-Document-Versions.")
+      :delete {:summary "Remove a user's maintainer privileges for this vocab layer."
                :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
                :handler (fn [{{{:keys [id user-id]} :path} :parameters
                               db :db
                               actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error documents]} (vocab/remove-maintainer db id user-id actor-user-id)]
+                          (let [{:keys [success code error]} (vocab/remove-maintainer db id user-id actor-user-id)]
                             (if success
-                              (prm/assoc-document-versions-in-header {:status 204} db documents)
+                              {:status 204}
                               {:status (or code 500)
                                :body {:error error}})))}}]]
 

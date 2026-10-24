@@ -1379,8 +1379,7 @@ class PlaidClient {
           body: bodyOf({ id, name }),
         }),
       /**
-       * Assign a user as a maintainer for this vocab layer. Every document
-       * linking the vocabulary has its version bumped (X-Document-Versions).
+       * Assign a user as a maintainer for this vocab layer.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
@@ -1393,9 +1392,7 @@ class PlaidClient {
           { auditMessage },
         ),
       /**
-       * Remove a user's maintainer privileges for this vocab layer. Every
-       * document linking the vocabulary has its version bumped
-       * (X-Document-Versions).
+       * Remove a user's maintainer privileges for this vocab layer.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        * @param {string} [auditMessage] - Audit message for this write
@@ -1968,9 +1965,7 @@ class PlaidClient {
        * rejects their logins and tokens, strips their project memberships
        * and vocab maintainerships, and revokes their API tokens. The user
        * stays visible in listings with a deactivated-at timestamp.
-       * Reversible via activate(), which restores login only. Every
-       * document linking a vocabulary they maintained has its version
-       * bumped (X-Document-Versions).
+       * Reversible via activate(), which restores login only.
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Audit message for this write
        * @returns {Promise<void>}

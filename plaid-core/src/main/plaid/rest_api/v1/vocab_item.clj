@@ -195,7 +195,7 @@
                                             (vocab-item/bulk-merge db attrs-vec user-id)]
                                         (if success
                                           (prm/assoc-document-versions-in-header
-                                           {:status 200 :body {:count (count extra)}} db documents)
+                                           {:status 200 :body {:count (count extra)}} db (pra/readable-document-ids req documents))
                                           {:status (or code 500)
                                            :body {:error (or error "Internal server error")}})))))}
              :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. Needs maintainer rights on the vocabulary of every item. "
@@ -209,7 +209,7 @@
                                      (let [{:keys [success code error documents]} (vocab-item/bulk-delete db ids user-id)]
                                        (if success
                                          (prm/assoc-document-versions-in-header
-                                          {:status 204} db documents)
+                                          {:status 204} db (pra/readable-document-ids req documents))
                                          {:status (or code 500)
                                           :body {:error (or error "Internal server error")}}))))}}]
 
@@ -245,7 +245,7 @@
                                 (prm/assoc-document-versions-in-header
                                  {:status 200
                                   :body (vocab-item/get db id)}
-                                 db (:documents result))
+                                 db (pra/readable-document-ids req (:documents result)))
                                 {:status (or (:code result) 500)
                                  :body {:error (:error result)}}))))}
 
@@ -262,7 +262,7 @@
                                (vocab-item/delete db id user-id expected-link-count)]
                            (if success
                              (prm/assoc-document-versions-in-header
-                              {:status 204} db documents)
+                              {:status 204} db (pra/readable-document-ids req documents))
                              {:status (or code 500)
                               :body (cond-> {:error (or error "Internal server error")}
                                       links (assoc :links links))})))}}]
@@ -281,12 +281,12 @@
             :parameters {:body [:map [:losers [:sequential :uuid]]]}
             :handler (fn [{{{:keys [id]} :path {:keys [losers]} :body} :parameters
                            db :db
-                           user-id :user/id}]
+                           user-id :user/id :as req}]
                        (let [{:keys [success code error extra documents]}
                              (vocab-item/merge-into db id losers user-id)]
                          (if success
                            (prm/assoc-document-versions-in-header
-                            {:status 200 :body extra} db documents)
+                            {:status 200 :body extra} db (pra/readable-document-ids req documents))
                            {:status (or code 500)
                             :body {:error (or error "Internal server error")}})))}}]
 

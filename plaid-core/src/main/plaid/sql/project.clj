@@ -14,7 +14,8 @@
             [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
-            [plaid.sql.user :as user])
+            [plaid.sql.user :as user]
+            [plaid.sql.vocab-layer :as vocab-layer])
   (:refer-clojure :exclude [get merge]))
 
 ;; ============================================================
@@ -974,6 +975,15 @@
   (cond-> {:config (psc/serialize-config new-config)}
     (= table :vocab_layers) (assoc :modified_at (op/op-ts))))
 
+(defn- write-config!
+  "Store `new-config` on the row. A deep document read carries each linked
+  vocabulary's config, so a vocabulary's config write restates every
+  document linking it and bumps them (R22), as a rename does."
+  [tx table layer-id new-config]
+  (crud/update-by-id! tx table layer-id (config-update-attrs table new-config))
+  (when (= table :vocab_layers)
+    (op/bump-document-versions! tx (vocab-layer/linked-document-ids tx layer-id))))
+
 (defn- config-row!
   "The row a config write is about to edit, read inside the tx from the one
   table the route named. An id absent from that table is a 400: the route
@@ -1056,8 +1066,7 @@
                         (when-not (and (contains? (clojure.core/get current (first cell)) (second cell))
                                        (same-json? (json/read-str (json/write-str config-value))
                                                    (get-in current cell)))
-                          (crud/update-by-id! tx table layer-id
-                                              (config-update-attrs table new-config)))))))
+                          (write-config! tx table layer-id new-config))))))
 
 (defn dissoc-editor-config-pair
   "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
@@ -1082,8 +1091,7 @@
                             _ (assert-config-unchanged! current cell (some-> check (assoc :value nil)))
                             new-config (update current ed-key dissoc cfg-key)]
                         (when (contains? (clojure.core/get current ed-key) cfg-key)
-                          (crud/update-by-id! tx table layer-id
-                                              (config-update-attrs table new-config)))))))
+                          (write-config! tx table layer-id new-config))))))
 
 ;; ============================================================
 ;; Vocab management (project_vocabs join + cascade vocab_links)

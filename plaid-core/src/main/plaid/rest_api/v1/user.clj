@@ -4,7 +4,6 @@
             [plaid.media.avatar :as avatar]
             [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.auth :as pra]
-            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.common :as psc]
@@ -159,16 +158,13 @@
                              "memberships and vocab maintainerships, and revokes their API tokens. The "
                              "email address stays reserved and the user remains visible in listings with a "
                              "<body>deactivated-at</body> timestamp. Reversible via the activate endpoint, "
-                             "which restores login only (not memberships or tokens). A vocab maintainership it ends restates "
-                             "every document linking that vocabulary: their versions are bumped and returned in "
-                             "X-Document-Versions. Needs a signed-in session: a "
+                             "which restores login only (not memberships or tokens). Needs a signed-in session: a "
                              "request signed with a named API token is refused (403).")
                :middleware [pra/wrap-admin-required api-token/wrap-session-required]
                :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
-                          (let [{:keys [success code error documents]} (user/deactivate db id user-id)]
+                          (let [{:keys [success code error]} (user/deactivate db id user-id)]
                             (if success
-                              ;; A maintainership it ends restates the documents linking that vocabulary.
-                              (prm/assoc-document-versions-in-header {:status 204} db documents)
+                              {:status 204}
                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
     ["/avatar"
      {:get {:summary (str "Get a user's profile picture. Readable by any logged-in user, matching "

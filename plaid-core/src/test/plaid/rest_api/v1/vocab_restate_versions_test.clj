@@ -1,15 +1,16 @@
 (ns plaid.rest-api.v1.vocab-restate-versions-test
-  "A deep document read names each linked vocabulary's name and maintainers,
-  so a vocabulary rename, a maintainer added or removed, and a user
-  deactivation that takes a maintainership away restate every document that
-  links the vocabulary. Each bumps those documents' versions and names them in
-  X-Document-Versions (R14). A document that links no entry of the vocabulary
-  reads the same and keeps its version."
+  "A deep document read names each linked vocabulary's name and config, so a
+  vocabulary rename and a config change restate every document that links
+  the vocabulary. Each bumps those documents' versions and names them in
+  X-Document-Versions (R14, R22). A document that links no entry of the
+  vocabulary reads the same and keeps its version. A maintainer change and a
+  user deactivation bump nothing (R22), and the header names only documents
+  the caller may read."
   (:require [clojure.data.json :as json]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler rest-handler
-                                    admin-request with-admin api-call
+                                    admin-request user1-request with-admin with-test-users api-call
                                     assert-status assert-no-content with-clean-db]]
             [plaid.test-helpers :refer [create-test-project create-text-layer
                                         create-token-layer create-text create-token
@@ -18,7 +19,7 @@
                                         update-vocab-layer add-vocab-maintainer
                                         remove-vocab-maintainer get-document]]))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
 (defn- doc-version [doc]
@@ -80,40 +81,78 @@
         (is (nil? (header-versions again)))
         (is (= (mapv inc before) (mapv doc-version linked)))))))
 
-(deftest a-maintainer-change-bumps-every-linking-document
-  (let [{:keys [vocab linked unlinked] :as fx} (setup!)
-        _ (assert-status 201 (rest-handler (-> (admin-request :post "/api/v1/users")
-                                               (mock/json-body {:email "m@example.com"
-                                                                :password "hunter22"
-                                                                :is-admin false}))))]
-    (testing "adding a maintainer"
+(defn- set-vocab-config [request-fn vocab value]
+  (api-call request-fn {:method :put
+                        :path (str "/api/v1/vocab-layers/" vocab "/config/igt/fields")
+                        :body value}))
+
+(deftest a-config-change-bumps-every-linking-document
+  (let [{:keys [vocab] :as fx} (setup!)
+        [linked unlinked] ((juxt :linked :unlinked) fx)]
+    (testing "setting a value"
       (let [before (mapv doc-version linked)
             before-bare (doc-version unlinked)
-            resp (add-vocab-maintainer admin-request vocab "m@example.com")]
+            resp (set-vocab-config admin-request vocab ["gloss"])]
         (assert-no-content resp)
         (assert-restated! fx before before-bare resp)))
-    (testing "adding them again restates nothing"
+    (testing "setting the same value restates nothing"
       (let [before (mapv doc-version linked)
-            resp (add-vocab-maintainer admin-request vocab "m@example.com")]
+            resp (set-vocab-config admin-request vocab ["gloss"])]
         (assert-no-content resp)
         (is (nil? (header-versions resp)))
         (is (= before (mapv doc-version linked)))))
-    (testing "removing a maintainer"
+    (testing "removing the value"
       (let [before (mapv doc-version linked)
             before-bare (doc-version unlinked)
-            resp (remove-vocab-maintainer admin-request vocab "m@example.com")]
+            resp (api-call admin-request {:method :delete
+                                          :path (str "/api/v1/vocab-layers/" vocab "/config/igt/fields")})]
         (assert-no-content resp)
         (assert-restated! fx before before-bare resp)))))
 
-(deftest a-deactivation-bumps-the-documents-of-every-vocabulary-it-leaves
-  (let [{:keys [vocab linked unlinked] :as fx} (setup!)
+(defn- doc-modified-at [doc]
+  (-> (get-document admin-request doc) :body :document/time-modified))
+
+(deftest a-maintainer-change-bumps-nothing
+  ;; R22: who maintains a vocabulary is not a document's change. No version,
+  ;; no modified time, no header.
+  (let [{:keys [vocab linked]} (setup!)
+        _ (assert-status 201 (rest-handler (-> (admin-request :post "/api/v1/users")
+                                               (mock/json-body {:email "m@example.com"
+                                                                :password "hunter22"
+                                                                :is-admin false}))))
+        before (mapv doc-version linked)
+        before-at (mapv doc-modified-at linked)]
+    (let [resp (add-vocab-maintainer admin-request vocab "m@example.com")]
+      (assert-no-content resp)
+      (is (nil? (header-versions resp))))
+    (let [resp (remove-vocab-maintainer admin-request vocab "m@example.com")]
+      (assert-no-content resp)
+      (is (nil? (header-versions resp))))
+    (is (= before (mapv doc-version linked)))
+    (is (= before-at (mapv doc-modified-at linked)))))
+
+(deftest a-deactivation-bumps-nothing
+  (let [{:keys [vocab linked]} (setup!)
         _ (assert-status 201 (rest-handler (-> (admin-request :post "/api/v1/users")
                                                (mock/json-body {:email "gone@example.com"
                                                                 :password "hunter22"
                                                                 :is-admin false}))))
         _ (assert-no-content (add-vocab-maintainer admin-request vocab "gone@example.com"))
         before (mapv doc-version linked)
-        before-bare (doc-version unlinked)
+        before-at (mapv doc-modified-at linked)
         resp (api-call admin-request {:method :delete :path "/api/v1/users/gone@example.com"})]
     (assert-no-content resp)
-    (assert-restated! fx before before-bare resp)))
+    (is (nil? (header-versions resp)))
+    (is (= before (mapv doc-version linked)))
+    (is (= before-at (mapv doc-modified-at linked)))))
+
+(deftest the-header-names-only-documents-the-caller-may-read
+  ;; A vocabulary maintainer with no role on the linking project renames it:
+  ;; the documents are bumped, and the answer does not name them (C4).
+  (let [{:keys [vocab linked]} (setup!)
+        _ (assert-no-content (add-vocab-maintainer admin-request vocab "user1@example.com"))
+        before (mapv doc-version linked)
+        resp (update-vocab-layer user1-request vocab {:name "Renamed"})]
+    (assert-status 200 resp)
+    (is (nil? (header-versions resp)))
+    (is (= (mapv inc before) (mapv doc-version linked)))))
