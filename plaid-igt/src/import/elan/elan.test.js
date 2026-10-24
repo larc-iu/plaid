@@ -1365,11 +1365,14 @@ describe('round trip through the .eaf exporter', () => {
               {
                 id: 'm1',
                 metadata: { form: 'perro', morphType: 'stem' },
+                // The derived type the exporter reads, as the view gives it.
+                morphType: 'stem',
                 annotations: { Gloss: span('dog') },
               },
               {
                 id: 'm2',
                 metadata: { form: 's', morphType: 'enclitic' },
+                morphType: 'enclitic',
                 annotations: { Gloss: span('PL') },
               },
             ],
