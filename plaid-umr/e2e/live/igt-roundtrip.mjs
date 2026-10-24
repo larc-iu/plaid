@@ -42,7 +42,6 @@ import {
 } from '../../../plaid-igt/src/import/native/importEngine.js';
 import { UmrDocument } from '../../src/domain/UmrDocument.js';
 import { adoptSubstrate } from '../../src/domain/umrProjectSetup.js';
-import { getUmrLayerInfo } from '../../src/utils/umrLayerUtils.js';
 import { parseUmrFile } from '../../src/domain/format/umrFile.js';
 import { fixture } from './fixturesDir.mjs';
 
@@ -141,7 +140,7 @@ try {
   // ---- 2. UMR adopts it and annotates ---------------------------------------
 
   let project = await client.projects.get(projectId);
-  await adoptSubstrate(client, project, getUmrLayerInfo(project));
+  await adoptSubstrate(client, project);
   project = await client.projects.get(projectId);
   const loadUmr = () => UmrDocument.load({ client, documentId, projectId, project });
   let umr = await loadUmr();

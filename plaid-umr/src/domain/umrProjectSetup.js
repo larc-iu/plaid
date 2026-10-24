@@ -22,7 +22,12 @@
  */
 
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, uuidv7 } from '@larc-iu/plaid-client';
-import { UMR_NAMESPACE, UMR_LAYER_FLAGS, readIlgConfig } from '../utils/umrLayerUtils.js';
+import {
+  UMR_NAMESPACE,
+  UMR_LAYER_FLAGS,
+  readIlgConfig,
+  getUmrLayerInfo,
+} from '../utils/umrLayerUtils.js';
 import { relationRules } from './umrConstraints.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { proposeIlg } from './ilg.js';
@@ -191,15 +196,21 @@ export const createUmrProject = (client, projectName, mint = { current: null }) 
  * at all, so a layer is never left without the flag a re-run finds it by.
  * The project's gloss lines are proposed from its layers when it has none,
  * and a mapping already there is left as it is.
+ *
+ * The plan is made from the project as it is now, read here inside the
+ * operation, never from the page's copy: a set-up another tab or maintainer
+ * ran since has made the layers already, and a plan from the old copy made a
+ * second set of them (as ud's adoptSubstrate, H33-UD-3).
  * @param {object} client
- * @param {object} project - the project, with its layers and config
- * @param {object} layerInfo - from getUmrLayerInfo on the project
+ * @param {object} page - the project as the page read it (only its id is used)
  * @returns {Promise<boolean>} true when something was created
  */
-export const adoptSubstrate = async (client, project, layerInfo) => {
-  const { textLayer } = layerInfo;
-  if (!textLayer) throw new Error('The project has no text layer to build on.');
-  return client.withOperation('Set the project up for UMR', async () => {
+export const adoptSubstrate = (client, page) =>
+  client.withOperation('Set the project up for UMR', async () => {
+    const project = await client.projects.get(page.id);
+    const layerInfo = getUmrLayerInfo(project);
+    const { textLayer } = layerInfo;
+    if (!textLayer) throw new Error('The project has no text layer to build on.');
     let created = false;
     await client.batched(async (b) => {
       let nodeLayerId = layerInfo.nodeTokenLayer?.id;
@@ -234,4 +245,3 @@ export const adoptSubstrate = async (client, project, layerInfo) => {
     });
     return created;
   });
-};
