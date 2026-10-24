@@ -112,6 +112,20 @@
       (is (true? (get-in r [:body :deleted])))
       (is (re-find #"existed" (get-in r [:body :message]))))))
 
+(deftest a-project-being-deleted-keeps-its-id
+  ;; A project delete marks the row before it purges it. In that window a
+  ;; create naming the id is told the id is taken, as it is once the purge is
+  ;; done, so a setup retried after a lost create and a rollback mints a new
+  ;; id instead of failing on a 404 (HUNT-recent 12).
+  (let [id (psc/new-uuid)]
+    (assert-created (post "/api/v1/projects" {:id id :name "Gone soon"}))
+    (psc/execute! db {:update :projects :set {:deleted_at "2026-10-24T00:00:00Z"}
+                      :where [:= :id (str id)]})
+    (let [r (post "/api/v1/projects" {:id id :name "Again"})]
+      (is (= 409 (:status r)) (str (:body r)))
+      (is (true? (get-in r [:body :id-taken])))
+      (is (true? (get-in r [:body :deleted]))))))
+
 (deftest bulk-creates
   (let [s (setup!)
         [a b] (repeatedly 2 psc/new-uuid)]

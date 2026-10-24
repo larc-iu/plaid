@@ -586,13 +586,17 @@
                     ;; gate refuses it too, but checks before this transaction,
                     ;; so a write that passed it while the project was live
                     ;; could otherwise land after the delete's short step
-                    ;; committed (see `plaid.sql.project/delete`).
+                    ;; committed (see `plaid.sql.project/delete`). A create
+                    ;; naming the id is told it is taken, as it is once the
+                    ;; purge is done, so a retried setup mints another id.
                     (when-let [pid (:project op-attrs)]
                       (when (and (not= :project/delete (:type op-attrs))
                                  (psc/q1 tx {:select [:id]
                                              :from [:projects]
                                              :where [:and [:= :id pid] [:<> :deleted_at nil]]}))
-                        (throw (ex-info (psc/err-msg-not-found "Project" pid) {:code 404 :id pid}))))
+                        (throw (if (= :project/create (:type op-attrs))
+                                 (psc/id-taken "project" pid true)
+                                 (ex-info (psc/err-msg-not-found "Project" pid) {:code 404 :id pid})))))
                     (ensure-group-row! tx op-record)
                     (insert-operation-row! tx op-record)
                     ;; In-tx OCC check. Before the body runs,
