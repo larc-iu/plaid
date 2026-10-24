@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { PlaidClient, valueSetAllows, violationsOf } from "../src/index.js";
+import { PlaidClient, valueSetAllows, violationCountOf, violationsOf } from "../src/index.js";
 
 function queued(fn) {
   const client = new PlaidClient("http://localhost:0", "dummy-token");
@@ -86,6 +86,17 @@ test("violationsOf reads a 422's violations, camelCased", () => {
   assert.equal(violationsOf({ status: 422, responseData: { error: "idempotency-key-reused" } }), null);
   assert.equal(violationsOf({ status: 409, responseData: { violations: [] } }), null);
   assert.equal(violationsOf(new Error("x")), null);
+});
+
+test("violationCountOf reads a 422's total, which may exceed the listed violations", () => {
+  // REV-BUGS-1: the answer lists at most 100 violations, and the raw
+  // refusal's "violation-count" is the total.
+  const listed = Array.from({ length: 100 }, () => ({ constraint: "value-set" }));
+  assert.equal(violationCountOf({ status: 422, responseData: { violations: listed, "violation-count": 340 } }), 340);
+  assert.equal(violationCountOf({ status: 422, responseData: { violations: [{ constraint: "value-set" }] } }), 1);
+  assert.equal(violationCountOf({ status: 422, responseData: { error: "idempotency-key-reused" } }), null);
+  assert.equal(violationCountOf({ status: 409, responseData: { "violation-count": 3 } }), null);
+  assert.equal(violationCountOf(new Error("x")), null);
 });
 
 for (const bundle of Object.keys(BUNDLES)) {

@@ -49,13 +49,13 @@ const fakeClient = (answers = {}) => {
   return client;
 };
 
-const refused = (violations) => {
+const refused = (violations, total = violations.length) => {
   const e = new Error('HTTP 422');
   e.status = 422;
   e.responseData = {
     error: 'A span is the target of 2 relations in "Deps".',
     violations,
-    'violation-count': violations.length,
+    'violation-count': total,
   };
   return e;
 };
@@ -315,6 +315,20 @@ describe('a layer the data breaks for some of its rules', () => {
       undefined,
       { expected: null },
     ]);
+  });
+
+  it('counts every violation of a refused rule, beyond the 100 the refusal lists', async () => {
+    // REV-BUGS-1: a 422 lists at most 100 violations, and its raw
+    // violation-count is the total the notice says.
+    const listed = Array.from({ length: 100 }, () => ({ constraint: 'max-in-degree' }));
+    const c = fakeClient({
+      'setConstraints:R': (ns, list) =>
+        without(list, 'max-in-degree') ? { constraints: {} } : refused(listed, 340),
+    });
+    const out = await ensureLayerConstraints(c, [entry('R', ud, null, 'relation')], {
+      canManage: true,
+    });
+    expect(out.pending).toEqual([expect.objectContaining({ layerId: 'R', violationCount: 340 })]);
   });
 
   it('keeps taking out what each refusal names until the rest is declared', async () => {

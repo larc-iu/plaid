@@ -12,7 +12,7 @@
 // opens.
 
 import { isConstraintViolation, statusOf } from './errors.js';
-import { violationsOf } from '../../../plaid-client-js/src/constraints.js';
+import { violationCountOf, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 
 const REMEDIABLE = new Set(['coextensive', 'single-span', 'single-link', 'same-ancestor']);
 
@@ -53,6 +53,7 @@ export const queueRepairOfBareLayer = (b, { kind, layerId, constraints, stored }
 /** The list a layer read holds for `namespace`, or null. */
 export const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
 
+// The total a checkConstraints answer (camelCased) gives. A refusal's is violationCountOf's.
 const countOf = (answer) => answer?.violationCount ?? answer?.violations?.length ?? 0;
 
 const typesOf = (violations) => [...new Set((violations || []).map((v) => v.constraint))];
@@ -208,7 +209,7 @@ export async function ensureLayerConstraints(
               if (isConstraintViolation(e)) {
                 const named = typesOf(violationsOf(e));
                 const held = pendingOf.get(w.layerId) ?? { constraints: [], violationCount: 0 };
-                if (!counted) held.violationCount += countOf(e.responseData);
+                if (!counted) held.violationCount += violationCountOf(e);
                 counted = true;
                 for (const t of named) if (!held.constraints.includes(t)) held.constraints.push(t);
                 pendingOf.set(w.layerId, held);

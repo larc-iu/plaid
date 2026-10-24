@@ -15,7 +15,11 @@ import { IGT_NAMESPACE, LEXICON_FIELD_KEY } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { findDoubles } from './doubles.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
-import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
+import {
+  valueSetAllows,
+  violationCountOf,
+  violationsOf,
+} from '../../../plaid-client-js/src/constraints.js';
 import {
   ensureLayerConstraints,
   sameConstraints,
@@ -382,7 +386,7 @@ export const fieldsOutOfForce = (project) => {
 export const tagsetRefusal = (error) => {
   const vs = violationsOf(error);
   if (!vs?.length || !vs.every((v) => v.constraint === 'value-set')) return null;
-  const n = error.responseData['violation-count'] ?? vs.length;
+  const n = violationCountOf(error);
   const fields = [...new Set(vs.map((v) => v.layerName).filter(Boolean))];
   const values = [...new Set(vs.map((v) => v.value).filter((v) => typeof v === 'string'))];
   const shown = values.slice(0, 5).join(', ') + (values.length > 5 ? ', …' : '');

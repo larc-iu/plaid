@@ -45,6 +45,20 @@ export function violationsOf(err) {
   return Array.isArray(vs) ? transformResponse(vs) : null;
 }
 
+/**
+ * How many violations a write refused by a layer constraint has in all, or
+ * null for any other error. Read from the raw refusal's "violation-count",
+ * since the answer lists at most 100 of them.
+ * @param {any} err
+ * @returns {number | null}
+ */
+export function violationCountOf(err) {
+  const vs = violationsOf(err);
+  if (!vs) return null;
+  const n = err.responseData["violation-count"];
+  return typeof n === "number" ? n : vs.length;
+}
+
 /** The request body of a constraint write: the list, and `expected` when given. */
 export function constraintsBody(constraints, options) {
   const body = constraints === undefined ? {} : { constraints };
