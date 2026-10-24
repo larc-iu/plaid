@@ -46,3 +46,44 @@ def test_a_join_of_machine_values_is_confirmed_by_the_approval():
 def test_a_join_a_person_made_is_left_as_core_stamped_it():
     client = _merged(_client({}))
     assert not [sid for sid, _ in client.patches('spans') if sid in ('sp-g2', 'sp-g3')]
+
+
+def test_a_merge_that_joins_nothing_leaves_a_machine_value_unconfirmed():
+    # w3's gloss is blank, so core keeps w2's machine gloss as it was stored:
+    # the card shows no joined value, and the approval confirms none.
+    doc = copy.deepcopy(document_raw())
+    words = doc['text_layers'][0]['token_layers'][1]
+    words['span_layers'][0]['spans'] += [
+        {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2'], 'metadata': dict(MACHINE)},
+        {'id': 'sp-g3', 'value': '', 'tokens': ['w-3']}]
+    client = _merged(FakeClient(documents={'d1': doc}))
+    assert any(k == 'tokens.merge' for batch in client.batches for k, _ in batch)
+    assert not [sid for sid, _ in client.patches('spans') if sid in ('sp-g2', 'sp-g3')]
+
+
+def test_a_refused_confirm_still_counts_the_merge_as_written(monkeypatch):
+    import pytest
+    from plaid_client import PlaidAPIError
+    from plaid_agent.core import plan as core_plan
+    from plaid_agent.core.plan import PlanError
+    real = core_plan.Batcher.flush
+    sent = []
+
+    def flush(self):
+        if self._batch is not None or any(self._bulk.values()):
+            sent.append(1)
+            if len(sent) == 2:
+                raise PlaidAPIError('refused', status=409, method='POST')
+        real(self)
+    monkeypatch.setattr(core_plan.Batcher, 'flush', flush)
+    client = _client(MACHINE)
+    ws = fake_ws(client)
+    assert 'Planned' in call_tool(ws, 'merge_words', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3']})
+    ops = ws.plan_payload()['ops']
+    for i, op in enumerate(ops):
+        op['_row'] = i
+    with pytest.raises(PlanError) as e:
+        execute_plan(client, ops, source='service:igt:assist:x', label='Assistant: merge',
+                     project=ws.project, stamp_mode='verified')
+    assert any(k == 'tokens.merge' for batch in client.batches for k, _ in batch)
+    assert e.value.written == [0], e.value.written

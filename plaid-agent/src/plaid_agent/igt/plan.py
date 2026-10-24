@@ -518,7 +518,11 @@ def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
 
 
 def _apply_merge_words(ctx: Context, op) -> int:
-    kept = [(op, s['keep_id']) for s in op.get('spans') or [] if s.get('keep_id')]
+    # Only a span core joins a value into (``value`` set, as the card's
+    # "values combined" note says). One it keeps as stored is not the
+    # approval's to confirm.
+    kept = [(op, s['keep_id']) for s in op.get('spans') or []
+            if s.get('keep_id') and s.get('value') is not None]
     if kept:
         ctx.merged_spans += kept
         ctx.defer(op, 'merged')
@@ -535,6 +539,10 @@ def _confirm_merged(ctx: Context) -> None:
     if not ctx.merged_spans:
         return
     ctx.b.flush()
+    # The merges stand now, so a refused confirm below leaves them counted
+    # as written.
+    for op in ctx.later.get('merged', ()):
+        ctx.b.finish(op)
     by_doc: Dict[Optional[str], List[tuple]] = {}
     for op, sid in ctx.merged_spans:
         by_doc.setdefault(op.get('document_id'), []).append((op, sid))
@@ -1702,8 +1710,6 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for op in ctx.later.get('second', ()):
             b.finish(op)
         _confirm_merged(ctx)
-        for op in ctx.later.get('merged', ()):
-            b.finish(op)
 
         # A restore is the server's own single operation over the document.
         for op in ctx.restores:
