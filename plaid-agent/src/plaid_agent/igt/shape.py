@@ -251,7 +251,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     note += loss_note(**count_delete_loss(_other_layers(ws, doc), [w.id for w in words], under=True,
                                           skip=_own_layers(ws)))
     s = next(s for s in doc.sentences if s.id in sents)
-    op = {'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
+    op = {'kind': 'merge_words', 'document_id': doc.id, 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
           'morpheme_ids': morphs, 'spans': spans, 'links': links,
           'mwe_ids': [l.id for l in collapsed],
           **labelled(f'{ws.doc_label(doc.id)} s{s.index}',

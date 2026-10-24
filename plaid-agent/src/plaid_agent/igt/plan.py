@@ -54,7 +54,7 @@ wire's key recasing):
                    Bulk Edit, or with restamp true a direct correction of one morpheme, stamped as every rewrite is)
   split_word      {word_id, position, morpheme_ids, space?}  (coincident morphemes deleted first, as the editor does;
                                                              the left part ends ``space`` before ``position``)
-  merge_words     {word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
+  merge_words     {document_id, word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
                    links: {keep_id, delete_ids}, mwe_ids}     (the collapsed expressions' links deleted, then
                    sequential merges. spans and links say what the server's layer rules join and drop in
                    the merge's own transaction, for the card and the guards, and are not written)
@@ -97,6 +97,7 @@ from ..core import rules
 from ..core.bidi import qv
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
+from plaid_client.provenance import is_machine
 
 from plaid_client.service import requester_message
 
@@ -181,6 +182,10 @@ class Context:
         # The morpheme made for each unsegmented word's derived one, by the
         # derived id, so every write naming it names the one token.
         self.materialized: Dict[str, str] = {}
+        # The spans a word merge keeps, (op, span id): core's join restamps
+        # each by what it holds (HUNT-model M1), and the approval confirms
+        # one left machine-made once the merges stand.
+        self.merged_spans: List[tuple] = []
 
     def defer(self, op, when: str = 'second') -> None:
         self.later.setdefault(when, []).append(op)
@@ -509,7 +514,42 @@ def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
 
 
 def _apply_merge_words(ctx: Context, op) -> int:
+    kept = [(op, s['keep_id']) for s in op.get('spans') or [] if s.get('keep_id')]
+    if kept:
+        ctx.merged_spans += kept
+        ctx.defer(op, 'merged')
     return _merge(ctx, op, 'word_id', list(op['other_ids']))
+
+
+def _confirm_merged(ctx: Context) -> None:
+    """The approval's word on the values a word merge joined. Core stamps a
+    joined span by what it holds, so values that were all unverified machine
+    output join as machine output, and the plan the user approved confers
+    verified (``Stamps.confirm``). A span a person's value made theirs is left
+    as core stamped it. Read once the merges stand, then written in a batch
+    of its own under the plan's operation."""
+    if not ctx.merged_spans:
+        return
+    ctx.b.flush()
+    by_doc: Dict[Optional[str], List[tuple]] = {}
+    for op, sid in ctx.merged_spans:
+        by_doc.setdefault(op.get('document_id'), []).append((op, sid))
+    for doc_id, pairs in by_doc.items():
+        if not doc_id:
+            continue
+        raw = ctx.client.documents.get(doc_id, include_body=True)
+        spans = {sp['id']: sp for tl in raw.get('text_layers') or [] for tk in tl.get('token_layers') or []
+                 for sl in tk.get('span_layers') or [] for sp in sl.get('spans') or []}
+        for op, sid in pairs:
+            sp = spans.get(sid)
+            if sp is None or not is_machine(sp.get('metadata') or {}):
+                continue
+            frag = ctx.stamps.confirm(False)
+            if frag is None:
+                continue
+            with ctx.b.writing_for(op):
+                ctx.b.update('spans', sid, metadata=metadata_ops(frag))
+    ctx.b.flush()
 
 
 def _apply_merge_sentences(ctx: Context, op) -> int:
@@ -1656,6 +1696,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 raise _linked_elsewhere(ctx.pending_deletes) from e
             raise
         for op in ctx.later.get('second', ()):
+            b.finish(op)
+        _confirm_merged(ctx)
+        for op in ctx.later.get('merged', ()):
             b.finish(op)
 
         # A restore is the server's own single operation over the document.
