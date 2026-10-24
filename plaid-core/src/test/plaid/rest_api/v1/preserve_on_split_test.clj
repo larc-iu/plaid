@@ -11,7 +11,10 @@
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request api-call assert-created assert-ok assert-no-content
                                     with-admin with-test-users with-clean-db]]
-            [plaid.test-helpers :refer :all]))
+            [plaid.fixtures :as fix]
+            [plaid.history.read :as hread]
+            [plaid.test-helpers :refer :all])
+  (:import [java.time Instant]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -44,7 +47,7 @@
                              "provSource" "service:probe"
                              "form" "alphabeta"
                              "orthog:IPA" "alfabeta"})
-    {:layer tkl :token tok}))
+    {:layer tkl :token tok :doc doc}))
 
 (defn- right-half-of [token-id position]
   (-> (split-token admin-request token-id position) :body :id))
@@ -69,6 +72,23 @@
     (is (nil? (get right "orthog:IPA")))
     ;; A declared key the token does not have is simply absent.
     (is (nil? (get right "provConfirmed")))))
+
+(deftest the-inherited-keys-are-in-the-new-half-s-history
+  ;; REV-ACL-1: the inherited keys went in with no audit row, so an as-of
+  ;; read showed the new half bare, and a restore to any moment after the
+  ;; split deleted them.
+  (let [{:keys [layer token doc]} (setup)
+        _ (assert-no-content (set-layer-config layer "plaid" "preserveOnSplit" ["prov"]))
+        right (right-half-of token 5)
+        _ (Thread/sleep 20)
+        ts (Instant/now)
+        _ (Thread/sleep 20)
+        _ (set-token-metadata token {"prov" "inferred" "later" 1})
+        row (first (filter #(= (str (:id %)) (str right)) (:tokens (hread/document-rows-at fix/db doc ts))))]
+    (is (= {"prov" "inferred"} (token-metadata right)))
+    (is (= {"prov" "inferred"} (:metadata row)))
+    (assert-ok (api-call admin-request {:method :post :path (str "/api/v1/documents/" doc "/restore?as-of=" ts)}))
+    (is (= {"prov" "inferred"} (token-metadata right)))))
 
 (deftest a-declaration-naming-nothing-the-token-has-is-harmless
   (let [{:keys [layer token]} (setup)

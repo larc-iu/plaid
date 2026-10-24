@@ -854,13 +854,14 @@
   "Give token `new-id`, cut from token `from-id`, the metadata of `from-id`
   under the keys its layer `layer-id` names in `preserveOnSplit` (see
   `preserved-on-split`). Nothing when the layer names none or `from-id`
-  holds none of them."
+  holds none of them. The metadata write is audited on `new-id`, whose
+  insert row the split wrote bare, so history and a restore see the keys."
   [tx new-id from-id layer-id]
   (let [keep-keys (preserved-on-split tx layer-id)
         inherited (when (seq keep-keys)
                     (select-keys (metadata/get-metadata tx "token" from-id) keep-keys))]
     (when (seq inherited)
-      (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))))
+      (metadata/insert-metadata! tx "token" new-id inherited))))
 
 (defn- split-one!
   "Split the token row `t` at `position`. Updates t's end_ to

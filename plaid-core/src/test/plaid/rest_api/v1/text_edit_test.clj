@@ -7,11 +7,13 @@
             [plaid.fixtures :refer [db rest-handler with-db with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-ok assert-created assert-bad-request assert-not-found
                                     with-admin with-test-users with-clean-db]]
+            [plaid.history.read :as hread]
             [plaid.sql.common :as psc]
             [plaid.test-helpers :refer :all]
             [plaid.algos.text]
             [plaid.util.digest :as digest]
-            [ring.mock.request :as mock]))
+            [ring.mock.request :as mock])
+  (:import [java.time Instant]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -913,3 +915,27 @@
       (is (= #{[(str (:words layers)) [0 2 "ca"] {"prov" "word"}]
                [(str (:morphemes layers)) [0 2 "ca"] {"prov" "cat"}]}
              (set (map (fn [{:keys [id layer]}] [(str layer) (extent id) (metadata-of id)]) made)))))))
+
+(deftest a-split-part-s-inherited-keys-are-in-its-history
+  ;; REV-ACL-1: the keys a part takes from the word it was cut from went in
+  ;; with no audit row, so every as-of read showed the part bare, and a
+  ;; restore to any moment after the split deleted them again.
+  (let [{:keys [doc text words layers]} (setup "a walk cat" :split true)]
+    (declare-preserved! (:words layers) ["prov"])
+    (put-metadata! (words 2) {"prov" "inferred"})
+    (let [res (edit-text text {:edits [(ins 8 " ")] :base (-> (get-text admin-request text) :body :text/digest)})
+          made (:id (first (filter #(= (str (:layer %)) (str (:words layers))) (-> res :body :reshape :tokens))))
+          _ (assert-ok res)
+          _ (Thread/sleep 20)
+          ts (str (Instant/now))
+          _ (Thread/sleep 20)
+          _ (put-metadata! (words 0) {"x" 1})]
+      (is (= {"prov" "inferred"} (metadata-of made)))
+      (testing "an as-of read shows the inherited keys"
+        (let [at (hread/document-rows-at db doc (Instant/parse ts))
+              row (first (filter #(= (str (:id %)) (str made)) (:tokens at)))]
+          (is (some? row))
+          (is (= {"prov" "inferred"} (:metadata row)))))
+      (testing "a restore to after the split keeps them"
+        (assert-ok (api-call admin-request {:method :post :path (str "/api/v1/documents/" doc "/restore?as-of=" ts)}))
+        (is (= {"prov" "inferred"} (metadata-of made)))))))
