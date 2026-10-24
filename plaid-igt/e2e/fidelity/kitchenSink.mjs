@@ -341,7 +341,7 @@ async function makeEntries(client, lexiconId, affixId) {
     variantOf: e.gato,
     seeAlso: [e.gato, e.perro],
   });
-  e.plural = await create(lexiconId, '-s', { gloss: 'PL', morphType: 'suffix' });
+  e.plural = await create(lexiconId, 's', { gloss: 'PL', morphType: 'suffix' });
   e.zero = await create(lexiconId, '∅', { gloss: 'SG', morphType: 'suffix' });
   e.vuelta = await create(lexiconId, 'dar la vuelta', {
     gloss: 'turn around',
@@ -371,7 +371,7 @@ async function makeEntries(client, lexiconId, affixId) {
   e.casa = await create(lexiconId, 'casa', { morphType: 'stem' });
   e.casaHouse = await create(lexiconId, 'casa', { parent: e.casa, gloss: 'house' });
   e.parar = await create(lexiconId, 'parar', { gloss: 'stop', morphType: 'stem' });
-  e.past = await create(affixId, '-ó', { gloss: 'PST', morphType: 'suffix' });
+  e.past = await create(affixId, 'ó', { gloss: 'PST', morphType: 'suffix' });
   return e;
 }
 
@@ -887,7 +887,7 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   // the fields setup seeds. Its entries still hold values in the built-in ones.
   const bare = await client.vocabLayers.create(`${mainName} Borrowings`);
   await client.projects.linkVocab(projectId, bare.id);
-  await client.vocabItems.create(bare.id, '-aba', { gloss: 'IPFV', morphType: 'suffix' });
+  await client.vocabItems.create(bare.id, 'aba', { gloss: 'IPFV', morphType: 'suffix' });
   const entries = await makeEntries(client, lexiconId, affixId);
 
   const ctx = { client, contributor, projectId, entries, lexiconId, foreign };
