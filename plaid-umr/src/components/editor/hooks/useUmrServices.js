@@ -57,8 +57,8 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
       // The write phase is one critical block with no checkpoint in it, so
       // a run reported as stopped stopped before writing.
       stoppedMessage: 'Nothing was written.',
-      // The service authors the words and picks the severity. A run that
-      // skipped every sentence warns rather than congratulates.
+      // The words for the counts the service reports. A run that skipped
+      // every sentence warns rather than congratulates.
       notice: draftNotice,
     },
   });

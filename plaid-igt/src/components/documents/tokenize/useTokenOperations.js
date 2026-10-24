@@ -12,6 +12,7 @@ import {
   countReTokenizeCut,
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
+import { tokenizeNotice } from './tokenizeNotice.js';
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
 import { hasLoss } from '@ui/domain/annotationLoss.js';
 
@@ -68,6 +69,7 @@ export const useTokenOperations = () => {
       successMessage: 'Tokenization complete',
       errorTitle: 'Failed to tokenize',
       stoppedTitle: 'Tokenize',
+      notice: tokenizeNotice,
     },
   });
   const { spot, run: tokenizeRun } = service;

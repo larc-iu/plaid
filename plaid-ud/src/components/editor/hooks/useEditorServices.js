@@ -9,6 +9,7 @@ import { notifySuccess } from '../../../utils/feedback.jsx';
 import { BUILTIN_TOKENIZE_SEGMENTER, languageParamSeed } from '../../../utils/serviceDefaults.js';
 import { readProjectLanguage } from '../../../utils/udLayerUtils.js';
 import { parseNotice } from '../../../domain/parseNotice.js';
+import { tokenizeNotice } from '../../../domain/tokenizeNotice.js';
 
 // How long a service may say NOTHING, not a cap on the run: the client
 // restarts this clock on every progress event. A model load plus a neural
@@ -72,8 +73,8 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       // This parser's write phase is one critical block with no checkpoint in
       // it, so a run it reports as stopped stopped before writing.
       stoppedMessage: 'Nothing was written.',
-      // The service authors the words and picks the severity. A run that
-      // skipped every sentence warns rather than congratulates (C8).
+      // The words for the counts the service reports. A run that skipped
+      // every sentence warns rather than congratulates (C8).
       notice: parseNotice,
     },
   });
@@ -94,6 +95,7 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
       errorTitle: 'Failed to tokenize',
       errorMessage: 'The tokenizer did not run.',
       stoppedTitle: 'Tokenize',
+      notice: tokenizeNotice,
     },
   });
 

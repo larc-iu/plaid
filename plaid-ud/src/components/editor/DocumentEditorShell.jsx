@@ -5,6 +5,7 @@ import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 import { TASKS } from '@larc-iu/plaid-client';
 import { parseNotice } from '../../domain/parseNotice.js';
+import { tokenizeNotice } from '../../domain/tokenizeNotice.js';
 
 // Parent route of the document tabs (/edit, /annotate, /comments, /export,
 // /details): plaid-ui's shell, with what is UD's. The Text Editor's dialog and
@@ -19,8 +20,8 @@ const UD_SHELL = {
     return new ConlluDocument({ raw, client, projectId, project: projectData, user });
   },
   useServices: useEditorServices,
-  // A Parse rejoined after a reload words its counts as the Parse spot does.
-  runNotices: { [TASKS.PARSE]: parseNotice },
+  // A Parse or Tokenize rejoined after a reload words its counts as its spot does.
+  runNotices: { [TASKS.PARSE]: parseNotice, [TASKS.TOKENIZE]: tokenizeNotice },
   assistantApp: UD_ASSISTANT.app,
   documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
   // The order is every app's: the work tabs, then Comments, Export, Details.

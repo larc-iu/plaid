@@ -57,21 +57,25 @@ export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
           // Someone stopped it — from this page's banner, or another of their
           // tabs. Not a finish, and not a failure.
           notifyInfo('Stopped partway. What ran before the stop is in the document.', record.label);
-        } else if (record.multiStep) {
-          // Auto-analyze's steps are ordered here, in the browser, so the page
-          // that went away took the rest of the run with it. Say so rather
-          // than implying the whole thing finished.
-          notifyWarning(
-            `${record.label} was interrupted. The step that was running finished. The ones after it did not.`,
-            record.label,
-          );
         } else {
           // The app's words for the counts, as the page that started the run
           // would have shown them (useServiceRequest's `succeed`): a run that
           // failed every item still comes back a success, and only the counts
           // say so. A task the app words nothing for is said to have finished.
           const notice = record.task ? notices?.[record.task]?.(result) : null;
-          if (notice) showRunNotice(notice);
+          if (record.multiStep) {
+            // Auto-analyze's steps are ordered here, in the browser, so the
+            // page that went away took the steps after this one with it. The
+            // step's own words come first, then that the rest did not run.
+            const after = 'The steps after it did not run.';
+            notifyWarning(
+              notice?.message
+                ? `${notice.message} ${after}`
+                : `The step that was running finished. ${after}`,
+              record.label,
+              ...(notice?.sticky ? [{ duration: Infinity }] : []),
+            );
+          } else if (notice) showRunNotice(notice);
           else notifySuccess(`${record.label} finished.`, record.label);
         }
       } catch (error) {

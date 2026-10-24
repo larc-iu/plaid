@@ -16,6 +16,7 @@ import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { countOf, plural } from '@ui/lib/plural.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { runHeldNotice } from '@ui/components/services/runHeld.js';
+import { analyzeParts, partsNotice, translateParts } from './analyzeNotice.js';
 
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 // A whole-document model pass can take a few minutes on a large document.
@@ -200,13 +201,15 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       lock.setStatus(`Step ${i + 1} of ${plan.length}. ${plan[i].label}.`);
     };
     // Only the step in flight can be rejoined: the ordering happens here, in
-    // the browser, so `multiStep` tells the resume to say the rest did not run.
-    const recordStep = (requestId) =>
+    // the browser, so `multiStep` tells the resume to say the steps after it
+    // did not run. The step's task words its counts.
+    const recordStep = (key, task) => (requestId) =>
       writeRunRecord(doc.id, {
         requestId,
         projectId: project.id,
         label: 'Auto-analyze',
-        multiStep: true,
+        task,
+        multiStep: plan.findIndex((p) => p.key === key) < plan.length - 1,
       });
     const info = doc.layerInfo;
     let stillOut = false; // the request survived our giving up on it
@@ -216,23 +219,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     // written is worse than saying plainly that nothing was.
     let wrote = false;
     const parts = [];
-    // What a service could not do. Services report per-sentence failures in the
-    // result rather than failing the request, so this is the only place it can
-    // be said.
-    // A run the model stopped answering ends early, and its sentences not
-    // asked say so (`not asked:`, plaid-client-py's NOT_ASKED).
-    const noteFailures = (result, verb) => {
-      const failures = result?.sentencesFailed ?? [];
-      if (!failures.length) return;
-      const quit = failures.some((f) => String(f?.reason ?? '').startsWith('not asked:'));
-      parts.push(
-        `could not ${verb} ${countOf(failures.length, 'sentence')}` +
-          (quit ? ' (stopped early: the model did not answer)' : ''),
-      );
-    };
-    // A field a service reads only for context, and went on without.
-    const noteMissing = (name, scope, what) => {
-      if (name) parts.push(`read no ${what} (no ${scope} field “${name}”)`);
+    // A service step's words for its counts (analyzeNotice.js).
+    const note = (step) => {
+      parts.push(...step.parts);
+      wrote = wrote || step.wrote;
     };
     const identifiers = {
       documentId: doc.id,
@@ -274,7 +264,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             errorTitle: 'Failed to translate',
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
-            onRequestId: recordStep,
+            onRequestId: recordStep('translate', TASKS.TRANSLATE),
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
@@ -282,13 +272,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         // hook's toast says so: it is read again while the lock is held.
         if (stopped(result)) return await reload();
         await reload();
-        const n = result?.sentencesWritten;
-        if (n > 0) {
-          parts.push(`proposed translations for ${countOf(n, 'sentence')}`);
-          wrote = true;
-        }
-        noteFailures(result, 'translate');
-        noteMissing(result?.glossFieldMissing, 'morpheme', 'glosses');
+        note(translateParts(result));
       }
       if (stopRef.current) return halt();
       // 2. copy previous analyses (built-in). The words it writes are the
@@ -344,7 +328,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             errorTitle: 'Failed to analyze',
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
-            onRequestId: recordStep,
+            onRequestId: recordStep('analyze', TASKS.ANALYZE),
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
@@ -352,18 +336,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         // hook's toast says so: it is read again while the lock is held.
         if (stopped(result)) return await reload();
         await reload();
-        const n = result?.wordsWritten;
-        if (n > 0) {
-          parts.push(`proposed analyses for ${countOf(n, 'word')}`);
-          wrote = true;
-        }
-        const prot = result?.skipped?.protected ?? 0;
-        if (prot)
-          parts.push(
-            `left ${countOf(prot, 'word')} with a person’s morphemes or morpheme glosses alone (“Overwrite human-edited annotations” replaces them)`,
-          );
-        noteFailures(result, 'analyze');
-        noteMissing(result?.translationFieldMissing, 'sentence', 'translations');
+        note(analyzeParts(result));
       }
       if (stopRef.current) return halt();
       // 4. link to the lexicon
@@ -405,7 +378,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
               errorTitle: 'Failed to link',
               errorMessage: `${service.serviceName} reported an error.`,
               stoppedTitle: 'Auto-analyze',
-              onRequestId: recordStep,
+              onRequestId: recordStep('link', TASKS.LINK_VOCAB),
             },
           );
           if (stopped(result)) return await reload();
@@ -414,13 +387,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           wrote = true;
         }
       }
-      // The violet line is a promise about material on screen, so it is only
-      // made when something was written.
-      const msg = parts.length
-        ? `${parts.join(', ')}.${wrote ? ' Shown in violet until confirmed.' : ''}`
-        : 'Nothing new to apply.';
-      const say = wrote ? notifySuccess : notifyWarning;
-      say(msg.charAt(0).toUpperCase() + msg.slice(1), 'Auto-analyze');
+      const { level, title, message } = partsNotice({ parts, wrote });
+      (level === 'success' ? notifySuccess : notifyWarning)(message, title);
       onOpenChange(false);
     } catch (err) {
       // Service failures are toasted by the request hook; anything else here.

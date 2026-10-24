@@ -63,9 +63,15 @@ describe('useResumedRun', () => {
       : { level: 'warning', title: 'Nothing drafted', message: 'Sentence 1 failed.', sticky: true };
   const rejoin = async (
     result,
-    { task = 'draft-graph', notices = { 'draft-graph': drafted } } = {},
+    { task = 'draft-graph', notices = { 'draft-graph': drafted }, label = 'Draft', multiStep } = {},
   ) => {
-    writeRunRecord('d1', { requestId: 'r1', projectId: 'p1', label: 'Draft', task });
+    writeRunRecord('d1', {
+      requestId: 'r1',
+      projectId: 'p1',
+      label,
+      task,
+      ...(multiStep ? { multiStep } : {}),
+    });
     attach = () => Promise.resolve(result);
     const lock = { setStatus: vi.fn(), release: vi.fn() };
     const Probe = () => {
@@ -104,6 +110,34 @@ describe('useResumedRun', () => {
   it('says the run finished for a task the app words nothing for', async () => {
     await rejoin({ tokensCreated: 4 }, { task: 'tokenize' });
     expect(notify.notifySuccess).toHaveBeenCalledWith('Draft finished.', 'Draft');
+  });
+
+  // REV-W3-SVC F2: a rejoined Auto-analyze step words its own counts, then
+  // says the steps after it did not run.
+  const analyzed = (result) => ({
+    level: result.wordsWritten ? 'success' : 'warning',
+    title: 'Auto-analyze',
+    message: result.wordsWritten
+      ? 'Proposed analyses for 3 words.'
+      : 'Could not analyze 2 sentences.',
+  });
+  const step = { task: 'analyze', notices: { analyze: analyzed }, label: 'Auto-analyze' };
+
+  it("words a rejoined step's counts and says the steps after it did not run", async () => {
+    await rejoin({ wordsWritten: 0, sentencesFailed: [{}, {}] }, { ...step, multiStep: true });
+    expect(notify.notifySuccess).not.toHaveBeenCalled();
+    expect(notify.notifyWarning).toHaveBeenCalledWith(
+      'Could not analyze 2 sentences. The steps after it did not run.',
+      'Auto-analyze',
+    );
+  });
+
+  it('words a rejoined last step as the step alone', async () => {
+    await rejoin({ wordsWritten: 3 }, step);
+    expect(notify.notifySuccess).toHaveBeenCalledWith(
+      'Proposed analyses for 3 words.',
+      'Auto-analyze',
+    );
   });
 
   it('says a stopped run stopped, whatever its counts', async () => {

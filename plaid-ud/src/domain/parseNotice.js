@@ -1,7 +1,7 @@
 // What to say about a finished parse, from the counts the service reports
 // (the core manual, "Service results"): `parsedSentences`, and
 // `skippedSentences`, the sentences kept because a person made or verified
-// annotations in them.
+// annotations in them. `reason: 'no-text'` is a document with no text.
 //
 // The rule (C8): never claim more than we know. A service reports a
 // per-sentence skip in its counts, not by failing the request, so a run where
@@ -15,6 +15,9 @@ import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 const count = (n) => (Number.isInteger(n) && n > 0 ? n : 0);
 
 export const parseNotice = (summary) => {
+  if (summary?.reason === 'no-text') {
+    return { level: 'warning', title: 'Nothing to parse', message: 'The document has no text.' };
+  }
   const parsed = count(summary?.parsedSentences);
   const skipped = count(summary?.skippedSentences);
   if (parsed > 0) {

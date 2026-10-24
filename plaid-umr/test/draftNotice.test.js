@@ -87,6 +87,24 @@ test('each failed sentence is named with its own reason, alike ones together, an
   assert.equal(draftNotice(run({ drafted: 2 })).sticky, undefined);
 });
 
+test('a cause the service reports as a code is worded here', () => {
+  assert.equal(
+    draftNotice(run({ sentencesFailed: [{ sentence: 2, code: 'no-link-or-gloss' }] })).message,
+    'Failed to draft sentence 2: No word has a vocabulary link or a gloss.',
+  );
+  assert.equal(
+    draftNotice(
+      run({
+        sentencesFailed: [
+          { sentence: 1, code: 'no-link-no-gloss-line' },
+          { sentence: 3, code: 'no-link-no-gloss-line' },
+        ],
+      }),
+    ).message,
+    'Failed to draft 2 sentences. Sentences 1 and 3: No word has a vocabulary link, and UMR settings name no word or morpheme gloss line.',
+  );
+});
+
 test('a run the model stopped answering says so after its failures', () => {
   const notice = draftNotice(
     run({

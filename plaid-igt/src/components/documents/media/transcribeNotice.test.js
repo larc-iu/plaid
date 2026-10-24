@@ -21,6 +21,16 @@ describe('transcribeNotice', () => {
     });
   });
 
+  it('says a recording with no speech in it gave nothing to transcribe', () => {
+    expect(transcribeNotice({ segmentsAdded: 0, segmentsSkipped: 0, reason: 'no-speech' })).toEqual(
+      {
+        level: 'warning',
+        title: 'Nothing to transcribe',
+        message: 'No speech found in the recording.',
+      },
+    );
+  });
+
   it('leaves a service that reports no counts to the fixed copy', () => {
     expect(transcribeNotice({ tokensCreated: 2 })).toBeNull();
     expect(transcribeNotice(null)).toBeNull();

@@ -16,6 +16,8 @@ import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { TOKEN_ROLE_WORDS } from '@/domain/restoreSummary.js';
 import { transcribeNotice } from './media/transcribeNotice.js';
+import { tokenizeNotice } from './tokenize/tokenizeNotice.js';
+import { analyzeNotice, translateNotice } from './analyze/analyzeNotice.js';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
@@ -70,8 +72,14 @@ const landing = (doc) => {
 };
 
 const IGT_SHELL = {
-  // A Transcribe rejoined after a reload words its counts as the Media tab does.
-  runNotices: { [TASKS.TRANSCRIBE]: transcribeNotice },
+  // A run rejoined after a reload words its counts as the tab that started it
+  // does. Auto-analyze records each step's task (analyze, translate).
+  runNotices: {
+    [TASKS.TRANSCRIBE]: transcribeNotice,
+    [TASKS.TOKENIZE]: tokenizeNotice,
+    [TASKS.ANALYZE]: analyzeNotice,
+    [TASKS.TRANSLATE]: translateNotice,
+  },
   // The user rides along for the provenance convention: a person whose work
   // the project reviews (plaid.review) is a contributor, whose edits are
   // stamped as such (IgtDocument.contributorId).

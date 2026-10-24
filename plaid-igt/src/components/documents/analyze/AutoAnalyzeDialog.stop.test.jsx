@@ -109,14 +109,14 @@ describe('an Auto-analyze run the model stopped answering', () => {
       sentencesFailed: [
         { sentenceId: 's1', reason: 'the model timed out' },
         { sentenceId: 's2', reason: 'the model timed out' },
-        { sentenceId: 's3', reason: 'not asked: the model did not answer 2 sentences in a row' },
       ],
+      sentencesNotAsked: ['s3'],
     });
     const { view } = await mount();
     await view.step(() => view.container.querySelector('[data-run]').click());
     await view.step(async () => {});
     expect(notifyWarning).toHaveBeenCalledWith(
-      'Could not translate 3 sentences (stopped early: the model did not answer).',
+      'Could not translate 2 sentences, stopped early: the model did not answer (1 sentence not asked).',
       'Auto-analyze',
     );
     await view.unmount();

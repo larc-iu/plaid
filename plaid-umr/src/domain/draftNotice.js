@@ -12,8 +12,8 @@
 // left alone with Overwrite off (the only ones the Overwrite hint is true
 // of); `kept`, the ones a person made, contributed to or accepted something
 // in; `linked`, the ones another sentence's graph links into;
-// `sentencesFailed`, `{sentence, reason}` per sentence the run could not
-// draft; and `sentencesNotDrafted`, the sentences never asked about because
+// `sentencesFailed`, `{sentence, reason}` or `{sentence, code}` per sentence
+// the run could not draft (a code is a cause this app words, CODES); and `sentencesNotDrafted`, the sentences never asked about because
 // the model stopped answering. A notice that names failed sentences is
 // `sticky`: it stays until dismissed, since it is the only record of them.
 //
@@ -28,8 +28,16 @@ const sentences = (numbers) =>
     ? `Sentence ${numbers[0]}`
     : `Sentences ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
 
-const reasonOf = (reason) => {
-  const text = String(reason ?? '').trim() || 'No reason given.';
+// The causes a service reports as a code (R23), in this app's words.
+const CODES = {
+  'no-link-or-gloss': 'No word has a vocabulary link or a gloss.',
+  'no-link-no-gloss-line':
+    'No word has a vocabulary link, and UMR settings name no word or morpheme gloss line.',
+};
+
+const reasonOf = (failure) => {
+  if (CODES[failure?.code]) return CODES[failure.code];
+  const text = String(failure?.reason ?? '').trim() || 'No reason given.';
   return /[.!?]$/.test(text) ? text : `${text}.`;
 };
 
@@ -40,11 +48,11 @@ const reasonOf = (reason) => {
 const failureLine = (failures) => {
   if (failures.length === 1) {
     const [only] = failures;
-    return `Failed to draft sentence ${only.sentence}: ${reasonOf(only.reason)}`;
+    return `Failed to draft sentence ${only.sentence}: ${reasonOf(only)}`;
   }
   const byReason = new Map();
   for (const f of failures) {
-    const reason = reasonOf(f.reason);
+    const reason = reasonOf(f);
     byReason.set(reason, [...(byReason.get(reason) ?? []), f.sentence]);
   }
   const groups = [...byReason].map(([reason, numbers]) => `${sentences(numbers)}: ${reason}`);

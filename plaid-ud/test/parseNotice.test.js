@@ -46,6 +46,14 @@ test('a run with nothing to parse warns rather than congratulates', () => {
   }
 });
 
+test('a document with no text says so', () => {
+  assert.deepEqual(parseNotice({ parsedSentences: 0, skippedSentences: 0, reason: 'no-text' }), {
+    level: 'warning',
+    title: 'Nothing to parse',
+    message: 'The document has no text.',
+  });
+});
+
 test('a notice text a result carries is not shown: the words are the app’s', () => {
   const notice = parseNotice({
     parsedSentences: 0,
