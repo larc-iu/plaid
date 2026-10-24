@@ -186,20 +186,39 @@ test('a value on such a word makes the word, its lemma from its form, and the va
   assert.deepEqual(batch[2].args.slice(0, 3), [doc.layerInfo.uposLayer.id, [made.id], 'NOUN']);
 });
 
-test('a lemma typed on such a word is the lemma the word is made with', async () => {
+test('a lemma typed on such a word is the lemma the word is made with, as the person typed it', async () => {
   const { client, sent } = recording();
   const { doc } = writer(bare(['dog']), client);
   const virtual = doc.sentences[0].tokens[1].token.id;
   assert.equal(await doc.updateAnnotation(virtual, 'lemma', 'hound'), true);
   assert.equal(sent.length, 1);
-  const lemma = sent[0].find((o) => o.op === 'spans.bulkCreate').args[0][0];
-  // Made from its form, then the typed value written over it in the same batch.
+  // The word and its lemma, holding the typed value with the writer's stamp
+  // (a verifier's: none), not the rule's copy of the form verified.
   assert.deepEqual(
     sent[0].map((o) => o.op),
-    ['tokens.bulkCreate', 'spans.bulkCreate', 'spans.update', 'spans.patchMetadata'],
+    ['tokens.bulkCreate', 'spans.bulkCreate'],
   );
-  assert.deepEqual(sent[0][2].args, [lemma.id, 'hound']);
+  const lemma = sent[0][1].args[0][0];
+  assert.deepEqual([lemma.value, lemma.metadata], ['hound', undefined]);
   assert.equal(doc.sentences[0].tokens[1].lemma.value, 'hound');
+  assert.equal(doc.sentences[0].tokens[1].lemma.metadata, undefined);
+});
+
+test("a contributor's lemma typed on such a word is marked contributed", async () => {
+  const { client, sent } = recording();
+  const doc = new ConlluDocument({
+    raw: bare(['dog']),
+    client,
+    project: { id: 'p1', writers: ['ann@x'], config: { plaid: { review: { users: ['ann@x'] } } } },
+    user: { id: 'ann@x' },
+  });
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  assert.equal(await doc.updateAnnotation(virtual, 'lemma', 'hound'), true);
+  const lemma = sent[0][1].args[0][0];
+  assert.deepEqual(
+    [lemma.value, lemma.metadata],
+    ['hound', { prov: 'contributed', provSource: 'user:ann@x' }],
+  );
 });
 
 test('an arc drawn to such a word makes it in the same batch, and a second edit names the word made', async () => {
@@ -331,4 +350,39 @@ test('clearing the lemma of a stand-in writes nothing and leaves the stand-in', 
   assert.deepEqual(sent, []);
   assert.equal(doc.sentences[0].tokens[1].virtual, true);
   assert.equal(doc.layerInfo.morphemeTokenLayer.tokens.length, 2);
+});
+
+// A lemma made only to hang an arc on is the rule's, as every lemma a new word
+// starts with: its Form (else its text), stamped machine-made, so a parser may
+// replace it and Discard predictions does not keep it as a person's.
+test('an arc to a stored word with no lemma makes its lemma by the rule, from its Form', async () => {
+  const raw = rawDocFromConllu(INPUT, 'd1');
+  const words = raw.textLayers[0].tokenLayers.find(
+    (l) => l.config?.plaid?.role === 'syntactic-word',
+  );
+  const probe = new ConlluDocument({ raw: rawDocFromConllu(INPUT, 'd1') });
+  const { lemmaLayer, formLayer } = probe.layerInfo;
+  const body = [...raw.textLayers[0].text.body];
+  const dog = words.tokens.find((t) => body.slice(t.begin, t.end).join('') === 'dog');
+  for (const layer of words.spanLayers) {
+    if (layer.id === lemmaLayer.id) {
+      const gone = layer.spans.find((s) => s.tokens.includes(dog.id)).id;
+      layer.spans = layer.spans.filter((s) => s.id !== gone);
+      for (const rel of layer.relationLayers || [])
+        rel.relations = rel.relations.filter((r) => r.source !== gone && r.target !== gone);
+    }
+    if (layer.id === formLayer.id) {
+      layer.spans = [...(layer.spans || []), { id: 'f-dog', tokens: [dog.id], value: 'dogs' }];
+    }
+  }
+  const { client, sent } = recording();
+  const { doc } = writer(raw, client);
+  const barks = doc.sentences[0].tokens[2].token.id;
+  assert.equal(await doc.createRelation(barks, dog.id, 'nsubj'), true);
+  const made = sent[0].find((o) => o.op === 'spans.create' && o.args[0] === lemmaLayer.id);
+  assert.equal(made.args[2], 'dogs');
+  assert.deepEqual(
+    [made.args[3].prov, made.args[3].provSource, made.args[3].provDetail.model],
+    ['inferred', 'rule:lemma-from-form', 'builtin:lemma-from-form'],
+  );
 });

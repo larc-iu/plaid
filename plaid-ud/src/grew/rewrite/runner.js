@@ -423,9 +423,9 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
           lemmaOf.get(w.src),
           lemmaOf.get(w.tgt),
           w.value,
-          // A suppressor is a statement about the graph and carries its
-          // own metadata, never a provenance stamp.
-          'metadata' in w ? w.metadata : createStamp,
+          // A suppressor carries its own key, and as a person's edit the
+          // writer's stamp beside it (R34).
+          'metadata' in w ? { ...w.metadata, ...createStamp } : createStamp,
           undefined,
           { id: uuidv7() },
         );

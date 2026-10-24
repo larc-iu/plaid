@@ -154,6 +154,35 @@ test('setRelationSuppressed takes a basic relation out of the graph and puts it 
   assert.deepEqual(log.at(-1), { op: 'delete', id: 'new-0' });
 });
 
+// Leaving an edge out of the enhanced graph is a person's edit (R34): a
+// reviewed contributor's suppressor is marked contributed, as their edges are.
+test("a contributor's suppressor carries their stamp, in both ways of making one", async () => {
+  const { client, log } = relationClient();
+  const doc = new ConlluDocument({
+    raw: rawDocFromConllu(INPUT, 'e', { enhanced: true }),
+    client,
+    project: { id: 'p', writers: ['ann@x'], config: { plaid: { review: { users: ['ann@x'] } } } },
+    user: { id: 'ann@x', isAdmin: false },
+  });
+  const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x' };
+  const obj = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'obj');
+  assert.equal(await doc.setRelationSuppressed(obj.id, true), true);
+  assert.deepEqual(log.at(-1).metadata, { suppress: true, ...CONTRIBUTED });
+  assert.deepEqual(doc.layerInfo.enhancedRelationLayer.relations.at(-1).metadata, {
+    suppress: true,
+    ...CONTRIBUTED,
+  });
+  const lemma = (value) => doc.layerInfo.lemmaLayer.spans.find((s) => s.value === value).id;
+  await doc.createEnhancedRelation(lemma('come'), lemma('leave'), 'conj:and');
+  assert.deepEqual(
+    log.slice(-2).map((l) => [l.value, l.metadata]),
+    [
+      [null, { suppress: true, ...CONTRIBUTED }],
+      ['conj:and', CONTRIBUTED],
+    ],
+  );
+});
+
 test('deleting a basic relation takes the suppressor lying over it', async () => {
   const { doc, log, basic, rows } = open();
   const obj = basic('obj');

@@ -635,3 +635,31 @@ test("apply: a moved head clears the parser's stamp from the relation", async ()
     { op: 'delete', path: ['provDetail'] },
   ]);
 });
+
+// A rewrite is a person's edit, and so is leaving an edge out of the enhanced
+// graph (R34): a contributor's suppressor carries their stamp beside its key.
+test("a contributor's rewrite stamps the suppressor it makes", async () => {
+  const raw = rawDocFromConllu(CONLLU, 'doc1', { enhanced: true });
+  const client = stubClient(raw);
+  const project = {
+    id: 'p1',
+    name: 'P',
+    maintainers: [],
+    writers: ['u1'],
+    readers: [],
+    textLayers: raw.textLayers,
+    config: { plaid: { review: { users: ['u1'] } } },
+  };
+  const grs = parseGrs(
+    'pattern { X -[det]-> Y } without { X -[E:det:x]-> Y } commands { add_edge X -[E:det:x]-> Y }',
+  );
+  const user = { id: 'u1', isAdmin: false };
+  const plan = await planRewrite(client, { project, user, layerInfo: getUdLayerInfo(raw), grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const suppressors = client.calls
+    .filter((c) => c.op === 'relations.create' && c.args[3] === null)
+    .map((c) => c.args[4]);
+  assert.equal(suppressors.length, 2);
+  for (const md of suppressors)
+    assert.deepEqual(md, { suppress: true, prov: 'contributed', provSource: 'user:u1' });
+});

@@ -37,7 +37,7 @@ import {
   holdsPersonsWork,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from './otherLoss.js';
-import { newUdWord } from './newUdWord.js';
+import { newUdWord, lemmaFromForm } from './newUdWord.js';
 import { relationsCrossing } from '../utils/udReconcile.js';
 import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
@@ -1337,6 +1337,26 @@ export class ConlluDocument extends DocumentModel {
         this._sendMaking(made, (c) => c.spans.delete(settledId(existingSpan.id))),
       );
     }
+    // A lemma typed on a word this write makes is the person's: the word is
+    // made with it, under the writer's stamp, in place of the rule's copy of
+    // its form.
+    const madeLemma = field === 'lemma' && made?.lemmas.find((l) => l.id === existingSpan?.id);
+    if (madeLemma) {
+      const stamp = this.writer.createStamp;
+      madeLemma.value = value;
+      madeLemma.metadata = stamp || undefined;
+      this._applyRawPatch((next, infoNext) => {
+        const span = infoNext.lemmaLayer?.spans?.find((sp) => sp.id === madeLemma.id);
+        if (!span) return;
+        span.value = value;
+        if (stamp) span.metadata = { ...stamp };
+        else delete span.metadata;
+      });
+      return this._queueWrite(label, async () => {
+        await this._sendMaking(made, () => {});
+        this._settle(madeAsMinted(this._madeRows(made)));
+      });
+    }
     if (existingSpan) {
       // A person's edit carries the writer's stamp (provenance write
       // contract rule 3): a verifier's confirms a machine-made or contributed
@@ -1431,8 +1451,10 @@ export class ConlluDocument extends DocumentModel {
   _planLemmaSpans(info, candidateIds) {
     const lemmaSpans = info.lemmaLayer?.spans || [];
     const textBody = info.textLayer?.text?.body || '';
-    // Made on the writer's behalf to hang the relation on: their stamp.
-    const stamp = this.writer.createStamp;
+    const formSpans = info.formLayer?.spans || [];
+    // Made to hang the relation on, by the rule every new word's lemma comes
+    // from (newUdWord.js): its Form, else its text, stamped as the rule's.
+    // Nobody typed it, so a parser may replace it.
     const pending = [];
     const ids = candidateIds.map((given) => {
       if (!given || given === 'ROOT') return null;
@@ -1449,12 +1471,11 @@ export class ConlluDocument extends DocumentModel {
       const planned = pending.find((span) => span.tokens[0] === tokenId);
       if (planned) return planned.id;
       const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
-      const span = {
-        id: pendingId(),
-        tokens: [tokenId],
-        value: token ? cpSlice(textBody, token.begin, token.end) : '',
-        ...(stamp ? { metadata: stamp } : {}),
-      };
+      const form = formSpans.find((sp) => sp.tokens?.includes(tokenId))?.value;
+      const span = lemmaFromForm(
+        tokenId,
+        form ?? (token ? cpSlice(textBody, token.begin, token.end) : ''),
+      );
       pending.push(span);
       return span.id;
     });
@@ -1773,7 +1794,7 @@ export class ConlluDocument extends DocumentModel {
           source,
           target,
           value: null,
-          metadata: { [SUPPRESS_KEY]: true },
+          metadata: { [SUPPRESS_KEY]: true, ...stamp },
         });
       }
       layer.relations.push({
@@ -1795,7 +1816,7 @@ export class ConlluDocument extends DocumentModel {
             settledId(source),
             settledId(target),
             null,
-            { [SUPPRESS_KEY]: true },
+            { [SUPPRESS_KEY]: true, ...stamp },
             undefined,
             { id: suppressorId },
           );
@@ -1847,8 +1868,10 @@ export class ConlluDocument extends DocumentModel {
       });
       return this._queueWrite(label, () => this._client.relations.delete(settledId(existing.id)));
     }
-    // Optimistic too: the suppressor shows under a pending id.
+    // Optimistic too: the suppressor shows under a pending id. Leaving an
+    // edge out is a person's edit, so it carries the writer's stamp (R34).
     const id = pendingId();
+    const stamp = this.writer.createStamp;
     this._applyRawPatch((next, infoNext) => {
       const layer = infoNext.enhancedRelationLayer;
       if (!layer) return;
@@ -1858,7 +1881,7 @@ export class ConlluDocument extends DocumentModel {
         source: basic.source,
         target: basic.target,
         value: null,
-        metadata: { [SUPPRESS_KEY]: true },
+        metadata: { [SUPPRESS_KEY]: true, ...stamp },
       });
     });
     return this._queueWrite(label, async () => {
@@ -1867,7 +1890,7 @@ export class ConlluDocument extends DocumentModel {
         settledId(basic.source),
         settledId(basic.target),
         null,
-        { [SUPPRESS_KEY]: true },
+        { [SUPPRESS_KEY]: true, ...stamp },
         undefined,
         { id },
       );
