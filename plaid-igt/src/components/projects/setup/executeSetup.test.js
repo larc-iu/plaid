@@ -391,6 +391,8 @@ describe('a resumed setup, vocabularies', () => {
 });
 
 describe('a resumed setup, field order', () => {
+  // A word field an earlier run made: made in one batch with its scope.
+  const word = (id, name) => ({ id, name, config: { [IGT_NAMESPACE]: { scope: 'Word' } } });
   const FIELDS = {
     ...SETUP_DATA,
     vocabulary: { vocabularies: [] },
@@ -424,12 +426,7 @@ describe('a resumed setup, field order', () => {
     });
 
   it('moves a field made late up to where an uninterrupted import puts it', async () => {
-    const { client, calls } = stub(
-      project([
-        { id: 'sl-pos', name: 'POS' },
-        { id: 'sl-note', name: 'Note' },
-      ]),
-    );
+    const { client, calls } = stub(project([word('sl-pos', 'POS'), word('sl-note', 'Note')]));
     const result = await setUp(client);
     expect(result.failures).toEqual([]);
     const gloss = madeOf(calls, 'span');
@@ -496,14 +493,24 @@ describe('a resumed setup, field order', () => {
 
   it('moves nothing when the fields are already in order', async () => {
     const { client, calls } = stub(
-      project([
-        { id: 'sl-gloss', name: 'Gloss' },
-        { id: 'sl-pos', name: 'POS' },
-        { id: 'sl-note', name: 'Note' },
-      ]),
+      project([word('sl-gloss', 'Gloss'), word('sl-pos', 'POS'), word('sl-note', 'Note')]),
     );
     await setUp(client);
     expect(calls.shifted).toEqual([]);
+  });
+
+  // A1-1: a layer of a field's name that setup did not make (another app's,
+  // or one made through the API) is not the field. It was taken as it by its
+  // name and stamped igt's.
+  it('leaves an unscoped layer of a field\u2019s name alone and makes the field its own', async () => {
+    const { client, calls } = stub(
+      project([{ id: 'sl-theirs', name: 'Gloss', config: {} }, word('sl-pos', 'POS')]),
+    );
+    const result = await setUp(client);
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'span').map((c) => c.name)).toEqual(['Gloss', 'Note']);
+    expect(calls.config.some((c) => c.id === 'sl-theirs')).toBe(false);
+    expect((calls.constraints ?? []).some((c) => c.id === 'sl-theirs')).toBe(false);
   });
 });
 

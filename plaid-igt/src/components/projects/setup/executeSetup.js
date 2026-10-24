@@ -35,6 +35,7 @@ import {
   findWordTokenLayer,
   findMorphemeTokenLayer,
   findAlignmentTokenLayer,
+  readScope,
   storedIgnoredTokens,
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
@@ -280,8 +281,12 @@ async function executeProjectSetupImpl({
   // Each field setup made or reused, with its scope and id.
   const madeFields = [];
 
-  // Step 6: Create span layers for annotation fields. Resume-safe: reuse a
-  // same-name layer under the chosen parent and just (re)stamp its scope.
+  // Step 6: Create span layers for annotation fields. Resume-safe: a layer an
+  // earlier run made under the chosen parent was made in one batch with its
+  // scope, so it is known by that scope, and its name tells it from the other
+  // fields of that scope. A layer without the scope is never setup's, whatever
+  // it is called (another app's, or one made through the API): the field gets
+  // a layer of its own beside it.
   if (tokenLayerId && sentenceTokenLayerId) {
     updateProgress(50, 'Creating annotation field layers…');
     const createdSpanLayers = [];
@@ -312,14 +317,13 @@ async function executeProjectSetupImpl({
 
           updateProgress(50, `Creating span layer: ${field.name} (${field.scope})…`);
           const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
-            (sl) => sl.name === field.name,
+            (sl) => readScope(sl.config) === field.scope && sl.name === field.name,
           );
           // What language its values are in, when the caller knows. An importer
           // reading a format that says so (FLEx writing systems, ELAN tier
           // names) is the only one that does.
           let spanLayer = existing;
           if (existing) {
-            await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, 'scope', field.scope);
             if (field.lang) {
               await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, 'lang', field.lang);
             }
