@@ -8,6 +8,7 @@ and the virtual morpheme of a word nobody has segmented),
 the ignored-token rule is :mod:`.ignored`.
 """
 
+import math
 from typing import Dict, List, Tuple
 
 from plaid_client.provenance import prov_state, MACHINE
@@ -22,12 +23,13 @@ from .ignored import is_token_ignored
 VIRTUAL_PREFIX = 'virtual:'
 
 
-def precedence(morpheme) -> int:
-    """A morpheme's place in its word's chain: its stored precedence, 1 when
-    it stores none, as plaid-igt reads it (derive.js ``m.precedence ?? 1``).
-    A stored 0 stays 0 and sorts first."""
+def precedence(morpheme) -> float:
+    """A morpheme's place in its word's chain, a sort key: its stored
+    precedence, and after every stored one when it stores none, as core
+    orders tokens (begin, precedence nulls last, end, id) and plaid-igt reads
+    a chain (derive.js). A stored 0 stays 0 and sorts first."""
     p = morpheme.get('precedence')
-    return 1 if p is None else p
+    return math.inf if p is None else p
 
 
 def virtual_morpheme(word_token):
@@ -145,7 +147,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     for m in morph_layer.get('tokens', []):
         morphs_by_extent.setdefault((m['begin'], m['end']), []).append(m)
     for ms in morphs_by_extent.values():
-        ms.sort(key=precedence)
+        ms.sort(key=lambda m: (precedence(m), str(m.get('id') or '')))
 
     words = sorted(word_layer.get('tokens', []), key=lambda t: t['begin'])
     sentences = []

@@ -138,7 +138,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         text: m.text,
         begin: m.begin,
         end: m.end,
-        precedence: m.precedence ?? 1,
+        precedence: m.precedence ?? null,
         content: sliceBody(m.begin, m.end),
         metadata: m.metadata || {},
         annotations: annotationsFor(m.id, morphSpanMaps),
@@ -153,7 +153,19 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
       morphemesByWord.get(parent.id).push(entry);
     });
-    morphemesByWord.forEach((arr) => arr.sort((a, b) => a.precedence - b.precedence));
+    // A morpheme storing no precedence comes after every one that stores
+    // one, as the server orders a chain (begin, precedence nulls last, end,
+    // id; R4-1-2), and reads as the next places after them, so the chain
+    // numbers on and a write that renumbers it stores the order shown.
+    const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    morphemesByWord.forEach((arr) => {
+      const stored = arr.filter((m) => m.precedence != null);
+      const none = arr.filter((m) => m.precedence == null).sort(byId);
+      stored.sort((a, b) => a.precedence - b.precedence || byId(a, b));
+      let next = stored.reduce((hi, m) => Math.max(hi, m.precedence), 0);
+      for (const m of none) m.precedence = ++next;
+      arr.splice(0, arr.length, ...stored, ...none);
+    });
   }
 
   // A word nobody has analyzed yet gets a morpheme anyway, synthesized here

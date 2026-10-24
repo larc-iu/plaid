@@ -43,6 +43,25 @@ describe('derive', () => {
     expect(m.vocabItem).toBeNull();
   });
 
+  it('reads a morpheme with no precedence as last in its word, as the server orders it (R4-1-2)', () => {
+    const doc = makeDoc(
+      buildRawDoc({
+        morphemes: [
+          { id: 'm-a', begin: 0, end: 3, precedence: null },
+          { id: 'm-b', begin: 0, end: 3, precedence: 2 },
+          { id: 'm-c', begin: 0, end: 3, precedence: 1 },
+        ],
+      }),
+      makeFakeClient(),
+    );
+    const chain = doc.sentences[0].tokens[0].morphemes;
+    expect(chain.map((m) => [m.id, m.precedence])).toEqual([
+      ['m-c', 1],
+      ['m-b', 2],
+      ['m-a', 3],
+    ]);
+  });
+
   it('leaves a word that has a stored morpheme alone', () => {
     const doc = makeDoc(buildRawDoc(), makeFakeClient());
     expect(morphOf(doc).virtual).toBeUndefined();
