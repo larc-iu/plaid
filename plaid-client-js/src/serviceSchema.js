@@ -265,8 +265,9 @@ export function buildDefaultValues(schema) {
  */
 // A decimal number as a person types one: an optional sign, digits with an
 // optional fraction (or a bare fraction), an optional exponent, with spaces
-// around it allowed.
-const DECIMAL = /^\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?\s*$/;
+// around it allowed. ASCII whitespace only, as in Python (each language's \s
+// holds characters the other's lacks).
+const DECIMAL = /^[ \t\n\v\f\r]*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?[ \t\n\v\f\r]*$/;
 
 /** `v` as a finite number when it is one or a decimal string, else null. */
 function numberOf(v) {

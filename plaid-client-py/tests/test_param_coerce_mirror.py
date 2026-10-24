@@ -33,7 +33,10 @@ SCHEMAS = [
 ]
 RAWS = ['nan', 'NaN', 'inf', 'Infinity', '-Infinity', 'infinity', '1e999', '-1e999', '0x10',
         '0b11', '0o7', '1_000', ' 12 ', '12abc', '5', '5.0', '5.5', 5, 5.5, True, False, [], [7],
-        {}, None, '', '   ', '1e3', '.5', '+3', '-0']
+        {}, None, '', '   ', '1e3', '.5', '+3', '-0',
+        # Whitespace the two languages' \\s reads apart (REV-R4-CORE F1): the
+        # ASCII separator controls, BOM and NEL are not spaces in either.
+        '5\x1c', '\x1f5', '\ufeff5', '\x855', '\t5\n', '\x0b5\x0c']
 CASES = ([{'schema': s, 'raw': {'n': r}} for s in SCHEMAS for r in RAWS]
          + [{'schema': s, 'raw': {}} for s in SCHEMAS])
 
@@ -51,7 +54,7 @@ def js(tmp_path_factory):
 
 
 def test_every_number_case_is_coerced_as_the_js_client_coerces_it(js):
-    assert len(CASES) == 128
+    assert len(CASES) == 152
     differ = []
     for case, theirs in zip(CASES, js):
         ours = coerce(case['schema'], case['raw'])[0]['n']
@@ -67,3 +70,10 @@ def test_a_number_param_takes_a_finite_number_or_a_decimal_string():
             ['5', ' 12 ', '+3', '.5', '1e3', 5, 2.5]] == [5, 12, 3, 0.5, 1000, 5, 2.5]
     assert [coerce(schema, {'n': raw})[0]['n'] for raw in
             ['Infinity', '1e999', '0x10', '1_000', True, [7], {}, 'nan']] == [3] * 8
+
+
+def test_no_string_makes_coerce_raise():
+    schema = [{'key': 'n', 'type': 'number', 'default': 3}]
+    raws = ['5\x1c', '\x1f5', '\ufeff5', '\x855', '5\x1d', '\x1e5', '5\u2028', '\u30005']
+    assert [coerce(schema, {'n': raw})[0]['n'] for raw in raws] == [3] * len(raws)
+    assert [coerce(schema, {'n': raw})[0]['n'] for raw in ['\t5\n', '\x0b5\x0c', '\r5 ']] == [5] * 3

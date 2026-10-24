@@ -229,8 +229,10 @@ def default_values(parameters):
 
 #: A decimal number as a person types one: an optional sign, digits with an
 #: optional fraction (or a bare fraction), an optional exponent, with spaces
-#: around it allowed. ASCII digits only, as in JS.
-_DECIMAL = re.compile(r'\s*[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\s*')
+#: around it allowed. ASCII digits and ASCII whitespace only, as in JS (each
+#: language's \s holds characters the other's lacks).
+_WS = r'[ \t\n\v\f\r]*'
+_DECIMAL = re.compile(_WS + r'[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?' + _WS)
 
 
 def _number_of(v):
@@ -242,7 +244,8 @@ def _number_of(v):
         return None
     try:
         n = float(v)
-    except OverflowError:     # an int past a float's range, as JS reads it
+    except (OverflowError, ValueError):     # an int past a float's range, or a
+        # string float() still refuses: the default, never an error
         return None
     if not math.isfinite(n):
         return None
