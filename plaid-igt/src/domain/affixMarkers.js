@@ -8,32 +8,18 @@
 // "suffix", "enclitic"); morphemes without one — every hand-entered morpheme —
 // get the "-" default.
 
-/**
- * FLEx's exact morph-type inventory (MoMorphType names), the controlled
- * vocabulary for metadata.morphType everywhere it's editable. Grouped:
- * stems/roots, affixes, clitics, other.
- */
-export const FLEX_MORPH_TYPES = [
-  'stem',
-  'bound stem',
-  'root',
-  'bound root',
-  'prefix',
-  'suffix',
-  'infix',
-  'circumfix',
-  'simulfix',
-  'suprafix',
-  'infixing interfix',
-  'prefixing interfix',
-  'suffixing interfix',
-  'clitic',
-  'enclitic',
-  'proclitic',
-  'particle',
-  'phrase',
-  'discontiguous phrase',
-];
+// FLEx's exact morph-type inventory (MoMorphType names), the controlled
+// vocabulary for metadata.morphType everywhere it's editable, and each type's
+// affix markers, live in the client beside the entry-form rule (lexicon entry
+// forms are stored without markers), so the agent's Python copy reads the
+// same table. Re-exported, so this file stays the one place morph types are
+// reasoned about here.
+import {
+  MORPH_TYPES as FLEX_MORPH_TYPES,
+  decorateWithAffixMarkers,
+  readAffixMarkers,
+} from '@larc-iu/plaid-client';
+export { FLEX_MORPH_TYPES, decorateWithAffixMarkers, readAffixMarkers };
 
 /** Is this a storable morph type? (null/undefined = "no type" is also valid) */
 export const isValidMorphType = (t) => t == null || FLEX_MORPH_TYPES.includes(t);
@@ -76,92 +62,6 @@ export const isBoundType = (morphType) =>
  */
 export const canNameWord = (morphType, form) =>
   !isBoundType(morphType) && !isZeroMorph(form) && typeof form === 'string' && form.trim() !== '';
-
-// --- Per-type markers, for talking to FLEx ---------------------------------
-// The Prefix/Postfix of each MoMorphType, read off the factory objects in real
-// .fwbackup files: identical in Lezgi, Sena, Arabic, Onim and Lamkang, so we
-// treat them as constants rather than per-project settings.
-//
-// The 12 below are every type with a non-empty marker. The other seven (stem,
-// root, circumfix, clitic, particle, phrase, discontiguous phrase) have an
-// EMPTY Prefix and Postfix in the data, so falling through to "decorate
-// nothing" is right for them and not an omission. Verified 2026-09-09 across
-// all 19 types; circumfix and clitic being unmarked is the surprising part.
-//
-// They ARE editable objects in a FieldWorks project rather than global
-// constants, so a project that customised them would round-trip wrong here and
-// we would have no way to notice. Five projects agree exactly, which is why
-// this is a table and not a per-import read. The joiner rule above is what Plaid renders
-// for a chain of morphemes. THIS is different: it is how FLEx spells one
-// morpheme's form on its own, and FLEx compares decorated forms when it
-// matches an imported morph against the lexicon, so an exporter that leaves
-// the markers off matches nothing for any bound morph.
-const MORPH_TYPE_MARKERS = {
-  'bound root': ['*', ''],
-  'bound stem': ['*', ''],
-  enclitic: ['=', ''],
-  infix: ['-', '-'],
-  'infixing interfix': ['-', '-'],
-  prefix: ['', '-'],
-  'prefixing interfix': ['', '-'],
-  proclitic: ['', '='],
-  simulfix: ['=', '='],
-  suffix: ['-', ''],
-  'suffixing interfix': ['-', ''],
-  suprafix: ['~', '~'],
-};
-
-/**
- * A morpheme form written the way FLEx writes it standing alone: "-ar" for a
- * suffix, "ka-" for a prefix, "=ni" for an enclitic, unchanged for a stem.
- * Mirrors DecorateFormWithAffixMarkers in FieldWorks' BIRDInterlinearImporter.
- * An unknown or absent type decorates nothing, which is right for the
- * hand-entered morphemes that have no type at all.
- */
-export function decorateWithAffixMarkers(morphType, form) {
-  if (form == null || form === '') return form;
-  const marks = MORPH_TYPE_MARKERS[String(morphType ?? '').toLowerCase()];
-  return marks ? `${marks[0]}${form}${marks[1]}` : form;
-}
-
-// The one plain type each pair of "-" and "=" markers belongs to, keyed
-// "<before>,<after>". The interfixes share their markers with a plainer type,
-// so markers alone never name one, and "*" and "~" are left out because both
-// also occur in forms as themselves (a reconstructed "*kwa").
-const TYPE_BY_MARKERS = {
-  '-,': 'suffix',
-  ',-': 'prefix',
-  '-,-': 'infix',
-  '=,': 'enclitic',
-  ',=': 'proclitic',
-  '=,=': 'simulfix',
-};
-
-/**
- * A morph form as FLEx writes it, read back: the inverse of
- * decorateWithAffixMarkers, returning `{ form, morphType }`. A morph of a known
- * type loses exactly that type's markers ("-ar" of a suffix is "ar"), and a
- * form without them is kept as written. A morph with no type, or a type
- * outside FLEX_MORPH_TYPES, takes the type its markers name ("ni=" is a
- * proclitic), and keeps its form whole when they name none.
- */
-export function readAffixMarkers(morphType, form) {
-  const named = String(morphType ?? '').toLowerCase();
-  const known = FLEX_MORPH_TYPES.includes(named) ? named : null;
-  if (form == null || form === '') return { form, morphType: known };
-  if (known) {
-    const [before, after] = MORPH_TYPE_MARKERS[known] ?? ['', ''];
-    const bare =
-      form.length > before.length + after.length && form.startsWith(before) && form.endsWith(after);
-    return {
-      form: bare ? form.slice(before.length, form.length - after.length) : form,
-      morphType: known,
-    };
-  }
-  const m = /^([-=]?)(.+?)([-=]?)$/su.exec(form);
-  const inferred = m && TYPE_BY_MARKERS[`${m[1]},${m[3]}`];
-  return inferred ? { form: m[2], morphType: inferred } : { form, morphType: null };
-}
 
 // --- Typing the clitic side of a "=" boundary ------------------------------
 // A "=" names a BOUNDARY (Leipzig rule 2: clitic boundary), but Plaid stores

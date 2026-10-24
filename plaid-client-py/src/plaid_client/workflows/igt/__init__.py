@@ -30,6 +30,7 @@ from .interlinear import (
     clitic_types,
     ALIGN_THRESHOLD,
 )
+from .entry_forms import MORPH_TYPES, entry_form, decorate_with_affix_markers
 from .write import write_analyses, chunk_plans, analysis_result, BATCH_OP_BUDGET
 from .tagsets import (
     MODES,
@@ -53,4 +54,5 @@ __all__ = [
     'write_analyses', 'chunk_plans', 'analysis_result', 'BATCH_OP_BUDGET',
     'MODES', 'normalize_tagset', 'read_tagsets', 'read_tagset_name', 'resolve_tagset', 'field_constraints',
     'tagset_for', 'vocab_tagset_for', 'governed_fields', 'mode_rule', 'value_lines',
+    'MORPH_TYPES', 'entry_form', 'decorate_with_affix_markers',
 ]

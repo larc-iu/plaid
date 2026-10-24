@@ -5285,6 +5285,15 @@ export {
   readValueProbs,
   writerPolicy,
 } from "./provenance.js";
+// Lexicon entry forms are stored without affix or clitic markers, the marker
+// drawn from the entry's morph type. Every entry-form writer stores what
+// entryForm returns. See ./entryForms.js.
+export {
+  MORPH_TYPES,
+  entryForm,
+  readAffixMarkers,
+  decorateWithAffixMarkers,
+} from "./entryForms.js";
 // Metadata ops: the body of a metadata PATCH and of a bulk update entry's
 // `metadata`. See ./metadataOps.js.
 export {
