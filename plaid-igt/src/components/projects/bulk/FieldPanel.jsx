@@ -12,7 +12,9 @@ import {
   SelectGroup,
   SelectLabel,
 } from '@ui/components/ui/select';
+import { isReviewed, writerPolicy } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   isValueAllowed,
   readingTagset,
@@ -91,6 +93,15 @@ const FieldChange = ({ row, target }) => {
 };
 
 export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
+  const { user } = useAuth();
+  // The person's stamp on every value they replace, as in the editor.
+  const writer = useMemo(
+    () =>
+      writerPolicy(
+        user?.id && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null,
+      ),
+    [project, user],
+  );
   const targets = useMemo(
     () => searchDomains(layerInfo, []).filter((d) => d.kind === 'span' || d.kind === 'morpheme'),
     [layerInfo],
@@ -175,6 +186,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
         client,
         { rows: writable, versions: plan.versions, replan: plan.replan },
         {
+          writer,
           label: blank(plan.repl)
             ? `Clear “${isolate(plan.find)}” in ${targetLabel}`
             : `Replace “${isolate(plan.find)}” → “${isolate(plan.repl)}” in ${targetLabel}`,

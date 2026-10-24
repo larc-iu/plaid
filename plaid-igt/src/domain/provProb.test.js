@@ -57,3 +57,54 @@ describe('provProb follows the value', () => {
     expect(glossMeta(doc).provProb).toBe(0.04);
   });
 });
+
+// A morpheme's provProb is the producer's probability for its form (CWoMP
+// writes one per morpheme), so a form a person changes drops it too.
+const machineMorpheme = () => {
+  const raw = buildRawDoc();
+  raw.textLayers[0].tokenLayers[2].tokens[0].metadata = {
+    form: 'the',
+    prov: 'inferred',
+    provSource: 'service:m',
+    provProb: 0.7,
+    provDetail: { form: 'the' },
+  };
+  const client = makeFakeClient({ reloadDoc: structuredClone(raw) });
+  const doc = makeIgtDoc({
+    raw,
+    project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
+    vocabularies: {},
+    client,
+    user: { id: 'wren@example.com' },
+  });
+  return { doc, client };
+};
+const morphemeMeta = (doc) =>
+  doc._raw.textLayers[0].tokenLayers[2].tokens.find((t) => t.id === 'm-1').metadata;
+
+describe('provProb follows a morpheme form', () => {
+  it('a typed form drops it, provDetail stays', async () => {
+    const { doc } = machineMorpheme();
+    await doc.updateMorphemeForm('m-1', 'thee');
+    await settle(4);
+    expect(morphemeMeta(doc).provProb).toBeUndefined();
+    expect(morphemeMeta(doc).provConfirmed).toBe(true);
+    expect(morphemeMeta(doc).provDetail.form).toBe('the');
+  });
+
+  it('a re-typed form that changes nothing keeps it', async () => {
+    const { doc } = machineMorpheme();
+    await doc.updateMorphemeForm('m-1', 'the');
+    await settle(4);
+    expect(morphemeMeta(doc).provProb).toBe(0.7);
+    expect(morphemeMeta(doc).provConfirmed).toBe(true);
+  });
+
+  it('a split drops it from the piece whose form changed', async () => {
+    const { doc } = machineMorpheme();
+    await doc.splitMorpheme('m-1', 'th', 'e');
+    await settle(4);
+    expect(morphemeMeta(doc).form).toBe('th');
+    expect(morphemeMeta(doc).provProb).toBeUndefined();
+  });
+});

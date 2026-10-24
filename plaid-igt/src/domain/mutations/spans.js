@@ -27,7 +27,8 @@ export const findSpanLayer = (doc, scope, fieldName) => {
 // `prob` is the probability of the value written, for a pick of one of the
 // alternatives a producer weighed: provProb becomes it. A human edit with no
 // probability (a typed value) drops provProb, which describes the value the
-// span held, not this one. provDetail stays, as history.
+// span held, not this one. provDetail stays, as history. The writer's
+// valueEditStamp owns that rule.
 export const planSpan = (doc, targetLayer, targetTokenId, value, metadata, prob = null) => {
   const existing = (targetLayer.spans || []).find(
     (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
@@ -45,12 +46,7 @@ export const planSpan = (doc, targetLayer, targetTokenId, value, metadata, prob 
     // (a machine writer re-stamping) still writes.
     if (!metadata && existing.value === value) return null;
     // No caller fragment = a human edit, which carries the writer's stamp.
-    let fragment = metadata || doc.editStamp(existing.metadata);
-    if (!metadata) {
-      if (typeof prob === 'number') fragment = { ...(fragment || {}), provProb: prob };
-      else if (existing.metadata?.provProb != null)
-        fragment = { ...(fragment || {}), provProb: null };
-    }
+    const fragment = metadata || doc.valueEditStamp(existing.metadata, { prob });
     // Only the fragment's keys are sent, so a key written elsewhere since
     // this copy was loaded survives. `merged` is the same edit made locally.
     const merged = fragment ? mergeMetadata(existing.metadata, fragment) : null;

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { writerPolicy } from '@larc-iu/plaid-client';
 import {
   applyField,
   applyMerge,
@@ -14,6 +15,7 @@ import { openPrecedent } from '@/domain/precedentCache.js';
 import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo.js';
 
+const VERIFIER = writerPolicy(null);
 // A Bulk Edit writes to documents other than any one open, so a project
 // precedent read taken before it (precedentCache.js) holds rows it changed.
 // Every apply drops those reads, so the next document opened reads again.
@@ -87,7 +89,7 @@ const applies = {
     applyField(
       client,
       { rows: [{ kind: 'span', id: 's', docId: 'a', new: 'x' }], versions: { a: 1 } },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     ),
   reanalyze: (client) =>
     applyReanalyze(

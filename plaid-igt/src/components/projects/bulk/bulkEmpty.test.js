@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { writerPolicy } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../../domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient } from '../../../domain/test-helpers.js';
 import {
@@ -10,6 +11,7 @@ import {
 } from './bulkPlan.js';
 import { applyField, applyRespell } from './bulkRunner.js';
 
+const VERIFIER = writerPolicy(null);
 // A replacement that leaves nothing. Respell and a morpheme form refuse it, as
 // the vocabulary's Replace and the assistant do: a word replaced by nothing is
 // deleted with its analysis, and a form or an entry always has one. A field
@@ -153,7 +155,7 @@ describe('Replace in a field to nothing', () => {
     const out = await applyField(
       client,
       { rows: [...rows, ...rows2], versions: { [doc.id]: 1 } },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(out.changed).toBe(2);
     expect(out.cleared).toBe(2);
@@ -166,7 +168,11 @@ describe('Replace in a field to nothing', () => {
   it('a value with something left is still replaced', async () => {
     const rows = collectFieldRows(doc, wordTarget, buildReplacer('.PL', 'contains', '').apply);
     const client = Object.assign(makeFakeClient(), strictMode());
-    await applyField(client, { rows, versions: { [doc.id]: 1 } }, { label: 'Replace' });
+    await applyField(
+      client,
+      { rows, versions: { [doc.id]: 1 } },
+      { writer: VERIFIER, label: 'Replace' },
+    );
     const updates = client.calls.filter((c) => c.kind === 'spans.bulkUpdate');
     expect(updates.map((c) => c.args[0])).toEqual([[{ id: 'sp-2', value: 'N' }]]);
     expect(client.calls.filter((c) => c.kind === 'spans.bulkDelete')).toEqual([]);
@@ -180,7 +186,11 @@ describe('Replace in a field to nothing', () => {
     );
     expect(rows.map((r) => [r.id, r.invalid])).toEqual([['m-2', 'empty']]);
     const client = Object.assign(makeFakeClient(), strictMode());
-    const out = await applyField(client, { rows, versions: { [doc.id]: 1 } }, { label: 'Replace' });
+    const out = await applyField(
+      client,
+      { rows, versions: { [doc.id]: 1 } },
+      { writer: VERIFIER, label: 'Replace' },
+    );
     expect(out.changed).toBe(0);
     expect(writes(client)).toEqual([]);
   });

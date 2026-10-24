@@ -218,6 +218,8 @@ export function collectFieldRows(doc, target, apply) {
       id: entity.id,
       old,
       new: next,
+      // What the write's provenance stamp is read from (applyField).
+      metadata: entity.metadata ?? null,
       ...extra,
       ...(isForm && blank(next) ? { invalid: 'empty' } : {}),
       ...sentenceContext(doc, s, idx, marks),

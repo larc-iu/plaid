@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { writerPolicy } from '@larc-iu/plaid-client';
 import { applyField, applyReanalyze, applyRespell } from './bulkRunner.js';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory.js';
 
+const VERIFIER = writerPolicy(null);
 // Bulk Edit previews, then applies what the preview showed. Between the two,
 // someone else can change a document. Every document's writes carry the
 // version the preview read, so the server refuses a changed document whole,
@@ -75,7 +77,7 @@ describe('Replace in a field checks the version the preview read', () => {
         versions: { a: 3, b: 5 },
         replan: async () => (replans += 1),
       },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(out).toEqual({ changed: 2, skipped: 0 });
     expect(replans).toBe(0);
@@ -99,7 +101,7 @@ describe('Replace in a field checks the version the preview read', () => {
         versions: { a: 3 },
         replan: async () => ({ version: 4, rows: [spanRow('a', 's2', 'CAT', 'FELINE')] }),
       },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(out).toEqual({ changed: 1, skipped: 1 });
     expect(server.batches.map((b) => [b.doc, b.version])).toEqual([
@@ -118,7 +120,7 @@ describe('Replace in a field checks the version the preview read', () => {
         versions: { a: 3 },
         replan: async () => ({ version: 4, rows: [spanRow('a', 's1', 'CATS', 'FELINES')] }),
       },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(out).toEqual({ changed: 0, skipped: 1 });
     expect(server.batches).toHaveLength(1);
@@ -137,7 +139,7 @@ describe('Replace in a field checks the version the preview read', () => {
           return { version: 4, rows: [spanRow('a', 's1', 'CAT', 'FELINE')] };
         },
       },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(out).toEqual({ changed: 0, skipped: 1 });
     expect(server.versions.a).toBe(5);
@@ -154,7 +156,7 @@ describe('Replace in a field checks the version the preview read', () => {
         ],
         versions: { a: 1 },
       },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(server.batches).toHaveLength(1);
     expect(server.batches[0].ops.map((o) => o.kind)).toEqual([
@@ -170,7 +172,7 @@ describe('Replace in a field checks the version the preview read', () => {
       applyField(
         client,
         { rows: [spanRow('a', 's1', 'CAT', 'FELINE')], versions: { a: 1 } },
-        { label: 'Replace' },
+        { writer: VERIFIER, label: 'Replace' },
       ),
     ).rejects.toThrow('HTTP 500');
   });
@@ -185,11 +187,11 @@ describe('Replace in a field checks the version the preview read', () => {
       replan: async (doc) => ({ version: server.versions[doc], rows: [] }),
     };
     // It stops at b, having written a: it says so rather than failing whole.
-    const first = await applyField(client, plan, { label: 'Replace' });
+    const first = await applyField(client, plan, { writer: VERIFIER, label: 'Replace' });
     expect(first.changed).toBe(1);
     expect(first.failed.error.message).toBe('HTTP 500');
     server.fail = null;
-    const out = await applyField(client, plan, { label: 'Replace' });
+    const out = await applyField(client, plan, { writer: VERIFIER, label: 'Replace' });
     // The value in a landed first time, and is not counted as changed since.
     expect(out).toEqual({ changed: 1, skipped: 0 });
     expect(server.batches.map((b) => b.doc)).toEqual(['a', 'b', 'b']);

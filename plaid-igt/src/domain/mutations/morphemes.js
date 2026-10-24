@@ -27,10 +27,14 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 // write-contract rule 3): a verifier's edit confirms a machine-made or
 // contributed segmentation, a contributor's marks it contributed. Merged into
 // the same metadata patch; null-safe for a verifier's own morphemes. A new
-// morpheme a person makes carries the create stamp likewise.
-const stamped = (doc, morpheme, patch) => ({
-  ...patch,
-  ...(doc.editStamp(morpheme?.metadata) || {}),
+// morpheme a person makes carries the create stamp likewise. When the form
+// changes, the producer's provProb, which was the probability of the form
+// replaced, goes (the writer's valueEditStamp).
+const formStamped = (doc, morpheme, form) => ({
+  form,
+  ...(doc.valueEditStamp(morpheme?.metadata, {
+    changes: (morpheme?.metadata?.form ?? null) !== form,
+  }) || {}),
 });
 const created = (doc, meta) => {
   const stamp = doc.createStamp;
@@ -191,11 +195,11 @@ export const morphemeMutations = {
       count: siblings.length + restForms.length,
       types: [target.metadata?.morphType ?? null, ...restForms.map(() => null)],
     });
-    const firstPatch = { form: firstForm };
-    if (types[0] != null && target.metadata?.morphType == null) firstPatch.morphType = types[0];
+    const firstMorphType =
+      types[0] != null && target.metadata?.morphType == null ? { morphType: types[0] } : {};
     const firstMeta = resolved.virtual
-      ? created(this, firstPatch)
-      : stamped(this, target, firstPatch);
+      ? created(this, { form: firstForm, ...firstMorphType })
+      : { ...formStamped(this, target, firstForm), ...firstMorphType };
     // Every piece gets an explicit form, an empty one included. A morpheme
     // with no `form` key renders the word's text (that is how a word's single
     // default morpheme shows the word), so a right-edge split ("ngo-" with
@@ -319,7 +323,7 @@ export const morphemeMutations = {
         ? previousForm
         : previousForm + currentForm;
     const subsequents = siblings.slice(idx + 1);
-    const patch = stamped(this, previous, { form: mergedForm });
+    const patch = formStamped(this, previous, mergedForm);
 
     this._applyRawPatch((next, infoNext) => {
       const layer = infoNext.morphemeTokenLayer;
@@ -418,7 +422,7 @@ export const morphemeMutations = {
       return false;
     }
     return this._writeMorphemeMeta(resolved, 'Failed to update morpheme form', (target) => ({
-      patch: stamped(this, target, { form }),
+      patch: formStamped(this, target, form),
       created: { form },
     }));
   },

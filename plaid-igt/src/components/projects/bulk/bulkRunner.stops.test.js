@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { writerPolicy } from '@larc-iu/plaid-client';
 
+const VERIFIER = writerPolicy(null);
 const feedback = vi.hoisted(() => ({
   notifyError: vi.fn(),
   notifyWarning: vi.fn(),
@@ -77,8 +79,10 @@ describe('a retry after a lost answer', () => {
     });
     const plan = { rows: [spanRow('a', 's1', 'CAT', 'FELINE')], versions: { a: 1 }, replan };
     server.lose = 'a';
-    await expect(applyField(client, plan, { label: 'Replace' })).rejects.toThrow('Network');
-    const out = await applyField(client, plan, { label: 'Replace' });
+    await expect(applyField(client, plan, { writer: VERIFIER, label: 'Replace' })).rejects.toThrow(
+      'Network',
+    );
+    const out = await applyField(client, plan, { writer: VERIFIER, label: 'Replace' });
     expect(out).toEqual({ changed: 1, skipped: 0 });
     // Refused at the old version, and nothing sent again.
     expect(server.batches.map((b) => [b.doc, b.version])).toEqual([
@@ -95,7 +99,7 @@ describe('a retry after a lost answer', () => {
       now: new Map([['s1', spanRow('a', 's1', 'KITTY', 'KITTY')]]),
     });
     const plan = { rows: [spanRow('a', 's1', 'CAT', 'FELINE')], versions: { a: 1 }, replan };
-    expect(await applyField(client, plan, { label: 'Replace' })).toEqual({
+    expect(await applyField(client, plan, { writer: VERIFIER, label: 'Replace' })).toEqual({
       changed: 0,
       skipped: 1,
     });
@@ -161,7 +165,7 @@ describe('a run that stops partway', () => {
         rows: [spanRow('a', 's1', 'CAT', 'FELINE'), spanRow('b', 's2', 'CAT', 'FELINE')],
         versions: { a: 1, b: 1 },
       },
-      { label: 'Replace' },
+      { writer: VERIFIER, label: 'Replace' },
     );
     expect(out).toEqual({ changed: 1, skipped: 0, failed: { docName: 'Doc b', error } });
   });
@@ -196,7 +200,7 @@ describe('a run that stops partway', () => {
       applyField(
         client,
         { rows: [spanRow('a', 's1', 'CAT', 'FELINE')], versions: { a: 1 } },
-        { label: 'Replace' },
+        { writer: VERIFIER, label: 'Replace' },
       ),
     ).rejects.toThrow('HTTP 500');
   });
@@ -255,7 +259,7 @@ describe('an apply in progress', () => {
     await applyField(
       c2,
       { rows: [spanRow('a', 's1', 'CAT', 'FELINE')], versions: { a: 1 } },
-      { label: 'Replace', onProgress: (...args) => fieldSaid.push(args) },
+      { writer: VERIFIER, label: 'Replace', onProgress: (...args) => fieldSaid.push(args) },
     );
     expect(fieldSaid).toEqual([[1, 1]]);
   });
@@ -267,7 +271,11 @@ describe('an apply in progress', () => {
       error: Object.assign(new Error('HTTP 500'), { status: 500, method: 'POST' }),
     };
     const rows = [spanRow('a', 's1', 'CAT', 'FELINE'), spanRow('b', 's2', 'CAT', 'FELINE')];
-    await applyField(client, { rows, versions: { a: 1, b: 1 } }, { label: 'Replace' });
+    await applyField(
+      client,
+      { rows, versions: { a: 1, b: 1 } },
+      { writer: VERIFIER, label: 'Replace' },
+    );
     // What the panels count for the Apply button and its confirm.
     expect(rows.filter((r) => !r.applied).map((r) => r.id)).toEqual(['s2']);
   });

@@ -206,6 +206,9 @@ export class IgtDocument extends DocumentModel {
   editStamp(metadata) {
     return this.writer.editStamp(metadata);
   }
+  valueEditStamp(metadata, opts) {
+    return this.writer.valueEditStamp(metadata, opts);
+  }
   reviewable(metadata) {
     return this.writer.reviewable(metadata);
   }
