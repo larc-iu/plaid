@@ -138,7 +138,8 @@
 
 ;; The Python source trees, each compiled by the gate.
 (def ^:private python-trees
-  ["plaid-agent/src" "plaid-client-py/src" "plaid-igt/services" "plaid-ud/services" "plaid-umr/services"])
+  ["plaid-agent/src" "plaid-agent/bench" "plaid-client-py/src" "plaid-igt/services" "plaid-ud/services"
+   "plaid-umr/services"])
 
 ;; Run after the JavaScript packages are installed, deliberately: the
 ;; assistant's mirror tests run the apps' own domain modules through node, and

@@ -106,7 +106,9 @@
         cport    (free-port)
         vport    (free-port)
         core     (str "http://127.0.0.1:" cport)
-        base     (str "http://localhost:" vport)
+        ;; Vite is bound to 127.0.0.1 and probed there: `localhost` may resolve
+        ;; to ::1 first on a runner, and bb's probe dials IPv4.
+        base     (str "http://127.0.0.1:" vport)
         cache    (str (fs/absolutize (fs/path app-dir "node_modules" (str ".vite-e2e-" (fs/file-name run-dir)))))
         cfg      (str (fs/path db-dir "config.toml"))
         log      (fn [n] (fs/file run-dir n))
@@ -133,7 +135,7 @@
         (println "  core up, token minted")
         (reset! vite-p (p/process ["node" "node_modules/vite/bin/vite.js"
                                    "--config" "../plaid-ui/e2e/vite.e2e.config.js"
-                                   "--port" (str vport) "--strictPort"]
+                                   "--host" "127.0.0.1" "--port" (str vport) "--strictPort"]
                                   {:dir app-dir
                                    :extra-env (assoc env "PLAID_E2E_VITE_CACHE" cache)
                                    :out (log "vite.log") :err :out}))
