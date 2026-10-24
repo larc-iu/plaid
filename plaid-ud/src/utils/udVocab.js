@@ -11,6 +11,8 @@
 
 // By real path, so the node suite loads it (no `@ui` alias there).
 import { CATEGORICAL } from '../../../plaid-ui/src/domain/dyes.js';
+import { MODES, cleanDescriptions } from './udVocabMode.js';
+import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from './udVocabDescriptions.js';
 
 const UD_NAMESPACE = 'ud';
 
@@ -256,3 +258,97 @@ export const readFeatureInventory = (config) => {
 // Drop empty assignments before persisting a {label: '#hex'} map. Pass to setConfig.
 export const cleanColorMap = (colorMap) =>
   Object.fromEntries(Object.entries(colorMap || {}).filter(([label, color]) => label && color));
+
+// The feature inventory as stored: entries with a name, each value trimmed and
+// the empty ones dropped.
+export const cleanInventory = (inventory) =>
+  (inventory || [])
+    .filter((e) => e.key.trim())
+    .map((e) => ({
+      key: e.key.trim(),
+      values: (e.values || []).map((v) => v.trim()).filter(Boolean),
+    }));
+
+// Every vocabulary cell the settings tab writes, as `{bundle, entity, key,
+// value}`, from its drafts: `{xposVocab, deprelVocab, uposVocab, deprelColors,
+// uposColors, featureInventory, modes, descriptions}`. Mode and descriptions
+// are sibling keys beside `vocab` (udVocabMode.js). Descriptions are stored
+// only where they differ from what ships, so a project that never edited them
+// stores nothing and follows the app's copy. A layer the project lacks writes
+// nothing.
+export const vocabCells = (info, drafts) => {
+  const storedDescriptions = (map, shipped) =>
+    cleanDescriptions(
+      Object.fromEntries(
+        Object.entries(map || {}).filter(([value, text]) => text !== (shipped?.[value] ?? '')),
+      ),
+    );
+  const cells = [];
+  const add = (bundle, entity, key, value) => entity && cells.push({ bundle, entity, key, value });
+  const { modes, descriptions } = drafts;
+
+  add('spanLayers', info.xposLayer, 'vocab', drafts.xposVocab);
+  add('spanLayers', info.xposLayer, 'vocabMode', modes.xpos || MODES.OPEN);
+  add('spanLayers', info.xposLayer, 'vocabDescriptions', storedDescriptions(descriptions.xpos));
+
+  add('relationLayers', info.relationLayer, 'vocab', drafts.deprelVocab);
+  add('relationLayers', info.relationLayer, 'colors', cleanColorMap(drafts.deprelColors));
+  add('relationLayers', info.relationLayer, 'vocabMode', modes.deprel || MODES.OPEN);
+  add(
+    'relationLayers',
+    info.relationLayer,
+    'vocabDescriptions',
+    storedDescriptions(descriptions.deprel, DEPREL_DESCRIPTIONS),
+  );
+
+  add('spanLayers', info.uposLayer, 'vocab', drafts.uposVocab);
+  add('spanLayers', info.uposLayer, 'colors', cleanColorMap(drafts.uposColors));
+  add('spanLayers', info.uposLayer, 'vocabMode', modes.upos || MODES.OPEN);
+  add(
+    'spanLayers',
+    info.uposLayer,
+    'vocabDescriptions',
+    storedDescriptions(descriptions.upos, UPOS_DESCRIPTIONS),
+  );
+
+  add('spanLayers', info.featuresLayer, 'inventory', cleanInventory(drafts.featureInventory));
+  add('spanLayers', info.featuresLayer, 'vocabMode', modes.feats || MODES.OPEN);
+  add(
+    'spanLayers',
+    info.featuresLayer,
+    'vocabDescriptions',
+    storedDescriptions(descriptions.feats),
+  );
+  return cells;
+};
+
+// The one cell that adds a vocabulary's off-list values to its list, as
+// `{bundle, entity, key, value}`: the feature inventory with `field.features`'
+// values merged in by name (`[{key, values: [{value}]}]`), or the list of a
+// plain or relation vocabulary (`field.key`, read from `info.vocab`) with
+// `field.values` added after it.
+export const withAddedValues = (info, field) => {
+  const entity = info[field.layer];
+  if (field.kind === 'feats') {
+    const inventory = info.vocab.featureInventory.list.map((e) => ({
+      key: e.key,
+      values: [...(e.values || [])],
+    }));
+    const byKey = new Map(inventory.map((e) => [e.key, e]));
+    for (const entry of field.features) {
+      const add = entry.values.map((v) => v.value);
+      if (byKey.has(entry.key)) {
+        const existing = byKey.get(entry.key);
+        existing.values = [...new Set([...existing.values, ...add])];
+      } else {
+        inventory.push({ key: entry.key, values: add });
+      }
+    }
+    return { bundle: 'spanLayers', entity, key: 'inventory', value: inventory };
+  }
+  const value = [
+    ...new Set([...(info.vocab[field.key] || []), ...field.values.map((v) => v.value)]),
+  ];
+  const bundle = field.kind === 'relation' ? 'relationLayers' : 'spanLayers';
+  return { bundle, entity, key: 'vocab', value };
+};

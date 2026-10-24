@@ -7,6 +7,7 @@ import {
   autoColor,
   cleanColorMap,
   baseRel,
+  vocabCells,
 } from '../../utils/udVocab.js';
 import {
   readMetadataFields,
@@ -26,7 +27,6 @@ import { VocabModeSwitch } from '../common/VocabModeSwitch.jsx';
 import { DescriptionList } from '../common/DescriptionList.jsx';
 import { MODES, cleanDescriptions } from '../../utils/udVocabMode.js';
 import { queueRuleChanges, withConfigWrites } from '../../utils/udConstraints.js';
-import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from '../../utils/udVocabDescriptions.js';
 import { ColorField } from '../common/ColorField.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
@@ -135,64 +135,14 @@ const conflictMessage = ({ replaced, kept }) => {
 };
 
 // Every config cell this tab writes, with the value the tab's state stores
-// there. Mode and descriptions are SIBLING keys beside `vocab`, never a new
-// shape for it: see utils/udVocabMode.js. Descriptions are stored only where
-// they differ from what ships, so a project that never edited them stores
-// nothing and follows the app's copy.
+// there: the vocabulary cells udVocab.js shapes (vocabCells), and the
+// project's metadata fields.
 const configCells = (state, info, project) => {
-  const storedDescriptions = (map, shipped) =>
-    cleanDescriptions(
-      Object.fromEntries(
-        Object.entries(map || {}).filter(([value, text]) => text !== (shipped?.[value] ?? '')),
-      ),
-    );
-  const cells = [];
-  const add = (bundle, entity, key, value) =>
-    entity && cells.push({ id: `${entity.id}/${key}`, bundle, entity, key, value });
-  const { modes, descriptions } = state;
-
-  add('spanLayers', info.xposLayer, 'vocab', state.xposVocab);
-  add('spanLayers', info.xposLayer, 'vocabMode', modes.xpos || MODES.OPEN);
-  add('spanLayers', info.xposLayer, 'vocabDescriptions', storedDescriptions(descriptions.xpos));
-
-  add('relationLayers', info.relationLayer, 'vocab', state.deprelVocab);
-  add('relationLayers', info.relationLayer, 'colors', cleanColorMap(state.deprelColors));
-  add('relationLayers', info.relationLayer, 'vocabMode', modes.deprel || MODES.OPEN);
-  add(
-    'relationLayers',
-    info.relationLayer,
-    'vocabDescriptions',
-    storedDescriptions(descriptions.deprel, DEPREL_DESCRIPTIONS),
-  );
-
-  add('spanLayers', info.uposLayer, 'vocab', state.uposVocab);
-  add('spanLayers', info.uposLayer, 'colors', cleanColorMap(state.uposColors));
-  add('spanLayers', info.uposLayer, 'vocabMode', modes.upos || MODES.OPEN);
-  add(
-    'spanLayers',
-    info.uposLayer,
-    'vocabDescriptions',
-    storedDescriptions(descriptions.upos, UPOS_DESCRIPTIONS),
-  );
-
-  const inventory = state.featureInventory
-    .filter((e) => e.key.trim())
-    .map((e) => ({
-      key: e.key.trim(),
-      values: (e.values || []).map((v) => v.trim()).filter(Boolean),
-    }));
-  add('spanLayers', info.featuresLayer, 'inventory', inventory);
-  add('spanLayers', info.featuresLayer, 'vocabMode', modes.feats || MODES.OPEN);
-  add(
-    'spanLayers',
-    info.featuresLayer,
-    'vocabDescriptions',
-    storedDescriptions(descriptions.feats),
-  );
-
+  const cells = vocabCells(info, state);
+  const add = (bundle, entity, key, value) => entity && cells.push({ bundle, entity, key, value });
   add('projects', project, DOCUMENT_METADATA_KEY, toMetadataConfig(state.documentFields));
   add('projects', project, SENTENCE_METADATA_KEY, toMetadataConfig(state.sentenceFields));
-  return cells;
+  return cells.map((c) => ({ id: `${c.entity.id}/${c.key}`, ...c }));
 };
 
 // "UD settings" section: project-specific controlled vocabularies, colors, and

@@ -14,7 +14,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError, notifySuccess } from '../../utils/feedback.jsx';
 import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
-import { baseRel } from '../../utils/udVocab.js';
+import { baseRel, withAddedValues } from '../../utils/udVocab.js';
 import { MODES } from '../../utils/udVocabMode.js';
 import { queueRuleChanges, withConfigWrites } from '../../utils/udConstraints.js';
 import {
@@ -192,48 +192,29 @@ export const ProjectValidation = () => {
       setAdding(field.key);
       const attempt = async (proj) => {
         const info = getUdLayerInfo(proj);
-        const layer = info[field.layer];
+        const cell = withAddedValues(info, field);
+        const expected = expectStored(cell.entity, UD_NAMESPACE, cell.key);
         if (field.kind === 'feats') {
-          const inventory = info.vocab.featureInventory.list.map((e) => ({
-            key: e.key,
-            values: [...(e.values || [])],
-          }));
-          const byKey = new Map(inventory.map((e) => [e.key, e]));
-          for (const entry of field.features) {
-            const add = entry.values.map((v) => v.value);
-            if (byKey.has(entry.key)) {
-              const existing = byKey.get(entry.key);
-              existing.values = [...new Set([...existing.values, ...add])];
-            } else {
-              inventory.push({ key: entry.key, values: add });
-            }
-          }
           await client.spanLayers.setConfig(
             field.layerId,
             UD_NAMESPACE,
-            'inventory',
-            inventory,
+            cell.key,
+            cell.value,
             undefined,
-            expectStored(layer, UD_NAMESPACE, 'inventory'),
+            expected,
           );
         } else {
-          const next = [
-            ...new Set([...(info.vocab[field.key] || []), ...field.values.map((v) => v.value)]),
-          ];
-          const bundle = field.kind === 'relation' ? 'relationLayers' : 'spanLayers';
           // A closed list is a rule its layer holds on the server, so the
           // layer takes the new list's rule in the same batch.
-          const after = getUdLayerInfo(
-            withConfigWrites(proj, [{ entity: layer, key: 'vocab', value: next }]),
-          );
+          const after = getUdLayerInfo(withConfigWrites(proj, [cell]));
           await client.batched((b) => {
-            b[bundle].setConfig(
+            b[cell.bundle].setConfig(
               field.layerId,
               UD_NAMESPACE,
-              'vocab',
-              next,
+              cell.key,
+              cell.value,
               undefined,
-              expectStored(layer, UD_NAMESPACE, 'vocab'),
+              expected,
             );
             queueRuleChanges(b, info, after);
           });
