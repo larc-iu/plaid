@@ -94,7 +94,8 @@ test.beforeAll(async () => {
   await client.tokens.bulkCreate(
     words.map((w) => ({ tokenLayerId: wordLayerId, text: TEXT, ...w })),
   );
-  // No morphemes seeded on purpose: reconcile-on-open heals one per annotatable word (B11-03).
+  // No morphemes seeded on purpose: each annotatable word reads as one
+  // virtual morpheme, which its first write stores (B11-03).
   const seeded = await client.documents.get(documentId, true);
   const wl = seeded.textLayers
     .find((l) => roleOf(l) === ROLES.BASELINE)

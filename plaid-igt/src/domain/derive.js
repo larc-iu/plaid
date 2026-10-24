@@ -159,9 +159,9 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   // A word nobody has analyzed yet gets a morpheme anyway, synthesized here
   // rather than stored (see virtualMorpheme.js). It is the word: same extent,
   // same text, no annotation. Consumers of `token.morphemes` therefore see one
-  // morpheme per word whether or not anyone has segmented it, which is what
-  // they saw when reconcile-on-open wrote these rows into the database. An
-  // ignored token is no word here (above), so it gets none.
+  // morpheme per word whether or not anyone has segmented it, and the first
+  // write on it stores it. An ignored token is no word here (above), so it
+  // gets none.
   const emptyMorphAnnotations = annotationsFor(null, morphSpanMaps);
   const virtualMorpheme = (word) => ({
     id: virtualMorphemeId(word.id),

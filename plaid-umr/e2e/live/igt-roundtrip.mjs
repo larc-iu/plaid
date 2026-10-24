@@ -309,10 +309,11 @@ try {
   // ---- 4. UMR reads it again ------------------------------------------------
 
   // Opening it writes nothing (R3): the reader reads what IGT's edits left,
-  // and the next UMR write to a sentence stores it (umrSettle.js).
+  // and the next UMR write to a sentence stores it (umrSettle.js). UmrDocument
+  // has no check of its own on open, so the version is what shows the open
+  // wrote nothing.
   umr = await loadUmr();
   const version = umr.raw.version;
-  await umr.validateOnOpen();
   umr = await loadUmr();
   check(umr.raw.version === version, 'the open writes nothing', `${version} to ${umr.raw.version}`);
   const toStore = planSettle(umr.graph, null);
