@@ -461,3 +461,20 @@ def test_a_gap_morpheme_is_no_form_in_corpus_stats_or_the_worklist():
     unlinked = call_tool(ws(c), 'worklist', {'kind': 'unlinked', 'level': 'morpheme'})
     for listing in (unglossed, unlinked):
         assert listing.startswith('3 morphemes') and '  1\tgam\t' in listing, listing
+
+
+def test_a_gap_morpheme_is_not_found_or_targeted_by_its_word_form():
+    """R2-QL-2: a morpheme matched by form reads the form it shows
+    (shown_morph), so a gap beside others is no match for its word's
+    surface, as igt's Search finds it. Alone in its word it still is."""
+    c = FakeClient()
+    doc = c._documents['d1']
+    doc['text_layers'][0]['token_layers'][2]['tokens'].append({'id': 'm-2b', 'text': 'text1', 'begin': 7, 'end': 10, 'precedence': 2})
+    w = ws(c)
+    out = call_tool(w, 'set_field_for_form', {'form': 'GAM', 'field': 'Morph Gloss', 'value': 'fish'})
+    assert {op['token_id'] for op in changes(w)} == {'m-4a'}, out
+    found = call_tool(ws(c), 'search', {'pattern': 'gam', 'where': 'morpheme'})
+    assert 's1.w2' not in found and 's2.w1' in found, found
+    # Alone in its word, a formless morpheme shows the surface and is found.
+    alone = call_tool(ws(), 'search', {'pattern': 'gam', 'where': 'morpheme'})
+    assert 's1.w2' in alone, alone

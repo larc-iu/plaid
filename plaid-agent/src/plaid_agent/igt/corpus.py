@@ -95,22 +95,28 @@ class Corpus(BaseCorpus):
         return [self.word(var, **c), ['token', var, {'layer': self.W, **vs}],
                 ['not', ['token', '?bxm', {'layer': self.M, **vs}]]]
 
-    def shown_morph(self, var: str = '?m') -> List[list]:
+    def shown_morph(self, var: str = '?m', form: Optional[Dict[str, Any]] = None) -> List[list]:
         """A morpheme token ``var`` that shows a form: its stored one, or,
         alone in its word, the word's surface. A morpheme with no form beside
-        others is a gap the editor shows as ?, and no form at all."""
-        vs = {'doc': {'var': '?gxd'}, 'begin': {'var': '?gxb'}, 'end': {'var': '?gxe'}}
+        others is a gap the editor shows as ?, and no form at all. ``form``,
+        when given, is a value constraint the shown form must meet. The
+        variables it adds are named after ``var``, so one query can hold it
+        for several morphemes."""
+        t = ''.join(ch for ch in var if ch.isalnum())
+        vs = {'doc': {'var': f'?gxd{t}'}, 'begin': {'var': f'?gxb{t}'}, 'end': {'var': f'?gxe{t}'}}
         tok = lambda v: ['token', v, {'layer': self.M, **vs}]  # noqa: E731
+        stored = self.has_form(var) if form is None else self.morph(var, metadata={'form': form})
+        surface = [] if form is None else [self.morph(var, value=form)]
         return [self.morph(var), tok(var),
-                ['or', [self.has_form(var)],
-                 [['not', self.has_form(var)], ['not', tok('?ga'), tok('?gb'), ['precedes', '?ga', '?gb']]]]]
+                ['or', [stored],
+                 [*surface, ['not', self.has_form(var)],
+                  ['not', tok(f'?ga{t}'), tok(f'?gb{t}'), ['precedes', f'?ga{t}', f'?gb{t}']]]]]
 
-    def morph_form_clauses(self, var: str, spec: Dict[str, Any]) -> list:
-        """Match a morpheme by its FORM: the stored metadata.form, or, for a
-        morpheme without one, the surface it inherits from its word."""
-        return ['or',
-                [self.morph(var, metadata={'form': spec})],
-                [self.morph(var, value=spec), ['not', self.has_form(var)]]]
+    def morph_form_clauses(self, var: str, spec: Dict[str, Any]) -> List[list]:
+        """Match a morpheme by the FORM it shows (:func:`shown_morph`): the
+        stored metadata.form, or, for a morpheme alone in its word without
+        one, the word's surface. A gap beside other morphemes matches none."""
+        return self.shown_morph(var, spec)
 
     # --- morph types -----------------------------------------------------------
     # A morpheme linked to an entry that goes by a type goes by that one, and

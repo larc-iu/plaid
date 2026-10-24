@@ -138,7 +138,7 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
         rows, per_doc, docs = _spread_fetch(c, where, ['?t'], '?t', limit, 2)
         return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total, None
     if where_l == 'morpheme':
-        where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
+        where = c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w')
         total = c.count(where, ['?w'])  # words
         rows, per_doc, docs = _spread_fetch(c, where, ['?m', '?w'], '?w', limit, 3)
         return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total, c.count(where, ['?m'])
@@ -190,7 +190,7 @@ def q_empty_hint(ws: Workspace, pattern: str, where_l: str, field, regex: bool, 
             rows = [(r[0], r[-1]) for r in c.group([c.word('?h', value=spec)], ['?h.value'], limit=200)]
         elif where_l == 'morpheme':
             rows = [(Corpus.morph_key(r[0], r[1]), r[-1])
-                    for r in c.group([c.morph_form_clauses('?h', spec)], ['?h.metadata.form', '?h.value'], limit=200)]
+                    for r in c.group(c.morph_form_clauses('?h', spec), ['?h.metadata.form', '?h.value'], limit=200)]
         else:
             rows = [(r[0], r[-1]) for r in c.group([c.span('?h', field.layer_id, value=spec)], ['?h.value'], limit=200)]
         values: Counter = Counter()
@@ -209,7 +209,7 @@ def q_empty_hint(ws: Workspace, pattern: str, where_l: str, field, regex: bool, 
     else:
         other = 'baseline'
     if other == 'morpheme':
-        n = c.count([c.morph_form_clauses('?h', spec)], ['?h'])
+        n = c.count(c.morph_form_clauses('?h', spec), ['?h'])
     elif other == 'baseline':
         n = c.word_count([c.word('?h', value=spec)], '?h')
     else:
@@ -708,7 +708,7 @@ def concordance_where(c: Corpus, pattern: str, where_l: str, field, regex: bool,
     if where_l == 'baseline':
         return [c.word('?w', value=spec)], None
     if where_l == 'morpheme':
-        return [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w'), '?m'
+        return c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w'), '?m'
     if field.scope == 'Word':
         return [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?w'], c.word('?w')], None
     return [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m']] + c.in_word('?m', '?w'), '?m'
@@ -979,7 +979,7 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
             lines.extend(_value_refs(ws, word + _with_value(c, '?w', vspec, False), '?w', value, False))
     # the morpheme
     if c.M:
-        morph = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
+        morph = c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w')
         n = c.count(morph, ['?m'])
         found.append(n)
         if not n:
@@ -1217,7 +1217,7 @@ def word_condition(c: Corpus, cond: Dict[str, Any], wvar: str, tag: str, regex: 
         if k in ('form', 'word', 'baseline'):
             cons['value'] = spec
         elif k == 'morpheme':
-            extra += [c.morph_form_clauses(f'?m{tag}f', spec)] + c.in_word(f'?m{tag}f', wvar, f'{tag}f')
+            extra += c.morph_form_clauses(f'?m{tag}f', spec) + c.in_word(f'?m{tag}f', wvar, f'{tag}f')
         elif k == 'type':
             extra += c.morph_type_clauses(f'?m{tag}t', spec, str(pat), regex) + c.in_word(f'?m{tag}t', wvar, f'{tag}t')
         else:
@@ -1685,9 +1685,9 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     if f.scope == 'Word':
         unit = [c.word('?u', value=spec)] + target_condition(c, cond, '?u', 'Word')
     else:
-        unit = [c.morph_form_clauses('?u', spec)] + target_condition(c, cond, '?u', 'Morpheme')
-    with_span = [] if False else c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
-                                            [['?u.doc'], ['?u.begin']])
+        unit = c.morph_form_clauses('?u', spec) + target_condition(c, cond, '?u', 'Morpheme')
+    with_span = c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
+                         [['?u.doc'], ['?u.begin']])
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
                          [['?u.doc'], ['?u.begin']])
     rows = [(u, s) for u, s in with_span] + [(u, None) for (u,) in without]
