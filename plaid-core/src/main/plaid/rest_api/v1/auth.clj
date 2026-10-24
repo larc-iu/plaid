@@ -68,6 +68,8 @@
   ([secret-key id password-changes ttl-seconds project-ids]
    (sign-user-token secret-key id password-changes ttl-seconds project-ids nil))
   ([secret-key id password-changes ttl-seconds project-ids runner]
+   (sign-user-token secret-key id password-changes ttl-seconds project-ids runner nil))
+  ([secret-key id password-changes ttl-seconds project-ids runner api-token-id]
    (jwt/sign (cond-> {:user/id id
                       :version password-changes
                       :exp (exp-seconds ttl-seconds)}
@@ -78,7 +80,10 @@
                                           :jti (str (random-uuid)))
                ;; Who runs the service holding it, when that is someone else
                ;; (see `runner-reach`).
-               (some? runner) (assoc :scope/runner runner))
+               (some? runner) (assoc :scope/runner runner)
+               ;; The named API token whose request obtained it, when one
+               ;; did: it dies when that token is revoked (`wrap-read-jwt`).
+               (some? api-token-id) (assoc :delegated/api-token (str api-token-id)))
              secret-key)))
 
 (defn- sign-api-token
@@ -128,12 +133,21 @@
   `not-after` is the `exp` of the credential the request came with, when it
   has one. The new token expires no later, so a token never mints one that
   outlives it: a delegated token that submits to a delegating service (its
-  holder's own, say) cannot renew itself that way."
+  holder's own, say) cannot renew itself that way.
+
+  `api-token-id` is the named API token the request was signed with, or that
+  the delegated token signing it carries. A named token has no `exp`, so
+  `not-after` does not bound the new token, and it carries the API token's
+  id instead: `wrap-read-jwt` refuses it, and the streams it opened close,
+  once that API token is revoked, as a link token minted under one does
+  (C1-6)."
   ([db secret-key user-id project-ids]
    (issue-delegated-token! db secret-key user-id project-ids nil))
   ([db secret-key user-id project-ids not-after]
    (issue-delegated-token! db secret-key user-id project-ids not-after nil))
   ([db secret-key user-id project-ids not-after runner]
+   (issue-delegated-token! db secret-key user-id project-ids not-after runner nil))
+  ([db secret-key user-id project-ids not-after runner api-token-id]
    (when-let [account (user/get-internal db user-id)]
      (sign-user-token secret-key
                       (:user/id account)
@@ -142,7 +156,8 @@
                         (number? not-after)
                         (min (- (long not-after) (quot (System/currentTimeMillis) 1000))))
                       (vec (distinct (map (comp str/lower-case str) project-ids)))
-                      (when (and runner (not= runner (:user/id account))) runner)))))
+                      (when (and runner (not= runner (:user/id account))) runner)
+                      api-token-id))))
 
 ;; ---------------------------------------------------------------------------
 ;; Link tokens
@@ -829,6 +844,14 @@
                 (some? (:user/deactivated-at user))
                 {:status 401
                  :body {:error (str "Token invalid because user is deactivated.")}}
+
+                ;; A delegated token obtained by a request signed with a named
+                ;; API token lives only as long as that token does.
+                (and (not link?)
+                     (some? (:delegated/api-token token-data))
+                     (not (api-token/active? db (:delegated/api-token token-data))))
+                {:status 401
+                 :body {:error (str "Token revoked or unknown.")}}
 
                 ;; API-token branch: revocation/existence is the only check.
                 ;; Skips the `password_changes` version check entirely so the

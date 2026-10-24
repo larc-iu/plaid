@@ -136,3 +136,50 @@
     (is (= 503 (:status (submit! fix/admin-token pid "trap"))))
     (is @closed)
     (is (nil? (handed-token sent)) "no token went down the channel")))
+
+(defn- open-listen!
+  "Open /listen on `pid` with `token` onto a stub channel. Returns an atom
+  that turns true when the server closes the stream."
+  [token pid]
+  (let [closed (atom false)]
+    (with-redefs [http-kit/as-channel (fn [_ {:keys [on-open]}]
+                                        (on-open (stub-channel closed (atom [])))
+                                        {:status 200 :body ""})]
+      (fix/rest-handler ((as token) :get (str "/api/v1/projects/" pid "/listen"))))
+    closed))
+
+(deftest a-delegated-token-dies-with-the-api-token-that-obtained-it
+  ;; C1-6: a request signed with a named API token has no exp, so the token a
+  ;; delegating service was handed for it lived its full hour, and revoking
+  ;; the API token did not touch it. Link tokens already recheck the API token
+  ;; they were minted under, on every use.
+  (events/reset-state!)
+  (let [pid (h/create-test-project admin-request "Lifetime S")
+        _ (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/maintainers/user1@example.com")})
+        {:keys [sent]} (open-service! fix/user1-token pid "helper")
+        {api-token :token tid :id} (:body (api-call admin-request {:method :post
+                                                                   :path "/api/v1/users/admin@example.com/tokens"
+                                                                   :body {:name "leaked"}}))
+        _ (is (= 200 (:status (submit! api-token pid "helper"))))
+        handed (handed-token sent)
+        ;; A delegated token handed on through another submit carries the
+        ;; same API token.
+        _ (is (= 200 (:status (submit! handed pid "helper"))))
+        handed-on (handed-token sent)
+        read-project (fn [token] (:status (api-call (as token) {:method :get :path (str "/api/v1/projects/" pid)})))
+        stream-closed (open-listen! handed pid)]
+    (is (string? handed))
+    (is (not= handed handed-on))
+    (is (= 200 (read-project handed)))
+    (is (= 200 (read-project handed-on)))
+    (is (not @stream-closed) "the stream the delegated token opened is open")
+    (is (= 204 (:status (api-call admin-request {:method :delete
+                                                 :path (str "/api/v1/users/admin@example.com/tokens/" tid)}))))
+    (testing "after the revoke"
+      (is (= 401 (read-project api-token)))
+      (is (= 401 (read-project handed)))
+      (is (= 401 (read-project handed-on)))
+      (is @stream-closed "the stream the delegated token opened closed"))
+    (testing "a delegated token a session obtained is untouched"
+      (is (= 200 (:status (submit! fix/admin-token pid "helper"))))
+      (is (= 200 (read-project (handed-token sent)))))))

@@ -160,12 +160,12 @@
   "Register the relationship between an http-kit channel and its associated
    client channel, project, stop channel, and client ID. This enables proper cleanup
    when the SSE connection closes. `opener` is the credential the stream was
-   opened with, {:user-id :token-id :token-version :token-exp :db}, as a service
-   channel records it, so the stream closes the moment its opener could no
-   longer open it (see `on-standing-change!`)."
+   opened with, {:user-id :token-id :token-version :token-exp :runner
+   :origin-token :db}, as a service channel records it, so the stream closes
+   the moment its opener could no longer open it (see `on-standing-change!`)."
   [http-channel client-chan project-id stop-chan client-id opener]
   (swap! channel-mappings assoc http-channel
-         (merge (select-keys opener [:user-id :token-id :token-version :token-exp :runner :db])
+         (merge (select-keys opener [:user-id :token-id :token-version :token-exp :runner :origin-token :db])
                 {:client-chan client-chan
                  :project-id  project-id
                  :stop-chan   stop-chan

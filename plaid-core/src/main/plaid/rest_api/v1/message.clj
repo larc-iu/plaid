@@ -29,8 +29,11 @@
   let in only until then. A delegated token handed to a service someone else
   runs (`runner`, its `scope/runner` claim) is let in only while that runner
   may act for others on the project (`pra/runner-delegates?`), as
-  `wrap-read-jwt` asks of every request it makes."
-  [{:keys [db project-id user-id token-id token-version token-exp runner]} privilege]
+  `wrap-read-jwt` asks of every request it makes. A delegated token obtained
+  by a request signed with a named API token (`origin-token`, its
+  `delegated/api-token` claim) is let in only while that API token is
+  active."
+  [{:keys [db project-id user-id token-id token-version token-exp runner origin-token]} privilege]
   (let [account (user/get-internal db user-id)]
     (boolean
      (and account
@@ -38,6 +41,7 @@
           (prj/get db project-id)
           (nil? (:user/deactivated-at account))
           (or (nil? runner) (pra/runner-delegates? db runner project-id))
+          (or (nil? origin-token) (api-token/active? db origin-token))
           (if token-id
             (api-token/active? db token-id)
             (= token-version (:user/password-changes account)))
@@ -156,6 +160,7 @@
                                           :token-version (-> req :jwt-data :version)
                                           :token-exp (-> req :jwt-data :exp)
                                           :runner (-> req :jwt-data :scope/runner)
+                                          :origin-token (-> req :jwt-data :delegated/api-token)
                                           :db db}]
                               (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
                               ;; The credential was admitted by the middleware, before this
@@ -275,7 +280,7 @@
 (defonce ^:private requester-streams
   ;; A requester's stream on a service request (the submit's own, or one
   ;; attached later) -> what opened it: `{:request-id :project-id :user-id
-  ;; :token-id :token-version :token-exp :runner :db}`.
+  ;; :token-id :token-version :token-exp :runner :origin-token :db}`.
   (atom {}))
 
 (defn- stream-opener
@@ -289,6 +294,7 @@
    :token-version (-> req :jwt-data :version)
    :token-exp (-> req :jwt-data :exp)
    :runner (-> req :jwt-data :scope/runner)
+   :origin-token (-> req :jwt-data :delegated/api-token)
    :db (:db req)})
 
 (defn- close-request-stream!
@@ -649,10 +655,14 @@
             ;; delegated token cannot renew itself through a service. It
             ;; names the service's runner, so it reaches a project only
             ;; while the runner still maintains it (`pra/runner-reach`).
+            ;; And it dies with the named API token the request came with,
+            ;; or that the delegated token it came with carries.
             delegated-token (when delegating?
                               (pra/issue-delegated-token! db secret-key user-id scope
                                                           (-> req :jwt-data :exp)
-                                                          (:user-id entry)))
+                                                          (:user-id entry)
+                                                          (or (:api-token/id req)
+                                                              (-> req :jwt-data :delegated/api-token))))
             ;; The service is told which projects the token reaches, so it
             ;; can say which of the ones it was asked about it cannot open.
             event (cond-> {:request-id request-id :requester-id user-id :data data}
