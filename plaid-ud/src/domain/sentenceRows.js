@@ -44,6 +44,11 @@ export const tokensWithin = (sorted, parent) => {
   return out;
 };
 
+// The words in `words` with no UD word under them, which every reader shows
+// as a stand-in (below), in their order. Both lists sorted by position.
+export const wordsWithNoUdWord = (sortedWords, sortedMorphemes) =>
+  sortedWords.filter((word) => tokensWithin(sortedMorphemes, word).length === 0);
+
 // Whether a sentence gets a row, and with it a number. A sentence holding no
 // word (a punctuation-only line another app left untokenized) has none, so
 // the rows after it number on without a gap. The grid, Ask, `@`, comment

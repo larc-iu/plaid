@@ -106,52 +106,186 @@ test('a set-up declares the rules of every layer it makes in the batch that make
   ]);
 });
 
-// R3 (2026-10-24): a set-up writes nothing into the documents. A word with no
-// UD word is shown as one by every reader, and the first write on it makes it.
-test('a set-up makes no UD word in any document, and reads none', async () => {
-  const project = substrateOnly();
-  const bareDoc = () => {
-    // The document as the server holds it after the set-up's batch: UD's
-    // layers there, and its words without a UD word.
-    const raw = rawDocFromConllu(INPUT, 'bare');
-    raw.textLayers[0].tokenLayers[2].tokens = [];
-    return raw;
-  };
-  const created = [];
+// R3a (2026-10-24): a set-up makes every word's missing UD word, with its
+// lemma copied from its form, in the set-up's own batch, since Grew search,
+// Rewrite and the Words count read stored words. An open after it writes
+// nothing.
+
+// A document as another app left it: words, and of UD's words only those
+// whose text is in `keep`, with their spans.
+const substrateDoc = (keep = []) => {
+  const raw = rawDocFromConllu(INPUT, 'd1');
+  const text = raw.textLayers[0];
+  const body = [...text.text.body];
+  const words = text.tokenLayers.find((l) => l.config?.plaid?.role === 'syntactic-word');
+  words.tokens = words.tokens.filter((t) => keep.includes(body.slice(t.begin, t.end).join('')));
+  const kept = new Set(words.tokens.map((t) => t.id));
+  for (const layer of words.spanLayers) {
+    layer.spans = (layer.spans || []).filter((sp) => sp.tokens.every((t) => kept.has(t)));
+    for (const rel of layer.relationLayers || []) rel.relations = [];
+  }
+  return raw;
+};
+
+// A client holding `project` and `docs`, recording every batch as its ops.
+const adoptClient = (project, docs) => {
+  const batches = [];
   const read = [];
+  const queue = (ops) =>
+    new Proxy(
+      {},
+      {
+        get: (_t, resource) =>
+          new Proxy(
+            {},
+            {
+              get:
+                (_u, method) =>
+                (...args) => {
+                  ops.push({ op: `${String(resource)}.${String(method)}`, args });
+                },
+            },
+          ),
+      },
+    );
+  const layers = { checkConstraints: async () => ({ violations: [] }) };
   const client = {
     withOperation: async (_label, fn) => fn(() => {}),
+    tokenLayers: layers,
+    spanLayers: layers,
+    relationLayers: layers,
     projects: {
-      get: async () => project,
-      listDocuments: async () => [{ id: 'bare-id' }],
+      get: async () => structuredClone(project),
+      listDocuments: async () => docs.map((d) => ({ id: d.id })),
     },
     documents: {
       get: async (id) => {
         read.push(id);
-        return bareDoc();
+        return structuredClone(docs.find((d) => d.id === id));
       },
     },
     batched: async (fn) => {
-      const stub = new Proxy(
-        {},
-        {
-          get: (_t, resource) =>
-            new Proxy(
-              {},
-              {
-                get:
-                  (_u, method) =>
-                  (...args) => {
-                    if (resource === 'tokens' && method === 'bulkCreate') created.push(args[0]);
-                  },
-              },
-            ),
-        },
-      );
-      await fn(stub);
+      const ops = [];
+      await fn(queue(ops));
+      batches.push(ops);
+      return ops.map(() => ({}));
     },
   };
+  return { client, batches, read };
+};
+
+const opsNamed = (batches, name) => batches.flat().filter((o) => o.op === name);
+
+// The document as the server holds it after the set-up: `doc` with the rows
+// the set-up's batch made put on UD's word and lemma layers.
+const afterSetUp = (doc, batches) => {
+  const raw = structuredClone(doc);
+  const words = raw.textLayers[0].tokenLayers.find(
+    (l) => l.config?.plaid?.role === 'syntactic-word',
+  );
+  const lemmas = words.spanLayers.find((l) => l.config?.ud?.lemma);
+  for (const { args } of opsNamed(batches, 'tokens.bulkCreate')) {
+    words.tokens.push(
+      ...args[0].map(({ id, begin, end, precedence }) => ({ id, begin, end, precedence })),
+    );
+  }
+  for (const { args } of opsNamed(batches, 'spans.bulkCreate')) {
+    lemmas.spans.push(
+      ...args[0].map(({ id, tokens, value, metadata }) => ({ id, tokens, value, metadata })),
+    );
+  }
+  return raw;
+};
+
+test("a set-up makes every word's missing UD word and its lemma in its own batch, and an open after it writes nothing", async () => {
+  const doc = substrateDoc();
+  const { client, batches } = adoptClient(substrateOnly(), [doc]);
+  await adoptSubstrate(client, substrateOnly());
+
+  const made = opsNamed(batches, 'tokens.bulkCreate');
+  assert.equal(made.length, 1, 'one create of words');
+  const layerBatch = batches.find((ops) => ops.some((o) => o.op === 'tokenLayers.create'));
+  assert.ok(layerBatch.includes(made[0]), "in the batch that makes UD's layers");
+  const wordLayerMade = layerBatch.find(
+    (o) => o.op === 'tokenLayers.create' && o.args[1] === 'Words',
+  );
+  const rows = made[0].args[0];
+  assert.deepEqual(
+    rows.map((r) => [r.tokenLayerId, r.text, r.begin, r.end, r.precedence]),
+    [
+      [wordLayerMade.args[5].id, 'text-1', 0, 2, 0],
+      [wordLayerMade.args[5].id, 'text-1', 3, 8, 0],
+    ],
+  );
+  const lemmas = opsNamed(batches, 'spans.bulkCreate');
+  assert.equal(lemmas.length, 1);
+  assert.deepEqual(
+    lemmas[0].args[0].map((sp) => [sp.tokens, sp.value, sp.metadata?.prov]),
+    [
+      [[rows[0].id], 'el', 'inferred'],
+      [[rows[1].id], 'perro', 'inferred'],
+    ],
+  );
+
+  // The document opened after it shows every word as stored and writes nothing.
+  const { ConlluDocument } = await import('../src/domain/ConlluDocument.js');
+  const sent = [];
+  const opened = new ConlluDocument({
+    raw: afterSetUp(doc, batches),
+    client: new Proxy(
+      {},
+      {
+        get:
+          (_t, k) =>
+          (...a) =>
+            sent.push([k, a]),
+      },
+    ),
+  });
+  const entries = opened.sentences.flatMap((s) => s.tokens);
+  assert.deepEqual(
+    entries.map((e) => [e.virtual === true, e.tokenForm, e.lemma?.value]),
+    [
+      [false, 'el', 'el'],
+      [false, 'perro', 'perro'],
+    ],
+  );
+  assert.deepEqual(sent, []);
+
+  // Grew reads the words made: a search for a lemma finds its word.
+  const { graphFromSentence } = await import('../src/grew/rewrite/graph.js');
+  const { findMatches } = await import('../src/grew/rewrite/match.js');
+  const { parse } = await import('../src/grew/parser.js');
+  const graph = graphFromSentence(opened.sentences[0]);
+  const found = findMatches(parse('pattern { X [lemma="perro"] }'), graph);
+  assert.equal(found.length, 1);
+  assert.equal(graph.nodes.get(found[0].nodes.get('X')).form, 'perro');
+});
+
+test('a set-up makes only the UD words a document lacks, and none where it lacks none', async () => {
+  const partial = substrateDoc(['el']);
+  const full = { ...rawDocFromConllu(INPUT, 'full') };
+  const { client, batches } = adoptClient(fullProject(), [partial, full]);
+  await adoptSubstrate(client, fullProject());
+  const made = opsNamed(batches, 'tokens.bulkCreate');
+  assert.equal(made.length, 1);
+  assert.deepEqual(
+    made[0].args[0].map((r) => [r.tokenLayerId, r.begin, r.end]),
+    [['morpheme-layer', 3, 8]],
+  );
+  const lemmas = opsNamed(batches, 'spans.bulkCreate');
+  assert.deepEqual(
+    lemmas.map((o) => o.args[0].map((sp) => [sp.spanLayerId, sp.value])),
+    [[['lemma-layer', 'perro']]],
+  );
+});
+
+test('a set-up of a project with no words reads no document', async () => {
+  const project = substrateOnly();
+  project.textLayers[0].tokenLayers = project.textLayers[0].tokenLayers.filter(
+    (t) => t.config?.plaid?.role === 'sentence',
+  );
+  const { client, read } = adoptClient(project, [substrateDoc()]);
   await adoptSubstrate(client, project);
-  assert.deepEqual(created, []);
   assert.deepEqual(read, []);
 });

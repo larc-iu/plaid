@@ -12,7 +12,6 @@ import {
   composeText,
   gapsToOps,
   readIgnoredTokens,
-  stampInferred,
   wasReplayed,
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
@@ -38,6 +37,7 @@ import {
   holdsPersonsWork,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from './otherLoss.js';
+import { newUdWord } from './newUdWord.js';
 import { relationsCrossing } from '../utils/udReconcile.js';
 import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
@@ -51,24 +51,6 @@ import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
-
-// The lemma a new word starts with is a copy of its form, made by a rule and
-// by no person, so a parser may replace it (provenance write contract rule 1).
-const LEMMA_FROM_FORM = stampInferred('rule:lemma-from-form');
-
-// What a new UD word carries, whichever write makes it: the word over `at`
-// (its token's extent, with its place among the token's words when given),
-// and, when the project has a Lemma layer, its lemma copied from `form`.
-// Both under ids this page mints. Tokenize, a token's words typed, a token
-// made from a selection and the first write on a word with no UD word yet
-// all make their words here.
-const newUdWord = ({ begin, end, precedence }, form, lemmaLayer) => {
-  const word = { id: pendingId(), begin, end, ...(precedence != null ? { precedence } : {}) };
-  const lemma = lemmaLayer?.id
-    ? { id: pendingId(), tokens: [word.id], value: form, metadata: LEMMA_FROM_FORM }
-    : null;
-  return { word, lemma };
-};
 
 // The rows of an edit, each made under the id this page minted for it, as
 // `_settle` takes them.

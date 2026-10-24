@@ -27,6 +27,7 @@ import {
   PLAID_NAMESPACE,
   ROLE_KEY,
   ROLES,
+  cpSlicer,
   findByRole,
   readRole,
   uuidv7,
@@ -40,6 +41,8 @@ import {
   getUdLayerInfo,
 } from '../utils/udLayerUtils.js';
 import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js';
+import { newUdWord } from './newUdWord.js';
+import { wordsWithNoUdWord } from './sentenceRows.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import {
   declarePreserveOnSplit,
@@ -184,7 +187,9 @@ export const createUdProject = (client, projectName) =>
  * is found by role or by UD's own config flag, and created where it is
  * missing. Every layer it makes is made under an id minted here, so the whole
  * set-up is one batch: it lands whole or not at all, and a layer is never left
- * without the flag or role a re-run would find it by.
+ * without the flag or role a re-run would find it by. The same batch makes
+ * the UD word, and its lemma copied from its form, of every word in every
+ * document that has none (R3a), read from the documents first.
  *
  * The plan is made from the project as it is now, read here, never from the
  * page's copy: a set-up another tab or maintainer ran since, or this page's
@@ -206,6 +211,7 @@ export const adoptSubstrate = (client, page) =>
       throw new Error('This project has more than one text layer.');
     }
     const existingTextLayer = baseline || textLayers[0] || null;
+    const lacking = await wordsLackingUdWords(client, project.id, existingTextLayer);
 
     await client.batched(async (b) => {
       // The layers this batch makes, by getUdLayerInfo's key: they are empty,
@@ -300,6 +306,18 @@ export const adoptSubstrate = (client, page) =>
           wordTokenLayer: { id: wordLayerId },
         }),
       );
+      // Every word with no UD word gets one now, with its lemma copied from
+      // its form, so Grew search, Rewrite and the Words count read every word
+      // (R3a). Nothing makes one on open.
+      for (const { textId, words } of lacking) {
+        const made = words.map(({ begin, end, form }) =>
+          newUdWord({ begin, end, precedence: 0 }, form, { id: lemmaLayerId }, uuidv7),
+        );
+        b.tokens.bulkCreate(
+          made.map(({ word }) => ({ ...word, tokenLayerId: morphemeLayerId, text: textId })),
+        );
+        b.spans.bulkCreate(made.map(({ lemma }) => ({ ...lemma, spanLayerId: lemmaLayerId })));
+      }
     });
 
     // UD's layer rules on the layers it found. They may hold another app's
@@ -308,6 +326,43 @@ export const adoptSubstrate = (client, page) =>
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
   });
+
+// The words with no UD word under them in each of the project's documents,
+// as the set-up finds them: `[{ textId, words: [{ begin, end, form }] }]`,
+// leaving out a document with none. Read before the set-up's batch, which
+// makes them. Reads no document when the project has no word layer.
+const READ_CONCURRENCY = 4;
+const wordsLackingUdWords = async (client, projectId, textLayer) => {
+  const wordLayer = findByRole(textLayer?.tokenLayers, ROLES.WORD);
+  if (!wordLayer) return [];
+  const udWordLayer = findByRole(textLayer.tokenLayers, ROLES.SYNTACTIC_WORD);
+  const docs = (await client.projects.listDocuments(projectId)) || [];
+  const out = [];
+  let next = 0;
+  const byPosition = (a, b) => a.begin - b.begin || a.end - b.end;
+  const tokensOf = (layers, id) =>
+    [...((layers || []).find((l) => l.id === id)?.tokens || [])].sort(byPosition);
+  const worker = async () => {
+    while (next < docs.length) {
+      const doc = await client.documents.get(docs[next++].id, true);
+      const layer = (doc?.textLayers || []).find((l) => l.id === textLayer.id);
+      const text = layer?.text;
+      if (!text?.id) continue;
+      const words = wordsWithNoUdWord(
+        tokensOf(layer.tokenLayers, wordLayer.id),
+        udWordLayer ? tokensOf(layer.tokenLayers, udWordLayer.id) : [],
+      );
+      if (!words.length) continue;
+      const slice = cpSlicer(text.body || '');
+      out.push({
+        textId: text.id,
+        words: words.map(({ begin, end }) => ({ begin, end, form: slice(begin, end) })),
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: READ_CONCURRENCY }, worker));
+  return out;
+};
 
 // Queue on batch `b` the enhanced relation layer on the Lemma layer
 // `lemmaLayerId`, made under an id minted here so its flag can name it.
