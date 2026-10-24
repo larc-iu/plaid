@@ -5,20 +5,18 @@
 // stored one span per feature with value "Key=Value", which is why feature
 // constraints become anchored patterns over that "Key=Value" string.
 
-const META = /[.\\+*?(){}[\]^$|]/g;
-
-// Escape a literal so it matches itself inside a Java regex.
-const escapeRegex = (s) => String(s).replace(META, '\\$&');
+// A literal goes into a Java regex through the one escaper, literals.js.
+import { literalRegex } from './literals.js';
 
 // Plaid supports only the case-insensitive flag; drop anything else.
 export const normalizeFlags = (flags) => (flags && flags.includes('i') ? 'i' : '');
 
 // A FEATS span value that means "feature `name` is defined (any value)".
-export const featDefinedRegex = (name) => `^${escapeRegex(name)}=`;
+export const featDefinedRegex = (name) => `^${literalRegex(name)}=`;
 
 // "feature `name` is defined AND its value is not `val`" — a negative lookahead
 // over the stored "name=value" string.
-export const featNeqRegex = (name, val) => `^${escapeRegex(name)}=(?!${escapeRegex(val)}$)`;
+export const featNeqRegex = (name, val) => `^${literalRegex(name)}=(?!${literalRegex(val)}$)`;
 
 // The exact stored value for `feat=val`.
 export const featEqValue = (name, val) => `${name}=${val}`;
@@ -31,7 +29,7 @@ export const featEqValue = (name, val) => `${name}=${val}`;
 // `^Number=(?:^S)`, which matches nothing, and read `in` as "starts with in".
 // A `$` needs nothing, the value ends where the span does.
 export const featValueRegex = (name, pattern) => {
-  const key = `^${escapeRegex(name)}=`;
+  const key = `^${literalRegex(name)}=`;
   return `${key}.*?(?:${valueAnchors(pattern, `(?<=${key})`)})`;
 };
 
@@ -74,17 +72,17 @@ const FEATURE_PAIR = '[^=]*[^=\\s][^=]*=[\\s\\S]*\\S';
 export const featurePairRegex = `^${FEATURE_PAIR}`;
 
 // A FEATS span that holds a feature other than exactly `pair`.
-export const otherFeaturePairRegex = (pair) => `^(?!${escapeRegex(pair)}$)${FEATURE_PAIR}`;
+export const otherFeaturePairRegex = (pair) => `^(?!${literalRegex(pair)}$)${FEATURE_PAIR}`;
 
 // A deprel value that is NOT exactly one of `labels` (Grew `-[^a|b]->`).
-export const negatedLabelRegex = (labels) => `^(?!(?:${labels.map(escapeRegex).join('|')})$)`;
+export const negatedLabelRegex = (labels) => `^(?!(?:${labels.map(literalRegex).join('|')})$)`;
 
 // A deprel value whose main type is `label`, matching the bare label and any
 // subtype: `nsubj` matches "nsubj" and "nsubj:pass" (Grew `-[1=nsubj]->`).
-const subtypeRegex = (label) => `^${escapeRegex(label)}(:|$)`;
+const subtypeRegex = (label) => `^${literalRegex(label)}(:|$)`;
 
 // "value is not exactly `val`" for a single-valued span layer (upos<>VERB).
-export const notExactlyRegex = (val) => `^(?!${escapeRegex(val)}$)`;
+export const notExactlyRegex = (val) => `^(?!${literalRegex(val)}$)`;
 
 // Build the deprel regex for an edge-feature label like `1=nsubj, 2=pass`.
 // Keys are joined in numeric order with ':' (UD subtype separator), then matched

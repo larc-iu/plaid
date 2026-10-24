@@ -12,7 +12,6 @@ any size can be searched: what is capped is the number of CHANGES one plan
 may make, which is what the user has to be able to approve.
 """
 
-import re
 from collections import Counter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -25,6 +24,7 @@ from ..core.project import word_ref
 from ..core.plan import MANY, by_document
 from ..core.replace import replacer
 from .corpus import Corpus, rx
+from .grew import escape_regex
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE, matched
 from .settle import replace_label
 from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
@@ -295,7 +295,7 @@ def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],
         if pair[0] != feature_key(FEATURES, ch['old']):
             renamed[(ch['token_id'], pair[0])] += 1
     for key in sorted({k for _t, k in renamed}):
-        where = [c.field(FEATURES, '?s', value=rx(f'^{re.escape(key)}\\s*=', regex=True,
+        where = [c.field(FEATURES, '?s', value=rx(f'^{escape_regex(key)}\\s*=', regex=True,
                                                   case_sensitive=True)),
                  c.on('?s'), c.word('?t')]
         if document_id:
