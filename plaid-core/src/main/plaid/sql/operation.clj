@@ -221,12 +221,17 @@
   `:affected-documents` atom in `psaw/*op*`). Multi-document ops like
   vocab/delete and project/remove-vocab carry `:document nil` but bump
   N docs — without the union their events were doc-blind and
-  document-scoped listeners were never notified."
+  document-scoped listeners were never notified.
+
+  `:audit/projects` is likewise the op's `:project` and the projects of
+  the bumped documents (`:projects`). The bus fans out by project, so a
+  vocabulary write (`:project nil`) that bumps documents reaches their
+  projects' subscribers only through this union."
   [op-record]
   (let [pid (:project op-record)
         did (:document op-record)]
     {:audit/id (:id op-record)
-     :audit/projects (if pid #{pid} #{})
+     :audit/projects (into (if pid #{pid} #{}) (:projects op-record))
      :audit/documents (into (if did #{did} #{}) (:documents op-record))
      :op/id (:id op-record)
      :op/type (:type op-record)
@@ -363,7 +368,9 @@
                                 pre post)
       ;; Record the bump for the op's audit event (see ->audit-event-shape).
       (when-let [a (:affected-documents psaw/*op*)]
-        (swap! a conj doc-id)))))
+        (swap! a conj doc-id))
+      (when-let [a (:affected-projects psaw/*op*)]
+        (swap! a conj (:project_id pre))))))
 
 (defn bump-document-versions!
   "Bulk version-bump for a coll of document ids. Use from inside an
@@ -406,7 +413,9 @@
         ;; this is exactly the multi-document signal: ops like
         ;; vocab/delete carry :document nil but bump N docs here.
         (when-let [a (:affected-documents psaw/*op*)]
-          (swap! a conj doc-id))))))
+          (swap! a conj doc-id))
+        (when-let [a (:affected-projects psaw/*op*)]
+          (swap! a conj (:project_id pre)))))))
 
 (defn op-ts
   "The current operation's monotonic timestamp, for bodies that stamp a
@@ -528,6 +537,9 @@
           ;; this atom off psaw/*op*). Unioned into the audit event's
           ;; :audit/documents post-commit — see ->audit-event-shape.
           affected-docs (atom #{})
+          ;; The projects of the documents the bump helpers bumped, so the
+          ;; event reaches their subscribers (see ->audit-event-shape).
+          affected-projects (atom #{})
           ;; Set when an op that asked for it (`:unrecorded-if-empty?`)
           ;; wrote nothing and its row was taken back out.
           unrecorded? (volatile! false)
@@ -608,6 +620,7 @@
                                          ;; makes in it go unrecorded.
                                          :unrecorded-documents (atom {})
                                          :affected-documents affected-docs
+                                         :affected-projects affected-projects
                                          :type (:type op-attrs)
                                          :user (:user op-attrs)
                                          :group-id (:group-id op-record)}
@@ -641,7 +654,7 @@
                                     tx (cond-> (set @affected-docs)
                                          (:document op-attrs) (conj (:document op-attrs))))))
                         result))))
-          op-record (assoc @op-record* :documents @affected-docs)]
+          op-record (assoc @op-record* :documents @affected-docs :projects @affected-projects)]
       (when-let [a *written-versions*]
         (swap! a merge @versions-written))
       (try

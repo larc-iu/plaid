@@ -56,7 +56,32 @@
     (let [evt (first (filter #(= :vocab/delete (:op/type %)) @published))]
       (is (some? evt) "vocab/delete event published")
       (is (contains? (set (map str (:audit/documents evt))) (str doc))
-          "event names the document whose vocab_link was wiped (its version was bumped)"))))
+          "event names the document whose vocab_link was wiped (its version was bumped)")
+      (is (contains? (set (map str (:audit/projects evt))) (str proj))
+          "the event goes to the bumped document's project, although the op names none"))))
+
+(deftest vocab-rename-event-reaches-the-linking-documents-projects
+  ;; A vocabulary write carries `:project nil`. The bus fans out by project,
+  ;; so without the bumped documents' projects nobody with the document open
+  ;; hears the rename (REV-W3-REST C1).
+  (let [proj (create-test-project admin-request "OpEvtRenameProj")
+        doc (create-test-document admin-request proj "OpEvtRenameDoc")
+        tl (-> (create-text-layer admin-request proj "OERTL") :body :id)
+        text-id (-> (create-text admin-request tl doc "hello") :body :id)
+        tkl (-> (create-token-layer admin-request tl "OERTKL") :body :id)
+        tok (-> (create-token admin-request tkl text-id 0 5) :body :id)
+        vid (-> (create-vocab-layer admin-request "OERVocab") :body :id)
+        _ (assert-status 204 (link-vocab-to-project admin-request proj vid))
+        item (-> (create-vocab-item admin-request vid "hello") :body :id)
+        _ (assert-created (create-vocab-link admin-request item [tok]))
+        published (atom [])]
+    (with-redefs [events/publish-audit-event!
+                  (fn [op _audits _user-id] (swap! published conj op))]
+      (assert-status 200 (update-vocab-layer admin-request vid {:name "OERVocab2"})))
+    (let [evt (first (filter #(= :vocab/update (:op/type %)) @published))]
+      (is (some? evt))
+      (is (= #{(str doc)} (set (map str (:audit/documents evt)))))
+      (is (= #{(str proj)} (set (map str (:audit/projects evt))))))))
 
 (deftest editor-config-op-attributed-to-project-and-actor
   (let [proj (create-test-project admin-request "OpEvtCfgProj")
