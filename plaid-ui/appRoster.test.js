@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { APPS, repoRoot } from './src/test/apps.js';
+import { trackedFiles } from './src/test/repoGates.js';
 
 // The list of apps is kept in several places, each right to exist on its own
 // (beta review A2-3), and a place an app is missing from fails quietly: its
@@ -102,10 +102,7 @@ export const rosterProblems = (rosters, { live, withServices }) => {
 
 const appsWithServices = (root) =>
   sorted(
-    execFileSync('git', ['-C', root, 'ls-files', '--', 'plaid-*/services/*.py'], {
-      encoding: 'utf8',
-    })
-      .split('\n')
+    trackedFiles(root, ['plaid-*/services/*.py'])
       .filter((f) => /^plaid-[\w-]+\/services\/[^/]+\.py$/.test(f))
       .map((f) => tagOf(f.split('/')[0])),
   );

@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { unmarked, gitGrep, scratchRepo } from './src/test/repoGates.js';
+import { gitGrep, isComment, scratchRepo, trackedFiles, unmarked } from './src/test/repoGates.js';
 import { repoRoot } from './src/test/apps.js';
 
 // The apps do not know each other (memory feedback_apps_dont_know_each_other.md)
@@ -46,7 +45,6 @@ const ALLOWED = [
   },
 ];
 
-const isComment = (line) => /^\s*(\/\/|\/?\*|\{\/\*)/.test(line);
 const SPECIFIER =
   /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*|\bvi\.mock\(\s*)['"]([^'"]+)['"]/g;
 
@@ -92,11 +90,11 @@ export const crossings = (files) => {
   return found;
 };
 
+// This file's own planted crossings are data, not imports.
+const SELF = 'plaid-ui/appBoundaries.test.js';
+
 const trackedSources = (root) =>
-  execFileSync('git', ['-C', root, 'ls-files', '--', ...APP_DIRS, UI], { encoding: 'utf8' })
-    .split('\n')
-    .filter((f) => /\.(m?js|jsx|cjs)$/.test(f))
-    .filter((f) => fs.existsSync(path.join(root, f)));
+  trackedFiles(root, [...APP_DIRS, UI]).filter((f) => /\.(m?js|jsx|cjs)$/.test(f) && f !== SELF);
 
 describe('an app imports no other app', () => {
   it('holds over every app, its tests and e2e, and plaid-ui', () => {

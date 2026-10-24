@@ -84,3 +84,19 @@ export const scratchRepo = (files) => {
   execFileSync('git', ['-C', root, 'add', '-A']);
   return root;
 };
+
+/**
+ * The tracked files under `pathspecs`, repo-relative, that are on disk. The
+ * one answer the repo-wide gates give to "what is a source file": what git
+ * tracks, so node_modules, build output and scratch probes never count.
+ */
+export const trackedFiles = (root, pathspecs) =>
+  execFileSync('git', ['-C', root, 'ls-files', '--', ...pathspecs], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+    .split('\n')
+    .filter((f) => f && fs.existsSync(path.join(root, f)));
+
+/** A line that is only a comment: `//`, a block comment's line, or JSX's `{/*`. */
+export const isComment = (line) => /^\s*(\/\/|\/?\*|\{\/\*)/.test(line);
