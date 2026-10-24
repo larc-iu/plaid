@@ -389,9 +389,9 @@ importer prepends to the body:
 <the original body, untouched>
 ```
 
-The importer strips a note it wrote previously before adding its own, so
-repeated export/import cycles do not stack them; the surviving note describes
-what THIS archive recorded. A comment close enough to the server's
+A comment whose body already opens with such a note, written by an earlier
+import, is posted as it is and gains no second one, so the first author and date
+survive every export and import cycle (ruled 2026-10-24). A comment close enough to the server's
 10,000-character ceiling that the note would breach it is imported unchanged
 rather than truncated, and the import reports how many.
 

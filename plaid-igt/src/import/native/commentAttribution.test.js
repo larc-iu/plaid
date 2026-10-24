@@ -55,13 +55,16 @@ describe('attributedBody', () => {
     expect(body).not.toContain(' on ');
   });
 
-  it('does not stack notes when an already-imported project is imported again', () => {
+  it('keeps the note an earlier import wrote, so the first author and date survive every hop', () => {
     const once = attributedBody(comment()).body;
-    // Second hop: the archive now records the FIRST importer as the author.
-    const twice = attributedBody(comment({ body: once, author: { id: 'bob@x.com' } })).body;
-    expect(twice.match(/Imported from an archive/g)).toHaveLength(1);
-    expect(twice).toContain('posted by bob@x.com on 2026-08-14.');
-    expect(twice).toContain('Is this really a dative?');
+    // Second hop: the archive now records the FIRST importer as the author,
+    // on the day that import posted it.
+    const twice = attributedBody(
+      comment({ body: once, author: { id: 'bob@x.com' }, createdAt: '2026-10-01T00:00:00Z' }),
+    );
+    expect(twice).toEqual({ body: once, attributed: true });
+    expect(twice.body.match(/Imported from an archive/g)).toHaveLength(1);
+    expect(twice.body).not.toContain('bob@x.com');
   });
 
   it('leaves a quotation of a note alone when it is not the leading block', () => {

@@ -20,7 +20,8 @@ const REPOSTED = [
   'The comment is posted anew by the importing user, so its author is the importer and edited is false.',
   'Its body opens with the note "> Imported from an archive. Originally posted by AUTHOR on YYYY-MM-DD." and a blank line,',
   'where AUTHOR is "Name <id>", or the bare id when there is no display name.',
-  'A note of that shape already at the top of the body is replaced rather than stacked,',
+  'A body that already opens with a note of that shape, from an earlier import, is posted as it is with no second note,',
+  'so its author is the importer and the note still names the first author and date (ruled 2026-10-24),',
   'and no note is added when it would take the body past 10000 characters.',
   'stripAttribution in src/import/native/commentAttribution.js recovers the original body.',
 ].join(' ');

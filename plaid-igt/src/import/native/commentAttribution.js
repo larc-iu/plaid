@@ -14,7 +14,7 @@ export const MAX_BODY_LENGTH = 10000;
 
 const OPENING = '> Imported from an archive.';
 
-// A note this module wrote previously: the opening line, plus any further
+// A note this module wrote: the opening line, plus any further
 // blockquote lines it wrapped onto, plus the blank line that separates it from
 // the body. Anchored at the start and requiring the exact opening, so a
 // quotation of one inside a real comment is left alone.
@@ -54,13 +54,16 @@ export const stripAttribution = (body) => String(body ?? '').replace(NOTE_RE, ''
  * dropped because it would push the comment past the server's ceiling — the
  * author's own words are never truncated to make room for our annotation.
  *
- * Any note this module wrote on a previous import is stripped first, so a
- * project exported and re-imported repeatedly does not accumulate a stack of
- * them. The surviving note describes what THIS archive recorded, which is the
- * honest claim: after two hops the archive's own author is the first importer.
+ * A body that already opens with a note this module wrote on an earlier
+ * import is posted as it is: that note names the comment's first author and
+ * date, and the archive's own author is only the importer who posted it last
+ * (Luke's ruling R36). So the first attribution survives every hop and notes
+ * never stack.
  */
 export function attributedBody(comment) {
-  const original = stripAttribution(comment?.body);
+  const body = String(comment?.body ?? '');
+  if (NOTE_RE.test(body)) return { body, attributed: true };
+  const original = body;
   const author = formatAuthor(comment?.author);
   const date = formatDate(comment?.createdAt);
   const note = date

@@ -7,6 +7,7 @@
 // rather than written onto the expected one, because the date it holds is the
 // comment's creation date, which a snapshot does not keep.
 
+import { stableStringify } from '../stable.js';
 import { docs } from './snap.js';
 
 const NOTE =
@@ -14,6 +15,15 @@ const NOTE =
 
 /** `Name <id>` or a bare id, as formatAuthor in commentAttribution.js writes it. */
 const authorId = (text) => text.match(/<([^<>]+)>$/)?.[1] ?? text;
+
+// Who posted a comment whose note an earlier import wrote: the importer, on
+// either side, since that note is kept as it is (Luke's ruling R36).
+const REPOSTER = '<the importer>';
+
+const commentsOf = (s) => [
+  ...docs(s).flatMap((d) => d.comments),
+  ...(s.vocabularies || []).flatMap((v) => v.comments || []),
+];
 
 function readNote(comment) {
   const m = comment.body.match(NOTE);
@@ -61,13 +71,21 @@ export default {
       ],
       // The imported comment's note names the author the export read, and what
       // follows the note is the body as it was. A comment with no note keeps
-      // the importer as its author, which then differs from the source.
+      // the importer as its author, which then differs from the source. A
+      // comment that already opened with a note comes back as it was, the
+      // note naming its first author, and posted by the importer, as it was
+      // in the source by whoever imported it there.
       apply(expected, actual) {
-        for (const c of [
-          ...docs(actual).flatMap((d) => d.comments),
-          ...(actual.vocabularies || []).flatMap((v) => v.comments || []),
-        ]) {
-          readNote(c);
+        const keyOf = (c) => stableStringify([c.anchor, c.body]);
+        const kept = new Set();
+        for (const c of commentsOf(expected)) {
+          if (!NOTE.test(c.body)) continue;
+          kept.add(keyOf(c));
+          c.author = REPOSTER;
+        }
+        for (const c of commentsOf(actual)) {
+          if (kept.has(keyOf(c))) c.author = REPOSTER;
+          else readNote(c);
         }
       },
     },

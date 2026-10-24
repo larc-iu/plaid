@@ -15,10 +15,10 @@
 // Two exports of the same content still differ in what identifies or dates
 // them, so both are put in a canonical form first: every UUID becomes `<id>`,
 // the export's own timestamps and the documents' version counters go, an
-// import's bookkeeping stamps go, and whoever a native archive's re-posted
-// comment names as its author becomes `<author>` (see the note where that is
-// done). What is left
-// different is a finding.
+// import's bookkeeping stamps go, and whoever re-posted a native archive's
+// comment becomes `<author>` (see the note where that is done). A JSON file is
+// compared with its object keys in sorted order, since a key's place in an
+// object is no content. What is left different is a finding.
 
 import { createHash } from 'node:crypto';
 import { unzipSync } from 'fflate';
@@ -59,21 +59,32 @@ function canonicalJson(value) {
     out[k] = canonicalJson(v);
   }
   // A native archive comment an import re-posted. Core lets nobody author a
-  // comment as someone else, so the importer owns it and a note in the body
-  // says who wrote it first. Each import rewrites that note to name the
-  // archive's author (src/import/native/commentAttribution.js), so after the
-  // second pass it names the first importer: whose name it carries is settled
-  // material, not drift. Both the author and the name in the note become
-  // `<author>`, which still shows a note that stopped being written, or a body
-  // that changed under it.
-  if (typeof out.body === 'string' && out.author && typeof out.author === 'object') {
-    const m = out.body.match(NOTE);
-    if (m) {
-      out.author = '<author>';
-      out.body = `${m[0].replace(m[1], '<author>')}${out.body.slice(m[0].length)}`;
-    }
+  // comment as someone else, so the importer owns it and a note at the top of
+  // the body says who wrote it first and when. An import keeps a note an
+  // earlier one wrote as it is (src/import/native/commentAttribution.js,
+  // Luke's ruling R36), so the note itself has to come out of every pass
+  // unchanged and is compared whole. Only who posted it, whoever ran the
+  // import, becomes `<author>`.
+  if (
+    typeof out.body === 'string' &&
+    out.author &&
+    typeof out.author === 'object' &&
+    NOTE.test(out.body)
+  ) {
+    out.author = '<author>';
   }
   return out;
+}
+
+/** `value` with every object's keys in sorted order, at any depth. */
+function sortKeys(value) {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((k) => [k, sortKeys(value[k])]),
+  );
 }
 
 /** The export as `Map<path, string>`, each file in canonical form. */
@@ -89,7 +100,7 @@ export function canonicalExport(bytes, filename = 'export') {
     }
     const text = decoder.decode(data);
     if (/\.json$/i.test(path)) {
-      out.set(path, JSON.stringify(canonicalJson(JSON.parse(text)), null, 2));
+      out.set(path, JSON.stringify(sortKeys(canonicalJson(JSON.parse(text))), null, 2));
     } else {
       out.set(path, text.replace(UUID, '<id>').replace(/ DATE="[^"]*"/, ' DATE=""'));
     }

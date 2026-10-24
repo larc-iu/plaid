@@ -714,6 +714,13 @@ async function buildStory(ctx) {
     word(doc, 'ladra').id,
     'A comment by the contributor.',
   );
+  // A comment an earlier archive import posted, its first author and date in
+  // the note at its top.
+  await client.comments.create(
+    'token',
+    word(doc, 'corren').id,
+    '> Imported from an archive. Originally posted by Old Author <old@example.com> on 2020-01-02.\n\nChecked against the recording.',
+  );
   // A comment whose anchor is then deleted.
   const doomed = idOf(
     await client.spans.create(span('word', 'POS').id, [word(doc, 'mira').id], 'V'),
