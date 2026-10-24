@@ -342,19 +342,19 @@ function memoryClient(raw) {
  * What the next UMR write to each sentence stores (umrSettle.js), landing in
  * `raw`: the reader's answer for every sentence, as a write to that sentence
  * sends it before its own requests. Resolves to the plan, or null when there
- * was nothing to store. `lexicon` is the vocabularies' (readEntryLexicon's).
+ * was nothing to store.
  */
-export async function writeInUmr(raw, { lexicon = null } = {}) {
-  const doc = new UmrDocument({ raw: structuredClone(raw), client: memoryClient(raw), lexicon });
-  const plan = planSettle(doc.graph, null, { lexicon });
+export async function writeInUmr(raw) {
+  const doc = new UmrDocument({ raw: structuredClone(raw), client: memoryClient(raw) });
+  const plan = planSettle(doc.graph, null);
   if (plan) await doc._client.batched((b) => queueSettle(b, plan));
   return plan;
 }
 
 /** Whether every sentence's next UMR write stores nothing more. */
-export const nothingToStore = async (raw, options) => {
+export const nothingToStore = async (raw) => {
   const before = JSON.stringify(raw);
-  await writeInUmr(raw, options);
+  await writeInUmr(raw);
   return JSON.stringify(raw) === before;
 };
 

@@ -70,7 +70,36 @@ def test_every_sentence_reads_as_the_app_reads_it(variants):
                              f"against {app['roots']}")
             elif alignment != app['alignment'] or sentence.held != app['held']:
                 wrong.append(f"{variant['name']} s{sentence.index}: alignment or held")
+            elif [n.var for n in sentence.nodes] != app['order']:
+                wrong.append(f"{variant['name']} s{sentence.index}: node order "
+                             f"{[n.var for n in sentence.nodes]} against {app['order']}")
     assert not wrong, f'{len(wrong)} sentences differ, the first: ' + '; '.join(wrong[:5])
+
+
+def test_the_mirror_read_the_names_both_readers_must_agree_on(variants):
+    """The small documents of names (``NAMES`` in umr_graph_mirror.mjs) read
+    as the app reads them in the test above. Pinned here: held relations
+    follow their nodes across a merge, a held name a node that keeps it still
+    stores is left alone, a name two nodes of one sentence store is read
+    apart, and names differing only in case go in code-point order
+    (REV-W2B-OPENS M2, L6)."""
+    names = {v['name']: v for v in variants if v['name'].startswith('names: ')}
+    assert len(names) == 4
+
+    def read(name):
+        return read_document(names[name]['raw'], resolve_layers(names[name]['raw']))
+
+    merged = read('names: held across a merge')
+    by_stored = {n.stored_var: n for n in merged.nodes_by_id.values()}
+    held = {(h['rel'], h['target']) for h in merged.sentences[2].held}
+    assert held == {(':same-entity', by_stored['s3p'].var), (':subset-of', by_stored['s2p'].var),
+                    (':same-entity', by_stored['s1p'].var)}
+    kept = read('names: a moved name another node keeps')
+    assert sorted(h['target'] for h in kept.sentences[2].held) == ['s2p', 's3p']
+    twice = read('names: one name twice in a sentence')
+    assert sorted(n.var for n in twice.sentences[1].nodes) == ['s2p', 's2p2']
+    case = read('names: names differing in case')
+    assert [n.var for n in case.sentences[0].nodes][:2] == ['s1B', 's1a']
 
 
 def test_the_mirror_saw_what_another_apps_edits_leave(variants):

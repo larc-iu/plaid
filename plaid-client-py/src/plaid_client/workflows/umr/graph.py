@@ -604,28 +604,39 @@ def renumber_moves(sentences: List[Sentence], nodes_by_id: Dict[str, Node],
     the reader reads it by: its sentence's number, the rest kept (``s2v`` in
     sentence 1 is ``s1v``), a counter after it where that is taken (``s1v2``).
     Constants, names not of this shape and a document numbered by its file
-    are left alone. Read off the stored names. ``renumberMoves`` in
-    sentenceGraph.js, held to it by test_umr_graph_mirror.py. The next UMR
-    write to the node's sentence stores the new name."""
-    if _numbered_by_file(sentences):
-        return []
+    are left alone. And a name two nodes of one sentence store: the first of
+    them by id keeps it, each other is read under a counter after it, in any
+    document. Read off the stored names, ties in code-point order.
+    ``renumberMoves`` in sentenceGraph.js, held to it by
+    test_umr_graph_mirror.py. The next UMR write to the document stores every
+    new name."""
+    by_file = _numbered_by_file(sentences)
     moves = []
-    fixed = set(reserved)
+    stays = []
     for node in nodes_by_id.values():
         stored = node.stored_var or node.var
         if not stored:
             continue
         m = _NUMBERED.match(stored)
-        wrong = (not node.constant and node.sentence is not None and m is not None
-                 and int(m.group(1)) != node.sentence)
+        wrong = (not by_file and not node.constant and node.sentence is not None
+                 and m is not None and int(m.group(1)) != node.sentence)
         if wrong:
-            moves.append((node, stored, m.group(2)))
+            moves.append((node, stored, f's{node.sentence}{m.group(2)}'))
         else:
+            stays.append((node, stored))
+    fixed = set(reserved)
+    keeper = set()
+    for node, stored in sorted(stays, key=lambda x: x[0].id):
+        key = (node.sentence, stored)
+        if node.constant or node.sentence is None or key not in keeper:
+            keeper.add(key)
             fixed.add(stored)
+        else:
+            moves.append((node, stored, stored))
     taken = set(fixed)
     out = []
-    for node, stored, rest in sorted(moves, key=lambda x: (x[0].sentence, x[1])):
-        to = base = f's{node.sentence}{rest}'
+    for node, stored, base in sorted(moves, key=lambda x: (x[0].sentence, x[1], x[0].id)):
+        to = base
         stem = re.sub(r'[0-9]+$', '', base)
         n = 2
         while to in taken:
@@ -636,13 +647,20 @@ def renumber_moves(sentences: List[Sentence], nodes_by_id: Dict[str, Node],
     return out
 
 
-def held_renames(moves) -> Dict[str, str]:
-    """Old name to new for held relations after ``moves``; a name two moved
-    nodes share is left as it is (``heldRenames``)."""
+def held_renames(moves, nodes_by_id: Dict[str, Node], reserved: set = frozenset()) -> Dict[str, str]:
+    """Old name to new for held relations after ``moves``. A name two moved
+    nodes share is left as it is, and so is a name a node that keeps its own
+    still stores, or a graph kept as text defines (``heldRenames``)."""
+    moving = {id(node) for node, _frm, _new in moves}
+    stays = set(reserved)
+    for node in nodes_by_id.values():
+        stored = node.stored_var or node.var
+        if stored and id(node) not in moving:
+            stays.add(stored)
     to: Dict[str, Optional[str]] = {}
     for _node, frm, new in moves:
         to[frm] = None if frm in to and to[frm] != new else new
-    return {k: v for k, v in to.items() if v}
+    return {k: v for k, v in to.items() if v and k not in stays}
 
 
 def _letters(text: str) -> int:
@@ -881,10 +899,11 @@ def read_document(raw: dict, layers: UmrLayers,
     _records_follow_their_graphs(sentences, records, body)
     # Each variable read by its sentence's number, and the relations a record
     # holds for a graph kept as text renamed with them (renumberMoves).
-    moves = renumber_moves(sentences, nodes_by_id, kept_variables(sentences, records))
+    kept = kept_variables(sentences, records)
+    moves = renumber_moves(sentences, nodes_by_id, kept)
+    rename = held_renames(moves, nodes_by_id, kept)
     for node, _from, to in moves:
         node.var = to
-    rename = held_renames(moves)
     if rename:
         for s in sentences:
             s.held = [{**h, 'source': rename.get(h.get('source'), h.get('source')),

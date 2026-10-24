@@ -7,11 +7,11 @@
 // word whose sentence token is gone, whose anchor reaches out of its
 // sentence, or whose word was deleted; a variable whose sentence number
 // moved; a record left on new text or narrower than its share; a node over a
-// word split in two; a node picked from a vocabulary entry that was
-// deleted. The reader gives the answer every time, and nobody's opening the
+// word split in two. The reader gives the answer every time, and nobody's opening the
 // page writes it. The first UMR write that touches a sentence stores what
 // the reader shows there, unstamped (it decides nothing and vouches for
-// nothing), sent before the write's own requests under the same operation.
+// nothing), sent before the write's own requests under the same operation,
+// and every variable the reader renames in the document with it.
 // A node outside every sentence is read as not there and is left stored,
 // since no write can touch it.
 //
@@ -46,15 +46,19 @@ export const umrOps = (changes) =>
  * (`[recordId, held]`). Rows not yet made on the server (pending ids) are
  * left for a later write.
  *
- * `lexicon` (readEntryLexicon's, with `readVocabs`) says which entries are
- * gone. Without it nothing is said of entries.
+ * The variables the reader renames (renumberMoves) are stored for the whole
+ * document at once, with every record's held relations as the reader reads
+ * them, whatever `indexes` says: a held relation goes by name, and a name
+ * stored in one sentence and not yet in another reads as another node's.
+ *
+ * An entry link is never deleted here. A link to an entry the lexicon lacks
+ * reads as none in every reader, and the lexicon may be older than the link.
  */
-export function planSettle(graph, indexes, { lexicon = null } = {}) {
+export function planSettle(graph, indexes) {
   const meta = new Map();
   const updates = [];
   const retoken = [];
   const change = (id, changes) => meta.set(id, { ...meta.get(id), ...changes });
-  const renamed = new Map();
   graph.sentences.forEach((s) => {
     if (indexes && !indexes.has(s.index)) return;
     s.nodes.forEach((node) => {
@@ -84,17 +88,6 @@ export function planSettle(graph, indexes, { lexicon = null } = {}) {
           }
         }
       }
-      if (node.var && node.storedVar !== node.var) {
-        change(node.id, { var: node.var });
-        if (node.storedVar) {
-          renamed.set(
-            node.storedVar,
-            renamed.has(node.storedVar) && renamed.get(node.storedVar) !== node.var
-              ? null
-              : node.var,
-          );
-        }
-      }
       // On one half of a word split in two.
       if (node.cuts?.length) {
         node.cuts.forEach(({ pieceId, begin, end }) => {
@@ -102,26 +95,27 @@ export function planSettle(graph, indexes, { lexicon = null } = {}) {
         });
         change(node.id, { words: node.wordIds });
       }
-      const { entry, entryVocab } = own;
-      if (entry && lexicon?.readVocabs?.has(entryVocab) && !lexicon.byId?.has(entry)) {
-        change(node.id, { entry: undefined, entryVocab: undefined });
-      }
     });
   });
   recordShares(graph, indexes).forEach(({ id, begin, end }) => {
     if (!isPendingId(id)) updates.push({ id, begin, end });
   });
-  // The held relations of every record that name a variable stored anew.
+  // Every variable read under another name than it stores, and the held
+  // relations of every record as they read under those names.
   const held = [];
-  const rename = (name) => renamed.get(name) || name;
-  if ([...renamed.values()].some(Boolean)) {
-    (graph.records || []).forEach(({ id, record }) => {
+  let renames = false;
+  graph.nodesById.forEach((node) => {
+    if (node.constant || isPendingId(node.id) || !node.var || node.storedVar === node.var) return;
+    change(node.id, { var: node.var });
+    renames = true;
+  });
+  if (renames) {
+    (graph.records || []).forEach(({ id, record, held: read }) => {
       if (isPendingId(id)) return;
       const had = Array.isArray(record.held) ? record.held : [];
       if (!had.length) return;
-      const next = had.map((h) => ({ ...h, source: rename(h.source), target: rename(h.target) }));
-      if (next.some((h, i) => h.source !== had[i].source || h.target !== had[i].target)) {
-        held.push([id, next]);
+      if (read.some((h, i) => h.source !== had[i].source || h.target !== had[i].target)) {
+        held.push([id, read.map((h) => ({ ...h }))]);
       }
     });
   }

@@ -9,12 +9,12 @@ import { planSettle, queueSettle } from '../src/domain/umrSettle.js';
 /**
  * Store, on `doc`'s client, what a write to each sentence would. Resolves to
  * null when there is nothing to store, else to the count by kind:
- * `{ renumbered, rebound, unanchored, wordSplits, unlinked, recordsMoved,
+ * `{ renumbered, rebound, unanchored, wordSplits, recordsMoved,
  * recordsFitted, plan }`.
  */
 export async function storeAll(doc) {
   const graph = doc.graph;
-  const plan = planSettle(graph, null, { lexicon: doc.lexicon });
+  const plan = planSettle(graph, null);
   if (!plan) return null;
   const shares = recordShares(graph);
   const changes = [...plan.meta].map(([id, c]) => [graph.nodesById.get(id), c]);
@@ -26,7 +26,6 @@ export async function storeAll(doc) {
       .filter(([n, c]) => c.sentence && !n?.metadata?.umr?.sentence)
       .map(([n]) => n.var),
     wordSplits: changes.filter(([, c]) => Array.isArray(c.words)).length,
-    unlinked: changes.filter(([, c]) => 'entry' in c && c.entry === undefined).length,
     recordsMoved: shares.filter((r) => r.moved).length,
     recordsFitted: shares.filter((r) => !r.moved).length,
   };

@@ -71,7 +71,7 @@ const renamed = (doc) =>
     .map((n) => [n.storedVar, n.var])
     .sort();
 // What the next write to every sentence stores (umrSettle.js).
-const stores = (doc) => planSettle(doc.graph, null, { lexicon: doc.lexicon });
+const stores = (doc) => planSettle(doc.graph, null);
 // Whether the open sent any write.
 const openWrites = async (doc, calls) => {
   await doc.validateOnOpen();
@@ -262,7 +262,7 @@ test('a sentence that keeps some words still unanchors a node whose word went', 
 
 // ----- 4. the vocabulary read -----
 
-test('an open reads no vocabulary, and a write with the vocabularies read forgets a deleted entry', async () => {
+test("an open reads no vocabulary, and a write with the vocabularies read keeps a deleted entry's link", async () => {
   const raw = fromText(`${block(1)}`);
   const { client, calls } = recordingClient();
   const asked = [];
@@ -282,7 +282,8 @@ test('an open reads no vocabulary, and a write with the vocabularies read forget
   );
   await picked.loadLexicon();
   assert.deepEqual(asked, ['v1']);
-  assert.deepEqual(stores(picked).meta.get(node.id), { entry: undefined, entryVocab: undefined });
+  // The lexicon may be older than the link (REV-W2B-OPENS M3).
+  assert.equal(stores(picked), null);
 });
 
 // ----- 5. a sentence typed in before the first one -----

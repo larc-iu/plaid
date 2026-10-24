@@ -93,11 +93,9 @@ const partlyApplied = (stage, { deletions, changes, nodes, edges }) => {
 
 /**
  * The project's vocabularies as the lexicon buildLexicon makes, with the
- * vocabulary of each entry (`lexicon.vocabOf`), and the ids of the
- * vocabularies that were read (`vocabs`). A vocabulary that cannot be read
- * is left out of both: an entry missing from it may only be unread, so
- * nothing in it is judged gone. Null when the project does not say which
- * vocabularies it has.
+ * vocabulary of each entry (`lexicon.vocabOf`), as `{ lexicon }`. A
+ * vocabulary that cannot be read is left out. Null when the project does not
+ * say which vocabularies it has.
  */
 export async function readEntryLexicon(client, project) {
   if (!client || !Array.isArray(project?.vocabs)) return null;
@@ -113,11 +111,9 @@ export async function readEntryLexicon(client, project) {
   const read = got.filter(Boolean);
   const lexicon = buildLexicon(read);
   // The vocabulary each entry is in, which a node picked from it records
-  // (`entryVocab`): an entry missing later counts as deleted only when its
-  // vocabulary was read (`readVocabs`, umrSettle.js).
+  // (`entryVocab`).
   lexicon.vocabOf = new Map(read.flatMap((v) => (v.items || []).map((it) => [it.id, v.id])));
-  lexicon.readVocabs = new Set(read.map((v) => v.id));
-  return { lexicon, vocabs: lexicon.readVocabs };
+  return { lexicon };
 }
 
 // The metadata a node records of the vocabulary entry it was picked from:
@@ -475,36 +471,64 @@ export class UmrDocument extends DocumentModel {
   // Opening the document writes nothing (Luke's ruling R3, 2026-10-24). What
   // another app's edit left UMR's rows not saying (a node whose sentence
   // token or word is gone, an anchor off its sentence, a variable whose
-  // sentence number moved, a record off its share, a node over a split word,
-  // an entry that was deleted) the reader reads right (sentenceGraph.js),
-  // and the first UMR write to a sentence stores it there (umrSettle.js):
-  // shown in the write's own patch, and sent before its requests under the
-  // same operation. Unstamped: it decides nothing and vouches for nothing.
+  // sentence number moved, a record off its share, a node over a split word)
+  // the reader reads right (sentenceGraph.js), and the first UMR write to a
+  // sentence stores it there (umrSettle.js), with every renamed variable of
+  // the document. Unstamped: it decides nothing and vouches for nothing.
+  //
+  // It is planned on the document as it was before the edit, the one the
+  // edit was made on, and sent before the edit's requests under the same
+  // operation. So it never takes a name the edit frees, and the edit lands
+  // on what it read: a refusal of the edit after the settle landed leaves
+  // the document as the reader read it before. The screen shows the edit
+  // made again over the settled document. An earlier write refused while
+  // this one waited may have changed what the plan was made on, so this one
+  // is then refused unsent too.
   _queueWrite(label, send, named, options) {
     const plan = this._settlePlan();
     if (!plan) return super._queueWrite(label, send, named, options);
-    this._applyRawPatch((next, infoNext) => applySettle(this._layers(infoNext), plan));
+    const settledBase = this._patched(this._patchBase, (next, infoNext) =>
+      applySettle(this._layers(infoNext), plan),
+    );
+    let shown = settledBase;
+    for (const producer of this._patches) shown = this._patched(shown, producer);
+    this._patchBase = settledBase;
+    this._raw = shown;
+    this._dataVersion++;
+    this._emit();
+    const refusals = this._refusals;
     const settled = async (...args) => {
+      if (this._refusals !== refusals) {
+        throw Object.assign(new Error('The document changed while this edit waited.'), {
+          changedElsewhere: true,
+        });
+      }
       await this._client.batched((b) => queueSettle(b, plan));
       return send(...args);
     };
     return super._queueWrite(label, settled, named, options);
   }
 
+  _writeFailed(...args) {
+    this._refusals = (this._refusals ?? 0) + 1;
+    return super._writeFailed(...args);
+  }
+
   // What storing the reader's answer writes in the sentences the edit being
-  // queued writes (its patches since the last write), or null.
+  // queued writes (its patches since the last write), planned on the
+  // document before them, or null.
   _settlePlan() {
     if (!this._patches?.length || !this._patchBase || this._asOf) return null;
     const edit = editScopes(this._patchBase, this._raw);
     if (!edit) return null;
-    const graph = this.graph;
+    const graph = buildDocumentGraph(getUmrLayerInfo(this._patchBase));
     const indexes = new Set(
       graph.sentences
         .filter((s) => edit.scopes.has(`s:${settledId(s.tokenId)}`))
         .map((s) => s.index),
     );
     if (!indexes.size) return null;
-    return planSettle(graph, indexes, { lexicon: this._lexicon });
+    return planSettle(graph, indexes);
   }
 
   // ----- reading helpers -----

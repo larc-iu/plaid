@@ -160,33 +160,18 @@ test('taking the new value everywhere changes every node picked from the entry',
   assert.equal(await doc.takeEntryValue(byVar(doc, 's2v').id), false);
 });
 
-test('a write forgets an entry that is gone from the vocabulary it was picked from', async () => {
+// REV-W2B-OPENS M3: the lexicon a tab read may be older than a node's link,
+// so a write never deletes one. A link to an entry that is gone reads as
+// none, and stays stored.
+test('a write keeps the link to an entry gone from the vocabulary, which reads as none', async () => {
   const gone = load({ s1v: 'deleted', s1k: 'kitap' });
   await gone.doc.loadLexicon();
-  const result = await storeAll(gone.doc);
-  assert.equal(result.unlinked, 1);
-  // Only the entry: what a write stores beside its own change vouches for
-  // nothing, so no stamp rides along.
-  const patches = gone.calls.filter((c) => c.name === 'spans.patchMetadata');
-  assert.deepEqual(
-    patches.map((c) => c.args),
-    [
-      [
-        byVar(gone.doc, 's1v').id,
-        [
-          { op: 'delete', path: ['umr', 'entry'] },
-          { op: 'delete', path: ['umr', 'entryVocab'] },
-        ],
-      ],
-    ],
-  );
-
-  // A vocabulary that could not be read may hold the entry.
-  const unread = load({ s1v: 'deleted@v2' }, { failing: ['v2'] });
-  await unread.doc.loadLexicon();
-  const again = await storeAll(unread.doc);
-  assert.equal(again, null);
-  assert.equal(unread.calls.length, 0);
+  assert.equal(await storeAll(gone.doc), null);
+  assert.equal(gone.calls.length, 0);
+  const node = byVar(gone.doc, 's1v');
+  assert.equal(node.metadata.umr.entry, 'deleted');
+  assert.equal(gone.doc.entryChange(node.id), null);
+  assert.ok(!gone.doc.problems.some((p) => p.code === 'entry-changed' && p.var === 's1v'));
 });
 
 test('a vocabulary unlinked from the project keeps the entries its nodes were picked from', async () => {

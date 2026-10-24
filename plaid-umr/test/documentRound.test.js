@@ -127,16 +127,28 @@ const twinVar = (raw) => {
   spans.find((s) => s.metadata.umr.var === 's1r').metadata.umr.var = 's1p';
 };
 
-test('two nodes of a sentence sharing a variable are an error, and the export refuses them', () => {
+// REV-W2B-OPENS M1: a variable two nodes of one sentence store (an older
+// writer or the API left it) is read apart, the first node by id keeping it
+// and the other read under a counter after it, so the export writes both
+// and the next write stores the new name (renumberMoves).
+test('two nodes of a sentence storing one variable are read apart, and the export writes both', async () => {
   const { doc } = load(block(1, LUNCH, LUNCH_ALIGNED), twinVar);
-  const twins = doc.problems.filter((p) => p.code === 'non-unique-node-id');
-  assert.equal(twins.length, 1);
-  assert.equal(twins[0].sentence, 1);
-  assert.equal(twins[0].var, 's1p');
-  assert.equal(twins[0].level, 'error');
-  assert.ok(doc.problemsBySentence.get(1).some((p) => p.code === 'non-unique-node-id'));
-  assert.ok(doc.exportProblems.some((p) => p.var === 's1p' && /2 nodes/.test(p.message)));
-  assert.throws(() => doc.toUmr());
+  const twins = [...doc.graph.nodesById.values()].filter((n) => n.storedVar === 's1p');
+  assert.equal(twins.length, 2);
+  const [keeps, other] = [...twins].sort((a, b) => (a.id < b.id ? -1 : 1));
+  assert.equal(keeps.var, 's1p');
+  assert.equal(other.var, 's1p2');
+  assert.equal(doc.problems.filter((p) => p.code === 'non-unique-node-id').length, 0);
+  assert.deepEqual(doc.exportProblems, []);
+  const file = doc.toUmr();
+  assert.match(file, /\(s1p \//);
+  assert.match(file, /\(s1p2 \//);
+  // The next write stores the name read.
+  assert.ok(await doc.setConcept(keeps.id, 'woman'));
+  const stored = doc.raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.find(
+    (s) => s.id === other.id,
+  );
+  assert.equal(stored.metadata.umr.var, 's1p2');
 });
 
 test('two sentences sharing a variable are reported once, by the official check, and exported', () => {

@@ -2,7 +2,8 @@
 // another app's edit left UMR's rows not saying is read right by the reader,
 // and the first UMR write to a sentence stores it there (umrSettle.js), sent
 // before the write's own requests in its operation. A write stores only the
-// sentences it writes, and a row the server has not made yet is left alone.
+// sentences it writes, and every renamed variable of the document, and a row
+// the server has not made yet is left alone.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
@@ -101,7 +102,7 @@ const byStored = (doc, v) => [...doc.graph.nodesById.values()].find((n) => n.sto
 test('opening a document with something of every kind to store writes nothing', async () => {
   const raw = everyKind();
   const doc = new UmrDocument({ raw: structuredClone(raw), lexicon });
-  const plan = planSettle(doc.graph, null, { lexicon });
+  const plan = planSettle(doc.graph, null);
   assert.ok(plan.meta.size && plan.updates.length, 'there is something to store');
   assert.ok(await openWritesNothing(raw));
   // A real open on a recording client sends nothing either.
@@ -139,28 +140,41 @@ test('the reader reads every kind as stored', () => {
   assert.match(doc.toUmr(), /\(s3y \/ ye-01/);
 });
 
-test('a write stores what its sentences read, before its own change, and leaves the others', async () => {
+test('a write stores what its sentences read, and every renamed variable, before its own change', async () => {
   const raw = everyKind();
   const doc = new UmrDocument({ raw: structuredClone(raw), client: clientOver(raw), lexicon });
   doc._reload = async () => doc._swapRaw(structuredClone(raw));
   const fresh = () => new UmrDocument({ raw: structuredClone(raw), lexicon });
-  const pending = (index) => planSettle(fresh().graph, new Set([index]), { lexicon });
+  const pending = (index) => planSettle(fresh().graph, new Set([index]));
   assert.ok(pending(2) && pending(3));
   // A write to sentence 3 (the old second) stores sentence 3's.
   const ye = byStored(doc, 's2y');
   assert.ok(await doc.setConcept(ye.id, 'ye-02'));
   assert.equal(pending(3), null);
-  assert.ok(pending(2), 'sentence 2 is not the write`s, and keeps what it has to store');
+  // Sentence 2 is not the write's, and what it had to store was its
+  // variables' new names, which go for the whole document at once.
+  assert.equal(pending(2), null);
+  assert.deepEqual(
+    fresh()
+      .sentence(2)
+      .nodes.map((n) => [n.var, n.storedVar])
+      .sort(),
+    [
+      ['s2a', 's2a'],
+      ['s2g', 's2g'],
+    ],
+  );
   const after = fresh();
   assert.equal(byStored(after, 's3y').concept, 'ye-02');
   assert.equal(byStored(after, 's3y2').metadata.umr.sentence, after.sentence(3).tokenId);
   assert.equal(byStored(after, 's3e').metadata.umr.words.length, 1);
   const record = layersOf(raw).nodes.tokens.find((t) => t.id === after.sentence(3).recordToken);
   assert.deepEqual([record.begin, record.end], [after.sentence(3).begin, after.sentence(3).end]);
-  // A write to sentence 2 stores the rest, the deleted entry included.
-  assert.ok(await doc.setConcept(byStored(doc, 's1a').id, 'woman'));
-  assert.equal(planSettle(fresh().graph, null, { lexicon }), null);
-  assert.equal(byStored(fresh(), 's2g').metadata.umr.entry, undefined);
+  // A write to sentence 2 stores nothing more, and keeps the link to the
+  // deleted entry, which reads as none (REV-W2B-OPENS M3).
+  assert.ok(await doc.setConcept(byStored(doc, 's2a').id, 'woman'));
+  assert.equal(planSettle(fresh().graph, null), null);
+  assert.equal(byStored(fresh(), 's2g').metadata.umr.entry, 'gone');
   // What was stored reads as it did.
   assert.deepEqual(
     fresh()

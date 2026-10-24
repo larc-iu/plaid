@@ -460,9 +460,10 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
 
   // Each variable read by its sentence's number (`renumberMoves`), and the
   // relations a record holds for a graph kept as text renamed with them.
-  const moves = renumberMoves(sentences, nodesById, keptVariables({ sentences, records }));
+  const kept = keptVariables({ sentences, records });
+  const moves = renumberMoves(sentences, nodesById, kept);
+  const rename = heldRenames(moves, nodesById, kept);
   moves.forEach(({ node, to }) => (node.var = to));
-  const rename = heldRenames(moves);
   if (rename.size) {
     const renamed = (held) =>
       held.map((h) => ({
@@ -798,13 +799,14 @@ export const unreachedByRoot = (graph) => {
   return out;
 };
 
-// Nodes in a sentence read by anchor position, then by variable, so a list
-// of them is stable across reloads.
+// Nodes in a sentence read by anchor position, then by variable in code-point
+// order as Python sorts them (graph.py), so a list of them is stable across
+// reloads and the same in both readers.
 const nodeOrder = (a, b) => {
   const ab = (a.stands ?? a.pieces[0])?.begin ?? 0;
   const bb = (b.stands ?? b.pieces[0])?.begin ?? 0;
   if (ab !== bb) return ab - bb;
-  return String(a.var).localeCompare(String(b.var));
+  return codePointOrder(String(a.var), String(b.var));
 };
 
 // The 1-based inclusive word ranges a node's pieces cover. A zero-width piece
@@ -1304,36 +1306,59 @@ function readPieces(node) {
  * after it, as a new variable does (`s1v2`). Constants and names not of this
  * shape are left alone. Relations point at nodes, so only the names change.
  * `reserved` holds names taken by something that is not a node, the
- * variables a graph kept as text defines. Nothing is renamed in a document
- * that goes by its file's numbers (`numberedByFile`): one imported from a
- * file numbered otherwise than 1, 2, 3, as a released excerpt starting at
- * snt5. A sentence deleted or merged later in a document imported in order
- * does not stop it: the numbers after it no longer run, and are then read by
- * position.
+ * variables a graph kept as text defines. Nothing is renumbered in a
+ * document that goes by its file's numbers (`numberedByFile`): one imported
+ * from a file numbered otherwise than 1, 2, 3, as a released excerpt starting
+ * at snt5. A sentence deleted or merged later in a document imported in
+ * order does not stop it: the numbers after it no longer run, and are then
+ * read by position.
+ *
+ * And a name two nodes of one sentence store, which the file would write as
+ * one node: the first of them by id keeps it, and each other is read under a
+ * counter after it (`s1v2`), in any document.
  *
  * Read off the STORED names (`storedVar`). The reader reads each node by the
- * name it gives, and the next UMR write to the node's sentence stores it
- * (umrSettle.js).
+ * name it gives, and the next UMR write to the document stores every one
+ * (umrSettle.js). Ties go by code point, as in Python (graph.py
+ * `renumber_moves`).
  *
  * @returns {{ node: object, from: string, to: string }[]}
  */
 export function renumberMoves(sentences, nodesById, reserved = new Set()) {
-  if (numberedByFile(sentences || [])) return [];
+  const byFile = numberedByFile(sentences || []);
   const moves = [];
-  const fixed = new Set(reserved);
+  const stays = [];
   nodesById.forEach((node) => {
     const stored = node.storedVar ?? node.var;
     if (!stored) return;
     const m = NUMBERED_VARIABLE.exec(stored);
-    const wrong = !node.constant && node.sentence != null && m && Number(m[1]) !== node.sentence;
-    if (wrong) moves.push({ node, stored, rest: m[2] });
-    else fixed.add(stored);
+    const wrong =
+      !byFile && !node.constant && node.sentence != null && m && Number(m[1]) !== node.sentence;
+    if (wrong) moves.push({ node, stored, base: `s${node.sentence}${m[2]}` });
+    else stays.push({ node, stored });
   });
+  const fixed = new Set(reserved);
+  const keeper = new Set();
+  stays
+    .sort((a, b) => codePointOrder(a.node.id, b.node.id))
+    .forEach(({ node, stored }) => {
+      const key = `${node.sentence} ${stored}`;
+      if (node.constant || node.sentence == null || !keeper.has(key)) {
+        keeper.add(key);
+        fixed.add(stored);
+      } else {
+        moves.push({ node, stored, base: stored });
+      }
+    });
   const taken = new Set(fixed);
   return moves
-    .sort((a, b) => a.node.sentence - b.node.sentence || a.stored.localeCompare(b.stored))
-    .map(({ node, stored, rest }) => {
-      const base = `s${node.sentence}${rest}`;
+    .sort(
+      (a, b) =>
+        a.node.sentence - b.node.sentence ||
+        codePointOrder(a.stored, b.stored) ||
+        codePointOrder(a.node.id, b.node.id),
+    )
+    .map(({ node, stored, base }) => {
       let to = base;
       // The counter goes after the letters, as nextVariable counts.
       const stem = base.replace(/[0-9]+$/, '');
@@ -1343,15 +1368,33 @@ export function renumberMoves(sentences, nodesById, reserved = new Set()) {
     });
 }
 
+// Strings in code-point order, as Python compares them.
+function codePointOrder(a, b) {
+  const x = [...a];
+  const y = [...b];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    const d = x[i].codePointAt(0) - y[i].codePointAt(0);
+    if (d) return d;
+  }
+  return x.length - y.length;
+}
+
 /**
  * The names held relations (a record's `held`) go by after `moves`
  * (renumberMoves): old name to new. A name two moved nodes share is left as
- * it is.
+ * it is, and so is a name a node that keeps its own still stores, or a graph
+ * kept as text defines (`reserved`), since the relation may name that one.
  */
-function heldRenames(moves) {
+function heldRenames(moves, nodesById, reserved = new Set()) {
+  const moving = new Set(moves.map((r) => r.node));
+  const stays = new Set(reserved);
+  nodesById.forEach((node) => {
+    const stored = node.storedVar ?? node.var;
+    if (stored && !moving.has(node)) stays.add(stored);
+  });
   const to = new Map();
   moves.forEach((r) => to.set(r.from, to.has(r.from) && to.get(r.from) !== r.to ? null : r.to));
-  return new Map([...to].filter(([, v]) => v));
+  return new Map([...to].filter(([from, v]) => v && !stays.has(from)));
 }
 
 /**
