@@ -172,6 +172,14 @@ describe('buildEafDocument', () => {
     expect(props.Source).toBe('Field notes');
     expect(props.Genre).toBe('narrative');
   });
+
+  it("leaves out the reserved plaid metadata, a document's text direction (R4-5-3)", () => {
+    const doc = makeFixtureDoc();
+    doc.metadata = { ...doc.metadata, plaid: { textDirection: 'rtl' } };
+    const names = all(build(doc), 'PROPERTY').map((p) => p.getAttribute('NAME'));
+    expect(names).not.toContain('plaid');
+    expect(names).toContain('Source');
+  });
 });
 
 describe('time alignment', () => {

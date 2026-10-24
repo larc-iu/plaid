@@ -61,6 +61,7 @@ import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { mediaTypeForName } from '../domain/media/mediaTypes.js';
 import { ELAN_FIELD_NAMES_PROPERTY, writeElanFieldNames } from '../domain/elanFieldNames.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { userMetadata } from '@ui/domain/textDirection.js';
 
 const EAF_VERSION = '2.8';
 const SCHEMA_URL = 'http://www.mpi.nl/tools/elan/EAFv2.8.xsd';
@@ -596,7 +597,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   // the only general-purpose key/value slot EAF offers. The Media file field
   // is the recording's name, which the MEDIA_DESCRIPTOR above already says.
   header.push(`    <PROPERTY NAME="documentName">${xmlEscape(docData.name ?? '')}</PROPERTY>`);
-  for (const [key, value] of Object.entries(docData.metadata || {})) {
+  // The reserved `plaid` key (a text direction) is no one's field.
+  for (const [key, value] of Object.entries(userMetadata(docData.metadata))) {
     if (value === null || value === undefined || value === '') continue;
     if (key === MEDIA_FILE_FIELD && docData.mediaUrl) continue;
     if (key === ELAN_FIELD_NAMES_PROPERTY) continue;
