@@ -45,16 +45,20 @@ const stripFor = (module, key) => module.strips?.[key] ?? STRIPS[key];
  * @param actual  the snapshot of the project the import made
  * @param bare    a snapshot of a project with nothing but setup, for the
  *                shapes setup gives a new project
+ * @param sameCore whether the import ran on the core that still holds the
+ *                source project, as the fidelity runner's does. What an import
+ *                leaves out because the source has it (a dictionary address)
+ *                comes back when it ran on another core.
  * @returns {{expected, actual}} both finalized and ready to diff
  */
-export function expectRoundTrip({ list, source, actual, bare = null }) {
+export function expectRoundTrip({ list, source, actual, bare = null, sameCore = true }) {
   const module = MODULES[list.id];
   if (!module) throw new Error(`no round-trip expectation for ${list.id}`);
   const expected = clone(source);
   const got = clone(actual);
   stripStamps(expected, list.stamps);
   stripStamps(got, list.stamps);
-  const ctx = { source: clone(source), bare, list };
+  const ctx = { source: clone(source), bare, list, sameCore };
 
   for (const key of FEATURE_KEYS) {
     const entry = list.features[key];

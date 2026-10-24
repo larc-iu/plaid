@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FEATURES, FEATURE_KEYS } from './catalog.js';
 import { coreSchema, setConfigCalls } from './schema.js';
-import { MODULES, moduleGaps } from './expect/index.js';
+import { MODULES, expectRoundTrip, moduleGaps } from './expect/index.js';
 import { finalize, removeTokens } from './expect/snap.js';
 import { RESERVED_ITEM_KEYS } from '../../domain/vocabFields.js';
 
@@ -233,6 +233,20 @@ describe('round-trip expectations', () => {
       at: `token ${m('token', 'E#1', 'word:3-4')}`,
       on: m('span', 'E#1', 'span:word/Gloss|word:3-4'),
     });
+  });
+
+  it('the native round trip expects a dictionary address back only from another core', () => {
+    const list = formats.find((f) => f.id === 'native');
+    const withSlug = () => {
+      const s = sample();
+      s.vocabularies[0].config = { dict: { title: 'T', slug: 'lex' } };
+      return s;
+    };
+    const dictOf = (sameCore) =>
+      expectRoundTrip({ list, source: withSlug(), actual: withSlug(), sameCore }).expected
+        .vocabularies[0].config.dict;
+    expect(dictOf(true)).toEqual({ title: 'T' });
+    expect(dictOf(false)).toEqual({ title: 'T', slug: 'lex' });
   });
 
   it('a strip takes a token with everything hanging off it', () => {

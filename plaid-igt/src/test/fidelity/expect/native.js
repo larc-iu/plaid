@@ -43,8 +43,11 @@ export default {
   steps: [
     {
       keys: ['vocab.foreignConfig'],
-      // The source still holds its dictionary address, so the copy has none.
-      apply(expected) {
+      // On the core that still holds the source, its dictionary address is
+      // taken, so the copy has none. On another core nothing holds it, and the
+      // copy keeps it.
+      apply(expected, actual, ctx) {
+        if (!ctx.sameCore) return;
         for (const v of expected.vocabularies || []) {
           const dict = v.config?.dict;
           if (!dict || !('slug' in dict)) continue;
