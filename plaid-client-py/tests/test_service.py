@@ -488,6 +488,47 @@ def test_permanent_registration_failure_is_reported_once(capsys):
     assert set(svc._registrations_by_project) == {'p1'}
 
 
+def test_a_service_refused_on_every_project_it_was_named_says_so_and_exits(capsys):
+    # HUNT-recent 18: refused 403 at startup (another account holds its id),
+    # it still printed "registered ... Waiting for requests".
+    def serve(project_id, service_info, handler, extras, on_status=None):
+        raise ServiceRegistrationError('belongs to someone@x.com on this project', status=403)
+
+    svc = _make_sync_service(serve=serve)
+    svc._target_projects = ['p1']
+    svc._sync_served_projects()
+    with pytest.raises(SystemExit) as stopped:
+        svc._announce_start(serve_all=False)
+    assert stopped.value.code == 1
+    out = capsys.readouterr().out
+    assert 'Waiting for requests' not in out
+    assert 'Test cannot serve the project it was given. Stopping.' in out
+
+
+def test_a_service_refused_on_some_named_projects_counts_the_ones_it_serves(capsys):
+    def serve(project_id, service_info, handler, extras, on_status=None):
+        if project_id == 'p2':
+            raise ServiceRegistrationError('lacks write access', status=403)
+        return _FakeRegistration()
+
+    svc = _make_sync_service(serve=serve)
+    svc._target_projects = ['p1', 'p2']
+    svc._sync_served_projects()
+    svc._announce_start(serve_all=False)
+    assert 'Test registered on 1 of 2 projects. Waiting for requests' in capsys.readouterr().out
+
+
+def test_a_named_project_the_server_cannot_be_reached_for_keeps_the_service_waiting(capsys):
+    def serve(project_id, service_info, handler, extras, on_status=None):
+        raise RuntimeError('connection refused')
+
+    svc = _make_sync_service(serve=serve)
+    svc._target_projects = ['p1']
+    svc._sync_served_projects()
+    svc._announce_start(serve_all=False)
+    assert 'Waiting for requests' in capsys.readouterr().out
+
+
 def test_outage_reports_one_lost_and_one_back_line_for_many_projects(capsys):
     """Reporting is per SERVICE, not per project: an operator watching a
     service on 3 projects sees one 'lost' line and one 'back' line, and both

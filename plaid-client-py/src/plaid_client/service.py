@@ -365,6 +365,10 @@ class BaseService(ABC):
         # re-printing the same error every pass.
         self._registrations_by_project: Dict[str, Any] = {}
         self._sync_failed_projects: set = set()
+        # Projects the server refused for good on the last attempt (no write
+        # access, the id belongs to another account), as opposed to ones it
+        # could not be reached for.
+        self._refused_projects: set = set()
         self._processing_lock = threading.Lock()
         # Which projects to serve: a fixed list, or None for "every project the
         # token can access" (serve-all). Set by :meth:`run`.
@@ -751,17 +755,20 @@ class BaseService(ABC):
                 # Retrying cannot fix this one (bad token, no write access,
                 # unknown project). Say so once, then let later passes stay
                 # quiet unless it starts working.
+                self._refused_projects.add(pid)
                 if pid not in self._sync_failed_projects:
                     self._sync_failed_projects.add(pid)
                     print(f"  Cannot serve project {self._project_label(pid)}: {e}")
                 continue
             except Exception as e:
+                self._refused_projects.discard(pid)
                 if pid not in self._sync_failed_projects:
                     self._sync_failed_projects.add(pid)
                     print(f"  Cannot serve project {self._project_label(pid)} yet, "
                           f"will keep retrying: {e}")
                 continue
             self._sync_failed_projects.discard(pid)
+            self._refused_projects.discard(pid)
         return True
 
     def run_service_loop(self, project_sync_interval_s: Optional[float] = None) -> None:
@@ -903,6 +910,13 @@ class BaseService(ABC):
         # the run loop repeats, so a server that is down now is handled the same
         # way as one that goes down later: keep trying.
         self._sync_served_projects()
+        self._announce_start(serve_all)
+        self.run_service_loop(project_sync_interval_s=self.PROJECT_SYNC_INTERVAL_S)
+
+    def _announce_start(self, serve_all: bool) -> None:
+        """Say what the first registration pass came to. A service named
+        to projects that all refused it for good (no write access, its id
+        belongs to another account) has nothing to wait for, and stops."""
         if serve_all:
             if not self.service_registrations:
                 print("  No projects served yet; waiting for projects to appear…")
@@ -910,9 +924,19 @@ class BaseService(ABC):
                   f"project(s); syncing with the project list every "
                   f"{self.PROJECT_SYNC_INTERVAL_S:g}s. Waiting for requests… "
                   f"(Press Ctrl+C to stop.)")
+            return
+        targets = list(self._target_projects or [])
+        served = len(self._registrations_by_project)
+        if targets and all(pid in self._refused_projects for pid in targets):
+            print(f"{self.service_name} cannot serve "
+                  + ("the project it was given" if len(targets) == 1
+                     else f"any of the {len(targets)} projects it was given")
+                  + ". Stopping.")
+            raise SystemExit(1)
+        if served == len(targets):
+            where = (f"project {self._project_label(targets[0])}" if len(targets) == 1
+                     else f"{len(targets)} projects")
         else:
-            print(f"{self.service_name} registered on "
-                  + (f"project {project_ids[0]}" if len(project_ids) == 1
-                     else f"{len(project_ids)} projects")
-                  + ". Waiting for requests… (Press Ctrl+C to stop.)")
-        self.run_service_loop(project_sync_interval_s=self.PROJECT_SYNC_INTERVAL_S)
+            where = f"{served} of {len(targets)} projects"
+        print(f"{self.service_name} registered on {where}. "
+              f"Waiting for requests… (Press Ctrl+C to stop.)")
