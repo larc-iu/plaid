@@ -27,7 +27,7 @@ from plaid_client.workflows.umr import (
 from plaid_client.workflows.umr import Node as GNode, Sentence, UmrDocument as UmrDoc
 from plaid_client.workflows.umr import layers as umr_layers
 
-from ..core.bidi import plain_quote
+from ..core.bidi import plain_quote, visible
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer  # noqa: F401  (re-exported for the tools)
 from ..core.tools import ValueRefusal
@@ -315,7 +315,7 @@ def render_document(doc: UmrDoc, project: UmrProject, values: Dict[str, Dict[str
     out = [f'Document {plain_quote(doc.name)} ({len(sentences)} sentences, {doc.node_count} nodes)']
     for k in sorted(doc.metadata):
         if isinstance(doc.metadata[k], str) and doc.metadata[k]:
-            out.append(f'# {k} = {doc.metadata[k]}')
+            out.append(f'# {visible(k)} = {visible(doc.metadata[k])}')
     if not sentences:
         out.append('The document has no sentences yet: it has not been tokenized.')
         return '\n'.join(out)

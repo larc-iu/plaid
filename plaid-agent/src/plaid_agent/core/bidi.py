@@ -62,3 +62,15 @@ def qrx(pattern: Any) -> str:
 def for_model(text: Any) -> Any:
     """A tool's answer as the model reads it: the isolates taken out."""
     return text.translate(_STRIP) if isinstance(text, str) else text
+
+
+#: Characters that would break a line the model reads into two, as a read
+#: prints them. A token whose text held two lines printed as two rows
+#: (2026-10-12 survey), and a metadata value as a fake line (HUNT-recent 13).
+_BREAKS = str.maketrans({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
+
+
+def visible(value: Any) -> str:
+    """``value`` with its line breaks and tabs as visible escapes, so a line
+    stays one line."""
+    return str(value).translate(_BREAKS)

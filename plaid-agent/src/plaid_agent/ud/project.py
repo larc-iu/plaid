@@ -35,7 +35,7 @@ from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import stamp_inferred
 from plaid_client.workflows.messages import setup_incomplete
 
-from ..core.bidi import plain_quote
+from ..core.bidi import plain_quote, visible
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
@@ -827,17 +827,6 @@ def columns_of(s: Sentence) -> Tuple[str, ...]:
     return ALL_COLUMNS if s.has_enhanced else COLUMNS
 
 
-#: Characters that would break a CoNLL-U row, as a read prints them. A token
-#: whose text held two lines printed as two rows (2026-10-12 survey).
-_BREAKS = str.maketrans({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
-
-
-def visible(value: str) -> str:
-    """``value`` with its line breaks and tabs as visible escapes, so a row
-    stays one line."""
-    return value.translate(_BREAKS)
-
-
 def _rows(s: Sentence) -> List[List[str]]:
     """One CoNLL-U-shaped row per surface token and per word, in reading order.
     A multi-word token gets its range line first, with empty annotation columns,
@@ -948,7 +937,7 @@ def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int =
     out = [f'Document {head} ({len(sentences)} sentences, {doc.word_count} words)']
     for k in sorted(doc.metadata):
         if isinstance(doc.metadata[k], str) and doc.metadata[k]:
-            out.append(f'# {k} = {doc.metadata[k]}')
+            out.append(f'# {visible(k)} = {visible(doc.metadata[k])}')
     if not sentences:
         out.append('The document has no sentences yet: it has not been tokenized.')
         return '\n'.join(out)

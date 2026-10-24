@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.project import declares, find_layer, join_with, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
-from ..core.bidi import plain_quote
+from ..core.bidi import plain_quote, visible
 from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Any, Dict, List, Optional, Tuple
@@ -1024,7 +1024,7 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     head = f'Document {plain_quote(doc.name)}: {n} sentences, {doc.word_count()} words'
     shown = {k: v for k, v in doc.metadata.items() if k in project.document_metadata and v not in (None, '')}
     if shown:
-        head += ' | ' + ', '.join(f'{k}={v}' for k, v in shown.items())
+        head += ' | ' + ', '.join(f'{visible(k)}={visible(v)}' for k, v in shown.items())
     head += time_head(doc, recording)
     if n == 0:
         return head + '\n(no sentences yet)'
