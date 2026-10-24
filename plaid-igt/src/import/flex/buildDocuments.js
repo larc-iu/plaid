@@ -12,7 +12,7 @@
 // partitioning): each paragraph's last sentence absorbs the trailing newline.
 
 import { pickEn } from './fwdataParser.js';
-import { keepTimeRule } from '../elan/buildDocuments.js';
+import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { matchesAt, makeCpIndexer, composeOnEdges, cutsAWord } from '../align.js';
 
 /**

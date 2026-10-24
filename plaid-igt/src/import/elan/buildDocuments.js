@@ -46,7 +46,7 @@ import {
 import { chainOrder } from './readEaf.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
-import { mayOverlap } from '../../domain/alignmentTimes.js';
+import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { nameKey, sameName } from '@ui/lib/nameKey.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
@@ -242,43 +242,6 @@ function tierSpeakers(tiers) {
       return [t.id, left || t.id];
     }),
   );
-}
-
-/**
- * The segments whose times may be kept: two may overlap in time only when
- * both have a speaker and the speakers differ (alignmentTimes.js), so of an
- * overlap that is not cross-talk the later one loses its time, and a warning
- * says which. `utterances[i]` is the number of the utterance segment i is in.
- */
-export function keepTimeRule(alignments, utterances, warnings) {
-  const asToken = (a) => ({ metadata: { speaker: a.speaker ?? '' } });
-  const order = alignments
-    .map((a, i) => i)
-    .sort((i, j) => alignments[i].timeBegin - alignments[j].timeBegin || i - j);
-  const kept = [];
-  const dropped = new Set();
-  for (const i of order) {
-    const a = alignments[i];
-    const clash = kept.find(
-      (k) =>
-        alignments[k].timeBegin < a.timeEnd &&
-        alignments[k].timeEnd > a.timeBegin &&
-        !mayOverlap(asToken(alignments[k]), asToken(a)),
-    );
-    if (clash === undefined) {
-      kept.push(i);
-      continue;
-    }
-    dropped.add(i);
-    const why = a.speaker ? 'with the same speaker' : 'with no speaker to tell them apart';
-    const [n, m] = [utterances[i], utterances[clash]];
-    warnings.push(
-      n === m
-        ? `Utterance ${n}: two of its time segments overlap ${why}. The later one's time is not imported.`
-        : `Utterance ${n} overlaps utterance ${m} in time ${why}. Its time is not imported.`,
-    );
-  }
-  return alignments.filter((a, i) => !dropped.has(i));
 }
 
 /**

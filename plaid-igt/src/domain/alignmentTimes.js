@@ -10,8 +10,8 @@
 // writer of timeBegin/timeEnd or of the speaker goes through here: the
 // timeline drags (an edge and a new selection, clamped live), the
 // transcript's time boxes and the domain method behind both, a new segment
-// and a speaker edit (refused with the reason), the ELAN import (the later
-// time of an overlap dropped and warned of), and the load-time validator
+// and a speaker edit (refused with the reason), the ELAN and FLEx imports
+// (keepTimeRule: the later time of an overlap dropped and warned of), and the load-time validator
 // (reported, for data that got in some other way). The ELAN export puts each
 // speaker on its own tier, where cross-talk is legal, and must drop a time
 // for same-tier overlap.
@@ -45,6 +45,46 @@ export const mayOverlap = (a, b) => {
   const sb = speakerOf(b);
   return sa !== '' && sb !== '' && sa !== sb;
 };
+
+/**
+ * The segments of an import whose times may be kept: two may overlap in time
+ * only when both have a speaker and the speakers differ, so of an overlap
+ * that is not cross-talk the later one loses its time, and a warning says
+ * which. `alignments` are `{timeBegin, timeEnd, speaker}`, `utterances[i]` is
+ * the number of the utterance segment i is in. The ELAN and FLEx importers
+ * read their segments through it.
+ */
+export function keepTimeRule(alignments, utterances, warnings) {
+  const asToken = (a) => ({
+    metadata: { timeBegin: a.timeBegin, timeEnd: a.timeEnd, speaker: a.speaker ?? '' },
+  });
+  const tokens = alignments.map(asToken);
+  const order = alignments.map((a, i) => i).sort((i, j) => byTime(tokens[i], tokens[j]) || i - j);
+  const kept = [];
+  const dropped = new Set();
+  for (const i of order) {
+    const t = tokens[i];
+    const clash = kept.find(
+      (k) =>
+        timeBeginOf(tokens[k]) < timeEndOf(t) &&
+        timeEndOf(tokens[k]) > timeBeginOf(t) &&
+        !mayOverlap(tokens[k], t),
+    );
+    if (clash === undefined) {
+      kept.push(i);
+      continue;
+    }
+    dropped.add(i);
+    const why = speakerOf(t) ? 'with the same speaker' : 'with no speaker to tell them apart';
+    const [n, m] = [utterances[i], utterances[clash]];
+    warnings.push(
+      n === m
+        ? `Utterance ${n}: two of its time segments overlap ${why}. The later one's time is not imported.`
+        : `Utterance ${n} overlaps utterance ${m} in time ${why}. Its time is not imported.`,
+    );
+  }
+  return alignments.filter((a, i) => !dropped.has(i));
+}
 
 /**
  * The tightest bounds the other segments impose on `id`: the latest end of a
