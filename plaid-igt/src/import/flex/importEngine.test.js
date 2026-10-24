@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { deriveImportConfig, resolveTargets, importLexicon, runImport } from './importEngine.js';
+import { mintedId, mintedSpecs } from '../testMinted.js';
 
 // --- fixtures ----------------------------------------------------------------
 
@@ -251,14 +252,22 @@ function makeFakeClient({
       },
     },
     texts: {
-      create: (layerId, docId, body) =>
-        record('texts.create', { layerId, docId, body }, { id: id('text') }),
+      create: (layerId, docId, body, _metadata, _message, { id: minted } = {}) => {
+        mintedId(minted, 'texts.create');
+        return record('texts.create', { layerId, docId, body }, { id: id('text') });
+      },
     },
     tokens: {
-      bulkCreate: (body) => record('tokens.bulkCreate', body, { ids: body.map(() => id('tok')) }),
+      bulkCreate: (body) =>
+        record('tokens.bulkCreate', mintedSpecs(body, 'tokens.bulkCreate'), {
+          ids: body.map(() => id('tok')),
+        }),
     },
     spans: {
-      bulkCreate: (body) => record('spans.bulkCreate', body, { ids: body.map(() => id('span')) }),
+      bulkCreate: (body) =>
+        record('spans.bulkCreate', mintedSpecs(body, 'spans.bulkCreate'), {
+          ids: body.map(() => id('span')),
+        }),
     },
     vocabLayers: {
       get: () =>
@@ -272,14 +281,22 @@ function makeFakeClient({
     },
     vocabItems: {
       bulkCreate: (body) =>
-        record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
+        record(
+          'vocabItems.bulkCreate',
+          { body: mintedSpecs(body, 'vocabItems.bulkCreate') },
+          { ids: body.map(() => id('item')) },
+        ),
       bulkUpdate: (body) => record('vocabItems.bulkUpdate', { body }, { count: body.length }),
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) =>
         record('vocabLinks.create', { itemId, tokens, metadata }, { id: id('link') }),
       bulkCreate: (body) =>
-        record('vocabLinks.bulkCreate', { body }, { ids: body.map(() => id('link')) }),
+        record(
+          'vocabLinks.bulkCreate',
+          { body: mintedSpecs(body, 'vocabLinks.bulkCreate') },
+          { ids: body.map(() => id('link')) },
+        ),
     },
   };
   return client;

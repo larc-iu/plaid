@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { createDocumentShell, resolveIgtTargets, setupDataFor } from './project.js';
+import {
+  createDocumentShell,
+  resolveIgtTargets,
+  setupDataFor,
+  writeAlignments,
+  writeDocumentLayers,
+} from './project.js';
 import { defaultIgnoredTokensSetup } from '../domain/igtConfig.js';
 
 const role = (r) => ({ plaid: { role: r } });
@@ -155,8 +161,10 @@ describe('createDocumentShell', () => {
     expect(client.calls[0].slice(1, 4)).toEqual(['p1', 'Story', { source: 'a.eaf' }]);
     // A name another document of the project holds becomes the first free one.
     expect(client.calls[0][5]).toEqual(expect.objectContaining({ freeName: true }));
-    expect(client.calls[1].slice(1)).toEqual(['tl', 'doc1', 'los perros', undefined]);
-    expect(client.calls[2][1]).toEqual([{ tokenLayerId: 'sl', text: 'text1', begin: 0, end: 10 }]);
+    expect(client.calls[1].slice(1, 5)).toEqual(['tl', 'doc1', 'los perros', undefined]);
+    expect(client.calls[2][1]).toEqual([
+      { id: expect.any(String), tokenLayerId: 'sl', text: 'text1', begin: 0, end: 10 },
+    ]);
     expect(shell).toEqual({ documentId: 'doc1', textId: 'text1', sentenceIds: ['t1'] });
   });
 
@@ -208,8 +216,15 @@ describe('createDocumentShell', () => {
       ],
     });
     expect(client.calls[2][1]).toEqual([
-      { tokenLayerId: 'sl', text: 'text1', begin: 0, end: 1 },
-      { tokenLayerId: 'sl', text: 'text1', begin: 1, end: 2, metadata: { speaker: 'Ana' } },
+      { id: expect.any(String), tokenLayerId: 'sl', text: 'text1', begin: 0, end: 1 },
+      {
+        id: expect.any(String),
+        tokenLayerId: 'sl',
+        text: 'text1',
+        begin: 1,
+        end: 2,
+        metadata: { speaker: 'Ana' },
+      },
     ]);
   });
 
@@ -251,5 +266,62 @@ describe('createDocumentShell', () => {
     });
     expect(client.calls.map(([m]) => m)).toEqual(['documents.create', 'texts.create']);
     expect(shell.sentenceIds).toEqual(['own0']);
+  });
+});
+
+// Every row an import makes is made under an id minted here, so a request
+// whose answer was lost past the client's resends left rows that can be
+// named (R2-RULES-5).
+describe('the shared import writers mint every id they create', () => {
+  const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const targets = resolveIgtTargets(PROJECT, [
+    { name: 'Translation', scope: 'Sentence' },
+    { name: 'POS', scope: 'Word' },
+    { name: 'Gloss', scope: 'Morpheme' },
+  ]);
+
+  it('names an id on the text and on every token, span and alignment', async () => {
+    const client = stubClient();
+    client.spans = {
+      bulkCreate: (specs) => {
+        client.calls.push(['spans.bulkCreate', specs]);
+        return { ids: specs.map((s) => s.id) };
+      },
+    };
+    const shell = await createDocumentShell({
+      client,
+      projectId: 'p1',
+      targets,
+      name: 'Story',
+      metadata: {},
+      body: 'ab',
+      sentences: [{ begin: 0, end: 2 }],
+    });
+    await writeDocumentLayers({
+      client,
+      targets,
+      textId: shell.textId,
+      sentenceIds: shell.sentenceIds,
+      sentenceSpans: [[{ layerId: 'sl-Translation', value: 'x' }]],
+      words: [
+        {
+          begin: 0,
+          end: 2,
+          spans: [{ layerId: 'sl-POS', value: 'N' }],
+          morphemes: [{ spans: [{ layerId: 'sl-Gloss', value: 'g' }] }],
+        },
+      ],
+    });
+    await writeAlignments({
+      client,
+      targets,
+      textId: shell.textId,
+      alignments: [{ begin: 0, end: 2, timeBegin: 0, timeEnd: 1 }],
+    });
+    const text = client.calls.find(([m]) => m === 'texts.create');
+    expect(text[6]?.id).toMatch(UUIDV7);
+    const rows = client.calls.filter(([m]) => m.endsWith('.bulkCreate')).flatMap(([, s]) => s);
+    expect(rows).toHaveLength(7);
+    for (const row of rows) expect(row.id).toMatch(UUIDV7);
   });
 });

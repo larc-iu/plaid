@@ -7,6 +7,7 @@ import {
   ImportCancelled,
 } from './importEngine.js';
 import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
+import { mintedId, mintedSpecs } from '../testMinted.js';
 
 const role = (r) => ({ plaid: { role: r } });
 const scoped = (name, scope) => ({ id: `sl-${name}`, name, config: { igt: { scope } } });
@@ -94,20 +95,21 @@ function stubClient({ documents = [], docMetadata = {}, docMedia = [] } = {}) {
       uploadMedia: async (id, file) => calls.push(['documents.uploadMedia', id, file.name]),
     },
     texts: {
-      create: async (layerId, docId, body) => {
+      create: async (layerId, docId, body, _metadata, _message, { id } = {}) => {
+        mintedId(id, 'texts.create');
         calls.push(['texts.create', layerId, body]);
         return { id: 'text1' };
       },
     },
     tokens: {
       bulkCreate: async (specs) => {
-        calls.push(['tokens.bulkCreate', specs]);
+        calls.push(['tokens.bulkCreate', mintedSpecs(specs, 'tokens.bulkCreate')]);
         return { ids: specs.map(() => next('t')) };
       },
     },
     spans: {
       bulkCreate: async (specs) => {
-        calls.push(['spans.bulkCreate', specs]);
+        calls.push(['spans.bulkCreate', mintedSpecs(specs, 'spans.bulkCreate')]);
         return { ids: specs.map(() => next('s')) };
       },
     },

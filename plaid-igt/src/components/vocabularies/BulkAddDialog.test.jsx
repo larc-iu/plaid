@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { settle } from '@/domain/test-helpers.js';
+import { mintedSpecs } from '@/import/testMinted.js';
 
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),
@@ -126,6 +127,8 @@ describe('Bulk Add', () => {
     });
     const sent = bulkCreate.mock.calls[0][0];
     expect(sent.map((c) => c.metadata.source)).toEqual(['Word list', 'Word list']);
+    // Each under a minted id (R2-RULES-5).
+    expect(mintedSpecs(sent, 'vocabItems.bulkCreate')).toHaveLength(2);
   });
 
   it('pages through a long review', async () => {

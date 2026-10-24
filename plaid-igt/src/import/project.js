@@ -19,7 +19,7 @@
 // glosses, lexicons, media) stays in each importer.
 
 import { createdIds, uuidv7 } from '@larc-iu/plaid-client';
-import { bulkInChunks } from '../domain/bulk.js';
+import { bulkInChunks, withMintedIds } from '../domain/bulk.js';
 import { convertedNote, prepareRecording } from '../domain/media/playableRecording.js';
 import { mediaUploadFailure } from './mediaUpload.js';
 import { importStamp } from './resume.js';
@@ -206,7 +206,8 @@ export async function createDocumentShell({
     documentId,
     body ?? '',
     typeof textMetadata === 'function' ? textMetadata() : textMetadata,
-    ...(tokenEdges?.length ? [undefined, { tokenEdges }] : []),
+    undefined,
+    { id: uuidv7(), ...(tokenEdges?.length ? { tokenEdges } : {}) },
   );
   const textId = text.id ?? text;
   onText?.(textId);
@@ -218,14 +219,16 @@ export async function createDocumentShell({
   // chunked: a first chunk ending mid-text is rejected with "Partition must
   // end at the extent's end". A long text therefore holds the write lock for
   // one big transaction, which is the cost of the invariant.
-  const specs = sentences.map((s) => ({
-    tokenLayerId: targets.sentenceLayerId,
-    text: textId,
-    begin: s.begin,
-    end: s.end,
-    ...(s.precedence != null ? { precedence: s.precedence } : {}),
-    ...(s.metadata && Object.keys(s.metadata).length ? { metadata: s.metadata } : {}),
-  }));
+  const specs = withMintedIds(
+    sentences.map((s) => ({
+      tokenLayerId: targets.sentenceLayerId,
+      text: textId,
+      begin: s.begin,
+      end: s.end,
+      ...(s.precedence != null ? { precedence: s.precedence } : {}),
+      ...(s.metadata && Object.keys(s.metadata).length ? { metadata: s.metadata } : {}),
+    })),
+  );
   const sentenceIds = !specs.length
     ? []
     : createTokens
@@ -263,7 +266,7 @@ export async function writeDocumentLayers({
   const withMetadata = (spec, metadata) =>
     metadata && Object.keys(metadata).length ? { ...spec, metadata } : spec;
   const createTokens = (specs) =>
-    bulkInChunks(specs, check, (part) => client.tokens.bulkCreate(part));
+    bulkInChunks(withMintedIds(specs), check, (part) => client.tokens.bulkCreate(part));
 
   check();
   progress('Creating words');
@@ -317,7 +320,7 @@ export async function writeDocumentLayers({
   words.forEach((w, wi) => add(wordIds[wi], w.spans));
   morphemes.forEach(({ wi, mi, morpheme }) => add(morphemeIds[wi][mi], morpheme.spans));
   for (const specs of byLayer.values()) {
-    await bulkInChunks(specs, check, (part) => client.spans.bulkCreate(part));
+    await bulkInChunks(withMintedIds(specs), check, (part) => client.spans.bulkCreate(part));
   }
   return { wordIds, morphemeIds };
 }
@@ -341,17 +344,19 @@ export async function writeAlignments({
   check();
   progress('Creating time alignment');
   await bulkInChunks(
-    alignments.map((a) => ({
-      tokenLayerId: targets.alignmentLayerId,
-      text: textId,
-      begin: a.begin,
-      end: a.end,
-      metadata: {
-        timeBegin: a.timeBegin,
-        timeEnd: a.timeEnd,
-        ...(a.speaker ? { speaker: a.speaker } : {}),
-      },
-    })),
+    withMintedIds(
+      alignments.map((a) => ({
+        tokenLayerId: targets.alignmentLayerId,
+        text: textId,
+        begin: a.begin,
+        end: a.end,
+        metadata: {
+          timeBegin: a.timeBegin,
+          timeEnd: a.timeEnd,
+          ...(a.speaker ? { speaker: a.speaker } : {}),
+        },
+      })),
+    ),
     check,
     (specs) => client.tokens.bulkCreate(specs),
   );

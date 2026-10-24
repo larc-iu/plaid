@@ -31,7 +31,7 @@ import {
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
 import { Loading } from '@ui/components/shared/Loading.jsx';
-import { CHUNK } from '@/domain/bulk';
+import { CHUNK, withMintedIds } from '@/domain/bulk';
 import { readVocabulary } from '@/domain/vocabCache';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
@@ -605,11 +605,13 @@ export const BulkAddDialog = ({
         for (let i = 0; i < creates.length; i += CHUNK) {
           const chunk = creates.slice(i, i + CHUNK);
           await client.vocabItems.bulkCreate(
-            chunk.map((c) => ({
-              vocabLayerId: vocabularyId,
-              form: c.form,
-              ...(Object.keys(c.metadata).length ? { metadata: followIds(c.metadata) } : {}),
-            })),
+            withMintedIds(
+              chunk.map((c) => ({
+                vocabLayerId: vocabularyId,
+                form: c.form,
+                ...(Object.keys(c.metadata).length ? { metadata: followIds(c.metadata) } : {}),
+              })),
+            ),
           );
           created += chunk.length;
           setProgress({ done: created, total, phase: 'adding' });

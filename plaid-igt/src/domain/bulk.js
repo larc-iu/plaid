@@ -17,7 +17,7 @@
 // 1000-op cap as well, and says so where it picks its own number.
 export const CHUNK = 500;
 
-import { createdIds } from '@larc-iu/plaid-client';
+import { createdIds, uuidv7 } from '@larc-iu/plaid-client';
 
 /** `arr` in CHUNK-sized slices (or `size`-sized), as an array of arrays. */
 export function chunk(arr, size = CHUNK) {
@@ -47,3 +47,10 @@ export async function bulkInChunks(items, check, send) {
   }
   return ids;
 }
+
+/**
+ * `specs` for a bulk create, each under an id minted here unless it names
+ * one. A request whose answer was lost past the client's resends then made
+ * rows that can be named, rather than rows nothing knows the ids of.
+ */
+export const withMintedIds = (specs) => specs.map((s) => (s.id ? s : { id: uuidv7(), ...s }));

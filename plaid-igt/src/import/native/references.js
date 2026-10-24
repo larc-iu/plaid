@@ -19,7 +19,7 @@
 // patched once every document is in (`relinkDocumentReferences`), from what
 // the server holds, so that a resumed import settles the same way.
 
-import { bulkInChunks } from '../../domain/bulk.js';
+import { bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 
 /**
  * The kinds of row whose id a metadata value can name and have rewritten: the
@@ -192,7 +192,8 @@ async function sendPatches(client, patches, check) {
  * one of those that `lookup` does not know yet is a reference forward.
  *
  * `create(kind, specs, send)` writes a batch of new entities through `send`
- * (which answers their ids in order) with their references rewritten, and
+ * (which answers their ids in order) with their references rewritten, each
+ * under an id minted here unless its spec names one (withMintedIds), and
  * remembers each one that names something not made yet. `settle()`, once the
  * document's last entity exists, patches those.
  */
@@ -213,7 +214,11 @@ export function documentReferences({ client, lookup, ahead, check = () => {} }) 
     async create(kind, specs, send) {
       const prepared = specs.map((spec) => (spec.metadata ? prepare(spec.metadata) : null));
       const ids = await send(
-        specs.map((spec, i) => (prepared[i] ? { ...spec, metadata: prepared[i].metadata } : spec)),
+        withMintedIds(
+          specs.map((spec, i) =>
+            prepared[i] ? { ...spec, metadata: prepared[i].metadata } : spec,
+          ),
+        ),
       );
       prepared.forEach((p, i) => {
         if (p?.later && ids?.[i]) pending.push({ kind, id: ids[i], metadata: p.metadata });

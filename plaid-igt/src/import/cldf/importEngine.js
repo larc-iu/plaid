@@ -20,7 +20,7 @@ import {
   writeVocabConfig,
   settlePrior,
 } from '../resume.js';
-import { CHUNK } from '../../domain/bulk.js';
+import { CHUNK, withMintedIds } from '../../domain/bulk.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
@@ -185,11 +185,13 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     check();
     const slice = pending.slice(i, i + CHUNK);
     const res = await client.vocabItems.bulkCreate(
-      slice.map((p) => ({
-        vocabLayerId: vocabId,
-        form: p.form,
-        metadata: { ...p.metadata, [ITEM_SOURCE_KEY]: p.key },
-      })),
+      withMintedIds(
+        slice.map((p) => ({
+          vocabLayerId: vocabId,
+          form: p.form,
+          metadata: { ...p.metadata, [ITEM_SOURCE_KEY]: p.key },
+        })),
+      ),
     );
     createdIds(res).forEach((id, n) => byEntry.set(slice[n].key, id));
     done += slice.length;

@@ -26,7 +26,7 @@
 // or document whose metadata has no room for those marks is named on the
 // project's import record instead (`unmarkedLedger`).
 
-import { ROLES, cpLength, createdIds } from '@larc-iu/plaid-client';
+import { ROLES, cpLength, createdIds, uuidv7 } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import {
   IMPORT_STAMP_KEYS,
@@ -36,7 +36,7 @@ import {
   writeVocabConfig,
   withoutStamps,
 } from '../resume.js';
-import { CHUNK } from '../../domain/bulk.js';
+import { CHUNK, withMintedIds } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import { proposeEntryRole } from '../../domain/entryRole.js';
@@ -301,11 +301,13 @@ export async function importVocabulary({
     // back in input order.
     const ids = createdIds(
       await client.vocabItems.bulkCreate(
-        chunk.map((it) => ({
-          vocabLayerId: vocabId,
-          form: it.form,
-          metadata: stamped(it),
-        })),
+        withMintedIds(
+          chunk.map((it) => ({
+            vocabLayerId: vocabId,
+            form: it.form,
+            metadata: stamped(it),
+          })),
+        ),
       ),
     );
     chunk.forEach((it, j) => {
@@ -393,12 +395,10 @@ async function postArchivedComments({
     check();
     await client.batched(async (b) => {
       for (const post of posts.slice(i, i + CHUNK)) {
-        b.comments.create(
-          post.entityType,
-          post.entityId,
-          post.body,
-          post.anchorLabel ? { anchorLabel: post.anchorLabel } : {},
-        );
+        b.comments.create(post.entityType, post.entityId, post.body, {
+          id: uuidv7(),
+          ...(post.anchorLabel ? { anchorLabel: post.anchorLabel } : {}),
+        });
       }
     });
   }
@@ -1053,6 +1053,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
         await client.guidelines.create(projectId, g.title, {
           body: g.body || '',
           pinned: !!g.pinned,
+          id: uuidv7(),
         });
       } catch (err) {
         warnings.push(`Guideline "${g.title}" could not be created: ${humanizeError(err)}`);

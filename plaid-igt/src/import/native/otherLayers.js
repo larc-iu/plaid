@@ -11,8 +11,8 @@
 // Archive ids are correlation keys here as everywhere: each layer, token, span
 // and relation is made fresh and found again through an old-to-new map.
 
-import { PLAID_NAMESPACE, ROLES, createdIds } from '@larc-iu/plaid-client';
-import { bulkInChunks } from '../../domain/bulk.js';
+import { PLAID_NAMESPACE, ROLES, createdIds, uuidv7 } from '@larc-iu/plaid-client';
+import { bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstraints.js';
 import { humanizeError } from '../../../../plaid-ui/src/lib/errors.js';
 import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
@@ -164,7 +164,11 @@ export async function restoreOtherLayers({
       // name-ok: within one project, the archive's own layers (ruling C4)
       let layer = claim(spanLayer.relationLayers, (c) => c.name === row.name);
       if (!layer) {
-        layer = { id: newId(await client.relationLayers.create(spanLayer.id, row.name)) };
+        layer = {
+          id: newId(
+            await client.relationLayers.create(spanLayer.id, row.name, undefined, { id: uuidv7() }),
+          ),
+        };
       }
       out.relationLayers.set(row.id, layer.id);
       keepRules('relation', layer, row);
@@ -215,7 +219,9 @@ export async function restoreOtherLayers({
       // name-ok: within one project, the archive's own layers (ruling C4)
       layer = claim(host.spanLayers, (c) => !readScope(c.config) && c.name === row.name);
       if (!layer) {
-        layer = { id: newId(await client.spanLayers.create(host.id, row.name)) };
+        layer = {
+          id: newId(await client.spanLayers.create(host.id, row.name, undefined, { id: uuidv7() })),
+        };
       }
     }
     if (!layer) {
@@ -279,6 +285,8 @@ export async function restoreOtherLayers({
             row.name,
             overlapMode,
             parentId ?? undefined,
+            undefined,
+            { id: uuidv7() },
           ),
         ),
       };
@@ -297,7 +305,11 @@ export async function restoreOtherLayers({
       // name-ok: within one project, the archive's own layers (ruling C4)
       let spanLayer = claim(layer.spanLayers, (c) => c.name === spanRow.name);
       if (!spanLayer) {
-        spanLayer = { id: newId(await client.spanLayers.create(layer.id, spanRow.name)) };
+        spanLayer = {
+          id: newId(
+            await client.spanLayers.create(layer.id, spanRow.name, undefined, { id: uuidv7() }),
+          ),
+        };
       }
       out.spanLayers.set(spanRow.id, spanLayer.id);
       keepRules('span', spanLayer, spanRow);
@@ -412,7 +424,7 @@ export async function importOtherLayerData({
   relationIdMap,
   // What rewrites references in metadata (./references.js). Without it,
   // metadata goes as it is.
-  refs = { create: async (_kind, specs, send) => (await send(specs)) ?? [] },
+  refs = { create: async (_kind, specs, send) => (await send(withMintedIds(specs))) ?? [] },
   warnings = [],
   check = () => {},
 }) {

@@ -30,6 +30,7 @@ import {
   rebuildTokenMap,
   restoreLayerNamesAndOrder,
 } from './importEngine.js';
+import { mintedId, mintedSpecs } from '../testMinted.js';
 
 // ---- the archive under test: built by the REAL exporter --------------------
 // Export the loss-trap fixture document, then import the result — the test is
@@ -213,7 +214,10 @@ function stubClient({
       deleteConfig: async (...a) => record('vocabLayers.deleteConfig', a),
     },
     spanLayers: {
-      create: async (...a) => record('spanLayers.create', a, { id: fresh('sl') }),
+      create: async (...a) => {
+        mintedId(a.at(-1)?.id, 'spanLayers.create');
+        return record('spanLayers.create', a.slice(0, -2), { id: fresh('sl') });
+      },
       setConfig: async (...a) => {
         const [id, ns, key, value] = a;
         const held = spanConfigs.get(id) || {};
@@ -229,30 +233,41 @@ function stubClient({
     tokenLayers: {
       update: async (...a) => record('tokenLayers.update', a),
       shift: async (...a) => record('tokenLayers.shift', a),
-      create: async (...a) => record('tokenLayers.create', a, { id: fresh('tl') }),
+      create: async (...a) => {
+        mintedId(a.at(-1)?.id, 'tokenLayers.create');
+        return record('tokenLayers.create', a.slice(0, -2), { id: fresh('tl') });
+      },
       setConfig: async (...a) => record('tokenLayers.setConfig', a),
       get: async (id) => record('tokenLayers.get', [id], { id, ...tokenLayerShapes[id] }),
       ...ruleCalls('tokenLayers'),
     },
     relationLayers: {
-      create: async (...a) => record('relationLayers.create', a, { id: fresh('rl') }),
+      create: async (...a) => {
+        mintedId(a.at(-1)?.id, 'relationLayers.create');
+        return record('relationLayers.create', a.slice(0, -2), { id: fresh('rl') });
+      },
       setConfig: async (...a) => record('relationLayers.setConfig', a),
       ...ruleCalls('relationLayers'),
     },
     relations: {
       bulkCreate: async (specs) =>
-        record('relations.bulkCreate', [specs], { ids: specs.map(() => fresh('rel')) }),
+        record('relations.bulkCreate', [mintedSpecs(specs, 'relations.bulkCreate')], {
+          ids: specs.map(() => fresh('rel')),
+        }),
       bulkUpdate: async (rows) => record('relations.bulkUpdate', [rows], { count: rows.length }),
     },
     guidelines: {
-      create: async (...a) => record('guidelines.create', a, { id: fresh('gl') }),
+      create: async (projectId, title, { id, ...opts } = {}) => {
+        mintedId(id, 'guidelines.create');
+        return record('guidelines.create', [projectId, title, opts], { id: fresh('gl') });
+      },
       // A new project has none; a resume's project has what the first run
       // wrote, which the tests below stand in for.
       list: async () => [],
     },
     vocabItems: {
       bulkCreate: async (body) => {
-        const made = record('vocabItems.bulkCreate', [body], {
+        const made = record('vocabItems.bulkCreate', [mintedSpecs(body, 'vocabItems.bulkCreate')], {
           ids: body.map(() => fresh('item')),
         });
         body.forEach((it, i) =>
@@ -277,7 +292,9 @@ function stubClient({
         return result;
       },
       bulkCreate: (body) =>
-        record('vocabLinks.bulkCreate', [body], { ids: body.map(() => fresh('link')) }),
+        record('vocabLinks.bulkCreate', [mintedSpecs(body, 'vocabLinks.bulkCreate')], {
+          ids: body.map(() => fresh('link')),
+        }),
     },
     withOperation: async (_message, fn) => fn(() => {}),
     // A batch: a view of the client whose writes queue, handed to `fn` the way
@@ -321,21 +338,29 @@ function stubClient({
       uploadMedia: async (id, file) => record('documents.uploadMedia', [id, file?.name]),
     },
     texts: {
-      create: async (...a) => record('texts.create', a, { id: fresh('text') }),
+      create: async (...a) => {
+        mintedId(a[5]?.id, 'texts.create');
+        return record('texts.create', a, { id: fresh('text') });
+      },
       patchMetadata: async (...a) => record('texts.patchMetadata', a),
     },
     tokens: {
       bulkCreate: async (specs) =>
-        record('tokens.bulkCreate', [specs], { ids: specs.map(() => fresh('tok')) }),
+        record('tokens.bulkCreate', [mintedSpecs(specs, 'tokens.bulkCreate')], {
+          ids: specs.map(() => fresh('tok')),
+        }),
       bulkUpdate: async (rows) => record('tokens.bulkUpdate', [rows], { count: rows.length }),
     },
     spans: {
       bulkCreate: async (specs) =>
-        record('spans.bulkCreate', [specs], { ids: specs.map(() => fresh('span')) }),
+        record('spans.bulkCreate', [mintedSpecs(specs, 'spans.bulkCreate')], {
+          ids: specs.map(() => fresh('span')),
+        }),
       bulkUpdate: async (rows) => record('spans.bulkUpdate', [rows], { count: rows.length }),
     },
     comments: {
-      create: (entityType, entityId, body) => {
+      create: (entityType, entityId, body, { id } = {}) => {
+        mintedId(id, 'comments.create');
         const result = { id: fresh('comment') };
         record('comments.create', [entityType, entityId, body], result);
         if (batch) batch.push(result);

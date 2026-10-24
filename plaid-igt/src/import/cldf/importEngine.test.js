@@ -10,6 +10,7 @@ import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
 import { documentFraction } from '../progress.js';
 import { buildCldfDataset } from '../../export/cldf.js';
 import { makeFixtureDoc } from '../../export/testFixtures.js';
+import { mintedId, mintedSpecs } from '../testMinted.js';
 
 // A build produced by exporting the shared fixture and reading it back, so the
 // engine is exercised against the same data the exporter really writes.
@@ -96,14 +97,24 @@ function stubClient({ existingDocs = [], existingItems = [], vocabConfig = {} } 
       uploadMedia: (docId, file) => record('documents.uploadMedia', { docId, file }, {}),
     },
     texts: {
-      create: (layerId, docId, body) =>
-        record('texts.create', { layerId, docId, body }, { id: 'text-1' }),
+      create: (layerId, docId, body, _metadata, _message, { id: minted } = {}) =>
+        record(
+          'texts.create',
+          { layerId, docId, body, id: mintedId(minted, 'texts.create') },
+          { id: 'text-1' },
+        ),
     },
     tokens: {
-      bulkCreate: (body) => record('tokens.bulkCreate', body, { ids: body.map(() => id('tok')) }),
+      bulkCreate: (body) =>
+        record('tokens.bulkCreate', mintedSpecs(body, 'tokens.bulkCreate'), {
+          ids: body.map(() => id('tok')),
+        }),
     },
     spans: {
-      bulkCreate: (body) => record('spans.bulkCreate', body, { ids: body.map(() => id('span')) }),
+      bulkCreate: (body) =>
+        record('spans.bulkCreate', mintedSpecs(body, 'spans.bulkCreate'), {
+          ids: body.map(() => id('span')),
+        }),
     },
     vocabLayers: {
       get: () => Promise.resolve({ id: 'v1', items: existingItems, config: vocabConfig }),
@@ -112,7 +123,11 @@ function stubClient({ existingDocs = [], existingItems = [], vocabConfig = {} } 
     },
     vocabItems: {
       bulkCreate: (body) =>
-        record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
+        record(
+          'vocabItems.bulkCreate',
+          { body: mintedSpecs(body, 'vocabItems.bulkCreate') },
+          { ids: body.map(() => id('item')) },
+        ),
       bulkUpdate: (body) => record('vocabItems.bulkUpdate', { body }, { count: body.length }),
     },
   };

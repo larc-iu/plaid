@@ -19,7 +19,7 @@ import {
   writeVocabConfig,
   settlePrior,
 } from '../resume.js';
-import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
+import { CHUNK, bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
 import { IGT_NAMESPACE, SENTENCE_ROLES, readVocabFields } from '../../domain/igtConfig.js';
@@ -460,7 +460,9 @@ export async function importLexicon({
     const chunk = pending.slice(i, i + CHUNK);
     const ids = createdIds(
       await client.vocabItems.bulkCreate(
-        chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
+        withMintedIds(
+          chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
+        ),
       ),
     );
     chunk.forEach((p, j) => {
@@ -817,7 +819,7 @@ async function importDocument({
         ];
       }),
     );
-    await bulkInChunks(links, check, (part) => client.vocabLinks.bulkCreate(part));
+    await bulkInChunks(withMintedIds(links), check, (part) => client.vocabLinks.bulkCreate(part));
 
     // Where each sentence sits in its recording, for a text FLEx kept times
     // for: one token per timed sentence.
