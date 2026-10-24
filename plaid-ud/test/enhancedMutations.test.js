@@ -191,7 +191,7 @@ test('a relation drawn over a pair someone else left a suppressor on is not born
   // The other direction of the same guard, and the one that covers writers
   // outside this editor: an agent `set_head`, a script or the Python client
   // moves a basic relation and leaves the suppressor over the pair it left
-  // behind. Only reconcile-on-OPEN sweeps those, and the assistant panel is
+  // behind. Nothing sweeps those, and the assistant panel is
   // app chrome, so a person can have the document open while one runs. The
   // arc they then draw over that pair must not adopt the stale row and come
   // up faded, with no enhanced head and nothing on screen saying why.

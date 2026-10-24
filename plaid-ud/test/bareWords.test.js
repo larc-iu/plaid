@@ -1,8 +1,7 @@
-// H33-UD-1: a word another app made has no UD word until a writer opens the
-// document and the repair on open seeds one. The export and a reader's grid
-// never seed, and they left such words out: a fully bare document exported as
-// "No tokens." and a partly bare one lost the word from its rows while `# text`
-// kept it. Every row now stands in for the seed, and nothing is written.
+// A word another app made has no UD word under it until the first write on it
+// makes one (R3, 2026-10-24). Every reader shows it as the one 1:1 UD word that
+// write makes (H33-UD-1: the export once left such words out), and opening the
+// document writes nothing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
@@ -79,7 +78,7 @@ test('a word with no UD word keeps its row among annotated ones', () => {
   assert.equal(rows[2].split('\t')[6], '0');
 });
 
-test("a reader's rows show the word as the seed would make it, and write nothing", () => {
+test("a reader's rows show the word as its first write makes it, and write nothing", () => {
   const doc = new ConlluDocument({ raw: bare(['dog']) });
   const entry = doc.sentences[0].tokens[1];
   assert.equal(entry.virtual, true);
@@ -95,38 +94,159 @@ test("a reader's rows show the word as the seed would make it, and write nothing
   );
 });
 
-test("a writer's edit of such a word is refused before any request", async () => {
-  const calls = [];
-  const client = new Proxy(
-    {},
-    {
-      get: (_t, key) => {
-        calls.push(String(key));
-        return () => Promise.resolve({});
+// A client recording each request: a batch as the list of its ops, each with
+// the arguments it was queued with, and a call made on the client itself as
+// one op. Every write answers at once.
+const recording = () => {
+  const sent = [];
+  const answer = () => Promise.resolve({});
+  const bundle = (name, queue) =>
+    new Proxy(
+      {},
+      {
+        get:
+          (_t, method) =>
+          (...args) => {
+            const op = { op: `${name}.${String(method)}`, args };
+            if (queue) queue.push(op);
+            else sent.push([op]);
+            return queue ? { batched: true } : answer();
+          },
       },
+    );
+  const resources = ['tokens', 'spans', 'relations', 'documents', 'texts', 'tokenLayers'];
+  const view = (queue) => Object.fromEntries(resources.map((r) => [r, bundle(r, queue)]));
+  const client = {
+    ...view(null),
+    withOperation: async (_label, fn) => fn(() => {}),
+    keySeed: () => null,
+    batched: async (fn) => {
+      const ops = [];
+      await fn(view(ops));
+      sent.push(ops);
+      return ops.map(() => ({}));
     },
-  );
+  };
+  return { client, sent };
+};
+
+const writer = (raw, client) => {
   const errors = [];
   const doc = new ConlluDocument({
-    raw: bare(['dog']),
+    raw,
     client,
     project: { id: 'p1', maintainers: ['m@x'], writers: [] },
     user: { id: 'm@x' },
   });
   doc.onError = (message) => errors.push(message);
+  return { doc, errors };
+};
+
+const settleQueue = async () => {
+  for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+};
+
+test("a writer's open of a document whose words lack a UD word writes nothing", async () => {
+  const { client, sent } = recording();
+  const { doc } = writer(bare(['the', 'dog', 'barks']), client);
+  const result = await doc.reconcileOnOpen();
+  assert.deepEqual(result.findings, []);
+  assert.deepEqual(sent, []);
+  // Each word still has its row, under its stand-in.
+  assert.equal(doc.sentences[0].tokens.length, 3);
+});
+
+test('a value on such a word makes the word, its lemma from its form, and the value in one batch', async () => {
+  const { client, sent } = recording();
+  const { doc, errors } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  const word = doc.layerInfo.wordTokenLayer.tokens[1];
+  const ok = doc.updateAnnotation(virtual, 'upos', 'NOUN');
+  // Shown before the server answers, in the row the stand-in had.
+  const entry = doc.sentences[0].tokens[1];
+  assert.equal(entry.virtual, undefined);
+  assert.equal(entry.upos?.value, 'NOUN');
+  assert.equal(entry.lemma?.value, 'dog');
+  assert.equal(await ok, true);
+  assert.deepEqual(errors, []);
+  assert.equal(sent.length, 1);
+  const [batch] = sent;
+  assert.deepEqual(
+    batch.map((o) => o.op),
+    ['tokens.bulkCreate', 'spans.bulkCreate', 'spans.create'],
+  );
+  const [made] = batch[0].args[0];
+  assert.equal(made.tokenLayerId, doc.layerInfo.morphemeTokenLayer.id);
+  assert.deepEqual([made.begin, made.end, made.precedence], [word.begin, word.end, 0]);
+  const [lemma] = batch[1].args[0];
+  assert.deepEqual(
+    [lemma.spanLayerId, lemma.tokens, lemma.value, lemma.metadata?.provSource],
+    [doc.layerInfo.lemmaLayer.id, [made.id], 'dog', 'rule:lemma-from-form'],
+  );
+  assert.deepEqual(batch[2].args.slice(0, 3), [doc.layerInfo.uposLayer.id, [made.id], 'NOUN']);
+});
+
+test('a lemma typed on such a word is the lemma the word is made with', async () => {
+  const { client, sent } = recording();
+  const { doc } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  assert.equal(await doc.updateAnnotation(virtual, 'lemma', 'hound'), true);
+  assert.equal(sent.length, 1);
+  const lemma = sent[0].find((o) => o.op === 'spans.bulkCreate').args[0][0];
+  // Made from its form, then the typed value written over it in the same batch.
+  assert.deepEqual(
+    sent[0].map((o) => o.op),
+    ['tokens.bulkCreate', 'spans.bulkCreate', 'spans.update', 'spans.patchMetadata'],
+  );
+  assert.deepEqual(sent[0][2].args, [lemma.id, 'hound']);
+  assert.equal(doc.sentences[0].tokens[1].lemma.value, 'hound');
+});
+
+test('an arc drawn to such a word makes it in the same batch, and a second edit names the word made', async () => {
+  const { client, sent } = recording();
+  const { doc } = writer(bare(['dog']), client);
   const virtual = doc.sentences[0].tokens[1].token.id;
   const barks = doc.sentences[0].tokens[2].token.id;
-  assert.equal(await doc.updateAnnotation(virtual, 'upos', 'NOUN'), false);
-  assert.equal(await doc.createRelation(barks, virtual, 'nsubj'), false);
-  assert.equal(await doc.createEnhancedRelation(barks, virtual, 'nsubj'), false);
-  // Every UD write is refused at one door (REV-FX3-UD R3), the ones that take
-  // a word or a list of ids included.
+  assert.equal(await doc.createRelation(barks, virtual, 'nsubj'), true);
+  assert.equal(sent.length, 1);
+  const ops = sent[0].map((o) => o.op);
+  assert.deepEqual(ops.slice(0, 2), ['tokens.bulkCreate', 'spans.bulkCreate']);
+  assert.equal(ops.at(-1), 'relations.create');
+  const made = sent[0][0].args[0][0].id;
+  const lemma = sent[0][1].args[0][0].id;
+  // The relation hangs off the lemma made with the word.
+  assert.equal(sent[0].at(-1).args[2], lemma);
+  // The screen may still hold the stand-in's id: it names the word made.
+  assert.equal(await doc.updateAnnotation(virtual, 'upos', 'NOUN'), true);
+  await settleQueue();
+  assert.equal(sent.length, 2);
+  assert.deepEqual(
+    sent[1].map((o) => o.op),
+    ['spans.create'],
+  );
+  assert.deepEqual(sent[1][0].args[1], [made]);
+});
+
+test('a write on such a word that writes nothing leaves the stand-in and sends nothing', async () => {
+  const { client, sent } = recording();
+  const { doc } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  // Clearing a value it does not hold.
+  assert.equal(await doc.updateAnnotation(virtual, 'upos', ''), true);
+  assert.deepEqual(sent, []);
+  assert.equal(doc.sentences[0].tokens[1].virtual, true);
+  assert.equal(doc.layerInfo.morphemeTokenLayer.tokens.length, 2);
+});
+
+test('a write that takes a token is refused when given a stand-in word', async () => {
+  const { client, sent } = recording();
+  const { doc, errors } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
   assert.equal(await doc.deleteWord(virtual), false);
   assert.equal(await doc.setWordMorphemes({ id: virtual }, ['do', 'g']), false);
   assert.equal(await doc.deleteFeature(virtual), false);
-  assert.deepEqual(calls, []);
-  assert.equal(errors.length, 6);
-  assert.ok(errors.every((m) => m.endsWith('Reopen the document to annotate this word.')));
+  assert.deepEqual(sent, []);
+  assert.equal(errors.length, 3);
 });
 
 test('Accept and Discard leave a stand-in out rather than refusing', async () => {

@@ -4,9 +4,9 @@ import { TokenColumn } from './TokenColumn.jsx';
 import { EditorSessionContext } from './editorSession.js';
 import { testCells } from '../../../test/cells.js';
 
-// H33-UD-1: a word with no UD word yet is shown in the grid as the seed on a
-// writer's open would make it (domain/sentenceRows.js). Its id is no token's,
-// so even a writer gets its cells read-only, beside words that are editable.
+// A word with no UD word yet is shown in the grid as its first write makes it
+// (domain/sentenceRows.js), and a writer edits it as any other word: that
+// write makes it (R3, 2026-10-24).
 
 vi.mock('../../../utils/feedback.jsx', () => ({ notifyWarning: vi.fn(), notifyError: vi.fn() }));
 
@@ -63,16 +63,14 @@ const render = (data) => {
 };
 
 describe('a word with no UD word yet', () => {
-  it('shows its form, and its cells take no input', async () => {
+  it("shows its form, and its cells take input as a stored word's do", async () => {
     const view = await render(entry('virtual:w1', 'dog', { virtual: true }));
     expect(view.container.querySelector('.token-form').textContent).toBe('dog');
-    expect(view.container.querySelectorAll('input')).toHaveLength(0);
+    const stand = view.container.querySelectorAll('input').length;
     await view.unmount();
-  });
-
-  it('beside a stored word, whose cells do', async () => {
-    const view = await render(entry('m1', 'cat'));
-    expect(view.container.querySelectorAll('input').length).toBeGreaterThan(0);
-    await view.unmount();
+    const stored = await render(entry('m1', 'cat'));
+    expect(stand).toBeGreaterThan(0);
+    expect(stand).toBe(stored.container.querySelectorAll('input').length);
+    await stored.unmount();
   });
 });

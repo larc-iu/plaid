@@ -82,7 +82,7 @@ async function openGrid(page) {
     );
   });
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
-  // Wait until the grid shows all three token forms (reconcile-on-open may write first).
+  // Wait until the grid shows all three token forms.
   for (const form of ['the', 'dog', 'runs']) {
     await expect(page.locator('.token-form', { hasText: form }).first()).toBeVisible({
       timeout: 15000,

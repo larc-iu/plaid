@@ -49,7 +49,7 @@ export function graphFromSentence(row) {
   for (const entry of row.tokens) {
     // A word with no UD word yet is shown in the grid (sentenceRows.js) but is
     // no node: the server's search cannot find it, and a rule has nothing to
-    // write to until a writer's open seeds it.
+    // write to until a write on it in the grid makes it.
     if (entry.virtual) continue;
     const id = entry.token.id;
     const n = emptyNode(id, order.length);

@@ -11,7 +11,6 @@ import { useCellEngine } from '@ui/hooks/useCellEngine.js';
 import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { Loading } from '@ui/components/shared/Loading.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { routeGridTab } from './annotation/tabOrder.js';
@@ -24,8 +23,6 @@ import { cn } from '@ui/lib/utils.js';
 import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { RunBar, RunBarPager } from '@ui/components/shared/RunBar.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-// Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
-import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
@@ -72,14 +69,12 @@ export const AnnotationEditor = () => {
     doc: shown,
     liveDoc: doc,
     pastEntry: selectedEntry,
-    asOf,
     project,
     comments,
     canComment,
     canDeleteAnyComment,
     services,
     writeLockHeld,
-    setChromeBusy,
     assistantAvailable,
     askAssistant,
     focusNonce = 0,
@@ -97,19 +92,13 @@ export const AnnotationEditor = () => {
   const sentParam = searchParams.get('sent');
   const { getClient, user } = useAuth();
 
-  // The initial repair, and the gate the grid holds behind a spinner while it
-  // runs. Strict mode OCC-guards annotation edits and is entered BEFORE the
-  // repair, whose writes then carry the version it was planned from. A repair
-  // that failed can leave the grid without the words it was to seed.
-  const [repairFailed, setRepairFailed] = useState(false);
-  useEffect(() => setRepairFailed(false), [doc]);
-  const reconciling = useReconcileOnOpen({
-    doc,
-    asOf,
-    canWrite: canEditProject(project, user),
-    enterStrictMode: () => getClient()?.enterStrictMode(documentId),
-    onFailed: () => setRepairFailed(true),
-  });
+  // Strict mode OCC-guards annotation edits. It is entered once the document
+  // has loaded, so an edit carries the version it was made on. Opening the
+  // document writes nothing (R3): a word with no UD word is made by the first
+  // write on it (ConlluDocument `_makeWords`).
+  useEffect(() => {
+    if (doc) getClient()?.enterStrictMode(documentId);
+  }, [doc, documentId, getClient]);
   // Strict mode is client-GLOBAL, so it is exited on the way out of this tab,
   // or it leaks onto unrelated writes (tokenizing in the Text Editor),
   // attaching a stale document-version and triggering spurious 409s.
@@ -129,14 +118,6 @@ export const AnnotationEditor = () => {
   }, []);
 
   useDocumentTitle('Annotate', doc?.name, project?.name);
-
-  // Lock the shell's tab strip for as long as the body is a spinner. The gate
-  // below keeps edits out of THIS tab while a repair is writing; without this
-  // the user could simply click over to the Text Editor and re-tokenize mid-heal.
-  useEffect(() => {
-    setChromeBusy(reconciling);
-    return () => setChromeBusy(false);
-  }, [reconciling, setChromeBusy]);
 
   // doc-level operation errors surface as toasts (see ConlluDocument.setError);
   // a hard document-load failure is DocumentEditorShell's banner, not ours.
@@ -225,7 +206,7 @@ export const AnnotationEditor = () => {
   const flashSentId = useSentenceDeepLink({
     sentParam,
     focusNonce,
-    ready: !reconciling,
+    ready: true,
     indexById,
     pageSize: TALL_LIST_PAGE_SIZE,
     page,
@@ -525,7 +506,7 @@ export const AnnotationEditor = () => {
   // Read the PROJECT's layers, never the open document's. During time travel
   // `layerInfo` is the structure as it was at that moment, which for an early
   // enough entry predates the setup and is not a statement about the project.
-  if (!reconciling && project && !getUdLayerInfo(project).isConfigured) {
+  if (project && !getUdLayerInfo(project).isConfigured) {
     return (
       <div className="min-h-screen w-full">
         <div className="flex justify-center py-16">
@@ -544,13 +525,11 @@ export const AnnotationEditor = () => {
     <div className="min-h-screen w-full">
       {/* Only the BODY waits here: the breadcrumbs and tab strip are the
           shell's and stay on screen throughout. */}
-      {reconciling && <Loading label="Checking this document…" className={DOC_GUTTER} />}
-
-      {!reconciling && !activeDocument && (
+      {!activeDocument && (
         <p className="py-10 text-center text-muted-foreground">Document not found</p>
       )}
 
-      {!reconciling && activeDocument && (
+      {activeDocument && (
         <>
           <div className={cn(DOC_GUTTER, 'pb-4')}>
             {toolbar}
@@ -565,11 +544,9 @@ export const AnnotationEditor = () => {
               <p className="text-center text-muted-foreground">
                 {isViewingHistorical
                   ? 'This state has no tokens.'
-                  : repairFailed
-                    ? 'The document could not be repaired. Reload the page to try again.'
-                    : 'No sentences. Parse, or tokenize in the Text Editor.'}
+                  : 'No sentences. Parse, or tokenize in the Text Editor.'}
               </p>
-              {!isViewingHistorical && !repairFailed && !readOnly && (
+              {!isViewingHistorical && !readOnly && (
                 <Button asChild variant="outline" size="sm">
                   <Link to={`/projects/${projectId}/documents/${documentId}/edit`}>
                     Go to Text Editor

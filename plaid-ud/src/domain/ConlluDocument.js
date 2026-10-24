@@ -24,8 +24,8 @@ import {
 } from '../utils/udLayerUtils.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor, suppressorIdsOver } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
-import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
-import { isUnknownOutcome, statusOf } from '../../../plaid-ui/src/lib/errors.js';
+import { pendingId, recordSettled, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
+import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
 import { sendTextPlan } from '../../../plaid-ui/src/lib/textSave.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
@@ -38,15 +38,15 @@ import {
   holdsPersonsWork,
 } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { otherDeleteLoss } from './otherLoss.js';
-import {
-  relationsCrossing,
-  wordsNeedingSyntacticWord,
-  describeReconcile as describeUdReconcile,
-} from '../utils/udReconcile.js';
-import { validateConlluDocument } from './validate.js';
+import { relationsCrossing } from '../utils/udReconcile.js';
 import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
-import { buildSentenceRows, isVirtualWordId, sentenceHoldsWords } from './sentenceRows.js';
+import {
+  buildSentenceRows,
+  isVirtualWordId,
+  sentenceHoldsWords,
+  standInTokenId,
+} from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
@@ -55,6 +55,20 @@ import { fieldName } from '../utils/fieldNames.js';
 // The lemma a new word starts with is a copy of its form, made by a rule and
 // by no person, so a parser may replace it (provenance write contract rule 1).
 const LEMMA_FROM_FORM = stampInferred('rule:lemma-from-form');
+
+// What a new UD word carries, whichever write makes it: the word over `at`
+// (its token's extent, with its place among the token's words when given),
+// and, when the project has a Lemma layer, its lemma copied from `form`.
+// Both under ids this page mints. Tokenize, a token's words typed, a token
+// made from a selection and the first write on a word with no UD word yet
+// all make their words here.
+const newUdWord = ({ begin, end, precedence }, form, lemmaLayer) => {
+  const word = { id: pendingId(), begin, end, ...(precedence != null ? { precedence } : {}) };
+  const lemma = lemmaLayer?.id
+    ? { id: pendingId(), tokens: [word.id], value: form, metadata: LEMMA_FROM_FORM }
+    : null;
+  return { word, lemma };
+};
 
 // The rows of an edit, each made under the id this page minted for it, as
 // `_settle` takes them.
@@ -423,17 +437,13 @@ export class ConlluDocument extends DocumentModel {
       ? []
       : sentenceRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     const words = wordRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
-    const morphemes = wordRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     // One code-point spread of the body for every word, not one per word.
     const sliceBody = cpSlicer(body);
-    const lemmas = lemmaLayer?.id
-      ? morphemes.map((m, i) => ({
-          id: pendingId(),
-          tokens: [m.id],
-          value: sliceBody(wordRanges[i][0], wordRanges[i][1]),
-          metadata: LEMMA_FROM_FORM,
-        }))
-      : [];
+    const made = wordRanges.map(([begin, end]) =>
+      newUdWord({ begin, end }, sliceBody(begin, end), lemmaLayer),
+    );
+    const morphemes = made.map((m) => m.word);
+    const lemmas = made.flatMap((m) => (m.lemma ? [m.lemma] : []));
     const byBegin = (a, b) => a.begin - b.begin;
     this._applyRawPatch((next, infoNext) => {
       if (!keepSentences) {
@@ -786,85 +796,6 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
-  // Reconcile-on-open: seed what UD's grid needs, then validate what remains.
-  // UD's layer rules (utils/udConstraints.js) are declared at setup, adopt
-  // and a settings save, and the server applies them in every write, so an
-  // open neither repairs nor declares them.
-  //   Seed a default full-width syntactic-word for every word that lacks one
-  //   (another app, e.g. IGT, can leave words bare — UD annotations live on
-  //   the syntactic-word layer, so a bare word is invisible/unannotatable).
-  // Then run validateConlluDocument over the reloaded state: residual heal
-  // failures come back as `findings` for the caller to log + toast.
-  // Deliberately NOT a queued write: this runs once on a freshly loaded doc,
-  // and a heal failure must not trigger the queue's reload-and-revert (which
-  // would discard the just-loaded doc). A single-flight guard plus the editor's
-  // per-document gate keep StrictMode's double-invoke from double-healing (which
-  // would otherwise seed duplicate syntactic-words).
-  // Every heal write folds under one "Repair on open" audit entry
-  // (no entry at all when nothing needed healing — groups are created lazily
-  // by the first write).
-  describeReconcile(result) {
-    return describeUdReconcile(result);
-  }
-
-  async _reconcile() {
-    const ZERO = { createdSyntacticWords: 0, findings: [] };
-    if (this._reconciling) return ZERO;
-    // A project UD has not adopted is only looked at: a link straight to one
-    // of its documents writes nothing.
-    if (!this.layerInfo.isConfigured) return ZERO;
-    this._reconciling = true;
-    try {
-      const info = this.layerInfo;
-      const { morphemeTokenLayer, textLayer } = info;
-      const textId = textLayer?.text?.id;
-      const canHeal = Boolean(morphemeTokenLayer?.id && textId);
-      const seedExtents = canHeal ? wordsNeedingSyntacticWord(info) : [];
-
-      let createdSyntacticWords = 0;
-      if (seedExtents.length) {
-        await this._repairBatched(async (b) => {
-          b.tokens.bulkCreate(
-            seedExtents.map((e) => ({
-              tokenLayerId: morphemeTokenLayer.id,
-              text: textId,
-              begin: e.begin,
-              end: e.end,
-              precedence: 0,
-            })),
-          );
-        });
-        createdSyntacticWords = seedExtents.length;
-      }
-
-      // Re-read only when a heal actually wrote. The batch above lands
-      // server-side and this instance knows nothing about it, so a heal has
-      // to refetch — but a clean pass has nothing to refetch, and its in-memory
-      // state IS the server state. This runs behind a blocking spinner on every
-      // Annotate open now, so an unconditional reload would make the ordinary
-      // case (nothing to repair) pay a full document fetch for the rare one.
-      const tally = { createdSyntacticWords };
-      // Every write has landed: the repair is whole, and a failure from here
-      // on leaves only the screen behind it. Its findings would describe the
-      // document as it was before the repair, so there are none.
-      try {
-        if (createdSyntacticWords > 0) await this._reload();
-        // Validate the true server state — even when nothing healed.
-        return { ...tally, findings: validateConlluDocument(this.layerInfo) };
-      } catch (refreshError) {
-        console.error('reconcileOnOpen could not re-read the repaired document:', refreshError);
-        return { ...tally, findings: [], refreshError };
-      }
-    } catch (err) {
-      // A conflict is the open's to recover from (it reads again and
-      // repairs), so it is not an error worth a log.
-      if (statusOf(err) !== 409) console.error('reconcileOnOpen failed:', err);
-      return { ...ZERO, error: err };
-    } finally {
-      this._reconciling = false;
-    }
-  }
-
   // Set a word's morphemes from a list of forms. One form = an ordinary
   // word; multiple forms = a multiword token. Every morpheme spans the
   // FULL word extent (overlap allowed); a Form span carries each morpheme's
@@ -922,26 +853,16 @@ export class ConlluDocument extends DocumentModel {
         .filter((s) => Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t)))
         .map((s) => s.id),
     );
-    const morphemes = cleanForms.map((_, i) => ({
-      id: pendingId(),
-      begin: word.begin,
-      end: word.end,
-      precedence: i,
-    }));
+    const made = cleanForms.map((form, i) =>
+      newUdWord({ begin: word.begin, end: word.end, precedence: i }, form, lemmaLayer),
+    );
+    const morphemes = made.map((m) => m.word);
+    const lemmaSpans = made.flatMap((m) => (m.lemma ? [m.lemma] : []));
     const formSpans = [];
-    const lemmaSpans = [];
     morphemes.forEach((m, i) => {
       const form = cleanForms[i];
       if (formLayer?.id && (isMwt || form !== wordSubstring)) {
         formSpans.push({ id: pendingId(), tokens: [m.id], value: form });
-      }
-      if (lemmaLayer?.id) {
-        lemmaSpans.push({
-          id: pendingId(),
-          tokens: [m.id],
-          value: form,
-          metadata: LEMMA_FROM_FORM,
-        });
       }
     });
 
@@ -1219,15 +1140,11 @@ export class ConlluDocument extends DocumentModel {
     const sentence =
       sentenceTokens.length === 0 ? { id: pendingId(), begin: 0, end: fullLen } : null;
     const wordRow = { id: pendingId(), begin, end };
-    const morpheme = { id: pendingId(), begin, end };
-    const lemma = lemmaLayer?.id
-      ? {
-          id: pendingId(),
-          tokens: [morpheme.id],
-          value: cpSlice(textContent, begin, end),
-          metadata: LEMMA_FROM_FORM,
-        }
-      : null;
+    const { word: morpheme, lemma } = newUdWord(
+      { begin, end },
+      cpSlice(textContent, begin, end),
+      lemmaLayer,
+    );
 
     this._applyRawPatch((next, infoNext) => {
       const push = (layer, key, row) => {
@@ -1289,6 +1206,8 @@ export class ConlluDocument extends DocumentModel {
   // for the other fields the call updates an existing span if one is
   // already attached to the morpheme.
   async updateAnnotation(rawTokenId, field, value) {
+    // The words this write makes (`_makeWords`), sent first in its batch.
+    const made = this._making;
     const tokenId = settledId(rawTokenId);
     const info = this.layerInfo;
     const layerByField = {
@@ -1362,14 +1281,15 @@ export class ConlluDocument extends DocumentModel {
         });
         return this._queueWrite(label, async () => {
           const id = settledId(existingFeat.id);
-          if (verifyFeat) {
-            await this._client.batched(async (b) => {
-              b.spans.update(id, pair);
-              b.spans.patchMetadata(id, metadataOps(verifyFeat));
-            });
-          } else {
-            await this._client.spans.update(id, pair);
-          }
+          await this._sendMaking(
+            made,
+            (c) => {
+              const sent = c.spans.update(id, pair);
+              if (verifyFeat) c.spans.patchMetadata(id, metadataOps(verifyFeat));
+              return sent;
+            },
+            Boolean(verifyFeat),
+          );
         });
       }
       // Optimistic create: the span shows under a pending id until the
@@ -1393,15 +1313,17 @@ export class ConlluDocument extends DocumentModel {
         }
       });
       return this._queueWrite(label, async () => {
-        const spanResult = await this._client.spans.create(
-          targetLayer.id,
-          [settledId(tokenId)],
-          pair,
-          stamp || undefined,
-          undefined,
-          { id: newSpanId },
+        await this._sendMaking(made, (c) =>
+          c.spans.create(
+            targetLayer.id,
+            [settledId(tokenId)],
+            pair,
+            stamp || undefined,
+            undefined,
+            { id: newSpanId },
+          ),
         );
-        this._settle(new Map([[newSpanId, createdId(spanResult)]]));
+        this._settle(madeAsMinted(this._madeRows(made), [{ id: newSpanId }]));
       });
     }
 
@@ -1426,7 +1348,9 @@ export class ConlluDocument extends DocumentModel {
           targetLayerDoc.spans = targetLayerDoc.spans.filter((s) => s.id !== existingSpan.id);
         }
       });
-      return this._queueWrite(label, () => this._client.spans.delete(settledId(existingSpan.id)));
+      return this._queueWrite(label, () =>
+        this._sendMaking(made, (c) => c.spans.delete(settledId(existingSpan.id))),
+      );
     }
     if (existingSpan) {
       // A person's edit carries the writer's stamp (provenance write
@@ -1460,14 +1384,16 @@ export class ConlluDocument extends DocumentModel {
       });
       return this._queueWrite(label, async () => {
         const id = settledId(existingSpan.id);
-        if (verify) {
-          await this._client.batched(async (b) => {
-            b.spans.update(id, value);
-            b.spans.patchMetadata(id, metadataOps(verify));
-          });
-        } else {
-          await this._client.spans.update(id, value);
-        }
+        await this._sendMaking(
+          made,
+          (c) => {
+            const sent = c.spans.update(id, value);
+            if (verify) c.spans.patchMetadata(id, metadataOps(verify));
+            return sent;
+          },
+          Boolean(verify),
+        );
+        this._settle(madeAsMinted(this._madeRows(made)));
       });
     }
     // Optimistic create, as above.
@@ -1488,15 +1414,12 @@ export class ConlluDocument extends DocumentModel {
       }
     });
     return this._queueWrite(label, async () => {
-      const spanResult = await this._client.spans.create(
-        targetLayer.id,
-        [settledId(tokenId)],
-        value,
-        stamp || undefined,
-        undefined,
-        { id: newSpanId },
+      await this._sendMaking(made, (c) =>
+        c.spans.create(targetLayer.id, [settledId(tokenId)], value, stamp || undefined, undefined, {
+          id: newSpanId,
+        }),
       );
-      this._settle(new Map([[newSpanId, createdId(spanResult)]]));
+      this._settle(madeAsMinted(this._madeRows(made), [{ id: newSpanId }]));
     });
   }
 
@@ -1575,6 +1498,122 @@ export class ConlluDocument extends DocumentModel {
     }
   }
 
+  // ----- words with no UD word yet (sentenceRows.js) -----
+  //
+  // A token another app made has no UD word under it until the first write on
+  // it, which makes it in the same batch as itself, as igt makes a word's
+  // first morpheme. Nothing makes one on open. The writes that name a word
+  // (MAKES_WORDS below) are handed the ids they name with every stand-in made:
+  // its word and lemma shown under ids this page mints (`newUdWord`), and the
+  // stand-in's id settled to the word's, so a cell or an editor still holding
+  // it names the word made and keeps its React key (pendingIds `stableKey`).
+  // The write sends the made rows first in its own batch (`_queueNewWords`).
+
+  // `ids` with every stand-in among them made, and what was made (null for
+  // nothing): `{ words, lemmas, queued }`.
+  _makeWords(ids) {
+    const info = this.layerInfo;
+    const { morphemeTokenLayer, wordTokenLayer, lemmaLayer, textLayer } = info;
+    const stored = new Set((morphemeTokenLayer?.tokens || []).map((t) => t.id));
+    const words = [];
+    const lemmas = [];
+    const madeFor = new Map();
+    const resolved = ids.map((id) => {
+      if (!isVirtualWordId(id)) return id;
+      // Made by an earlier write, while the screen still held the stand-in.
+      const earlier = settledId(id);
+      if (earlier !== id && stored.has(earlier)) return earlier;
+      if (madeFor.has(id)) return madeFor.get(id);
+      const token = (wordTokenLayer?.tokens || []).find((t) => t.id === standInTokenId(id));
+      if (!token || !morphemeTokenLayer?.id || !textLayer?.text?.id) return id;
+      const form = cpSlice(this.body, token.begin, token.end);
+      const { word, lemma } = newUdWord(
+        { begin: token.begin, end: token.end, precedence: 0 },
+        form,
+        lemmaLayer,
+      );
+      words.push(word);
+      if (lemma) lemmas.push(lemma);
+      madeFor.set(id, word.id);
+      return word.id;
+    });
+    if (!words.length) return { ids: resolved, made: null };
+    recordSettled(madeFor);
+    this._applyRawPatch((next, infoNext) => {
+      const layer = infoNext.morphemeTokenLayer;
+      layer.tokens = [...(layer.tokens || []), ...words.map((w) => ({ ...w }))];
+      if (lemmas.length && infoNext.lemmaLayer) {
+        const spans = infoNext.lemmaLayer;
+        spans.spans = [
+          ...(spans.spans || []),
+          ...lemmas.map((l) => ({ ...l, tokens: [...l.tokens] })),
+        ];
+      }
+    });
+    return { ids: resolved, made: { words, lemmas, queued: false } };
+  }
+
+  // Takes back what `_makeWords` showed, for a write that sent nothing.
+  _unmakeWords(made) {
+    const ids = new Set([...made.words, ...made.lemmas].map((r) => r.id));
+    this._applyRawPatch((next, infoNext) => {
+      const layer = infoNext.morphemeTokenLayer;
+      if (layer?.tokens) layer.tokens = layer.tokens.filter((t) => !ids.has(t.id));
+      const lemmas = infoNext.lemmaLayer;
+      if (lemmas?.spans) lemmas.spans = lemmas.spans.filter((sp) => !ids.has(sp.id));
+    });
+  }
+
+  // A write that makes words is queued: what it made is its to send.
+  _queueWrite(...args) {
+    if (this._making) this._making.queued = true;
+    return super._queueWrite(...args);
+  }
+
+  // The words `made` names and their lemmas, first on batch `b`.
+  _queueNewWords(b, made) {
+    if (!made) return;
+    const { morphemeTokenLayer, lemmaLayer, textLayer } = this.layerInfo;
+    b.tokens.bulkCreate(
+      made.words.map(({ id, begin, end, precedence }) => ({
+        id,
+        tokenLayerId: morphemeTokenLayer.id,
+        text: textLayer.text.id,
+        begin,
+        end,
+        precedence,
+      })),
+    );
+    if (made.lemmas.length) {
+      b.spans.bulkCreate(
+        made.lemmas.map(({ id, tokens, value, metadata }) => ({
+          id,
+          spanLayerId: lemmaLayer.id,
+          tokens,
+          value,
+          metadata,
+        })),
+      );
+    }
+  }
+
+  // The rows `made` names, for `_settle`.
+  _madeRows(made) {
+    return made ? [...made.words, ...made.lemmas] : [];
+  }
+
+  // Sends `ops` on the client, or in one batch after the words `made` names.
+  // `batch` for ops that are more than one request.
+  _sendMaking(made, ops, batch = false) {
+    if (made) {
+      return this._client.batched(async (b) => {
+        this._queueNewWords(b, made);
+        ops(b);
+      });
+    }
+    return batch ? this._client.batched(async (b) => ops(b)) : ops(this._client);
+  }
+
   // Suppressors lying over these pairs (enhancedGraph.js, suppressorIdsOver).
   // A suppressor says the enhanced graph leaves out the basic relation over
   // its pair, so it goes when that relation goes, in the same batch.
@@ -1588,6 +1627,7 @@ export class ConlluDocument extends DocumentModel {
   // 'ROOT' marks the dependency root, which is encoded as a self-loop on
   // the target span.
   async createRelation(sourceSpanId, targetSpanId, deprel) {
+    const made = this._making;
     const info = this.layerInfo;
     if (!info.relationLayer) {
       this.refuse(notSetUp('UD relation layer missing'));
@@ -1659,6 +1699,7 @@ export class ConlluDocument extends DocumentModel {
 
     return this._queueWrite(label, async () => {
       await this._client.batched(async (b) => {
+        this._queueNewWords(b, made);
         this._queuePendingSpans(b, info, pending);
         incomingRelations.forEach((rel) => b.relations.delete(settledId(rel.id)));
         staleSuppressors.forEach((id) => b.relations.delete(settledId(id)));
@@ -1672,7 +1713,7 @@ export class ConlluDocument extends DocumentModel {
           { id: relationId },
         );
       });
-      this._settle(madeAsMinted(pending, [{ id: relationId }]));
+      this._settle(madeAsMinted(this._madeRows(made), pending, [{ id: relationId }]));
     });
   }
 
@@ -1689,6 +1730,7 @@ export class ConlluDocument extends DocumentModel {
   // Resolves to the new relation's id (so the tree can open its label), to null
   // when that exact edge already exists, and to false on failure.
   async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
+    const made = this._making;
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
       this.refuse(notSetUp('UD enhanced relation layer missing'));
@@ -1748,6 +1790,7 @@ export class ConlluDocument extends DocumentModel {
 
     const ok = await this._queueWrite(label, async () => {
       await this._client.batched(async (b) => {
+        this._queueNewWords(b, made);
         this._queuePendingSpans(b, info, pending);
         if (suppress) {
           b.relations.create(
@@ -1771,7 +1814,12 @@ export class ConlluDocument extends DocumentModel {
         );
       });
       this._settle(
-        madeAsMinted(pending, [{ id: edgeId }], suppressorId ? [{ id: suppressorId }] : []),
+        madeAsMinted(
+          this._madeRows(made),
+          pending,
+          [{ id: edgeId }],
+          suppressorId ? [{ id: suppressorId }] : [],
+        ),
       );
     });
     return ok ? settledId(edgeId) : false;
@@ -2197,17 +2245,18 @@ export class ConlluDocument extends DocumentModel {
   }
 }
 
-// UD's own writes, each refused at one door before it plans anything:
+// UD's own writes, each refused at one door before it plans anything, in a
+// project UD has not adopted, which is only looked at. Its sentences and words
+// may be another app's, and a Clear tokens there took that app's annotation
+// with them. The document's own writes (rename, copy, text direction, delete)
+// are the shared Details page's and are not UD's, so they stay as they are in
+// every other app.
 //
-// - in a project UD has not adopted, which is only looked at (_reconcile). Its
-//   sentences and words may be another app's, and a Clear tokens there took
-//   that app's annotation with them. The document's own writes (rename, copy,
-//   text direction, delete) are the shared Details page's and are not UD's, so
-//   they stay as they are in every other app.
-// - naming a word that has no UD word yet (sentenceRows.js), whose id is no
-//   token's. The grid shows it until a writer's open seeds it. Accept and
-//   Discard leave such ids out rather than refusing, since a sentence's
-//   Accept names every word in it.
+// A word with no UD word yet (sentenceRows.js) is named by a stand-in id. The
+// writes that name a word make it (`_makeWords`), each argument MAKES_WORDS
+// lists. Accept and Discard leave stand-ins out, since a sentence's Accept
+// names every word in it and a stand-in holds nothing to accept. Any other
+// write given one names no token, and is refused.
 const UD_WRITES = [
   'setDocumentMetadata',
   'setSentenceMetadata',
@@ -2229,6 +2278,12 @@ const UD_WRITES = [
   'discardTokens',
 ];
 const SKIPS_STAND_INS = new Set(['confirmTokens', 'discardTokens']);
+// The arguments that name a word, by write.
+const MAKES_WORDS = {
+  updateAnnotation: [0],
+  createRelation: [0, 1],
+  createEnhancedRelation: [0, 1],
+};
 // A grid value on a word, which leaves the word as it is: refused because the
 // document moved on, it goes again by itself past another user's value on
 // another word, as igt's glosses do (DocumentModel.resendsByEntity). Arcs keep
@@ -2243,16 +2298,39 @@ const namesStandIn = (arg) => {
 
 for (const name of UD_WRITES) {
   const write = ConlluDocument.prototype[name];
+  const send = function (args) {
+    if (BY_ENTITY.has(name)) return this.resendsByEntity(() => write.apply(this, args));
+    return write.apply(this, args);
+  };
   ConlluDocument.prototype[name] = async function guarded(...args) {
     if (!this._asOf && !this.layerInfo.isConfigured) {
       return this.refuse('This project is not set up for UD.');
     }
     if (SKIPS_STAND_INS.has(name)) {
       args[0] = (args[0] || []).filter((id) => !isVirtualWordId(id));
-    } else if (args.some(namesStandIn)) {
-      return this.refuse('Reopen the document to annotate this word.');
+      return send.call(this, args);
     }
-    if (BY_ENTITY.has(name)) return this.resendsByEntity(() => write.apply(this, args));
-    return write.apply(this, args);
+    const at = MAKES_WORDS[name];
+    // A past state or a deleted document makes nothing: the write refuses.
+    const { ids, made } =
+      at && !this._asOf && !this._deleted
+        ? this._makeWords(at.map((i) => args[i]))
+        : { ids: null, made: null };
+    if (ids) at.forEach((i, k) => (args[i] = ids[k]));
+    if (args.some(namesStandIn)) {
+      if (made) this._unmakeWords(made);
+      return this.refuse('This word is not stored yet.');
+    }
+    // Read by the write before its first await (`_making`), and marked when
+    // it queues: one that sends nothing takes the words back.
+    this._making = made;
+    let sent;
+    try {
+      sent = send.call(this, args);
+    } finally {
+      this._making = null;
+    }
+    if (made && !made.queued) this._unmakeWords(made);
+    return sent;
   };
 }

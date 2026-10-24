@@ -55,16 +55,19 @@ export const sentenceHoldsWords = (sentence, sortedWords, sortedMorphemes) =>
   tokensWithin(sortedMorphemes, sentence).length > 0;
 
 // A word another app made (igt's Tokenize, an import into it) has no UD word
-// under it until a writer opens the document and the repair on open seeds one
-// (ConlluDocument._reconcile). A reader never seeds, and neither does an
-// export. So every row stands in for the seed: the word gets the one 1:1 UD
-// word the seed would make, under an id that is no token's, with no
-// annotation. The grid, the export and a reader's view then show the words a
-// writer's open shows, and nothing is written.
+// under it. Nothing makes one on open (R3, 2026-10-24): every row stands in
+// for it, the one 1:1 UD word over the token, under an id that is no token's
+// (`virtual:<token id>`), with no annotation. The grid, the export and a
+// reader's view show it, and the first write on it makes it, in the same batch
+// as the write (ConlluDocument `_makeWords`). The ud assistant reads the same
+// stand-in (plaid-agent ud/project.py `parse_document`).
 const VIRTUAL = 'virtual:';
 
 /** Whether a row's word id is a stand-in for a word that has no UD word yet. */
 export const isVirtualWordId = (id) => typeof id === 'string' && id.startsWith(VIRTUAL);
+
+/** The token a stand-in word stands over. */
+export const standInTokenId = (id) => id.slice(VIRTUAL.length);
 
 const virtualWord = (word) => ({
   id: `${VIRTUAL}${word.id}`,

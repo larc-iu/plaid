@@ -106,7 +106,7 @@ export function diffGraphs(before, after, layerInfo) {
 
   // A word token goes when the last of its syntactic words does: left
   // standing it holds a stretch of text with nothing said about it, and the
-  // next open seeds a bare word back into the grid. One syntactic word of a
+  // grid shows a stand-in word over it again. One syntactic word of a
   // multi-word token going leaves the token, and its other words, alone.
   // The token takes with it what the text's other layers hold on it, whoever
   // made them, and the word's line says how much (N1-CASCADE-3).

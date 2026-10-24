@@ -1,23 +1,12 @@
-// Reconcile-on-open planners for UD documents.
+// Which dependency relations a sentence split takes off the screen.
 //
 // UD's rules on its own layers (a relation inside one sentence, one head per
 // word, no cycle, one Form, Lemma, UPOS and XPOS per word, syntactic words as
 // wide as their word) are held by the server as layer rules and applied in
-// every write (udConstraints.js). What is planned here is what the rules do
-// not cover: a bare word's first syntactic word, and the screen's copy of
-// what a sentence split removes.
+// every write (udConstraints.js). What is planned here is the screen's copy of
+// what a sentence split removes. Nothing is repaired on open (R3, 2026-10-24).
 
 import { dependencyRelationLayers } from './udLayerUtils.js';
-import { countOf } from '../../../plaid-ui/src/lib/plural.js';
-
-// The audit label for a reconcile pass, naming what it actually changed, and
-// the console's record of it. Terse on purpose: a row in a drawer. Null when
-// nothing was written, which leaves the pass its plain label and, since a
-// group is created lazily by its first write, usually no entry at all.
-export const describeReconcile = ({ createdSyntacticWords = 0 } = {}) =>
-  createdSyntacticWords
-    ? `Repaired: added ${countOf(createdSyntacticWords, 'word', 'words')} to the annotation grid`
-    : null;
 
 // The rule is about dependency relations as such, so it is asked of the
 // enhanced layer's rows as well as the tree's. A suppressor lies over the same
@@ -60,33 +49,4 @@ export const relationsCrossing = (layerInfo, charPos) => {
       return s < charPos !== t < charPos;
     })
     .map((rel) => rel.id);
-};
-
-/**
- * Extents of words that lack a full-width syntactic-word ("morpheme") token.
- *
- * UD annotations live on the syntactic-word layer, and the grid is built from
- * those tokens — so a word with no syntactic-word is invisible and
- * unannotatable. Another app (e.g. IGT) can create orthographic words on the
- * shared substrate without UD's syntactic-word layer, leaving words "bare".
- * This is the symmetric counterpart to IGT's "every word ≥1 morpheme" heal:
- * UD seeds one default full-width syntactic-word per bare word on open.
- *
- * Coverage is by exact extent: a syntactic-word always spans its parent word's
- * full [begin, end) (the full-width rule), and words are non-overlapping, so an
- * extent key maps a word to its syntactic-words 1:1. A word is "bare" iff no
- * syntactic-word shares its extent.
- *
- * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
- * @returns {Array<{begin:number,end:number}>} extents needing a syntactic-word
- */
-export const wordsNeedingSyntacticWord = (layerInfo) => {
-  const wordTokens = layerInfo?.wordTokenLayer?.tokens || [];
-  const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
-  if (!wordTokens.length) return [];
-
-  const covered = new Set(morphemeTokens.map((m) => `${m.begin}:${m.end}`));
-  return wordTokens
-    .filter((w) => !covered.has(`${w.begin}:${w.end}`))
-    .map((w) => ({ begin: w.begin, end: w.end }));
 };

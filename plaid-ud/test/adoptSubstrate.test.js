@@ -106,10 +106,9 @@ test('a set-up declares the rules of every layer it makes in the batch that make
   ]);
 });
 
-// H17-UD-4: every document gets its UD words at set-up, so Search and Rewrite
-// read the same words in a document nobody has opened in UD as the export
-// does. One batch per document, and one with every word covered writes none.
-test('a set-up gives the bare words of every document their UD word, once', async () => {
+// R3 (2026-10-24): a set-up writes nothing into the documents. A word with no
+// UD word is shown as one by every reader, and the first write on it makes it.
+test('a set-up makes no UD word in any document, and reads none', async () => {
   const project = substrateOnly();
   const bareDoc = () => {
     // The document as the server holds it after the set-up's batch: UD's
@@ -118,15 +117,20 @@ test('a set-up gives the bare words of every document their UD word, once', asyn
     raw.textLayers[0].tokenLayers[2].tokens = [];
     return raw;
   };
-  const fullDoc = () => rawDocFromConllu(INPUT, 'full');
   const created = [];
+  const read = [];
   const client = {
     withOperation: async (_label, fn) => fn(() => {}),
     projects: {
       get: async () => project,
-      listDocuments: async () => [{ id: 'bare-id' }, { id: 'full-id' }],
+      listDocuments: async () => [{ id: 'bare-id' }],
     },
-    documents: { get: async (id) => (id === 'bare-id' ? bareDoc() : fullDoc()) },
+    documents: {
+      get: async (id) => {
+        read.push(id);
+        return bareDoc();
+      },
+    },
     batched: async (fn) => {
       const stub = new Proxy(
         {},
@@ -148,12 +152,6 @@ test('a set-up gives the bare words of every document their UD word, once', asyn
     },
   };
   await adoptSubstrate(client, project);
-  assert.equal(created.length, 1, 'one batch, for the document with bare words');
-  assert.deepEqual(
-    created[0].map((r) => [r.tokenLayerId, r.begin, r.end, r.precedence]),
-    [
-      ['morpheme-layer', 0, 2, 0],
-      ['morpheme-layer', 3, 8, 0],
-    ],
-  );
+  assert.deepEqual(created, []);
+  assert.deepEqual(read, []);
 });

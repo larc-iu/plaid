@@ -1,10 +1,10 @@
-// Reconcile-on-open planners, and which relations a sentence split takes off
+// Which relations a sentence split takes off
 // the screen (the server's same-ancestor rule deletes them).
 // Uses Node's built-in test runner — run `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { relationsCrossing, wordsNeedingSyntacticWord } from '../src/utils/udReconcile.js';
+import { relationsCrossing } from '../src/utils/udReconcile.js';
 
 // Two sentences [0,10) and [10,20). Three lemma spans, one per morpheme, whose
 // begin offsets place them: ls1,ls2 in sentence 1; ls3 in sentence 2.
@@ -75,59 +75,4 @@ test('root self-loops and unresolvable endpoints are left alone', () => {
 test('relationsCrossing on a document with nothing in it', () => {
   assert.deepEqual(relationsCrossing(null, 10), []);
   assert.deepEqual(relationsCrossing({ ...beforeSplit, relationLayer: { relations: [] } }, 10), []);
-});
-
-// --- wordsNeedingSyntacticWord (symmetric heal: seed UD syntactic-words) ---
-
-test('flags words with no full-width syntactic-word covering their extent', () => {
-  const info = {
-    wordTokenLayer: {
-      tokens: [
-        { id: 'w1', begin: 0, end: 5 }, // covered
-        { id: 'w2', begin: 6, end: 9 }, // bare -> needs one
-        { id: 'w3', begin: 10, end: 14 }, // bare -> needs one
-      ],
-    },
-    morphemeTokenLayer: {
-      tokens: [
-        { id: 'm1', begin: 0, end: 5 }, // covers w1
-        { id: 'm2', begin: 99, end: 100 }, // unrelated extent
-      ],
-    },
-  };
-  assert.deepEqual(wordsNeedingSyntacticWord(info), [
-    { begin: 6, end: 9 },
-    { begin: 10, end: 14 },
-  ]);
-});
-
-test('an MWT word (multiple full-width syntactic-words) counts as covered', () => {
-  const info = {
-    wordTokenLayer: { tokens: [{ id: 'w1', begin: 0, end: 3 }] },
-    morphemeTokenLayer: {
-      tokens: [
-        { id: 'm1', begin: 0, end: 3, precedence: 0 },
-        { id: 'm2', begin: 0, end: 3, precedence: 1 },
-      ],
-    },
-  };
-  assert.deepEqual(wordsNeedingSyntacticWord(info), []);
-});
-
-test('returns [] when there are no words; all bare when no syntactic-words', () => {
-  assert.deepEqual(wordsNeedingSyntacticWord({ wordTokenLayer: { tokens: [] } }), []);
-  assert.deepEqual(wordsNeedingSyntacticWord(null), []);
-  const allBare = {
-    wordTokenLayer: {
-      tokens: [
-        { id: 'w1', begin: 0, end: 4 },
-        { id: 'w2', begin: 5, end: 8 },
-      ],
-    },
-    morphemeTokenLayer: { tokens: [] },
-  };
-  assert.deepEqual(wordsNeedingSyntacticWord(allBare), [
-    { begin: 0, end: 4 },
-    { begin: 5, end: 8 },
-  ]);
 });
