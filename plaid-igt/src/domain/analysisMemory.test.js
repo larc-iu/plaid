@@ -285,15 +285,28 @@ describe('filterAnalysis', () => {
     expect(nothingLeft).toBe(null);
   });
 
-  it('without links, a morpheme goes by the type it holds', () => {
-    const linked = {
+  it('without links, a morpheme holds the type it went by, which the copy writes', () => {
+    // A linked clitic stores no type (R2), so an unlinked copy takes its
+    // entry's type as its own, or the grid would join it with "-".
+    const m = morph({ id: 'm2', form: 'ri', vocabItem: link('i-ri') });
+    const a = extractAnalysis(
+      word({
+        content: 'kari',
+        morphemes: [morph({ id: 'm1', form: 'ka' }), { ...m, morphType: 'enclitic' }],
+      }),
+    );
+    const off = filterAnalysis(a, { links: false }).morphemes[1];
+    expect(off).toMatchObject({ morphType: 'enclitic', goesBy: 'enclitic', vocabItemId: null });
+    const on = filterAnalysis(a).morphemes[1];
+    expect(on).toMatchObject({ morphType: null, goesBy: 'enclitic', vocabItemId: 'i-ri' });
+    // An unlinked morpheme keeps the type it holds.
+    const own = {
       word: { vocabItemId: null, fields: {} },
       morphemes: [
-        { form: 'ri', morphType: 'suffix', goesBy: 'enclitic', vocabItemId: 'i-ri', fields: {} },
+        { form: 'ri', morphType: 'suffix', goesBy: 'suffix', vocabItemId: null, fields: {} },
       ],
     };
-    expect(filterAnalysis(linked, { links: false }).morphemes[0].goesBy).toBe('suffix');
-    expect(filterAnalysis(linked).morphemes[0].goesBy).toBe('enclitic');
+    expect(filterAnalysis(own, { links: false }).morphemes[0].morphType).toBe('suffix');
   });
 
   it('without segmentation, a single morpheme survives as a carrier without form/type', () => {

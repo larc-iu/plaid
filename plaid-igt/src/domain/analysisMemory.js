@@ -230,11 +230,13 @@ export function filterAnalysis(analysis, copy = {}) {
     vocabItemId: links ? entry.vocabItemId : null,
     fields: fields ? entry.fields : {},
   });
-  // Without its link a morpheme goes by its own type.
-  const stripMorpheme = (entry) => ({
-    ...strip(entry),
-    goesBy: links ? entry.goesBy : entry.morphType,
-  });
+  // Without its link a morpheme holds the type it went by, its entry's
+  // else its own, so the unlinked copy writes that type as its own.
+  const stripMorpheme = (entry) => {
+    if (links) return strip(entry);
+    const type = entry.goesBy ?? entry.morphType ?? null;
+    return { ...strip(entry), morphType: type, goesBy: type };
+  };
   const word = strip({ ...analysis.word });
   let morphemes;
   if (segmentation) {
