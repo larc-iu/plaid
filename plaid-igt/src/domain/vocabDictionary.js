@@ -94,9 +94,11 @@ const listsPublished = (tagset) =>
  * (`fieldsAfter`, a renamed tagset's repointed fields, and `tagsetsAfter`) to
  * a list without it, and either that is another tagset than the one it was
  * held to (`fieldsBefore` and `tagsetsBefore`), pointed at in the Fields table
- * or by a plan, or its own list listed it and lists it no longer, renamed or
- * edited. A tagset deleted whole is not a rename, and a field pointed at none
- * is held to no list: published still reads in both.
+ * or by a plan, one the same change makes included, or its own list listed it
+ * and lists it no longer, renamed or edited. A rename is a change of name
+ * whose old tagset is gone after it. A tagset deleted whole is not a rename,
+ * and a field pointed at none is held to no list: published still reads in
+ * both.
  */
 export const dropsPublishedStatus = ({
   fieldsBefore,
@@ -108,8 +110,10 @@ export const dropsPublishedStatus = ({
   const after = statusTagsetName(fieldsAfter ?? fieldsBefore);
   const now = after ? tagsetsAfter?.[after] : null;
   if (!now || listsPublished(now)) return false;
-  // Pointed at a list that was already there, so not its own list renamed.
-  if (after !== before && tagsetsBefore?.[after]) return true;
+  const renamed = !!before && !!tagsetsBefore?.[before] && !tagsetsAfter?.[before];
+  // Pointed at a list that is not its own list renamed: one already there,
+  // or one the change makes.
+  if (after !== before && !renamed) return true;
   return !!before && listsPublished(tagsetsBefore?.[before]);
 };
 

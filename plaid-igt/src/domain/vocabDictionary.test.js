@@ -137,6 +137,17 @@ describe('the published Status value', () => {
     expect(pointed(undefined, 'Other', { Status: STATUS, Other: closed })).toBe(true);
     expect(pointed('Status', 'Other', { Status: STATUS, Other: STATUS })).toBe(false);
     expect(pointed('Status', undefined, { Status: STATUS, Other: closed })).toBe(false);
+    // A tagset the change makes is another tagset too (REV-R4-IGT D3).
+    const made = (from, to, before, after) =>
+      dropsPublishedStatus({
+        fieldsBefore: { ...fields, state: { ...fields.state, tagset: from } },
+        fieldsAfter: { ...fields, state: { ...fields.state, tagset: to } },
+        tagsetsBefore: before,
+        tagsetsAfter: after,
+      });
+    expect(made(undefined, 'New', { Status: STATUS }, { Status: STATUS, New: closed })).toBe(true);
+    expect(made('Status', 'New', { Status: STATUS }, { Status: STATUS, New: closed })).toBe(true);
+    expect(made(undefined, 'New', { Status: STATUS }, { Status: STATUS, New: STATUS })).toBe(false);
   });
 });
 

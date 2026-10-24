@@ -402,6 +402,51 @@ describe('a lexicon’s published Status value', () => {
     c = fakeClient(projectWith(), withOther);
     expect(await writeTagsetPlan(c, 'proj-1', { ops: [assign(null)] })).toBe(true);
   });
+
+  // A tagset the same plan makes is another tagset too (REV-R4-IGT D3).
+  it('never has the Status field pointed at a tagset the plan makes without it', async () => {
+    const unheld = {
+      ...vocab,
+      config: {
+        igt: {
+          tagsets: { Status: STATUS },
+          fields: { status: { inline: false, tagset: null, role: 'status' } },
+        },
+      },
+    };
+    const made = (values) => ({
+      kind: 'set_tagset',
+      owner: 'v1',
+      was: null,
+      name: 'New',
+      before: null,
+      after: { mode: 'closed', values },
+    });
+    const assign = (before) => ({
+      kind: 'assign_tagset',
+      owner: 'v1',
+      fieldKind: 'entry_field',
+      key: 'status',
+      before,
+      after: 'New',
+    });
+    let c = fakeClient(projectWith(), unheld);
+    await expect(
+      writeTagsetPlan(c, 'proj-1', { ops: [made([{ value: 'draft' }]), assign(null)] }),
+    ).rejects.toThrow(/reserved Status value.*Nothing was written/);
+    expect(c.batches).toBe(0);
+    c = fakeClient(projectWith(), vocab);
+    await expect(
+      writeTagsetPlan(c, 'proj-1', { ops: [made([{ value: 'draft' }]), assign('Status')] }),
+    ).rejects.toThrow(/reserved Status value/);
+    expect(c.batches).toBe(0);
+    c = fakeClient(projectWith(), unheld);
+    expect(
+      await writeTagsetPlan(c, 'proj-1', {
+        ops: [made([{ value: 'draft' }, { value: 'published' }]), assign(null)],
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('the approver’s write of a plan of tagset changes in the audit log', () => {
