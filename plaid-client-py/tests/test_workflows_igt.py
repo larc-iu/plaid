@@ -670,6 +670,25 @@ def test_an_unanalyzed_words_stored_morpheme_is_patched_in_place_with_what_else_
     assert glosses == [(['m0'], 'dog'), ([made[3]['id']], 'PL')]
 
 
+def test_a_kept_morpheme_takes_no_form_prob_outside_zero_to_one():
+    """REV-R1-2. The patch of a kept morpheme wrote the raw form_prob after
+    stamp_inferred had left it out, so a value every other path drops was
+    stored there. It is cleared instead, as a new morpheme leaves it out."""
+    from plaid_client.workflows.igt import ParsedWord as _P
+    from plaid_client.metadata_ops import apply_metadata_ops
+    m0 = {'id': 'm0', 'metadata': {'form': 'dogs', 'provProb': 0.5}}
+    word = {**_word('dogs', [m0]), 'text_id': 't1', 'token': {'id': 'w1', 'begin': 0, 'end': 4}}
+    for bad in (2, -0.1, 'x', True):
+        analysis = {**analysis_for('dogs', _P('dog(dog)-PL(s)')), 'form_probs': [bad, bad]}
+        client = _RecClient()
+        write_analyses(client, [{'word': word, 'analysis': analysis}], 'glossL', 'morphL', 'service:x', {})
+        log = [c for b in client.batches for c in b.log]
+        [patch] = [c for c in log if c[:2] == ('tokens', 'patch_metadata')]
+        assert 'provProb' not in apply_metadata_ops(m0['metadata'], patch[2][1]), bad
+        [made] = [c for c in log if c[:2] == ('tokens', 'create')]
+        assert 'provProb' not in made[3]['metadata'], bad
+
+
 def test_words_the_caller_names_are_left_alone_whatever_overwrite_says():
     """REV-SVC-3. Auto-analyze names the words its copy step wrote in this
     run, and the model step never re-analyzes them, Overwrite or not."""

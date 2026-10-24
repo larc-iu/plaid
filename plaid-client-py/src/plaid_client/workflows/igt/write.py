@@ -34,7 +34,7 @@ have applied the write contract already (:func:`select_targets`).
 
 from plaid_client.ids import uuid7
 from plaid_client.metadata_ops import metadata_ops
-from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_PROB_KEY, stamp_inferred
+from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_PROB_KEY, is_probability, stamp_inferred
 
 from .derive import word_state
 
@@ -111,7 +111,8 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                         mid = keep
                         b.tokens.patch_metadata(mid, metadata_ops({
                             **meta, 'morphType': a['types'][0],
-                            PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: form_prob}))
+                            PROV_CONFIRMED_KEY: None,
+                            PROV_PROB_KEY: form_prob if is_probability(form_prob) else None}))
                     else:
                         if a['types'][j]:
                             meta['morphType'] = a['types'][j]
