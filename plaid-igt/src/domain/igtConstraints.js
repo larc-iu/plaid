@@ -15,11 +15,8 @@ import { IGT_NAMESPACE, LEXICON_FIELD_KEY, SENTENCE_ROLE_KEY } from './igtConfig
 import { getIgtLayerInfo } from './layerInfo.js';
 import { findDoubles } from './doubles.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
-import {
-  valueSetAllows,
-  violationCountOf,
-  violationsOf,
-} from '../../../plaid-client-js/src/constraints.js';
+import { violationCountOf, violationsOf } from '../../../plaid-client-js/src/constraints.js';
+import { joinSpansOn, valueSetsAllow } from '../../../plaid-ui/src/domain/mergeRules.js';
 import {
   ensureLayerConstraints,
   sameConstraints,
@@ -397,24 +394,16 @@ export const tagsetRefusal = (error) => {
   return `${n} ${n === 1 ? 'value' : 'values'} in ${fields.join(', ')} ${n === 1 ? 'is' : 'are'} not in the tagset: ${shown}.`;
 };
 
-/**
- * Whether a layer's value-set rules (any app's) allow `value`: every part
- * listed, or only the first with `parts: 'first'`. The server's rule, read
- * the same way, for the screen's mirror of a join it makes.
- */
-export const valueSetsAllow = (layer, value) =>
-  Object.values(layer?.constraints || {})
-    .flat()
-    .filter((c) => c?.type === 'value-set')
-    .every((c) => valueSetAllows(c, value));
+// The server's single-span join, mirrored for every app (plaid-ui mergeRules.js).
+export { valueSetsAllow };
 
 /**
  * What the server's rules leave after a word or sentence merge, for the
  * screen to show at once: in each field of the merged unit's scope, the
  * survivor's own annotation stays (else the one with the smallest id) and
  * takes the distinct values of the others joined with " | " in text order,
- * unless its field's closed tagset would refuse the joined value, and the
- * others go. Of the single-token vocabulary links now on the survivor, its
+ * with the stamp of what it holds (plaid-ui mergeRules.js), unless its field's closed
+ * tagset would refuse the joined value, and the others go. Of the single-token vocabulary links now on the survivor, its
  * own stays (else the smallest id).
  *
  * @param {object} infoNext layer info of the patched document, spans already
@@ -431,31 +420,7 @@ export const valueSetsAllow = (layer, value) =>
 export const applyMergeRules = (infoNext, vocabs, survivorId, beginOf, own, scope = 'word') => {
   const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   for (const sl of infoNext.spanLayers?.[scope] || []) {
-    const onSurvivor = (sl.spans || []).filter(
-      (s) => s.tokens?.length === 1 && s.tokens[0] === survivorId,
-    );
-    if (onSurvivor.length < 2) continue;
-    const ids = onSurvivor.map((s) => s.id).sort(byId);
-    const keepId = ids.find((id) => own.spans.has(id)) ?? ids[0];
-    const keep = onSurvivor.find((s) => s.id === keepId);
-    const others = onSurvivor
-      .filter((s) => s.id !== keepId)
-      .sort(
-        (a, b) =>
-          (beginOf.get(a.id) ?? Infinity) - (beginOf.get(b.id) ?? Infinity) || byId(a.id, b.id),
-      );
-    const kv = keep.value;
-    let joined = kv;
-    if (kv == null || typeof kv === 'string') {
-      const strings = [];
-      for (const v of [kv, ...others.map((s) => s.value)]) {
-        if (typeof v === 'string' && v.trim() !== '' && !strings.includes(v)) strings.push(v);
-      }
-      if (strings.length) joined = strings.join(' | ');
-    }
-    if (valueSetsAllow(sl, joined)) keep.value = joined;
-    const dead = new Set(others.map((s) => s.id));
-    sl.spans = sl.spans.filter((s) => !dead.has(s.id));
+    joinSpansOn(sl, survivorId, beginOf, own.spans);
   }
   const links = [];
   for (const vocab of Object.values(vocabs || {})) {

@@ -44,6 +44,7 @@
             [plaid.sql.common :as psc]
             [plaid.sql.constraints.token :as tc]
             [plaid.sql.crud :as crud]
+            [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op]
             [plaid.sql.token :as token]
             [plaid.server.locks :as locks]
@@ -916,9 +917,20 @@
                                    (split-parts v delimiters)))]
                 (when (seq bad) {:parts bad}))))))
 
+(def ^:private provenance-keys
+  "The provenance convention's keys, the one metadata family Plaid owns."
+  ["prov" "provSource" "provConfirmed" "provProb" "provDetail"])
+
+(defn- machine-unverified?
+  "Whether metadata map `m` marks an unverified machine value: `prov`
+  present and not \"contributed\", and no `provConfirmed: true`."
+  [m]
+  (let [prov (get m "prov")]
+    (and (some? prov) (not= "contributed" prov) (not (true? (get m "provConfirmed"))))))
+
 (defn- machine-unverified-ids
-  "The ids among `ids` whose metadata marks an unverified machine value:
-  `prov` present and not \"contributed\", and no `provConfirmed: true`."
+  "The ids among `ids` whose metadata marks an unverified machine value
+  (`machine-unverified?`)."
   [tx entity-type ids]
   (let [rows (q-chunks tx (fn [ch] {:select [:entity_id :key :value]
                                     :from :entity_metadata
@@ -928,10 +940,8 @@
                        ids)]
     (->> (group-by (comp u :entity_id) rows)
          (keep (fn [[id rs]]
-                 (let [m (into {} (map (fn [r] [(:key r) (read-value (:value r))])) rs)
-                       prov (get m "prov")]
-                   (when (and (some? prov) (not= "contributed" prov) (not (true? (get m "provConfirmed"))))
-                     id))))
+                 (when (machine-unverified? (into {} (map (fn [r] [(:key r) (read-value (:value r))])) rs))
+                   id)))
          set)))
 
 (defn- import-groups
@@ -1304,6 +1314,27 @@
                                           (cons keep-value others)))]
             (if (seq strings) (str/join join-with strings) keep-value))))
 
+(defn- joined-provenance
+  "The provenance keys a joined span holds, from `inputs`, each `{:value
+  :metadata}`, keep's first and then in the join's order, and `joined`, the
+  value it now holds. A person's value in the join (anything but an
+  unverified machine value) makes it that person's: the first such input's
+  keys. Unverified machine values alone keep the first input's keys. Either
+  way provProb, the producer's probability for the value it gave, goes when
+  `joined` is not that value (the R5 rule)."
+  [inputs joined]
+  (let [held (filter #(and (string? (:value %)) (not (js-blank? (:value %)))) inputs)
+        from (or (first (remove (comp machine-unverified? :metadata) held)) (first inputs))
+        prov (select-keys (:metadata from) provenance-keys)]
+    (cond-> prov (not= joined (:value from)) (dissoc "provProb"))))
+
+(defn- restamp-joined!
+  "Give span `keep-id` the provenance `joined-provenance` settles on, its
+  other metadata kept. Nothing when its provenance already is that."
+  [tx keep-id keep-md prov]
+  (when (not= prov (select-keys keep-md provenance-keys))
+    (metadata/replace-metadata! tx "span" keep-id (merge (apply dissoc keep-md provenance-keys) prov))))
+
 (defn- remedy-single-span! [tx ctx {:keys [params layer] :as _c} vs counts]
   (let [join-with (get params "join-with" " | ")
         ;; The value-sets stored on the layer. A repair checks no list it is
@@ -1334,10 +1365,21 @@
             ;; A repair deletes no value: a join a stored value-set refuses
             ;; leaves the token as it is, and its single-span violation stays.
             (when-not (and repair? refused?)
-              (let [new-value (if refused? keep-value joined)]
+              (let [new-value (if refused? keep-value joined)
+                    md (fn [sid] (metadata/get-metadata tx "span" sid))
+                    keep-md (md (:id keep))]
                 (when (not= new-value keep-value)
                   (crud/update-by-id! tx :spans (:id keep) {:value (psc/write-json new-value)})
                   (swap! counts update ["single-span" :spans "joined" (:name layer)] (fnil + 0) 1))
+                ;; HUNT-model M1: the joined value's stamp comes from what it
+                ;; holds, not from whichever span the join kept. A refused
+                ;; join holds keep's value alone, and its stamp stays.
+                (when-not refused?
+                  (restamp-joined! tx (:id keep) keep-md
+                                   (joined-provenance
+                                    (cons {:value keep-value :metadata keep-md}
+                                          (map (fn [o] {:value (read-value (:value o)) :metadata (md (:id o))}) others))
+                                    new-value)))
                 (let [n (delete-spans! tx (map :id others))]
                   (vswap! deleted into (map :id others))
                   (swap! counts update ["single-span" :spans "deleted" (:name layer)] (fnil + 0) (or n 0)))))))))))

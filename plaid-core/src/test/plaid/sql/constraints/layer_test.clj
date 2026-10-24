@@ -544,6 +544,48 @@
         (is (= (str (:batch_id merge-op)) (str (:batch_id rules-op)))
             "History reads the merge and its rules as one step")))))
 
+(defn- span-metadata [sid] (-> (call :get (str "/api/v1/spans/" sid)) :body :metadata))
+
+(deftest a-joined-value-takes-the-stamp-of-what-it-holds
+  ;; HUNT-model M1: the join keeps no stamp blindly. A person's value in it
+  ;; makes it the person's (the first person's, by the join's order), and
+  ;; unreviewed machine values joined stay machine without provProb, which
+  ;; the producer gave a value the span no longer holds.
+  (let [machine {"prov" "inferred" "provSource" "service:m" "provProb" 0.4
+                 "provDetail" {"valueProbs" {"cat" 0.4}}}
+        merge! (fn [{:keys [tok]} a b]
+                 (assert-status 200 (call :post (str "/api/v1/tokens/" (tok a) "/merge") {:other-token-id (tok b)})))
+        stamp! (fn [sid m] (assert-status 200 (call :put (str "/api/v1/spans/" sid "/metadata") m)))]
+    (testing "machine first, a person's value second: the person's"
+      (let [{:keys [lemma span] :as s} (setup!)]
+        (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span"}]))
+        (stamp! (span "cat") (assoc machine "note" "kept"))
+        (merge! s "cat" "sat")
+        (is (= "cat | sat" (span-value (span "cat"))))
+        (is (= {"note" "kept"} (span-metadata (span "cat"))) "no provenance key, the other keys kept")))
+    (testing "a person's value first, machine second: still the person's"
+      (let [{:keys [lemma span] :as s} (setup!)]
+        (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span"}]))
+        (stamp! (span "sat") machine)
+        (merge! s "cat" "sat")
+        (is (= "cat | sat" (span-value (span "cat"))))
+        (is (empty? (span-metadata (span "cat"))))))
+    (testing "a contributor's value: theirs"
+      (let [{:keys [lemma span] :as s} (setup!)]
+        (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span"}]))
+        (stamp! (span "cat") machine)
+        (stamp! (span "sat") {"prov" "contributed" "provSource" "user:b"})
+        (merge! s "cat" "sat")
+        (is (= {"prov" "contributed" "provSource" "user:b"} (span-metadata (span "cat"))))))
+    (testing "machine plus machine stays machine without provProb"
+      (let [{:keys [lemma span] :as s} (setup!)]
+        (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span"}]))
+        (stamp! (span "cat") machine)
+        (stamp! (span "sat") (assoc machine "provProb" 0.9))
+        (merge! s "cat" "sat")
+        (is (= "cat | sat" (span-value (span "cat"))))
+        (is (= (dissoc machine "provProb") (span-metadata (span "cat"))))))))
+
 (deftest single-span-join-respects-a-value-set
   (let [{:keys [lemma tok] :as s} (setup!)]
     (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span" :join-with "+"}

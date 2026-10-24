@@ -190,6 +190,38 @@ describe('the screen after a word merge', () => {
     ]);
   });
 
+  it('stamps the joined value from what it holds, as the server does (HUNT-model M1)', () => {
+    const machine = (prob) => ({
+      prov: 'inferred',
+      provSource: 'service:m',
+      provProb: prob,
+      provDetail: { valueProbs: { x: prob } },
+    });
+    const own = { spans: new Set(['b']), links: new Set() };
+    const join = (keepMd, otherMd) => {
+      const next = info([
+        { id: 'b', tokens: ['w-1'], value: 'x', metadata: keepMd },
+        { id: 'c', tokens: ['w-1'], value: 'y', metadata: otherMd },
+      ]);
+      applyMergeRules(next, {}, 'w-1', new Map([['c', 4]]), own);
+      return next.spanLayers.word[0].spans[0];
+    };
+    // A person's value in it makes it the person's, the other keys kept.
+    expect(join({ ...machine(0.4), note: 'kept' }, {})).toMatchObject({
+      value: 'x | y',
+      metadata: { note: 'kept' },
+    });
+    expect(join({ ...machine(0.4), note: 'kept' }, {}).metadata.prov).toBeUndefined();
+    expect(join({}, machine(0.4)).metadata).toEqual({});
+    expect(join(machine(0.4), { prov: 'contributed', provSource: 'user:b' }).metadata).toEqual({
+      prov: 'contributed',
+      provSource: 'user:b',
+    });
+    // Machine and machine stay machine, with no provProb for the joined value.
+    const { provProb: _p, ...rest } = machine(0.4);
+    expect(join(machine(0.4), machine(0.9)).metadata).toEqual(rest);
+  });
+
   it('keeps the smallest id when the survivor had none, and a value its closed tagset refuses stays unjoined', () => {
     const next = info(
       [
