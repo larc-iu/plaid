@@ -11,7 +11,7 @@ import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY, ROLES, find_by_role
-from plaid_client.service import machine_detail, progress_heartbeat
+from plaid_client.service import held_run, machine_detail, progress_heartbeat
 from plaid_client.workflows.requester import requester_of
 
 
@@ -200,101 +200,18 @@ class WhisperASRService(BaseService):
             return
         
         temp_dir = tempfile.mkdtemp()
-        
+
         try:
-            # Get document to fetch media URL
-            response_helper.progress(5, "Fetching document…")
-            full_document = self.client.documents.get(document_id, include_body=True)
-            
-            # Get media URL from document
-            media_url = full_document.get("media_url")
-            if not media_url:
-                raise ValueError("The document has no media file.")
-            
-            # Construct full media URL if it's a relative path
-            if media_url.startswith('/'):
-                full_media_url = self.client.base_url.rstrip('/') + media_url
-            else:
-                full_media_url = media_url
-            
-            # Download media file. A recording is often hundreds of megabytes,
-            # so say how far in it is rather than going quiet until it lands.
-            response_helper.progress(10, "Downloading media file…")
+            # The document is held from the read of its media through the last
+            # write, so no edit (a new recording, a typed segment) can land
+            # while the audio is transcribed (one rule for every service,
+            # Luke's ruling R15). The lock is renewed for as long as the
+            # transcription takes.
+            with held_run(self.client, response_helper, document_id) as run:
+                run.result = self._transcribe(document_id, text_layer_id, alignment_token_layer_id,
+                                              sentence_token_layer_id, model_size, language,
+                                              requester, temp_dir, response_helper)
 
-            def downloaded(read, total):
-                share = (read / total) if total else 0
-                response_helper.progress(10 + int(20 * share),
-                                         f"Downloading media file ({read >> 20} MB"
-                                         + (f" of {total >> 20} MB)…" if total else ")…"))
-
-            audio_file = self.alignment_processor.download_media_file(
-                self.client, full_media_url, temp_dir, on_progress=downloaded)
-
-            # Transcribe audio with ASR model. One blocking call with nothing to
-            # poll inside it, and the longest stretch of this service by far: an
-            # hour of audio is an hour of silence on the wire, which the
-            # requester cannot tell from a wedged service, and which outlasts
-            # any deadline it is willing to wait through. The heartbeat keeps
-            # the request alive by saying the same thing at intervals.
-            response_helper.progress(30, f"Loading the Whisper model ({model_size or self.asr_model.model_name})…")
-            response_helper.progress(40, "Transcribing audio…")
-            with progress_heartbeat(response_helper, 40, "Transcribing audio…"):
-                alignments = self.asr_model.transcribe_with_alignments(
-                    audio_file, model_size=model_size, language=language)
-            
-            if not alignments:
-                raise ValueError("No speech found in the recording.")
-            
-            # The last point a stop costs nothing: the transcription itself is
-            # one blocking call with nothing to poll inside it, so a request
-            # stopped mid-transcription lands here, and stops before writing.
-            response_helper.progress(70, f"Found {len(alignments)} segments…")
-
-            # Process alignments using the alignment processor. Created tokens
-            # are stamped machine-made (provenance convention). Nothing already
-            # there is deleted: each new segment's sentence is split out.
-            # Group every write into ONE labeled audit-log entry (the processor acquires the
-            # document lock and does the batched alignment writes inside this scope).
-            # `critical` because the writes are one batch that a stop part-way
-            # would only throw away after the transcription was paid for.
-            audit_msg = requester.label(f"Whisper ASR transcription ({language})" if language
-                                        else "Whisper ASR transcription")
-            for alignment in alignments:
-                scores = (alignment.metadata or {}).get(PROV_DETAIL_KEY) or {}
-                alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
-                                      requester.detail(machine_detail(self.version, **scores))}
-            # The word layer, whose "Tokenize new text" gives the transcribed
-            # text its words, as typed text gets them.
-            text_layer = next((tl for tl in full_document.get("text_layers") or []
-                               if tl.get("id") == text_layer_id), None)
-            word_layer = find_by_role((text_layer or {}).get("token_layers"), ROLES.WORD)
-            # The report of the work is inside `critical()` with the work itself:
-            # a stop that arrives once the writing is done has nothing left to
-            # prevent, and a checkpoint out here would throw the result away and
-            # call a finished run stopped.
-            with response_helper.critical():
-                with self.client.operation(audit_msg,
-                                           kind='service-run', ref=service_source(self.service_id)):
-                    tokens_created = self.alignment_processor.process_alignments(
-                        self.client, document_id, alignments, text_layer_id,
-                        alignment_token_layer_id, sentence_token_layer_id, response_helper,
-                        prov_source=service_source(self.service_id),
-                        lock_percent=72,
-                        word_token_layer_id=(word_layer or {}).get("id"),
-                    )
-                response_helper.progress(100, "Done")
-                response_helper.complete({
-                    "document_id": document_id,
-                    "status": "success",
-                    "tokens_created": tokens_created,
-                    "segments_transcribed": len(alignments),
-                    # What the app counts for the person: the segments put
-                    # into the transcript, and the ones heard but skipped
-                    # because a segment already here holds their time.
-                    "segments_added": tokens_created,
-                    "segments_skipped": max(0, len(alignments) - tokens_created)
-                })
-            
         finally:
             # Clean up temporary files. Reporting a failure is BaseService's
             # job, on the one path every service's failures take.
@@ -302,6 +219,97 @@ class WhisperASRService(BaseService):
                 shutil.rmtree(temp_dir)
             except Exception as cleanup_error:
                 print(f"Failed to clean up temporary files: {cleanup_error}")
+
+    def _transcribe(self, document_id, text_layer_id, alignment_token_layer_id,
+                    sentence_token_layer_id, model_size, language, requester, temp_dir,
+                    response_helper):
+        """Read, transcribe and write, under the caller's lock. The result."""
+        # Get document to fetch media URL
+        response_helper.progress(5, "Fetching document…")
+        full_document = self.client.documents.get(document_id, include_body=True)
+        
+        # Get media URL from document
+        media_url = full_document.get("media_url")
+        if not media_url:
+            raise ValueError("The document has no media file.")
+        
+        # Construct full media URL if it's a relative path
+        if media_url.startswith('/'):
+            full_media_url = self.client.base_url.rstrip('/') + media_url
+        else:
+            full_media_url = media_url
+        
+        # Download media file. A recording is often hundreds of megabytes,
+        # so say how far in it is rather than going quiet until it lands.
+        response_helper.progress(10, "Downloading media file…")
+
+        def downloaded(read, total):
+            share = (read / total) if total else 0
+            response_helper.progress(10 + int(20 * share),
+                                     f"Downloading media file ({read >> 20} MB"
+                                     + (f" of {total >> 20} MB)…" if total else ")…"))
+
+        audio_file = self.alignment_processor.download_media_file(
+            self.client, full_media_url, temp_dir, on_progress=downloaded)
+
+        # Transcribe audio with ASR model. One blocking call with nothing to
+        # poll inside it, and the longest stretch of this service by far: an
+        # hour of audio is an hour of silence on the wire, which the
+        # requester cannot tell from a wedged service, and which outlasts
+        # any deadline it is willing to wait through. The heartbeat keeps
+        # the request alive by saying the same thing at intervals.
+        response_helper.progress(30, f"Loading the Whisper model ({model_size or self.asr_model.model_name})…")
+        response_helper.progress(40, "Transcribing audio…")
+        with progress_heartbeat(response_helper, 40, "Transcribing audio…"):
+            alignments = self.asr_model.transcribe_with_alignments(
+                audio_file, model_size=model_size, language=language)
+        
+        if not alignments:
+            raise ValueError("No speech found in the recording.")
+        
+        # The last point a stop costs nothing: the transcription itself is
+        # one blocking call with nothing to poll inside it, so a request
+        # stopped mid-transcription lands here, and stops before writing.
+        response_helper.progress(70, f"Found {len(alignments)} segments…")
+
+        # Process alignments using the alignment processor. Created tokens
+        # are stamped machine-made (provenance convention). Nothing already
+        # there is deleted: each new segment's sentence is split out.
+        # Group every write into ONE labeled audit-log entry. `critical`
+        # because the writes are one batch that a stop part-way would only
+        # throw away after the transcription was paid for.
+        audit_msg = requester.label(f"Whisper ASR transcription ({language})" if language
+                                    else "Whisper ASR transcription")
+        for alignment in alignments:
+            scores = (alignment.metadata or {}).get(PROV_DETAIL_KEY) or {}
+            alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
+                                  requester.detail(machine_detail(self.version, **scores))}
+        # The word layer, whose "Tokenize new text" gives the transcribed
+        # text its words, as typed text gets them.
+        text_layer = next((tl for tl in full_document.get("text_layers") or []
+                           if tl.get("id") == text_layer_id), None)
+        word_layer = find_by_role((text_layer or {}).get("token_layers"), ROLES.WORD)
+        with response_helper.critical():
+            with self.client.operation(audit_msg,
+                                       kind='service-run', ref=service_source(self.service_id)):
+                tokens_created = self.alignment_processor.process_alignments(
+                    self.client, document_id, alignments, text_layer_id,
+                    alignment_token_layer_id, sentence_token_layer_id, response_helper,
+                    prov_source=service_source(self.service_id),
+                    lock_percent=72,
+                    word_token_layer_id=(word_layer or {}).get("id"),
+                )
+        return {
+            "document_id": document_id,
+            "status": "success",
+            "tokens_created": tokens_created,
+            "segments_transcribed": len(alignments),
+            # What the app counts for the person: the segments put into the
+            # transcript, and the ones heard but skipped because a segment
+            # already here holds their time.
+            "segments_added": tokens_created,
+            "segments_skipped": max(0, len(alignments) - tokens_created),
+        }
 
 
 def main():

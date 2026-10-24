@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred
 from plaid_client.ids import uuid7
-from plaid_client.service import locked_for_writes, requester_message
+from plaid_client.service import require_held, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
 from plaid_client.workflows.igt.word_breaks import is_js_space, tokenize_new_text
@@ -70,7 +70,7 @@ class AlignmentProcessor:
             prov_source: Optional provenance producer id (e.g.
                 ``service_source('<service-id>')``). When set, created tokens
                 are stamped machine-made per the provenance convention.
-            lock_percent: The percent to report the lock step at. The rest of
+            lock_percent: The percent to report the write step at. The rest of
                 the run reports 75 to 98, so a caller that has already done
                 work of its own passes what it has reached: the default is
                 what this reports standing alone, and left at it after a
@@ -84,34 +84,32 @@ class AlignmentProcessor:
         Returns:
             Number of new alignment tokens created
         """
-        # Hold the document lock since we'll be modifying text and tokens; the
-        # context manager acquires it (refusing with a clear error if another
-        # user holds it) and always releases on exit. See
-        # PlaidClient.documents.locked. Its writes carry the version the
-        # document has once held, so one that lands late is refused.
+        # The caller holds the document for the whole run
+        # (plaid_client.service.locked_for_writes), from its first read through
+        # these writes: they modify text and tokens.
+        require_held(client, document_id)
         response_helper.progress(lock_percent, "Writing the transcription…")
-        with locked_for_writes(client, document_id):
-            # Convert alignments to transcription format, in time order: a
-            # model's segments are not always sorted by start, and segments
-            # that land at one place in the text stand in the order given.
-            transcriptions = sorted((
-                {
-                    'text': alignment.text,
-                    'start': alignment.start,
-                    'end': alignment.end,
-                    'metadata': alignment.metadata
-                }
-                for alignment in alignments
-            ), key=lambda t: t['start'])
+        # Convert alignments to transcription format, in time order: a
+        # model's segments are not always sorted by start, and segments
+        # that land at one place in the text stand in the order given.
+        transcriptions = sorted((
+            {
+                'text': alignment.text,
+                'start': alignment.start,
+                'end': alignment.end,
+                'metadata': alignment.metadata
+            }
+            for alignment in alignments
+        ), key=lambda t: t['start'])
 
-            # Create time alignment tokens (preserve existing ones)
-            tokens_created = self._create_time_alignment_tokens(
-                client, document_id, transcriptions, text_layer_id,
-                alignment_token_layer_id, sentence_token_layer_id, response_helper,
-                prov_source=prov_source, word_token_layer_id=word_token_layer_id
-            )
+        # Create time alignment tokens (preserve existing ones)
+        tokens_created = self._create_time_alignment_tokens(
+            client, document_id, transcriptions, text_layer_id,
+            alignment_token_layer_id, sentence_token_layer_id, response_helper,
+            prov_source=prov_source, word_token_layer_id=word_token_layer_id
+        )
 
-            return tokens_created
+        return tokens_created
     
     def download_media_file(self, client, media_url: str, temp_dir: str, on_progress=None) -> str:
         """

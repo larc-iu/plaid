@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from plaid_client.service import locked_for_writes  # noqa: E402
 from plaid_client.workflows.tokenization import (  # noqa: E402
     TokenProcessor, TokenSpan, helpers, tokenizer_model,
 )
@@ -169,6 +170,23 @@ def _two_sentences():
     return [TokenSpan(text='Hello', start=0, end=5), TokenSpan(text='there.', start=6, end=12)]
 
 
+def _held_tokens(client, document_id, *args, expect_version=None, **kwargs):
+    """The processor as a service calls it: inside the lock the service took
+    for the whole run, before it read the text (R15). ``expect_version`` is
+    the version the request carries, checked as the lock is taken."""
+    with locked_for_writes(client, document_id, expect_version):
+        return TokenProcessor().process_tokens(client, document_id, *args, **kwargs)
+
+
+def test_the_processor_refuses_to_write_a_document_nobody_holds():
+    client = _FakeClient(_document('Hello.', sentences=[(0, 6)], words=[]))
+    with pytest.raises(RuntimeError):
+        TokenProcessor().process_tokens(
+            client, 'd1', _spans('Hello.'), [TokenSpan(text='Hello', start=0, end=5)],
+            'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
+    assert [c for c in client.calls if c[0] in ('bulk_create', 'bulk_delete')] == []
+
+
 def test_a_refused_run_raises_instead_of_reporting_over_its_caller():
     # The sentence reset would cascade away a human-made annotation. The
     # refusal must reach the caller as an exception: reporting it here and
@@ -180,7 +198,7 @@ def test_a_refused_run_raises_instead_of_reporting_over_its_caller():
     client = _FakeClient(doc)
     helper = _Helper()
     with pytest.raises(ValueError) as caught:
-        TokenProcessor().process_tokens(
+        _held_tokens(
             client, 'd1', _two_sentences(),
             [TokenSpan(text='Hello', start=0, end=5)],
             'word-layer', 'sentence-layer', helper,
@@ -198,7 +216,7 @@ def test_a_machine_annotation_is_not_in_the_way():
     doc = _document('Hello there.', sentences=[(0, 12)], words=[],
                     sentence_spans=[machine])
     client = _FakeClient(doc)
-    counts = TokenProcessor().process_tokens(
+    counts = _held_tokens(
         client, 'd1', _two_sentences(),
         [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(),
@@ -209,7 +227,7 @@ def test_a_machine_annotation_is_not_in_the_way():
 def test_an_empty_document_is_refused_in_words_not_in_zeroes():
     client = _FakeClient(_document('   ', sentences=[], words=[]))
     with pytest.raises(ValueError) as caught:
-        TokenProcessor().process_tokens(client, 'd1', [], [], 'word-layer',
+        _held_tokens(client, 'd1', [], [], 'word-layer',
                                         'sentence-layer', _Helper(),
                                         text_layer_id='text-layer')
     assert 'no text' in str(caught.value)
@@ -218,7 +236,7 @@ def test_an_empty_document_is_refused_in_words_not_in_zeroes():
 def test_a_missing_word_layer_is_refused():
     client = _FakeClient(_document('Hello.', sentences=[(0, 6)]))
     with pytest.raises(ValueError):
-        TokenProcessor().process_tokens(client, 'd1', _spans('Hello.'),
+        _held_tokens(client, 'd1', _spans('Hello.'),
                                         [TokenSpan(text='Hello', start=0, end=5)],
                                         'no-such-layer', 'sentence-layer', _Helper(),
                                         text_layer_id='text-layer')
@@ -233,7 +251,7 @@ def test_split_tokens_are_deleted_in_one_op_however_many_there_are():
     crossing = [(0, 5), (3, 8), (6, 11)]
     doc = _document(body, sentences=[(0, 6), (6, 11)], words=crossing)
     client = _FakeClient(doc)
-    TokenProcessor().process_tokens(
+    _held_tokens(
         client, 'd1', _spans(body),
         [TokenSpan(text='ab', start=0, end=2)],
         'word-layer', 'sentence-layer', _Helper(),
@@ -247,21 +265,21 @@ def test_split_tokens_are_deleted_in_one_op_however_many_there_are():
     assert bulk == [('bulk_delete', ['w1'])]
 
 
-def test_a_document_edited_since_it_was_read_is_not_tokenized():
-    # The text was read, and tokenized, before the lock was taken. An edit in
-    # between moved every offset, so the run is refused rather than cutting the
-    # text in the places the old string had.
+def test_a_document_edited_since_the_app_asked_is_not_tokenized():
+    # The app counted its overwrite question at version 58 and the leave is
+    # for that document. One at 59 is refused as the lock is taken, before
+    # anything is read or written.
     doc = _document('Hello there.', sentences=[(0, 12)], words=[])
     doc['version'] = 59
     client = _FakeClient(doc)
     helper = _Helper()
     with pytest.raises(ValueError) as caught:
-        TokenProcessor().process_tokens(
+        _held_tokens(
             client, 'd1', _spans('Hello there.'),
             [TokenSpan(text='Hello', start=0, end=5)],
             'word-layer', 'sentence-layer', helper,
             text_layer_id='text-layer', expect_version=58)
-    assert 'changed while this run was working' in str(caught.value)
+    assert 'changed after this run was asked for' in str(caught.value)
     assert helper.errors == [] and helper.done == []
     assert [c for c in client.calls if c[0] in ('bulk_create', 'bulk_delete')] == []
 
@@ -270,7 +288,7 @@ def test_the_same_document_is_tokenized():
     doc = _document('Hello there.', sentences=[(0, 12)], words=[])
     doc['version'] = 58
     client = _FakeClient(doc)
-    counts = TokenProcessor().process_tokens(
+    counts = _held_tokens(
         client, 'd1', _two_sentences(),
         [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(),
@@ -284,7 +302,7 @@ def test_the_sentences_and_words_a_run_creates_carry_no_stamp():
     them (R2-SVC-7)."""
     doc = _document('Hello there.', sentences=[(0, 12)], words=[])
     client = _FakeClient(doc)
-    TokenProcessor().process_tokens(
+    _held_tokens(
         client, 'd1', _spans('Hello there.'),
         [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
@@ -453,7 +471,7 @@ def test_the_words_of_a_long_document_go_in_batches_the_server_takes():
     doc = _document(body, sentences=[(0, len(body))], words=[])
     client = _FakeClient(doc)
     client.server = types.SimpleNamespace(limits=lambda: {'json_body_bytes': 8000})
-    TokenProcessor().process_tokens(
+    _held_tokens(
         client, 'd1', [TokenSpan(text=body[:499], start=0, end=499),
                        TokenSpan(text=body[500:], start=500, end=len(body))],
         [TokenSpan(text='word', start=b, end=e) for b, e in words],
@@ -494,7 +512,7 @@ def test_a_failure_in_a_later_word_batch_says_what_was_written():
 
     client.batched = batched
     with pytest.raises(RuntimeError) as caught:
-        TokenProcessor().process_tokens(
+        _held_tokens(
             client, 'd1', [TokenSpan(text=body[:499], start=0, end=499),
                            TokenSpan(text=body[500:], start=500, end=len(body))],
             [TokenSpan(text='word', start=b, end=e) for b, e in words],
@@ -551,7 +569,7 @@ def _punkt_words():
 
 def _run(doc, sentences, *, overwrite=False):
     client = _FakeClient(doc)
-    counts = TokenProcessor().process_tokens(
+    counts = _held_tokens(
         client, 'd1', sentences, _punkt_words(), 'word-layer', 'sentence-layer', _Helper(),
         text_layer_id='text-layer', expect_version=7, overwrite=overwrite)
     return client, counts
@@ -680,7 +698,7 @@ def _with_graph(doc, edge_metadata, *, keeps_within=True):
 
 def _reset(doc):
     client = _FakeClient(doc)
-    TokenProcessor().process_tokens(
+    _held_tokens(
         client, 'd1', _two_sentences(), [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
     return client
@@ -732,7 +750,7 @@ def test_new_sentences_refuse_to_cut_a_human_edge_without_overwrite():
     assert 'across the new sentence breaks' in str(caught.value)
     assert 'in the sentence' not in str(caught.value)
     client = _FakeClient(doc)
-    counts = TokenProcessor().process_tokens(
+    counts = _held_tokens(
         client, 'd1', _two_sentences(), [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
         overwrite=True)

@@ -199,7 +199,7 @@ def test_the_skeleton_is_one_anchored_node_per_glossed_or_linked_word():
     assert helper.errors == []
     [result] = helper.results
     assert (result['drafted'], result['skipped'], result['failed']) == (1, 0, 0)
-    assert result['notice']['level'] == 'success'
+    assert 'notice' not in result
 
     anchors = _anchors(service.client)
     assert [(a['begin'], a['end']) for a in anchors] == [(4, 7), (8, 13)]
@@ -241,15 +241,13 @@ def test_a_sentence_with_nothing_to_go_on_is_a_counted_failure():
     helper = servicetest.run(service, REQUEST)
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (0, 1)
-    assert result['notice']['level'] == 'warning'
-    assert result['notice']['message'] == (
-        'Failed to draft sentence 1: No word has a vocabulary link or a gloss.')
-    assert result['notice']['sticky'] is True
+    assert result['sentences_failed'] == [
+        {'sentence': 1, 'reason': 'No word has a vocabulary link or a gloss.'}]
     assert service.client.writes == []
 
 
-NO_GLOSS_LINE = ('Failed to draft sentence 1: No word has a vocabulary link, and no gloss line '
-                 'in UMR settings is a word or morpheme gloss.')
+NO_GLOSS_LINE = ('No word has a vocabulary link, and no gloss line in UMR settings is a word '
+                 'or morpheme gloss.')
 
 
 @pytest.mark.parametrize('config', [
@@ -268,7 +266,7 @@ def test_a_project_whose_lines_read_no_gloss_names_no_node_from_one_and_says_so(
     helper = servicetest.run(service, REQUEST)
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (0, 1)
-    assert result['notice']['message'] == NO_GLOSS_LINE
+    assert result['sentences_failed'] == [{'sentence': 1, 'reason': NO_GLOSS_LINE}]
     assert service.client.writes == []
 
 
@@ -319,8 +317,6 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
     [result] = helper.results
     assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
     assert service.client.writes == [], f'a {why} graph is not deleted'
-    assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
-                                'message': 'Kept 1 sentence a person had worked on.'}
 
 
 # --- one run body for both services --------------------------------------------
@@ -933,25 +929,19 @@ def test_the_default_table_knows_the_abbreviations_igt_knows():
     assert set(boot.ABBREVIATIONS) <= GLOSS_ABBREVIATIONS
 
 
-# --- an edit made while the run read (H39-AGENT-UMR-2) ---------------------------
+# --- the whole run is held (R17) -------------------------------------------------
 
-def test_a_vocabulary_link_changed_meanwhile_is_a_changed_sentence_and_elsewhere_is_not():
-    """The skeleton writes through the same per-sentence check as Draft. A
-    link is something the skeleton is planned from, so a link changed in the
-    sentence skips it, and an edit outside it does not."""
-    two = dict(body='The dog barks\nIt runs\n', sentences=[(0, 14), (14, 22)],
-               words=draft_tests.WORDS + [(14, 16), (17, 21)],
-               gloss_spans=GLOSSES + [{'id': 'g5', 'tokens': ['w5'], 'value': 'run.PRS'}])
-    before = _document(**two)
-    elsewhere = _document(version=8, **{**two, 'gloss_spans': two['gloss_spans'] + [
-        {'id': 'g4', 'tokens': ['w4'], 'value': '3SG'}]})
-    service = _service(documents=[before, elsewhere, elsewhere])
-    [result] = servicetest.run(service, {**REQUEST, 'scope': 'sentence', 'sentence': 1}).results
-    assert (result['drafted'], result['changed']) == (1, 0)
-
-    relinked = _document(version=8, **two)
-    relinked['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][0]['tokens'] = ['w2']
-    service = _service(documents=[before, relinked, relinked])
-    [result] = servicetest.run(service, REQUEST).results
-    assert result['sentences_changed'] == [1] and result['drafted'] == 1
-    assert service.client.operations == ['UMR skeleton from glosses of sentence 2']
+def test_the_skeleton_is_planned_and_written_with_the_document_held():
+    """The skeleton is planned from the read under the lock, the same one
+    Draft takes, and written before it is let go: no link or gloss can change
+    between them, so nothing is checked again."""
+    service = _service()
+    helper = servicetest.run(service, REQUEST)
+    kinds = service.client.kinds
+    reads = [i for i, k in enumerate(kinds) if k == 'read']
+    writes = [i for i, k in enumerate(kinds) if k.startswith(('tokens.', 'spans.'))]
+    assert kinds.count('lock') == 1 and kinds.index('lock') < min(reads)
+    assert kinds.index('unlock') > max(writes)
+    [result] = helper.results
+    assert result['drafted'] == 1
+    assert 'changed' not in result and 'sentences_changed' not in result

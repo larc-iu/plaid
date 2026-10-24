@@ -73,12 +73,12 @@ def test_finish_draft_writes_under_a_service_run(monkeypatch):
     class _Document:
         sentences = []
 
-    # Only the operation is under test: the version check and the graph
-    # writes it wraps are the umr workflow's own tests' business.
-    monkeypatch.setattr(write, 'locked_for_writes', lambda *a, **k: contextlib.nullcontext())
+    # Only the operation is under test: the lock drafting() holds and the
+    # graph writes it wraps are the umr workflow's own tests' business.
+    monkeypatch.setattr(write, 'require_held', lambda *a, **k: None)
     monkeypatch.setattr(write, 'write_graphs', lambda *a, **k: None)
     client = FakeClient({})
-    run = write.DraftRun(document_id='d1', project_id='p1', read_version=1, layers=None,
+    run = write.DraftRun(document_id='d1', project_id='p1', layers=None,
                          document=_Document(), progress=_Progress(), targets=[], skipped=0,
                          kept=0, linked=0, taken=set(), requester=Requester())
     write.finish_draft(client, _Helper(), run, [{'sentence': None}], [], {}, operation='UMR draft',

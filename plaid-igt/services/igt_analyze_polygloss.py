@@ -49,11 +49,11 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import locked_for_writes, machine_detail
+from plaid_client.service import held_run, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
-    write_analyses, ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
+    write_analyses, analysis_result, ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
 )
 
 DEFAULT_MODEL = 'lecslab/polygloss-byt5-interleaved-2025-12-28'
@@ -228,102 +228,94 @@ class PolyGlossService(BaseService):
         translation_field = request_data['translation_field'].strip() or None
         overwrite = request_data['overwrite']
 
-        response_helper.progress(3, 'Fetching document…')
-        doc = self.client.documents.get(document_id, include_body=True)
-        read_version = doc.get('version')
-        try:
-            sentences, gloss_layer_id = derive(
-                doc, word_layer_id, morph_layer_id, sent_layer_id,
-                gloss_field=gloss_field, translation_field=translation_field)
-        except ValueError as e:
-            response_helper.error(str(e))
-            return
-        # The translation is context only, so a run goes on without it, and
-        # says so rather than analyzing a little worse without a word.
-        translation_missing = (translation_field if translation_field
-                               and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
+        # The document is held from the read the run plans from through the
+        # last write, so no edit can land while the model works (one rule for
+        # every service, Luke's ruling R15). The result goes once it is let go.
+        with held_run(self.client, response_helper, document_id) as run:
+            response_helper.progress(3, 'Fetching document…')
+            doc = self.client.documents.get(document_id, include_body=True)
+            try:
+                sentences, gloss_layer_id = derive(
+                    doc, word_layer_id, morph_layer_id, sent_layer_id,
+                    gloss_field=gloss_field, translation_field=translation_field)
+            except ValueError as e:
+                response_helper.error(str(e))
+                return
+            # The translation is context only, so a run goes on without it, and
+            # says so rather than analyzing a little worse without a word.
+            translation_missing = (translation_field if translation_field
+                                   and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
 
-        # Eligible sentences: any word we may write (the write contract).
-        targets, skipped = select_targets(sentences, overwrite,
-                                          skip_word_ids=read_skip_word_ids(request_data))
-        skipped['unaligned'] = 0
-        if not targets:
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
-                'sentences_sent': 0, 'words_written': 0, 'words_replaced': 0, 'skipped': skipped,
-                'message': 'Nothing to analyze: every word is already analyzed by a person.' if skipped['protected']
-                else 'Nothing to analyze.',
-            })
-            return
+            # Eligible sentences: any word we may write (the write contract).
+            targets, skipped = select_targets(sentences, overwrite,
+                                              skip_word_ids=read_skip_word_ids(request_data))
+            skipped['unaligned'] = 0
+            if not targets:
+                run.result = analysis_result(document_id, len(sentences), 0, skipped,
+                                             translation_missing=translation_missing)
+                return
 
-        # Generate, with continuation passes for truncated tails.
-        stamp_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
-                                                       language=language, metalanguage=metalanguage))
-        aligned: Dict[str, List[Optional[ParsedWord]]] = {}  # sentence id -> per input word
-        pending = [(s, 0) for s, _ in targets]  # (sentence, first word index still to transcribe)
-        for s, _ in targets:
-            aligned[s['id']] = [None] * len(s['words'])
-        passes = 0
-        failed = []
-        while pending and passes <= MAX_CONTINUATIONS:
-            prompts = []
-            for s, start in pending:
-                transcription = ' '.join(w['surface'] for w in s['words'][start:])
-                translation = (s['translation'] or '').strip() or 'None'
-                prompts.append(PROMPT.format(lang=language, metalang=metalanguage,
-                                             transcription=transcription, translation=translation))
-            lo, hi = (15, 80) if passes == 0 else (80, 88)
+            # Generate, with continuation passes for truncated tails.
+            stamp_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
+                                                           language=language, metalanguage=metalanguage))
+            aligned: Dict[str, List[Optional[ParsedWord]]] = {}  # sentence id -> per input word
+            pending = [(s, 0) for s, _ in targets]  # (sentence, first word index still to transcribe)
+            for s, _ in targets:
+                aligned[s['id']] = [None] * len(s['words'])
+            passes = 0
+            failed = []
+            while pending and passes <= MAX_CONTINUATIONS:
+                prompts = []
+                for s, start in pending:
+                    transcription = ' '.join(w['surface'] for w in s['words'][start:])
+                    translation = (s['translation'] or '').strip() or 'None'
+                    prompts.append(PROMPT.format(lang=language, metalang=metalanguage,
+                                                 transcription=transcription, translation=translation))
+                lo, hi = (15, 80) if passes == 0 else (80, 88)
 
-            def on_batch(done, total):
-                response_helper.progress(lo + int((hi - lo) * done / total),
-                                         f'Analyzing sentences ({done}/{total} batches)…')
-            results = self.model.predict(prompts, on_batch=on_batch)
-            next_pending = []
-            for (s, start), (text, truncated) in zip(pending, results):
-                outputs = parse_interleaved(text)
-                surfaces = [w['surface'] for w in s['words'][start:]]
-                if not outputs:
-                    failed.append({'sentence_id': s['id'], 'reason': 'empty output'})
-                    continue
-                mapping = align_words(surfaces, outputs)
-                for k, out in enumerate(mapping):
-                    aligned[s['id']][start + k] = out
-                if truncated:
-                    last = max((k for k, o in enumerate(mapping) if o is not None), default=-1)
-                    tail_start = start + last + 1
-                    if tail_start < len(s['words']):
-                        next_pending.append((s, tail_start))
-            pending = next_pending
-            passes += 1
+                def on_batch(done, total):
+                    response_helper.progress(lo + int((hi - lo) * done / total),
+                                             f'Analyzing sentences ({done}/{total} batches)…')
+                results = self.model.predict(prompts, on_batch=on_batch)
+                next_pending = []
+                for (s, start), (text, truncated) in zip(pending, results):
+                    outputs = parse_interleaved(text)
+                    surfaces = [w['surface'] for w in s['words'][start:]]
+                    if not outputs:
+                        failed.append({'sentence_id': s['id'], 'reason': 'empty output'})
+                        continue
+                    mapping = align_words(surfaces, outputs)
+                    for k, out in enumerate(mapping):
+                        aligned[s['id']][start + k] = out
+                    if truncated:
+                        last = max((k for k, o in enumerate(mapping) if o is not None), default=-1)
+                        tail_start = start + last + 1
+                        if tail_start < len(s['words']):
+                            next_pending.append((s, tail_start))
+                pending = next_pending
+                passes += 1
 
-        # Plan writes.
-        response_helper.progress(88, 'Writing analyses…')
-        source = service_source(self.service_id)
-        plans = []
-        replaced = 0
-        for s, idxs in targets:
-            for i in idxs:
-                w = s['words'][i]
-                out = aligned[s['id']][i]
-                if out is None:
-                    skipped['unaligned'] += 1
-                    continue
-                plans.append({'word': w, 'analysis': analysis_for(w['surface'], out), 'sentence_id': s['id']})
-                if w['state'] != 'unanalyzed':
-                    replaced += 1
+            # Plan writes.
+            response_helper.progress(88, 'Writing analyses…')
+            source = service_source(self.service_id)
+            plans = []
+            replaced = 0
+            for s, idxs in targets:
+                for i in idxs:
+                    w = s['words'][i]
+                    out = aligned[s['id']][i]
+                    if out is None:
+                        skipped['unaligned'] += 1
+                        continue
+                    plans.append({'word': w, 'analysis': analysis_for(w['surface'], out), 'sentence_id': s['id']})
+                    if w['state'] != 'unanalyzed':
+                        replaced += 1
 
-        # The report of the work is inside `critical()` with the work itself: a
-        # stop that arrives once the writing is done has nothing left to prevent,
-        # and a checkpoint out here would throw the result away and call a
-        # finished run stopped.
-        with response_helper.critical():
-            with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)'),
-                                       kind='service-run', ref=service_source(self.service_id)):
-                # The plans were made from a read taken before the model
-                # ran. If someone has edited the document since, both the
-                # write contract they were selected under and the ids they
-                # point at are out of date, so nothing is written.
-                with locked_for_writes(self.client, document_id, read_version):
+            # The writes cannot be stopped once begun: a stop halfway would
+            # leave words half analyzed.
+            with response_helper.critical():
+                with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)'),
+                                           kind='service-run', ref=service_source(self.service_id)):
                     def wrote(done, total):
                         response_helper.progress(
                             88 + int(11 * done / max(total, 1)),
@@ -332,14 +324,9 @@ class PolyGlossService(BaseService):
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)
 
-            response_helper.progress(100, 'Done')
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success',
-                'sentences': len(sentences), 'sentences_sent': len(targets),
-                'words_written': written, 'words_replaced': replaced,
-                'skipped': skipped, 'sentences_failed': failed,
-                'translation_field_missing': translation_missing,
-            })
+            run.result = analysis_result(document_id, len(sentences), len(targets), skipped,
+                                         written=written, replaced=replaced, failed=failed,
+                                         translation_missing=translation_missing)
 
 def main():
     PolyGlossService().run()

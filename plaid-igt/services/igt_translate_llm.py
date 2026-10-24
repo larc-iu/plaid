@@ -32,7 +32,7 @@ import argparse
 from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import locked_for_writes, machine_detail, requester_message
+from plaid_client.service import held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -139,6 +139,23 @@ def sentence_state(span) -> str:
 
 # --- the service ---------------------------------------------------------------
 
+
+def translation_result(document_id, sentences, skipped, *, written=0, replaced=0, failed=(),
+                       gloss_missing=None):
+    """The result of a ``translate`` run, in one shape (the core manual,
+    "Service results"): the app words what the person is told from it.
+    ``skipped`` counts sentences left alone, ``protected`` (a person's
+    translation, Overwrite off) and ``empty`` (no words). ``failed`` names
+    each sentence the model could not translate as ``{'sentence_id',
+    'reason'}``, and ``gloss_missing`` is the gloss field the request named
+    and the document lacks, read for context only."""
+    return {
+        'document_id': document_id, 'status': 'success', 'sentences': sentences,
+        'sentences_written': written, 'sentences_replaced': replaced,
+        'skipped': {'protected': 0, 'empty': 0, **skipped}, 'sentences_failed': list(failed),
+        'gloss_field_missing': gloss_missing,
+    }
+
 class LLMTranslateService(BaseService):
     def __init__(self):
         super().__init__(
@@ -205,124 +222,115 @@ class LLMTranslateService(BaseService):
         overwrite = request_data['overwrite']
         n_context = int(request_data['context'])
 
-        response_helper.progress(3, 'Fetching document…')
-        doc = self.client.documents.get(document_id, include_body=True)
-        read_version = doc.get('version')
-        layers = (word_layer_id, morph_layer_id, sent_layer_id)
-        gloss_layer_id = None
-        # The glosses are context only, so a run goes on without them, and says
-        # so rather than translating a little worse without a word.
-        gloss_missing = None
-        try:
+        # The document is held from the read the run plans from through the
+        # last write, so no edit can land while the model works (one rule for
+        # every service, Luke's ruling R15). The result goes once it is let go.
+        with held_run(self.client, response_helper, document_id) as run:
+            response_helper.progress(3, 'Fetching document…')
+            doc = self.client.documents.get(document_id, include_body=True)
+            layers = (word_layer_id, morph_layer_id, sent_layer_id)
+            gloss_layer_id = None
+            # The glosses are context only, so a run goes on without them, and says
+            # so rather than translating a little worse without a word.
+            gloss_missing = None
             try:
-                sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field if use_glosses else None,
-                                                   translation_field=translation_field, orthography=orthography)
-            except NoGlossField:
-                # No such gloss field: translate from the words alone.
-                gloss_missing = gloss_field
-                sentences, _ = derive(doc, *layers, gloss_field=None,
-                                      translation_field=translation_field, orthography=orthography)
-        except ValueError as e:
-            response_helper.error(str(e))
-            return
-        # The field derive read the translations from, by the same rule.
-        tr_layer_id = field_layer_id(doc, sent_layer_id, translation_field, 'Sentence')
-        if not tr_layer_id:
-            response_helper.error(f'No sentence-scope field named "{translation_field}". Set the Translation '
-                                  'field parameter to one of the project\'s sentence fields.')
-            return
+                try:
+                    sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field if use_glosses else None,
+                                                       translation_field=translation_field, orthography=orthography)
+                except NoGlossField:
+                    # No such gloss field: translate from the words alone.
+                    gloss_missing = gloss_field
+                    sentences, _ = derive(doc, *layers, gloss_field=None,
+                                          translation_field=translation_field, orthography=orthography)
+            except ValueError as e:
+                response_helper.error(str(e))
+                return
+            # The field derive read the translations from, by the same rule.
+            tr_layer_id = field_layer_id(doc, sent_layer_id, translation_field, 'Sentence')
+            if not tr_layer_id:
+                response_helper.error(f'No sentence-scope field named "{translation_field}". Set the Translation '
+                                      'field parameter to one of the project\'s sentence fields.')
+                return
 
-        # Targets under the write contract.
-        skipped = {'protected': 0, 'empty': 0}
-        targets = []  # (index, sentence, existing span or None)
-        for i, s in enumerate(sentences):
-            if not s['words']:
-                skipped['empty'] += 1
-                continue
-            span = s['translation_span']
-            st = sentence_state(span)
-            if st == 'protected' and not overwrite:
-                skipped['protected'] += 1
-                continue
-            targets.append((i, s, span if st != 'empty' else None))
-        if not targets:
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
-                'sentences_written': 0, 'sentences_replaced': 0, 'skipped': skipped,
-                'message': 'Nothing to translate: every sentence already has a translation by a person.'
-                if skipped['protected'] else 'Nothing to translate.',
-            })
-            return
-
-        # One model call per sentence, in document order so earlier drafts can
-        # serve as context for later sentences.
-        source = service_source(self.service_id)
-        base_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
-                                                      language=language, metalanguage=metalanguage))
-        drafts: Dict[str, str] = {}
-        plans = []  # (sentence, existing span or None, text)
-        failed = []
-        # A model that does not answer at all is down: the run stops after two
-        # sentences in a row get no answer, rather than wait out a deadline on
-        # every sentence with the document locked.
-        unanswered = UnansweredRun()
-        for n, (i, s, span) in enumerate(targets):
-            response_helper.progress(5 + int(80 * n / len(targets)), f'Translating sentences ({n + 1}/{len(targets)})…')
-            words = [w['text'] for w in s['words']]
-            context = []
-            for c in sentences[max(0, i - n_context):i]:
-                if not c['words']:
+            # Targets under the write contract.
+            skipped = {'protected': 0, 'empty': 0}
+            targets = []  # (index, sentence, existing span or None)
+            for i, s in enumerate(sentences):
+                if not s['words']:
+                    skipped['empty'] += 1
                     continue
-                context.append({'text': ' '.join(w['text'] for w in c['words']),
-                                'translation': drafts.get(c['id']) or (c['translation'] or '').strip()})
-            prompt = build_user_prompt(language, metalanguage, words, gloss_line(s, gloss_layer_id), context)
-            try:
-                reply = self.model.complete(
-                    SYSTEM_PROMPT.format(language=language, metalanguage=metalanguage), prompt,
-                    should_stop=lambda: response_helper.cancelled)
-            except Exception as exc:
-                # The provider's own error text is the operator's: it can carry
-                # the endpoint, the request body, and the key that was refused.
-                print(f'Model call failed for sentence {s["id"]}: {exc}')
-                failed.append({'sentence_id': s['id'],
-                               'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
-                if unanswered.failed(exc):
-                    untried = [t[1]['id'] for t in targets[n + 1:]]
-                    ended = unanswered.stop_line(len(untried), verb='translated')
-                    if untried:
-                        print(f'{ended} Not asked: {", ".join(untried)}')
-                    failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
-                    break
-                continue
-            unanswered.answered()
-            if reply.truncated:
-                # Half a translation reads like a whole one. A draft the model
-                # did not finish is not written at all.
-                failed.append({'sentence_id': s['id'],
-                               'reason': 'the reply was cut off at the token limit'})
-                continue
-            text = first_line(reply.text)
-            if not text:
-                failed.append({'sentence_id': s['id'], 'reason': 'empty reply'})
-                continue
-            drafts[s['id']] = text
-            plans.append((s, span, text))
+                span = s['translation_span']
+                st = sentence_state(span)
+                if st == 'protected' and not overwrite:
+                    skipped['protected'] += 1
+                    continue
+                targets.append((i, s, span if st != 'empty' else None))
+            if not targets:
+                run.result = translation_result(document_id, len(sentences), skipped,
+                                                gloss_missing=gloss_missing)
+                return
 
-        print(self.model.usage_line())
-        response_helper.progress(88, 'Writing translations…')
-        replaced = 0
-        # The report of the work is inside `critical()` with the work itself: a
-        # stop that arrives once the writing is done has nothing left to prevent,
-        # and a checkpoint out here would throw the result away and call a
-        # finished run stopped.
-        with response_helper.critical():
-            with self.client.operation(requester.label(f'LLM translation ({len(plans)} sentences)'),
-                                       kind='service-run', ref=service_source(self.service_id)):
-                # The plans were made from a read taken before the model
-                # ran. If someone has edited the document since, both the
-                # write contract they were selected under and the span ids
-                # they point at are out of date, so nothing is written.
-                with locked_for_writes(self.client, document_id, read_version):
+            # One model call per sentence, in document order so earlier drafts can
+            # serve as context for later sentences.
+            source = service_source(self.service_id)
+            base_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
+                                                          language=language, metalanguage=metalanguage))
+            drafts: Dict[str, str] = {}
+            plans = []  # (sentence, existing span or None, text)
+            failed = []
+            # A model that does not answer at all is down: the run stops after two
+            # sentences in a row get no answer, rather than wait out a deadline on
+            # every sentence with the document locked.
+            unanswered = UnansweredRun()
+            for n, (i, s, span) in enumerate(targets):
+                response_helper.progress(5 + int(80 * n / len(targets)), f'Translating sentences ({n + 1}/{len(targets)})…')
+                words = [w['text'] for w in s['words']]
+                context = []
+                for c in sentences[max(0, i - n_context):i]:
+                    if not c['words']:
+                        continue
+                    context.append({'text': ' '.join(w['text'] for w in c['words']),
+                                    'translation': drafts.get(c['id']) or (c['translation'] or '').strip()})
+                prompt = build_user_prompt(language, metalanguage, words, gloss_line(s, gloss_layer_id), context)
+                try:
+                    reply = self.model.complete(
+                        SYSTEM_PROMPT.format(language=language, metalanguage=metalanguage), prompt,
+                        should_stop=lambda: response_helper.cancelled)
+                except Exception as exc:
+                    # The provider's own error text is the operator's: it can carry
+                    # the endpoint, the request body, and the key that was refused.
+                    print(f'Model call failed for sentence {s["id"]}: {exc}')
+                    failed.append({'sentence_id': s['id'],
+                                   'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
+                    if unanswered.failed(exc):
+                        untried = [t[1]['id'] for t in targets[n + 1:]]
+                        ended = unanswered.stop_line(len(untried), verb='translated')
+                        if untried:
+                            print(f'{ended} Not asked: {", ".join(untried)}')
+                        failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
+                        break
+                    continue
+                unanswered.answered()
+                if reply.truncated:
+                    # Half a translation reads like a whole one. A draft the model
+                    # did not finish is not written at all.
+                    failed.append({'sentence_id': s['id'],
+                                   'reason': 'the reply was cut off at the token limit'})
+                    continue
+                text = first_line(reply.text)
+                if not text:
+                    failed.append({'sentence_id': s['id'], 'reason': 'empty reply'})
+                    continue
+                drafts[s['id']] = text
+                plans.append((s, span, text))
+
+            print(self.model.usage_line())
+            response_helper.progress(88, 'Writing translations…')
+            replaced = 0
+            # The writes cannot be stopped once begun.
+            with response_helper.critical():
+                with self.client.operation(requester.label(f'LLM translation ({len(plans)} sentences)'),
+                                           kind='service-run', ref=service_source(self.service_id)):
                     for start in range(0, len(plans), WRITE_CHUNK // 2):
                         with self.client.batched() as b:
                             for s, span, text in plans[start:start + WRITE_CHUNK // 2]:
@@ -334,13 +342,9 @@ class LLMTranslateService(BaseService):
                                 else:
                                     b.spans.create(tr_layer_id, [s['id']], text, stamp)
 
-            response_helper.progress(100, 'Done')
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
-                'sentences_written': len(plans), 'sentences_replaced': replaced,
-                'skipped': skipped, 'sentences_failed': failed,
-                'gloss_field_missing': gloss_missing,
-            })
+            run.result = translation_result(document_id, len(sentences), skipped,
+                                            written=len(plans), replaced=replaced, failed=failed,
+                                            gloss_missing=gloss_missing)
 
 
 def main():

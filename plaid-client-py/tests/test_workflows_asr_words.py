@@ -11,8 +11,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client.workflows.asr import Alignment, AlignmentProcessor  # noqa: E402
-from test_workflows_asr import (ALIGN_LAYER, SENTENCE_LAYER, TEXT_LAYER, _Batch,  # noqa: E402
+from plaid_client.workflows.asr import Alignment  # noqa: E402
+from test_workflows_asr import (_held_alignments, ALIGN_LAYER, SENTENCE_LAYER, TEXT_LAYER, _Batch,  # noqa: E402
                                 _document, _FakeClient, _Helper)
 
 WORD_LAYER = 'word-layer'
@@ -29,7 +29,7 @@ def _with_words(doc, words=(), tokenize=None):
 
 
 def _run(client, alignments, word_layer=WORD_LAYER):
-    return AlignmentProcessor().process_alignments(
+    return _held_alignments(
         client, 'd1', alignments, TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(),
         prov_source='service:asr:test', word_token_layer_id=word_layer)
 
@@ -66,7 +66,7 @@ def test_a_segments_text_never_runs_into_the_text_beside_it():
     # each side that touches text, none where there is whitespace already.
     doc = _document('one\nthree', sentences=[(0, 9)], align=[(0, 3, 1.0, 2.0), (4, 9, 5.0, 6.0)])
     client = _FakeClient([doc])
-    AlignmentProcessor().process_alignments(
+    _held_alignments(
         client, 'd1', [Alignment(text='zero', start=0.0, end=0.5),
                        Alignment(text='two', start=3.0, end=4.0),
                        Alignment(text='two more', start=4.0, end=4.5),
@@ -80,7 +80,7 @@ def test_a_segments_text_never_runs_into_the_text_beside_it():
 
 def test_the_first_text_of_an_empty_document_gets_no_space():
     client = _FakeClient([_document('')])
-    AlignmentProcessor().process_alignments(
+    _held_alignments(
         client, 'd1', [Alignment(text='a b', start=0.0, end=1.0), Alignment(text='c', start=1.0, end=2.0)],
         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
     assert _body_after(client, '') == 'a b c'

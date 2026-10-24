@@ -49,7 +49,7 @@ from plaid_client import BaseService, TASKS, stamp_inferred, service_source
 from plaid_client.service import machine_detail, requester_message
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_arguments,
                                         setup_service)
-from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
+from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, drafting,
                                         cycle_edges, draft_params, finish_draft, join_flat_graph,
                                         next_variable, parse_penman, project_language, run_label,
                                         tree_edges, unknown_relation_problem)
@@ -429,89 +429,89 @@ class UmrDraftService(BaseService):
 
     # -- request --
     def process_request(self, request_data: Dict[str, Any], response_helper) -> None:
-        run = begin_draft(self.client, request_data, response_helper)
-        if run is None:
-            return
-        progress = run.progress
+        # The document is held from this read through the last write (R17),
+        # and the result goes once it is let go.
+        with drafting(self.client, request_data, response_helper) as run:
+            if run is None:
+                return
+            progress = run.progress
 
-        # The project's language, the one thing the prompt needs that the
-        # document does not carry. Context only: a project that has not set one
-        # is drafted without it rather than refused. A read that fails fails
-        # the run.
-        language = ''
-        if run.project_id:
-            progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
-            language = project_language(self.client.projects.get(run.project_id))
-        progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
+            # The project's language, the one thing the prompt needs that the
+            # document does not carry. Context only: a project that has not set one
+            # is drafted without it rather than refused. A read that fails fails
+            # the run.
+            language = ''
+            if run.project_id:
+                progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
+                language = project_language(self.client.projects.get(run.project_id))
+            progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
-        stamp_detail = machine_detail(self.version, **self.model.describe(),
-                                      **({'language': language} if language else {}))
-        frag = stamp_inferred(service_source(self.service_id), detail=stamp_detail)
+            stamp_detail = machine_detail(self.version, **self.model.describe(),
+                                          **({'language': language} if language else {}))
+            frag = stamp_inferred(service_source(self.service_id), detail=stamp_detail)
 
-        # One model call per sentence. A sentence the model fails is counted and
-        # named; the rest of the document is still drafted, because a run that
-        # threw away twenty good graphs over one bad reply would be worse than
-        # useless on a long document.
-        # A model that does not answer at all is down, and would cost a full
-        # deadline per sentence with the document locked: the run stops after
-        # UNANSWERED_IN_A_ROW sentences in a row get no answer.
-        plans = []
-        failures = []
-        not_drafted = []
-        ended = ''
-        unanswered = UnansweredRun()
-        total = len(run.targets)
-        for n, sentence in enumerate(run.targets):
-            message = f'Drafting sentence {sentence.number} ({n + 1} of {total})…'
-            progress.report(DraftProgress.DRAFT, n / total, message)
-            gloss_lines = gloss_lines_for(sentence, run.layers.gloss_layers, run.document.gloss)
-            prompt = build_user_prompt(sentence, gloss_lines, language)
-            try:
-                with progress.heartbeat(DraftProgress.DRAFT, n / total, message):
-                    reply = self.model.complete(SYSTEM_PROMPT, prompt,
-                                                should_stop=lambda: response_helper.cancelled)
-            except Exception as exc:
-                # The provider's own error text is the operator's: it can carry
-                # the endpoint, the request body and the key that was refused.
-                print(f'Model call failed for sentence {sentence.number}: {exc}')
-                failures.append({'sentence': sentence.number,
-                                 'reason': requester_message(exc, secrets=self.REQUEST_SECRETS)})
-                if unanswered.failed(exc):
-                    not_drafted = [s.number for s in run.targets[n + 1:]]
-                    ended = unanswered.stop_line(len(not_drafted))
-                    break
-                continue
-            unanswered.answered()
-            if reply.truncated:
-                # Half a graph is not a graph: a cut-off reply is a failure, not
-                # a partial result to write.
-                failures.append({'sentence': sentence.number,
-                                 'reason': 'The reply was cut off at the token limit.'})
-                continue
-            graph_text, alignment_text = split_reply(reply.text)
-            # A graph written one block per node is one graph in another
-            # layout: joined here, then read and checked like any other.
-            graph = parse_penman(join_flat_graph(graph_text))
-            alignment = parse_alignment(alignment_text)
-            merge_restated_edges(graph)
-            problem = validate_graph(graph, alignment, sentence)
-            if problem:
-                # The reply itself goes to the operator's log: what the model
-                # wrote is what anyone improving the prompt needs to see.
-                detail = f'{problem} {graph.errors[0].message}' if graph.errors else problem
-                print(f'Reply for sentence {sentence.number} refused ({detail}):\n{reply.text}')
-                failures.append({'sentence': sentence.number, 'reason': problem})
-                continue
-            pieces, nodes, edges = plan_sentence(graph, alignment, sentence, run.taken)
-            plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes, 'edges': edges})
-        if run.targets:
-            print(self.model.usage_line())
+            # One model call per sentence. A sentence the model fails is counted and
+            # named; the rest of the document is still drafted, because a run that
+            # threw away twenty good graphs over one bad reply would be worse than
+            # useless on a long document.
+            # A model that does not answer at all is down, and would cost a full
+            # deadline per sentence with the document locked: the run stops after
+            # UNANSWERED_IN_A_ROW sentences in a row get no answer.
+            plans = []
+            failures = []
+            not_drafted = []
+            unanswered = UnansweredRun()
+            total = len(run.targets)
+            for n, sentence in enumerate(run.targets):
+                message = f'Drafting sentence {sentence.number} ({n + 1} of {total})…'
+                progress.report(DraftProgress.DRAFT, n / total, message)
+                gloss_lines = gloss_lines_for(sentence, run.layers.gloss_layers, run.document.gloss)
+                prompt = build_user_prompt(sentence, gloss_lines, language)
+                try:
+                    with progress.heartbeat(DraftProgress.DRAFT, n / total, message):
+                        reply = self.model.complete(SYSTEM_PROMPT, prompt,
+                                                    should_stop=lambda: response_helper.cancelled)
+                except Exception as exc:
+                    # The provider's own error text is the operator's: it can carry
+                    # the endpoint, the request body and the key that was refused.
+                    print(f'Model call failed for sentence {sentence.number}: {exc}')
+                    failures.append({'sentence': sentence.number,
+                                     'reason': requester_message(exc, secrets=self.REQUEST_SECRETS)})
+                    if unanswered.failed(exc):
+                        not_drafted = [s.number for s in run.targets[n + 1:]]
+                        break
+                    continue
+                unanswered.answered()
+                if reply.truncated:
+                    # Half a graph is not a graph: a cut-off reply is a failure, not
+                    # a partial result to write.
+                    failures.append({'sentence': sentence.number,
+                                     'reason': 'The reply was cut off at the token limit.'})
+                    continue
+                graph_text, alignment_text = split_reply(reply.text)
+                # A graph written one block per node is one graph in another
+                # layout: joined here, then read and checked like any other.
+                graph = parse_penman(join_flat_graph(graph_text))
+                alignment = parse_alignment(alignment_text)
+                merge_restated_edges(graph)
+                problem = validate_graph(graph, alignment, sentence)
+                if problem:
+                    # The reply itself goes to the operator's log: what the model
+                    # wrote is what anyone improving the prompt needs to see.
+                    detail = f'{problem} {graph.errors[0].message}' if graph.errors else problem
+                    print(f'Reply for sentence {sentence.number} refused ({detail}):\n{reply.text}')
+                    failures.append({'sentence': sentence.number, 'reason': problem})
+                    continue
+                pieces, nodes, edges = plan_sentence(graph, alignment, sentence, run.taken)
+                plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes, 'edges': edges})
+            if run.targets:
+                print(self.model.usage_line())
 
-        finish_draft(self.client, response_helper, run, plans, failures, frag,
-                     service_id=self.service_id,
-                     operation=lambda written: run_label('UMR draft', written),
-                     writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…",
-                     not_drafted=not_drafted, ended=ended)
+            finish_draft(self.client, response_helper, run, plans, failures, frag,
+                         service_id=self.service_id,
+                         operation=lambda written: run_label('UMR draft', written),
+                         writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…",
+                         not_drafted=not_drafted)
 
 
 def main():

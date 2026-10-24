@@ -42,13 +42,12 @@ import contextlib
 import datetime
 import importlib.metadata
 import logging
-import math
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, Param, TASKS, service_source
-from plaid_client.service import locked_for_writes
+from plaid_client.service import held_run
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (DOC_CONSTANTS, UMR_NAMESPACE, Graph, file_numbers,
                                         group_of, penman_nodes, reachable_from_root,
@@ -691,34 +690,6 @@ def report_ops(report, sentence_ids):
     return document_ops, token_updates
 
 
-def build_notice(report, scored: int, skipped: int):
-    """What the run dialog says when it finishes. The service owns the wording
-    and the severity, and the app maps `level` to a colour."""
-    def s(n):
-        return '' if n == 1 else 's'
-
-    name = report['against']['name']
-    scores = report['scores']
-    if not scored:
-        return {'level': 'warning', 'title': 'Nothing scored',
-                'message': f'AnCast could not read a graph in any of the '
-                           f'{skipped} sentence{s(skipped)}.'}
-    # In whole percents, rounded as the Compare tab rounds them (JavaScript's
-    # Math.round, half up). Python's round() takes a half to the even side,
-    # so 0.825 would read 82% here and 83% on the tab.
-    def pct(x):
-        return f'{math.floor(x * 100 + 0.5)}%'
-
-    parts = [f"Sentence graphs {pct(scores['sentence'])}"]
-    if scores['comprehensive'] is not None:
-        parts.append(f"comprehensive {pct(scores['comprehensive'])}")
-    tail = f'Scored {scored} sentence{s(scored)}.'
-    if skipped:
-        tail += f' AnCast could not read {skipped} sentence{s(skipped)}.'
-    return {'level': 'success', 'title': f'{", ".join(parts)} against {name}',
-            'message': tail}
-
-
 # --- resolving the other document ------------------------------------------------
 
 def resolve_against(client, project_id, document_id, against):
@@ -837,58 +808,54 @@ class UmrAncastService(BaseService):
         scope = request_data['scope']
         requester = requester_of(self.client, request_data)
 
-        progress = ScoreProgress(response_helper)
-        progress.report(ScoreProgress.READ, 0.0, 'Reading the document…')
-        document = self.client.documents.get(document_id, include_body=True)
-        read_version = document.get('version')
-        this_name = document.get('name') or 'this document'
+        # The scored document is held from its read through the report's
+        # write (R17: one rule for every service), so the report describes
+        # the document it is written on. The result goes once it is let go.
+        with held_run(self.client, response_helper, document_id) as run:
+            progress = ScoreProgress(response_helper)
+            progress.report(ScoreProgress.READ, 0.0, 'Reading the document…')
+            document = self.client.documents.get(document_id, include_body=True)
+            this_name = document.get('name') or 'this document'
 
-        against_id = resolve_against(self.client, project_id, document_id,
-                                     request_data.get('against'))
-        progress.report(ScoreProgress.READ, 0.5, 'Reading the other document…')
-        other = self.client.documents.get(against_id, include_body=True)
-        other_name = other.get('name') or against_id
-        if other.get('id') == document_id:
-            raise ValueError('A document cannot be scored against itself. '
-                             'Pick the other annotator\'s copy.')
+            against_id = resolve_against(self.client, project_id, document_id,
+                                         request_data.get('against'))
+            progress.report(ScoreProgress.READ, 0.5, 'Reading the other document…')
+            other = self.client.documents.get(against_id, include_body=True)
+            other_name = other.get('name') or against_id
+            if other.get('id') == document_id:
+                raise ValueError('A document cannot be scored against itself. '
+                                 'Pick the other annotator\'s copy.')
 
-        this_graph, this_text = read_umr(document)
-        other_graph, other_text = read_umr(other)
-        check_same_words(words_of(this_graph), words_of(other_graph), this_name, other_name)
-        progress.report(ScoreProgress.READ, 1.0, 'Reading the other document…')
+            this_graph, this_text = read_umr(document)
+            other_graph, other_text = read_umr(other)
+            check_same_words(words_of(this_graph), words_of(other_graph), this_name, other_name)
+            progress.report(ScoreProgress.READ, 1.0, 'Reading the other document…')
 
-        progress.report(ScoreProgress.SCORE, 0.0, f'Scoring against {other_name}…')
-        scores, sentences = score_umr(this_text, other_text, scope)
-        sentences = with_scored_graphs(sentences, this_graph, other_graph)
-        skipped = len([s for s in sentences if s['skipped']])
-        scored = len(sentences) - skipped
+            progress.report(ScoreProgress.SCORE, 0.0, f'Scoring against {other_name}…')
+            scores, sentences = score_umr(this_text, other_text, scope)
+            sentences = with_scored_graphs(sentences, this_graph, other_graph)
+            skipped = len([s for s in sentences if s['skipped']])
+            scored = len(sentences) - skipped
 
-        report = build_report(scores, sentences, {'id': against_id, 'name': other_name}, scope,
-                              requested_by=requester.record(), service_version=self.version)
-        notice = build_notice(report, scored, skipped)
+            report = build_report(scores, sentences, {'id': against_id, 'name': other_name}, scope,
+                                  requested_by=requester.record(), service_version=self.version)
 
-        # Everything from here must finish once begun. The final report is inside
-        # the same block, so a checkpoint after the write cannot throw a finished
-        # run away and call it stopped.
-        progress.report(ScoreProgress.WRITE, 0.0, 'Writing the report…')
-        with response_helper.critical():
-            with self.client.operation(requester.label(f'AnCast adjudication against {other_name}'),
-                                       kind='service-run', ref=service_source(self.service_id)):
-                # The scores describe the document as it was read. If it has
-                # moved since, the report would be a claim about a state
-                # that is gone.
-                with locked_for_writes(self.client, document_id, read_version):
+            # The write must finish once begun.
+            progress.report(ScoreProgress.WRITE, 0.0, 'Writing the report…')
+            with response_helper.critical():
+                with self.client.operation(requester.label(f'AnCast adjudication against {other_name}'),
+                                           kind='service-run', ref=service_source(self.service_id)):
                     self._write(document_id, report, [s.id for s in this_graph.sentences])
 
-            response_helper.progress(100, notice['title'])
-            response_helper.complete({
+            # The counts alone (the core manual, "Service results"): the app
+            # words what the person is told.
+            run.result = {
                 'document_id': document_id, 'status': 'success',
                 'against': report['against'], 'scope': scope,
                 'scores': report['scores'],
                 'sentences': len(sentences), 'sentences_scored': scored,
                 'sentences_skipped': skipped,
-                'notice': notice,
-            })
+            }
 
     def _write(self, document_id, report, sentence_ids) -> None:
         """The summary on the document and each row on its sentence, all at

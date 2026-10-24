@@ -87,10 +87,10 @@ def test_every_write_in_the_block_carries_the_version_read_under_the_lock():
     assert client.strict_mode_document_id is None
 
 
-def test_a_document_that_moved_since_the_run_read_it_is_refused_before_any_write():
+def test_a_document_that_moved_since_the_request_was_made_is_refused_before_any_write():
     client = PlaidClient('http://x', 'tok')
     client.session, sent = _server(9)
-    with pytest.raises(ValueError, match='changed while this run was working'):
+    with pytest.raises(ValueError, match='changed after this run was asked for'):
         with locked_for_writes(client, 'd1', 8):
             client.spans.update('s1', 'NOUN')
     assert [r['method'] for r in sent if not urlparse(r['url']).path.endswith('/lock')] == ['GET']
@@ -127,3 +127,73 @@ def test_every_service_that_locks_a_document_writes_in_strict_mode():
     assert len(sources) > 10
     bare = [str(p.relative_to(repo)) for p in sources if 'documents.locked(' in p.read_text()]
     assert bare == [], 'take the lock through plaid_client.service.locked_for_writes'
+
+
+# --- held_run: the whole run under the lock (R15, R17) ---------------------------
+
+class _Helper:
+    def __init__(self, client):
+        self.client, self.sent = client, []
+        self.depth = 0
+
+    def progress(self, percent, message):
+        self.sent.append(('progress', percent, message, self.depth))
+
+    def complete(self, result):
+        # What the requester reads, and whether the document was free by then.
+        self.sent.append(('complete', result, self.client.strict_mode_document_id))
+
+    def critical(self):
+        import contextlib
+
+        @contextlib.contextmanager
+        def block():
+            self.depth += 1
+            try:
+                yield
+            finally:
+                self.depth -= 1
+        return block()
+
+
+def test_a_held_run_sends_its_result_once_the_document_is_let_go():
+    from plaid_client.service import held_run
+    client = FakeClient([{'id': 'd1', 'version': 4}])
+    helper = _Helper(client)
+    with held_run(client, helper, 'd1') as run:
+        assert client.strict_mode_document_id == 'd1'
+        client.spans.update('s1', 'NOUN')
+        run.result = {'status': 'success', 'words_written': 1}
+    assert client.kinds[0] == 'lock' and client.kinds[-1] == 'unlock'
+    # The report is not a checkpoint (inside a critical block), and it goes
+    # after the unlock.
+    assert helper.sent == [('progress', 100, 'Done', 1),
+                           ('complete', {'status': 'success', 'words_written': 1}, None)]
+
+
+def test_a_held_run_that_returns_early_still_sends_what_it_set():
+    from plaid_client.service import held_run
+    client = FakeClient([{'id': 'd1', 'version': 4}])
+    helper = _Helper(client)
+
+    def body():
+        with held_run(client, helper, 'd1') as run:
+            run.result = {'status': 'success', 'words_written': 0}
+            return
+    body()
+    assert [s[0] for s in helper.sent] == ['progress', 'complete']
+
+
+def test_a_held_run_that_reported_a_refusal_or_failed_sends_nothing_more():
+    from plaid_client.service import held_run
+    client = FakeClient([{'id': 'd1', 'version': 4}])
+    helper = _Helper(client)
+    with held_run(client, helper, 'd1'):
+        pass                                   # refused, and said so itself
+    assert helper.sent == []
+    with pytest.raises(RuntimeError):
+        with held_run(client, helper, 'd1') as run:
+            run.result = {'status': 'success'}
+            raise RuntimeError('boom')
+    assert helper.sent == []
+    assert client.kinds[-1] == 'unlock'

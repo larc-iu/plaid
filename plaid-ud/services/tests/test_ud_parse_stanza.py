@@ -186,8 +186,8 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     assert result['status'] == 'success'
     assert result['mode'] == 'full'
     assert result['parsed_sentences'] == 1 and result['skipped_sentences'] == 0
-    assert result['notice'] == {'level': 'success', 'title': 'Parsed 1 sentence',
-                                'message': ''}
+    # Counts alone: the app words the notice (R18).
+    assert 'notice' not in result
     assert 'stopped' not in result
 
     # The whole hierarchy, top down, in one batch.
@@ -339,8 +339,7 @@ def test_a_sentence_a_person_annotated_is_left_untouched():
 
     [result] = helper.results
     assert result['parsed_sentences'] == 0 and result['skipped_sentences'] == 1
-    assert result['notice']['level'] == 'warning'
-    assert result['notice']['title'] == 'Document not modified'
+    assert 'notice' not in result
     assert service.client.writes == []
     assert service.pipeline_provider.inputs == []
 
@@ -575,7 +574,7 @@ def test_every_phase_of_the_parse_says_what_it_is_doing():
         'Parsing 13 characters…',
         'Parsed 1 sentences…',
         'Writing 1 sentence…',
-        'Parsed 1 sentence',
+        'Done',
     ]
     # The bar only ever moves forward, through the phases' fixed budget.
     percents = [pct for pct, _ in helper.beats]

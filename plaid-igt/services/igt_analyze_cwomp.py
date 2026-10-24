@@ -76,10 +76,10 @@ from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.provenance import (
     prov_state, read_confidence_threshold, HUMAN, PROV_SOURCE_KEY, VERIFIED)
 from plaid_client.roles import ROLES, find_by_role
-from plaid_client.service import locked_for_writes, machine_detail
+from plaid_client.service import held_run, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
-    derive, field_layer_id, select_targets, write_analyses, ANALYZE_REQUEST_FIELDS,
+    derive, field_layer_id, select_targets, write_analyses, analysis_result, ANALYZE_REQUEST_FIELDS,
     read_skip_word_ids,
 )
 from plaid_client.workflows.igt.glossing import is_clitic
@@ -825,96 +825,89 @@ class CwompService(BaseService):
             lambda msg: response_helper.progress(5, msg))
         model.set_lexicon(project_confirmed.entries)
 
-        response_helper.progress(20, 'Fetching document…')
-        doc = self.client.documents.get(document_id, include_body=True)
-        read_version = doc.get('version')
-        try:
-            sentences, gloss_layer_id = derive(
-                doc, word_layer_id, morph_layer_id, sent_layer_id,
-                gloss_field=gloss_field, translation_field=translation_field)
-        except ValueError as e:
-            response_helper.error(str(e))
-            return
-        translation_missing = (translation_field if translation_field
-                               and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
-        # This document's own confirmed morphemes count at once.
-        own = Confirmed(service_source(self.service_id), project_confirmed.entry_types)
-        for s in sentences:
-            for w in s['words']:
-                own.add_word(w, gloss_layer_id)
-        if own.entries - set(model.lexicon):
-            model.set_lexicon(set(model.lexicon) | own.entries)
-        confirmed = project_confirmed.merged(own)
-        project = self.client.projects.get(project_id)
-        confirmed.keep_items(self.live_items(project))
-        # A link the model doubts is one more thing to undo: propose none.
-        threshold = read_confidence_threshold(project.get('config'))
+        # The document is held from the read the run plans from through the
+        # last write, so no edit can land while the model works (one rule for
+        # every service, Luke's ruling R15). The result goes once it is let go.
+        with held_run(self.client, response_helper, document_id) as run:
+            response_helper.progress(20, 'Fetching document…')
+            doc = self.client.documents.get(document_id, include_body=True)
+            try:
+                sentences, gloss_layer_id = derive(
+                    doc, word_layer_id, morph_layer_id, sent_layer_id,
+                    gloss_field=gloss_field, translation_field=translation_field)
+            except ValueError as e:
+                response_helper.error(str(e))
+                return
+            translation_missing = (translation_field if translation_field
+                                   and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
+            # This document's own confirmed morphemes count at once.
+            own = Confirmed(service_source(self.service_id), project_confirmed.entry_types)
+            for s in sentences:
+                for w in s['words']:
+                    own.add_word(w, gloss_layer_id)
+            if own.entries - set(model.lexicon):
+                model.set_lexicon(set(model.lexicon) | own.entries)
+            confirmed = project_confirmed.merged(own)
+            project = self.client.projects.get(project_id)
+            confirmed.keep_items(self.live_items(project))
+            # A link the model doubts is one more thing to undo: propose none.
+            threshold = read_confidence_threshold(project.get('config'))
 
-        def link_for(d):
-            if d['prob'] is not None and d['prob'] < threshold:
-                return None
-            return confirmed.link_for((d['form'], d['gloss']))
+            def link_for(d):
+                if d['prob'] is not None and d['prob'] < threshold:
+                    return None
+                return confirmed.link_for((d['form'], d['gloss']))
 
-        targets, skipped = select_targets(sentences, overwrite,
-                                          skip_word_ids=read_skip_word_ids(request_data))
-        if not targets:
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
-                'sentences_sent': 0, 'words_written': 0, 'words_replaced': 0, 'skipped': skipped,
-                'message': 'Nothing to analyze: every word is already analyzed by a person.' if skipped['protected']
-                else 'Nothing to analyze.',
-            })
-            return
+            targets, skipped = select_targets(sentences, overwrite,
+                                              skip_word_ids=read_skip_word_ids(request_data))
+            if not targets:
+                run.result = analysis_result(document_id, len(sentences), 0, skipped,
+                                             translation_missing=translation_missing)
+                return
 
-        jobs = []
-        for s, idxs in targets:
-            transcript = ' '.join(encode_piece(w['surface']) for w in s['words'])
-            translation = ' '.join((s['translation'] or '').split())
-            for i in idxs:
-                jobs.append((s, i, model.query(encode_piece(s['words'][i]['surface']), transcript, translation)))
-        response_helper.progress(25, f'Analyzing {len(jobs)} words…')
-        embs = model.encode_queries([q for _, _, q in jobs])
-        plans, replaced, unanalyzed = [], 0, 0
-        for n, ((s, i, _), emb) in enumerate(zip(jobs, embs)):
-            if n % 50 == 0:
-                response_helper.progress(25 + int(60 * n / len(jobs)), f'Analyzing words ({n}/{len(jobs)})…')
-            picked = model.analyze_full(emb)
-            w = s['words'][i]
-            if not picked:
-                unanalyzed += 1
-                continue
-            forms, types = zip(*(decode_form(d['form']) for d in picked))
-            plans.append({'word': w, 'sentence_id': s['id'], 'analysis': {
-                'segments': list(forms), 'glosses': [decode_piece(d['gloss']) for d in picked],
-                'types': list(types), 'joiners': joiners_for(list(types)),
-                'probs': [d['prob'] for d in picked],
-                'form_probs': [d['form_prob'] for d in picked],
-                'links': [link_for(d) for d in picked],
-                'gloss_details': [alternatives_detail(d, confirmed) for d in picked],
-                'surface_mismatch': False, 'degraded': False}})
-            if w['state'] != 'unanalyzed':
-                replaced += 1
+            jobs = []
+            for s, idxs in targets:
+                transcript = ' '.join(encode_piece(w['surface']) for w in s['words'])
+                translation = ' '.join((s['translation'] or '').split())
+                for i in idxs:
+                    jobs.append((s, i, model.query(encode_piece(s['words'][i]['surface']), transcript, translation)))
+            response_helper.progress(25, f'Analyzing {len(jobs)} words…')
+            embs = model.encode_queries([q for _, _, q in jobs])
+            plans, replaced = [], 0
+            for n, ((s, i, _), emb) in enumerate(zip(jobs, embs)):
+                if n % 50 == 0:
+                    response_helper.progress(25 + int(60 * n / len(jobs)), f'Analyzing words ({n}/{len(jobs)})…')
+                picked = model.analyze_full(emb)
+                w = s['words'][i]
+                if not picked:
+                    skipped['unaligned'] = skipped.get('unaligned', 0) + 1
+                    continue
+                forms, types = zip(*(decode_form(d['form']) for d in picked))
+                plans.append({'word': w, 'sentence_id': s['id'], 'analysis': {
+                    'segments': list(forms), 'glosses': [decode_piece(d['gloss']) for d in picked],
+                    'types': list(types), 'joiners': joiners_for(list(types)),
+                    'probs': [d['prob'] for d in picked],
+                    'form_probs': [d['form_prob'] for d in picked],
+                    'links': [link_for(d) for d in picked],
+                    'gloss_details': [alternatives_detail(d, confirmed) for d in picked],
+                    'surface_mismatch': False, 'degraded': False}})
+                if w['state'] != 'unanalyzed':
+                    replaced += 1
 
-        response_helper.progress(88, 'Writing analyses…')
-        source = service_source(self.service_id)
-        stamp_detail = requester.detail(machine_detail(self.version, **model.describe()))
-        with response_helper.critical():
-            with self.client.operation(requester.label(f'CWoMP analysis ({len(plans)} words)'),
-                                       kind='service-run', ref=service_source(self.service_id)):
-                with locked_for_writes(self.client, document_id, read_version):
+            response_helper.progress(88, 'Writing analyses…')
+            source = service_source(self.service_id)
+            stamp_detail = requester.detail(machine_detail(self.version, **model.describe()))
+            with response_helper.critical():
+                with self.client.operation(requester.label(f'CWoMP analysis ({len(plans)} words)'),
+                                           kind='service-run', ref=service_source(self.service_id)):
                     def wrote(done, total):
                         response_helper.progress(88 + int(11 * done / max(total, 1)),
                                                  f'Writing analyses ({done}/{total} batches)…')
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)
-            response_helper.progress(100, 'Done')
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success',
-                'sentences': len(sentences), 'sentences_sent': len(targets),
-                'words_written': written, 'words_replaced': replaced,
-                'skipped': {**skipped, 'unanalyzed': unanalyzed},
-                'translation_field_missing': translation_missing,
-            })
+            run.result = analysis_result(document_id, len(sentences), len(targets), skipped,
+                                         written=written, replaced=replaced,
+                                         translation_missing=translation_missing)
 
 
 def main():

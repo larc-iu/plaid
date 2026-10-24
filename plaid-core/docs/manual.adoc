@@ -606,6 +606,56 @@ A parameter left out takes its default, a number is held to its `min` and `max`,
 Most services write to the project and the client reloads, but `detect-speech` writes nothing: it returns time regions as `segments`, which the app offers as proposals.
 In JavaScript, `filterServicesByTask` picks the services for a slot, and `getParamSchema` and `buildDefaultValues` help build the form.
 
+=== Holding the document
+
+A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write, for the whole run.
+No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked, and it needs no check that the document is as it read it.
+The lock is renewed for as long as the run takes, and the requester's own app keeps the document read-only until the run ends.
+
+In Python, `held_run` from `plaid_client.service` takes the lock, puts the client in strict mode for that document (see <<Strict Mode>>), and sends the run's result once the lock is released.
+The handler sets `run.result` and may return straight after.
+A handler that reports a refusal with `error` leaves it unset.
+
+[,python]
+----
+from plaid_client.service import BaseService, held_run
+
+class Glosser(BaseService):
+    def process_request(self, request_data, response_helper):
+        document_id = request_data["document_id"]
+        with held_run(self.client, response_helper, document_id) as run:
+            document = self.client.documents.get(document_id, include_body=True)
+            glosses = self.gloss(document)        # the model, however long it takes
+            with response_helper.critical():
+                with self.client.operation("Glossing"):
+                    self.write(glosses)
+            run.result = {"document_id": document_id, "status": "success",
+                          "words_written": len(glosses)}
+----
+
+`locked_for_writes` is the same lock without the result.
+It takes an optional version, for a request that carries the version the app asked a question at, such as a re-tokenize that deletes work only with the requester's leave, and refuses a document no longer at it.
+
+=== Service results
+
+A service reports what it did as counts in its result, and sends no message of its own.
+The app that asked words what the person is told, in its own terms, and the same counts serve again when the page reloads mid-run and the run is picked up later (see <<Presence and persistence>>).
+A run that fails on some items still finishes with `status: "success"`, and its counts say which items failed.
+Every result has the `document_id` and a `status`, and a stopped run comes back as `stopped: true` instead.
+These are the results of each task, in the snake_case a Python service writes, which a JavaScript client reads in camelCase.
+
+`tokenize`:: `tokens_created`, `tokens_deleted` and `sentences_created`.
+`parse`:: `mode` (`full` for a document parsed whole, `preserve` for one whose sentences a person worked on were kept), `parsed_sentences` and `skipped_sentences`.
+`transcribe`:: `segments_transcribed`, the segments the model heard, `segments_added`, the ones put in the transcript, and `segments_skipped`, the ones whose time a segment already held. `tokens_created` equals `segments_added`.
+`detect-speech`:: `segments`, the time regions found, each `{time_begin, time_end}` in seconds with an optional `speaker`. Nothing is written.
+`analyze`:: `sentences` in the document, `sentences_sent`, the ones holding a word the run could write, `words_written` and `words_replaced`. `skipped` counts the words left alone: `protected` (a person's analysis, with overwriting off), `precedent` (named in the request's `skip_word_ids`) and `unaligned` (given no analysis by the model). `sentences_failed` lists `{sentence_id, reason}` for each sentence the run could not analyze, and `translation_field_missing` names a translation field the request asked for that the document lacks.
+`translate`:: `sentences`, `sentences_written` and `sentences_replaced`. `skipped` counts `protected` sentences (a person's translation, with overwriting off) and `empty` ones (no words). `sentences_failed` lists `{sentence_id, reason}`, and `gloss_field_missing` names a gloss field the request asked for that the document lacks.
+`draft-graph`:: `sentences` in the document and `drafted`. `skipped` counts the sentences with a machine-made graph left alone with overwriting off, `kept` the ones a person made, contributed to or accepted something in, and `linked` the ones another sentence's graph links into. `failed` and `sentences_failed`, a list of `{sentence, reason}` by sentence number, name the sentences the run could not draft, and `sentences_not_drafted` lists, by number, the ones never asked about because the model stopped answering.
+`compare`:: `against`, the `{id, name}` of the document scored against, `scope`, `scores` (`sentence`, and `comprehensive` or null), `sentences`, `sentences_scored` and `sentences_skipped`, the ones the metric could not read.
+
+A reason in a failure list is the service's own account of one item, and the app shows it as it stands.
+Other keys may be added beside these.
+
 === Stopping a request
 
 A client can ask a service to stop with `cancelServiceRequest` / `cancel_service_request`.

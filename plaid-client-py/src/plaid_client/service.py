@@ -84,15 +84,14 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
 
 
 def check_unchanged(client, document_id, version, current=None) -> None:
-    """Refuse to write when the document changed since ``version`` was read.
+    """Refuse to write when the document is no longer at ``version``.
 
-    A service that reads a document, spends minutes in a model, then writes is
-    writing against a picture that may be out of date: the write contract it
-    applied (which words are human-made, which are the machine's own to
-    replace) and the token and span ids it planned around are both from the
-    old read. Call this right after taking the document lock, with the version
-    the read carried; ``current`` saves a round trip when the caller has just
-    re-read the document anyway.
+    ``version`` is one the REQUEST carries: the version the app asked its
+    question at (a re-tokenize that deletes a person's work, with their leave
+    for what was counted then). A service reads the document itself only
+    once it holds the lock (:func:`locked_for_writes`), so its own read needs
+    no such check. ``current`` saves a round trip when the caller has just
+    read the document anyway.
 
     Raises ``ValueError`` (the authored-refusal shape) when it differs, so
     nothing is written at all.
@@ -102,26 +101,32 @@ def check_unchanged(client, document_id, version, current=None) -> None:
     if current is None:
         current = (client.documents.get(document_id) or {}).get('version')
     if current and current != version:
-        raise ValueError('The document changed while this run was working. Run it again.')
+        raise ValueError('The document changed after this run was asked for. Run it again.')
 
 
 @contextlib.contextmanager
 def locked_for_writes(client, document_id, read_version=None):
-    """Hold ``document_id`` for a run's writes, and make every write carry the
+    """Hold ``document_id`` for a whole run, and make every write carry the
     version the document has once it is held (strict mode).
 
-    The lock keeps other people out while the block runs. The version is what
-    keeps out a write of this run's own that arrives LATE: a batch the client
-    gave up on (a timeout, a lost answer) can still land after the block has
-    released the lock and someone has edited the document, and it then writes
-    offsets and ids planned against text that is gone. Stamped, it is refused
-    with a 409 instead. Each write's answer moves the stamp on, so the run's
-    own writes follow one another.
+    One rule for every service that writes a document (Luke's rulings R15
+    and R17, 2026-10-24): take this BEFORE the read the run plans from and
+    hold it through the last write, so no edit can land between the read and
+    the write however long the model runs. The lock is renewed on a beat for
+    as long as the block runs (:mod:`plaid_client.document_lock`). Send the
+    result after the block, so the document is free again by the time the
+    requester reads it.
 
-    ``read_version`` is the version the run's plans were made from, when the
-    run read the document before taking the lock (a model call, say). A
-    document that has moved since is refused before anything is written, as
-    :func:`check_unchanged` does.
+    The version is what keeps out a write of this run's own that arrives
+    LATE: a batch the client gave up on (a timeout, a lost answer) can still
+    land after the block has released the lock and someone has edited the
+    document, and it then writes offsets and ids planned against text that is
+    gone. Stamped, it is refused with a 409 instead. Each write's answer moves
+    the stamp on, so the run's own writes follow one another.
+
+    ``read_version`` is a version the request carries, when the app asked a
+    question at it (:func:`check_unchanged`). A document that has moved since
+    is refused before anything is read.
 
     Yields the :class:`~plaid_client.document_lock.DocumentLock`. Strict mode
     is put back as it was on the way out.
@@ -137,6 +142,46 @@ def locked_for_writes(client, document_id, read_version=None):
             yield lock
         finally:
             client.strict_mode_document_id = previous
+
+
+class HeldRun:
+    """What :func:`held_run` yields. Set ``result`` to the run's result, and
+    it is sent once the document is let go."""
+
+    def __init__(self, lock=None):
+        self.lock = lock
+        self.result = None
+
+
+@contextlib.contextmanager
+def held_run(client, response_helper, document_id, read_version=None):
+    """A whole run that reads ``document_id`` and writes it, held by
+    :func:`locked_for_writes` from the first read through the last write.
+
+    The body sets ``run.result`` and may ``return`` straight after: the
+    result is sent once the block has let the document go, so the document
+    is free by the time the requester reads it, and the report is no
+    cancellation checkpoint (a stop after the last write has nothing left to
+    prevent). A body that reported a refusal itself leaves ``result`` unset,
+    and nothing more is sent. An exception sends nothing here either:
+    BaseService reports it.
+    """
+    with locked_for_writes(client, document_id, read_version) as lock:
+        run = HeldRun(lock)
+        yield run
+    if run.result is not None:
+        with response_helper.critical():
+            response_helper.progress(100, 'Done')
+            response_helper.complete(run.result)
+
+
+def require_held(client, document_id) -> None:
+    """Refuse to go on unless ``document_id`` is held by
+    :func:`locked_for_writes`. A writer the service calls (a token or an
+    alignment processor) writes under the lock its caller took for the whole
+    run, and one called without it would write unlocked."""
+    if getattr(client, 'strict_mode_document_id', None) != document_id:
+        raise RuntimeError(f'Hold document {document_id} with locked_for_writes before writing it.')
 
 
 #: The core's default cap on one JSON request body (``[server]

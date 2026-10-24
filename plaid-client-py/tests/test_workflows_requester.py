@@ -83,8 +83,10 @@ def test_the_detail_it_is_given_is_not_changed_in_place():
 
 def _service_files():
     """Every app's service scripts, read off the disk rather than the git
-    index, so a new service is held to the helper before it is committed."""
-    return sorted(REPO.glob('*/services/*.py'))
+    index, so a new service is held to the helper before it is committed.
+    Not plaid-core's services/ folder: that is where a run of the release jar
+    extracts its bundled copies (gitignored), as old as that jar."""
+    return sorted(p for p in REPO.glob('*/services/*.py') if p.parts[-3] != 'plaid-core')
 
 
 def _is_service(tree):
@@ -120,7 +122,7 @@ def _assigned(tree, name):
 
 def test_every_bundled_service_names_its_requester():
     """A service opens its History entry through ``requester.label``, or
-    drafts through ``begin_draft`` / ``finish_draft``, which do it for it."""
+    drafts through ``drafting`` / ``finish_draft``, which do it for it."""
     files = _service_files()
     assert len(files) >= 9, files
     missing = []
@@ -130,7 +132,7 @@ def test_every_bundled_service_names_its_requester():
         if not _is_service(tree):
             continue
         rel = path.relative_to(REPO)
-        if 'requester_of(' not in source and 'begin_draft(' not in source:
+        if 'requester_of(' not in source and 'drafting(' not in source:
             missing.append(f'{rel}: never reads its requester')
         for line in _unlabeled_operations(tree):
             missing.append(f'{rel}:{line}: an operation label without the requester')

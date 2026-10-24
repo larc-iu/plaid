@@ -295,3 +295,21 @@ def test_a_translation_field_of_another_scope_is_named_as_missing():
 def _scoped_translation(doc, scope):
     doc['text_layers'][0]['token_layers'][0]['span_layers'][0]['config']['igt']['scope'] = scope
     return doc
+
+
+def test_the_result_is_the_analyze_shape_and_the_run_is_held_from_the_read():
+    """R15 and R18: the document is held from its read through the writes,
+    and the result is the one analyze shape every analyzer sends: a word the
+    model gave nothing for counts under skipped.unaligned, and
+    sentences_failed is always there."""
+    service, model = _service([])
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['words_written'] == 0
+    assert result['skipped'] == {'protected': 0, 'precedent': 0, 'unaligned': 2}
+    assert result['sentences_failed'] == []
+    assert 'message' not in result and 'notice' not in result
+    kinds = service.client.kinds
+    reads = [i for i, k in enumerate(kinds) if k == 'read']
+    assert kinds.index('lock') < min(reads) and kinds[-1] == 'unlock'

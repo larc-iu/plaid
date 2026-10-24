@@ -125,3 +125,32 @@ def test_an_analysis_names_a_translation_field_of_another_scope_as_missing():
     service.client = servicetest.FakeClient([doc], project={'id': 'p1', 'config': {}, 'vocabs': []})
     helper = servicetest.run(service, REQUEST)
     assert helper.results[0]['translation_field_missing'] == 'Translation'
+
+
+# --- the lock (R15) -------------------------------------------------------------
+
+@pytest.mark.parametrize('module, cls, reply', SERVICES_UNDER_TEST)
+def test_the_document_is_held_from_the_read_through_every_model_call_and_write(module, cls, reply):
+    """Luke's ruling R15: the run holds the document lock for the whole run,
+    as Stanza does, so no edit lands while the model works, and the old
+    whole-run refusal ("The document changed while this run was working")
+    is gone."""
+    service = _service(module, cls, [reply] * N)
+    held = []
+    complete = service.model.complete
+
+    def asked(*args, **kwargs):
+        held.append(service.client.strict_mode_document_id)
+        return complete(*args, **kwargs)
+    service.model.complete = asked
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert held == ['d1'] * N, 'every model call ran with the document held'
+    kinds = service.client.kinds
+    reads = [i for i, k in enumerate(kinds) if k == 'read']
+    assert kinds.count('lock') == 1 and kinds.index('lock') < min(reads)
+    assert kinds[-1] == 'unlock'
+    [result] = helper.results
+    assert 'message' not in result and 'notice' not in result
+    assert result['sentences_failed'] == []

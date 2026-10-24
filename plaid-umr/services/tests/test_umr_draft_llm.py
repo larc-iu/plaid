@@ -216,8 +216,8 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
     [result] = helper.results
     assert result['status'] == 'success'
     assert (result['drafted'], result['skipped'], result['failed']) == (1, 0, 0)
-    assert result['notice'] == {'level': 'success', 'title': 'Drafted 1 sentence',
-                                'message': ''}
+    # Counts alone: the app words the notice (R18).
+    assert 'notice' not in result
     assert 'stopped' not in result
 
     # Three anchors, one per node, in the order the graph was written.
@@ -378,9 +378,6 @@ def test_a_sentence_that_already_has_a_graph_is_skipped_and_counted():
 
     [result] = helper.results
     assert (result['drafted'], result['skipped'], result['failed']) == (0, 1, 0)
-    assert result['notice']['level'] == 'warning'
-    assert result['notice']['title'] == 'Document not modified'
-    assert 'Overwrite existing graphs' in result['notice']['message']
     assert service.client.writes == []
     assert service.model.calls == [], 'a skipped sentence costs no model call'
 
@@ -419,8 +416,6 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
     assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
     assert service.client.writes == [], f'a {why} graph is not deleted'
     assert service.model.calls == [], f'a {why} sentence costs no model call'
-    assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
-                                'message': 'Kept 1 sentence a person had worked on.'}
 
 
 MACHINE = {'prov': 'inferred', 'provSource': SOURCE}
@@ -472,13 +467,10 @@ def test_overwrite_keeps_a_sentence_whose_edges_or_triples_it_may_not_delete(
 
     [result] = helper.results
     # A person's work is counted as that. A machine link from another
-    # sentence is counted apart, and the notice does not claim a person.
+    # sentence is counted apart, so the app does not claim a person.
     by_link = "sentence 2" in why
     assert (result['drafted'], result['kept'], result['linked']) == (
         (0, 0, 1) if by_link else (0, 1, 0)), why
-    assert result['notice']['message'] == (
-        'Kept 1 sentence that another sentence links to.' if by_link
-        else 'Kept 1 sentence a person had worked on.'), why
     assert service.client.writes == [], f'{why} is not deleted'
 
 
@@ -488,14 +480,12 @@ def test_overwrite_keeps_a_sentence_whose_edges_or_triples_it_may_not_delete(
 ])
 def test_without_overwrite_a_persons_sentence_is_kept_and_overwrite_is_not_offered(
         node_metadata, why):
-    """Overwrite would refuse this sentence too, so the notice must not
-    recommend it: the sentence is counted as kept in both modes."""
+    """Overwrite would refuse this sentence too, so it is not counted among
+    the skipped ones the app offers Overwrite for: it is kept in both modes."""
     service = _service(documents=[_drafted_document(node_metadata)])
     [result] = servicetest.run(service, REQUEST).results
 
     assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
-    assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
-                                'message': 'Kept 1 sentence a person had worked on.'}
 
 
 def test_without_overwrite_the_hint_counts_only_the_sentences_it_would_redraft():
@@ -513,9 +503,6 @@ def test_without_overwrite_the_hint_counts_only_the_sentences_it_would_redraft()
     [result] = servicetest.run(service, REQUEST).results
 
     assert (result['drafted'], result['skipped'], result['kept']) == (0, 1, 1)
-    assert result['notice']['message'] == (
-        "1 sentence already has a graph. Enable 'Overwrite existing graphs' to draft over it. "
-        'Kept 1 sentence a person had worked on.')
 
 
 def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
@@ -540,8 +527,6 @@ def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
     assert (result['drafted'], result['kept'], result['skipped']) == (1, 1, 0)
     # Only the machine sentence's anchor is deleted.
     assert service.client.payloads('tokens.bulk_delete') == [['n1']]
-    assert result['notice'] == {'level': 'success', 'title': 'Drafted 1 sentence',
-                                'message': 'Kept 1 sentence a person had worked on.'}
     # And only the machine sentence was sent to the model.
     assert len(service.model.calls) == 1
     assert 'Sentence 1:' in service.model.prompts[0]
@@ -562,104 +547,36 @@ def test_a_constant_belongs_to_no_sentence_and_does_not_count_as_a_graph():
     assert (result['drafted'], result['skipped']) == (1, 0)
 
 
-# --- an edit made while the model ran (H39-AGENT-UMR-2) -------------------------
+# --- the whole run is held (R17) -------------------------------------------------
 #
-# UMR conflicts are per sentence (Luke's ruling, 2026-10-03). The begin read,
-# the version read under the lock and the read again under it are three
-# documents in a row.
+# Luke's ruling R17 (2026-10-24): every service holds the document lock from the
+# read the plans are made from through the last write, so no edit can land while
+# the model drafts and no sentence is planned again. The per-sentence replan of
+# 2026-10-03 went with it.
 
-TWO = dict(body='The dog barks\nIt runs\n', sentences=[(0, 14), (14, 22)],
-           words=WORDS + [(14, 16), (17, 21)])
-GLOSSES = [{'id': 'g1', 'tokens': ['w1'], 'value': 'DET'},
-           {'id': 'g2', 'tokens': ['w2'], 'value': 'dog'},
-           {'id': 'g3', 'tokens': ['w3'], 'value': 'bark.PRS'}]
-RUN_REPLY = '(v1 / run-02 :ARG0 (v2 / it))\n\n# alignment:\nv1: 2-2\nv2: 1-1\n'
+def test_the_document_is_held_from_the_read_through_every_model_call_and_write():
+    document = _document(body='The dog barks\nIt runs\n', sentences=[(0, 14), (14, 22)],
+                         words=WORDS + [(14, 16), (17, 21)])
+    model = _Model([GOOD_REPLY, '(v1 / run-02 :ARG0 (v2 / it))\n\n# alignment:\nv1: 2-2\nv2: 1-1\n'])
+    service = _service(documents=[document], model=model)
+    held = []
+    complete = model.complete
 
+    def asked(*args, **kwargs):
+        held.append(service.client.strict_mode_document_id)
+        return complete(*args, **kwargs)
+    model.complete = asked
+    helper = servicetest.run(service, REQUEST)
 
-def _moved(before, after, model=None, **request):
-    service = _service(documents=[before, after, after], model=model)
-    helper = servicetest.run(service, {**REQUEST, **request})
     assert helper.errors == []
+    assert held == ['d1', 'd1'], 'every model call ran with the document held'
+    kinds = service.client.kinds
+    reads = [i for i, k in enumerate(kinds) if k == 'read']
+    assert kinds.count('lock') == 1 and kinds.index('lock') < min(reads)
+    assert kinds[-1] == 'unlock'
     [result] = helper.results
-    return service, result
-
-
-def test_an_edit_to_another_sentence_while_the_model_ran_does_not_stop_the_draft():
-    """It used to: any edit anywhere in the document threw the run away with
-    "The document changed while this run was working. Run it again." """
-    after = _document(version=8, gloss_spans=GLOSSES + [
-        {'id': 'g5', 'tokens': ['w5'], 'value': 'run'}], **TWO)
-    service, result = _moved(_document(**TWO), after, scope='sentence', sentence=1)
-    assert (result['drafted'], result['changed']) == (1, 0)
-    assert result['notice']['title'] == 'Drafted 1 sentence'
-    assert 'sticky' not in result['notice']
-    assert [p['begin'] for p in _anchors(service.client)] == [8, 4, 0]
-    # Every write is stamped with the version the plan was checked against.
-    assert {version for kind, _, version in service.client.stamps} == {8}
-    assert service.client.kinds[-1] == 'unlock'
-
-
-def test_a_sentence_changed_while_the_model_ran_is_skipped_and_named():
-    after = _document(version=8, gloss_spans=GLOSSES + [
-        {'id': 'g5', 'tokens': ['w5'], 'value': 'run'}], **TWO)
-    service, result = _moved(_document(**TWO), after, model=_Model([GOOD_REPLY, RUN_REPLY]))
-    assert (result['drafted'], result['changed']) == (1, 1)
-    assert result['sentences_changed'] == [2]
-    assert result['notice'] == {
-        'level': 'warning', 'title': 'Drafted 1 sentence', 'sticky': True,
-        'message': 'Sentence 2 changed during the run and was not drafted.'}
-    assert service.client.operations == ['UMR draft of sentence 1']
-    concepts = [n['value'] for n in _ops(service.client, 'spans.bulk_create')]
-    assert 'run-02' not in concepts and 'bark-01' in concepts
-
-
-def test_a_text_edit_in_an_earlier_sentence_moves_the_draft_with_its_sentence():
-    """'dog' became 'dogs': sentence 2 is one character later, and unchanged."""
-    after = _document(version=8, body='The dogs barks\nIt runs\n', sentences=[(0, 15), (15, 23)],
-                      words=[(0, 3), (4, 8), (9, 14), (15, 17), (18, 22)])
-    service, result = _moved(_document(**TWO), after, model=_Model([RUN_REPLY]),
-                             scope='sentence', sentence=2)
-    assert (result['drafted'], result['changed']) == (1, 0)
-    pieces = [(p['begin'], p['end']) for p in _anchors(service.client)]
-    assert pieces == [(18, 22), (15, 17)]
-    # The holds move with the sentence too.
-    assert [(p['begin'], p['end']) for p in _holds(service.client)] == [(18, 23), (15, 23)]
-    nodes = _ops(service.client, 'spans.bulk_create')
-    assert [n['metadata']['umr']['words'] for n in nodes] == [['w5'], ['w4']]
-
-
-def test_a_run_whose_only_sentence_changed_writes_nothing_and_says_so():
-    after = _document(version=8, gloss_spans=[
-        {'id': 'g1', 'tokens': ['w1'], 'value': 'DET'},
-        {'id': 'g2', 'tokens': ['w2'], 'value': 'hound'},
-        {'id': 'g3', 'tokens': ['w3'], 'value': 'bark.PRS'}])
-    service, result = _moved(_document(), after)
-    assert (result['drafted'], result['changed']) == (0, 1)
-    assert result['notice'] == {
-        'level': 'warning', 'title': 'Nothing drafted', 'sticky': True,
-        'message': 'Sentence 1 changed during the run and was not drafted.'}
-    assert service.client.writes == []
-    assert service.client.operations == []
-    assert service.client.kinds[-1] == 'unlock'
-
-
-def test_a_variable_taken_in_another_sentence_meanwhile_is_minted_again():
-    after = _document(version=8, node_tokens=[('n1', 14, 22)], concept_spans=[
-        {'id': 'c1', 'tokens': ['n1'], 'value': 'bark-01',
-         'metadata': {'umr': {'var': 's1b', 'sentence': 's2'}}}], **TWO)
-    service, result = _moved(_document(**TWO), after, scope='sentence', sentence=1)
-    assert result['drafted'] == 1
-    written = [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')]
-    assert written == ['s1b2', 's1d', 's1n']
-
-
-def test_a_sentence_given_a_graph_meanwhile_is_not_written_over():
-    """A person drew a node on sentence 1 while the model drafted it."""
-    after = _document(version=8, node_tokens=[('n1', 4, 7)], concept_spans=[
-        {'id': 'c1', 'tokens': ['n1'], 'value': 'dog', 'metadata': {'umr': {'var': 's1d'}}}])
-    service, result = _moved(_document(), after)
-    assert (result['drafted'], result['changed']) == (0, 1)
-    assert service.client.writes == []
+    assert result['drafted'] == 2
+    assert 'changed' not in result and 'sentences_changed' not in result
 
 
 # --- what the model gets wrong -----------------------------------------------
@@ -703,8 +620,6 @@ def test_a_malformed_answer_is_counted_and_named_rather_than_written(reply, frag
     assert (result['drafted'], result['failed']) == (0, 1)
     assert result['sentences_failed'][0]['sentence'] == 1
     assert fragment in result['sentences_failed'][0]['reason']
-    assert result['notice']['level'] == 'warning'
-    assert result['notice']['title'] == 'Nothing drafted'
     assert service.client.writes == []
 
 
@@ -727,11 +642,8 @@ def test_one_bad_sentence_does_not_throw_away_the_good_ones():
 
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (1, 1)
-    assert result['notice']['level'] == 'warning'
-    assert result['notice']['title'] == 'Drafted 1 sentence'
-    assert result['notice']['message'] == (
-        "Failed to draft sentence 1: The reply is not a readable graph.")
-    assert result['notice']['sticky'] is True
+    assert result['sentences_failed'] == [
+        {'sentence': 1, 'reason': 'The reply is not a readable graph.'}]
     assert len(_ops(service.client, 'spans.bulk_create')) == 3
     assert service.client.operations == ['UMR draft of sentence 2']
 
@@ -749,10 +661,9 @@ def _sentences_document(n):
     return _document(body=body, sentences=sentences, words=spans)
 
 
-def test_the_notice_names_every_failed_sentence_with_its_own_reason_and_stays():
-    """A whole-document run used to report one reason for all its failures,
-    in a toast gone in four seconds. Each sentence is named now, sentences
-    that failed alike together, and the notice stays until dismissed."""
+def test_every_failed_sentence_is_named_with_its_own_reason():
+    """A whole-document run used to report one reason for all its failures.
+    Each sentence is named with its own now, for the app to word."""
     two_graphs = '(v1 / bark-01)\n(v2 / dog)\n\n# alignment:\nv1: 3-3\nv2: 2-2\n'
     size = '(v1 / dog :size small)\n\n# alignment:\nv1: 2-2\n'
     replies = [GOOD_REPLY, two_graphs, size, two_graphs]
@@ -761,12 +672,10 @@ def test_the_notice_names_every_failed_sentence_with_its_own_reason_and_stays():
 
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (1, 3)
-    assert [f['sentence'] for f in result['sentences_failed']] == [2, 3, 4]
-    assert result['notice'] == {
-        'level': 'warning', 'title': 'Drafted 1 sentence', 'sticky': True,
-        'message': ("Failed to draft 3 sentences. Sentences 2 and 4: The reply is not a "
-                    "readable graph. Sentence 3: dog (\"dog\") :size takes a node, not the "
-                    "value small.")}
+    assert result['sentences_failed'] == [
+        {'sentence': 2, 'reason': 'The reply is not a readable graph.'},
+        {'sentence': 3, 'reason': 'dog ("dog") :size takes a node, not the value small.'},
+        {'sentence': 4, 'reason': 'The reply is not a readable graph.'}]
 
 
 def test_every_failure_reason_reaches_the_operators_log(capsys):
@@ -916,23 +825,21 @@ def test_a_provider_key_never_reaches_the_person_who_asked():
     [result] = helper.results
     reason = result['sentences_failed'][0]['reason']
     assert KEY not in reason and 'api.openai.com' not in reason
-    assert KEY not in result['notice']['message']
+    assert KEY not in str(result)
     assert all(KEY not in text for text in helper.errors)
     assert all(KEY not in msg for msg in helper.messages)
 
 
 # --- the lock ----------------------------------------------------------------
 
-def test_the_lock_is_taken_around_the_writes_and_released_after_them():
+def test_the_lock_is_taken_before_the_read_and_released_after_the_writes():
     service = _service()
     servicetest.run(service, REQUEST)
 
     kinds = service.client.kinds
     assert kinds.count('lock') == 1 and kinds.count('unlock') == 1
-    # The model runs OUTSIDE the lock: holding a document for minutes of
-    # provider time would block the annotator for no reason, which is what
-    # check_unchanged covers instead.
-    assert kinds.index('read') < kinds.index('lock')
+    # The model runs INSIDE the lock (R17), so no edit lands while it drafts.
+    assert kinds.index('lock') < kinds.index('read')
     writes = [i for i, k in enumerate(kinds) if k.startswith(('tokens.', 'spans.', 'relations.'))]
     assert kinds.index('lock') < min(writes)
     assert kinds.index('unlock') > max(writes)
@@ -990,7 +897,7 @@ def test_every_phase_says_what_it_is_doing_and_the_bar_only_moves_forward():
         'Writing 5 anchors…',
         'Writing 3 nodes…',
         'Writing 2 relations…',
-        'Drafted 1 sentence',
+        'Done',
     ]
     percents = [pct for pct, _ in helper.beats]
     assert percents == sorted(percents), percents
@@ -1115,11 +1022,6 @@ def test_a_run_ends_after_two_sentences_in_a_row_get_no_answer():
     assert (result['drafted'], result['failed']) == (1, 2)
     assert [f['sentence'] for f in result['sentences_failed']] == [2, 3]
     assert result['sentences_not_drafted'] == [4, 5, 6]
-    assert result['notice'] == {
-        'level': 'warning', 'title': 'Drafted 1 sentence', 'sticky': True,
-        'message': ('Failed to draft 2 sentences. Sentences 2 and 3: The model did not answer '
-                    'within 120 seconds. The model did not answer 2 sentences in a row, so the '
-                    'run stopped. 3 sentences were not drafted.')}
     assert service.client.operations == ['UMR draft of sentence 1']
 
 
@@ -1129,9 +1031,8 @@ def test_a_run_with_the_model_down_from_the_start_drafts_nothing_and_says_why():
     helper = servicetest.run(service, REQUEST)
 
     [result] = helper.results
-    assert result['notice']['title'] == 'Nothing drafted'
-    assert result['notice']['message'].endswith(
-        'so the run stopped. 1 sentence was not drafted.')
+    assert (result['drafted'], result['failed']) == (0, 2)
+    assert result['sentences_not_drafted'] == [3]
     assert service.client.writes == []
 
 
@@ -1146,7 +1047,6 @@ def test_one_silent_sentence_between_answers_does_not_end_the_run():
     assert len(service.model.calls) == 5
     [result] = helper.results
     assert result['sentences_not_drafted'] == []
-    assert 'run stopped' not in result['notice']['message']
 
 
 def test_an_error_the_model_answered_with_does_not_end_the_run():
@@ -1160,17 +1060,15 @@ def test_an_error_the_model_answered_with_does_not_end_the_run():
 
 
 def test_a_run_whose_last_two_sentences_get_no_answer_did_not_stop():
-    """Nothing was left to ask, so the run finished: the notice names the two
-    sentences with their reason and does not say the run stopped."""
+    """Nothing was left to ask, so the run finished: the two sentences are
+    failures with their reason, and none is named as not asked."""
     service = _service(documents=[_sentences_document(3)],
                        model=_Scripted([GOOD_REPLY, _timeout(), _timeout()]))
     helper = servicetest.run(service, REQUEST)
 
     [result] = helper.results
     assert result['sentences_not_drafted'] == []
-    assert result['notice']['message'] == (
-        'Failed to draft 2 sentences. Sentences 2 and 3: The model did not answer within '
-        '120 seconds.')
+    assert [f['sentence'] for f in result['sentences_failed']] == [2, 3]
 
 
 def test_a_reply_that_states_a_relation_both_ways_is_drafted_with_it_once():

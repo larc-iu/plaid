@@ -12,8 +12,7 @@ from typing import List, Dict, Optional
 
 from plaid_client.constraints import same_ancestor_layer
 from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_protected
-from plaid_client.service import (batch_body_budget, check_unchanged, locked_for_writes,
-                                  requester_message)
+from plaid_client.service import batch_body_budget, require_held, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
 
@@ -40,35 +39,21 @@ class TokenProcessor:
     
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
-                      *, text_layer_id: str, expect_version=None,
-                      overwrite: bool = False) -> Dict[str, int]:
-        """Hold the document lock for the whole tokenization rewrite, then
-        delegate to :meth:`_process_tokens_locked`.
+                      *, text_layer_id: str, overwrite: bool = False) -> Dict[str, int]:
+        """
+        Process tokenization results and update the Plaid document.
 
-        Re-tokenizing deletes + recreates tokens (and cascade-deletes their
-        spans/relations), which must not interleave with a concurrent editor or
-        another service — see :meth:`PlaidClient.documents.locked`. If another
-        user holds the lock, ``locked`` raises and we refuse rather than clobber.
+        Call it inside :func:`plaid_client.service.locked_for_writes`, taken
+        before the text the tokens were found in was read: the offsets are
+        planned against that text, so the lock must hold from that read
+        through these writes. Re-tokenizing deletes + recreates tokens (and
+        cascade-deletes their spans/relations). It refuses to run unheld.
 
         A refusal RAISES ``ValueError`` with the reason, and never reports it
         itself: only the caller knows whether anything else has already been
         said about this request. Reporting here and returning zero counts sent
         the requester an error and then, from the caller's unconditional
         ``complete``, a success over the top of it.
-        """
-        with locked_for_writes(client, document_id, expect_version):
-            return self._process_tokens_locked(
-                client, document_id, sentences, words,
-                primary_token_layer_id, sentence_layer_id, response_helper,
-                text_layer_id=text_layer_id, expect_version=expect_version,
-                overwrite=overwrite)
-
-    def _process_tokens_locked(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
-                      primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
-                      *, text_layer_id: str, expect_version=None,
-                      overwrite: bool = False) -> Dict[str, int]:
-        """
-        Process tokenization results and update the Plaid document.
 
         Args:
             client: PlaidClient instance
@@ -82,10 +67,6 @@ class TokenProcessor:
                 rather than taken positionally: a project may hold more than one
                 text layer, and tokenizing the first one while the caller read
                 another writes tokens whose offsets index the wrong string.
-            expect_version: The document version the caller tokenized. The text
-                was read before the lock was taken, so an edit since then moved
-                every offset the caller computed; the run is refused rather than
-                writing tokens that cut the text in the wrong places.
             overwrite: Provenance write contract. Resetting the sentence
                 partition cascade-deletes the sentence and every token nested
                 under it (words, morphemes, any app's), with every span,
@@ -99,12 +80,11 @@ class TokenProcessor:
         Raises:
             ValueError: the run is refused, with the reason for the requester
         """
+        require_held(client, document_id)
         # Get document with layers
         response_helper.progress(10, "Fetching document…")
         full_document = client.documents.get(document_id, include_body=True)
-        check_unchanged(client, document_id, expect_version,
-                        current=full_document.get("version"))
-        
+
         # Find the text layer and content
         text_layer = next((tl for tl in full_document.get("text_layers", [])
                            if tl.get("id") == text_layer_id), None)

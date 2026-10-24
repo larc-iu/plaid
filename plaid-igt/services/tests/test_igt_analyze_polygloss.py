@@ -239,30 +239,38 @@ def test_a_words_machine_analysis_is_replaced_and_counted():
                     if kind == 'tokens.delete']
 
 
-def test_a_document_with_nothing_left_to_do_says_so_without_taking_the_lock():
-    # Both words carry human work, so there is no target at all.
+def test_a_document_with_nothing_left_to_do_says_so_in_counts():
+    # Both words carry human work, so there is no target at all. The result
+    # is counts alone: the app words the notice (R18).
     both = _document(glosses={'m1': ('house', {}), 'm2': ('come', {})})
     service = _service(documents=[both])
     helper = servicetest.run(service, REQUEST)
 
     [result] = helper.results
-    assert result['words_written'] == 0
-    assert result['message'] == 'Nothing to analyze: every word is already analyzed by a person.'
+    assert result['words_written'] == 0 and result['sentences_sent'] == 0
+    assert result['skipped'] == {'protected': 2, 'precedent': 0, 'unaligned': 0}
+    assert result['sentences_failed'] == []
+    assert 'message' not in result and 'notice' not in result
     assert service.client.writes == []
-    assert 'lock' not in service.client.kinds
+    assert service.client.kinds[-1] == 'unlock'
     assert service.model.prompts == [], 'the model was not even asked'
 
 
 # --- the lock and the version check ------------------------------------------
 
-def test_the_lock_is_taken_before_the_writes_and_released_after_them():
+def test_the_lock_is_held_from_the_read_through_the_writes():
+    """R15: the document is held from the read the plans are made from
+    through the last write, so no edit can land while the model works."""
     service = _service()
-    servicetest.run(service, REQUEST)
+    helper = servicetest.run(service, REQUEST)
     kinds = service.client.kinds
     assert kinds.count('lock') == 1 and kinds.count('unlock') == 1
+    reads = [i for i, k in enumerate(kinds) if k == 'read']
     writes = [i for i, k in enumerate(kinds) if k.startswith(('tokens.', 'spans.'))]
-    assert kinds.index('lock') < min(writes)
+    assert kinds.index('lock') < min(reads)
     assert kinds.index('unlock') > max(writes)
+    # The result goes once the document is free again.
+    assert helper.results[0]['words_written'] == 2
 
 
 def test_the_lock_is_released_when_a_write_fails():
@@ -276,19 +284,15 @@ def test_the_lock_is_released_when_a_write_fails():
     assert len(helper.errors) == 1
 
 
-def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
-    """The plans were made from a read taken before the model ran. If someone
-    edited the document since, both the write contract the words were selected
-    under and the ids the plans point at are out of date."""
+def test_the_run_makes_no_version_check_of_its_own():
+    """The whole-run refusal is gone (R15): nobody can edit the document
+    while the run holds it, so a version that differs between the lock's read
+    and the run's own is no reason to throw the run away."""
     service = _service(documents=[_document(version=58), _document(version=59)])
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.reports == [
-        ('error', 'The document changed while this run was working. Run it again.')]
-    assert service.client.writes == []
-    # It is checked under the lock and the lock is handed back.
-    assert service.client.kinds.count('lock') == 1
-    assert service.client.kinds[-1] == 'unlock'
+    assert helper.errors == []
+    assert helper.results[0]['words_written'] == 2
 
 
 def test_a_document_that_stood_still_is_written_to():
@@ -394,7 +398,7 @@ def test_a_stop_while_the_model_runs_ends_the_run_with_one_report():
 
     assert helper.reports == [('completed', {'stopped': True})]
     assert service.client.writes == []
-    assert 'lock' not in service.client.kinds
+    assert service.client.kinds[-1] == 'unlock', 'the lock taken for the run is handed back'
 
 
 def test_a_stop_before_the_writes_ends_the_run_with_one_report():

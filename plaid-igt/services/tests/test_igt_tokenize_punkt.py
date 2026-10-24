@@ -109,3 +109,31 @@ def test_an_overwrite_counted_on_another_version_writes_nothing():
         [TokenSpan('the', 0, 3), TokenSpan('dog', 4, 7), TokenSpan('barks', 8, 13)])
     helper = servicetest.run(service, {**REQUEST, 'overwrite': True, 'expect_version': 3})
     assert helper.errors == []
+
+
+def test_the_text_is_read_and_tokenized_with_the_document_held():
+    """R15: the text the offsets are found in is read under the lock, held
+    through the token writes, so no edit can move them in between."""
+    from plaid_client.workflows.tokenization import TokenSpan
+    doc = _document()
+    doc['text_layers'][0]['token_layers'] = [
+        {'id': 'sentL', 'name': 'Sentences', 'config': {}, 'tokens': []},
+        {'id': 'wordL', 'name': 'Words', 'config': {}, 'tokens': []},
+    ]
+    service = _service(doc)
+    held = []
+
+    def tokenize(text, language):
+        held.append(service.client.strict_mode_document_id)
+        return ([TokenSpan('the dog barks', 0, 13)],
+                [TokenSpan('the', 0, 3), TokenSpan('dog', 4, 7), TokenSpan('barks', 8, 13)])
+    service.tokenizer_model.tokenize_text = tokenize
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert held == ['d1']
+    kinds = service.client.kinds
+    reads = [i for i, k in enumerate(kinds) if k == 'read']
+    assert kinds.count('lock') == 1 and kinds.index('lock') < min(reads)
+    assert kinds[-1] == 'unlock'
+    assert helper.results[0]['status'] == 'success'

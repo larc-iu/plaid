@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from plaid_client.service import locked_for_writes  # noqa: E402
 from plaid_client.workflows.asr import Alignment, AlignmentProcessor  # noqa: E402
 
 TEXT_LAYER = 'text-layer'
@@ -172,8 +173,24 @@ def _document(body, *, sentences=(), align=(), sentence_spans=()):
     }
 
 
+def test_the_processor_refuses_to_write_a_document_nobody_holds():
+    client = _FakeClient([_document('')])
+    with pytest.raises(RuntimeError):
+        AlignmentProcessor().process_alignments(
+            client, 'd1', [Alignment(text='hello', start=0.0, end=1.0)],
+            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper())
+    assert [c for c in client.calls if c[0] in ('text_update', 'bulk_create')] == []
+
+
+def _held_alignments(client, document_id, *args, **kwargs):
+    """The processor as a service calls it: inside the lock the service took
+    for the whole run (R15)."""
+    with locked_for_writes(client, document_id):
+        return AlignmentProcessor().process_alignments(client, document_id, *args, **kwargs)
+
+
 def _run(client, helper=None):
-    return AlignmentProcessor().process_alignments(
+    return _held_alignments(
         client, 'd1', [Alignment(text='hello there', start=0.0, end=1.5)],
         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, helper or _Helper(),
         prov_source='service:asr:test')
@@ -224,7 +241,7 @@ def test_a_segment_that_cannot_be_put_in_time_order_is_refused_before_the_write(
     client = _FakeClient([_document('aaaaa bbbbb', sentences=[(0, 11)],
                                     align=[(0, 5, 5.0, 6.0), (6, 11, 1.0, 2.0)])])
     with pytest.raises(ValueError) as caught:
-        AlignmentProcessor().process_alignments(
+        _held_alignments(
             client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
             TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
     assert 'time order' in str(caught.value)
@@ -234,7 +251,7 @@ def test_a_segment_that_cannot_be_put_in_time_order_is_refused_before_the_write(
 def test_a_segment_in_time_order_is_written():
     client = _FakeClient([_document('aaaaa bbbbb', sentences=[(0, 11)],
                                     align=[(0, 5, 1.0, 2.0), (6, 11, 5.0, 6.0)])])
-    assert AlignmentProcessor().process_alignments(
+    assert _held_alignments(
         client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test') == 1
 
@@ -245,7 +262,7 @@ def test_segments_the_model_gives_out_of_order_are_written_in_time_order():
     # on a document with no segments at all.
     client = _FakeClient([_document('')])
     starts = [1.5, 1, 20, 5, 0.25]
-    n = AlignmentProcessor().process_alignments(
+    n = _held_alignments(
         client, 'd1', [Alignment(text=f'w{s}', start=s, end=s + 0.1) for s in starts],
         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
     assert n == 5
@@ -258,7 +275,7 @@ def test_the_time_order_refusal_names_the_document_segment_in_the_way():
     client = _FakeClient([_document('aaaaa bbbbb', sentences=[(0, 11)],
                                     align=[(0, 5, 5.0, 6.0), (6, 11, 1.0, 2.0)])])
     with pytest.raises(ValueError) as caught:
-        AlignmentProcessor().process_alignments(
+        _held_alignments(
             client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
             TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
     assert str(caught.value) == ('The new segment at 3 s has no place in time order: the document\'s segment '

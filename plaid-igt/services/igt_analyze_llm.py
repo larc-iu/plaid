@@ -47,7 +47,7 @@ import difflib
 from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import locked_for_writes, machine_detail, requester_message
+from plaid_client.service import held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -55,7 +55,7 @@ from plaid_client.workflows.igt.senses import build_sense_tree, entry_morph_type
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
     ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
-    write_analyses, tagset_for, mode_rule, value_lines,
+    write_analyses, analysis_result, tagset_for, mode_rule, value_lines,
 )
 
 DEFAULT_SERVICE_ID = 'llm-analyzer'
@@ -449,125 +449,117 @@ class LLMAnalyzeService(BaseService):
         overwrite = request_data['overwrite']
         n_examples = int(request_data['examples'])
 
-        response_helper.progress(2, 'Fetching document…')
-        doc = self.client.documents.get(document_id, include_body=True)
-        read_version = doc.get('version')
-        layers = (word_layer_id, morph_layer_id, sent_layer_id)
-        try:
-            sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
-                                               translation_field=translation_field)
-        except ValueError as e:
-            response_helper.error(str(e))
-            return
-        # The translation is context only, so a run goes on without it, and
-        # says so rather than analyzing a little worse without a word.
-        translation_missing = (translation_field if translation_field
-                               and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
-
-        targets, skipped = select_targets(sentences, overwrite,
-                                          skip_word_ids=read_skip_word_ids(request_data))
-        skipped['unaligned'] = 0
-        if not targets:
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
-                'sentences_sent': 0, 'words_written': 0, 'words_replaced': 0, 'skipped': skipped,
-                'message': 'Nothing to analyze: every word is already analyzed by a person.' if skipped['protected']
-                else 'Nothing to analyze.',
-            })
-            return
-
-        # Retrieval, once per run.
-        response_helper.progress(5, 'Reading the lexicon…')
-        project = self.client.projects.get(project_id)
-        tagset = tagset_for(project, gloss_layer_id)
-        system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
-        entry_types = {}
-        lexicon = load_lexicon(
-            self.client, project, gloss_lexicon_field=lexicon_field_of(project, gloss_layer_id),
-            entry_types=entry_types,
-            on_progress=lambda n, total: response_helper.progress(
-                5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
-        pool = load_examples(
-            self.client, project_id, layers, gloss_field, translation_field,
-            exclude_doc_id=document_id,
-            entry_types=entry_types,
-            on_progress=lambda n, total: response_helper.progress(
-                8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
-        ) if n_examples else []
-
-        # One model call per sentence.
-        stamp_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
-                                                       language=language, metalanguage=metalanguage))
-        plans = []
-        failed = []
-        replaced = 0
-        total = len(targets)
-        # A model that does not answer at all is down: the run stops after two
-        # sentences in a row get no answer, rather than wait out a deadline on
-        # every sentence with the document locked.
-        unanswered = UnansweredRun()
-        for n, (s, idxs) in enumerate(targets):
-            response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})…')
-            words = [w['surface'] for w in s['words']]
-            entries = matching_entries(lexicon, words)
-            examples = rank_examples(pool, words, n_examples) if n_examples else []
-            prompt = build_user_prompt(language, metalanguage, words, (s['translation'] or '').strip(),
-                                       entries, examples)
+        # The document is held from the read the run plans from through the
+        # last write, so no edit can land while the model works (one rule for
+        # every service, Luke's ruling R15). The result goes once it is let go.
+        with held_run(self.client, response_helper, document_id) as run:
+            response_helper.progress(2, 'Fetching document…')
+            doc = self.client.documents.get(document_id, include_body=True)
+            layers = (word_layer_id, morph_layer_id, sent_layer_id)
             try:
-                reply = self.model.complete(system, prompt,
-                                            should_stop=lambda: response_helper.cancelled)
-            except Exception as exc:
-                # The provider's own error text is the operator's: it can carry
-                # the endpoint, the request body, and the key that was refused.
-                print(f'Model call failed for sentence {s["id"]}: {exc}')
-                failed.append({'sentence_id': s['id'],
-                               'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
-                if unanswered.failed(exc):
-                    untried = [t[0]['id'] for t in targets[n + 1:]]
-                    ended = unanswered.stop_line(len(untried), verb='glossed')
-                    if untried:
-                        print(f'{ended} Not asked: {", ".join(untried)}')
-                    failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
-                    break
-                continue
-            unanswered.answered()
-            if reply.truncated:
-                # The model ran out of room mid-line. What it did reach still
-                # aligns, so the words it glossed are written and the rest are
-                # reported: the sentence is named as one the run could not
-                # finish rather than quietly left half done.
-                failed.append({'sentence_id': s['id'],
-                               'reason': 'the reply was cut off at the token limit'})
-            outputs = parse_interleaved(first_gloss_line(reply.text))
-            if not outputs:
-                failed.append({'sentence_id': s['id'], 'reason': 'no glossed line in the reply'})
-                continue
-            mapping = align_words(words, outputs)
-            for i in idxs:
-                out = mapping[i]
-                if out is None:
-                    skipped['unaligned'] += 1
-                    continue
-                w = s['words'][i]
-                plans.append({'word': w, 'analysis': analysis_for(w['surface'], out), 'sentence_id': s['id']})
-                if w['state'] != 'unanalyzed':
-                    replaced += 1
+                sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
+                                                   translation_field=translation_field)
+            except ValueError as e:
+                response_helper.error(str(e))
+                return
+            # The translation is context only, so a run goes on without it, and
+            # says so rather than analyzing a little worse without a word.
+            translation_missing = (translation_field if translation_field
+                                   and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
 
-        print(self.model.usage_line())
-        response_helper.progress(88, 'Writing analyses…')
-        source = service_source(self.service_id)
-        # The report of the work is inside `critical()` with the work itself: a
-        # stop that arrives once the writing is done has nothing left to prevent,
-        # and a checkpoint out here would throw the result away and call a
-        # finished run stopped.
-        with response_helper.critical():
-            with self.client.operation(requester.label(f'LLM glossing ({len(plans)} words)'),
-                                       kind='service-run', ref=service_source(self.service_id)):
-                # The plans were made from a read taken before the model
-                # ran. If someone has edited the document since, both the
-                # write contract they were selected under and the ids they
-                # point at are out of date, so nothing is written.
-                with locked_for_writes(self.client, document_id, read_version):
+            targets, skipped = select_targets(sentences, overwrite,
+                                              skip_word_ids=read_skip_word_ids(request_data))
+            skipped['unaligned'] = 0
+            if not targets:
+                run.result = analysis_result(document_id, len(sentences), 0, skipped,
+                                             translation_missing=translation_missing)
+                return
+
+            # Retrieval, once per run.
+            response_helper.progress(5, 'Reading the lexicon…')
+            project = self.client.projects.get(project_id)
+            tagset = tagset_for(project, gloss_layer_id)
+            system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
+            entry_types = {}
+            lexicon = load_lexicon(
+                self.client, project, gloss_lexicon_field=lexicon_field_of(project, gloss_layer_id),
+                entry_types=entry_types,
+                on_progress=lambda n, total: response_helper.progress(
+                    5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
+            pool = load_examples(
+                self.client, project_id, layers, gloss_field, translation_field,
+                exclude_doc_id=document_id,
+                entry_types=entry_types,
+                on_progress=lambda n, total: response_helper.progress(
+                    8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
+            ) if n_examples else []
+
+            # One model call per sentence.
+            stamp_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
+                                                           language=language, metalanguage=metalanguage))
+            plans = []
+            failed = []
+            replaced = 0
+            total = len(targets)
+            # A model that does not answer at all is down: the run stops after two
+            # sentences in a row get no answer, rather than wait out a deadline on
+            # every sentence with the document locked.
+            unanswered = UnansweredRun()
+            for n, (s, idxs) in enumerate(targets):
+                response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})…')
+                words = [w['surface'] for w in s['words']]
+                entries = matching_entries(lexicon, words)
+                examples = rank_examples(pool, words, n_examples) if n_examples else []
+                prompt = build_user_prompt(language, metalanguage, words, (s['translation'] or '').strip(),
+                                           entries, examples)
+                try:
+                    reply = self.model.complete(system, prompt,
+                                                should_stop=lambda: response_helper.cancelled)
+                except Exception as exc:
+                    # The provider's own error text is the operator's: it can carry
+                    # the endpoint, the request body, and the key that was refused.
+                    print(f'Model call failed for sentence {s["id"]}: {exc}')
+                    failed.append({'sentence_id': s['id'],
+                                   'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
+                    if unanswered.failed(exc):
+                        untried = [t[0]['id'] for t in targets[n + 1:]]
+                        ended = unanswered.stop_line(len(untried), verb='glossed')
+                        if untried:
+                            print(f'{ended} Not asked: {", ".join(untried)}')
+                        failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
+                        break
+                    continue
+                unanswered.answered()
+                if reply.truncated:
+                    # The model ran out of room mid-line. What it did reach still
+                    # aligns, so the words it glossed are written and the rest are
+                    # reported: the sentence is named as one the run could not
+                    # finish rather than quietly left half done.
+                    failed.append({'sentence_id': s['id'],
+                                   'reason': 'the reply was cut off at the token limit'})
+                outputs = parse_interleaved(first_gloss_line(reply.text))
+                if not outputs:
+                    failed.append({'sentence_id': s['id'], 'reason': 'no glossed line in the reply'})
+                    continue
+                mapping = align_words(words, outputs)
+                for i in idxs:
+                    out = mapping[i]
+                    if out is None:
+                        skipped['unaligned'] += 1
+                        continue
+                    w = s['words'][i]
+                    plans.append({'word': w, 'analysis': analysis_for(w['surface'], out), 'sentence_id': s['id']})
+                    if w['state'] != 'unanalyzed':
+                        replaced += 1
+
+            print(self.model.usage_line())
+            response_helper.progress(88, 'Writing analyses…')
+            source = service_source(self.service_id)
+            # The writes cannot be stopped once begun: a stop halfway would
+            # leave words half analyzed.
+            with response_helper.critical():
+                with self.client.operation(requester.label(f'LLM glossing ({len(plans)} words)'),
+                                           kind='service-run', ref=service_source(self.service_id)):
                     def wrote(done, total):
                         response_helper.progress(
                             88 + int(11 * done / max(total, 1)),
@@ -576,16 +568,12 @@ class LLMAnalyzeService(BaseService):
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)
 
-            response_helper.progress(100, 'Done')
-            response_helper.complete({
-                'document_id': document_id, 'status': 'success',
-                'sentences': len(sentences), 'sentences_sent': total,
-                'words_written': written, 'words_replaced': replaced,
-                'skipped': skipped, 'sentences_failed': failed,
-                'lexicon_entries': len(lexicon), 'example_sentences': len(pool),
-                'tagset': tagset['name'] if tagset else None,
-                'translation_field_missing': translation_missing,
-            })
+            run.result = analysis_result(
+                document_id, len(sentences), total, skipped,
+                written=written, replaced=replaced, failed=failed,
+                translation_missing=translation_missing,
+                lexicon_entries=len(lexicon), example_sentences=len(pool),
+                tagset=tagset['name'] if tagset else None)
 
 
 def main():

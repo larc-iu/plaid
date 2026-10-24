@@ -8,6 +8,7 @@ This demonstrates how easy it is to create new tokenization services.
 import nltk
 from typing import List, Dict, Any, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client.service import held_run
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
@@ -139,7 +140,21 @@ class NLTKTokenizerService(BaseService):
             response_helper.error("Missing required parameter: primaryTokenLayerId")
             return
         
-        # Get document text
+        # The document is held from the read the tokens are found in through
+        # the last write, so no edit can land between them (one rule for every
+        # service, Luke's ruling R15). The version the app counted its
+        # overwrite question at, when it asked one, is checked as the lock is
+        # taken: the leave is for that document.
+        with held_run(self.client, response_helper, document_id,
+                      request_data.get('expect_version')) as run:
+            run.result = self._tokenize(document_id, text_layer_id, primary_token_layer_id,
+                                        sentence_layer_id, language, overwrite, requester,
+                                        response_helper)
+
+    def _tokenize(self, document_id, text_layer_id, primary_token_layer_id, sentence_layer_id,
+                  language, overwrite, requester, response_helper):
+        """Read, tokenize and write, under the caller's lock. The result, or
+        None after a refusal it has already reported."""
         response_helper.progress(5, "Fetching document…")
         full_document = self.client.documents.get(document_id, include_body=True)
 
@@ -149,54 +164,44 @@ class NLTKTokenizerService(BaseService):
             if layer.get("id") == text_layer_id:
                 text_layer = layer
                 break
-        
+
         if not text_layer:
             raise setup_incomplete(f"text layer {text_layer_id} not found in document {document_id}")
 
         text_content = (text_layer.get("text") or {}).get("body") or ""
         if not text_content.strip():
             response_helper.error("The document has no text.")
-            return
-        
+            return None
+
         # Tokenize with our model
         response_helper.progress(25, f"Tokenizing text ({language})…")
         sentences, words = self.tokenizer_model.tokenize_text(text_content, language)
-        
+
         if not words:
             response_helper.error("No words found in the text.")
-            return
-        
+            return None
+
         response_helper.progress(30, f"Found {len(sentences)} sentences and {len(words)} words…")
-        
+
         # Process tokens using the token processor. Word and sentence tokens
         # are substrate and carry no provenance stamp (provenance convention,
         # as the built-in tokenizer): the operation below names this service
         # in the audit log. The processor refuses to destroy protected
         # annotations unless `overwrite`.
-        # Group every write into ONE labeled audit-log entry (the processor acquires the
-        # document lock and does the batched token writes inside this scope).
-        # The report of the work is inside `critical()` with the work
-        # itself: a stop that arrives once the writing is done has nothing
-        # left to prevent, and a checkpoint out here would throw the result
-        # away and call a finished run stopped.
+        # Group every write into ONE labeled audit-log entry. `critical`
+        # because a stop halfway through the rewrite would leave the
+        # partition worse than either outcome.
         with response_helper.critical():
             with self.client.operation(requester.label(f"NLTK Punkt tokenization ({language})"),
                                        kind='service-run', ref=service_source(self.service_id)):
-                results = self.token_processor.process_tokens(
+                counts = self.token_processor.process_tokens(
                     self.client, document_id, sentences, words,
                     primary_token_layer_id, sentence_layer_id, response_helper,
                     text_layer_id=text_layer_id,
-                    # The version the app counted its overwrite question on,
-                    # when it asked one: the leave is for that document.
-                    expect_version=request_data.get('expect_version') or full_document.get('version'),
                     overwrite=overwrite,
                 )
-            response_helper.progress(100, "Done")
-            response_helper.complete({
-                "document_id": document_id,
-                "status": "success",
-                **results  # tokens_created, tokens_deleted, sentences_created
-            })
+        # tokens_created, tokens_deleted, sentences_created
+        return {"document_id": document_id, "status": "success", **counts}
 
 
 def main():

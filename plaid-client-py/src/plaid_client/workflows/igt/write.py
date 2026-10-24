@@ -131,3 +131,28 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
     if on_progress:
         on_progress(len(chunks), len(chunks))
     return written
+
+
+def analysis_result(document_id, sentences, sentences_sent, skipped, *, written=0, replaced=0,
+                    failed=(), translation_missing=None, **extra):
+    """The result every ``analyze`` service sends, in one shape (the core
+    manual, "Service results"). The app words what the person is told from
+    these counts, so a service sends no notice of its own.
+
+    ``sentences`` is how many the document has and ``sentences_sent`` how
+    many held a word the run could write. ``skipped`` counts words left
+    alone: ``protected`` (a person's analysis, Overwrite off), ``precedent``
+    (a word the requester's own copy step wrote) and ``unaligned`` (the
+    model gave the word no analysis). ``failed`` names each sentence the run
+    could not analyze as ``{'sentence_id', 'reason'}``. ``translation_missing``
+    is the translation field the request named and the document lacks, read
+    for context only. ``extra`` adds a service's own counts beside them."""
+    return {
+        'document_id': document_id, 'status': 'success',
+        'sentences': sentences, 'sentences_sent': sentences_sent,
+        'words_written': written, 'words_replaced': replaced,
+        'skipped': {'protected': 0, 'precedent': 0, 'unaligned': 0, **(skipped or {})},
+        'sentences_failed': list(failed),
+        'translation_field_missing': translation_missing,
+        **extra,
+    }

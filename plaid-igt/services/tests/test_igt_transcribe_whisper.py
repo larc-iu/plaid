@@ -281,7 +281,7 @@ def test_the_lock_is_released_when_a_write_fails(monkeypatch):
     assert len(helper.errors) == 1
 
 
-def test_the_lock_is_never_taken_when_the_run_is_stopped_before_the_writes(monkeypatch):
+def test_a_run_stopped_before_the_writes_writes_nothing_and_hands_the_lock_back(monkeypatch):
     _media(monkeypatch)
     module, _ = load_whisper()
     service = _service(module)
@@ -290,32 +290,30 @@ def test_the_lock_is_never_taken_when_the_run_is_stopped_before_the_writes(monke
     helper = servicetest.Helper(stop_when=lambda pct, msg: msg.startswith('Transcribing'))
     servicetest.run(service, REQUEST, helper)
 
-    assert 'lock' not in service.client.kinds
+    assert service.client.kinds.count('lock') == 1
+    assert service.client.kinds[-1] == 'unlock'
     assert [kind for kind, _ in service.client.writes] == []
     assert helper.reports == [('completed', {'stopped': True})]
 
 
 # --- the plan is built from a read taken under the lock ----------------------
 
-def test_the_writes_are_planned_from_a_read_taken_under_the_lock(monkeypatch):
-    """Whisper does not call ``check_unchanged``, and does not need to: the
-    read every write is planned from (collision detection, insertion offsets,
-    the protected-annotation guard) happens AFTER the lock is taken, so there
-    is no window for the document to move underneath it. The first read is for
-    the media URL alone. Moving that planning read before the lock would put
-    this service back in the shape ``check_unchanged`` exists for."""
+def test_the_whole_run_is_held_from_the_first_read(monkeypatch):
+    """R15: the document is held from the read of its media through the last
+    write, so no edit (a new recording, a typed segment) lands while the audio
+    is transcribed. Every read the run makes, the media URL's and the one each
+    write is planned from, is under the lock."""
     _media(monkeypatch)
     module, _ = load_whisper()
     service = _service(module)
-    servicetest.run(service, REQUEST)
+    helper = servicetest.run(service, REQUEST)
 
     kinds = service.client.kinds
     reads = [i for i, k in enumerate(kinds) if k == 'read']
-    lock = kinds.index('lock')
-    assert reads[0] < lock, 'the media-URL read comes first'
-    assert len([i for i in reads if i > lock]) == 2, \
-        'the version read and the planning read happen under the lock (and nothing is read back)'
+    assert kinds.count('lock') == 1
+    assert kinds.index('lock') < reads[0]
     assert kinds.index('unlock') > reads[-1]
+    assert helper.results[0]['segments_added'] >= 0
 
 
 def test_a_document_that_moved_under_the_lock_is_what_the_run_writes_against(monkeypatch):

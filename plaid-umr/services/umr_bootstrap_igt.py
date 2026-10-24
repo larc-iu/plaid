@@ -79,7 +79,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, stamp_inferred, service_source
 from plaid_client.service import machine_detail
-from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params, finish_draft,
+from plaid_client.workflows.umr import (DraftProgress, draft_params, drafting, finish_draft,
                                         next_variable, run_label, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  can_name_word, gloss_morphemes, line_flags)
@@ -523,53 +523,55 @@ class UmrBootstrapService(BaseService):
 
     # -- request --
     def process_request(self, request_data: Dict[str, Any], response_helper) -> None:
-        run = begin_draft(self.client, request_data, response_helper)
-        if run is None:
-            return
+        # The document is held from this read through the last write (R17),
+        # and the result goes once it is let go.
+        with drafting(self.client, request_data, response_helper) as run:
+            if run is None:
+                return
 
-        # The project's vocabularies, for the headword a linked word takes,
-        # and its gloss-line mapping, for which layers are glosses. A read that
-        # fails fails the run: skeletons named from the wrong gloss lines cost
-        # more to clean up than a second request.
-        headwords: Dict[str, str] = {}
-        entry_types: Dict[str, str] = {}
-        project = None
-        if run.project_id:
-            run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
-            project = self.client.projects.get(run.project_id)
-            vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
-                            for v in (project.get('vocabs') or []) if v.get('id')]
-            headwords = headwords_of(vocabularies)
-            entry_types = entry_types_of(vocabularies)
-        links = links_by_token(run.layers)
-        listed = listed_forms(headwords)
-        glosses = lexical_gloss_layers(project, run.layers)
-        # The gloss lines are read from the project's mapping alone: when no
-        # line of it is a word or morpheme gloss, no gloss names a node, and a
-        # sentence that fails says where the lines are set.
-        no_node = ('No word has a vocabulary link, and no gloss line in UMR settings is a '
-                   'word or morpheme gloss.' if not glosses
-                   else 'No word has a vocabulary link or a gloss.')
-        run.progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
+            # The project's vocabularies, for the headword a linked word takes,
+            # and its gloss-line mapping, for which layers are glosses. A read that
+            # fails fails the run: skeletons named from the wrong gloss lines cost
+            # more to clean up than a second request.
+            headwords: Dict[str, str] = {}
+            entry_types: Dict[str, str] = {}
+            project = None
+            if run.project_id:
+                run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
+                project = self.client.projects.get(run.project_id)
+                vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
+                                for v in (project.get('vocabs') or []) if v.get('id')]
+                headwords = headwords_of(vocabularies)
+                entry_types = entry_types_of(vocabularies)
+            links = links_by_token(run.layers)
+            listed = listed_forms(headwords)
+            glosses = lexical_gloss_layers(project, run.layers)
+            # The gloss lines are read from the project's mapping alone: when no
+            # line of it is a word or morpheme gloss, no gloss names a node, and a
+            # sentence that fails says where the lines are set.
+            no_node = ('No word has a vocabulary link, and no gloss line in UMR settings is a '
+                       'word or morpheme gloss.' if not glosses
+                       else 'No word has a vocabulary link or a gloss.')
+            run.progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
-        plans = []
-        failures = []
-        for sentence in run.targets:
-            pieces, nodes, edges = plan_sentence(sentence, glosses, run.document.gloss,
-                                                 links, headwords, self.abbreviations, run.taken,
-                                                 listed, entry_types)
-            if not nodes:
-                failures.append({'sentence': sentence.number, 'reason': no_node})
-                continue
-            plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
-                          'edges': edges})
+            plans = []
+            failures = []
+            for sentence in run.targets:
+                pieces, nodes, edges = plan_sentence(sentence, glosses, run.document.gloss,
+                                                     links, headwords, self.abbreviations, run.taken,
+                                                     listed, entry_types)
+                if not nodes:
+                    failures.append({'sentence': sentence.number, 'reason': no_node})
+                    continue
+                plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
+                              'edges': edges})
 
-        frag = stamp_inferred(service_source(self.service_id),
-                              detail=machine_detail(self.version, model=None, method='glosses'))
-        finish_draft(self.client, response_helper, run, plans, failures, frag,
-                     service_id=self.service_id,
-                     operation=lambda written: run_label('UMR skeleton from glosses', written),
-                     writing=f"Writing {len(plans)} skeleton{'' if len(plans) == 1 else 's'}…")
+            frag = stamp_inferred(service_source(self.service_id),
+                                  detail=machine_detail(self.version, model=None, method='glosses'))
+            finish_draft(self.client, response_helper, run, plans, failures, frag,
+                         service_id=self.service_id,
+                         operation=lambda written: run_label('UMR skeleton from glosses', written),
+                         writing=f"Writing {len(plans)} skeleton{'' if len(plans) == 1 else 's'}…")
 
 
 def main():

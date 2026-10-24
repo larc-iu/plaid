@@ -1223,7 +1223,7 @@ def test_a_run_writes_only_against_the_document_it_read():
     assert client.reads == 1
     with pytest.raises(ValueError) as caught:
         check_unchanged(client, 'd1', 57)
-    assert str(caught.value) == 'The document changed while this run was working. Run it again.'
+    assert str(caught.value) == 'The document changed after this run was asked for. Run it again.'
 
 
 def test_a_caller_that_just_read_the_document_is_not_made_to_read_it_again():

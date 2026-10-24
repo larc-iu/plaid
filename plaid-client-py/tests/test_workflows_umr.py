@@ -381,30 +381,6 @@ def test_the_writer_refuses_to_replace_a_sentence_it_may_not():
 
 # --- writing --------------------------------------------------------------------
 
-def test_the_draft_notice_names_each_failed_sentence_and_sticks():
-    from plaid_client.workflows.umr.write import build_draft_notice
-    one = build_draft_notice(0, 0, [{'sentence': 3, 'reason': 'x is wrong'}])
-    assert one == {'level': 'warning', 'title': 'Nothing drafted', 'sticky': True,
-                   'message': 'Failed to draft sentence 3: x is wrong.'}
-    many = build_draft_notice(2, 0, [{'sentence': 1, 'reason': 'A.'},
-                                     {'sentence': 4, 'reason': 'B.'},
-                                     {'sentence': 5, 'reason': 'A.'},
-                                     {'sentence': 9, 'reason': 'A.'}])
-    assert many['message'] == ('Failed to draft 4 sentences. Sentences 1, 5 and 9: A. '
-                               'Sentence 4: B.')
-    assert 'sticky' not in build_draft_notice(2, 0, [])
-
-
-def test_the_overwrite_hint_is_worded_for_what_it_would_redraft():
-    from plaid_client.workflows.umr.write import build_draft_notice
-    assert build_draft_notice(0, 3)['message'] == (
-        "All 3 sentences already have graphs. Enable 'Overwrite existing graphs' to draft "
-        "over them.")
-    assert build_draft_notice(0, 2, kept=1)['message'] == (
-        "2 sentences already have graphs. Enable 'Overwrite existing graphs' to draft over "
-        "them. Kept 1 sentence a person had worked on.")
-
-
 def test_run_labels_name_one_sentence_and_count_several():
     from plaid_client.workflows.umr.write import run_label
     doc = _read(_document())
@@ -753,12 +729,16 @@ def _finish(client, raw, plans):
     class _Progress:
         def report(self, *a, **k): pass
 
+    from plaid_client.service import locked_for_writes
+
     doc = _read(raw)
-    run = DraftRun(document_id='d1', project_id='p1', read_version=raw['version'],
+    run = DraftRun(document_id='d1', project_id='p1',
                    layers=resolve_layers(raw), document=doc, progress=_Progress(), targets=[],
                    skipped=0, kept=0, linked=0, taken=set(), requester=Requester())
-    finish_draft(client, _Helper(), run, plans, [], {}, operation='UMR draft',
-                 writing='Writing', service_id='umr:draft:x')
+    # As drafting() calls it: with the document held for the whole run.
+    with locked_for_writes(client, 'd1'):
+        finish_draft(client, _Helper(), run, plans, [], {}, operation='UMR draft',
+                     writing='Writing', service_id='umr:draft:x')
 
 
 def test_a_draft_refused_before_writing_reads_nothing_back():
@@ -771,6 +751,8 @@ def test_a_draft_refused_before_writing_reads_nothing_back():
     with pytest.raises(ValueError, match='may not replace'):
         _finish(client, raw, plans)
     assert client.writes == []
+    # One read, the lock's own: the plan is never checked against a second.
+    assert client.kinds.count('read') == 1
 
 
 def test_reading_a_document_does_not_change_it():

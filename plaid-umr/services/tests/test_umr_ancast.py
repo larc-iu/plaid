@@ -570,28 +570,16 @@ def test_a_row_records_every_part_of_a_graph_as_the_tab_prints_it():
                                      '    :mod s1d)')
 
 
-def test_the_notice_rounds_a_half_up_as_the_tab_does():
-    """The tab prints `Math.round(x * 100)`, half up. Python's round() takes a
-    half to the even side, which would print 82% for 0.825 where the tab
-    prints 83%."""
-    report = {'against': {'name': 'Bo'},
-              'scores': {'sentence': 0.825, 'comprehensive': 0.125}}
-    notice = umr.build_notice(report, scored=1, skipped=0)
-    assert notice['title'] == 'Sentence graphs 83%, comprehensive 13% against Bo'
-
-
-def test_two_identical_annotations_score_one_and_the_notice_says_so():
+def test_two_identical_annotations_score_one():
     service = _service([_document(DOC, name='Ann', **_barking()),
                         _document(OTHER, name='Bo', **_barking())])
     helper = servicetest.run(service, REQUEST)
 
     [result] = helper.results
     assert result['scores']['sentence'] == 1.0
-    assert result['notice'] == {
-        'level': 'success',
-        'title': 'Sentence graphs 100%, comprehensive 100% against Bo',
-        'message': 'Scored 1 sentence.',
-    }
+    assert (result['sentences_scored'], result['sentences_skipped']) == (1, 0)
+    # Counts alone: the app words the notice (R18).
+    assert 'notice' not in result
 
 
 def test_the_sentence_scope_reports_no_document_level_scores():
@@ -604,8 +592,6 @@ def test_the_sentence_scope_reports_no_document_level_scores():
     assert result['scores']['comprehensive'] is None
     _, body = _patch(service.client)
     assert body['umr']['adjudication']['scope'] == 'snt'
-    # The title names only what was scored.
-    assert 'comprehensive' not in result['notice']['title']
 
 
 def test_the_other_document_is_found_by_its_exact_name():
@@ -634,7 +620,6 @@ def test_a_sentence_ancast_cannot_read_is_reported_as_unscored():
     assert first['skipped'] is None
     assert second['index'] == 2 and second['skipped']
     assert second['concept'] is None and second['matches'] == []
-    assert 'could not read' in result['notice']['message']
 
 
 # --- the metadata write -------------------------------------------------------
@@ -835,36 +820,18 @@ def test_a_document_that_is_not_set_up_for_umr_is_refused_once_and_named():
     assert service.client.writes == []
 
 
-def test_a_document_that_moved_while_the_metric_ran_is_not_written_to():
-    """The scores describe the document as it was read. If it has moved since,
-    the report would be a claim about a state that is gone."""
-    document = _document(DOC, name='Ann', **_barking())
-
-    def bump(document_id):
-        if document_id == DOC:
-            document['version'] = document['version'] + 1
-
-    service = _service([document, _document(OTHER, name='Bo', **_barking('cat'))],
-                       on_read=bump)
-    helper = servicetest.run(service, REQUEST)
-
-    assert helper.errors == ['The document changed while this run was working. Run it again.']
-    assert service.client.writes == []
-    assert service.client.kinds[-1] == 'unlock'
-
-
 # --- the lock -----------------------------------------------------------------
 
-def test_the_lock_is_taken_around_the_write_and_released_after_it():
+def test_the_lock_is_held_from_the_read_through_the_write():
     service = _service()
     servicetest.run(service, REQUEST)
 
     kinds = service.client.kinds
     assert kinds.count('lock') == 1 and kinds.count('unlock') == 1
-    # Both documents are read OUTSIDE the lock: the metric runs on text, and
-    # holding the document through it would block the annotator for no reason,
-    # which check_unchanged covers instead.
-    assert kinds.index('read') < kinds.index('lock')
+    # The scored document is held from its read through the report's write
+    # (R17), so the report describes the document it is written on, and no
+    # version check is needed.
+    assert kinds.index('lock') < kinds.index('read')
     # The rows first and the summary last, which names them.
     rows = kinds.index('tokens.bulk_update')
     summary = kinds.index('documents.patch_metadata')
@@ -925,7 +892,7 @@ def test_every_phase_says_what_it_is_doing_and_the_bar_only_moves_forward():
         'Reading the other document…',
         'Scoring against Bo…',
         'Writing the report…',
-        helper.results[0]['notice']['title'],
+        'Done',
     ]
     percents = [pct for pct, _ in helper.beats]
     assert percents == sorted(percents), percents
