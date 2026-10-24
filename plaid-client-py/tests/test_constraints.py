@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client import PlaidAPIError, PlaidClient, value_set_allows, violations_of
+from plaid_client import PlaidAPIError, PlaidClient, value_set_allows, violation_count_of, violations_of
 from plaid_client.testing import FakeClient
 
 BUNDLES = {'token_layers': 'token-layers', 'span_layers': 'span-layers', 'relation_layers': 'relation-layers'}
@@ -89,6 +89,19 @@ def test_violations_of_reads_a_422():
     assert violations_of(PlaidAPIError('x', status=422, response_data={'error': 'idempotency-key-reused'})) is None
     assert violations_of(PlaidAPIError('x', status=409, response_data={'violations': []})) is None
     assert violations_of(ValueError('x')) is None
+
+
+def test_violation_count_of_reads_a_422s_total():
+    # Mirrors constraints.test.js: the answer lists at most 100 violations,
+    # and the raw "violation-count" is the total.
+    listed = [{'constraint': 'value-set'}] * 100
+    assert violation_count_of(PlaidAPIError('x', status=422, response_data={
+        'violations': listed, 'violation-count': 340})) == 340
+    assert violation_count_of(PlaidAPIError('x', status=422, response_data={
+        'violations': [{'constraint': 'value-set'}]})) == 1
+    assert violation_count_of(PlaidAPIError('x', status=422, response_data={'error': 'idempotency-key-reused'})) is None
+    assert violation_count_of(PlaidAPIError('x', status=409, response_data={'violation-count': 3})) is None
+    assert violation_count_of(ValueError('x')) is None
 
 
 def test_the_fake_records_the_four_methods():

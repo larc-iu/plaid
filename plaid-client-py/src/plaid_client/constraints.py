@@ -28,6 +28,17 @@ def violations_of(err):
     return transform_response(vs) if isinstance(vs, list) else None
 
 
+def violation_count_of(err):
+    """How many violations a write refused by a layer constraint has in all,
+    or None for any other error. Read from the raw refusal's
+    ``violation-count``, since the answer lists at most 100 of them."""
+    vs = violations_of(err)
+    if vs is None:
+        return None
+    n = err.response_data.get('violation-count')
+    return n if isinstance(n, int) and not isinstance(n, bool) else len(vs)
+
+
 # What JavaScript's String.prototype.trim trims: Unicode White_Space and the
 # byte order mark. Python's own str.strip() also strips U+001C to U+001F and
 # U+0085, which the server and the apps keep.

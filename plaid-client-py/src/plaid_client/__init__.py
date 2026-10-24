@@ -45,7 +45,7 @@ from plaid_client.provenance import (
     is_doubtful,
     WriterPolicy,
 )
-from plaid_client.constraints import value_set_allows, violations_of
+from plaid_client.constraints import value_set_allows, violation_count_of, violations_of
 from plaid_client.created import created_id, created_ids
 from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.replayed import was_replayed
@@ -68,6 +68,7 @@ from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_
 
 __all__ = [
     "value_set_allows",
+    "violation_count_of",
     "violations_of",
     "created_id",
     "created_ids",
