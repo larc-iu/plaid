@@ -219,7 +219,12 @@ describe('applyRespell', () => {
       return b.submit();
     };
     const rows = [row('a', 0), row('b', 4)];
-    const opts = { includeMorphemes: true, includeLexicon: false, label: 'Respell' };
+    const opts = {
+      writer: writerPolicy(null),
+      includeMorphemes: true,
+      includeLexicon: false,
+      label: 'Respell',
+    };
     // It stops at b, having written a, and says so.
     const first = await applyRespell(client, { rows, lexiconRows: [], versions }, opts);
     expect(first.docsChanged).toBe(1);

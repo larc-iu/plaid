@@ -197,10 +197,11 @@ export async function planRespell(
 // A respell row still reads as the preview showed it: the same word and the
 // same new spelling, and, when they are respelled too, the same morpheme
 // forms following it.
+const formsOf = (row) => (row.morphemes || []).map(({ id, old, new: next }) => [id, old, next]);
 const sameRespell = (includeMorphemes) => (a, b) =>
   a.old === b.old &&
   a.new === b.new &&
-  (!includeMorphemes || JSON.stringify(a.morphemes || []) === JSON.stringify(b.morphemes || []));
+  (!includeMorphemes || JSON.stringify(formsOf(a)) === JSON.stringify(formsOf(b)));
 
 // A respell row already reads as respelled: the word, and when they are
 // respelled too, its morpheme forms.
@@ -233,7 +234,9 @@ async function unchangedEntries(client, lexiconRows) {
 // selected whole-token replace, and the morpheme forms it renames, in one
 // atomic batch however many morphemes there are. The text edit and the forms
 // that spell the same words must land together or the document reads as half
-// respelled. Lexicon entries follow in their own requests.
+// respelled. Lexicon entries follow in their own requests. Each respelled
+// form carries the stamp of `writer`, the person's writerPolicy, as a field
+// replace's does.
 //
 // A text replace names offsets in the text as the preview read it, so each
 // document's batch carries the version the preview read (`versions`), and a
@@ -250,7 +253,7 @@ async function unchangedEntries(client, lexiconRows) {
 export async function applyRespell(
   client,
   { rows, lexiconRows, versions, replan },
-  { includeMorphemes, includeLexicon, label, onProgress },
+  { writer, includeMorphemes, includeLexicon, label, onProgress },
 ) {
   // A row that would empty a word or a form is never written, whoever ticked it.
   const writable = (r) => !respellBarred(r, includeMorphemes);
@@ -263,8 +266,15 @@ export async function applyRespell(
     wordsSkipped: 0,
     entriesSkipped: 0,
   };
+  // A respelled form carries the writer's stamp, as a replaced one does.
   const formPatches = (part) =>
-    part.map((m) => ({ id: m.id, metadata: [{ op: 'set', path: ['form'], value: m.new }] }));
+    part.map((m) => ({
+      id: m.id,
+      metadata: [
+        { op: 'set', path: ['form'], value: m.new },
+        ...metadataOps(writer.valueEditStamp(m.metadata)),
+      ],
+    }));
   const morphemesOf = (docRows) => (includeMorphemes ? docRows.flatMap((r) => r.morphemes) : []);
 
   await writeAcrossDocuments(client, label, 'respell', async () => {

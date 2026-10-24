@@ -12,9 +12,7 @@ import {
   SelectGroup,
   SelectLabel,
 } from '@ui/components/ui/select';
-import { isReviewed, writerPolicy } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   isValueAllowed,
   readingTagset,
@@ -25,7 +23,7 @@ import {
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { blank, buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
-import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
+import { notifyStopped, countOf, skippedNote, useRun, useWriter } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
@@ -93,15 +91,7 @@ const FieldChange = ({ row, target }) => {
 };
 
 export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
-  const { user } = useAuth();
-  // The person's stamp on every value they replace, as in the editor.
-  const writer = useMemo(
-    () =>
-      writerPolicy(
-        user?.id && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null,
-      ),
-    [project, user],
-  );
+  const writer = useWriter(project);
   const targets = useMemo(
     () => searchDomains(layerInfo, []).filter((d) => d.kind === 'span' || d.kind === 'morpheme'),
     [layerInfo],

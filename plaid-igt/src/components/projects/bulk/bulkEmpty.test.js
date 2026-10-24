@@ -103,7 +103,12 @@ describe('Respell to nothing', () => {
     const out = await applyRespell(
       client,
       { rows, lexiconRows, versions: { [doc.id]: 1 } },
-      { includeMorphemes: true, includeLexicon: true, label: 'Respell' },
+      {
+        writer: writerPolicy(null),
+        includeMorphemes: true,
+        includeLexicon: true,
+        label: 'Respell',
+      },
     );
     expect(writes(client)).toEqual([]);
     expect(out.wordsChanged).toBe(0);
@@ -128,7 +133,12 @@ describe('Respell to nothing', () => {
     const out = await applyRespell(
       client,
       { rows, lexiconRows: [], versions: { [d.id]: 1 } },
-      { includeMorphemes: true, includeLexicon: false, label: 'Respell' },
+      {
+        writer: writerPolicy(null),
+        includeMorphemes: true,
+        includeLexicon: false,
+        label: 'Respell',
+      },
     );
     expect(out.wordsChanged).toBe(1);
     const edits = client.calls.filter((c) => c.kind === 'texts.update').map((c) => c.args[1]);

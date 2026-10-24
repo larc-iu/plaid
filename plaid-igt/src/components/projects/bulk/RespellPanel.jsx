@@ -5,7 +5,7 @@ import { isolate } from '@ui/lib/bidi.js';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
-import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
+import { notifyStopped, countOf, skippedNote, useRun, useWriter } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,6 +62,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   // may do (core refuses anyone else). The others are listed, not ticked.
   const { user } = useAuth();
   const canRespellIn = (vocab) => canManageVocabulary(vocab, user);
+  const writer = useWriter(project);
 
   const { apply, error } = useMemo(
     () => buildReplacer(find, matchType, repl),
@@ -129,6 +130,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           replan: plan.replan,
         },
         {
+          writer,
           includeMorphemes,
           includeLexicon,
           label: `Respell “${isolate(plan.find)}” → “${isolate(plan.repl)}”`,

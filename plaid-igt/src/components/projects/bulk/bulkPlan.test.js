@@ -79,8 +79,8 @@ describe('collectRespellRows / respellOps', () => {
     expect(rows[0].morphemes).toEqual([]);
     expect(rows[0].chain).toBeNull(); // a single derived morpheme IS the word
     expect(rows[1].morphemes).toEqual([
-      { id: 'm-2', old: 'ka', new: 'ca' },
-      { id: 'm-3', old: 'ka', new: 'ca' },
+      { id: 'm-2', old: 'ka', new: 'ca', metadata: { form: 'ka' } },
+      { id: 'm-3', old: 'ka', new: 'ca', metadata: { form: 'ka' } },
     ]);
     expect(rows[1].chain).toEqual([
       { joiner: '', own: true, old: 'ka', new: 'ca' },
@@ -118,7 +118,7 @@ describe('collectRespellRows / respellOps', () => {
     expect(collectRespellRows(doc, apply)).toEqual([]);
     // ...but a contains match rewrites the word and only the morpheme that has a t.
     const rows = collectRespellRows(doc, buildReplacer('t', 'contains', 'd').apply);
-    expect(rows[0].morphemes).toEqual([{ id: 'm-2', old: 't', new: 'd' }]);
+    expect(rows[0].morphemes).toEqual([{ id: 'm-2', old: 't', new: 'd', metadata: { form: 't' } }]);
     expect(chainText(rows[0].chain, true)).toEqual({ old: 'ka-t', new: 'ka-d' });
   });
 

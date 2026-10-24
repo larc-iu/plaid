@@ -209,7 +209,12 @@ describe('Respell checks the version the preview read', () => {
     new: next,
     morphemes: [],
   });
-  const opts = { includeMorphemes: true, includeLexicon: false, label: 'Respell' };
+  const opts = {
+    writer: writerPolicy(null),
+    includeMorphemes: true,
+    includeLexicon: false,
+    label: 'Respell',
+  };
 
   it('a document whose text moved is respelled at the offsets read again', async () => {
     // "black " was typed before the word after the preview.

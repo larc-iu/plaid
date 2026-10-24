@@ -108,7 +108,8 @@ export function collectRespellRows(doc, apply) {
         const joiner = i > 0 ? morphemeJoiner(ms[i - 1]?.morphType, m.morphType) : '';
         if (hasOwnForm(m)) {
           const nf = apply(m.metadata.form);
-          if (nf != null) morphemes.push({ id: m.id, old: m.metadata.form, new: nf });
+          if (nf != null)
+            morphemes.push({ id: m.id, old: m.metadata.form, new: nf, metadata: m.metadata });
           chain.push({ joiner, own: true, old: m.metadata.form, new: nf ?? m.metadata.form });
         } else {
           chain.push({ joiner, own: false, old: t.content, new: next });

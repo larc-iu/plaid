@@ -125,7 +125,12 @@ describe('a retry after a lost answer', () => {
         ['w1', { id: 'w1', old: 'yard', morphemes: [{ id: 'm1', old: morphNow, new: morphNow }] }],
       ]),
     });
-    const opts = { includeMorphemes: true, includeLexicon: false, label: 'Respell' };
+    const opts = {
+      writer: writerPolicy(null),
+      includeMorphemes: true,
+      includeLexicon: false,
+      label: 'Respell',
+    };
     server.lose = 'a';
     await expect(
       applyRespell(client, { rows: [word], lexiconRows: [], versions: { a: 1 }, replan }, opts),

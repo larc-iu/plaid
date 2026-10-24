@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { isReviewed, writerPolicy } from '@larc-iu/plaid-client';
+import { useAuth } from '@/contexts/AuthContext';
 import { notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -6,6 +8,19 @@ import { countOf } from '@ui/lib/plural.js';
 // What every Bulk Edit panel shares: the run state machine, the scope
 // badge classes, and the one count-and-noun helper (plaid-ui's, re-exported).
 export { countOf };
+
+// The person's writerPolicy in `project`, the stamp on every value a Bulk
+// Edit changes, as in the editor.
+export const useWriter = (project) => {
+  const { user } = useAuth();
+  return useMemo(
+    () =>
+      writerPolicy(
+        user?.id && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null,
+      ),
+    [project, user],
+  );
+};
 
 // The sentence an apply's toast ends with when some of the preview's changes
 // were skipped because their word, value or entry changed after the preview.
