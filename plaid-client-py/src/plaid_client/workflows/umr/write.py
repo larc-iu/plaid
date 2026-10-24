@@ -16,7 +16,7 @@ ones before it by a ref to the ids they are created with. That is the order the
 Two services write this shape (drafting with a model, and the skeleton from
 glosses). What they share lives here: the three request parameters
 (:func:`draft_params`), reading the document and choosing the sentences to draft
-(:func:`begin_draft`), writing the plans and reporting (:func:`finish_draft`),
+(:func:`_begin_draft`), writing the plans and reporting (:func:`finish_draft`),
 the writer and the progress budget. A service supplies only its plan per
 sentence.
 """
@@ -537,12 +537,12 @@ def drafting(client, request_data: Dict[str, Any], response_helper):
         yield None
         return
     with held_run(client, response_helper, document_id) as held:
-        run = begin_draft(client, request_data, response_helper)
+        run = _begin_draft(client, request_data, response_helper)
         yield run
         held.result = run.result
 
 
-def begin_draft(client, request_data: Dict[str, Any], response_helper) -> DraftRun:
+def _begin_draft(client, request_data: Dict[str, Any], response_helper) -> DraftRun:
     """Read the document a drafting request names and choose its targets,
     under the lock :func:`drafting` holds.
 

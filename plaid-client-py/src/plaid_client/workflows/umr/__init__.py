@@ -49,7 +49,7 @@ from .penman import (Graph, attr_value_problem, concept_problem, is_variable,
                      new_variable_problem, next_variable, parse_attribute_line, parse_penman,
                      relation_form_problem, serialize_penman, tree_edges, variable_form_problem,
                      variable_from, written_value_problem)
-from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, drafting,
+from .write import (DraftProgress, anchor_pieces, draft_params, drafting,
                     finish_draft, run_label, write_graphs)
 
 __all__ = [
@@ -76,6 +76,6 @@ __all__ = [
     # flat
     'join_flat_graph',
     # write
-    'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params', 'begin_draft',
+    'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params',
     'drafting', 'finish_draft', 'run_label',
 ]

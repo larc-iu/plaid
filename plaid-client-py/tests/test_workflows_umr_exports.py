@@ -79,9 +79,17 @@ def outside_imports():
 def python_files(root):
     """Every .py file under ``root``, leaving out dependencies, caches and
     hidden directories. A walk, not ``git ls-files``, so the test runs in a
-    checkout that is not a git one (a release archive, a lane)."""
+    checkout that is not a git one (a release archive, a lane).
+
+    Not plaid-core's services/ folder: a run of the release jar extracts its
+    bundled copies there (gitignored), as old as that jar, and an import in
+    a stale copy would pass an export nothing in the tree uses."""
     skip = {'node_modules', '__pycache__', 'venv', 'out', 'dist', 'build'}
+    stale = pathlib.Path(root) / 'plaid-core' / 'services'
     for d, dirs, files in os.walk(root):
+        if pathlib.Path(d) == stale:
+            dirs[:] = []
+            continue
         dirs[:] = [x for x in dirs if x not in skip and not x.startswith('.')]
         for name in files:
             if name.endswith('.py'):
