@@ -9,24 +9,27 @@
 //   - every anchor on the UMR node layer, which takes the concept spans, the
 //     edges and the document-level relations with it
 //   - in each sentence's record, the graph a file carried that could not be
-//     read (`rawGraph`, `rawAlignment`), the relations held for it (`held`)
-//     and the triples between constants its block wrote (`triples`)
-//   - on each sentence token, a comparison report's row (`adjudication`)
-//   - the comparison report on the document (`adjudication`), since the copy
-//     was never compared
+//     read (`rawGraph`, `rawAlignment`), the relations held for it (`held`),
+//     the triples between constants its block wrote (`triples`), and a
+//     comparison report's row and summary (`adjudication`,
+//     `adjudicationSummary`), since the copy was never compared
 // The sentence's own record (`snt`, `text`, `ilg`, `meta`) stays: it is the
 // text, not the graph.
 import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { isRecordToken } from './sentenceGraph.js';
 
 /** The record keys that hold graph, not text. */
-const RECORD_GRAPH_KEYS = ['rawGraph', 'rawAlignment', 'held', 'triples'];
-
-/** The sentence token keys that hold graph, not text. */
-const SENTENCE_GRAPH_KEYS = ['adjudication'];
+const RECORD_GRAPH_KEYS = [
+  'rawGraph',
+  'rawAlignment',
+  'held',
+  'triples',
+  'adjudication',
+  'adjudicationSummary',
+];
 
 // Keeps each bulk update well inside what one request should carry.
-const SENTENCE_CHUNK = 500;
+const RECORD_CHUNK = 500;
 
 // The ops deleting `keys` from a token's UMR metadata, as a bulk update's
 // entry, or nothing when it holds none of them.
@@ -39,36 +42,29 @@ const without = (token, keys) => {
 
 /**
  * What leaving the graphs out of `raw` (a document read with its body) takes:
- * `{ nodeTokenIds, sentenceUpdates, documentOps }`, each empty when there is
- * nothing to do. `sentenceUpdates` covers the records and the sentence
- * tokens alike.
+ * `{ nodeTokenIds, recordUpdates }`, each empty when there is nothing to do.
+ * Nothing is written on the document or a token another app shares.
  */
 export function textOnlyPlan(raw) {
   const info = getUmrLayerInfo(raw);
   const nodeTokens = info.nodeTokenLayer?.tokens || [];
   const nodeTokenIds = nodeTokens.filter((t) => !isRecordToken(t)).map((t) => t.id);
-  const sentenceUpdates = [
-    ...nodeTokens.filter(isRecordToken).flatMap((t) => without(t, RECORD_GRAPH_KEYS)),
-    ...(info.sentenceTokenLayer?.tokens || []).flatMap((t) => without(t, SENTENCE_GRAPH_KEYS)),
-  ];
-  const documentOps =
-    raw?.metadata?.[UMR_NAMESPACE] && 'adjudication' in raw.metadata[UMR_NAMESPACE]
-      ? [{ op: 'delete', path: [UMR_NAMESPACE, 'adjudication'] }]
-      : [];
-  return { nodeTokenIds, sentenceUpdates, documentOps };
+  const recordUpdates = nodeTokens
+    .filter(isRecordToken)
+    .flatMap((t) => without(t, RECORD_GRAPH_KEYS));
+  return { nodeTokenIds, recordUpdates };
 }
 
 /** Take the UMR graphs off the document `documentId`, in one batch. */
 export async function leaveOutGraphs(client, documentId) {
   const raw = await client.documents.get(documentId, true);
-  const { nodeTokenIds, sentenceUpdates, documentOps } = textOnlyPlan(raw);
-  if (!nodeTokenIds.length && !sentenceUpdates.length && !documentOps.length) return;
+  const { nodeTokenIds, recordUpdates } = textOnlyPlan(raw);
+  if (!nodeTokenIds.length && !recordUpdates.length) return;
   await client.batched(async (b) => {
     if (nodeTokenIds.length) b.tokens.bulkDelete(nodeTokenIds);
-    for (let i = 0; i < sentenceUpdates.length; i += SENTENCE_CHUNK) {
-      b.tokens.bulkUpdate(sentenceUpdates.slice(i, i + SENTENCE_CHUNK));
+    for (let i = 0; i < recordUpdates.length; i += RECORD_CHUNK) {
+      b.tokens.bulkUpdate(recordUpdates.slice(i, i + RECORD_CHUNK));
     }
-    if (documentOps.length) b.documents.patchMetadata(documentId, documentOps);
   });
 }
 

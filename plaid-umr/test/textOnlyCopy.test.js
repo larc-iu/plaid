@@ -50,7 +50,7 @@ const FILE =
     '(s1s0 / sentence\n    :temporal ((document-creation-time :before s1s)))',
   ) + block(2, 'the dog barks', '((s2b / bark-01', 's2b: 3-3');
 
-const REPORT = { version: 4, at: '2026-09-28T05:22:03Z', against: { id: 'd2', name: 'lunch' } };
+const REPORT = { version: 5, at: '2026-09-28T05:22:03Z', against: { id: 'd2', name: 'lunch' } };
 
 // The sentences' records: the tokens of the node layer that carry metadata.
 const recordsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter(isRecordToken);
@@ -59,9 +59,11 @@ const anchorsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter((t) =>
 
 function annotatedRaw() {
   const raw = rawFromPlan(planImport(parseUmrFile(FILE).sentences, []));
-  raw.metadata = { umr: { adjudication: REPORT }, other: { kept: true } };
-  const sentences = raw.textLayers[0].tokenLayers[0].tokens;
-  sentences[0].metadata = { umr: { adjudication: { at: REPORT.at, index: 1 } } };
+  raw.metadata = { other: { kept: true } };
+  // A comparison report, on the records (R33).
+  const [r1] = recordsOf(raw);
+  r1.metadata.umr.adjudicationSummary = REPORT;
+  r1.metadata.umr.adjudication = { at: REPORT.at, index: 1 };
   // A relation the file wrote onto a node of the unreadable graph, held by name.
   recordsOf(raw)[1].metadata.umr.held = [
     { source: 's1s', rel: ':before', target: 's2b', group: 'temporal' },
@@ -83,11 +85,10 @@ function applyPlan(raw, plan) {
   concepts.relationLayers.forEach((l) => {
     l.relations = l.relations.filter((r) => alive.has(r.source) && alive.has(r.target));
   });
-  const updates = new Map(plan.sentenceUpdates.map((u) => [u.id, u.metadata]));
-  [...text.tokenLayers[0].tokens, ...nodeLayer.tokens].forEach((t) => {
+  const updates = new Map(plan.recordUpdates.map((u) => [u.id, u.metadata]));
+  nodeLayer.tokens.forEach((t) => {
     if (updates.has(t.id)) t.metadata = applyMetadataOps(t.metadata, updates.get(t.id));
   });
-  out.metadata = applyMetadataOps(out.metadata, plan.documentOps);
   return out;
 }
 
@@ -116,11 +117,17 @@ describe('what a text-only copy leaves out', () => {
 
   test('a graph kept as text, its held relations and the comparison report go too', () => {
     const raw = annotatedRaw();
-    const [s1] = raw.textLayers[0].tokenLayers[0].tokens;
-    const [, r2] = recordsOf(raw);
+    const [r1, r2] = recordsOf(raw);
     assert.ok(r2.metadata.umr.rawGraph, 'the fixture keeps sentence 2 as text');
     const plan = textOnlyPlan(raw);
-    assert.deepEqual(plan.sentenceUpdates, [
+    assert.deepEqual(plan.recordUpdates, [
+      {
+        id: r1.id,
+        metadata: [
+          { op: 'delete', path: ['umr', 'adjudication'] },
+          { op: 'delete', path: ['umr', 'adjudicationSummary'] },
+        ],
+      },
       {
         id: r2.id,
         metadata: [
@@ -129,21 +136,17 @@ describe('what a text-only copy leaves out', () => {
           { op: 'delete', path: ['umr', 'held'] },
         ],
       },
-      { id: s1.id, metadata: [{ op: 'delete', path: ['umr', 'adjudication'] }] },
     ]);
-    assert.deepEqual(plan.documentOps, [{ op: 'delete', path: ['umr', 'adjudication'] }]);
     const after = applyPlan(raw, plan);
-    assert.deepEqual(after.metadata, { umr: {}, other: { kept: true } });
+    // The document and the sentence tokens every app shares are not written.
+    assert.deepEqual(after.metadata, { other: { kept: true } });
+    assert.deepEqual(after.textLayers[0].tokenLayers[0], raw.textLayers[0].tokenLayers[0]);
     assert.equal(new UmrDocument({ raw: after }).toUmr().includes('s2b'), false);
   });
 
   test('a document with no graph has nothing to leave out', () => {
     const raw = applyPlan(annotatedRaw(), textOnlyPlan(annotatedRaw()));
-    assert.deepEqual(textOnlyPlan(raw), {
-      nodeTokenIds: [],
-      sentenceUpdates: [],
-      documentOps: [],
-    });
+    assert.deepEqual(textOnlyPlan(raw), { nodeTokenIds: [], recordUpdates: [] });
   });
 });
 
@@ -208,7 +211,6 @@ describe('copying as text only', () => {
         [
           ['tokens.bulkDelete', nodes],
           ['tokens.bulkUpdate', 2],
-          ['documents.patchMetadata', 'd9', [{ op: 'delete', path: ['umr', 'adjudication'] }]],
         ],
       ],
       ['end'],

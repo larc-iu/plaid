@@ -7,13 +7,15 @@ community reports inter-annotator agreement in. The usual way the pair comes
 about is Plaid's document copy: one text, two annotators, two documents over
 the same words.
 
-The report is written as METADATA, and never as annotation: its summary on
-the scored document under `metadata.umr.adjudication`, and each sentence's row
-on that sentence's token under the same path. One key per sentence keeps every
-write small however long the document is. Nothing about a score is
-an annotation: an agreement figure is a fact about two documents, it is not
-something a later reader should find sitting on a node. The Compare tab reads
-the report back.
+The report is written as METADATA, and never as annotation, on UMR's own
+records (Luke's ruling R33): each sentence's row on that sentence's record
+under `metadata.umr.adjudication`, and the summary on the first sentence's
+record under `metadata.umr.adjudicationSummary`. A sentence with no record is
+given one. The document and the sentence tokens are every app's, and nothing
+is written on them. One key per sentence keeps every write small however long
+the document is. Nothing about a score is an annotation: an agreement figure
+is a fact about two documents, it is not something a later reader should find
+sitting on a node. The Compare tab reads the report back.
 
 AnCast reads `.umr` text, so the service renders both documents from Plaid's
 storage model to the `.umr` format the app exports. That renderer is a port of
@@ -46,7 +48,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
-from plaid_client import BaseService, Param, TASKS, service_source
+from plaid_client import BaseService, Param, TASKS, service_source, uuid7
 from plaid_client.service import held_run
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (DOC_CONSTANTS, UMR_NAMESPACE, Graph, file_numbers,
@@ -59,7 +61,8 @@ DEFAULT_SERVICE_ID = 'umr-ancast'
 #: The report's shape, so a reader can refuse one it does not understand. 2:
 #: a match is an object carrying both concepts and whether it was a leftover.
 #: 3: the sentences are on the sentence tokens, each row carrying the run's `at`.
-REPORT_VERSION = 4
+#: 5: the report is on UMR's records, the summary on the first sentence's.
+REPORT_VERSION = 5
 
 #: Sentence rows per bulk metadata write.
 SENTENCE_WRITE_CHUNK = 500
@@ -652,13 +655,11 @@ def build_report(scores, sentences, against, scope: str, at: Optional[str] = Non
     return report
 
 
-def split_report(report, sentence_ids):
-    """The report as it is stored: the summary for the document's
-    `umr.adjudication`, and `{token id: row}` for each sentence token's.
+def split_report(report):
+    """The report as it is stored: the summary, and `{sentence index: row}`.
 
-    `sentence_ids` are the document's sentence tokens in order, and a row goes
-    to the token at its index. Each row carries the run's `at`, which is how a
-    reader tells this run's rows from an earlier one's.
+    Each row carries the run's `at`, which is how a reader tells this run's
+    rows from an earlier one's.
 
     A match is stored as a list, `[this, other, thisConcept, otherConcept,
     leftover]`, never as an object: the server caps the keys in a token's
@@ -668,26 +669,55 @@ def split_report(report, sentence_ids):
     summary['sentenceCount'] = len(report['sentences'])
     rows = {}
     for row in report['sentences']:
-        i = row['index'] - 1
-        if 0 <= i < len(sentence_ids):
-            matches = [[m['this'], m['other'], m['thisConcept'], m['otherConcept'], m['leftover']]
-                       for m in row['matches']]
-            rows[sentence_ids[i]] = {**row, 'matches': matches, 'at': report['at']}
+        matches = [[m['this'], m['other'], m['thisConcept'], m['otherConcept'], m['leftover']]
+                   for m in row['matches']]
+        rows[row['index']] = {**row, 'matches': matches, 'at': report['at']}
     return summary, rows
 
 
-def report_ops(report, sentence_ids):
-    """The document's one op, and the bulk token update that puts each row on
-    its sentence and takes an earlier run's row off any sentence this run has
-    none for."""
-    summary, rows = split_report(report, sentence_ids)
-    path = [UMR_NAMESPACE, 'adjudication']
-    document_ops = [{'op': 'set', 'path': path, 'value': summary}]
-    token_updates = [
-        {'id': sid, 'metadata': ([{'op': 'set', 'path': path, 'value': rows[sid]}]
-                                 if sid in rows else [{'op': 'delete', 'path': path}])}
-        for sid in sentence_ids]
-    return document_ops, token_updates
+ROW = [UMR_NAMESPACE, 'adjudication']
+SUMMARY_PATH = [UMR_NAMESPACE, 'adjudicationSummary']
+
+
+def report_writes(report, sentences, node_layer_id, text_id):
+    """What storing the report on the records writes: `(creates, updates,
+    summary_update)`.
+
+    `sentences` are the document's in text order (`read_document`). A
+    sentence's row goes on its own record, and one with no record is given a
+    record over the sentence holding its row. Each record the run has no row
+    for loses an earlier run's, and so does every other record a sentence
+    holds (one joined to the sentence before it). `summary_update` sets the
+    summary on the first sentence's record and is sent last, since a reader
+    shows the rows whose `at` the summary names: a summary ahead of rows that
+    were then refused would claim a report that is not there. Every other
+    record loses an earlier summary, so one record holds it."""
+    summary, rows = split_report(report)
+    creates, updates = [], []
+    first = None
+    for s in sentences:
+        row = rows.get(s.index)
+        record = s.record_token
+        if record is None and row is not None:
+            record = uuid7()
+            creates.append({'id': record, 'token_layer_id': node_layer_id, 'text': text_id,
+                            'begin': s.begin, 'end': s.end,
+                            'metadata': {UMR_NAMESPACE: {'adjudication': row}}})
+        elif record is not None:
+            ops = [{'op': 'set', 'path': ROW, 'value': row} if row is not None
+                   else {'op': 'delete', 'path': ROW}]
+            if s is not sentences[0]:
+                ops.append({'op': 'delete', 'path': SUMMARY_PATH})
+            updates.append({'id': record, 'metadata': ops})
+        for other in s.other_records:
+            updates.append({'id': other, 'metadata': [{'op': 'delete', 'path': ROW},
+                                                      {'op': 'delete', 'path': SUMMARY_PATH}]})
+        if s is sentences[0]:
+            first = record
+    summary_update = ([{'id': first, 'metadata': [{'op': 'set', 'path': SUMMARY_PATH,
+                                                   'value': summary}]}]
+                      if first is not None else [])
+    return creates, updates, summary_update
 
 
 # --- resolving the other document ------------------------------------------------
@@ -845,7 +875,7 @@ class UmrAncastService(BaseService):
             with response_helper.critical():
                 with self.client.operation(requester.label(f'AnCast adjudication against {other_name}'),
                                            kind='service-run', ref=service_source(self.service_id)):
-                    self._write(document_id, report, [s.id for s in this_graph.sentences])
+                    self._write(report, this_graph.sentences, resolve_layers(document))
 
             # The counts alone (the core manual, "Service results"): the app
             # words what the person is told.
@@ -857,20 +887,22 @@ class UmrAncastService(BaseService):
                 'sentences_skipped': skipped,
             }
 
-    def _write(self, document_id, report, sentence_ids) -> None:
-        """The summary on the document and each row on its sentence, all at
-        `umr.adjudication`. Each op sets that one key, so whatever else the
-        namespace holds stays.
+    def _write(self, report, sentences, layers) -> None:
+        """Each row on its sentence's record and the summary on the first
+        sentence's (`report_writes`), each at its own key, so whatever else
+        a record holds stays.
 
         One batch, so a refused row takes the summary back with it, and the
-        summary last, since a reader shows the rows whose `at` the summary
-        names: a summary written ahead of rows that were then refused would
-        claim a report that is not there, and hide the earlier one's rows."""
-        document_ops, token_updates = report_ops(report, sentence_ids)
+        summary last (see `report_writes`)."""
+        creates, updates, summary_update = report_writes(
+            report, sentences, layers.node_layer['id'], layers.text_id)
         with self.client.batched() as batch:
-            for start in range(0, len(token_updates), SENTENCE_WRITE_CHUNK):
-                batch.tokens.bulk_update(token_updates[start:start + SENTENCE_WRITE_CHUNK])
-            batch.documents.patch_metadata(document_id, document_ops)
+            for start in range(0, len(creates), SENTENCE_WRITE_CHUNK):
+                batch.tokens.bulk_create(creates[start:start + SENTENCE_WRITE_CHUNK])
+            for start in range(0, len(updates), SENTENCE_WRITE_CHUNK):
+                batch.tokens.bulk_update(updates[start:start + SENTENCE_WRITE_CHUNK])
+            if summary_update:
+                batch.tokens.bulk_update(summary_update)
 
 
 def main():

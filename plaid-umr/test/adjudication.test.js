@@ -48,61 +48,90 @@ const report = {
   ],
 };
 
-// The report as the service stores it: the summary on the document and each
-// row on its sentence token, a match as a list.
+// The report as the service stores it (R33): each row on its sentence's
+// record, the summary on the first sentence's record beside its row, a match
+// as a list. `sentences` are the document's sentences as buildDocumentGraph
+// reads them, each naming its own record.
 const storedMatch = (m) => [m.this, m.other, m.thisConcept, m.otherConcept, m.leftover];
 const stored = (r) => {
   const { sentences, ...summary } = r;
-  return {
-    raw: { metadata: { umr: { adjudication: { ...summary, sentenceCount: sentences.length } } } },
-    tokens: sentences.map((row, i) => ({
-      id: `snt-${i + 1}`,
-      begin: i * 10,
-      metadata: {
-        umr: {
-          lang: 'eng',
-          adjudication: { ...row, matches: row.matches.map(storedMatch), at: r.at },
-        },
+  const nodeTokens = sentences.map((row, i) => ({
+    id: `rec-${i + 1}`,
+    begin: i * 10,
+    metadata: {
+      umr: {
+        snt: String(i + 1),
+        adjudication: { ...row, matches: row.matches.map(storedMatch), at: r.at },
+        ...(i === 0
+          ? { adjudicationSummary: { ...summary, sentenceCount: sentences.length } }
+          : {}),
       },
-    })),
-  };
+    },
+  }));
+  // An anchor of a node, which is no record.
+  nodeTokens.push({ id: 'anchor', begin: 0, end: 3 });
+  return { nodeTokens, sentences: sentences.map((_, i) => ({ recordToken: `rec-${i + 1}` })) };
 };
 
-test('the report is read from the document and its sentences, or not at all', () => {
-  const { raw, tokens } = stored(report);
-  const read = readAdjudication(raw, tokens);
-  assert.equal(read.version, 4);
+const withSummary = (nodeTokens, change) =>
+  nodeTokens.map((t) =>
+    t.metadata?.umr?.adjudicationSummary
+      ? {
+          ...t,
+          metadata: {
+            umr: {
+              ...t.metadata.umr,
+              adjudicationSummary: change(t.metadata.umr.adjudicationSummary),
+            },
+          },
+        }
+      : t,
+  );
+
+test('the report is read from the records, or not at all', () => {
+  const { nodeTokens, sentences } = stored({ ...report, version: 5 });
+  const read = readAdjudication(nodeTokens, sentences);
+  assert.equal(read.version, 5);
   assert.deepEqual(read.scores, report.scores);
   assert.deepEqual(read.against, report.against);
   assert.deepEqual(read.sentences, [{ ...report.sentences[0], at: report.at }]);
   assert.equal(sentenceReport(read, 1).concept, 0.9);
-  // The tokens in any order: a row's index is its sentence's place in the text.
-  assert.equal(readAdjudication(raw, [...tokens].reverse()).sentences[0].index, 1);
-  // A report of another shape is not read as this one, the old whole report
-  // included.
-  const whole = { metadata: { umr: { adjudication: { ...report, version: 2 } } } };
+  // A row's index is its sentence's place in the text, whatever it stored.
+  assert.equal(
+    readAdjudication(nodeTokens, [{ recordToken: 'x' }, ...sentences]).sentences[0].index,
+    2,
+  );
+  // A report of another shape is not read as this one: version 4 was on the
+  // document and the sentence tokens.
   assert.equal(
     readAdjudication(
-      { metadata: { umr: { adjudication: { ...raw.metadata.umr.adjudication, version: 3 } } } },
-      tokens,
+      withSummary(nodeTokens, (s) => ({ ...s, version: 4 })),
+      sentences,
     ),
     null,
   );
-  assert.equal(readAdjudication(whole, tokens), null);
-  assert.equal(readAdjudication({ metadata: {} }), null);
-  assert.equal(readAdjudication(null), null);
+  assert.equal(readAdjudication([], sentences), null);
+  assert.equal(readAdjudication(undefined, undefined), null);
 });
 
 test("a sentence row from an earlier run is not part of this run's report", () => {
-  const { raw, tokens } = stored(report);
-  const earlier = tokens.map((t) => ({
-    ...t,
+  const { nodeTokens, sentences } = stored({ ...report, version: 5 });
+  const later = withSummary(nodeTokens, (s) => ({ ...s, at: '2027-01-01T00:00:00Z' }));
+  assert.deepEqual(readAdjudication(later, sentences).sentences, []);
+  assert.deepEqual(readAdjudication(nodeTokens, [{ recordToken: 'x' }]).sentences, []);
+});
+
+test('of two summaries (a sentence merged since), the latest run is read', () => {
+  const { nodeTokens, sentences } = stored({ ...report, version: 5 });
+  const older = {
+    id: 'rec-old',
+    begin: 1,
     metadata: {
-      umr: { adjudication: { ...t.metadata.umr.adjudication, at: '2026-01-01T00:00:00Z' } },
+      umr: { adjudicationSummary: { version: 5, at: '2026-01-01T00:00:00Z', scores: {} } },
     },
-  }));
-  assert.deepEqual(readAdjudication(raw, earlier).sentences, []);
-  assert.deepEqual(readAdjudication(raw, [{ id: 'x', begin: 0 }]).sentences, []);
+  };
+  assert.equal(readAdjudication([older, ...nodeTokens], sentences).at, report.at);
+  assert.equal(readAdjudication([...nodeTokens, older], sentences).at, report.at);
 });
 
 test('scores print as percents, never 100% short of full agreement, and a missing one is not a row', () => {

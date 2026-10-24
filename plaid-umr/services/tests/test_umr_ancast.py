@@ -423,13 +423,6 @@ def _service(documents=None, *, entries=None, fails=None, on_read=None):
     return service
 
 
-def _patch(client):
-    """The one metadata patch, as the document's metadata once it lands."""
-    [(document_id, ops)] = client.payloads('documents.patch_metadata')
-    before = client.documents._by_id[document_id].get('metadata')
-    return document_id, apply_metadata_ops(before, ops)
-
-
 def _token_metadata(document, token_id):
     for text_layer in document.get('text_layers', []):
         for token_layer in text_layer.get('token_layers', []):
@@ -439,17 +432,32 @@ def _token_metadata(document, token_id):
     return None
 
 
-def _rows(client):
-    """Each sentence token's `umr.adjudication` once the bulk writes land, by
-    token id, in the order they were sent. A token whose row was taken off
-    maps to None."""
+def _records(client):
+    """Each record's `umr` once the writes land, by token id: the records
+    the run made, then the ones it updated, in the order they were sent."""
     document = client.documents._by_id[DOC]
     out = {}
+    for items in client.payloads('tokens.bulk_create'):
+        for item in items:
+            out[item['id']] = (item.get('metadata') or {}).get('umr') or {}
     for items in client.payloads('tokens.bulk_update'):
         for item in items:
-            after = apply_metadata_ops(_token_metadata(document, item['id']), item['metadata'])
-            out[item['id']] = (after.get('umr') or {}).get('adjudication')
+            before = ({'umr': out[item['id']]} if item['id'] in out
+                      else _token_metadata(document, item['id']))
+            out[item['id']] = apply_metadata_ops(before, item['metadata']).get('umr') or {}
     return out
+
+
+def _rows(client):
+    """Each record's `umr.adjudication`, by token id. A record whose row was
+    taken off maps to None."""
+    return {rid: umr_.get('adjudication') for rid, umr_ in _records(client).items()}
+
+
+def _summary(client):
+    [summary] = [r['adjudicationSummary'] for r in _records(client).values()
+                 if r.get('adjudicationSummary')]
+    return summary
 
 
 def _stored_match(m):
@@ -464,8 +472,7 @@ def _read_match(stored):
 
 def _report(client):
     """The summary and the rows put back together, the way the tab reads them."""
-    _, body = _patch(client)
-    summary = body['umr']['adjudication']
+    summary = _summary(client)
     rows = [{**r, 'matches': [_read_match(m) for m in r['matches']]}
             for r in _rows(client).values() if r and r['at'] == summary['at']]
     return {**summary, 'sentences': rows}
@@ -486,13 +493,18 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     assert (result['sentences'], result['sentences_scored'],
             result['sentences_skipped']) == (1, 1, 0)
 
-    document_id, body = _patch(service.client)
-    assert document_id == DOC
-    # The document carries the summary alone. The sentences are on their tokens.
-    assert 'sentences' not in body['umr']['adjudication']
-    assert body['umr']['adjudication']['sentenceCount'] == 1
+    # On UMR's own records (R33): nothing on the document or a sentence
+    # token, which every app shares.
+    assert service.client.payloads('documents.patch_metadata') == []
+    sentence_tokens = {t['id'] for t in service.client.documents._by_id[DOC][
+        'text_layers'][0]['token_layers'][0]['tokens']}
+    assert not any(item['id'] in sentence_tokens
+                   for items in service.client.payloads('tokens.bulk_update') for item in items)
+    # The summary holds no rows. The rows are on the records.
+    assert 'sentences' not in _summary(service.client)
+    assert _summary(service.client)['sentenceCount'] == 1
     report = _report(service.client)
-    assert report['version'] == 4
+    assert report['version'] == 5
     assert report['tool'].startswith('ancast ')
     # Which version of this service scored it, beside the AnCast that did.
     assert report['serviceVersion'] == service_version(umr.__file__)
@@ -546,8 +558,6 @@ def test_the_run_names_who_asked_in_history_and_in_the_report():
     assert service.client.operations == ['AnCast adjudication against Bo, requested by second']
     report = _report(service.client)
     assert report['requestedBy'] == {'id': 'second@x.com', 'name': 'second'}
-    _, body = _patch(service.client)
-    assert body['umr']['adjudication']['requestedBy'] == {'id': 'second@x.com', 'name': 'second'}
 
 
 def test_a_row_records_every_part_of_a_graph_as_the_tab_prints_it():
@@ -590,8 +600,7 @@ def test_the_sentence_scope_reports_no_document_level_scores():
     assert result['scope'] == 'snt'
     assert result['scores']['sentence'] is not None
     assert result['scores']['comprehensive'] is None
-    _, body = _patch(service.client)
-    assert body['umr']['adjudication']['scope'] == 'snt'
+    assert _summary(service.client)['scope'] == 'snt'
 
 
 def test_the_other_document_is_found_by_its_exact_name():
@@ -624,34 +633,46 @@ def test_a_sentence_ancast_cannot_read_is_reported_as_unscored():
 
 # --- the metadata write -------------------------------------------------------
 
-def test_the_report_is_set_alone_so_nothing_else_in_the_namespace_is_lost():
-    """The report is one op at `umr.adjudication`, so what else is under
-    `umr` stays rather than being written over."""
-    service = _service([
-        _document(DOC, name='Ann', metadata={
-            'umr': {'lang': 'eng', 'adjudication': {'version': 1, 'tool': 'ancast 0.0.0'}},
-            'note': 'a sibling of umr',
-        }, **_barking()),
-        _document(OTHER, name='Bo', **_barking('cat')),
-    ])
+def _with_record(document, umr_meta, extent=(0, 14), token_id='rec1'):
+    """`document` with a record of its first sentence on the node layer."""
+    document['text_layers'][0]['token_layers'][2]['tokens'].append(
+        {'id': token_id, 'begin': extent[0], 'end': extent[1], 'metadata': {'umr': umr_meta}})
+    return document
+
+
+def test_the_report_is_set_alone_so_nothing_else_on_the_record_is_lost():
+    """The report is set at its own keys, so what else the record holds
+    stays rather than being written over, and nothing is made."""
+    this = _with_record(_document(DOC, name='Ann', **_barking()), {
+        'snt': '1', 'meta': ['# :: note'],
+        'adjudication': {'index': 1, 'at': '2020-01-01T00:00:00Z'},
+        'adjudicationSummary': {'version': 5, 'at': '2020-01-01T00:00:00Z'}})
+    service = _service([this, _document(OTHER, name='Bo', **_barking('cat'))])
     servicetest.run(service, REQUEST)
 
-    [(_, ops)] = service.client.payloads('documents.patch_metadata')
-    assert [o['path'] for o in ops] == [['umr', 'adjudication']]
-    _, body = _patch(service.client)
-    # The other key of the namespace survives, the old report is replaced,
-    # and the sibling of `umr` is untouched.
-    assert body['umr']['lang'] == 'eng'
-    assert body['umr']['adjudication']['tool'] != 'ancast 0.0.0'
-    assert body['note'] == 'a sibling of umr'
+    assert service.client.payloads('tokens.bulk_create') == []
+    ops = [op for items in service.client.payloads('tokens.bulk_update')
+           for item in items for op in item['metadata']]
+    assert {tuple(o['path']) for o in ops} == {('umr', 'adjudication'),
+                                              ('umr', 'adjudicationSummary')}
+    record = _records(service.client)['rec1']
+    assert (record['snt'], record['meta']) == ('1', ['# :: note'])
+    assert record['adjudicationSummary']['at'] != '2020-01-01T00:00:00Z'
+    assert record['adjudication']['at'] == record['adjudicationSummary']['at']
 
 
-def test_a_document_with_no_umr_metadata_yet_gets_just_the_report():
+def test_a_sentence_with_no_record_is_given_one_holding_its_row():
     service = _service()
     servicetest.run(service, REQUEST)
 
-    _, body = _patch(service.client)
-    assert list(body['umr']) == ['adjudication']
+    [[made]] = service.client.payloads('tokens.bulk_create')
+    assert (made['token_layer_id'], made['text'], made['begin'], made['end']) == (
+        'nodeL', f'{DOC}-text', 0, 14)
+    assert list(made['metadata']['umr']) == ['adjudication']
+    # The summary follows on the record made, last.
+    [*_, [last]] = service.client.payloads('tokens.bulk_update')
+    assert last['id'] == made['id']
+    assert [o['path'] for o in last['metadata']] == [['umr', 'adjudicationSummary']]
 
 
 def _key_count(v):
@@ -676,55 +697,76 @@ def _big_report(sentences, nodes):
                             {'id': 'x', 'name': 'other'}, 'doc')
 
 
+def _sentences(n, records=True):
+    return [types.SimpleNamespace(index=i + 1, begin=i * 10, end=i * 10 + 10,
+                                  record_token=f'rec-{i}' if records else None,
+                                  other_records=[]) for i in range(n)]
+
+
 def test_a_long_document_is_stored_as_writes_that_each_stay_small():
     """Ten sentences of ten nodes is over the server's 500-key cap as one
-    value. Split, the document holds the summary and each sentence its row,
-    and no one stored value grows with the document."""
+    value. Split, the first record holds the summary and each record its
+    sentence's row, and no one stored value grows with the document."""
     report = _big_report(40, 10)
     assert _key_count(report) > 500
-    ids = [f'snt-{i}' for i in range(40)]
-    document_ops, token_updates = umr.report_ops(report, ids)
-    [summary_op] = document_ops
-    assert summary_op['path'] == ['umr', 'adjudication']
+    creates, updates, [summary_update] = umr.report_writes(report, _sentences(40), 'nodeL', 't')
+    assert creates == []
+    [summary_op] = summary_update['metadata']
+    assert summary_update['id'] == 'rec-0'
+    assert summary_op['path'] == ['umr', 'adjudicationSummary']
     assert 'sentences' not in summary_op['value']
     assert summary_op['value']['sentenceCount'] == 40
     assert _key_count(summary_op['value']) < 50
-    assert [u['id'] for u in token_updates] == ids
-    for update, row in zip(token_updates, report['sentences']):
-        [op] = update['metadata']
+    assert [u['id'] for u in updates] == [f'rec-{i}' for i in range(40)]
+    for update, row in zip(updates, report['sentences']):
+        op = update['metadata'][0]
         assert op['op'] == 'set' and op['path'] == ['umr', 'adjudication']
         assert op['value'] == {**row, 'matches': [_stored_match(m) for m in row['matches']],
                                'at': report['at']}
         assert _key_count(op['value']) < 100
+    # An earlier summary on any other record goes, so one record holds it.
+    assert updates[0]['metadata'][1:] == []
+    assert all(u['metadata'][1:] == [{'op': 'delete', 'path': ['umr', 'adjudicationSummary']}]
+               for u in updates[1:])
 
 
-def test_a_long_sentence_stays_under_the_key_cap_on_its_token():
+def test_a_long_sentence_stays_under_the_key_cap_on_its_record():
     """A match is stored as a list, so a sentence's row does not grow in keys
-    with its nodes: two hundred matched nodes sit on a token that already
+    with its nodes: two hundred matched nodes sit on a record that already
     carries its own metadata."""
     report = _big_report(1, 200)
-    _, [update] = umr.report_ops(report, ['snt-0'])
-    [op] = update['metadata']
-    assert _key_count(op['value']) < 20
+    _, [update], _ = umr.report_writes(report, _sentences(1), 'nodeL', 't')
+    assert _key_count(update['metadata'][0]['value']) < 20
 
 
-def test_a_rerun_takes_an_earlier_row_off_a_sentence_it_has_none_for():
-    """Every sentence the run scored gets its row again, and a sentence token
-    the report has no row for loses the one an earlier run left."""
+def test_a_rerun_takes_an_earlier_row_off_a_record_it_has_none_for():
+    """Every sentence the run scored gets its row again, and a record the
+    report has no row for loses the one an earlier run left, as does a second
+    record a sentence holds."""
     report = _big_report(2, 1)
-    _, token_updates = umr.report_ops(report, ['a', 'b', 'c'])
-    assert [u['metadata'][0]['op'] for u in token_updates] == ['set', 'set', 'delete']
-    assert token_updates[2] == {'id': 'c', 'metadata': [
-        {'op': 'delete', 'path': ['umr', 'adjudication']}]}
+    sentences = _sentences(3)
+    sentences[0].other_records = ['joined']
+    _, updates, _ = umr.report_writes(report, sentences, 'nodeL', 't')
+    by_id = {u['id']: u['metadata'] for u in updates}
+    assert [by_id[f'rec-{i}'][0]['op'] for i in range(3)] == ['set', 'set', 'delete']
+    assert by_id['rec-2'][0] == {'op': 'delete', 'path': ['umr', 'adjudication']}
+    assert by_id['joined'] == [{'op': 'delete', 'path': ['umr', 'adjudication']},
+                               {'op': 'delete', 'path': ['umr', 'adjudicationSummary']}]
+
+
+def test_sentences_with_no_record_are_given_records_on_the_node_layer():
+    report = _big_report(2, 1)
+    creates, updates, [summary_update] = umr.report_writes(
+        report, _sentences(2, records=False), 'nodeL', 't')
+    assert updates == []
+    assert [(c['token_layer_id'], c['text'], c['begin'], c['end']) for c in creates] == [
+        ('nodeL', 't', 0, 10), ('nodeL', 't', 10, 20)]
+    assert summary_update['id'] == creates[0]['id']
 
 
 def test_a_run_replaces_the_rows_an_earlier_run_left_on_the_sentences():
-    earlier = {'umr': {'lang': 'eng', 'adjudication': {'index': 1, 'at': '2020-01-01T00:00:00Z'}}}
-    this = _document(DOC, name='Ann', **_barking())
-    [sentences] = [layer for layer in this['text_layers'][0]['token_layers']
-                   if layer['id'] == 'sentL']
-    for token in sentences['tokens']:
-        token['metadata'] = earlier
+    this = _with_record(_document(DOC, name='Ann', **_barking()),
+                        {'snt': '1', 'adjudication': {'index': 1, 'at': '2020-01-01T00:00:00Z'}})
     service = _service([this, _document(OTHER, name='Bo', **_barking('cat'))])
     servicetest.run(service, REQUEST)
 
@@ -833,8 +875,8 @@ def test_the_lock_is_held_from_the_read_through_the_write():
     # version check is needed.
     assert kinds.index('lock') < kinds.index('read')
     # The rows first and the summary last, which names them.
-    rows = kinds.index('tokens.bulk_update')
-    summary = kinds.index('documents.patch_metadata')
+    rows = kinds.index('tokens.bulk_create')
+    summary = len(kinds) - 1 - kinds[::-1].index('tokens.bulk_update')
     assert kinds.index('lock') < rows < summary < kinds.index('unlock')
 
 
@@ -842,22 +884,22 @@ def test_a_refused_row_leaves_no_summary_behind():
     """The rows and the summary are one batch: when the server refuses a row,
     the document keeps the report it had, and no summary claims one whose rows
     are not there."""
-    service = _service(fails={'tokens.bulk_update': PlaidAPIError(
+    service = _service(fails={'tokens.bulk_create': PlaidAPIError(
         'HTTP 400 Metadata exceeds max key count of 500 at '
         'http://plaid.internal:8085/api/v1/tokens/bulk',
         status=400, url='http://plaid.internal:8085/api/v1/tokens/bulk', method='PATCH')})
     helper = servicetest.run(service, REQUEST)
 
     assert helper.errors == ['AnCast adjudication: HTTP 400 Metadata exceeds max key count of 500']
-    assert service.client.payloads('documents.patch_metadata') == []
+    assert service.client.payloads('tokens.bulk_create') == []
     assert service.client.payloads('tokens.bulk_update') == []
     assert service.client.kinds[-1] == 'unlock'
 
 
 def test_the_lock_is_released_when_the_write_fails():
-    service = _service(fails={'documents.patch_metadata': PlaidAPIError(
-        'HTTP 400 Bad metadata at http://plaid.internal:8085/api/v1/documents/d1/metadata',
-        status=400, url='http://plaid.internal:8085/api/v1/documents/d1/metadata',
+    service = _service(fails={'tokens.bulk_update': PlaidAPIError(
+        'HTTP 400 Bad metadata at http://plaid.internal:8085/api/v1/tokens/bulk',
+        status=400, url='http://plaid.internal:8085/api/v1/tokens/bulk',
         method='PATCH')})
     helper = servicetest.run(service, REQUEST)
 
@@ -919,7 +961,7 @@ def test_a_stop_that_lands_in_the_write_is_ignored_and_the_run_finishes():
     assert helper.cancelled, 'the stop never landed, so this proves nothing'
     [result] = helper.results
     assert result['status'] == 'success' and 'stopped' not in result
-    assert service.client.payloads('documents.patch_metadata') != []
+    assert service.client.payloads('tokens.bulk_update') != []
     assert service.client.kinds[-1] == 'unlock'
 
 

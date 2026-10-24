@@ -33,31 +33,29 @@ const { CompareEditor } = await import('./CompareEditor.jsx');
 
 const AT = '2026-09-28T05:22:03Z';
 
+// The report on the sentence's record (R33): its row and, as sentence 1's,
+// the summary.
 const documentWith = (thisGraph, otherGraph, live, summary = {}) => ({
   name: 'Lunch',
-  raw: {
-    metadata: {
-      umr: {
-        adjudication: {
-          version: 4,
-          tool: 'ancast 1.0',
-          against: { id: 'd2', name: 'lunch' },
-          at: AT,
-          scope: 'doc',
-          sentenceCount: 1,
-          scores: { sentence: 1, modal: null, temporal: null, coref: null, comprehensive: 1 },
-          ...summary,
-        },
-      },
-    },
-  },
+  raw: { metadata: {} },
   layerInfo: {
-    sentenceTokenLayer: {
+    nodeTokenLayer: {
       tokens: [
         {
+          id: 'rec-1',
           begin: 0,
           metadata: {
             umr: {
+              adjudicationSummary: {
+                version: 5,
+                tool: 'ancast 1.0',
+                against: { id: 'd2', name: 'lunch' },
+                at: AT,
+                scope: 'doc',
+                sentenceCount: 1,
+                scores: { sentence: 1, modal: null, temporal: null, coref: null, comprehensive: 1 },
+                ...summary,
+              },
               adjudication: {
                 at: AT,
                 index: 1,
@@ -79,7 +77,7 @@ const documentWith = (thisGraph, otherGraph, live, summary = {}) => ({
       ],
     },
   },
-  sentences: [{ index: 1, text: 'The boy goes to school' }],
+  sentences: [{ index: 1, text: 'The boy goes to school', recordToken: 'rec-1' }],
   penmanOf: () => live,
 });
 

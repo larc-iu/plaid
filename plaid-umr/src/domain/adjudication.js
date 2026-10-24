@@ -1,11 +1,13 @@
 // The comparison report a Compare run leaves on a document, and the reading
 // the Compare tab does of it. The report is written by the AnCast service
-// (services/umr_ancast.py), and this is the one place its shape is read. The
-// summary is the document's `metadata.umr.adjudication`, and each sentence's
-// row is its sentence token's, at the same path, so no one write grows with
-// the document:
+// (services/umr_ancast.py), and this is the one place its shape is read. It
+// is UMR's own data, so it lives on UMR's own records (R33), never on the
+// document or the sentence tokens every app shares: each sentence's row is
+// its record's `umr.adjudication`, and the summary is the first sentence's
+// record's `umr.adjudicationSummary`, so no one write grows with the
+// document:
 //
-//   document: { version, tool, serviceVersion, against: {id, name}, at, scope,
+//   summary:  { version, tool, serviceVersion, against: {id, name}, at, scope,
 //               sentenceCount,
 //               scores: { sentence, modal, temporal, coref, comprehensive },
 //               requestedBy?: {id, name} }
@@ -39,9 +41,11 @@
 // because both nodes were left once the others were paired.
 
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
+import { isRecordToken } from './sentenceGraph.js';
 
-/** The shape this reads. The service writes the same number. */
-const REPORT_VERSION = 4;
+/** The shape this reads. The service writes the same number. 5: the report
+ * is on UMR's records. */
+const REPORT_VERSION = 5;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -54,23 +58,31 @@ const readMatch = ([self, other, thisConcept, otherConcept, leftover]) => ({
 });
 
 /**
- * The report, summary and rows together, or null. `raw` is the document as
- * `documents.get` returns it, and `sentenceTokens` its sentence tokens: a
- * row's `index` is its sentence's place among them, in text order.
+ * The report, summary and rows together, or null. `nodeTokens` are the
+ * tokens of the document's UMR node layer, where the records are, and
+ * `sentences` the document's sentences in text order as
+ * `buildDocumentGraph` reads them, each naming its own record
+ * (`recordToken`): a row's `index` is its sentence's place among them. When
+ * more than one record holds a summary (a sentence merged since), the latest
+ * run's is read.
  */
-export const readAdjudication = (raw, sentenceTokens = []) => {
-  const summary = raw?.metadata?.[UMR_NAMESPACE]?.adjudication;
-  if (!isObject(summary) || summary.version !== REPORT_VERSION) return null;
-  const sentences = [];
-  [...(sentenceTokens || [])]
-    .sort((a, b) => a.begin - b.begin)
-    .forEach((token, i) => {
-      const row = token?.metadata?.[UMR_NAMESPACE]?.adjudication;
-      if (isObject(row) && row.at === summary.at) {
-        sentences.push({ ...row, index: i + 1, matches: (row.matches || []).map(readMatch) });
-      }
-    });
-  return { ...summary, sentences };
+export const readAdjudication = (nodeTokens = [], sentences = []) => {
+  const umrOf = (token) => token?.metadata?.[UMR_NAMESPACE];
+  const records = (nodeTokens || []).filter(isRecordToken);
+  const summary = records
+    .map((t) => umrOf(t).adjudicationSummary)
+    .filter((s) => isObject(s) && s.version === REPORT_VERSION)
+    .reduce((a, b) => (a && String(a.at) >= String(b.at) ? a : b), null);
+  if (!summary) return null;
+  const byId = new Map(records.map((t) => [t.id, t]));
+  const rows = [];
+  (sentences || []).forEach((sentence, i) => {
+    const row = umrOf(byId.get(sentence?.recordToken))?.adjudication;
+    if (isObject(row) && row.at === summary.at) {
+      rows.push({ ...row, index: i + 1, matches: (row.matches || []).map(readMatch) });
+    }
+  });
+  return { ...summary, sentences: rows };
 };
 
 /** Whether a pair's two concepts differ. */

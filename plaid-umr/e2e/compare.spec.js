@@ -2,6 +2,7 @@ import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
+import { buildDocumentGraph } from '../src/domain/sentenceGraph.js';
 
 const COPY_NAME = 'E2E UMR Copy';
 
@@ -25,7 +26,7 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
   const [firstVar, secondVar] = firstNodes.map((s) => s.metadata.umr.var);
   const [firstConcept, secondConcept] = firstNodes.map((s) => s.value);
   const report = {
-    version: 4,
+    version: 5,
     tool: 'ancast 0.1.1',
     against: { id: documentId, name: original.name },
     at: '2026-09-19T20:00:00Z',
@@ -63,34 +64,44 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
       },
     ],
   };
-  // Stored as the service stores it: the summary on the document, the row on
-  // the first sentence's token, carrying the run's `at`.
+  // Stored as the service stores it (R33): the row on the first sentence's
+  // record, carrying the run's `at`, and the summary beside it. A sentence
+  // with no record is given one, as the service gives it.
   const { sentences, ...summary } = report;
-  await client.documents.patchMetadata(copy.id, [
-    { op: 'set', path: ['umr', 'adjudication'], value: { ...summary, sentenceCount: 1 } },
-  ]);
   const copied = await client.documents.get(copy.id, true);
-  const [firstSentence] = [...getUmrLayerInfo(copied).sentenceTokenLayer.tokens].sort(
-    (a, b) => a.begin - b.begin,
-  );
-  await client.tokens.patchMetadata(firstSentence.id, [
-    {
-      op: 'set',
-      path: ['umr', 'adjudication'],
-      value: {
-        ...sentences[0],
-        // A match is stored as a list (see adjudication.js).
-        matches: sentences[0].matches.map((m) => [
-          m.this,
-          m.other,
-          m.thisConcept,
-          m.otherConcept,
-          m.leftover,
-        ]),
-        at: report.at,
-      },
+  const info = getUmrLayerInfo(copied);
+  const [firstSentence] = buildDocumentGraph(info).sentences;
+  const stored = {
+    adjudication: {
+      ...sentences[0],
+      // A match is stored as a list (see adjudication.js).
+      matches: sentences[0].matches.map((m) => [
+        m.this,
+        m.other,
+        m.thisConcept,
+        m.otherConcept,
+        m.leftover,
+      ]),
+      at: report.at,
     },
-  ]);
+    adjudicationSummary: { ...summary, sentenceCount: 1 },
+  };
+  if (firstSentence.recordToken) {
+    await client.tokens.patchMetadata(
+      firstSentence.recordToken,
+      Object.entries(stored).map(([key, value]) => ({ op: 'set', path: ['umr', key], value })),
+    );
+  } else {
+    await client.tokens.bulkCreate([
+      {
+        tokenLayerId: info.nodeTokenLayer.id,
+        text: info.textLayer.text.id,
+        begin: firstSentence.begin,
+        end: firstSentence.end,
+        metadata: { umr: stored },
+      },
+    ]);
+  }
 
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${copy.id}/compare`);
