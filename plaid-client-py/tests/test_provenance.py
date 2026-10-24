@@ -151,6 +151,29 @@ def test_value_edit_stamp_matches_the_js_client():
     assert c.value_edit_stamp(m, prob=0.15) == {**CONTRIB, 'provConfirmed': None, 'provProb': 0.15}
 
 
+# REV-PROV-5: provProb is a probability, in [0, 1], and both clients take
+# nothing else as one. Mirrors provenance.test.js row for row.
+ODD_PROBS = [2, -1, 1.0001, float('nan'), float('inf'), float('-inf'), '0.5', True, False, {}, [0.5]]
+
+
+def test_value_edit_stamp_takes_only_a_probability_as_a_picks_prob():
+    v = WriterPolicy(None)
+    m = stamp_inferred('service:x', prob=0.8)
+    for prob in ODD_PROBS:
+        assert v.value_edit_stamp(m, prob=prob) == {'provConfirmed': True, 'provProb': None}, prob
+    assert v.value_edit_stamp(m, prob=0) == {'provConfirmed': True, 'provProb': 0}
+    assert v.value_edit_stamp(m, prob=1) == {'provConfirmed': True, 'provProb': 1}
+    assert v.value_edit_stamp({'prov': 'inferred', 'provSource': 'x', 'provConfirmed': True}, prob=2) is None
+
+
+def test_a_machine_stamp_carries_prov_prob_only_when_it_is_a_probability():
+    for prob in ODD_PROBS:
+        assert stamp_inferred('service:p', prob=prob) == {'prov': 'inferred', 'provSource': 'service:p'}, prob
+        assert confirmed_inferred('service:p', prob=prob) == {
+            'prov': 'inferred', 'provSource': 'service:p', 'provConfirmed': True}, prob
+    assert stamp_inferred('service:p', prob=1) == {'prov': 'inferred', 'provSource': 'service:p', 'provProb': 1}
+
+
 def test_repoint_stamp_matches_the_js_client():
     m = confirmed_inferred('service:stanza', prob=0.9, detail={'value': 'obl'})
     assert WriterPolicy(None).repoint_stamp(m) == {

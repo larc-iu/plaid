@@ -139,16 +139,24 @@ CONTRIBUTED_STATE = 'contributed'
 VERIFIED = 'verified'
 
 
+def is_probability(p):
+    """Whether ``p`` is a probability, a finite number in [0, 1]: the only
+    thing written as ``provProb``. A stamp given anything else writes no
+    ``provProb``."""
+    return isinstance(p, (int, float)) and not isinstance(p, bool) and 0 <= p <= 1
+
+
 def stamp_inferred(source, prob=None, detail=None):
     """The metadata fragment a machine writer merges into everything it
     creates: ``{'prov': 'inferred', 'provSource': source}``.
 
     Optional prediction extras: ``prob`` is a probability in [0, 1] for the
     chosen value (omit unless it honestly is one — raw scores go in
-    ``detail``); ``detail`` is an open map of producer extras (top-k
-    alternatives, model version, raw scores; keep it small)."""
+    ``detail``, and anything else is left out); ``detail`` is an open map
+    of producer extras (top-k alternatives, model version, raw scores; keep
+    it small)."""
     frag = {PROV_KEY: INFERRED, PROV_SOURCE_KEY: source}
-    if prob is not None:
+    if is_probability(prob):
         frag[PROV_PROB_KEY] = prob
     if detail:
         frag[PROV_DETAIL_KEY] = detail
@@ -368,14 +376,14 @@ class WriterPolicy:
         plus what the edit means for ``provProb``, which is the producer's
         probability for the value it describes. A pick of one of the
         alternatives a producer weighed (``prob``, its probability) writes
-        that number. A typed value that ``changes`` the value removes it. A
+        that number, when it is a probability in [0, 1], and is a typed value
+        otherwise. A typed value that ``changes`` the value removes it. A
         re-typed value that changes nothing keeps it. ``provDetail`` stays, as
         history. ``None`` when there is nothing to merge."""
         stamp = self.edit_stamp(metadata)
         if not changes:
             return stamp
-        if (isinstance(prob, (int, float)) and not isinstance(prob, bool)
-                and math.isfinite(prob)):
+        if is_probability(prob):
             return {**(stamp or {}), PROV_PROB_KEY: prob}
         if (metadata or {}).get(PROV_PROB_KEY) is None:
             return stamp

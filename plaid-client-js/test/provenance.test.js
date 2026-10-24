@@ -231,6 +231,32 @@ test('valueEditStamp: a typed change drops provProb, a pick writes its own, a re
   assert.equal('provDetail' in v.valueEditStamp(machine), false);
 });
 
+// REV-PROV-5: provProb is a probability, in [0, 1], and both clients take
+// nothing else as one. Mirrored row for row in test_provenance.py.
+const ODD_PROBS = [2, -1, 1.0001, NaN, Infinity, -Infinity, '0.5', true, false, {}, [0.5]];
+
+test('valueEditStamp takes only a probability in [0, 1] as a pick\'s prob', () => {
+  const v = writerPolicy(null);
+  const machine = stampInferred('service:x', { prob: 0.8 });
+  for (const prob of ODD_PROBS)
+    assert.deepEqual(v.valueEditStamp(machine, { prob }), { provConfirmed: true, provProb: null },
+      String(prob));
+  assert.deepEqual(v.valueEditStamp(machine, { prob: 0 }), { provConfirmed: true, provProb: 0 });
+  assert.deepEqual(v.valueEditStamp(machine, { prob: 1 }), { provConfirmed: true, provProb: 1 });
+  assert.equal(v.valueEditStamp({ prov: 'inferred', provSource: 'x', provConfirmed: true }, { prob: 2 }), null);
+});
+
+test('a machine stamp carries provProb only when it is a probability in [0, 1]', () => {
+  for (const prob of ODD_PROBS) {
+    assert.deepEqual(stampInferred('service:p', { prob }), { prov: 'inferred', provSource: 'service:p' },
+      String(prob));
+    assert.deepEqual(confirmedInferred('service:p', { prob }),
+      { prov: 'inferred', provSource: 'service:p', provConfirmed: true }, String(prob));
+  }
+  assert.deepEqual(stampInferred('service:p', { prob: 1 }),
+    { prov: 'inferred', provSource: 'service:p', provProb: 1 });
+});
+
 test('repointStamp: a moved head makes the relation the writer\'s own', () => {
   const machine = confirmedInferred('service:stanza', { prob: 0.9, detail: { value: 'obl' } });
   assert.deepEqual(writerPolicy(null).repointStamp(machine),

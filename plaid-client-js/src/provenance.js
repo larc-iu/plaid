@@ -144,18 +144,27 @@ export const PROV_STATES = Object.freeze({
 });
 
 /**
+ * Whether `p` is a probability, a finite number in [0, 1]: the only thing
+ * written as provProb. A stamp given anything else writes no provProb.
+ * @param {*} p
+ * @returns {boolean}
+ */
+const isProbability = (p) => typeof p === 'number' && p >= 0 && p <= 1;
+
+/**
  * The metadata fragment a machine writer merges into everything it creates.
  * @param {string} source - producer id, e.g. serviceSource(serviceId)
  * @param {Object} [extras] - optional prediction extras:
  * @param {number} [extras.prob] - probability in [0,1] for the chosen value
- *   (omit unless it honestly is one — raw scores go in detail)
+ *   (omit unless it honestly is one — raw scores go in detail). Anything
+ *   else is left out.
  * @param {Object} [extras.detail] - open map of producer extras (top-k
  *   alternatives, model version, raw scores; keep it small)
  */
 export const stampInferred = (source, { prob, detail } = {}) => ({
   [PROV.key]: PROV.INFERRED,
   [PROV.sourceKey]: source,
-  ...(prob !== undefined && prob !== null ? { [PROV.probKey]: prob } : {}),
+  ...(isProbability(prob) ? { [PROV.probKey]: prob } : {}),
   ...(detail ? { [PROV.detailKey]: detail } : {}),
 });
 
@@ -450,7 +459,8 @@ export const writerPolicy = (contributorId = null) => {
      * The fragment a person's edit of a VALUE merges: editStamp, plus what
      * the edit means for provProb, which is the producer's probability for
      * the value it describes. A pick of one of the alternatives a producer
-     * weighed (`prob`, its probability) writes that number. A typed value
+     * weighed (`prob`, its probability) writes that number, when it is a
+     * probability in [0, 1], and is a typed value otherwise. A typed value
      * that `changes` the value removes it. A re-typed value that changes
      * nothing keeps it. provDetail stays, as history. Null when there is
      * nothing to merge.
@@ -458,8 +468,7 @@ export const writerPolicy = (contributorId = null) => {
     valueEditStamp: (metadata, { changes = true, prob = null } = {}) => {
       const stamp = editStamp(metadata);
       if (!changes) return stamp;
-      if (typeof prob === 'number' && Number.isFinite(prob))
-        return { ...(stamp || {}), [PROV.probKey]: prob };
+      if (isProbability(prob)) return { ...(stamp || {}), [PROV.probKey]: prob };
       if (metadata?.[PROV.probKey] == null) return stamp;
       return { ...(stamp || {}), [PROV.probKey]: null };
     },
