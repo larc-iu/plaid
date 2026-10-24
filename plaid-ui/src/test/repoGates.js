@@ -41,7 +41,7 @@ export const gitGrep = (root, patterns, pathspecs) => {
  * or on the line above, the reason at least two words, so the reason stays in
  * the code and moves with it.
  */
-export const markerPattern = (tag) => new RegExp(`\\b${tag}:\\s*\\S+(\\s+\\S+)+`);
+const markerPattern = (tag) => new RegExp(`\\b${tag}:\\s*\\S+(\\s+\\S+)+`);
 
 /**
  * The hits that carry no marker, as `file:line: text`. A run of hits on
