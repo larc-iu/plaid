@@ -187,17 +187,17 @@ describe('labels and form groups', () => {
 
   it('groups the form: built-ins with their variants, then custom, then references', () => {
     const fields = normalizeVocabFields({
-      pos: { inline: true },
-      'gloss (en)': { inline: false },
+      pos: { inline: true, role: 'pos' },
+      'gloss (en)': { inline: false, role: 'gloss', lang: 'en' },
       etymology: { inline: false, scope: 'entry' },
       'Parsing Note': { inline: false, lang: 'pt' },
       morphType: { inline: false },
       lexemeForm: { inline: false },
-      status: { inline: false, tagset: 'Status' },
-      'definition (en)': { inline: false },
-      gloss: { inline: true, lang: 'pt' },
+      status: { inline: false, tagset: 'Status', role: 'status' },
+      'definition (en)': { inline: false, role: 'definition', lang: 'en' },
+      gloss: { inline: true, lang: 'pt', role: 'gloss' },
       variantOf: { inline: false, type: 'item' },
-      definition: { inline: false },
+      definition: { inline: false, role: 'definition' },
       seeAlso: { inline: false, type: 'item', many: true },
     });
     const g = groupFieldsForForm(fields, { statusField: 'status' });
@@ -215,6 +215,30 @@ describe('labels and form groups', () => {
     expect(g.status?.name).toBe('status');
     // Without a status field named, status is an ordinary custom field.
     expect(groupFieldsForForm(fields).custom.map((f) => f.name)).toContain('status');
+  });
+
+  it("puts a field's language variants by their stored role and language, never by a name", () => {
+    const fields = normalizeVocabFields({
+      note: { inline: false },
+      etymology: { inline: false },
+      'note (fr)': { inline: false, lang: 'fr' },
+      gloss: { inline: true, role: 'gloss' },
+      pos: { inline: true, role: 'pos' },
+      Glosa: { inline: false, role: 'gloss', lang: 'es' },
+      'gloss (de)': { inline: false },
+    });
+    const g = groupFieldsForForm(fields);
+    // Glosa holds the gloss role in another language, so it follows gloss,
+    // and "gloss (de)", which holds no role, is no variant of it.
+    expect(g.builtIn.map((f) => f.name)).toEqual([
+      'morphType',
+      'gloss',
+      'Glosa',
+      'pos',
+      'gloss (de)',
+    ]);
+    // A name's suffix says nothing: "note (fr)" keeps its config place.
+    expect(g.custom.map((f) => f.name)).toEqual(['note', 'etymology', 'note (fr)']);
   });
 });
 

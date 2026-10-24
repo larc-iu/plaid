@@ -189,21 +189,21 @@ export const fieldLabel = (field) => {
  * fields, then the reference fields, with the named status field (a
  * dictionary's) pulled out to sit in the header. Within a group the config
  * order holds, except that a field's language variants follow it.
+ *
+ * A field's language variants are the fields holding its stored role in
+ * another stored language ("Glosa", role gloss, lang es, after "gloss"). A
+ * field's name says nothing about it: a field with no role has no variants.
  */
 export const groupFieldsForForm = (fields, { statusField = null } = {}) => {
   const out = { builtIn: [], custom: [], refs: [], status: null };
   const placed = new Set();
+  const isVariantOf = (g, f) => !!f.role && g.role === f.role && !!g.lang && g.lang !== f.lang;
   const withVariants = (f, list) => {
     if (placed.has(f.name)) return;
     placed.add(f.name);
     list.push(f);
     for (const g of fields) {
-      if (
-        !placed.has(g.name) &&
-        // name-ok: entry field key
-        g.name !== f.name &&
-        fieldBaseName(g.name) === fieldBaseName(f.name)
-      ) {
+      if (!placed.has(g.name) && isVariantOf(g, f)) {
         placed.add(g.name);
         list.push(g);
       }
@@ -215,15 +215,12 @@ export const groupFieldsForForm = (fields, { statusField = null } = {}) => {
       out.status = f;
     }
   }
-  // Bare built-in names first in core order, so "Gloss (en)" follows "Gloss"
-  // even when the config lists it earlier.
+  // The built-in keys themselves first, in core order, each with its
+  // variants, then any other built-in field in config order.
   const coreOrder = [...BUILT_IN_BASES];
+  const rank = (f) => (coreOrder.includes(f.name) ? coreOrder.indexOf(f.name) : coreOrder.length);
   const builtIn = (fields || []).filter((f) => isBuiltInField(f.name) && !placed.has(f.name));
-  builtIn.sort(
-    (a, b) =>
-      coreOrder.indexOf(fieldBaseName(a.name)) - coreOrder.indexOf(fieldBaseName(b.name)) ||
-      (fieldBaseName(a.name) === a.name ? 0 : 1) - (fieldBaseName(b.name) === b.name ? 0 : 1),
-  );
+  builtIn.sort((a, b) => rank(a) - rank(b));
   for (const f of builtIn) withVariants(f, out.builtIn);
   for (const f of fields || []) {
     if (placed.has(f.name) || f.type === FIELD_TYPES.ITEM) continue;
