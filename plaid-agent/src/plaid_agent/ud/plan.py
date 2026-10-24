@@ -1038,10 +1038,12 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int,
     from plaid_client.services import request_service
     before = _version(client, document_id)
     try:
-        request_service(client, op['project_id'], op['service_id'],
-                        {'document_id': document_id, 'language': op['language'],
-                         'overwrite': bool(op.get('overwrite'))},
-                        timeout=PARSE_SILENCE_S)
+        # The parse is the parser's own run (R30): its writes are recorded as
+        # the parser's, not folded into the plan's operation.
+        result = request_service(client, op['project_id'], op['service_id'],
+                                 {'document_id': document_id, 'language': op['language'],
+                                  'overwrite': bool(op.get('overwrite'))},
+                                 timeout=PARSE_SILENCE_S, no_operation=True)
     except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
         name = _doc_name(client, document_id)
         if isinstance(e, TimeoutError) or getattr(e, 'pending', False):
@@ -1064,6 +1066,9 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int,
         raise PlanError(said, b.applied, total, partly=[row] if row is not None else [],
                         partly_count=(int(counted.group(1)), int(counted.group(2)), 'sentences')
                         if counted and moved and one else None) from e
+    # An empty run is an ordinary result with a reason code (R23), worded here.
+    if isinstance(result, dict) and result.get('reason') == 'no-text':
+        notes.append(f'{_doc_name(client, document_id)} has no text to parse')
 
 
 def _version(client, document_id: str) -> Optional[int]:
@@ -1076,7 +1081,8 @@ def _version(client, document_id: str) -> Optional[int]:
 
 def _doc_name(client, document_id: str) -> str:
     """A document as the user knows it, for a line they read: by name, never
-    by id. Only a failure asks, so the read is not on the way of a parse."""
+    by id. Only a failure or an empty run asks, so the read is not on the way
+    of a parse."""
     try:
         name = client.documents.get(document_id).get('name')
     except Exception:  # noqa: BLE001 - a name is a nicety, never a second failure

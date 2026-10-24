@@ -810,6 +810,21 @@ def test_applying_a_parse_asks_the_service_and_counts_it(ws, monkeypatch):
     assert (pid, sid) == (PID, 'stanza-parser')
     assert data == {'document_id': 'ud1', 'language': 'es', 'overwrite': False}
     assert kw['timeout'] == 600          # silence, not elapsed time
+    # R30: the parse is the parser's own service-run operation, not a part of
+    # the plan's.
+    assert kw['no_operation'] is True
+
+
+def test_a_parse_of_a_document_with_no_text_says_so(ws, monkeypatch):
+    # REV-W3F F4: since R23 the parser answers a document with no text with an
+    # ordinary result, so the plan says it.
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    call_tool(ws, 'run_parse', {'documents': ['Viaje'], 'language': 'es'})
+    monkeypatch.setattr('plaid_client.services.request_service',
+                        lambda *a, **k: {'mode': 'full', 'parsed_sentences': 0, 'skipped_sentences': 0,
+                                         'reason': 'no-text'})
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert counts['notes'] == ['"Viaje" has no text to parse']
 
 
 def test_a_parser_that_goes_quiet_is_reported_as_maybe_still_running(ws, monkeypatch):
