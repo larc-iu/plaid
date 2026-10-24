@@ -14,7 +14,7 @@ import { getUmrLayerInfo } from '../../src/utils/umrLayerUtils.js';
 
 const [core, token, projectId, documentId, file] = process.argv.slice(2);
 const client = new PlaidClient(core, token);
-await adoptSubstrate(client, getUmrLayerInfo(await client.projects.get(projectId)));
+await adoptSubstrate(client, { id: projectId });
 const info = getUmrLayerInfo(await client.projects.get(projectId));
 const doc = await client.documents.get(documentId);
 const r = await importUmrDocument(client, projectId, doc.name, readFileSync(file, 'utf8'), info, {

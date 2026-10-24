@@ -1,5 +1,6 @@
-# Hard tier. Multi-turn, a plan carried into the next message (resume_plan,
-# from the assistant survey, where a follow-up's plan replaced a waiting one
+# Hard tier. Multi-turn, a plan carried into the next message (turn 2 stages
+# turn 1's changes again beside its own, since a plan is fixed once its turn
+# ends. From the assistant survey, where a follow-up's plan replaced a waiting one
 # and its changes were lost). Turn 1 asks for
 # INESS to become INE in all five texts (28 glosses) and is NOT approved.
 # Turn 2 adds SPSS to SRESS (16 glosses) and its plan is approved. Right:

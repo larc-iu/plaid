@@ -1,5 +1,6 @@
 # Hard tier. Multi-turn, a plan carried into the next message in the ud
-# assistant (resume_plan, from the assistant survey).
+# assistant (turn 2 stages turn 1's fix again beside its own, since a plan is
+# fixed once its turn ends. From the assistant survey).
 # Setup writes every Aspect=Imp as Aspect=Impf (57 words, as
 # ud-ru-corpus-aspect) and tags the 11 forms of быть VERB (as
 # ud-ru-aux-multiturn-hard). Turn 1 asks for the aspect fix and is NOT

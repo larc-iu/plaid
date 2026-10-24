@@ -1,5 +1,6 @@
-# Hard tier. Multi-turn, part of a waiting plan dropped by field (drop_planned
-# field=, or resume_plan then drop_planned, or staging the kept part again).
+# Hard tier. Multi-turn, part of a waiting plan dropped by field (a plan is
+# fixed once its turn ends, so turn 2 stages the kept part again in full,
+# read off the waiting card with plan_status).
 # Turn 1 asks for CCNJ to become CONJ in every text (45 glosses) and two new
 # translations in Gitksan text 1, and is NOT approved. Turn 2 drops the
 # translations. Right: the 45 CONJ glosses and no translation changed. Turn 2

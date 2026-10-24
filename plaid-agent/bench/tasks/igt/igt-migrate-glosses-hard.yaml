@@ -1,7 +1,7 @@
 # Hard tier. A gloss convention migration over many turns, on public data. Twelve gloss labels are renamed across five
 # texts, about 464 values. Each rename is asked in its own turn and not
-# approved, so each turn's plan replaces the last (or, with resume_plan,
-# grows: either is right). Then all twelve are asked
+# approved, so each turn's plan replaces the last (or, staging the earlier
+# renames again, grows: either is right). Then all twelve are asked
 # at once and approved. What it measures besides the pass: the record's size,
 # the tool results prune drops, and whether the last plan holds all twelve.
 # Traps: labels are renamed only as whole labels. 3AUG must not touch 3AUGIS,
@@ -36,7 +36,7 @@ turns:
   - say: >-
       Good. Now plan all twelve of those renames together, in one plan, so I
       can approve them in one go.
-    # open: a model that kept every rename on one card with resume_plan
+    # open: a model that staged every earlier rename again in each turn
     # has nothing to stage here and rightly says the card already holds all
     # twelve. approve: true approves only a plan made in this turn, and would
     # fail such a run with a right card waiting.
