@@ -14,6 +14,8 @@ sees. A parameter's ``key`` is a string VALUE and travels verbatim, so read each
 argument back under the same key you declared.
 """
 
+import math
+
 
 class TASKS:
     """Controlled task vocabulary — the fixed integration-point goals.
@@ -249,7 +251,10 @@ def coerce(parameters, raw):
             else:
                 try:
                     v = float(v)
-                    if v.is_integer():
+                    # nan and inf are no number, as JS Number('inf') is NaN.
+                    if not math.isfinite(v):
+                        v = _default_for_param(param)
+                    elif v.is_integer():
                         v = int(v)
                 except (TypeError, ValueError):
                     v = _default_for_param(param)

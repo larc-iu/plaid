@@ -112,6 +112,16 @@ def test_coerce_blank_number_falls_back_to_default():
     assert v({'beam': '99'}) == 10    # clamped to max
 
 
+def test_coerce_a_number_that_is_not_finite_falls_back_to_default():
+    # JS Number('inf') is NaN, which gives the default. Python's float takes
+    # 'nan', 'inf' and 'infinity', so it would clamp nan to the min and keep
+    # an infinite value that int() then refuses.
+    schema = [Param.number('examples', 'Examples', default=8, min=0, max=50)]
+    v = lambda raw: coerce(schema, raw)[0]['examples']
+    for raw in ('nan', 'inf', '-inf', 'Infinity', float('nan'), float('inf')):
+        assert v({'examples': raw}) == 8, raw
+
+
 def test_enum_out_of_range_default_never_escapes():
     schema = [Param.enum('x', 'X', ['en', 'de'], default='klingon')]
     assert default_values(schema)['x'] == 'en'
