@@ -645,15 +645,17 @@ def test_a_refused_relabel_after_a_block_that_ended_well_still_raises():
             op.set_message('Merged 2')
 
 
-# The kinds are the server's closed list (plaid.sql.operation-group/kinds).
-# The client refuses any other when the operation begins, so a script with a
-# misspelt kind stops before its first write instead of failing at it.
+# The kinds are the server's closed list (plaid.sql.operation-group/kinds),
+# which core's operation-kinds-test holds operation_kinds.json to. The client
+# refuses any other when the operation begins, so a script with a misspelt kind
+# stops before its first write instead of failing at it.
+_KINDS_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'plaid-core', 'src', 'test', 'plaid', 'sql',
+                           'operation_kinds.json')
+
+
 def _core_kinds():
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'main' / 'plaid' / 'sql'
-           / 'operation_group.clj').read_text()
-    body = re.search(r'\(def kinds.*?#\{([^}]*)\}', src, re.S).group(1)
-    return re.findall(r'"([^"]+)"', body)
+    with open(_KINDS_FILE, encoding='utf-8') as f:
+        return json.load(f)['kinds']
 
 
 def test_begin_operation_takes_every_kind_the_server_takes():
@@ -670,7 +672,6 @@ def test_begin_operation_takes_every_kind_the_server_takes():
 # alone, or to the manual alone, passed everything.
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 _KIND_SOURCES = {
-    'core': 'plaid-core/src/main/plaid/sql/operation_group.clj',
     'js': 'plaid-client-js/src/index.js',
     'python': 'plaid-client-py/src/plaid_client/client.py',
     'manual': 'plaid-core/docs/manual.adoc',
@@ -679,7 +680,6 @@ _KIND_SOURCES = {
 
 def _kind_lists(texts):
     """Each written list of operation kinds, read out of its file's text."""
-    core = re.search(r'\(def kinds.*?#\{([^}]*)\}', texts['core'], re.S).group(1)
     js_array = re.search(r'const OPERATION_KINDS = \[([^\]]*)\]', texts['js']).group(1)
     js_type = re.search(r'@typedef \{([^}]*)\} OperationKind', texts['js']).group(1)
     py = re.search(r'_OPERATION_KINDS = \(([^)]*)\)', texts['python']).group(1)
@@ -689,7 +689,7 @@ def _kind_lists(texts):
     # cell is the kind.
     rows = [block.strip().split('\n')[0] for block in table.strip().split('\n\n')[1:]]
     return {
-        'core operation_group.clj kinds': re.findall(r'"([^"]+)"', core),
+        'core operation_kinds.json': texts['core'],
         'plaid-client-js OPERATION_KINDS': re.findall(r'"([^"]+)"', js_array),
         'plaid-client-js OperationKind typedef': re.findall(r'"([^"]+)"', js_type),
         'plaid-client-py _OPERATION_KINDS': re.findall(r"'([^']+)'", py),
@@ -698,13 +698,14 @@ def _kind_lists(texts):
 
 
 def _kind_disagreements(lists):
-    want = sorted(lists['core operation_group.clj kinds'])
+    want = sorted(lists['core operation_kinds.json'])
     return [f'{name} has {sorted(kinds)}, core has {want}'
             for name, kinds in lists.items() if sorted(kinds) != want or len(set(kinds)) != len(kinds)]
 
 
 def _kind_texts():
-    return {k: open(os.path.join(_REPO, p), encoding='utf-8').read() for k, p in _KIND_SOURCES.items()}
+    texts = {k: open(os.path.join(_REPO, p), encoding='utf-8').read() for k, p in _KIND_SOURCES.items()}
+    return {**texts, 'core': _core_kinds()}
 
 
 def test_every_list_of_operation_kinds_is_cores():
@@ -713,7 +714,7 @@ def test_every_list_of_operation_kinds_is_cores():
     problems = _kind_disagreements(lists)
     assert problems == [], (
         'The operation kinds disagree:\n  ' + '\n  '.join(problems) + '\nA kind is added or removed in '
-        'all five at once: core plaid.sql.operation-group/kinds, plaid-client-js OPERATION_KINDS and the '
+        'all five at once: core plaid.sql.operation-group/kinds (and its case file, operation_kinds.json), plaid-client-js OPERATION_KINDS and the '
         'OperationKind typedef, plaid-client-py _OPERATION_KINDS, and the manual\'s "Kinds of operation" table.')
 
 

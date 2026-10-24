@@ -473,18 +473,17 @@ test('withOperation: a refused relabel does not replace the error fn threw', asy
   assert.strictEqual(client.operationGroup, null);
 });
 
-// The kinds are the server's closed list (plaid.sql.operation-group/kinds).
-// The client refuses any other when the operation begins, so a script with a
-// misspelt kind stops before its first write instead of failing at it.
+// The kinds are the server's closed list (plaid.sql.operation-group/kinds),
+// which core's operation-kinds-test holds operation_kinds.json to. The client
+// refuses any other when the operation begins, so a script with a misspelt
+// kind stops before its first write instead of failing at it.
 
-const CORE_KINDS = (() => {
-  const src = readFileSync(
-    new URL('../../plaid-core/src/main/plaid/sql/operation_group.clj', import.meta.url),
+const CORE_KINDS = JSON.parse(
+  readFileSync(
+    new URL('../../plaid-core/src/test/plaid/sql/operation_kinds.json', import.meta.url),
     'utf8',
-  );
-  const set = src.match(/\(def kinds[\s\S]*?#\{([^}]*)\}/)[1];
-  return [...set.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-})();
+  ),
+).kinds;
 
 test('beginOperation takes every kind the server takes', () => {
   assert.ok(CORE_KINDS.length >= 7, CORE_KINDS.join(','));

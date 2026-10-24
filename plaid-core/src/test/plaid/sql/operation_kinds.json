@@ -1,0 +1,4 @@
+{
+  "about": "The operation kinds core takes (plaid.sql.operation-group/kinds), the whole closed list. plaid-core's operation-kinds-test fails when this file and the set differ, and plaid-client-js and plaid-client-py read it rather than core's source.",
+  "kinds": ["assistant-plan", "service-run", "import", "bulk-edit", "guess-adoption", "repair", "review"]
+}

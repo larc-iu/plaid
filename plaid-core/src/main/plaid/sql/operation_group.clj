@@ -18,8 +18,9 @@
   kind: `assistant_plan` next to `assistant-plan` would split one count in
   two, and nothing would say so. A new kind is a new entry here, in the
   manual's list (\"Kinds of operation\"), and in both clients' lists, which
-  refuse any other kind when an operation begins (their operation tests read
-  this set).
+  refuse any other kind when an operation begins. A core test holds the
+  case file src/test/plaid/sql/operation_kinds.json to this set, and the
+  clients' tests read that file.
 
     assistant-plan  an approved assistant plan being applied
     service-run     one run of a service, the service's writes included
