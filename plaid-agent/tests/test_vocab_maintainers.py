@@ -115,6 +115,20 @@ def test_a_writer_still_creates_entries_by_their_form_and_links_words_to_them():
     assert made['metadata'] == {}
 
 
+def test_a_writer_creates_an_entry_from_a_marked_form_as_the_apps_create_does():
+    """The app's Create turns "-s" into the suffix "s" for any writer
+    (vocab.js asEntry), so the type the markers name is no type given
+    (REV-R4-AGENT F2)."""
+    w = _ws(['owner@x.org'])
+    out = call_tool(w, 'create_entry', {'form': '-s'})
+    assert 'Planned' in out, out
+    [made] = [op for op in w.ops if op['kind'] == 'create_entry']
+    assert made['form'] == 's' and made['metadata'] == {'morphType': 'suffix'}
+    # A type or a field given alongside is still the maintainer's.
+    for args in ({'form': '-s', 'type': 'suffix'}, {'form': '-s', 'fields': {'gloss': 'PL'}}):
+        assert FORM_ONLY in call_tool(w, 'create_entry', args), args
+
+
 def test_a_writers_new_phrase_entry_takes_its_type_as_the_app_gives_it():
     w = _ws(['owner@x.org'])
     for t in ('phrase', 'discontiguous phrase'):

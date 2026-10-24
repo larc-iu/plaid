@@ -818,12 +818,15 @@ class Workspace(BaseWorkspace):
         a merge (it deletes the entry it folds away), a new sense, which
         changes the entry it is added under, and a new entry that carries
         anything but its form (a field or a type), which the app's Create
-        never sends. A phrase entry's type is the exception: the app's Create
-        over several words sends it (``mweMorphType``)."""
+        never sends. A phrase entry's type is an exception: the app's Create
+        over several words sends it (``mweMorphType``). So is the type a
+        form's markers name (``typed_from_form``), which the app's Create
+        takes from them for any writer (``asEntry``)."""
         kind = op.get('kind')
         if kind == 'create_entry':
             meta = op.get('metadata') or {}
-            if not meta or (set(meta) == {'morphType'} and meta['morphType'] in PHRASE_TYPES):
+            if not meta or (set(meta) == {'morphType'}
+                            and (meta['morphType'] in PHRASE_TYPES or op.get('typed_from_form'))):
                 return None
             return next((v for v in self.project.vocabs if v['id'] == op.get('vocab_id')), None)
         spec = KIND.get(kind)

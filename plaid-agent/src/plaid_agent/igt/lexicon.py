@@ -55,6 +55,10 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     form, typed = stored_entry_form(form, metadata.get('morphType'))
     if typed:
         metadata['morphType'] = typed
+    # A form alone whose markers named its type is what the app's Create
+    # sends any writer ("-s" as the suffix "s", vocab.js asEntry), so it is
+    # still a form-only create (Workspace.lexicon_maintained_by).
+    from_form = {'typed_from_form': True} if typed and not morph and not metadata.keys() - {'morphType'} else {}
     if parent is not None:
         # The tree is the lexicon as the SERVER has it, so the senses this plan
         # has already added to the same entry are counted here as well: without
@@ -78,6 +82,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     with ws.staging():
         ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
         ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
+                   **from_form,
                    **_new_entry_label(v, view, form, metadata)})
     return ws.planned_note(1) + f'\nentry_id: {key}  (use it to link this entry in the same plan)'
 
