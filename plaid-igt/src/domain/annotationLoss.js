@@ -132,10 +132,12 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
  * Count the annotation loss a SPLIT of `word` causes. The split deletes the
  * word's coincident morphemes in its batch (a boundary change invalidates
  * their analysis), and with them their spans, the relations on those and
- * their vocabulary links. Another app's token nested under the word is split
- * with it by the server, not deleted, so unlike a merge (where a layer that
- * keeps its tokens coextensive with the words loses them) nothing else is
- * counted.
+ * their vocabulary links. The server deletes nothing of another app's
+ * under the word: a token there is cut in two with it, and the two words of
+ * a multi-word token (ud's syntactic words) go one to each half, each with
+ * its annotations (plaid-core `split-straddlers!`). So unlike a merge (where
+ * a layer that keeps its tokens coextensive with the words loses them)
+ * nothing else is counted.
  *
  * @returns {{annotations: number, links: number}}
  */

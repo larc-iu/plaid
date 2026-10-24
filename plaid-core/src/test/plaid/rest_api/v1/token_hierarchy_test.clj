@@ -255,6 +255,39 @@
           (is (= [[0 2] [2 3] [3 4]] (layer-tokens doc morpheme))
               "straddler split produced a new [2,3] morpheme covering the freed region"))))))
 
+(deftest split-deals-out-the-syntactic-words-of-a-multi-word-token
+  ;; HUNT-udumr 1: splitting a word that holds a UD multi-word token (`del` =
+  ;; `de` + `el`) gives one syntactic word to each half, as a typed space does
+  ;; (`split-spaced-words`), instead of cutting both words in two. Three
+  ;; words stay together on the left and the right gets one new word, and a
+  ;; single word is cut as before.
+  (let [{:keys [doc text-id sentence word text-layer]} (setup-hierarchy "del mar sol")
+        sw (-> (create-token-layer-opts admin-request text-layer "Syntactic words"
+                                        {:overlap-mode "any" :parent-token-layer-id word}) :body :id)
+        _ (assert-status 204 (api-call admin-request {:method :put
+                                                      :path (str "/api/v1/token-layers/" sw "/config/plaid/role")
+                                                      :body "syntactic-word"}))
+        _ (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 11]])))
+        [del mar sol] (-> (bulk-create-tokens admin-request (toks word text-id [[0 3] [4 7] [8 11]])) :body :ids)
+        ;; created out of precedence order, so the deal follows precedence
+        el (-> (create-token admin-request sw text-id 0 3 2) :body :id)
+        de (-> (create-token admin-request sw text-id 0 3 1) :body :id)
+        _ (create-token admin-request sw text-id 4 7 1)
+        sols (mapv #(-> (create-token admin-request sw text-id 8 11 %) :body :id) [1 2 3])
+        extent (fn [id] (let [t (:body (get-token admin-request id))] [(:token/begin t) (:token/end t)]))]
+    (testing "a split word's two syntactic words go one to each half"
+      (assert-created (split-token admin-request del 2))
+      (is (= [0 2] (extent de)))
+      (is (= [2 3] (extent el)))
+      (is (= [[0 2] [2 3] [4 7] [8 11] [8 11] [8 11]] (layer-tokens doc sw)) "no word is made, none is cut"))
+    (testing "a single syntactic word is cut as before"
+      (assert-created (split-token admin-request mar 5))
+      (is (= [[0 2] [2 3] [4 5] [5 7] [8 11] [8 11] [8 11]] (layer-tokens doc sw))))
+    (testing "three syntactic words stay on the left, the right gets one new word"
+      (assert-created (split-token admin-request sol 9))
+      (is (every? #(= [8 9] (extent %)) sols))
+      (is (= [[0 2] [2 3] [4 5] [5 7] [8 9] [8 9] [8 9] [9 11]] (layer-tokens doc sw))))))
+
 (deftest parent-without-children-can-be-deleted
   (let [{:keys [text-id sentence word]} (setup-hierarchy "dogs run")]
     (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 8]])))
