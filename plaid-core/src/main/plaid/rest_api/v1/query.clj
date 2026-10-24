@@ -53,7 +53,8 @@
                           "Body {layers: [ids], value: {regex}}. Returns {results: [[layerId, documentId, count]]}, "
                           "a document with tokens of the layer and no match counting 0. Layers you cannot read are left out. "
                           "Each text is read once, so it stays fast on a long document where the query language "
-                          "slices every token's surface out of its text. It writes nothing.")
+                          "slices every token's surface out of its text. It does not wait for a turn among the large queries, so a full queue of them never refuses it. "
+                          "It writes nothing.")
             :plaid/idempotency :read
             :openapi {:security [{:auth []}]}
             :parameters {:body any?}

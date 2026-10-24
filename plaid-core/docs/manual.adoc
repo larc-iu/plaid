@@ -612,7 +612,7 @@ In JavaScript, `filterServicesByTask` picks the services for a slot, and `getPar
 A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write, for the whole run.
 No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked, and it needs no check that the document is as it read it.
 The lock is renewed for as long as the run takes, and the requester's own app keeps the document read-only until the run ends.
-A change made to the project rather than to the document still reaches it: renaming a vocabulary the document links to, changing that vocabulary's configuration, deleting a vocabulary or a layer.
+A change made to the project rather than to the document still reaches it: renaming, deleting or merging the entries of a vocabulary the document links to, renaming that vocabulary, changing its configuration or deleting it, unlinking it from the project, or deleting a layer.
 Each moves the document to a new version, and the run's next write is then refused with a conflict (409).
 
 Load a model before taking the lock, so no one waits on the document while it loads or downloads.
@@ -717,6 +717,8 @@ A service id on a project belongs to the account that first connected it.
 Another account connecting it is refused with 403, and the refusal names the account it belongs to.
 An administrator releases the id with `DELETE /api/v1/projects/{id}/services/{service-id}/owner` (`releaseService` / `release_service`), and the next account to connect it then holds it.
 Forgetting an offline service does not release its id.
+Deactivating the account releases every id it holds.
+The project's services listing (`GET /api/v1/projects/{id}/services`) names the account holding each id in `claimed-by`, absent when no account holds it.
 Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
 `registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 
