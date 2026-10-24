@@ -48,7 +48,7 @@ class AlignmentProcessor:
     def process_alignments(self, client, document_id: str, alignments: List[Alignment],
                           text_layer_id: str, alignment_token_layer_id: str,
                           sentence_token_layer_id: Optional[str], response_helper,
-                          prov_source: Optional[str] = None, overwrite: bool = False,
+                          prov_source: Optional[str] = None,
                           lock_percent: int = 2, word_token_layer_id: Optional[str] = None) -> int:
         """
         Process ASR alignments and update the Plaid document.
@@ -70,8 +70,6 @@ class AlignmentProcessor:
             prov_source: Optional provenance producer id (e.g.
                 ``service_source('<service-id>')``). When set, created tokens
                 are stamped machine-made per the provenance convention.
-            overwrite: Accepted for callers that pass it. The run deletes no
-                annotation, so there is nothing for it to allow.
             lock_percent: The percent to report the lock step at. The rest of
                 the run reports 75 to 98, so a caller that has already done
                 work of its own passes what it has reached: the default is
@@ -110,7 +108,7 @@ class AlignmentProcessor:
             tokens_created = self._create_time_alignment_tokens(
                 client, document_id, transcriptions, text_layer_id,
                 alignment_token_layer_id, sentence_token_layer_id, response_helper,
-                prov_source=prov_source, overwrite=overwrite, word_token_layer_id=word_token_layer_id
+                prov_source=prov_source, word_token_layer_id=word_token_layer_id
             )
 
             return tokens_created
@@ -172,7 +170,7 @@ class AlignmentProcessor:
     def _create_time_alignment_tokens(self, client, document_id: str, transcriptions: List[Dict],
                                      text_layer_id: str, alignment_token_layer_id: str,
                                      sentence_token_layer_id: Optional[str], response_helper,
-                                     prov_source: Optional[str] = None, overwrite: bool = False,
+                                     prov_source: Optional[str] = None,
                                      word_token_layer_id: Optional[str] = None) -> int:
         """Create time alignment tokens from transcription results, preserving existing work"""
         # Get document with full token information
@@ -321,7 +319,7 @@ class AlignmentProcessor:
             self._write(client, document, text_id, text_modifications, new_alignment_tokens,
                         self._tokenize_layer(text_layer, word_token_layer_id),
                         existing_alignment_tokens, current_text, new_text,
-                        sentence_token_layer_id, response_helper, overwrite)
+                        sentence_token_layer_id, response_helper)
 
         return len(new_alignment_tokens)
 
@@ -358,7 +356,7 @@ class AlignmentProcessor:
 
     def _write(self, client, document, text_id, text_modifications, new_alignment_tokens, tokenize_layer,
                existing_alignment_tokens, current_text, new_text, sentence_token_layer_id,
-               response_helper, overwrite):
+               response_helper):
         """The run's one batch: the text, with the words the server makes for
         it on ``tokenize_layer``, the segments and the sentences."""
         # Begin atomic batch operation

@@ -172,11 +172,11 @@ def _document(body, *, sentences=(), align=(), sentence_spans=()):
     }
 
 
-def _run(client, helper=None, overwrite=False):
+def _run(client, helper=None):
     return AlignmentProcessor().process_alignments(
         client, 'd1', [Alignment(text='hello there', start=0.0, end=1.5)],
         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, helper or _Helper(),
-        prov_source='service:asr:test', overwrite=overwrite)
+        prov_source='service:asr:test')
 
 
 def test_a_transcription_is_stamped_machine_made_and_lands_in_one_batch():
@@ -199,13 +199,12 @@ def test_a_persons_sentence_work_stays_and_the_new_segment_is_split_out():
     # them. Now no sentence is deleted: the new segment's sentence is split
     # out of the one its text went into, which keeps its id and its spans.
     human = {'id': 'sp1', 'tokens': ['s0'], 'value': 'a note', 'metadata': {}}
-    for overwrite in (False, True):
-        client = _FakeClient([_document('already here', sentences=[(0, 12)],
-                                        align=[(0, 12, 5.0, 6.0)], sentence_spans=[human])])
-        assert _run(client, overwrite=overwrite) == 1
-        assert not any(c[0] == 'bulk_delete' for c in client.calls)
-        [split] = [c for c in client.calls if c[0] == 'split']
-        assert split[1:3] == ('s0', 11)  # "hello there" put before "already here"
+    client = _FakeClient([_document('already here', sentences=[(0, 12)],
+                                    align=[(0, 12, 5.0, 6.0)], sentence_spans=[human])])
+    assert _run(client) == 1
+    assert not any(c[0] == 'bulk_delete' for c in client.calls)
+    [split] = [c for c in client.calls if c[0] == 'split']
+    assert split[1:3] == ('s0', 11)  # "hello there" put before "already here"
 
 
 def test_the_run_never_reads_the_document_back():

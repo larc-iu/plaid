@@ -11,7 +11,7 @@ import logging
 from typing import List, Dict, Optional
 
 from plaid_client.constraints import same_ancestor_layer
-from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, stamp_inferred, is_protected
+from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_protected
 from plaid_client.service import (batch_body_budget, check_unchanged, locked_for_writes,
                                   requester_message)
 from plaid_client.workflows.messages import setup_incomplete
@@ -41,7 +41,6 @@ class TokenProcessor:
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
                       *, text_layer_id: str, expect_version=None,
-                      prov_source: Optional[str] = None, prov_detail: Optional[dict] = None,
                       overwrite: bool = False) -> Dict[str, int]:
         """Hold the document lock for the whole tokenization rewrite, then
         delegate to :meth:`_process_tokens_locked`.
@@ -62,12 +61,11 @@ class TokenProcessor:
                 client, document_id, sentences, words,
                 primary_token_layer_id, sentence_layer_id, response_helper,
                 text_layer_id=text_layer_id, expect_version=expect_version,
-                prov_source=prov_source, prov_detail=prov_detail, overwrite=overwrite)
+                overwrite=overwrite)
 
     def _process_tokens_locked(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
                       *, text_layer_id: str, expect_version=None,
-                      prov_source: Optional[str] = None, prov_detail: Optional[dict] = None,
                       overwrite: bool = False) -> Dict[str, int]:
         """
         Process tokenization results and update the Plaid document.
@@ -88,11 +86,6 @@ class TokenProcessor:
                 was read before the lock was taken, so an edit since then moved
                 every offset the caller computed; the run is refused rather than
                 writing tokens that cut the text in the wrong places.
-            prov_source: Optional provenance producer id (e.g.
-                ``service_source('<service-id>')``). When set, created tokens
-                are stamped machine-made per the provenance convention.
-            prov_detail: Optional ``provDetail`` for that stamp (who asked for
-                the run, see :func:`plaid_client.workflows.requester_of`).
             overwrite: Provenance write contract. Resetting the sentence
                 partition cascade-deletes the sentence and every token nested
                 under it (words, morphemes, any app's), with every span,
@@ -288,9 +281,9 @@ class TokenProcessor:
         tokens_deleted = (reset_loss['tokens'] if should_do_sentences
                           else len(tokens_to_delete) + split_loss['tokens'])
 
-        # Provenance: stamp everything this (machine) run creates.
-        prov_fragment = (stamp_inferred(prov_source, detail=prov_detail)
-                         if prov_source else None)
+        # Sentence and word tokens are substrate and carry no provenance
+        # stamp (the provenance convention): a stamped word would vote in
+        # igt's word-state rules.
         sent_operations = []
         for sent in sentences_to_create or []:
             op = {
@@ -299,8 +292,6 @@ class TokenProcessor:
                 "begin": sent['begin'],
                 "end": sent['end']
             }
-            if prov_fragment:
-                op["metadata"] = dict(prov_fragment)
             sent_operations.append(op)
         token_operations = []
         for token in words_to_create or []:
@@ -310,8 +301,6 @@ class TokenProcessor:
                 "begin": token['begin'],
                 "end": token['end']
             }
-            if prov_fragment:
-                op["metadata"] = dict(prov_fragment)
             token_operations.append(op)
 
         if words_to_create or sentences_to_create or sentence_ids_to_delete or tokens_to_delete:

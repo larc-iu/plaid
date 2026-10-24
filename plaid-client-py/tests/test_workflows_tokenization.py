@@ -278,21 +278,19 @@ def test_the_same_document_is_tokenized():
     assert counts['sentences_created'] == 2
 
 
-def test_a_run_stamps_what_it_creates_with_the_detail_it_is_given():
-    """A service passes who asked (``requester.detail()``) as ``prov_detail``,
-    and every token the run creates carries it (umr-collab-service-requester)."""
+def test_the_sentences_and_words_a_run_creates_carry_no_stamp():
+    """Sentence and word tokens are substrate (the provenance convention), so
+    the run takes no producer to stamp them with and writes no metadata on
+    them (R2-SVC-7)."""
     doc = _document('Hello there.', sentences=[(0, 12)], words=[])
     client = _FakeClient(doc)
     TokenProcessor().process_tokens(
         client, 'd1', _spans('Hello there.'),
         [TokenSpan(text='Hello', start=0, end=5)],
-        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
-        prov_source='service:punkt', prov_detail={'requestedBy': 'second@x.com'})
+        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
     created = [op for call in client.calls if call[0] == 'bulk_create' for op in call[1]]
     assert created
-    for op in created:
-        assert op['metadata'] == {'prov': 'inferred', 'provSource': 'service:punkt',
-                                  'provDetail': {'requestedBy': 'second@x.com'}}
+    assert all('metadata' not in op for op in created)
 
 
 # --- the converters a service author builds on -------------------------------
@@ -459,8 +457,7 @@ def test_the_words_of_a_long_document_go_in_batches_the_server_takes():
         client, 'd1', [TokenSpan(text=body[:499], start=0, end=499),
                        TokenSpan(text=body[500:], start=500, end=len(body))],
         [TokenSpan(text='word', start=b, end=e) for b, e in words],
-        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
-        prov_source='service:punkt')
+        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
     assert len(client.batches) > 2
     first = client.batches[0]
     assert [call[0] for call in first] == ['bulk_delete', 'bulk_create', 'bulk_create']
@@ -501,8 +498,7 @@ def test_a_failure_in_a_later_word_batch_says_what_was_written():
             client, 'd1', [TokenSpan(text=body[:499], start=0, end=499),
                            TokenSpan(text=body[500:], start=500, end=len(body))],
             [TokenSpan(text='word', start=b, end=e) for b, e in words],
-            'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
-            prov_source='service:punkt')
+            'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
     made = [op for b in client.batches for call in b if call[0] == 'bulk_create'
             for op in call[1] if op['token_layer_id'] == 'word-layer']
     assert len(client.batches) == 2 and 0 < len(made) < 200
