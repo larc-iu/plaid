@@ -810,4 +810,42 @@ describe('setup makes the project and its vocabularies under minted ids', () => 
     expect(sent.vocab[1]).toBe(sent.vocab[0]);
     expect(second.calls.linked.at(-1)).toBe(sent.vocab[0]);
   });
+
+  it('mints a fresh project id when the name changed since the press that lost its answer', async () => {
+    const mints = {};
+    const sent = [];
+    const first = stub(null);
+    first.client.projects.create = async (name, audit, opts) => {
+      sent.push(opts?.id);
+      throw Object.assign(new Error('Failed to fetch'), { status: 0 });
+    };
+    const press = (client, projectName) =>
+      executeProjectSetup({
+        client,
+        isNewProject: true,
+        resumeProjectId: null,
+        setupData: { ...SETUP_DATA, basicInfo: { ...SETUP_DATA.basicInfo, projectName } },
+        onProgress: () => {},
+        mints,
+      });
+    await expect(press(first.client, 'A')).rejects.toThrow();
+    const second = stub(null);
+    const create = second.client.projects.create;
+    second.client.projects.create = async (name, audit, opts) => {
+      sent.push(opts?.id);
+      return create(name, audit, opts);
+    };
+    await press(second.client, 'B');
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).not.toBe(sent[0]);
+  });
+
+  it('names the project in what it made when an earlier press made it', async () => {
+    const { client } = stub(null);
+    client.projects.create = async () => {
+      throw idTaken();
+    };
+    const result = await run(client, null);
+    expect(result.resources.project.name).toBe(SETUP_DATA.basicInfo.projectName);
+  });
 });

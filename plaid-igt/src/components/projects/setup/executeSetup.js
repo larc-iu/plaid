@@ -138,11 +138,15 @@ async function executeProjectSetupImpl({
   // Step 1: Create project if new (skip if a prior attempt already did).
   if (isNewProject && !resumeProjectId && setupData.basicInfo?.projectName) {
     updateProgress(10, 'Creating new project…');
-    const newProject = await createOnce(mintOf('project'), (id) =>
-      client.projects.create(setupData.basicInfo.projectName, undefined, { id }),
+    // Keyed by the name, as the vocabularies are: a name changed in review
+    // after a lost answer mints a fresh id rather than opening the old one.
+    const projectName = setupData.basicInfo.projectName;
+    const newProject = await createOnce(mintOf(`project:${nameKey(projectName)}`), (id) =>
+      client.projects.create(projectName, undefined, { id }),
     );
     currentProjectId = newProject.id;
-    resources.project = newProject;
+    // An earlier press made it: createOnce answers its id alone.
+    resources.project = { name: projectName, ...newProject };
     await onProjectCreated?.(newProject.id);
   }
 
