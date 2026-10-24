@@ -30,7 +30,8 @@ for, most of them only because a sibling before them came or went. With
 changes is a row of its own.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman
 from plaid_client.workflows.umr.graph import CYCLE_ROLES, next_order
@@ -168,6 +169,109 @@ def _rename_in(doc: UmrDoc, sentence: Sentence, parsed: Graph, written) -> Tuple
     if not parents and not (node.root and parsed.root == to):
         return None, ''
     return node, to
+
+
+# A variable a graph kept as text defines: the name before a slash after an
+# opening bracket (``KEPT_VARIABLE`` in sentenceGraph.js).
+_KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
+
+
+def _kept_variables(doc: UmrDoc) -> set:
+    """The variables the graphs kept as text still define: a sentence's own,
+    while it has no nodes (``keptVariables``)."""
+    return {m.group(1) for s in doc.sentences if isinstance(s.raw_graph, str) and not s.nodes
+            for m in _KEPT_VARIABLE.finditer(s.raw_graph)}
+
+
+def _held_after(doc: UmrDoc, ids: set, renames: Dict[str, str]) -> Callable[[list], Optional[list]]:
+    """What a record's held list becomes once the nodes ``ids`` are renamed
+    (``renames``, old name to new) or deleted (the others), or None when it
+    stays. A relation naming a deleted node goes, one naming a renamed node
+    follows it, and a name another node still has or a kept graph defines is
+    left. plaid-umr's ``UmrDocument._heldAfter``."""
+    names, still = set(), _kept_variables(doc)
+    for n in doc.nodes_by_id.values():
+        if n.var:
+            (names if n.id in ids else still).add(n.var)
+
+    def goes(name):
+        return name in names and name not in still
+
+    def after(had):
+        if not any(goes(h.get('source')) or goes(h.get('target')) for h in had):
+            return None
+        out = [{**h, 'source': renames.get(h.get('source')) if goes(h.get('source')) else h.get('source'),
+                'target': renames.get(h.get('target')) if goes(h.get('target')) else h.get('target')}
+               for h in had]
+        return [h for h in out if h['source'] and h['target']]
+    return after
+
+
+def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: List[Dict[str, Any]],
+                   id_by_var: Dict[str, str], gone_ids: set, renamed, renamed_to: str) -> List[Dict[str, Any]]:
+    """What the apply does to the relations held by name (plaid-umr's
+    ``UmrDocument._heldResolved``): a triple for each held relation the apply
+    gives a new node to stand on, and a ``set_record`` per record whose list
+    changes. ``id_by_var`` is the sentence's names after the apply, without
+    its new nodes, which the executor knows by variable."""
+    fresh = {op['var'] for op in ops if op['kind'] == 'create_node'}
+    elsewhere: Dict[str, str] = {}
+    for n in doc.nodes_by_id.values():
+        if n.sentence != sentence.index and n.id not in gone_ids and n.var:
+            elsewhere.setdefault(n.var, n.id)
+
+    def id_of(name):
+        constant = doc.constant(name)
+        return id_by_var.get(name) or elsewhere.get(name) or (constant.id if constant else None)
+
+    ids = set(gone_ids) | ({renamed.id} if renamed is not None else set())
+    after = _held_after(doc, ids, {renamed.var: renamed_to} if renamed is not None else {})
+    triples: List[Dict[str, Any]] = []
+    records: List[Dict[str, Any]] = []
+    for s in doc.sentences:
+        if not s.record_token:
+            continue
+        had = list(s.held)
+        followed = after(had)
+        held = had if followed is None else followed
+        umr_set: Dict[str, Any] = {}
+        unset: List[str] = []
+        if not held:
+            if had:
+                unset.append('held')
+        elif fresh:
+            keep = []
+            for h in held:
+                ends = {side: (h[side] if h[side] in fresh else id_of(h[side])) for side in ('source', 'target')}
+                if not all(ends.values()) or not (h['source'] in fresh or h['target'] in fresh):
+                    keep.append(h)
+                    continue
+                op = {'kind': 'create_triple', 'document_id': doc.id,
+                      'document_graph_layer_id': project.document_graph_layer_id,
+                      'source_var': h['source'], 'target_var': h['target'], 'rel': h['rel'],
+                      'group': h.get('group'), 'ref': f's{sentence.number}.{h["source"]}',
+                      'label': f'({h["source"]} {h["rel"]} {h["target"]})'}
+                for side in ('source', 'target'):
+                    if h[side] not in fresh:
+                        op[f'{side}_span_id'] = ends[side]
+                triples.append(op)
+            if len(keep) != len(had) or followed is not None:
+                if keep:
+                    umr_set['held'] = keep
+                else:
+                    unset.append('held')
+        elif followed is not None:
+            umr_set['held'] = held
+        # The graph kept as text, mended: its text is no longer what is kept.
+        if s is sentence and fresh and not sentence.nodes and isinstance(sentence.raw_graph, str):
+            unset += ['rawGraph', 'rawAlignment']
+        if umr_set or unset:
+            records.append({'kind': 'set_record', 'document_id': doc.id, 'record_id': s.record_token,
+                            'ref': f's{s.number}', 'umr_set': umr_set, 'umr_unset': unset,
+                            'label': (f's{s.number}: the graph kept as text is replaced'
+                                      if 'rawGraph' in unset else
+                                      f's{s.number}: the relations it holds by name follow the graph')})
+    return triples + records
 
 
 def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
@@ -375,6 +479,8 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     # Deletes first, so a variable a new node takes is free; then the marks
     # that must come off before another node wears one; then the rest.
     ops = deletes + edges_delete + root_ops + updates + creates + edges_add + orders
+    id_by_var = {name_of(n): n.id for n in sentence.nodes if n.id not in gone_ids}
+    ops += _held_resolved(doc, sentence, project, ops, id_by_var, gone_ids, renamed, renamed_to)
     for op in ops:
         op.setdefault('sentence', sentence.index)
         op.setdefault('sentence_id', sentence.id)

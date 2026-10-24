@@ -209,6 +209,16 @@ def _apply_create_triple(ctx: Context, op) -> int:
     return 1
 
 
+def _apply_set_record(ctx: Context, op) -> int:
+    """The keys of a sentence record's ``umr`` metadata an apply changes (the
+    relations it holds by name, the graph it kept as text), each by its own
+    path, unstamped: a record is no one's annotation."""
+    ops = [{'op': 'delete', 'path': [UMR, k]} for k in op.get('umr_unset') or ()]
+    ops += [{'op': 'set', 'path': [UMR, k], 'value': v} for k, v in (op.get('umr_set') or {}).items()]
+    ctx.b.update('tokens', op['record_id'], metadata=ops)
+    return 1
+
+
 def _record_anchors(op) -> List[Tuple[Optional[str], str]]:
     """A new record stands over its sentence, read from the sentence when the
     plan is applied."""
@@ -542,6 +552,12 @@ KIND = ok.registry([
            # A new record stands over the whole of its sentence, wherever an
            # edit before it has moved it since (core.fingerprint).
            extra={'anchors': _record_anchors}),
+    # What an apply does to a sentence record: the relations a graph kept as
+    # text holds by name follow a rename and go with a delete, and a mend of
+    # the kept graph clears its text (the app's `_heldResolved`).
+    OpKind('set_record', ('sentence record', 'sentence records'), replaces=None, required=('record_id',),
+           apply=_apply_set_record, target=lambda op: ('record', op.get('record_id'), op.get('graph_of')),
+           token_keys=('record_id',)),
     # One attribute over every node in a document whose concept matches,
     # stored as the predicate the model gave and resolved to one `set_attrs`
     # per node at approval, so the card carries one row rather than two
@@ -560,7 +576,7 @@ EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 #: stages carries ``graph_of``, and the tools refuse a second call over the
 #: same sentence.
 GRAPH_KINDS = ('delete_node', 'delete_edge', 'rename_node', 'set_concept', 'set_attrs',
-               'set_root', 'unset_root', 'set_edge_order', 'create_node', 'create_edge')
+               'set_root', 'unset_root', 'set_edge_order', 'create_node', 'create_edge', 'set_record')
 
 
 def graphs_of_op(op: Dict[str, Any]) -> set:
