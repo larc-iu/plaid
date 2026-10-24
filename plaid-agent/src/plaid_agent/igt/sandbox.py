@@ -166,6 +166,7 @@ def entry(view: LexView, it: dict, links: int) -> Dict[str, Any]:
     refs = {f['name']: f for f in item_ref_fields(view.fields)}
     fields = {}
     for f in view.fields:
+        # name-ok: A15 built-in entry key
         if f['name'] == 'morphType' or f['name'] in hidden:
             continue
         fields[f['name']] = ref_ids(it, f) if f['name'] in refs else _plain(meta.get(f['name']))
@@ -243,6 +244,7 @@ def _lexicon_help(ws: Workspace) -> str:
     vocabs = ws.project.vocabs
     pos = next((f for f in (ws.project.lexicon_field(v, 'pos') for v in vocabs) if f), 'pos')
     names = [f'  {json.dumps(v["name"])}: ' + ', '.join(json.dumps(f['name']) for f in v.get('fields') or []
+                                                       # name-ok: A15 built-in entry key
                                                        if f['name'] != 'morphType') for v in vocabs]
     listed = ('  Entry fields by lexicon, spelled as the code must spell them:\n' + '\n'.join(names) + '\n'
               if names else '  This project has no lexicon yet.\n')

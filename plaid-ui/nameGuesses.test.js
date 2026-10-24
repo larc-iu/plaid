@@ -41,13 +41,19 @@ const DOMAIN =
 const PATTERNS = {
   // A domain word compared to anything called a name (JS and Python), and the
   // reverse.
-  'a name compared to a domain word': `\\b\\w*[Nn]ame\\w*\\)?\\s*(===|!==|==|!=)\\s*['"](?i:${DOMAIN})['"]`,
+  // The name read as a variable, a property, a dict key or a .get, perhaps
+  // lowercased first.
+  'a name compared to a domain word': `(\\b\\w*[Nn]ame\\w*|\\[['"]name['"]\\]|\\.get\\(['"]name['"]\\))(\\.\\w+\\(\\))*\\)?\\s*(===|!==|==|!=)\\s*['"](?i:${DOMAIN})['"]`,
   'a domain word compared to a name': `['"](?i:gloss|pos|lemma|translation|morph\\w*|upos|xpos|form|status|definition|baseline)['"]\\s*(===|!==|==|!=)\\s*\\w*[Nn]ame\\b`,
   // A regex literal with a domain word in it (JS).
   'a regex literal with a domain word': `(?i)(^|[=(,:!&|?]\\s*)/(?![*/])[^/\\n]*(gloss|lemma|translat|upos|xpos|meaning|sense|definition|status|\\bpos\\b|morph|literal|note|comment)[^/\\n]*/[gimsuy]*(?=[.,);\\s]|$)`,
   // Python regexes and lowercased names.
   'a Python regex with a domain word': `re\\.(search|match|fullmatch)\\(\\s*r?['"][^'"]*(?i:gloss|lemma|translat|pos|meaning)`,
   'a name tested by its start or end': `(\\.name|\\[.name.\\]|get\\(.name.\\))(\\.(lower|casefold)\\(\\))?\\.(startswith|endswith)\\(['"]`,
+  // JS's own tests of a name's start, end or inside.
+  'a JS name tested by its start, end or inside': `\\.name(\\.\\w+\\(\\))*\\.(startsWith|endsWith|includes)\\(['"](?i:${DOMAIN})`,
+  // A helper that compares names, called with a domain word.
+  'a name helper given a domain word': `\\b(sameName|nameKey)\\([^)\\n]*['"](?i:${DOMAIN})['"]`,
   // Clojure.
   'a Clojure name matched': `(re-find|re-matches|str/includes\\?|str/starts-with\\?)[^\\n]*(:[\\w.-]+/name|\\(:name )`,
   // One name compared to another (A1-1's shape): a layer taken as a field
@@ -78,6 +84,10 @@ describe('no behaviour from a name', () => {
         "const t = fields.find(() => 'translation' == fieldName);",
         'const pick = layers.filter((l) => looksLike(l.name, /translat|free/i));',
         'const same = (sl) => sl.name === field.name;',
+        "if (layer.name.toLowerCase() === 'gloss') use(layer);",
+        "if (layer.name.startsWith('Gloss')) use(layer);",
+        "if (layer.name.toLowerCase().includes('gloss')) use(layer);",
+        "if (sameName(layer.name, 'Gloss')) use(layer);",
         '',
       ].join('\n'),
       'plaid-x/services/bad.py': [
@@ -86,6 +96,9 @@ describe('no behaviour from a name', () => {
         "if layer['name'].lower().startswith('trans'):",
         '    pass',
         "same = a['name'] == b['name']",
+        "if layer['name'] == 'Gloss':",
+        "if layer.get('name') == 'Gloss':",
+        'gl = next(l for l in layers if l["name"].lower() == "gloss")',
         '',
       ].join('\n'),
       'plaid-x/src/main/bad.clj': '(when (re-find #"gloss" (:name layer)) :gloss)\n',
@@ -112,10 +125,17 @@ describe('no behaviour from a name', () => {
       'plaid-x/services/bad.py:1',
       'plaid-x/services/bad.py:3',
       'plaid-x/services/bad.py:5',
+      'plaid-x/services/bad.py:6',
+      'plaid-x/services/bad.py:7',
+      'plaid-x/services/bad.py:8',
       'plaid-x/src/bad.js:1',
       'plaid-x/src/bad.js:2',
       'plaid-x/src/bad.js:3',
       'plaid-x/src/bad.js:4',
+      'plaid-x/src/bad.js:5',
+      'plaid-x/src/bad.js:6',
+      'plaid-x/src/bad.js:7',
+      'plaid-x/src/bad.js:8',
       'plaid-x/src/clean.js:1',
       'plaid-x/src/clean.js:11',
       'plaid-x/src/main/bad.clj:1',
