@@ -226,13 +226,21 @@
   `:audit/projects` is likewise the op's `:project` and the projects of
   the bumped documents (`:projects`). The bus fans out by project, so a
   vocabulary write (`:project nil`) that bumps documents reaches their
-  projects' subscribers only through this union."
+  projects' subscribers only through this union.
+
+  `:audit/documents-by-project` names, for each project in
+  `:audit/projects`, the documents of that project in `:audit/documents`.
+  The distributor sends each project's subscribers only their own project
+  and documents, so a vocabulary linked from two projects tells neither
+  about the other's documents."
   [op-record]
   (let [pid (:project op-record)
         did (:document op-record)]
     {:audit/id (:id op-record)
      :audit/projects (into (if pid #{pid} #{}) (:projects op-record))
      :audit/documents (into (if did #{did} #{}) (:documents op-record))
+     :audit/documents-by-project (cond-> (or (:documents-by-project op-record) {})
+                                   pid (update pid (fnil into #{}) (when did [did])))
      :op/id (:id op-record)
      :op/type (:type op-record)
      :op/project pid
@@ -370,7 +378,7 @@
       (when-let [a (:affected-documents psaw/*op*)]
         (swap! a conj doc-id))
       (when-let [a (:affected-projects psaw/*op*)]
-        (swap! a conj (:project_id pre))))))
+        (swap! a update (:project_id pre) (fnil conj #{}) doc-id)))))
 
 (defn bump-document-versions!
   "Bulk version-bump for a coll of document ids. Use from inside an
@@ -415,7 +423,7 @@
         (when-let [a (:affected-documents psaw/*op*)]
           (swap! a conj doc-id))
         (when-let [a (:affected-projects psaw/*op*)]
-          (swap! a conj (:project_id pre)))))))
+          (swap! a update (:project_id pre) (fnil conj #{}) doc-id))))))
 
 (defn op-ts
   "The current operation's monotonic timestamp, for bodies that stamp a
@@ -537,9 +545,10 @@
           ;; this atom off psaw/*op*). Unioned into the audit event's
           ;; :audit/documents post-commit — see ->audit-event-shape.
           affected-docs (atom #{})
-          ;; The projects of the documents the bump helpers bumped, so the
-          ;; event reaches their subscribers (see ->audit-event-shape).
-          affected-projects (atom #{})
+          ;; The documents the bump helpers bumped, by their project, so the
+          ;; event reaches each project's subscribers with that project's
+          ;; documents only (see ->audit-event-shape).
+          affected-projects (atom {})
           ;; Set when an op that asked for it (`:unrecorded-if-empty?`)
           ;; wrote nothing and its row was taken back out.
           unrecorded? (volatile! false)
@@ -654,7 +663,9 @@
                                     tx (cond-> (set @affected-docs)
                                          (:document op-attrs) (conj (:document op-attrs))))))
                         result))))
-          op-record (assoc @op-record* :documents @affected-docs :projects @affected-projects)]
+          op-record (assoc @op-record* :documents @affected-docs
+                           :projects (set (keys @affected-projects))
+                           :documents-by-project @affected-projects)]
       (when-let [a *written-versions*]
         (swap! a merge @versions-written))
       (try

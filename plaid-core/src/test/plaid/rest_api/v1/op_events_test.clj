@@ -13,7 +13,9 @@
     audit log couldn't answer 'who changed this layer's config' and the
     op never appeared in project-scoped audit queries. Both are now
     attributed."
-  (:require [clojure.test :refer :all]
+  (:require [clojure.core.async :as async]
+            [clojure.test :refer :all]
+            [mount.core :as mount]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call
                                     assert-created assert-ok assert-no-content
@@ -82,6 +84,57 @@
       (is (some? evt))
       (is (= #{(str doc)} (set (map str (:audit/documents evt)))))
       (is (= #{(str proj)} (set (map str (:audit/projects evt))))))))
+
+(defn- linked-project!
+  "A project with one document whose word links an entry of vocabulary `vid`."
+  [vid item-form label]
+  (let [proj (create-test-project admin-request label)
+        doc (create-test-document admin-request proj (str label "Doc"))
+        tl (-> (create-text-layer admin-request proj (str label "TL")) :body :id)
+        text-id (-> (create-text admin-request tl doc "hello") :body :id)
+        tkl (-> (create-token-layer admin-request tl (str label "TKL")) :body :id)
+        tok (-> (create-token admin-request tkl text-id 0 5) :body :id)
+        _ (assert-status 204 (link-vocab-to-project admin-request proj vid))
+        item (-> (create-vocab-item admin-request vid item-form) :body :id)]
+    (assert-created (create-vocab-link admin-request item [tok]))
+    {:proj proj :doc doc}))
+
+(deftest a-vocabulary-event-tells-each-project-only-its-own-documents
+  ;; A vocabulary linked from two projects: its rename reaches both, and each
+  ;; project's listeners hear only that project and its documents, so a reader
+  ;; of one learns no id from the other (REV-W3F F3, HUNT-recent 11).
+  (let [vid (-> (create-vocab-layer admin-request "OENVocab") :body :id)
+        p (linked-project! vid "hello" "OENP")
+        q (linked-project! vid "hullo" "OENQ")
+        pid (parse-uuid (str (:proj p)))
+        qid (parse-uuid (str (:proj q)))
+        p-chan (async/chan 10)
+        q-chan (async/chan 10)
+        audit-event (fn [ch]
+                      (loop []
+                        (let [[e c] (async/alts!! [ch (async/timeout 3000)])]
+                          (cond (not= c ch) nil
+                                (= "vocab:update" (some-> e :audit/ops first :op/type)) e
+                                :else (recur)))))]
+    (mount/start #'events/client-registry #'events/event-bus)
+    (events/register-client! pid p-chan)
+    (events/register-client! qid q-chan)
+    (try
+      (assert-status 200 (update-vocab-layer admin-request vid {:name "OENVocab2"}))
+      (let [pe (audit-event p-chan)
+            qe (audit-event q-chan)]
+        (is (some? pe) "P's listener hears the rename")
+        (is (some? qe) "Q's listener hears the rename")
+        (is (= #{(str (:proj p))} (set (map str (:audit/projects pe)))))
+        (is (= #{(str (:doc p))} (set (map str (:audit/documents pe)))))
+        (is (= #{(str (:proj q))} (set (map str (:audit/projects qe)))))
+        (is (= #{(str (:doc q))} (set (map str (:audit/documents qe)))))
+        (is (not-any? #(re-find #"(?i)by-project" (name %)) (keys (events/wire-payload pe)))
+            "the routing key stays off the wire"))
+      (finally
+        (events/unregister-client! pid p-chan)
+        (events/unregister-client! qid q-chan)
+        (mount/stop #'events/event-bus #'events/client-registry)))))
 
 (deftest editor-config-op-attributed-to-project-and-actor
   (let [proj (create-test-project admin-request "OpEvtCfgProj")

@@ -30,7 +30,8 @@
   Keys: :id, :ts, :tx (the JDBC Connection that's part of the tx),
   :seq-counter (atom holding the next audit-write ordinal within this op),
   :affected-documents (atom; docs whose version the body bumps — see
-  plaid.sql.operation), :affected-projects (atom; those docs' projects).
+  plaid.sql.operation), :affected-projects (atom; those docs by their
+  project, {project-id #{doc-id}}).
 
   The ::skip sentinel deliberately bypasses auditing. NOTHING uses it
   today — every write, including bootstrap admin creation, goes through

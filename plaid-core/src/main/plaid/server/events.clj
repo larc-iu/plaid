@@ -570,7 +570,20 @@
                            :audit-log "audit-log"
                            :message "message"
                            "unknown"))
-        (dissoc event :event/type :event/projects)))
+        (dissoc event :event/type :event/projects :event/documents-by-project)))
+
+(defn for-project
+  "The event as `project-id`'s subscribers get it. An audit event that
+  names its documents by project (`:event/documents-by-project`) is cut
+  down to that project and its own documents, so one project's listeners
+  never learn the ids of another project's documents, as a vocabulary
+  write that bumps documents in several projects would otherwise tell them."
+  [event project-id]
+  (if-let [by-project (:event/documents-by-project event)]
+    (assoc event
+           :audit/projects #{project-id}
+           :audit/documents (get by-project project-id #{}))
+    event))
 
 ;; =============================================================================
 ;; Event Publishing and Distribution
@@ -605,7 +618,7 @@
             (when (> client-count 0)
               (log/debug "Sending event to client for project" project-id))
             ;; Using put! here is non-blocking; if client is slow, events may be dropped
-            (async/put! client-chan event)))
+            (async/put! client-chan (for-project event project-id))))
         (recur)))
     ch)
   :stop
@@ -678,6 +691,7 @@
       :else
       (let [event {:event/type      :audit-log
                    :event/projects  (:audit/projects audit-entry)
+                   :event/documents-by-project (:audit/documents-by-project audit-entry)
                    :audit/id        (:audit/id audit-entry)
                    :audit/projects  (:audit/projects audit-entry)
                    :audit/documents (:audit/documents audit-entry)

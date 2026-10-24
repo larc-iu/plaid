@@ -467,7 +467,8 @@ An `audit-log` event looks like this:
 ----
 
 Every write sends its own event, so `ops` always holds one operation, and a batch sends one event per write once it commits.
-`documents` lists every document the write changed.
+`documents` lists every document the write changed in the project you listen on, and `projects` names that project.
+A write to a vocabulary shared by several projects sends each project's listeners an event of its own, with only that project's documents.
 The event is a lightweight notice: it spells operation types as `span_layer:create` where the audit endpoint has `span-layer/create`, and it carries bare ids.
 For the full entry, read the audit endpoint and match on `id`.
 
