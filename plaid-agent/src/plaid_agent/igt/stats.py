@@ -479,7 +479,9 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         homographs = {k: v for k, v in by_entry_form.items() if len(v) > 1}
         if homographs:
             def same_gloss(its):
-                gl = [entry_gloss(it).casefold() for it in its]
+                # Two entries with no gloss share no gloss: nothing says they
+                # mean the same.
+                gl = [g for g in (entry_gloss(it).casefold() for it in its) if g]
                 return len(gl) - len(set(gl))
             ranked = sorted(homographs.items(), key=lambda kv: (-same_gloss(kv[1]), -len(kv[1])))
             dup = sum(1 for _, its in ranked if same_gloss(its))

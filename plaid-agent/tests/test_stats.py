@@ -489,3 +489,14 @@ def test_a_bulk_analysis_card_shows_a_formless_morpheme_beside_others_as_a_gap()
     w = ws(c)
     call_tool(w, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}]})
     assert ': ?-? → ' in w.ops[0]['label'], w.ops[0]['label']
+
+
+def test_homographs_with_no_gloss_are_not_called_duplicates():
+    # HUNT-recent 7: two "gam" with no gloss read as one repeated gloss.
+    from fixtures import lexicon_raw
+    lex = lexicon_raw()
+    for it in lex['items']:
+        if it['form'] == 'gam':
+            it['metadata'] = {'pos': 'N' if it['id'] == 'vi-gam' else 'V'}
+    out = call_tool(fake_ws(FakeClient(lexicon=lex)), 'check_lexicon', {'section': 'homographs'})
+    assert '1 homograph groups (0 with a repeated gloss' in out, out
