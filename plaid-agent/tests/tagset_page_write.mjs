@@ -36,8 +36,17 @@ const ops = transformResponse(sent);
 const client = new PlaidClient(url, token);
 
 // putRulesInForce (plaid-igt settings/putRulesInForce.js) without its notice.
-const inForce = async (layers) =>
-  (await declareIgtRules(client, projectId, { fieldsOnly: true, repair: false, layers })).notInForce;
+// As there, a declaration that fails leaves the write as written: the
+// settings have landed whatever it answers.
+const inForce = async (layers) => {
+  try {
+    return (await declareIgtRules(client, projectId, { fieldsOnly: true, repair: false, layers }))
+      .notInForce;
+  } catch (error) {
+    console.error('Could not put the field rules in force:', error.message);
+    return [];
+  }
+};
 
 let out;
 try {
