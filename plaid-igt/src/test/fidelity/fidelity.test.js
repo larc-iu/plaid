@@ -441,6 +441,7 @@ const TABLES = {
   operations: notData('the audit log'),
   project_users: notData('permissions'),
   seen_services: notData('the service registry’s memory of what has connected'),
+  service_claims: notData('which account each service id belongs to'),
   user_avatars: notData('user profiles'),
   user_data: notData('per-user preferences'),
   users: notData('user accounts'),
