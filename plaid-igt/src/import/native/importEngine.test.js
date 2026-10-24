@@ -30,7 +30,7 @@ import {
   rebuildTokenMap,
   restoreLayerNamesAndOrder,
 } from './importEngine.js';
-import { mintedId, mintedSpecs } from '../testMinted.js';
+import { mintedId, mintedSpecs } from '../test-helpers.js';
 
 // ---- the archive under test: built by the REAL exporter --------------------
 // Export the loss-trap fixture document, then import the result — the test is

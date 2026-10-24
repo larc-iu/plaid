@@ -7,7 +7,7 @@ import {
   ImportCancelled,
 } from './importEngine.js';
 import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
-import { mintedId, mintedSpecs } from '../testMinted.js';
+import { mintedId, mintedSpecs } from '../test-helpers.js';
 
 const role = (r) => ({ plaid: { role: r } });
 const scoped = (name, scope) => ({ id: `sl-${name}`, name, config: { igt: { scope } } });

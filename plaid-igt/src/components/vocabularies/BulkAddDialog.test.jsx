@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { settle } from '@/domain/test-helpers.js';
-import { mintedSpecs } from '@/import/testMinted.js';
+import { mintedSpecs } from '@/import/test-helpers.js';
 
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),

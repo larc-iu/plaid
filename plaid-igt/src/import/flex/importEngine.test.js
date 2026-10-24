@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { deriveImportConfig, resolveTargets, importLexicon, runImport } from './importEngine.js';
-import { mintedId, mintedSpecs } from '../testMinted.js';
+import { mintedId, mintedSpecs } from '../test-helpers.js';
 
 // --- fixtures ----------------------------------------------------------------
 

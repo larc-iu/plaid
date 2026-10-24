@@ -10,7 +10,7 @@ import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
 import { documentFraction } from '../progress.js';
 import { buildCldfDataset } from '../../export/cldf.js';
 import { makeFixtureDoc } from '../../export/testFixtures.js';
-import { mintedId, mintedSpecs } from '../testMinted.js';
+import { mintedId, mintedSpecs } from '../test-helpers.js';
 
 // A build produced by exporting the shared fixture and reading it back, so the
 // engine is exercised against the same data the exporter really writes.
