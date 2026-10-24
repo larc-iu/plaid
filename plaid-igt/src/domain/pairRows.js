@@ -19,7 +19,7 @@
 // with no valueLinks entry) takes the morpheme's CURRENT link, so a pick never
 // takes a link off. Unlinking is the chip's.
 
-import { PROV, PROV_STATES, provState } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES, provState, readValueProbs } from '@larc-iu/plaid-client';
 import { collationKey, compareText } from '@ui/domain/collation.js';
 import {
   isTrustedLink,
@@ -243,11 +243,9 @@ export function pairRows({
       });
     }
     // Alternatives that name no entry, or whose entry is gone, keep the link.
-    if (detail.valueProbs && typeof detail.valueProbs === 'object') {
-      for (const [v, p] of Object.entries(detail.valueProbs)) {
-        if (typeof p !== 'number' || v === '' || linked.has(v)) continue;
-        addPair(currentId, v, T.MODEL, { model: true, prob: p, source: producer });
-      }
+    for (const [v, p] of Object.entries(readValueProbs(span.metadata) || {})) {
+      if (linked.has(v)) continue;
+      addPair(currentId, v, T.MODEL, { model: true, prob: p, source: producer });
     }
     if (typeof detail.value === 'string' && detail.value !== '' && !linked.has(detail.value)) {
       addPair(currentId, detail.value, T.MODEL, { model: true, source: producer });

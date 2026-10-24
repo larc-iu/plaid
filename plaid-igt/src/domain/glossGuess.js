@@ -17,7 +17,7 @@
 //   ({ precedent, sentences, wordFields, morphFields }) => ({ id, guessFor })
 // where `precedent` is the precedent.js tally the editor maintains.
 
-import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES, readValueProbs } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
 import { isValueAllowed, scanValue, tagsetEnforces } from './tagsets.js';
 
@@ -181,13 +181,10 @@ export function listAlternatives({
   const d = span?.metadata?.[PROV_DETAIL_KEY];
   if (d && typeof d === 'object') {
     if (d.value != null && d.value !== '') row(d.value).model = true;
-    if (d.valueProbs && typeof d.valueProbs === 'object') {
-      for (const [v, p] of Object.entries(d.valueProbs)) {
-        if (typeof p !== 'number' || v === '') continue;
-        const r = row(v);
-        r.model = true;
-        r.prob = Math.max(r.prob ?? 0, p);
-      }
+    for (const [v, p] of Object.entries(readValueProbs(span.metadata) || {})) {
+      const r = row(v);
+      r.model = true;
+      r.prob = Math.max(r.prob ?? 0, p);
     }
   }
   let list = [...rows.values()].map((r) => ({

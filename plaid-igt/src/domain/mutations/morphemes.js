@@ -12,7 +12,13 @@
 // invalid input. `throw` inside `_queueWrite` is reserved for unexpected
 // failure paths the server is reporting.
 
-import { cpSlice, mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
+import {
+  cpSlice,
+  mergeMetadata,
+  metadataOps,
+  createdId,
+  FORM_PROBS_KEY,
+} from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -28,12 +34,15 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 // contributed segmentation, a contributor's marks it contributed. Merged into
 // the same metadata patch; null-safe for a verifier's own morphemes. A new
 // morpheme a person makes carries the create stamp likewise. When the form
-// changes, the producer's provProb, which was the probability of the form
-// replaced, goes (the writer's valueEditStamp).
+// changes, provProb becomes the producer's probability for the new form when
+// it weighed one (provDetail.formProbs), and goes when it did not (the
+// writer's valueEditStamp).
 const formStamped = (doc, morpheme, form) => ({
   form,
   ...(doc.valueEditStamp(morpheme?.metadata, {
     changes: (morpheme?.metadata?.form ?? null) !== form,
+    value: form,
+    probsKey: FORM_PROBS_KEY,
   }) || {}),
 });
 const created = (doc, meta) => {

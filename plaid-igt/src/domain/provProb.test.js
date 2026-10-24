@@ -1,6 +1,7 @@
-// provProb is the probability of the value a span holds. A pick of one of the
-// alternatives a producer weighed carries that alternative's, and a typed
-// value carries none (PICKER-REAL ruling, 2026-10-21).
+// provProb is the producer's probability for the value a span holds, however
+// it was entered (R5, Luke 2026-10-24, superseding PICKER-REAL's "a typed
+// value carries none"): a value the producer weighed carries its probability,
+// picked or typed, and a value it never weighed carries none.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc, settle } from './test-helpers.js';
 
@@ -33,13 +34,21 @@ const glossMeta = (doc) => doc.sentences[0].tokens[0].morphemes[0].annotations.G
 beforeEach(() => resetIds());
 
 describe('provProb follows the value', () => {
-  it('a typed value drops it', async () => {
+  it('a typed value the producer never weighed drops it', async () => {
     const { doc } = machineGloss();
     await doc.updateMorphemeSpan('m-1', 'Gloss', '1sg-ERG');
     await settle(4);
     expect(glossMeta(doc).provProb).toBeUndefined();
     expect(glossMeta(doc).provConfirmed).toBe(true);
     expect(glossMeta(doc).provDetail.valueProbs.was).toBe(0.62);
+  });
+
+  it('a typed value the producer weighed carries its probability', async () => {
+    const { doc } = machineGloss();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'cop');
+    await settle(4);
+    expect(glossMeta(doc).provProb).toBe(0.04);
+    expect(glossMeta(doc).provConfirmed).toBe(true);
   });
 
   it('a pick sets the picked alternative’s', async () => {
@@ -67,7 +76,7 @@ const machineMorpheme = () => {
     prov: 'inferred',
     provSource: 'service:m',
     provProb: 0.7,
-    provDetail: { form: 'the' },
+    provDetail: { form: 'the', formProbs: { the: 0.7, thee: 0.2 } },
   };
   const client = makeFakeClient({ reloadDoc: structuredClone(raw) });
   const doc = makeIgtDoc({
@@ -83,13 +92,21 @@ const morphemeMeta = (doc) =>
   doc._raw.textLayers[0].tokenLayers[2].tokens.find((t) => t.id === 'm-1').metadata;
 
 describe('provProb follows a morpheme form', () => {
-  it('a typed form drops it, provDetail stays', async () => {
+  it('a typed form the producer never weighed drops it, provDetail stays', async () => {
     const { doc } = machineMorpheme();
-    await doc.updateMorphemeForm('m-1', 'thee');
+    await doc.updateMorphemeForm('m-1', 'thy');
     await settle(4);
     expect(morphemeMeta(doc).provProb).toBeUndefined();
     expect(morphemeMeta(doc).provConfirmed).toBe(true);
     expect(morphemeMeta(doc).provDetail.form).toBe('the');
+  });
+
+  it('a typed form the producer weighed carries its probability', async () => {
+    const { doc } = machineMorpheme();
+    await doc.updateMorphemeForm('m-1', 'thee');
+    await settle(4);
+    expect(morphemeMeta(doc).provProb).toBe(0.2);
+    expect(morphemeMeta(doc).provConfirmed).toBe(true);
   });
 
   it('a re-typed form that changes nothing keeps it', async () => {

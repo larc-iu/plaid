@@ -21,7 +21,7 @@ import { readVocabulary } from '@/domain/vocabCache';
 import { sendMorphTypeCaches } from '@/domain/morphTypeCaches';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
 import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
-import { metadataOps } from '@larc-iu/plaid-client';
+import { metadataOps, FORM_PROBS_KEY, VALUE_PROBS_KEY } from '@larc-iu/plaid-client';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
   collectRespellRows,
@@ -272,7 +272,9 @@ export async function applyRespell(
       id: m.id,
       metadata: [
         { op: 'set', path: ['form'], value: m.new },
-        ...metadataOps(writer.valueEditStamp(m.metadata)),
+        ...metadataOps(
+          writer.valueEditStamp(m.metadata, { value: m.new, probsKey: FORM_PROBS_KEY }),
+        ),
       ],
     }));
   const morphemesOf = (docRows) => (includeMorphemes ? docRows.flatMap((r) => r.morphemes) : []);
@@ -385,14 +387,21 @@ const clears = (row) => row.kind === 'span' && blank(row.new);
 // `writer` is the person's writerPolicy. Each value carries its stamp in the
 // same entry, read from the entity as the send found it: a verifier's
 // replace confirms machine and contributed values, a contributor's marks
-// them contributed, and a changed value drops the producer's provProb, as a
-// typed edit does.
+// them contributed, and a changed value carries the producer's probability for
+// the new value when it weighed one, and none when it did not, as a typed edit
+// does.
 export async function applyField(
   client,
   { rows, versions, replan },
   { writer, label, onProgress },
 ) {
-  const stampOps = (r) => metadataOps(writer.valueEditStamp(r.metadata));
+  const stampOps = (r) =>
+    metadataOps(
+      writer.valueEditStamp(r.metadata, {
+        value: r.new,
+        probsKey: r.kind === 'morphForm' ? FORM_PROBS_KEY : VALUE_PROBS_KEY,
+      }),
+    );
   let changed = 0;
   let cleared = 0;
   let skipped = 0;

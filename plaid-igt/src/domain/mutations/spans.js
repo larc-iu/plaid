@@ -24,11 +24,12 @@ export const findSpanLayer = (doc, scope, fieldName) => {
 // or contributed span verifies it, keeping provSource for history; a
 // contributor's edit marks the span contributed).
 //
-// `prob` is the probability of the value written, for a pick of one of the
-// alternatives a producer weighed: provProb becomes it. A human edit with no
-// probability (a typed value) drops provProb, which describes the value the
-// span held, not this one. provDetail stays, as history. The writer's
-// valueEditStamp owns that rule.
+// provProb is the producer's probability for the value the span holds,
+// however it was entered (R5): a value the producer weighed, picked or typed,
+// carries its probability from the span's provDetail.valueProbs, and a value
+// it never weighed carries none. `prob`, given by a pick of an alternative
+// that names its own number (a valueLinks entry), is used instead.
+// provDetail stays, as history. The writer's valueEditStamp owns that rule.
 export const planSpan = (doc, targetLayer, targetTokenId, value, metadata, prob = null) => {
   const existing = (targetLayer.spans || []).find(
     (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
@@ -46,7 +47,7 @@ export const planSpan = (doc, targetLayer, targetTokenId, value, metadata, prob 
     // (a machine writer re-stamping) still writes.
     if (!metadata && existing.value === value) return null;
     // No caller fragment = a human edit, which carries the writer's stamp.
-    const fragment = metadata || doc.valueEditStamp(existing.metadata, { prob });
+    const fragment = metadata || doc.valueEditStamp(existing.metadata, { value, prob });
     // Only the fragment's keys are sent, so a key written elsewhere since
     // this copy was loaded survives. `merged` is the same edit made locally.
     const merged = fragment ? mergeMetadata(existing.metadata, fragment) : null;

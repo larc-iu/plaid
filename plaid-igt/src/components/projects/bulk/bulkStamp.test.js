@@ -8,7 +8,8 @@ import { applyField, applyRespell } from './bulkRunner.js';
 // A field replace is a person's edit of every value it changes, so each value
 // carries the writer's stamp in the same entry, as a typed edit does: a
 // verifier's confirms machine work, a contributor's marks it contributed, and
-// the producer's provProb, the probability of the value replaced, goes.
+// provProb becomes the producer's probability for the new value, none when it
+// never weighed it.
 
 const MACHINE = { prov: 'inferred', provSource: 'service:m', provProb: 0.6 };
 
@@ -132,6 +133,72 @@ describe('Bulk Edit Respell stamps the morpheme forms it respells', () => {
       { op: 'set', path: ['provSource'], value: 'user:ann@x.com' },
       { op: 'delete', path: ['provConfirmed'] },
       { op: 'delete', path: ['provProb'] },
+    ]);
+  });
+});
+
+// R5: provProb is the producer's probability for the value now held, so a
+// replace or respell to a value the producer weighed carries its number.
+describe('Bulk Edit carries the probability of a value the producer weighed', () => {
+  const WEIGHED = {
+    ...MACHINE,
+    provDetail: { valueProbs: { DOG: 0.6, dog: 0.3 }, formProbs: { DOG: 0.6, dog: 0.25 } },
+  };
+  const weighedDoc = () => {
+    const doc = docWithMachineWork();
+    doc._raw.textLayers[0].tokenLayers[1].spanLayers[0].spans[0].metadata = { ...WEIGHED };
+    doc._raw.textLayers[0].tokenLayers[2].tokens[1].metadata = { form: 'DOG', ...WEIGHED };
+    return doc;
+  };
+  const replace = async (target) => {
+    const doc = weighedDoc();
+    const rows = collectFieldRows(doc, target, buildReplacer('DOG', 'exact', 'dog').apply);
+    const client = Object.assign(makeFakeClient(), strictMode());
+    await applyField(
+      client,
+      { rows, versions: { [doc.id]: 1 } },
+      { writer: writerPolicy(null), label: 'Replace' },
+    );
+    return client;
+  };
+
+  it('a field replace reads valueProbs', async () => {
+    const [entry] = sent(await replace(wordTarget), 'spans.bulkUpdate');
+    expect(entry.metadata).toEqual([
+      { op: 'set', path: ['provConfirmed'], value: true },
+      { op: 'set', path: ['provProb'], value: 0.3 },
+    ]);
+  });
+
+  it('a morpheme form replace reads formProbs', async () => {
+    const [entry] = sent(await replace({ kind: 'morpheme' }), 'tokens.bulkUpdate');
+    expect(entry.metadata).toEqual([
+      { op: 'set', path: ['form'], value: 'dog' },
+      { op: 'set', path: ['provConfirmed'], value: true },
+      { op: 'set', path: ['provProb'], value: 0.25 },
+    ]);
+  });
+
+  it('a respelled form reads formProbs', async () => {
+    const raw = buildRawDoc({ body: 'the cat' });
+    raw.textLayers[0].tokenLayers[2].tokens[1].metadata = {
+      form: 'cat',
+      ...MACHINE,
+      provDetail: { formProbs: { cat: 0.6, dog: 0.1 } },
+    };
+    const doc = new IgtDocument({ raw, client: makeFakeClient() });
+    const rows = collectRespellRows(doc, buildReplacer('cat', 'exact', 'dog').apply);
+    const client = Object.assign(makeFakeClient(), strictMode());
+    await applyRespell(
+      client,
+      { rows, lexiconRows: [], versions: { [doc.id]: 1 } },
+      { writer: writerPolicy(null), includeMorphemes: true, label: 'Respell' },
+    );
+    const [entry] = sent(client, 'tokens.bulkUpdate');
+    expect(entry.metadata).toEqual([
+      { op: 'set', path: ['form'], value: 'dog' },
+      { op: 'set', path: ['provConfirmed'], value: true },
+      { op: 'set', path: ['provProb'], value: 0.1 },
     ]);
   });
 });
