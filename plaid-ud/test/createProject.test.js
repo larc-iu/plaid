@@ -75,3 +75,20 @@ test('a lost answer is rolled back by its id, and the next press sends the same 
   assert.deepEqual(second.seen.batchedUnder, [first.seen.created[0]]);
   assert.deepEqual(second.seen.deleted, []);
 });
+
+test('a lost answer after a re-mint rolls back the id the create was last sent', async () => {
+  // The first id names a deleted project, so createOnce mints a second and
+  // sends again, and that answer is lost.
+  const answers = [
+    () => {
+      throw Object.assign(idTaken(), { responseData: { error: 'id-taken', deleted: true } });
+    },
+    () => {
+      throw lost();
+    },
+  ];
+  const { client, seen } = fakeClient(() => answers.shift()(), { deleteFails: true });
+  await assert.rejects(createUdProject(client, 'New', { current: null }), /Failed to fetch/);
+  assert.equal(seen.created.length, 2);
+  assert.deepEqual(seen.deleted, [seen.created[1]]);
+});

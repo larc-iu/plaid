@@ -165,7 +165,9 @@ const bootstrap = async (client, projectName, mint) => {
     // Best-effort rollback: layers are immutable, so delete the half-created
     // project. If deletion fails too, surface that.
     try {
-      await client.projects.delete(projectId);
+      // Not created: the id the create was last sent, which createOnce
+      // mints again after an id whose project was deleted.
+      await client.projects.delete(created ? projectId : mint.current);
     } catch (deleteErr) {
       // A create with no answer may have made nothing, so the delete has
       // nothing to find. The press after this one names the same id.

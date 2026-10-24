@@ -153,7 +153,9 @@ const bootstrap = async (client, projectName, mint) => {
     // Layers are immutable, so a half-configured project is rolled back by
     // deleting it. If that fails too, say so.
     try {
-      await client.projects.delete(projectId);
+      // Not created: the id the create was last sent, which createOnce
+      // mints again after an id whose project was deleted.
+      await client.projects.delete(created ? projectId : mint.current);
     } catch (deleteErr) {
       // A create with no answer may have made nothing, so the delete has
       // nothing to find. The press after this one names the same id.
