@@ -4,17 +4,15 @@
             [reitit.coercion.malli]
             [plaid.sql.text-layer :as txtl]))
 
-(defn get-project-id [{db :db params :parameters}]
-  (let [prj-id (-> params :body :project-id)
-        txtl-id (-> params :path :text-layer-id)]
-    (cond prj-id
-          prj-id
-
-          txtl-id
-          (txtl/project-id db txtl-id)
-
-          :else
-          nil)))
+(defn get-project-id
+  "The project of the text layer the path names, or on the create (no layer
+  in the path) the body's `project-id`. A route that names its layer reads
+  only the path: the config bodies are `any?`, so a body key would otherwise
+  choose the project the maintainer gate checks (C1-2)."
+  [{db :db params :parameters}]
+  (if-let [txtl-id (-> params :path :text-layer-id)]
+    (txtl/project-id db txtl-id)
+    (-> params :body :project-id)))
 
 (def text-layer-routes
   (layer-routes

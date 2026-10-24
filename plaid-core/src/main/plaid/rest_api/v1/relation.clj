@@ -9,14 +9,13 @@
             [plaid.sql.relation-layer :as rl]))
 
 (defn get-project-id
-  "Derive the project ID from a relation-layer or existing relation."
+  "The project of the relation the path names, or on the create (no relation
+  in the path) of the body's relation layer. A route that names its relation
+  reads only the path, so no body key can choose the project the gate checks."
   [{db :db params :parameters}]
-  (let [rl-id (-> params :body :relation-layer-id)
-        relation-id (-> params :path :relation-id)]
-    (cond
-      rl-id (rl/project-id db rl-id)
-      relation-id (r/project-id db relation-id)
-      :else nil)))
+  (if-let [relation-id (-> params :path :relation-id)]
+    (r/project-id db relation-id)
+    (some->> (-> params :body :relation-layer-id) (rl/project-id db))))
 
 (def bulk-get-project-id
   "The project the writer gate checks for a bulk create (entries carry
@@ -28,23 +27,13 @@
                          (when (uuid? entry) (r/project-id db entry))))))
 
 (defn get-document-id
-  "Get document ID from relation's source span."
+  "The document of the relation the path names (read off its source span),
+  or on the create of the body's source span. Path only when the path names
+  the relation, as `get-project-id`."
   [{db :db params :parameters}]
-  (let [source-id (-> params :body :source)
-        span-id (-> params :body :span-id)
-        relation-id (-> params :path :relation-id)]
-    (cond
-      source-id
-      (r/get-doc-id-of-span db source-id)
-
-      span-id
-      (r/get-doc-id-of-span db span-id)
-
-      relation-id
-      (when-let [relation (r/get db relation-id)]
-        (r/get-doc-id-of-span db (:relation/source relation)))
-
-      :else nil)))
+  (if-let [relation-id (-> params :path :relation-id)]
+    (some->> (r/get db relation-id) :relation/source (r/get-doc-id-of-span db))
+    (some->> (-> params :body :source) (r/get-doc-id-of-span db))))
 
 (def bulk-get-document-id
   "The document of a bulk create or delete, read off a relation's source

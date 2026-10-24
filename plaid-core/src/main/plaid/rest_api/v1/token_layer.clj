@@ -5,17 +5,14 @@
             [plaid.sql.text-layer :as txtl]
             [plaid.sql.token-layer :as tokl]))
 
-(defn get-project-id [{db :db params :parameters}]
-  (let [txtl-id (-> params :body :text-layer-id)
-        tokl-id (-> params :path :token-layer-id)]
-    (cond txtl-id
-          (txtl/project-id db txtl-id)
-
-          tokl-id
-          (tokl/project-id db tokl-id)
-
-          :else
-          nil)))
+(defn get-project-id
+  "The project of the token layer the path names, or on the create (no layer
+  in the path) of the body's text layer. Path only when the path names the
+  layer, as `plaid.rest-api.v1.text-layer/get-project-id` (C1-2)."
+  [{db :db params :parameters}]
+  (if-let [tokl-id (-> params :path :token-layer-id)]
+    (tokl/project-id db tokl-id)
+    (some->> (-> params :body :text-layer-id) (txtl/project-id db))))
 
 (def token-layer-routes
   (layer-routes

@@ -9,14 +9,13 @@
             [plaid.sql.span-layer :as sl]))
 
 (defn get-project-id
-  "Get the project ID from span-layer or existing span."
+  "The project of the span the path names, or on the create (no span in the
+  path) of the body's span layer. A route that names its span reads only the
+  path, so no body key can choose the project the gate checks."
   [{db :db params :parameters}]
-  (let [sl-id (-> params :body :span-layer-id)
-        span-id (-> params :path :span-id)]
-    (cond
-      sl-id (sl/project-id db sl-id)
-      span-id (s/project-id db span-id)
-      :else nil)))
+  (if-let [span-id (-> params :path :span-id)]
+    (s/project-id db span-id)
+    (some->> (-> params :body :span-layer-id) (sl/project-id db))))
 
 (def bulk-get-project-id
   "The project the writer gate checks for a bulk create (entries carry
@@ -28,18 +27,12 @@
                          (when (uuid? entry) (s/project-id db entry))))))
 
 (defn get-document-id
-  "Get document ID from span tokens."
+  "The document of the span the path names, or on the create of the body's
+  first token. Path only when the path names the span, as `get-project-id`."
   [{db :db params :parameters}]
-  (let [tokens (-> params :body :tokens)
-        span-id (-> params :path :span-id)]
-    (cond
-      (and tokens (seq tokens))
-      (s/get-doc-id-of-token db (first tokens))
-
-      span-id
-      (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-id))))
-
-      :else nil)))
+  (if-let [span-id (-> params :path :span-id)]
+    (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-id))))
+    (some->> (-> params :body :tokens first) (s/get-doc-id-of-token db))))
 
 (def bulk-get-document-id
   "The document of a bulk create or delete, from the first entry that

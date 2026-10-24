@@ -7,21 +7,23 @@
             [plaid.sql.text :as txt]
             [plaid.util.digest :as digest]))
 
-(defn get-project-id [{db :db params :parameters}]
-  (let [txtl-id (-> params :body :text-layer-id)
-        text-id (-> params :path :text-id)]
-    (cond
-      txtl-id (txtl/project-id db txtl-id)
-      text-id (txt/project-id db text-id)
-      :else nil)))
+(defn get-project-id
+  "The project of the text the path names, or on the create (no text in the
+  path) of the body's text layer. A route that names its text reads only the
+  path: the PATCH body is `any?`, so a body key would otherwise choose the
+  project the gate checks (C1-1)."
+  [{db :db params :parameters}]
+  (if-let [text-id (-> params :path :text-id)]
+    (txt/project-id db text-id)
+    (some->> (-> params :body :text-layer-id) (txtl/project-id db))))
 
-(defn get-document-id [{db :db params :parameters}]
-  (let [document-id (-> params :body :document-id)
-        text-id (-> params :path :text-id)]
-    (cond
-      document-id document-id
-      text-id (:text/document (txt/get db text-id))
-      :else nil)))
+(defn get-document-id
+  "The document of the text the path names, or on the create of the body's
+  `document-id`. Path only when the path names the text, as `get-project-id`."
+  [{db :db params :parameters}]
+  (if-let [text-id (-> params :path :text-id)]
+    (:text/document (txt/get db text-id))
+    (-> params :body :document-id)))
 
 (def text-routes
   ["/texts"

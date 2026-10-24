@@ -5,17 +5,14 @@
             [plaid.sql.token-layer :as tokl]
             [plaid.sql.span-layer :as sl]))
 
-(defn get-project-id [{db :db params :parameters}]
-  (let [tokl-id (-> params :body :token-layer-id)
-        sl-id (-> params :path :span-layer-id)]
-    (cond tokl-id
-          (tokl/project-id db tokl-id)
-
-          sl-id
-          (sl/project-id db sl-id)
-
-          :else
-          nil)))
+(defn get-project-id
+  "The project of the span layer the path names, or on the create (no layer
+  in the path) of the body's token layer. Path only when the path names the
+  layer, as `plaid.rest-api.v1.text-layer/get-project-id` (C1-2)."
+  [{db :db params :parameters}]
+  (if-let [sl-id (-> params :path :span-layer-id)]
+    (sl/project-id db sl-id)
+    (some->> (-> params :body :token-layer-id) (tokl/project-id db))))
 
 (def span-layer-routes
   (layer-routes

@@ -4,17 +4,14 @@
             [plaid.sql.span-layer :as sl]
             [plaid.sql.relation-layer :as rl]))
 
-(defn get-project-id [{db :db params :parameters}]
-  (let [sl-id (-> params :body :span-layer-id)
-        rl-id (-> params :path :relation-layer-id)]
-    (cond sl-id
-          (sl/project-id db sl-id)
-
-          rl-id
-          (rl/project-id db rl-id)
-
-          :else
-          nil)))
+(defn get-project-id
+  "The project of the relation layer the path names, or on the create (no
+  layer in the path) of the body's span layer. Path only when the path names
+  the layer, as `plaid.rest-api.v1.text-layer/get-project-id` (C1-2)."
+  [{db :db params :parameters}]
+  (if-let [rl-id (-> params :path :relation-layer-id)]
+    (rl/project-id db rl-id)
+    (some->> (-> params :body :span-layer-id) (sl/project-id db))))
 
 (def relation-layer-routes
   (layer-routes

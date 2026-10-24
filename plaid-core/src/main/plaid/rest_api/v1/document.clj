@@ -18,26 +18,23 @@
 (defn get-project-id
   "Resolve the project id for permission checks.
 
-  Order: explicit body `:project-id` wins (POST create); else look up
-  the doc's project on the OLTP `:db`; else, for at-time GETs, fall
-  through to audit-log reconstruction at `:as-of-ts` so docs that were
-  deleted from OLTP but existed at `ts` still resolve their project
-  (the privilege check then runs against CURRENT ACL membership —
-  historical ACL is out of scope per design)."
+  A route that names its document reads only the path: the doc's project
+  on the OLTP `:db`, else, for at-time GETs, audit-log reconstruction at
+  `:as-of-ts`, so docs that were deleted from OLTP but existed at `ts`
+  still resolve their project (the privilege check then runs against
+  CURRENT ACL membership, historical ACL being out of scope per design).
+  The create, which names no document, reads the body's `:project-id`."
   [{db :db params :parameters as-of-ts :as-of-ts}]
-  (let [prj-id (-> params :body :project-id)
-        doc-id (-> params :path :document-id)]
-    (cond
-      prj-id prj-id
-      doc-id (or (-> (doc/get db doc-id) :document/project)
-                 (when as-of-ts
-                   ;; Reconstruction fallthrough: doc was deleted from
-                   ;; OLTP but may have existed at ts. A :history/pruned
-                   ;; throw propagates to wrap-route-as-of (outer to this
-                   ;; auth middleware) for a structured 400.
-                   (-> (hread/get-at db doc-id as-of-ts)
-                       :document/project)))
-      :else nil)))
+  (if-let [doc-id (-> params :path :document-id)]
+    (or (-> (doc/get db doc-id) :document/project)
+        (when as-of-ts
+          ;; Reconstruction fallthrough: doc was deleted from
+          ;; OLTP but may have existed at ts. A :history/pruned
+          ;; throw propagates to wrap-route-as-of (outer to this
+          ;; auth middleware) for a structured 400.
+          (-> (hread/get-at db doc-id as-of-ts)
+              :document/project)))
+    (-> params :body :project-id)))
 
 (defn- wrap-resolve-as-of
   "Resolve `:as-of-ts` once for the whole request. The permission check

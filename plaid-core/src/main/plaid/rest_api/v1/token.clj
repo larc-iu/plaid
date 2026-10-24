@@ -7,13 +7,14 @@
             [plaid.sql.token :as tok]
             [plaid.sql.token-layer :as tokl]))
 
-(defn get-project-id [{db :db params :parameters}]
-  (let [tokl-id (or (-> params :body :token-layer-id))
-        token-id (-> params :path :token-id)]
-    (cond
-      tokl-id (tokl/project-id db tokl-id)
-      token-id (tok/project-id db token-id)
-      :else nil)))
+(defn get-project-id
+  "The project of the token the path names, or on the create (no token in the
+  path) of the body's token layer. A route that names its token reads only
+  the path, so no body key can choose the project the gate checks."
+  [{db :db params :parameters}]
+  (if-let [token-id (-> params :path :token-id)]
+    (tok/project-id db token-id)
+    (some->> (-> params :body :token-layer-id) (tokl/project-id db))))
 
 (def bulk-get-project-id
   "The project the writer gate checks for a bulk create (entries carry
