@@ -55,11 +55,6 @@ from plaid_client.workflows.igt.senses import (  # noqa: F401
 HOMOGRAPH_KEY = 'homograph'
 EXAMPLES_KEY = 'examples'
 
-# The editorial status field a new vocabulary is seeded with.
-STATUS_FIELD = 'status'
-STATUS_TAGSET = 'Status'
-STATUS_VALUES = ('draft', 'reviewed', 'published')
-
 # Keys an entry may carry that are never fields. A schema can never shadow one.
 RESERVED_ITEM_KEYS = frozenset({'form', 'parent', 'senseOrder', 'examples',
                                 'flexEntry', 'flexSense', 'homograph'})

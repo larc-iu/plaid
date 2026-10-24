@@ -212,9 +212,10 @@ def project_language(project) -> str:
 # The Python side of ``plaid-umr/src/domain/ilg.js``: which of a project's gloss
 # layers is its word gloss, its morpheme gloss, its part of speech, and so on.
 # The project's own mapping is ``config.umr.ilg``, an ordered list of
-# ``{header, lang, source}``, and a project with none has one proposed from its
-# layers' names. ``plaid-umr/services/tests/test_umr_bootstrap_igt.py`` runs
-# ``ilg.js`` and fails when the two classify a layer differently.
+# ``{header, lang, source}``, and it is only read: a project with none has no
+# gloss lines, and no layer is ever classified by its name.
+# ``plaid-umr/services/tests/test_umr_bootstrap_igt.py`` runs ``ilg.js`` and
+# fails when the two resolve a mapping differently.
 
 #: Every header by its scope, and whether it carries a language (``HEADERS``).
 ILG_HEADERS: Dict[str, tuple] = {
