@@ -926,29 +926,20 @@ describe('usage counts', () => {
   });
 });
 
-// The type an entry goes by is cached on every morpheme linked to it, and to
-// the senses under it that go by it, in every project the writer can write.
-// Nothing rewrites a stale copy later, so the save writes it.
+// The type an entry goes by is read off the entry by every morpheme linked to
+// it, and to the senses under it that go by it. No morpheme stores a copy (R2,
+// 2026-10-24), so the save writes the entry and nothing else.
 describe('a type changed on the entry form', () => {
-  it("is written on the morphemes of the entry's senses in the same operation", async () => {
+  it('writes the entry alone, with no morpheme read or written', async () => {
     const { client, calls } = stub([
       { id: 'h', form: 'kai', metadata: { morphType: 'stem' } },
       { id: 's', form: 'kai', metadata: { parent: 'h' } },
     ]);
     client.projects.list = async () => [{ id: 'p1', vocabs: [{ id: 'v1' }] }];
-    client.query = async (q) =>
-      q.where[0][0] === 'link'
-        ? {
-            results: [
-              ['m1', 's', 'stem', 1],
-              ['m2', 'h', 'stem', 1],
-            ],
-          }
-        : { results: [] };
-    const operations = [];
-    client.withOperation = (label, fn) => {
-      operations.push(label);
-      return fn(() => {});
+    const asked = [];
+    client.query = async (q) => {
+      asked.push(q);
+      return { results: [] };
     };
     const view = await mount(client, '/vocabularies/v1?item=h', new WriteQueue(), [
       { name: 'gloss', type: 'text' },
@@ -966,12 +957,12 @@ describe('a type changed on the entry form', () => {
       button('Save').click();
       for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
     });
-    const written = calls.filter(([kind]) => kind === 'tokens.bulkUpdate').flatMap(([, u]) => u);
-    expect(written).toEqual([
-      { id: 'm1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
-      { id: 'm2', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+    expect(calls.filter(([kind]) => kind === 'tokens.bulkUpdate')).toEqual([]);
+    expect(asked.filter((q) => q.where?.[0]?.[0] === 'link')).toEqual([]);
+    const [, update] = calls.find(([kind]) => kind === 'bulkUpdate');
+    expect(update).toEqual([
+      { id: 'h', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
     ]);
-    expect(operations).toEqual(['Edit entry "kai"']);
     await view.unmount();
   });
 });

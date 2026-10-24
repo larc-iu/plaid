@@ -16,14 +16,6 @@ import {
 } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { lexiconView } from '../vocabDictionary.js';
-import {
-  entryTypeTargets,
-  planEntryChange,
-  plannedOnce,
-  revertedCaches,
-  sendMorphTypeCaches,
-} from '../morphTypeCaches.js';
 import { findSpanLayer, planSpan, showSpan } from './spans.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 
@@ -31,46 +23,6 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 // rather than a bulk endpoint, and a link replacement emits 2 ops apiece
 // (delete + create), so it is plaid-core's 1000-op cap that bounds it.
 const REPLACE_CHUNK = 400;
-
-/**
- * The morph-type cache a link has to keep in step.
- *
- * A morpheme linked to a lexicon entry goes by the ENTRY's type (its own, else
- * its headword's), and `derive` reads the entry over the token's cached
- * `metadata.morphType`. The cache is what unlinked morphemes and consumers that
- * never load the lexicon read, and nothing writes it later, so a link writes
- * it. It is the same move `setVocabItemMorphType` makes when an entry's type
- * changes.
- *
- * `planned` are morphemes an edit is making (pending, see pending.js), which
- * count as morphemes with no type yet.
- *
- * Returns a `typeFor(tokenId, vocabId, itemId)` that answers the type to write,
- * or null when there is nothing to write: the token is a WORD rather than a
- * morpheme (a word has no morph type), the entry chain resolves to no type, or
- * the cache already agrees. One lexicon view per vocabulary, built on demand,
- * since a bulk link can name hundreds of tokens across a handful of entries.
- */
-const morphTypeCache = (doc, planned = []) => {
-  const morphemes = new Map(
-    [...(doc.layerInfo.morphemeTokenLayer?.tokens || []), ...planned].map((m) => [m.id, m]),
-  );
-  const views = new Map();
-  const viewFor = (vocabId) => {
-    if (!views.has(vocabId)) {
-      const vocab = doc._vocabularies?.[vocabId];
-      views.set(vocabId, vocab ? lexiconView(vocab.items || []) : null);
-    }
-    return views.get(vocabId);
-  };
-  return (tokenId, vocabId, itemId) => {
-    const token = morphemes.get(tokenId);
-    if (!token) return null;
-    const type = viewFor(vocabId)?.morphTypeOf(itemId) ?? null;
-    if (!type) return null;
-    return (token.metadata?.morphType ?? null) === type ? null : type;
-  };
-};
 
 // Locate the existing single-token vocab link for `tokenId` across all
 // vocabularies. By convention there is at most one.
@@ -154,19 +106,6 @@ export const vocabMutations = {
       const live = (x) => Boolean(x.tokenId);
       creates = creates.filter(live);
       replaces = replaces.filter(live);
-      // The morph-type caches these links make stale. A morpheme made here is
-      // made with its type. One already there is patched below. A link whose
-      // token is a word, or whose entry chain has no type, contributes nothing.
-      const typeFor = morphTypeCache(this, morphemeCreates);
-      const planned = new Map(morphemeCreates.map((c) => [c.id, c]));
-      const cachePatches = [];
-      for (const x of [...creates, ...replaces]) {
-        const type = typeFor(x.tokenId, x.vocabId, x.item.id);
-        if (!type) continue;
-        const c = planned.get(x.tokenId);
-        if (c) c.metadata = { ...(c.metadata || {}), morphType: type };
-        else cachePatches.push({ tokenId: settledId(x.tokenId), type });
-      }
       if (creates.length) {
         // The dedicated endpoint has no per-batch op cap, so even a document
         // with thousands of unlinked tokens links in a single tx.
@@ -196,14 +135,6 @@ export const vocabMutations = {
             })),
           );
         });
-      }
-      for (let i = 0; i < cachePatches.length; i += REPLACE_CHUNK) {
-        await this._client.tokens.bulkUpdate(
-          cachePatches.slice(i, i + REPLACE_CHUNK).map((c) => ({
-            id: c.tokenId,
-            metadata: [{ op: 'set', path: ['morphType'], value: c.type }],
-          })),
-        );
       }
       await this._reloadInSend();
     };
@@ -266,11 +197,10 @@ export const vocabMutations = {
       this._showRelink(info, vocabs, relink);
     });
 
-    // One batch: the morpheme an unanalyzed word needs, the link that
-    // replaces its old one, and the type cache land together or not at all.
-    // What it writes in the document (that morpheme, the cache) is a value
-    // on a token that leaves the token as it is, judged by entity after a
-    // refusal, as a gloss is (DocumentModel.resendsByEntity).
+    // One batch: the morpheme an unanalyzed word needs and the link that
+    // replaces its old one land together or not at all. What it writes in
+    // the document (that morpheme) is judged by entity after a refusal, as a
+    // gloss is (DocumentModel.resendsByEntity).
     return this.resendsByEntity(() =>
       this._queueWrite(label, async () => {
         const ids = new Map();
@@ -289,14 +219,11 @@ export const vocabMutations = {
 
   // A token's link replaced by one to `vocabItem`, in three parts so a write
   // that makes other changes in the same batch can use it: the plan (the
-  // prior link, a pending id for the new one, the morph-type cache, which a
-  // morpheme made in `creates` is made with), the patch, and the send.
+  // prior link and a pending id for the new one), the patch, and the send.
+  // A linked morpheme goes by its entry's type and stores none (derive.js),
+  // so the link writes nothing on the morpheme.
   _planRelink(tokenId, creates, vocab, vocabItem, stamp = null) {
     const { link: prior, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
-    const cachedType = morphTypeCache(this, creates)(tokenId, vocab.id, vocabItem.id);
-    // A morpheme made here is made with the type; one already there takes it
-    // in the link's batch.
-    if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
     return {
       tokenId,
       prior,
@@ -306,8 +233,6 @@ export const vocabMutations = {
       item: { id: vocabItem.id, layer: vocab.id, form: vocabItem.form },
       linkId: pendingId(),
       stamp: stamp || this.createStamp,
-      cachedType,
-      patchType: !!cachedType && !creates.length,
     };
   },
 
@@ -327,10 +252,6 @@ export const vocabMutations = {
         ...(plan.stamp ? { metadata: plan.stamp } : {}),
       });
     }
-    if (plan.patchType) {
-      const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === plan.tokenId);
-      if (m) m.metadata = { ...(m.metadata || {}), morphType: plan.cachedType };
-    }
   },
 
   // Queue the relink on batch `b`. Answers `read(results, ids)`, which records
@@ -345,11 +266,6 @@ export const vocabMutations = {
       { id: plan.linkId },
     );
     const at = b.ref().$ref;
-    if (plan.patchType) {
-      b.tokens.patchMetadata(settledId(plan.tokenId), [
-        { op: 'set', path: ['morphType'], value: plan.cachedType },
-      ]);
-    }
     return (results, ids) => ids.set(plan.linkId, createdId(results[at]));
   },
 
@@ -565,21 +481,9 @@ export const vocabMutations = {
     );
     const used = new Set(targets);
     const planned = creates.filter((c) => used.has(c.id));
-    // One entry, so one resolved type, but each token answers for its own
-    // cache: a word in the set takes none, and a morpheme that already agrees
-    // is left alone. A morpheme made here is made with it.
-    const typeFor = morphTypeCache(this, planned);
-    const typed = targets.filter((id) => typeFor(id, targetVocab.id, vocabItem.id));
-    const cachedType = typed.length ? typeFor(typed[0], targetVocab.id, vocabItem.id) : null;
-    const made = new Set(planned.map((c) => c.id));
-    if (cachedType) {
-      planned.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
-    }
     return {
       creates: planned,
       links: targets.map((token) => ({ id: pendingId(), token })),
-      cacheIds: cachedType ? typed.filter((id) => !made.has(id)) : [],
-      cachedType,
       vocabId: targetVocab.id,
       item: vocabItem,
       stamp: this.createStamp || undefined,
@@ -601,16 +505,10 @@ export const vocabMutations = {
         }),
       );
     }
-    if (plan.cacheIds.length) {
-      const cached = new Set(plan.cacheIds);
-      (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
-        if (cached.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: plan.cachedType };
-      });
-    }
   },
 
-  // Queue the links on batch `b`: one bulk create for the links and one bulk
-  // update for the caches, two ops however many tokens were selected.
+  // Queue the links on batch `b`: one bulk create, one op however many tokens
+  // were selected.
   // `itemRef` and `tokenRef(id)` are what the ops name the entry and a token
   // by, an id or the batch's stand-in for one an earlier op in it makes.
   // Answers `read(results, ids)`, which records the links' new ids; the
@@ -626,14 +524,6 @@ export const vocabMutations = {
       })),
     );
     const at = b.ref().$ref;
-    if (plan.cacheIds.length) {
-      b.tokens.bulkUpdate(
-        plan.cacheIds.map((id) => ({
-          id: tokenRef(id),
-          metadata: [{ op: 'set', path: ['morphType'], value: plan.cachedType }],
-        })),
-      );
-    }
     return (results, ids) => {
       const newIds = createdIds(results[at]);
       plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
@@ -659,13 +549,9 @@ export const vocabMutations = {
   // Create a brand-new vocab item in `vocabId` and link it to `tokenId`,
   // replacing any prior link for that token. The item is created OUTSIDE the
   // batch so the batched delete+create can reference its id.
-  // Set (or clear, null) a lexicon entry's morph type, the source of truth
-  // for every morpheme linked to it and to the senses under it that have
-  // none of their own (derive.js reads the entry's type over the token's
-  // cached metadata.morphType). The cache on each of those morphemes, in
-  // every document of every project this writer can write, is written in
-  // the same operation (morphTypeCaches.js). A cleared type that leaves an
-  // entry going by none leaves its morphemes' caches as they are.
+  // Set (or clear, null) a lexicon entry's morph type, the type every
+  // morpheme linked to it, and to the senses under it that have none of their
+  // own, goes by (derive.js). Linked morphemes store no copy of it.
   async setVocabItemMorphType(vocabId, itemId, morphType) {
     if (!isValidMorphType(morphType)) {
       this.refuse(`Unknown morpheme type "${morphType}"`);
@@ -684,17 +570,6 @@ export const vocabMutations = {
       else next.morphType = morphType;
       return next;
     };
-    const items = (vocab.items || []).map((it) =>
-      it.id === itemId ? { ...it, metadata: setType(it.metadata) } : it,
-    );
-    // What each entry the change reaches goes by now, for this document's
-    // morphemes linked to it, shown at once.
-    const targets = entryTypeTargets(items, [itemId]);
-    const typeOfMorpheme = new Map();
-    for (const l of vocab.vocabLinks || []) {
-      const t = targets.get(l.vocabItem?.id);
-      if (t && Array.isArray(l.tokens) && l.tokens.length === 1) typeOfMorpheme.set(l.tokens[0], t);
-    }
     this._applyRawPatch((next, info, vocabs) => {
       const v = vocabs[vocabId];
       if (!v) return;
@@ -705,104 +580,16 @@ export const vocabMutations = {
           it.id === itemId ? { ...it, metadata: setType(it.metadata) } : it,
         );
       }
-      (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
-        const t = typeOfMorpheme.get(m.id);
-        if (t && m.metadata?.morphType !== t) m.metadata = { ...(m.metadata || {}), morphType: t };
-      });
     });
-    const plan = plannedOnce(() =>
-      planEntryChange(this._client, {
-        user: this._user,
-        vocabId,
-        items: items.map((it) => ({ ...it, id: settledId(it.id) })),
-        rootIds: [settledId(itemId)],
-      }),
-    );
-    return this._queueWrite(label, async () => {
-      const plans = await plan();
-      const here = new Set(
-        (this.layerInfo.morphemeTokenLayer?.tokens || []).map((m) => settledId(m.id)),
-      );
-      // The other documents' first: they carry no version of this one, and
-      // a refusal there leaves the entry as it was.
-      const elsewhere = plans.filter((p) => !here.has(p.morphemeId));
-      try {
-        if (elsewhere.length) {
-          await this._sendUnversioned((c) => sendMorphTypeCaches(c, elsewhere));
-        }
-        await this._client.batched(async (b) => {
-          b.vocabItems.patchMetadata(settledId(itemId), [
-            morphType == null
-              ? { op: 'delete', path: ['morphType'] }
-              : { op: 'set', path: ['morphType'], value: morphType },
-          ]);
-          await sendMorphTypeCaches(
-            b,
-            plans.filter((p) => here.has(p.morphemeId)),
-          );
-        });
-      } catch (err) {
-        // Refused (a 4xx answer), there or here: the other documents get
-        // back what they held, so no copy there names a type the entry does
-        // not have. A lost answer is sent again whole under the same keys,
-        // and is left alone.
-        if (elsewhere.length && err?.status >= 400 && err.status < 500) {
-          try {
-            await this._sendUnversioned((c) => sendMorphTypeCaches(c, revertedCaches(elsewhere)));
-          } catch (undoErr) {
-            console.error('Putting back the morpheme types of other documents failed:', undoErr);
-          }
-        }
-        throw err;
-      }
-    });
-  },
-
-  // After a restore, which brings this document's morphemes back with the
-  // type each cached then while the entry each is linked to may go by
-  // another now: write the type its entry goes by on each linked morpheme
-  // that caches another, in one operation. Writes nothing when none differs.
-  writeEntryTypes() {
-    const want = new Map();
-    for (const s of this.sentences || []) {
-      for (const t of s.tokens || []) {
-        for (const m of t.morphemes || []) {
-          const type = m.entryMorphType;
-          if (m.virtual || typeof type !== 'string' || !type) continue;
-          if (m.metadata?.morphType !== type) want.set(m.id, type);
-        }
-      }
-    }
-    if (!want.size) return Promise.resolve(true);
-    const label = 'Write morpheme types from lexicon entries';
-    if (!this._canWrite(label)) return Promise.resolve(false);
-    this._applyRawPatch((next, info) => {
-      (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
-        if (want.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: want.get(m.id) };
-      });
-    });
-    const plans = [...want].map(([id, morphType]) => ({
-      projectId: this._project?.id,
-      morphemeId: settledId(id),
-      morphType,
-    }));
     return this._queueWrite(label, () =>
-      this._client.batched((b) => sendMorphTypeCaches(b, plans)),
+      this._client.batched((b) =>
+        b.vocabItems.patchMetadata(settledId(itemId), [
+          morphType == null
+            ? { op: 'delete', path: ['morphType'] }
+            : { op: 'set', path: ['morphType'], value: morphType },
+        ]),
+      ),
     );
-  },
-
-  // Run `send(client)` with this document's client out of strict mode, for
-  // writes to other documents in an edit's turn: a version of this document
-  // claimed there would be refused. The write queue sends one edit at a time,
-  // so nothing of this document is written meanwhile.
-  async _sendUnversioned(send) {
-    const held = this._client.strictModeDocumentId;
-    this._client.strictModeDocumentId = null;
-    try {
-      return await send(this._client);
-    } finally {
-      this._client.strictModeDocumentId = held;
-    }
   },
 
   // ---- multi-word expressions (MWEs) -------------------------------------------
@@ -1111,20 +898,6 @@ export const vocabMutations = {
     );
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    // A brand-new entry has no headword to inherit from, so its type is
-    // whatever `metadata` carried. Today's caller carries none and this is a
-    // no-op, but the cache rule holds on every link path, not just the ones
-    // that exercise it now.
-    const newType =
-      typeof metadata?.morphType === 'string' && metadata.morphType !== ''
-        ? metadata.morphType
-        : null;
-    const isMorpheme =
-      creates.length > 0 ||
-      (this.layerInfo.morphemeTokenLayer?.tokens || []).some((m) => m.id === targetTokenId);
-    const cachedType = isMorpheme ? newType : null;
-    if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
-    const patchType = cachedType && !creates.length;
     const newItem = { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     // "Create and link every ‹roa› in this text": the others that read the
@@ -1155,10 +928,6 @@ export const vocabMutations = {
           ...(stamp ? { metadata: stamp } : {}),
         });
       }
-      if (patchType) {
-        const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
-        if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-      }
       this._showLinkMany(info, vocabs, others);
     });
 
@@ -1183,11 +952,6 @@ export const vocabMutations = {
             id: linkId,
           });
           linkAt = b.ref().$ref;
-          if (patchType) {
-            b.tokens.patchMetadata(settledId(targetTokenId), [
-              { op: 'set', path: ['morphType'], value: cachedType },
-            ]);
-          }
           readOthers = this._queueLinkMany(b, others, itemRef, morphemes.tokenRef);
         });
         morphemes.read(results, ids);

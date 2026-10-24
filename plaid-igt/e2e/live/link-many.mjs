@@ -115,8 +115,8 @@ try {
     fresh.sentences
       .flatMap((s) => s.tokens)
       .flatMap((t) => t.morphemes)
-      .every((m) => m.metadata?.morphType === 'stem'),
-    'and took the entry type through the bulk token update',
+      .every((m) => m.morphType === 'stem' && m.metadata?.morphType == null),
+    'and goes by the entry type, with none stored on the morpheme',
   );
 
   // ---- bulkLinkVocab: the REPLACEMENT path (bulk delete + bulk create) ----
@@ -145,8 +145,8 @@ try {
     'on NEW links, with the stale ones deleted',
   );
   check(
-    ms.every((m) => m.metadata?.morphType === 'root'),
-    'and the morph-type cache followed',
+    ms.every((m) => m.morphType === 'root' && m.metadata?.morphType == null),
+    'each goes by the entry type, with none stored on the morpheme',
   );
   const all = (await client.vocabLayers.get(VID, true)).items;
   check(all.length === 2, 'no entries were created or lost', String(all.length));

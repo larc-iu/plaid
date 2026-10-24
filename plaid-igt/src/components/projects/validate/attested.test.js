@@ -104,7 +104,7 @@ describe('attestedRows', () => {
 
 // A fake server over morphemes and a lexicon, answering each query by its
 // shape: the morphemes a vocab link reaches, the ones none does, every
-// morpheme by its cached type (an ungrouped-by-entry query), or the headwords.
+// morpheme by its own type (an ungrouped-by-entry query), or the headwords.
 const serverOver = (morphemes, lexicon) => {
   const byId = new Map(lexicon.map((e) => [e.id, e]));
   const tally = (rows) => {
@@ -172,10 +172,10 @@ const serverOver = (morphemes, lexicon) => {
 };
 
 describe("a linked morpheme's type", () => {
-  // The grid takes a linked morpheme's type from its lexicon entry, and the
-  // token's cached type is refreshed only when its document is opened.
+  // The grid takes a linked morpheme's type from its lexicon entry, over any
+  // type the token holds of its own (`cached` below).
 
-  it("is its entry's, not the token's stale cached one", async () => {
+  it("is its entry's, not one the token holds of its own", async () => {
     const client = serverOver(
       [{ gloss: 'sbj:3.pfv', cached: 'stem', form: 'ti', entry: 'e1' }],
       [{ id: 'e1', type: 'suffix' }],
@@ -198,7 +198,7 @@ describe("a linked morpheme's type", () => {
     expect(await loadAttested(client, 'p', morphField)).toEqual([['sbj:3.pfv', 2, BOUND]]);
   });
 
-  it("falls back to the token's cached type when nothing on the entry's chain has one", async () => {
+  it("falls back to the token's own type when nothing on the entry's chain has one", async () => {
     const client = serverOver(
       [
         { gloss: 'sbj:3.pfv', cached: 'suffix', form: 'ti', entry: 's1' },
@@ -214,9 +214,8 @@ describe("a linked morpheme's type", () => {
     ]);
   });
 
-  it('counts a morpheme linked to two entries once, by its cached type', async () => {
-    // The grid takes one of the two links, and opening the document syncs the
-    // token's cached type to it, so the cache is what the grid reads.
+  it('counts a morpheme linked to two entries once, by its own type', async () => {
+    // The grid takes one of the two links, and which one is not known here.
     const client = serverOver(
       [
         { gloss: 'sbj:3.pfv', cached: 'suffix', form: 'ti', entries: ['e1', 'e2'] },

@@ -24,7 +24,6 @@ import { itemLabel, planMergeRefs, refIds } from '@/domain/vocabDictionary';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
-import { cacheProjectIds, mergeTargets, planMorphTypeCaches } from '@/domain/morphTypeCaches';
 import { countOf, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
 import { usePreviewFocus } from './usePreviewFocus.js';
@@ -231,15 +230,10 @@ export const MergePanel = ({ project, client }) => {
       // the ones in projects they cannot open as well, and the toast says
       // how many of those there were.
       const seen = await planMerge(client, vocabId, losers, survivor);
-      const caches = await planMorphTypeCaches(
-        client,
-        await cacheProjectIds(client, user, vocabId),
-        mergeTargets(now, refPlans, survivor, losers),
-      );
       try {
         const out = await applyMerge(
           client,
-          { refUpdates, caches },
+          { refUpdates },
           {
             survivorId: survivor,
             loserIds: losers,

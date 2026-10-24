@@ -17,6 +17,7 @@ import {
   isTokenIgnored,
 } from './igtConfig.js';
 import { virtualMorphemeId } from './virtualMorpheme.js';
+import { morphemeMorphType } from '@ui/domain/morphemes.js';
 import { collectMweLinks, bracketPieces, assignLanes } from './mwe.js';
 
 // Local copy of plaid-client-js's cpSlicer (spread the body into code points
@@ -143,17 +144,11 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         annotations: annotationsFor(m.id, morphSpanMaps),
         vocabItem,
         // Effective morph type: a linked lexicon entry's type (its own, else
-        // its headword's) overrides the token's own metadata.morphType (the
-        // token copy is a cache for unlinked morphemes and for consumers that
-        // don't see the lexicon, written by every change of the type an
-        // entry goes by: morphTypeCaches.js). Read THIS everywhere in the
-        // app — joiners, exports, the popover's Type row, the stem chip.
-        // It also hides a copy left stale in a project the writer of the
-        // entry could only read.
+        // its headword's), else the token's own metadata.morphType. A linked
+        // morpheme stores no copy of its entry's type, so this is the one
+        // place the two meet. Read THIS everywhere in the app: joiners,
+        // exports, the popover's Type row, the stem chip.
         morphType: effectiveMorphType(m.metadata, vocabItem, entryTypes),
-        // The entry's side of that alone, which a restore writes on the
-        // token (writeEntryTypes).
-        entryMorphType: entryMorphType(vocabItem, entryTypes),
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
       morphemesByWord.get(parent.id).push(entry);
@@ -178,11 +173,10 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     content: word.content,
     metadata: {},
     annotations: { ...emptyMorphAnnotations },
-    // Nothing is linked to it and it has no metadata, so both morph types are
+    // Nothing is linked to it and it has no metadata, so its morph type is
     // null by construction rather than by lookup: there is no entry to ask.
     vocabItem: null,
     morphType: null,
-    entryMorphType: null,
   });
   const morphemesOf = (word) => {
     const own = morphemesByWord.get(word.id);
@@ -345,7 +339,7 @@ function attachMwes(sentences, tokenPositionMaps, mweLinks) {
  * when the caller has built that map over the lexicon. Null when the entry
  * and everything above it are untyped.
  */
-const entryMorphType = (vocabItem, entryTypes = null) => {
+const linkedEntryType = (vocabItem, entryTypes = null) => {
   const resolved = entryTypes?.get(vocabItem?.id);
   const fromItem = resolved ?? vocabItem?.metadata?.morphType;
   return typeof fromItem === 'string' && fromItem !== '' ? fromItem : null;
@@ -353,7 +347,7 @@ const entryMorphType = (vocabItem, entryTypes = null) => {
 
 /** A morpheme's effective type: the linked entry's, else the token's own. */
 const effectiveMorphType = (tokenMetadata, vocabItem, entryTypes = null) =>
-  entryMorphType(vocabItem, entryTypes) ?? tokenMetadata?.morphType ?? null;
+  morphemeMorphType(tokenMetadata, linkedEntryType(vocabItem, entryTypes));
 
 /**
  * item id -> the morph type it goes by, over every vocabulary: its own, else

@@ -228,8 +228,6 @@ describe('a pick from Alt+Down', () => {
       'spans.patchMetadata',
       'vocabLinks.delete',
       'vocabLinks.create',
-      // The entry's type, cached on the morpheme it is now linked to.
-      'tokens.patchMetadata',
       'batch.submit',
     ]);
     // The link adopts the producer's suggestion.

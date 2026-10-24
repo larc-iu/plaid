@@ -55,14 +55,14 @@ const entryTypeOf = (own, parent, headwords) => {
 };
 
 /**
- * Linked morpheme rows [value, entry type, entry parent, cached type, form,
+ * Linked morpheme rows [value, entry type, entry parent, token type, form,
  * n] as [value, type, form, n], the type resolved as the grid's
- * effectiveMorphType does: the entry's, else the token's cached one.
+ * effectiveMorphType does: the entry's, else the token's own.
  */
 const resolveLinkedRows = (rows, headwords = new Map()) =>
-  (rows || []).map(([value, own, parent, cached, form, n]) => [
+  (rows || []).map(([value, own, parent, tokenType, form, n]) => [
     value,
-    entryTypeOf(own, parent, headwords) ?? typed(cached),
+    entryTypeOf(own, parent, headwords) ?? typed(tokenType),
     form,
     n,
   ]);
@@ -72,18 +72,17 @@ const resolveLinkedRows = (rows, headwords = new Map()) =>
  * The linked query counts it once per entry, and `doubled` holds one row per
  * span, token and entry of such a morpheme. Each is taken off the linked row
  * it added to, and each span and token goes back once as an unlinked row, by
- * the token's cached type: the grid reads one of the links, and opening the
- * document syncs the cached type to it.
+ * the token's own type: which of its links the grid reads is not known here.
  */
 const withoutDoubleLinks = (linked, unlinked, doubled) => {
   if (!doubled.length) return [linked, unlinked];
   const key = (row) => JSON.stringify(row.slice(0, 5));
   const over = new Map();
   const once = new Map();
-  for (const [s, t, , value, own, parent, cached, form] of doubled) {
-    const k = key([value, own, parent, cached, form]);
+  for (const [s, t, , value, own, parent, tokenType, form] of doubled) {
+    const k = key([value, own, parent, tokenType, form]);
     over.set(k, (over.get(k) || 0) + 1);
-    once.set(JSON.stringify([s, t, value]), [value, cached, form, 1]);
+    once.set(JSON.stringify([s, t, value]), [value, tokenType, form, 1]);
   }
   const kept = linked
     .map((row) => {

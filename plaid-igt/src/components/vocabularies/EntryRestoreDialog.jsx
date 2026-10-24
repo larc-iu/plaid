@@ -27,7 +27,6 @@ import {
   humanizeError,
 } from '@/utils/feedback';
 import { entryRestoreLines, entryRestoreMessage, latestVocabState } from '@/domain/vocabRestore';
-import { planEntryChange, sendMorphTypeCaches } from '@/domain/morphTypeCaches';
 
 export const EntryRestoreDialog = ({
   open,
@@ -40,9 +39,6 @@ export const EntryRestoreDialog = ({
   label,
   fields,
   onRestored,
-  // The signed-in user, for the projects whose morphemes a restored type is
-  // written on (morphTypeCaches.js).
-  user = null,
 }) => {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
@@ -53,19 +49,9 @@ export const EntryRestoreDialog = ({
   onRestoredRef.current = onRestored;
   const itemId = past?.id ?? null;
 
-  // The server's restore of the entry as it was at `at`, and in the same
-  // operation the type cached on the morphemes linked to it and to the
-  // senses below it, read off the entries as the restore left them.
+  // The server's restore of the entry as it was at `at`.
   const restoreAt = (at, message) =>
-    client.withOperation(message, async () => {
-      const res = await client.vocabLayers.restoreItem(vocabularyId, itemId, at, {}, message);
-      const { items = [] } = (await client.vocabLayers.get(vocabularyId, true)) || {};
-      await sendMorphTypeCaches(
-        client,
-        await planEntryChange(client, { user, vocabId: vocabularyId, items, rootIds: [itemId] }),
-      );
-      return res;
-    });
+    client.vocabLayers.restoreItem(vocabularyId, itemId, at, {}, message);
 
   useEffect(() => {
     if (!open || !asOf || !itemId) return undefined;

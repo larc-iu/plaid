@@ -107,12 +107,6 @@ const IGT_SHELL = {
   // The Analyze grid says how its saves are going itself.
   saveStatus: false,
   roleWords: TOKEN_ROLE_WORDS,
-  // The morphemes a restore brought back take the types their entries go by
-  // now (writeEntryTypes).
-  afterRestore: async (doc) => {
-    await doc?.reload();
-    await doc?.writeEntryTypes();
-  },
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is on the grid.
   useFocusHere: useSentenceFocus,

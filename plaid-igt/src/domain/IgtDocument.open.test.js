@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from './test-helpers.js';
 
 // Opening a document in IGT writes nothing. The layer rules are declared at
-// setup and by the settings that change them, and a morph type cached on a
-// morpheme is written by the change that moves it (morphTypeCaches.js).
+// setup and by the settings that change them, and a linked morpheme's type is
+// read off its entry, with no copy stored on the morpheme.
 
 const twoWords = [
   { id: 'w-1', begin: 0, end: 3 },

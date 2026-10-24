@@ -80,10 +80,8 @@ const unapprovedStamp = (word) =>
  * stamps `morphType` on every item an entry becomes. Keyed by each sense's guid
  * AND by the entry's own, since a one-sense entry is linked by either.
  *
- * A morpheme linked to a typed entry has to carry that type in its own
- * metadata: `derive` reads the entry over the token cache, but the cache is
- * what consumers that never load the lexicon read, and nothing writes it
- * later (domain/morphTypeCaches.js).
+ * A morpheme linked to a typed entry goes by the entry's type and stores none
+ * of its own (derive.js `effectiveMorphType`).
  */
 const senseMorphTypes = (lexicon) => {
   const out = new Map();
@@ -773,12 +771,12 @@ async function importDocument({
           const metadata = { ...unapprovedStamp(w) };
           const form = m.forms?.[config.baselineWs] ?? pickEn(m.forms);
           if (form != null) metadata.form = form;
-          // A morpheme linked to an entry goes by the entry's type, and the
-          // cache holds it (domain/morphTypeCaches.js). The interlinear's own
-          // type is kept for a morpheme whose entry has none.
-          const entryType = m.senseGuid ? senseTypes?.get(m.senseGuid) : null;
-          if (entryType) metadata.morphType = entryType;
-          else if (m.morphType != null) metadata.morphType = m.morphType;
+          // A morpheme linked to a typed entry goes by the entry's type and
+          // stores none. The interlinear's own type is kept for a morpheme
+          // whose entry has none, and for one linked to no entry.
+          const linked = m.senseGuid && senseToItem.get(m.senseGuid);
+          const entryType = linked ? senseTypes?.get(m.senseGuid) : null;
+          if (!entryType && m.morphType != null) metadata.morphType = m.morphType;
           return { metadata, spans: spansOf('morph', m, w) };
         }),
       })),

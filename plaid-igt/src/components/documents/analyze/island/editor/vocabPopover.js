@@ -859,8 +859,8 @@ export const vocabPopover = {
   // exact inventory, or "—" for untyped. Pure metadata — geometry, precedence,
   // and the form are untouched; the display-only affix joints ("-"/"=") react
   // immediately.
-  // A LINKED morpheme's type lives on its lexicon entry (the entry overrides
-  // the token's cached type, see derive.js), so the row edits the entry —
+  // A LINKED morpheme's type lives on its lexicon entry (the entry's is read
+  // over the token's own, see derive.js), so the row edits the entry —
   // for vocab maintainers; others see it read-only. Unlinked: the token's own.
   _morphTypeRow(morphemeId, currentItem) {
     const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find(
@@ -869,8 +869,8 @@ export const vocabPopover = {
     const linked = !!currentItem?.vocabId;
     const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
     // The entry's type is its own, else its headword's. Linked, the row
-    // shows that and nothing else: the token's cached type is not the
-    // entry's, whatever the line draws from it.
+    // shows that and nothing else: a type the token holds of its own is not
+    // the entry's.
     const fromItem = linked
       ? this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id)
       : null;

@@ -17,16 +17,6 @@ function makeDoc({ raw, project, vocabularies, client } = {}) {
   });
 }
 
-// The morphemes whose cached morph type is not their entry's.
-const staleCaches = (sentences) =>
-  sentences.flatMap((s) =>
-    s.tokens.flatMap((t) =>
-      t.morphemes.filter(
-        (m) => typeof m.entryMorphType === 'string' && m.metadata?.morphType !== m.entryMorphType,
-      ),
-    ),
-  );
-
 // Pull the call kinds in order (to assert batch ordering).
 const kinds = (client) => client.calls.map((c) => c.kind);
 
@@ -345,7 +335,7 @@ describe('morph type from the linked lexicon entry', () => {
     const doc = linkedDoc('enclitic');
     const ms = doc.sentences[0].tokens[0].morphemes;
     expect(ms[1].morphType).toBe('enclitic');
-    expect(ms[1].metadata.morphType).toBe('suffix'); // the cache is untouched by derive
+    expect(ms[1].metadata.morphType).toBe('suffix'); // the token's own, untouched by derive
     expect(ms[0].morphType).toBeNull();
   });
 
@@ -354,126 +344,39 @@ describe('morph type from the linked lexicon entry', () => {
     expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('suffix');
   });
 
-  // A writer of the project who maintains its lexicon, and the server's
-  // answer to the query of the morphemes linked to an entry: m-2 here, and
-  // m-9 in another document.
-  const typedDoc = (itemType) => {
-    const doc = linkedDoc(itemType);
-    const project = {
-      id: 'proj-1',
-      vocabs: [{ id: 'v1' }],
-      config: { plaid: {} },
-      writers: ['me'],
-    };
-    doc._user = { id: 'me' };
-    doc.client.projects.list = async () => [project, { id: 'proj-2', vocabs: [{ id: 'v1' }] }];
-    doc.client.query = async (body) => {
-      doc.client.calls.push({ kind: 'query', args: [body] });
-      return {
-        results: [
-          ['m-2', 'i1', 'suffix', 1],
-          ['m-9', 'i1', 'suffix', 1],
-        ],
-      };
-    };
-    return doc;
-  };
-
-  it('setVocabItemMorphType writes the entry and every morpheme of the project linked to it', async () => {
-    const doc = typedDoc('enclitic');
-    const ok = await doc.setVocabItemMorphType('v1', 'i1', 'proclitic');
-    expect(ok).toBe(true);
-    // Only the project this writer can write is read.
-    const queries = doc.client.calls.filter((c) => c.kind === 'query');
-    expect(queries.map((q) => q.args[0].scope)).toEqual([{ projectIds: ['proj-1'] }]);
+  // R2 (2026-10-24): a linked morpheme stores no copy of its entry's type,
+  // so a change to the entry writes the entry and nothing else.
+  it('setVocabItemMorphType writes the entry alone, and its morphemes go by it at once', async () => {
+    const doc = linkedDoc('enclitic');
+    expect(await doc.setVocabItemMorphType('v1', 'i1', 'proclitic')).toBe(true);
     const k = kinds(doc.client);
-    const updates = doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate');
-    // The other document's first, then this one's in the entry's batch.
-    expect(updates.map((u) => u.args[0].map((e) => e.id))).toEqual([['m-9'], ['m-2']]);
-    expect(updates[0].args[0][0].metadata).toEqual([
-      { op: 'set', path: ['morphType'], value: 'proclitic' },
-    ]);
-    expect(k.indexOf('vocabItems.patchMetadata')).toBeGreaterThan(k.indexOf('tokens.bulkUpdate'));
-    expect(k.lastIndexOf('batch.submit')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
+    expect(k).not.toContain('tokens.bulkUpdate');
+    expect(k).not.toContain('tokens.patchMetadata');
+    expect(k).not.toContain('query');
+    const patch = doc.client.calls.find((c) => c.kind === 'vocabItems.patchMetadata');
+    expect(patch.args).toEqual(['i1', [{ op: 'set', path: ['morphType'], value: 'proclitic' }]]);
     const m = doc.sentences[0].tokens[0].morphemes[1];
     expect(m.morphType).toBe('proclitic');
-    expect(m.metadata.morphType).toBe('proclitic');
-    expect(m.vocabItem.metadata.morphType).toBe('proclitic');
+    expect(m.metadata.morphType).toBe('suffix');
     expect(doc.vocabularies.v1.items[0].metadata.morphType).toBe('proclitic');
   });
 
-  // A restore brings a morpheme back with the type it cached then. After
-  // one, the type its entry goes by now is written on it, once.
-  it('writeEntryTypes writes the type a linked entry goes by where the morpheme caches another', async () => {
-    const doc = linkedDoc('enclitic');
-    expect(await doc.writeEntryTypes()).toBe(true);
-    const updates = doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate');
-    expect(updates.map((u) => u.args[0])).toEqual([
-      [{ id: 'm-2', metadata: [{ op: 'set', path: ['morphType'], value: 'enclitic' }] }],
-    ]);
-    expect(doc.sentences[0].tokens[0].morphemes[1].metadata.morphType).toBe('enclitic');
-    await doc.writeEntryTypes();
-    expect(doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate')).toHaveLength(1);
-  });
-
-  // The other documents are written before the entry's batch, which the
-  // server can still refuse: their copies then get back what they held.
-  it('a refused entry write puts back the types written in other documents', async () => {
-    const doc = typedDoc('enclitic');
-    doc.client.batched = async () => {
-      throw Object.assign(new Error('HTTP 422'), { status: 422 });
-    };
-    expect(await doc.setVocabItemMorphType('v1', 'i1', 'proclitic')).toBe(false);
-    const updates = doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate');
-    expect(updates.map((u) => u.args[0])).toEqual([
-      [{ id: 'm-9', metadata: [{ op: 'set', path: ['morphType'], value: 'proclitic' }] }],
-      [{ id: 'm-9', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] }],
-    ]);
-  });
-
-  it('a refusal in another document puts back what was written there and writes no entry', async () => {
-    const doc = typedDoc('enclitic');
-    const sent = [];
-    let first = true;
-    doc.client.tokens.bulkUpdate = async (u) => {
-      sent.push(u);
-      if (first) {
-        first = false;
-        throw Object.assign(new Error('HTTP 404'), { status: 404 });
-      }
-      return { count: u.length };
-    };
-    expect(await doc.setVocabItemMorphType('v1', 'i1', 'proclitic')).toBe(false);
-    expect(sent.map((u) => u[0].metadata[0].value)).toEqual(['proclitic', 'suffix']);
-    expect(doc.client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
-  });
-
-  // The 2026-10-06 survey: a headword's type change left the morphemes
-  // linked to its senses with the old type until someone opened them.
-  it("a headword's type reaches the morphemes of the senses that go by it", async () => {
-    const doc = typedDoc('enclitic');
+  it("a headword's type reaches the morphemes of the senses that go by it, with no write on them", async () => {
+    const doc = linkedDoc(null, undefined);
     const v = doc.vocabularies.v1;
     v.items = [
-      { id: 'h1', form: 'c', metadata: { morphType: 'enclitic' } },
+      { id: 'h1', form: 'c', metadata: { morphType: 'suffix' } },
       { id: 'i1', form: 'c', metadata: { parent: 'h1' } },
     ];
-    await doc.setVocabItemMorphType('v1', 'h1', 'proclitic');
-    const [query] = doc.client.calls.filter((c) => c.kind === 'query');
-    expect(query.args[0].where[0]).toEqual(['link', '?l', { item: ['h1', 'i1'] }]);
-    const written = doc.client.calls
-      .filter((c) => c.kind === 'tokens.bulkUpdate')
-      .flatMap((c) => c.args[0].map((e) => [e.id, e.metadata[0].value]));
-    expect(written).toEqual([
-      ['m-9', 'proclitic'],
-      ['m-2', 'proclitic'],
-    ]);
+    expect(await doc.setVocabItemMorphType('v1', 'h1', 'enclitic')).toBe(true);
+    expect(kinds(doc.client)).not.toContain('tokens.bulkUpdate');
+    expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('enclitic');
   });
 
-  it('clearing the entry type stops overriding and leaves the cache alone', async () => {
-    const doc = typedDoc('enclitic');
+  it('clearing the entry type gives the morpheme its own type back and writes no token', async () => {
+    const doc = linkedDoc('enclitic');
     await doc.setVocabItemMorphType('v1', 'i1', null);
-    expect(doc.client.calls.filter((c) => c.kind === 'tokens.bulkUpdate')).toHaveLength(0);
-    expect(doc.client.calls.filter((c) => c.kind === 'query')).toHaveLength(0);
+    expect(kinds(doc.client)).not.toContain('tokens.bulkUpdate');
     const m = doc.sentences[0].tokens[0].morphemes[1];
     expect(m.vocabItem.metadata.morphType).toBeUndefined();
     expect(m.morphType).toBe('suffix');
@@ -1220,10 +1123,9 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     );
   });
 
-  // The morph-type cache: a morpheme linked to a typed entry takes the entry's
-  // type on the spot. It used to be left stale, and reconcile-on-open patched
-  // it the next time anyone opened the document, which is how an audit entry
-  // appeared for a document nobody had touched that session.
+  // A morpheme linked to a typed entry goes by the entry's type, and the
+  // link writes nothing on the morpheme (R2, 2026-10-24): no copy of the
+  // entry's type is stored on it.
   const typedVocab = () => ({
     v1: {
       id: 'v1',
@@ -1232,33 +1134,25 @@ describe('vocab links (read path must reflect optimistic write)', () => {
       vocabLinks: [],
     },
   });
+  const tokenWrites = (doc) =>
+    doc.client.calls.filter(
+      (c) => c.kind === 'tokens.patchMetadata' || c.kind === 'tokens.bulkUpdate',
+    );
 
-  it('linkVocab writes the entry type onto the morpheme, in the same operation', async () => {
+  it('linkVocab writes no type on the morpheme, which goes by its entry', async () => {
     const doc = makeDoc({
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: typedVocab(),
     });
     expect(await doc.linkVocab('m-1', 'vi-1')).toBe(true);
-
-    const patches = doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
-    expect(patches).toHaveLength(1);
-    expect(patches[0].args).toEqual(['m-1', [{ op: 'set', path: ['morphType'], value: 'stem' }]]);
-    // One operation, so one audit entry rather than a link now and a repair later.
+    expect(tokenWrites(doc)).toHaveLength(0);
     expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
-    // And reconcile has nothing left to do.
-    expect(staleCaches(doc.sentences)).toEqual([]);
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.morphType).toBe('stem');
+    expect(m.metadata.morphType).toBeUndefined();
   });
 
-  it('linkVocab leaves a WORD alone, since a word has no morph type', async () => {
-    const doc = makeDoc({
-      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
-      vocabularies: typedVocab(),
-    });
-    expect(await doc.linkVocab('w-2', 'vi-1')).toBe(true);
-    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
-  });
-
-  it('linkVocab writes no cache when the morpheme already agrees', async () => {
+  it("linkVocab leaves a morpheme's own type as it is, and the entry's is read over it", async () => {
     const raw = buildRawDoc({
       morphemes: [
         {
@@ -1267,7 +1161,7 @@ describe('vocab links (read path must reflect optimistic write)', () => {
           begin: 0,
           end: 3,
           precedence: 1,
-          metadata: { morphType: 'stem' },
+          metadata: { morphType: 'suffix' },
         },
       ],
     });
@@ -1277,10 +1171,13 @@ describe('vocab links (read path must reflect optimistic write)', () => {
       vocabularies: typedVocab(),
     });
     expect(await doc.linkVocab('m-1', 'vi-1')).toBe(true);
-    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+    expect(tokenWrites(doc)).toHaveLength(0);
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.morphType).toBe('stem');
+    expect(m.metadata.morphType).toBe('suffix');
   });
 
-  it('linkVocabMany writes the cache for every morpheme it links', async () => {
+  it('linkVocabMany writes no type on the morphemes it links', async () => {
     const raw = buildRawDoc({
       morphemes: [
         { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: {} },
@@ -1293,13 +1190,9 @@ describe('vocab links (read path must reflect optimistic write)', () => {
       vocabularies: typedVocab(),
     });
     expect(await doc.linkVocabMany(['m-1', 'm-2'], 'vi-1')).toBe(true);
-
-    const patched = doc.client.calls
-      .filter((c) => c.kind === 'tokens.bulkUpdate')
-      .flatMap((c) => c.args[0])
-      .map((e) => e.id);
-    expect(patched.sort()).toEqual(['m-1', 'm-2']);
-    expect(staleCaches(doc.sentences)).toEqual([]);
+    expect(tokenWrites(doc)).toHaveLength(0);
+    const ms = doc.sentences[0].tokens.flatMap((t) => t.morphemes);
+    expect(ms.filter((m) => !m.virtual).map((m) => m.morphType)).toEqual(['stem', 'stem']);
   });
 
   it('unlinkVocab removes the vocab item from the token', async () => {

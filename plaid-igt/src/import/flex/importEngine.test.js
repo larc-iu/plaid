@@ -1000,23 +1000,23 @@ describe('runImport', () => {
     expect(words[0].metadata).toEqual({ [`orthog:${TRANS_WS}`]: 'za' });
     expect(words[1].metadata).toBeUndefined();
 
-    // morphemes: full word extent, 1-based precedence, form + morphType. The
-    // word FLEx never analyzed (3-6) gets NO row: its morpheme is the word, and
-    // derive synthesizes that without storing it.
+    // morphemes: full word extent, 1-based precedence, form, and morphType
+    // where no typed entry gives the morpheme its type. Both are linked to
+    // typed entries (a stem, a root), so they store none (R2). The word FLEx never analyzed (3-6)
+    // gets NO row: its morpheme is the word, and derive synthesizes that
+    // without storing it.
     expect(morphemes).toHaveLength(2);
     expect(morphemes[0]).toMatchObject({
       tokenLayerId: 'morph1',
       begin: 0,
       end: 2,
       precedence: 1,
-      metadata: { form: 'за', morphType: 'stem' },
+      metadata: { form: 'за' },
     });
+    expect(morphemes[0].metadata).not.toHaveProperty('morphType');
     expect(morphemes.some((m) => m.begin === 3 && m.end === 6)).toBe(false);
-    expect(morphemes[1]).toMatchObject({
-      begin: 7,
-      end: 10,
-      metadata: { form: 'мах', morphType: 'root' },
-    });
+    expect(morphemes[1]).toMatchObject({ begin: 7, end: 10, metadata: { form: 'мах' } });
+    expect(morphemes[1].metadata).not.toHaveProperty('morphType');
 
     // spans: word gloss + word pos + morpheme gloss + morpheme pos +
     // sentence translation + note (no ru morph gloss — value absent).
@@ -1054,11 +1054,10 @@ describe('runImport', () => {
     expect(morphemes.some((m) => m.begin === 3 && m.end === 6)).toBe(false);
   });
 
-  // A morpheme that names a sense but no morph type of its own takes the
-  // entry's, written with the morpheme rather than left for reconcile-on-open
-  // to patch on the next open. FLEx interlinear does this constantly: the
-  // lexicon carries the type, the analysis names only the sense.
-  it("takes the entry's morph type when the analysis names a sense but no type", async () => {
+  // A morpheme linked to a typed entry goes by the entry's type and stores no
+  // copy of it, whether or not the analysis names a type too. FLEx
+  // interlinear often names only the sense, and the lexicon carries the type.
+  it('stores no morph type on a morpheme linked to a typed entry', async () => {
     client = makeFakeClient();
     const untyped = structuredClone(build);
     // Sense s1 only, whose entry e1 is a stem.
@@ -1068,7 +1067,26 @@ describe('runImport', () => {
 
     const morphemes = client.calls.filter((c) => c.kind === 'tokens.bulkCreate').at(-1).args;
     const first = morphemes.find((m) => m.begin === 0 && m.end === 2);
-    expect(first.metadata).toMatchObject({ form: 'за', morphType: 'stem' });
+    expect(first.metadata).toEqual({ form: 'за' });
+  });
+
+  it("keeps the analysis's own morph type on a morpheme whose entry has none", async () => {
+    client = makeFakeClient();
+    const untypedLexicon = structuredClone(lexicon);
+    delete untypedLexicon[0].morphType;
+
+    await runImport({
+      client,
+      projectId: 'p1',
+      build,
+      lexicon: untypedLexicon,
+      config,
+      vocabId: 'v1',
+    });
+
+    const morphemes = client.calls.filter((c) => c.kind === 'tokens.bulkCreate').at(-1).args;
+    const first = morphemes.find((m) => m.begin === 0 && m.end === 2);
+    expect(first.metadata).toEqual({ form: 'за', morphType: 'stem' });
   });
 
   // `inferred` means a machine wrote it. An analysis FLEx records no opinion

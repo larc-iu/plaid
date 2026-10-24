@@ -224,7 +224,7 @@ try {
     );
     const m0 = tokens[0].morphemes?.[0];
     check(m0?.metadata?.form === 'за', 'morpheme form metadata');
-    check(m0?.metadata?.morphType === 'stem', 'morpheme morphType metadata');
+    check(m0?.morphType === 'stem', 'morpheme goes by the stem type');
     check(m0?.annotations?.['Gloss (en)']?.value === '1sg-ERG', 'morpheme gloss');
     check(m0?.annotations?.POS?.value != null, 'morpheme POS present');
     check(!!m0?.vocabItem, 'morpheme linked to lexicon item');
@@ -240,21 +240,24 @@ try {
   const anyClitic = sentences
     .flatMap((s) => s.tokens)
     .flatMap((t) => t.morphemes ?? [])
-    .some((m) => (m.metadata?.morphType ?? '').includes('clitic'));
+    .some((m) => (m.morphType ?? '').includes('clitic'));
   console.log(`  (clitic morphemes present in this document: ${anyClitic})`);
 
-  // the IGT invariant holds as imported: no findings on open, and every
-  // morpheme linked to a typed entry caches the entry's type (nothing writes
-  // it later)
+  // the IGT invariant holds as imported: no findings on open, and no
+  // morpheme linked to a typed entry stores a type of its own
   const heal = await doc.reconcileOnOpen();
   check((heal.findings ?? []).length === 0, 'reconcileOnOpen finds nothing', JSON.stringify(heal));
-  const stale = sentences
+  const copies = sentences
     .flatMap((s) => s.tokens)
     .flatMap((t) => t.morphemes ?? [])
     .filter(
-      (m) => typeof m.entryMorphType === 'string' && m.metadata?.morphType !== m.entryMorphType,
+      (m) => m.vocabItem && m.metadata?.morphType != null && m.morphType !== m.metadata.morphType,
     );
-  check(stale.length === 0, 'every linked morpheme caches its entry type', `${stale.length} stale`);
+  check(
+    copies.length === 0,
+    'no linked morpheme stores a type its entry overrides',
+    `${copies.length}`,
+  );
 
   // every imported vocab link is provenance-confirmed
   const links = doc.layerInfo?.primaryTokenLayer ? null : null; // links live under vocabs in raw

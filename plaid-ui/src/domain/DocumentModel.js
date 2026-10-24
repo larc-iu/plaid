@@ -1081,7 +1081,7 @@ export class DocumentModel {
   // An edit that changed what the subclass keeps beside the document is
   // judged there by the subclass's own rule (`_besideUntouched`), and in the
   // document by this one only when it changed the document as well (a link
-  // that also sets a morpheme's cached type). One that changed only what is
+  // that also makes the morpheme it names). One that changed only what is
   // beside (a link accepted) has nothing in the document to judge.
   _untouched(unsent, now) {
     if (!unsent.base) return false;

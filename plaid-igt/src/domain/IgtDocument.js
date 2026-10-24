@@ -544,9 +544,9 @@ export class IgtDocument extends DocumentModel {
 
   // Validate on open: nothing is written. The layer rules (igtConstraints.js)
   // are declared at setup and by the settings that change them, and the
-  // server applies them inside every write, whoever writes. A morph type
-  // cached on a morpheme is written by the writes that change it
-  // (morphTypeCaches.js). What is left is reading the document against the
+  // server applies them inside every write, whoever writes. A linked
+  // morpheme's type is read off its entry, and no copy of it is stored. What
+  // is left is reading the document against the
   // app's contract: validateIgtDocument's findings come back for the caller
   // to log and toast.
   async _reconcile() {

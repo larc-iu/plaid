@@ -542,18 +542,11 @@ describe('setMorphemePair', () => {
     expect(morphOf(doc).vocabItem.prov).toBe('contributed');
   });
 
-  it('writes the entry’s type to the morpheme it links, in the same batch', async () => {
+  it('writes no type on the morpheme it links, which goes by the entry’s', async () => {
     const client = makeFakeClient();
     const doc = pairDoc(client, {});
     await doc.setMorphemePair('m-1', { field: 'Gloss', value: 'sell', itemId: 'i-sell' });
-    expect(kindsOf(client)).toEqual([
-      'spans.create',
-      'vocabLinks.create',
-      'tokens.patchMetadata',
-      'batch.submit',
-    ]);
-    expect(callsOf(client, 'tokens.patchMetadata')[0].args[1]).toEqual([
-      { op: 'set', path: ['morphType'], value: 'stem' },
-    ]);
+    expect(kindsOf(client)).toEqual(['spans.create', 'vocabLinks.create', 'batch.submit']);
+    expect(morphOf(doc).morphType).toBe('stem');
   });
 });

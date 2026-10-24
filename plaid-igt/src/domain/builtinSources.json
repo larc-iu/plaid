@@ -31,10 +31,8 @@
     "plaid-igt/src/domain/affixMarkers.js",
     "plaid-igt/src/domain/autoLink.js",
     "plaid-igt/src/domain/autoPass.js",
-    "plaid-igt/src/domain/bulk.js",
     "plaid-igt/src/domain/fieldNames.js",
     "plaid-igt/src/domain/igtConfig.js",
-    "plaid-igt/src/domain/morphTypeCaches.js",
     "plaid-igt/src/domain/mutations/spans.js",
     "plaid-igt/src/domain/mutations/vocab.js",
     "plaid-igt/src/domain/mwe.js",
@@ -49,7 +47,6 @@
     "plaid-ui/src/domain/igtWordBreaks.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js",
-    "plaid-ui/src/domain/permissions.js",
     "plaid-ui/src/domain/punctuationClasses.js",
     "plaid-ui/src/domain/setupGuard.js",
     "plaid-ui/src/lib/unicodeRanges.js"

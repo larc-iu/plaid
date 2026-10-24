@@ -26,6 +26,7 @@
 // in this tree is not spare.
 
 import { ENTRY_ROLES, FIELD_SCOPES, FIELD_TYPES } from './vocabFields.js';
+import { entryMorphType } from '@ui/domain/morphemes.js';
 
 export const PARENT_KEY = 'parent';
 const SENSE_ORDER_KEY = 'senseOrder';
@@ -476,17 +477,12 @@ export const splitEntryLevel = (metadata, fields) => {
  * none of its own, and it is the same morph as its headword. Null when no
  * item on the chain has one.
  */
-export const morphTypeOf = (tree, id) => {
-  let cur = id;
-  const seen = new Set();
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    const t = tree.byId.get(cur)?.metadata?.morphType;
-    if (typeof t === 'string' && t !== '') return t;
-    cur = tree.parentOf.get(cur) ?? null;
-  }
-  return null;
-};
+export const morphTypeOf = (tree, id) =>
+  entryMorphType(
+    id,
+    (x) => tree.byId.get(x)?.metadata?.morphType,
+    (x) => tree.parentOf.get(x),
+  );
 
 /**
  * Everything a screen or an export derives from one vocabulary's items, built
