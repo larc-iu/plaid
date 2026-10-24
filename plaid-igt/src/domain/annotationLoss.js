@@ -10,8 +10,11 @@
 // The links are read from the doc's vocabularies map, which holds the links
 // made since the document was read.
 
-import { PROV, isProtected } from '@larc-iu/plaid-client';
-import { countDeleteLoss, countPartitionLoss, hasOwnContent } from '@ui/domain/annotationLoss.js';
+import {
+  countDeleteLoss,
+  countPartitionLoss,
+  holdsPersonsWork,
+} from '@ui/domain/annotationLoss.js';
 
 const ZERO = () => ({ annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } });
 
@@ -19,13 +22,6 @@ const linksOf = (vocabularies) =>
   Object.values(vocabularies || {}).flatMap((v) => v?.vocabLinks || []);
 
 const tokenLayersOf = (layerInfo) => layerInfo?.primaryTextLayer?.tokenLayers || [];
-
-// A token that goes with content of its own counts as one annotation: a
-// segmentation, an orthography line, any metadata beyond provenance, and a
-// stamped token a person verified or contributed (a person's merge or split
-// of a machine tokenizer's token leaves only provenance).
-const ownContent = (t) =>
-  hasOwnContent(t) || (PROV.key in (t.metadata || {}) && isProtected(t.metadata));
 
 // What is deleted, and apart from it what is only cut down (a link over this
 // word and the next keeps the next).
@@ -47,7 +43,7 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   return counted(
     countDeleteLoss(tokenLayersOf(layerInfo), [word.id], {
       vocabLinks: linksOf(vocabularies),
-      content: ownContent,
+      content: holdsPersonsWork,
     }),
   );
 };
@@ -73,7 +69,7 @@ export const countReTokenizeLoss = (layerInfo, vocabularies) => {
   return counted(
     countDeleteLoss(tokenLayersOf(layerInfo), [sentenceTokens[0].id], {
       vocabLinks: linksOf(vocabularies),
-      content: ownContent,
+      content: holdsPersonsWork,
     }),
   );
 };

@@ -24,7 +24,7 @@
 //
 // No bare imports: plaid-ud's node suite imports this file by path.
 
-import { PROVENANCE_KEYS } from '../../../plaid-client-js/src/provenance.js';
+import { PROV, PROVENANCE_KEYS, isProtected } from '../../../plaid-client-js/src/provenance.js';
 
 const EMPTY = () => ({
   annotations: 0,
@@ -51,6 +51,12 @@ const bump = (map, key, n = 1) => map.set(key, (map.get(key) || 0) + n);
 // A token's metadata holds something of its own beyond provenance.
 export const hasOwnContent = (token) =>
   Object.keys(token?.metadata || {}).some((k) => !PROVENANCE_KEYS.includes(k));
+
+// A token that holds a person's work, as a tokenizer service counts it:
+// content of its own, or a stamp a person verified or contributed (a person's
+// merge or split of a machine tokenizer's token leaves only provenance).
+export const holdsPersonsWork = (token) =>
+  hasOwnContent(token) || (PROV.key in (token?.metadata || {}) && isProtected(token.metadata));
 
 // Token layer id -> the token layers directly under it.
 const childrenByParent = (tokenLayers) => {
