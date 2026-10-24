@@ -86,25 +86,25 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) =
                 ? 'Approved, but applying did not finish.'
                 : 'Not yet approved.';
   const where = inProject ? ` in ${markdownText(inProject)}` : '';
-  const lines = [`**Proposed changes${where}:** ${plan.summary || ''} (${said})`, ''];
+  const lines = [`**Proposed changes${where}:** ${markdownText(plan.summary)} (${said})`, ''];
   // The card's sentence saying why an out-of-date plan was refused.
   if (status === 'stale' && reason) lines.push(markdownText(staleLine(reason)), '');
   planRows(plan).forEach((r, i) => {
     // A rule's row is the rule in its words, its count on the line below.
-    lines.push(`${i + 1}. ${r.rule ? r.change || r.label : r.label}`);
+    lines.push(`${i + 1}. ${markdownText(r.rule ? r.change || r.label : r.label)}`);
     if (!r.rule) return;
     // A rule: its count, every document it reaches by name up to the
     // card's cut, and its sample, as the card shows them unfolded.
     const { named, moreDocs, moreChanges } = ruleDocuments(r.rule);
     lines.push(`   - ${ruleCountLine(r.rule, r.replacesWork)}`);
-    if (r.rule.partial) lines.push(`   - ${r.rule.partial}`);
+    if (r.rule.partial) lines.push(`   - ${markdownText(r.rule.partial)}`);
     if (r.rule.mode) lines.push(`   - Matches ${r.rule.mode}`);
     const changes = ruleTransitions(r.rule);
     changes.rows.forEach((t) => lines.push(`   - ${markdownText(transitionLine(t))}`));
     if (changes.more) lines.push(`   - ${changes.more}`);
     named.forEach((d) => lines.push(`   - ${markdownText(d.name || d.id)}: ${d.count}`));
     if (moreDocs) lines.push(`   - ${ruleMoreLine(moreDocs, moreChanges)}`);
-    (r.rule.sample || []).forEach((c) => lines.push(`   - For example: ${c.label}`));
+    (r.rule.sample || []).forEach((c) => lines.push(`   - For example: ${markdownText(c.label)}`));
   });
   // A long settled plan keeps its first rows only (planRecord.js).
   const omitted = changesOmitted(plan);

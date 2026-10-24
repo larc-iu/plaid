@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { marked } from 'marked';
 import { conversationToMarkdown } from './exportMarkdown.js';
 
 const md = (display) =>
@@ -84,5 +85,35 @@ describe('conversationToMarkdown', () => {
     ]);
     expect(out).toContain('(Out of date.)');
     expect(out).toContain('not the 6 shown \\(1 more in "Tale"). Nothing was written.');
+  });
+
+  // A6-2: the plan's summary, its rows, a rule's partial line and its sample
+  // hold names and values, written as text and never as Markdown.
+  it("writes a plan's summary, rows and a rule's lines as text", () => {
+    const raw = '*a* [b](c) | d\ne';
+    const out = md([
+      {
+        kind: 'assistant',
+        text: 'Planned.',
+        plan: {
+          summary: raw,
+          opCount: 2,
+          ops: [],
+          changes: [
+            { label: raw },
+            {
+              label: 'rule',
+              change: raw,
+              rule: { total: 1, documents: [], partial: raw, sample: [{ label: raw }] },
+            },
+          ],
+        },
+      },
+    ]);
+    const html = marked.parse(out);
+    expect(html).not.toMatch(/<em>|<a |<table/);
+    const text = document.createElement('div');
+    text.innerHTML = html;
+    expect(text.textContent.split('*a* [b](c) | d e').length - 1).toBe(5);
   });
 });
