@@ -245,3 +245,23 @@ describe('Merge', () => {
     await view.unmount();
   });
 });
+
+// A ticked entry shows its whole content. Only the convention's provenance
+// keys are bookkeeping: a field of the user's own whose name starts with
+// "prov" is content, and shows.
+describe('Merge entry detail', () => {
+  it('shows a user field named like provenance, and hides the provenance keys', async () => {
+    const client = makeClient();
+    client.items = [
+      { id: 'd1', form: 'dog', metadata: { provenance: 'Smith 1990', provSource: 'service:x' } },
+      { id: 'd2', form: 'dog' },
+    ];
+    const view = await mount(client);
+    const boxes = all(document.body, 'input[type="checkbox"]');
+    await view.step(() => boxes[0].click());
+    await settle(view);
+    expect(document.body.textContent).toContain('Smith 1990');
+    expect(document.body.textContent).not.toContain('service:x');
+    await view.unmount();
+  });
+});
