@@ -104,7 +104,7 @@ from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate,
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, confirm_note, ConfirmRows, expand_ops)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
-from .tagsets import SETTINGS_KINDS, verify_settings
+from .tagsets import verify_settings
 from .vocab import parent_of
 from ..core.tools import ValueRefusal
 
@@ -116,6 +116,9 @@ WORD_SHAPE = 'word_shape'        # a word's boundaries move
 SENTENCE_SHAPE = 'sentence_shape'  # a sentence boundary moves
 TEXT_SHAPE = 'text_shape'        # the baseline text itself is rewritten
 ANALYSIS = 'analysis'            # a word's morpheme chain is replaced
+# Not a shape: a project or lexicon setting the app writes on approval
+# (a tagset), which is a plan of its own.
+SETTINGS = 'settings'
 
 # What the approval card places a change at, when it is not the document.
 TOKEN = 'token'                  # a sentence, a word, a morpheme, or a value on one
@@ -920,10 +923,10 @@ KIND = ok.registry([
     # back (`_execute`), so no pass of the executor applies one.
     # Settings, not annotation: nobody's work is in a tagset's list.
     OpKind('set_tagset', ('tagset change', 'tagset changes'), replaces=None,
-           required=('owner', 'was', 'name'), stage=APP,
+           required=('owner', 'was', 'name'), stage=APP, shape=SETTINGS,
            target=lambda op: ('tagset', op.get('owner'), op.get('was'))),
     OpKind('assign_tagset', ("field's tagset", "fields' tagsets"), replaces=None,
-           required=('owner', 'field_kind', 'key'), stage=APP,
+           required=('owner', 'field_kind', 'key'), stage=APP, shape=SETTINGS,
            target=lambda op: ('tagset_field', op.get('owner'), op.get('field_kind'), op.get('key'))),
     OpKind('rename_document', ('renamed document', 'renamed documents'), replaces=None,
            required=('document_id', 'name'),
@@ -1032,6 +1035,8 @@ RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
 # being declared.
 SCOPES = ok.scopes(KIND)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
+# The settings kinds, a plan of their own (`igt.tagsets`).
+SETTINGS_KINDS = ok.shaped(KIND, SETTINGS)
 # The kinds that write to a morpheme by id, so a plan that rewrites the chain
 # those morphemes belong to knows which of its other ops are now moot.
 MORPHEME_KEY = 'morpheme_id'

@@ -13,7 +13,8 @@ from ..core.plan import PlanError, PlanOutOfDate
 from . import plan, prompt, toolkit
 from .citations import resolve_citations
 from .project import load_project
-from .tagsets import SETTINGS_KINDS, verify_settings
+from .plan import SETTINGS_KINDS
+from .tagsets import verify_settings
 from .prompt import lexicon_focus_note
 from .trace import TRACER
 from .workspace import Workspace

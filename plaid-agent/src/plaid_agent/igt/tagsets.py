@@ -722,10 +722,10 @@ SETTINGS_APART = ('Tagset changes are settings, a plan of their own: this plan a
                   'Finish this plan with the user first (approve or discard), then plan the other.')
 
 IGT = 'igt'
-SETTINGS_KINDS = ('set_tagset', 'assign_tagset')
 
 
 def settings_ops(ops) -> List[dict]:
+    from .plan import SETTINGS_KINDS   # the registry imports this module
     return [op for op in ops if op.get('kind') in SETTINGS_KINDS]
 
 

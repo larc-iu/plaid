@@ -31,8 +31,8 @@ from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, _found, analysed_morphemes,
-                   planned_morpheme, removed_entries, settle_merges)
+from .plan import (ANALYSIS, ENTRY, KIND, MORPHEME_KEY, MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE, _found,
+                   analysed_morphemes, planned_morpheme, removed_entries, settle_merges)
 
 # What only a maintainer of the lexicon may do to its entries, and what a tool
 # says to anyone else. The app's own screens are the rule (ruling A1-IGT-6):
@@ -44,7 +44,8 @@ from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, _
 # entry's fields and type are what the entry editor would set (ruled
 # 2026-10-06). Core is looser, so the assistant must not be the way around the
 # app.
-MAINTAINER_KINDS = ('rename_entry', 'delete_entry', 'set_entry_field', 'set_entry_metadata')
+# Which ops those are is the registry's: every kind placed at an entry
+# (`at_kind=ENTRY`), read at the entry it removes when it removes one.
 MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can change its existing entries (their '
                     'fields, type, senses, examples or homograph order) or rename, delete or merge them, and '
                     'the person you are acting for does not maintain it. Nothing was planned. They can '
@@ -59,7 +60,7 @@ NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexi
 from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, read_view, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
-from .tagsets import SETTINGS_APART, SETTINGS_KINDS
+from .tagsets import SETTINGS_APART
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 from plaid_client.workflows.igt.senses import entry_morph_types
 
@@ -759,7 +760,7 @@ class Workspace(BaseWorkspace):
 
     def can_manage_vocab(self, v: dict) -> bool:
         """Whether the user the turn acts for may change the entries of
-        lexicon ``v`` once they exist (see :data:`MAINTAINER_KINDS`): a
+        lexicon ``v`` once they exist (see :meth:`lexicon_maintained_by`): a
         maintainer of it or an administrator. A writer of a project that
         links it creates entries and links words to them, and no more, as in
         the app."""
@@ -823,8 +824,10 @@ class Workspace(BaseWorkspace):
             if not meta or (set(meta) == {'morphType'} and meta['morphType'] in PHRASE_TYPES):
                 return None
             return next((v for v in self.project.vocabs if v['id'] == op.get('vocab_id')), None)
-        item = op.get('remove_id') if kind == 'merge_entries' else (
-            op.get('item_id') if kind in MAINTAINER_KINDS else None)
+        spec = KIND.get(kind)
+        if spec is None or not spec.at or spec.at_kind != ENTRY:
+            return None
+        item = op.get((spec.extra.get('removes_entry') or spec.at)[0])
         return self.vocab_of_item(item) if item else None
 
     # --- plan --------------------------------------------------------------

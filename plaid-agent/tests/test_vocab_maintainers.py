@@ -182,3 +182,40 @@ def test_every_plan_tool_holds_the_line():
         assert not any(w.lexicon_maintained_by(op) for op in w.ops), (name, out)
         assert REFUSED in out or FORM_ONLY in out or w.ops, (name, out)
     assert reached >= 6, reached
+
+
+# --- read off the registry (beta review R4-6-1) ---------------------------------
+
+def _entry_op(kind, item_id):
+    from plaid_agent.igt.plan import KIND
+    spec = KIND[kind]
+    keys = spec.extra.get('removes_entry') or spec.at
+    return {'kind': kind, **{k: item_id for k in spec.at}, **{k: item_id for k in keys}}
+
+
+def test_every_kind_placed_at_an_entry_is_for_its_lexicons_maintainers():
+    from plaid_agent.core import opkind
+    from plaid_agent.igt.plan import ENTRY, KIND
+    w = _ws(['owner@x.org'])
+    item = w.lexicon(w.project.vocabs[0])[0]['id']
+    kinds = opkind.located_at(KIND, ENTRY)
+    assert set(kinds) >= {'rename_entry', 'delete_entry', 'merge_entries', 'set_entry_field', 'set_entry_metadata'}
+    for kind in kinds:
+        assert w.lexicon_maintained_by(_entry_op(kind, item))['id'] == VOCAB, kind
+
+
+def test_a_new_kind_placed_at_an_entry_is_for_maintainers_by_being_declared(monkeypatch):
+    from plaid_agent.core.opkind import OpKind
+    from plaid_agent.igt import plan
+    w = _ws(['owner@x.org'])
+    item = w.lexicon(w.project.vocabs[0])[0]['id']
+    monkeypatch.setitem(plan.KIND, 'order_homographs', OpKind(
+        'order_homographs', ('homograph order', 'homograph orders'), replaces=None, required=('item_id',),
+        apply=lambda *a: None, at=('item_id',), at_kind=plan.ENTRY))
+    assert w.lexicon_maintained_by({'kind': 'order_homographs', 'item_id': item})['id'] == VOCAB
+
+
+def test_the_settings_kinds_are_the_kinds_the_registry_tags_as_settings():
+    from plaid_agent.igt.plan import KIND, SETTINGS_KINDS
+    assert set(SETTINGS_KINDS) == {'set_tagset', 'assign_tagset'}
+    assert all(KIND[k].stage == 'app' for k in SETTINGS_KINDS)
