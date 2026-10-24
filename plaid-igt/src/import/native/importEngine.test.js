@@ -391,6 +391,35 @@ const itemPatches = (client) =>
   callsOf(client, 'vocabItems.bulkUpdate').flatMap(([, body]) => body);
 
 describe('deriveSetupData', () => {
+  it("proposes an old archive's language-suffixed glosses their Lexicon field from its lexicon (HUNT-recent 10)", () => {
+    const manifest = {
+      schema: {
+        fields: {
+          morpheme: [
+            { name: 'Gloss (en)', lang: 'en' },
+            { name: 'Gloss (ru)', lang: 'ru' },
+          ],
+        },
+      },
+    };
+    const vocabularies = [
+      {
+        data: {
+          fields: [
+            { name: 'gloss', inline: true, lang: 'en', role: 'gloss' },
+            { name: 'gloss (ru)', inline: false, lang: 'ru', role: 'gloss' },
+          ],
+        },
+      },
+    ];
+    const lexiconFields = (setup) =>
+      setup.fields.fields.map((f) => [f.name, f.lexiconField ?? null]);
+    expect(lexiconFields(deriveSetupData(manifest, 'x', vocabularies))).toEqual([
+      ['Gloss (en)', 'gloss'],
+      ['Gloss (ru)', 'gloss (ru)'],
+    ]);
+  });
+
   it('maps the archive schema onto the setup wizard input', () => {
     const { manifest } = buildArchive();
     // An archive made before fields recorded a Lexicon field or a role.

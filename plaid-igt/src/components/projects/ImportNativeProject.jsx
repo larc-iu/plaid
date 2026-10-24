@@ -78,7 +78,7 @@ export const ImportNativeProject = () => {
   const startImport = () =>
     start({
       source: archive.manifest?.project?.name ?? null,
-      setupData: () => deriveSetupData(archive.manifest, projectName.trim()),
+      setupData: () => deriveSetupData(archive.manifest, projectName.trim(), archive.vocabularies),
       run: ({ projectId, shouldStop, setProgress }) => {
         const totalDocs = archive.documents.length;
         return runNativeImport({

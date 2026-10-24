@@ -40,6 +40,7 @@ import { CHUNK, withMintedIds } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import { proposeEntryRole } from '../../domain/entryRole.js';
+import { lexiconFieldChoices } from '../../domain/lexiconField.js';
 import { tokenEdges } from './readArchive.js';
 import {
   declareOtherLayerRules,
@@ -100,11 +101,26 @@ const manifestFields = (manifest) => {
   );
 };
 
-/** The setup-wizard input derived from an archive manifest. */
-export function deriveSetupData(manifest, projectName) {
+/**
+ * The setup-wizard input derived from an archive manifest. `vocabularies` are
+ * the archive's (readNativeArchive), whose entry fields a field from an
+ * archive made before Lexicon fields is proposed one from: "Gloss (en)" pairs
+ * with an entry's `gloss` the archive records in en.
+ */
+export function deriveSetupData(manifest, projectName, vocabularies = []) {
   const schema = manifest.schema || {};
   const ignored = schema.ignoredTokens;
+  const entryFields = lexiconFieldChoices(
+    vocabularies.map((v) => ({
+      config: {
+        [IGT_NAMESPACE]: {
+          fields: Object.fromEntries((v.data?.fields || []).map((f) => [f.name, f])),
+        },
+      },
+    })),
+  );
   return setupDataFor({
+    entryFields,
     projectName,
     orthographies: (schema.orthographies || []).map((o) => o.name),
     fields: manifestFields(manifest),
