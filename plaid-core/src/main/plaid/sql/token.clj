@@ -812,8 +812,13 @@
   came from, as declared by its layer's `config.plaid.preserveOnSplit`.
   Empty when the layer declares nothing, which is the default.
 
-  Splitting is the only way a token comes to exist from another one, and
-  the new row is otherwise born bare, so anything not named here is lost
+  A token comes to exist from another one in two ways, and both honor
+  this through `inherit-preserved!`: a split (`split-one!`, behind an
+  explicit split, the descendant cascade and the partition shift), and a
+  text save that types a space inside a word on a layer setting
+  `splitOnSpace` (`plaid.sql.text`), whose new parts and the new tokens
+  under them each name the token they were cut from. The new row is
+  otherwise born bare, so anything not named here is lost
   at the moment of the split with no trace for a later pass to find. That
   is why this is declared on the layer and honored here rather than left
   to each app: an app cannot repair what it cannot detect, and it cannot
@@ -845,6 +850,18 @@
     (when (sequential? declared)
       (into [] (comp (filter string?) (distinct)) declared))))
 
+(defn inherit-preserved!
+  "Give token `new-id`, cut from token `from-id`, the metadata of `from-id`
+  under the keys its layer `layer-id` names in `preserveOnSplit` (see
+  `preserved-on-split`). Nothing when the layer names none or `from-id`
+  holds none of them."
+  [tx new-id from-id layer-id]
+  (let [keep-keys (preserved-on-split tx layer-id)
+        inherited (when (seq keep-keys)
+                    (select-keys (metadata/get-metadata tx "token" from-id) keep-keys))]
+    (when (seq inherited)
+      (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))))
+
 (defn- split-one!
   "Split the token row `t` at `position`. Updates t's end_ to
   position and inserts a new right-half token with begin = position.
@@ -865,10 +882,7 @@
     (when-not (and (int? position) (> position begin) (< position end_))
       (throw (ex-info "Split position must be strictly between token begin and end"
                       {:code 400 :position position :begin begin :end end_})))
-    (let [new-id (or new-id (psc/new-uuid))
-          keep-keys (preserved-on-split tx token_layer_id)
-          inherited (when (seq keep-keys)
-                      (select-keys (metadata/get-metadata tx "token" id) keep-keys))]
+    (let [new-id (or new-id (psc/new-uuid))]
       (crud/update-by-id! tx :tokens id (if right? {:begin position} {:end_ position}))
       (crud/insert! tx :tokens
                     {:id new-id
@@ -878,8 +892,7 @@
                      :begin (if right? begin position)
                      :end_ (if right? position end_)
                      :precedence precedence})
-      (when (seq inherited)
-        (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))
+      (inherit-preserved! tx new-id id token_layer_id)
       new-id)))
 
 (defn- split-straddlers!

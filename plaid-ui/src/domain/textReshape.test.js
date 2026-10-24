@@ -239,7 +239,7 @@ describe('a token the edit made', () => {
       digest: 'd1',
       reshape: {
         tokens: [
-          { id: 'new', begin: 0, end: 4, layer: 'morphs', text: 'text' },
+          { id: 'new', begin: 0, end: 4, layer: 'morphs', text: 'text', metadata: {} },
           { id: 'm1', begin: 16, end: 19 },
         ],
       },
@@ -254,5 +254,32 @@ describe('a token the edit made', () => {
     // a token already there is not added again
     const again = applyReshape(next, 'text', answer);
     expect(again.textLayers[0].tokenLayers.find((l) => l.id === 'morphs').tokens).toHaveLength(2);
+  });
+
+  // B3-1: a part of a word a typed space split takes the keys its layer's
+  // preserveOnSplit names, and the answer carries them
+  it('keeps the metadata the core gave it', () => {
+    const answer = {
+      body: 'the b ig dog ran',
+      digest: 'd1',
+      reshape: {
+        tokens: [
+          { id: 'w2', begin: 6, end: 8 },
+          {
+            id: 'part',
+            begin: 4,
+            end: 5,
+            layer: 'words',
+            text: 'text',
+            metadata: { prov: 'inferred' },
+          },
+        ],
+      },
+    };
+    const next = applyReshape(read(), 'text', answer);
+    const words = next.textLayers[0].tokenLayers.find((l) => l.id === 'words');
+    expect(words.tokens.find((t) => t.id === 'part')).toMatchObject({
+      metadata: { prov: 'inferred' },
+    });
   });
 });

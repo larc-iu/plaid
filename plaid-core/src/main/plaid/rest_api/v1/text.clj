@@ -122,7 +122,7 @@
                                "layer: the text the update types gets words on it, made after the old tokens are "
                                "placed, inside the sentences, where no token of that layer stands, as the built-in "
                                "tokenizer cuts them (see the text create). They come in <body>reshape</body> with "
-                               "their <body>layer</body> and <body>text</body>.")
+                               "their <body>layer</body>, <body>text</body> and <body>metadata</body>, as does every token the update makes (a part of a word a typed space split on a layer setting <body>splitOnSpace</body>, which takes the keys its layer's <body>preserveOnSplit</body> names from the token it was cut from).")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]

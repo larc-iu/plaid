@@ -855,3 +855,61 @@
       (assert-ok (edit-text text {:edits [(ins 4 "x")] :base digest}))
       (is (= "ab 'x cd" (-> (get-text admin-request text) :body :text/body)))
       (is (= expect (extent (words 1))) (pr-str ignored)))))
+
+(defn- declare-preserved! [layer keys]
+  (assert-status 204 (api-call admin-request {:method :put
+                                              :path (str "/api/v1/token-layers/" layer "/config/plaid/preserveOnSplit")
+                                              :body keys})))
+
+(defn- put-metadata! [token m]
+  (assert-ok (api-call admin-request {:method :put :path (str "/api/v1/tokens/" token "/metadata") :body m})))
+
+(defn- metadata-of [token]
+  (:metadata (:body (get-token admin-request token))))
+
+(deftest a-word-split-by-a-typed-space-honours-preserve-on-split
+  ;; B3-1: a typed space that splits a word made its new parts, and the new
+  ;; tokens under them, as bare rows, though the token split keeps what the
+  ;; layer's `preserveOnSplit` names. A machine-parsed word split this way
+  ;; left a part with no `prov`, which reads as a person's own work.
+  (let [{:keys [text words morphemes others layers]} (setup "a walk cat" :split true :other :child)
+        prov {"prov" "inferred" "provSource" "service:probe" "form" "cat"}]
+    (declare-preserved! (:words layers) ["prov" "provSource"])
+    (declare-preserved! (:morphemes layers) ["prov"])
+    (doseq [t [(words 2) (morphemes 2) (others 2)]] (put-metadata! t prov))
+    (let [res (edit-text text {:edits [(ins 8 " ")] :base (-> (get-text admin-request text) :body :text/digest)})
+          made (filter :layer (-> res :body :reshape :tokens))
+          by-layer (into {} (map (juxt (comp str :layer) (comp metadata-of :id))) made)]
+      (assert-ok res)
+      (is (= "a walk c at" (-> (get-text admin-request text) :body :text/body)))
+      (is (= 3 (count made)) (pr-str made))
+      (testing "the new part of the word takes the keys its layer names, and only those"
+        (is (= {"prov" "inferred" "provSource" "service:probe"} (by-layer (str (:words layers))))))
+      (testing "a new token under it takes its own layer's keys from the token it was cut from"
+        (is (= {"prov" "inferred"} (by-layer (str (:morphemes layers))))))
+      (testing "a layer that declares nothing gets a bare token"
+        (let [other-layer (str (-> (get-token admin-request (others 2)) :body :token/layer))]
+          (is (contains? by-layer other-layer))
+          (is (empty? (by-layer other-layer)))))
+      (testing "the word the part was cut from keeps everything"
+        (is (= prov (metadata-of (words 2))))))))
+
+(deftest a-token-under-a-split-word-reaching-over-the-cut-honours-preserve-on-split
+  ;; The piece of a morpheme that reaches over the cut, made on the other
+  ;; part, is cut from that morpheme and takes its keys.
+  (let [{:keys [text words morphemes layers]} (setup "catdog" :split true)
+        _ (assert-status 204 (delete-token admin-request (morphemes 0)))
+        cat (-> (create-token admin-request (:morphemes layers) text 0 3) :body :id)
+        dog (-> (create-token admin-request (:morphemes layers) text 3 6) :body :id)]
+    (declare-preserved! (:words layers) ["prov"])
+    (declare-preserved! (:morphemes layers) ["prov"])
+    (put-metadata! (words 0) {"prov" "word"})
+    (put-metadata! cat {"prov" "cat"})
+    (put-metadata! dog {"prov" "dog"})
+    (let [res (edit-text text {:edits [(ins 2 " ")] :base (-> (get-text admin-request text) :body :text/digest)})
+          made (filter :layer (-> res :body :reshape :tokens))]
+      (assert-ok res)
+      (is (= "ca tdog" (-> (get-text admin-request text) :body :text/body)))
+      (is (= #{[(str (:words layers)) [0 2 "ca"] {"prov" "word"}]
+               [(str (:morphemes layers)) [0 2 "ca"] {"prov" "cat"}]}
+             (set (map (fn [{:keys [id layer]}] [(str layer) (extent id) (metadata-of id)]) made)))))))

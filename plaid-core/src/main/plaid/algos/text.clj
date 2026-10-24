@@ -2350,7 +2350,9 @@
   "`{:placed :made}`: `placed` (the tokens `apply-plain-gaps` placed,
   `::gone` marking the deleted) with each word (`word?`) that the edit typed
   whitespace inside split there, and `made`, the new tokens the split
-  makes (Luke, 2026-10-02: ud splits a word a space is typed in). A word is
+  makes (Luke, 2026-10-02: ud splits a word a space is typed in), each
+  naming under `:token/from` the token it was cut from, whose
+  `preserveOnSplit` keys the save gives it. A word is
   cut only at the runs of whitespace holding typed whitespace, never at
   spaces it had. It stays on the part holding the most of its old letters
   (the first on a tie), with what hangs off it, and each other part holding
@@ -2401,7 +2403,8 @@
                                        ;; text typed apart from it, in no word
                                        [[ob oe] {:keep kp
                                                  :pieces (or (not-empty (filterv #(pos? (apply kept %)) pieces)) [kp])
-                                                 :layer layer}])))))))
+                                                 :layer layer
+                                                 :id id}])))))))
                      placed)
         live? (fn [t] (and (not (::gone t)) (was (:token/id t)) (not (part? t)) (not (word? t))))
         ;; the tokens under a split word as long as it, by word and layer
@@ -2440,16 +2443,20 @@
                                            [id {:word w :home home :others (filterv #(not= % home) reach)}]))))))
                            placed)
         made (into []
-                   (mapcat (fn [[w {kp :keep :keys [pieces layer]}]]
+                   (mapcat (fn [[w {kp :keep :keys [pieces layer id]}]]
                              ;; one new token per token reaching over a cut,
-                             ;; even where two reach the same letters
+                             ;; even where two reach the same letters, each
+                             ;; naming under `:token/from` the token it was
+                             ;; cut from (for `preserveOnSplit`)
                              (for [p pieces
                                    t (concat
                                       (when (not= p kp)
-                                        (cons {:token/layer layer :token/begin (first p) :token/end (second p)}
+                                        (cons {:token/layer layer :token/begin (first p) :token/end (second p)
+                                               :token/from id}
                                               (keep (fn [[[w2 l] ts]]
                                                       (when (and (= w2 w) (not (shared (:token/id (first ts)))))
-                                                        {:token/layer l :token/begin (first p) :token/end (second p)}))
+                                                        {:token/layer l :token/begin (first p) :token/end (second p)
+                                                         :token/from (:token/id (first (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts)))}))
                                                     under)))
                                        ;; the pieces of the tokens under it
                                        ;; reaching over a cut, on this part
@@ -2458,7 +2465,8 @@
                                             :when (= w (:word pu))
                                             [x y] (:others pu)
                                             :when (and (<= (first p) x) (<= y (second p)))]
-                                        {:token/layer (:token/layer c) :token/begin x :token/end y}))]
+                                        {:token/layer (:token/layer c) :token/begin x :token/end y
+                                         :token/from (:token/id c)}))]
                                t)))
                    splits)
         edge-moves (into {} (map (fn [[[ob _] {[x y] :keep}]] [ob [x y]])) splits)
