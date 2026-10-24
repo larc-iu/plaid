@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Pin, PinOff, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
@@ -9,6 +9,8 @@ import { Suspended } from '../shared/Suspended.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { useUnsavedDraft, useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
+import { useSavingGuard } from '../../hooks/useSavingGuard.js';
+import { WriteQueue } from '../../domain/WriteQueue.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
@@ -101,8 +103,16 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   const begin = useLatestCall();
   const beginBody = useLatestCall();
   const { titleMax, bodyMax } = useGuidelineCaps(client);
+  // A pin and a delete show at once and are sent here, in the order made. A
+  // send whose answer was lost goes again until it is answered, and closing
+  // the tab asks meanwhile. Save is a form with its own button, and waits.
+  const [writes] = useState(() => new WriteQueue());
+  useSavingGuard(writes);
+  useEffect(() => () => writes.letGo(), [writes]);
 
   const selectedId = params.get('guideline');
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
 
   const setSelectedId = useCallback(
     (id) =>
@@ -261,15 +271,38 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
     }
   };
 
-  const togglePinned = async () => {
-    const next = !opened.pinned;
+  // What the server holds, after a pin or a delete it refused: the list, and
+  // the guideline open now.
+  const resync = async () => {
+    await load();
+    const id = selectedRef.current;
+    if (!id) return;
     try {
-      const updated = await client.guidelines.update(opened.id, { pinned: next });
-      setOpened(updated);
-      setEntries((prev) => prev.map((g) => (g.id === opened.id ? { ...g, pinned: next } : g)));
+      const full = await client.guidelines.get(id);
+      setOpened((prev) => (prev?.id === id ? full : prev));
     } catch (error) {
-      notifyError(humanizeError(error, 'Failed to change that.'));
+      if (statusOf(error) !== 404) throw error;
     }
+  };
+
+  const togglePinned = () => {
+    const id = opened.id;
+    const next = !opened.pinned;
+    setOpened((prev) => (prev?.id === id ? { ...prev, pinned: next } : prev));
+    setEntries((prev) => prev.map((g) => (g.id === id ? { ...g, pinned: next } : g)));
+    writes.push(
+      async () => {
+        const updated = await client.guidelines.update(id, { pinned: next });
+        // Its new `updatedAt` is what an edit opened next is checked against.
+        // The pin shown stays: a later press may have changed it since.
+        setOpened((prev) => (prev?.id === id ? { ...updated, pinned: prev.pinned } : prev));
+      },
+      {
+        resendWhenBack: isUnknownOutcome,
+        refused: (error) => notifyError(humanizeError(error, 'Failed to change that.')),
+        resync,
+      },
+    );
   };
 
   const remove = async () => {
@@ -280,14 +313,25 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
       destructive: true,
     });
     if (!ok) return;
-    try {
-      await client.guidelines.delete(opened.id);
-      setSelectedId(null);
-      await load();
-      notifySuccess('Guideline deleted.');
-    } catch (error) {
-      notifyError(humanizeError(error, 'Failed to delete the guideline.'));
-    }
+    const id = opened.id;
+    setSelectedId(null);
+    setEntries((prev) => prev.filter((g) => g.id !== id));
+    writes.push(
+      async () => {
+        try {
+          await client.guidelines.delete(id);
+        } catch (error) {
+          // Already gone: a delete sent again after its answer was lost, or
+          // one someone else made first.
+          if (statusOf(error) !== 404) throw error;
+        }
+      },
+      {
+        resendWhenBack: isUnknownOutcome,
+        refused: (error) => notifyError(humanizeError(error, 'Failed to delete the guideline.')),
+        resync,
+      },
+    );
   };
 
   const editing = draft !== null;

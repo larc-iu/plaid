@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts, byText } from '../../test/renderComponent.jsx';
 import { GuidelinesTab } from './GuidelinesTab.jsx';
 import { hasUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
+import { ConfirmProvider } from '../shared/ConfirmProvider.jsx';
 
 // What the screen is for, in four properties:
 //
@@ -338,6 +339,54 @@ describe('a writer', () => {
     // A patch that named the title as well would be the one that can 409 on a
     // title someone else took in the meantime.
     expect(client.guidelines.update).toHaveBeenCalledWith('g2', { pinned: true });
+    await unmount();
+  });
+
+  it('shows a pin before the server answers, and takes it back when refused', async () => {
+    let refuse;
+    const client = fakeClient({
+      update: vi.fn(
+        () =>
+          new Promise((_, reject) => {
+            refuse = () => reject(Object.assign(new Error('HTTP 403'), { status: 403 }));
+          }),
+      ),
+    });
+    const { container, step, unmount } = await mount({ client, canWrite: true });
+    await step(() => byText(container, 'a', 'Alpha').click());
+    await step(() => container.querySelector('[aria-label="Pin"]').click());
+    expect(container.querySelector('[aria-label="Unpin"]')).not.toBeNull();
+    expect(rowTitles(container)).toEqual(['Alpha', 'Translations', 'Zeta']);
+    await step(() => refuse());
+    await step(async () => {});
+    expect(container.querySelector('[aria-label="Pin"]')).not.toBeNull();
+    expect(rowTitles(container)).toEqual(['Translations', 'Alpha', 'Zeta']);
+    await unmount();
+  });
+
+  it('takes a deleted guideline off the list before the server answers', async () => {
+    let answer;
+    const client = fakeClient({
+      delete: vi.fn(() => new Promise((resolve) => (answer = resolve))),
+    });
+    const { container, step, unmount } = await renderComponent(
+      <ConfirmProvider>
+        <MemoryRouter>
+          <GuidelinesTab client={client} projectId="p1" canWrite />
+        </MemoryRouter>
+      </ConfirmProvider>,
+    );
+    await step(() => byText(container, 'a', 'Alpha').click());
+    await step(() => container.querySelector('[aria-label="Delete"]').click());
+    await step(async () => {});
+    const confirmDelete = all(document.body, '[role="alertdialog"] button').find(
+      (b) => b.textContent.trim() === 'Delete',
+    );
+    await step(() => confirmDelete.click());
+    expect(rowTitles(container)).toEqual(['Translations', 'Zeta']);
+    expect(client.guidelines.delete).toHaveBeenCalledWith('g2');
+    await step(() => answer());
+    expect(rowTitles(container)).toEqual(['Translations', 'Zeta']);
     await unmount();
   });
 });
