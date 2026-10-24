@@ -434,6 +434,7 @@ describe('the queue behind a pin and a delete', () => {
           answerPin = () =>
             resolve({
               ...INDEX.find((g) => g.id === id),
+              body: BODIES[id],
               ...changes,
               updatedAt: '2026-10-24T00:00:00Z',
             });
@@ -452,6 +453,40 @@ describe('the queue behind a pin and a delete', () => {
     expect(update).toHaveBeenCalledTimes(2);
     expect(update.mock.calls[1][1]).toEqual(
       expect.objectContaining({ pinned: true, expectedUpdatedAt: '2026-10-24T00:00:00Z' }),
+    );
+    await unmount();
+  });
+
+  // REV-R1-1: the pin's answer can carry someone else's save, made after Edit.
+  it("still refuses a save over another person's save that a pin carried in", async () => {
+    let answerPin;
+    const update = vi.fn(async (id, changes) => ({
+      ...INDEX.find((g) => g.id === id),
+      ...changes,
+    }));
+    update.mockImplementationOnce(
+      (id, changes) =>
+        new Promise((resolve) => {
+          answerPin = () =>
+            resolve({
+              ...INDEX.find((g) => g.id === id),
+              ...changes,
+              body: 'Someone else body.',
+              updatedAt: '2026-10-24T09:00:00Z',
+            });
+        }),
+    );
+    const client = fakeClient({ update });
+    const { container, step, unmount } = await mount({ canWrite: true, client });
+    await step(() => byText(container, 'a', 'Alpha').click());
+    await step(() => container.querySelector('[aria-label="Pin"]').click());
+    await step(() => byText(container, 'button', 'Edit').click());
+    await step(() => byText(container, 'button', 'Save').click());
+    await step(() => answerPin());
+    await step(async () => {});
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ expectedUpdatedAt: '2026-09-01T00:00:00Z' }),
     );
     await unmount();
   });

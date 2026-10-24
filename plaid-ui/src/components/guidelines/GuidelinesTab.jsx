@@ -232,8 +232,13 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
         // A pin or a delete pressed before Save is sent first, and the save
         // is checked against what the pin left, not the guideline as Edit
         // copied it, which would refuse the save over the person's own pin.
+        // Only when the pin's answer holds the title and body the draft was
+        // opened from: one carrying someone else's save is still a conflict.
         await writes.whenIdle();
-        const now = openedRef.current?.id === draft.id ? openedRef.current : draft;
+        const o = openedRef.current;
+        const pinOnly =
+          o?.id === draft.id && o.title === draft.base.title && (o.body ?? '') === draft.base.body;
+        const now = pinOnly ? o : draft;
         await client.guidelines.update(draft.id, {
           title,
           body: draft.body,
