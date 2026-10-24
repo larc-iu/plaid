@@ -1387,6 +1387,16 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     if not lang:
         raise ToolError('Give language: the project does not record one, and the parser needs to '
                         'know which models to load.')
+    # The service coerces its request against its declared parameters, so a
+    # language its enum leaves out would quietly become its default.
+    declared = next((p for p in ((chosen.get('extras') or {}).get('parameters') or [])
+                     if p.get('key') == 'language'), None)
+    if declared and declared.get('type') == 'enum':
+        offered = [o.get('value') for o in (declared.get('options') or [])]
+        if offered and lang not in offered:
+            raise ToolError(f'{chosen.get("service_name")} does not offer "{lang}". It offers: '
+                            + ', '.join(offered) + '. Give language as one of these to parse '
+                            'with that language\'s models.')
     names = [listed.get(i, i) for i in ids]
     ws.add_op({'kind': 'run_parse', 'document_ids': ids, 'service_id': chosen.get('service_id'),
                'project_id': ws.project.id, 'language': lang, 'overwrite': bool(overwrite),

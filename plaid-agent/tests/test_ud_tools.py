@@ -1732,3 +1732,23 @@ def test_a_same_form_word_that_already_holds_the_value_is_not_named(ws):
     out = call_tool(ws, 'set_feature', {'document': 'Viaje', 'refs': ['s1.w4'], 'feature': 'Number',
                                         'value': 'Plur'})
     assert 'Not in this plan: s1 also has "mar" at w5.' in out, out
+
+def _stanza_like(*codes):
+    return [{'service_id': 'stanza-parser', 'service_name': 'Stanza', 'online': True,
+             'extras': {'tasks': ['parse'], 'parameters': [
+                 {'key': 'language', 'label': 'Language', 'type': 'enum', 'default': 'en',
+                  'options': [{'value': c, 'label': c} for c in codes]}]}}]
+
+
+def test_a_parse_in_a_language_the_parser_does_not_offer_is_refused(ws, monkeypatch):
+    """The service's request is coerced against its declared parameters, so a
+    language its enum leaves out became the default, English, with no word of
+    it. The plan refuses instead and names the languages the parser offers."""
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _stanza_like('en', 'de'))
+    ws.project.language = 'cop'
+    out = call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+    assert 'does not offer "cop"' in out and 'en, de' in out
+    assert not ws.ops
+    assert 'Planned a parse' in call_tool(ws, 'run_parse', {'documents': ['Viaje'],
+                                                            'language': 'de'})
+    assert ws.ops[0]['language'] == 'de'
