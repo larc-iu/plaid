@@ -6,7 +6,8 @@
 // will show once the analysis is applied.
 //
 // `analysis` is the extractAnalysis shape ({ word: { vocabItemId, fields },
-// morphemes: [{ form, morphType, vocabItemId, fields }] }); null renders the
+// morphemes: [{ form, morphType, goesBy, vocabItemId, fields }] }), where
+// goesBy is the type the morpheme goes by and draws the joiners; null renders the
 // word as the editor renders an unanalyzed one (bare form, empty cells).
 
 import '@/components/documents/analyze/island/igt-editor.css';
@@ -93,7 +94,12 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
               <div className="igt-morphemes">
                 {morphemes.map((m, i) => {
                   const joiner =
-                    i > 0 ? morphemeJoiner(morphemes[i - 1]?.morphType, m.morphType) : null;
+                    i > 0
+                      ? morphemeJoiner(
+                          morphemes[i - 1]?.goesBy ?? morphemes[i - 1]?.morphType,
+                          m.goesBy ?? m.morphType,
+                        )
+                      : null;
                   return [
                     joiner ? (
                       <span key={`j${i}`} className="igt-morph-joiner" aria-hidden="true">

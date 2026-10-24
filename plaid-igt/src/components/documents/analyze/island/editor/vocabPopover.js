@@ -869,22 +869,29 @@ export const vocabPopover = {
     const linked = !!currentItem?.vocabId;
     const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
     // The entry's type is its own, else its headword's. Linked, the row
-    // shows that and nothing else: a type the token holds of its own is not
-    // the entry's.
+    // shows that, and the type the token holds of its own only when the
+    // entry has none, which is the one the grid joins it by. A choice sets
+    // the entry's type either way.
     const fromItem = linked
       ? this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id)
       : null;
-    const current = (linked ? fromItem : morph?.metadata?.morphType) ?? '';
+    const own = morph?.metadata?.morphType || null;
+    const ownShown = !linked || (!fromItem && !!own);
+    const current = (fromItem || own) ?? '';
     const canEditEntry = linked && !!vocab && this.canManageVocab(vocab);
     const disabled = this.readOnly || (linked && !canEditEntry);
-    const title = linked
-      ? canEditEntry
-        ? 'Type of the linked lexicon entry (applies to every morpheme linked to it)'
-        : 'Type comes from the linked lexicon entry. Only its maintainers can change it.'
-      : 'Type of this morpheme';
+    const title = !linked
+      ? 'Type of this morpheme'
+      : ownShown
+        ? canEditEntry
+          ? "Type of this morpheme. Choosing one sets the linked lexicon entry's type."
+          : 'Type of this morpheme. Only maintainers of the linked lexicon entry can change it.'
+        : canEditEntry
+          ? 'Type of the linked lexicon entry (applies to every morpheme linked to it)'
+          : 'Type comes from the linked lexicon entry. Only its maintainers can change it.';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
-        <span>${linked ? 'Type (entry)' : 'Type'}</span>
+        <span>${ownShown ? 'Type' : 'Type (entry)'}</span>
         <select
           ?disabled=${disabled}
           aria-label=${linked ? 'Lexicon entry morpheme type' : 'Morpheme type'}

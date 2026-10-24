@@ -95,7 +95,11 @@ export function extractAnalysis(token) {
   const morphemes = ms.map((m) => {
     const entry = {
       form: morphFormOf(m),
+      // The type the morpheme holds of its own, which a copy writes and the
+      // signature hashes, and the one it goes by (derive's, its entry's
+      // else its own), which the cards and the tagset check read.
       morphType: m.metadata?.morphType ?? null,
+      goesBy: m.morphType,
       vocabItemId: null,
       fields: {},
     };
@@ -226,15 +230,20 @@ export function filterAnalysis(analysis, copy = {}) {
     vocabItemId: links ? entry.vocabItemId : null,
     fields: fields ? entry.fields : {},
   });
+  // Without its link a morpheme goes by its own type.
+  const stripMorpheme = (entry) => ({
+    ...strip(entry),
+    goesBy: links ? entry.goesBy : entry.morphType,
+  });
   const word = strip({ ...analysis.word });
   let morphemes;
   if (segmentation) {
-    morphemes = analysis.morphemes.map(strip);
+    morphemes = analysis.morphemes.map(stripMorpheme);
   } else if (analysis.morphemes.length === 1) {
     // Keep the single morpheme as a carrier for its link/values, but drop the
     // form/morphType changes — those are segmentation-tier edits.
-    const m = strip(analysis.morphemes[0]);
-    morphemes = [{ ...m, form: null, morphType: null }];
+    const m = stripMorpheme(analysis.morphemes[0]);
+    morphemes = [{ ...m, form: null, morphType: null, goesBy: null }];
   } else {
     morphemes = [];
   }

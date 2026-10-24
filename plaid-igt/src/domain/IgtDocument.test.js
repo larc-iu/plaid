@@ -483,6 +483,36 @@ describe('morpheme structural ops', () => {
     expect(ms.map((m) => m.metadata.morphType ?? null)).toEqual(['stem', 'enclitic']);
   });
 
+  it('splitMorphemeMulti writes no type on a linked morpheme its entry types', async () => {
+    // R2: the entry's type hides one the morpheme holds, which would come
+    // back on unlink. A morpheme linked to an untyped entry goes by its own,
+    // so that one is stamped as an unlinked one is.
+    const split = async (itemMeta) => {
+      const raw = buildRawDoc({
+        words: [{ id: 'w-1', begin: 0, end: 2 }],
+        morphemes: [{ id: 'm-1', begin: 0, end: 2, precedence: 1, metadata: { form: 'ab' } }],
+        body: 'ab',
+      });
+      const item = { id: 'i1', form: 'ab', metadata: itemMeta };
+      const doc = makeDoc({
+        raw,
+        vocabularies: {
+          v1: {
+            id: 'v1',
+            name: 'Lexicon',
+            items: [item],
+            vocabLinks: [{ id: 'lk-1', tokens: ['m-1'], vocabItem: item }],
+          },
+        },
+      });
+      // Left edge: the surviving piece is the clitic side.
+      await doc.splitMorphemeMulti('m-1', ['a', 'b', 'c'], { joiners: ['=', '-'] });
+      return doc.sentences[0].tokens[0].morphemes[0].metadata.morphType ?? null;
+    };
+    expect(await split({ morphType: 'stem' })).toBe(null);
+    expect(await split({})).toBe('proclitic');
+  });
+
   it('mergeMorphemes concatenates forms into predecessor and renumbers', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }],

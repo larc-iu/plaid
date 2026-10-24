@@ -51,7 +51,7 @@ from plaid_client.service import locked_for_writes, machine_detail, requester_me
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
-from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of, morpheme_morph_type
+from plaid_client.workflows.igt.senses import build_sense_tree, entry_morph_types, morph_type_of, morpheme_morph_type
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
     ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
@@ -205,11 +205,16 @@ def vocab_entries(items, vocab_name, *, gloss_key, pos_key) -> List[dict]:
     return entries
 
 
-def load_lexicon(client, project, on_progress=None, gloss_lexicon_field=None) -> List[dict]:
+def load_lexicon(client, project, on_progress=None, gloss_lexicon_field=None,
+                 entry_types=None) -> List[dict]:
     """Every entry of every vocab linked to the project, with the fields the
     prompt shows and its project-wide link count (precedent). The count is
     this project's links only: a vocabulary shared with other projects is
     ranked by what was linked here (ruling, 2026-09-27).
+
+    `entry_types`, when given, is filled with the morph type every item goes
+    by, from all the items rather than the entries the prompt shows, since a
+    morpheme may be linked to a headword the prompt leaves out.
 
     Two requests per vocabulary, one of them a query over every link in the
     project, so a big lexicon is a slow stretch: `on_progress(n, total)` names
@@ -220,6 +225,8 @@ def load_lexicon(client, project, on_progress=None, gloss_lexicon_field=None) ->
         if on_progress:
             on_progress(n, len(vocabs))
         vl = client.vocab_layers.get(v['id'], include_items=True)
+        if entry_types is not None:
+            entry_types.update(entry_morph_types(vl.get('items') or []))
         entries.extend(vocab_entries(
             vl.get('items') or [], vl.get('name') or v.get('name'),
             gloss_key=gloss_lexicon_field or _role_key(vl, 'gloss'), pos_key=_role_key(vl, 'pos')))
@@ -477,14 +484,16 @@ class LLMAnalyzeService(BaseService):
         project = self.client.projects.get(project_id)
         tagset = tagset_for(project, gloss_layer_id)
         system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
+        entry_types = {}
         lexicon = load_lexicon(
             self.client, project, gloss_lexicon_field=lexicon_field_of(project, gloss_layer_id),
+            entry_types=entry_types,
             on_progress=lambda n, total: response_helper.progress(
                 5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
         pool = load_examples(
             self.client, project_id, layers, gloss_field, translation_field,
             exclude_doc_id=document_id,
-            entry_types={e['id']: e['type'] for e in lexicon if e['type']},
+            entry_types=entry_types,
             on_progress=lambda n, total: response_helper.progress(
                 8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
         ) if n_examples else []

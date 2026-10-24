@@ -21,6 +21,8 @@ import {
 } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
+import { entryMorphTypesOf } from '../vocabLookup.js';
+import { morphemeMorphType } from '@ui/domain/morphemes.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import {
   isVirtualMorphemeId,
@@ -137,6 +139,21 @@ export const morphemeMutations = {
     });
   },
 
+  // The morph type a stored morpheme goes by: its linked entry's (R2, no copy
+  // of it is stored on the morpheme), else its own.
+  _morphemeGoesBy(token) {
+    for (const v of Object.values(this._vocabularies || {})) {
+      const link = (v.vocabLinks || []).find((l) => l.tokens?.includes(token.id));
+      if (link) {
+        return morphemeMorphType(
+          token.metadata,
+          entryMorphTypesOf(v.items).get(link.vocabItem?.id),
+        );
+      }
+    }
+    return morphemeMorphType(token.metadata);
+  },
+
   // Split a morpheme's form into two: existing gets `leftForm`, a new one
   // with `rightForm` is inserted at the next precedence; subsequent morphemes
   // shift +1. `joiner` '=' marks the boundary as a clitic boundary (see
@@ -198,14 +215,15 @@ export const morphemeMutations = {
       target.precedence ?? siblings.findIndex((m) => m.id === target.id) + 1;
     const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
     const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
+    // A type the target goes by, its entry's included, is never overwritten.
+    const goesBy = resolved.virtual ? null : this._morphemeGoesBy(target);
     const types = cliticTypesForChain({
       joiners: segments.slice(1).map((_, i) => joiners[i] ?? '-'),
       startIdx: currentPrecedence - 1,
       count: siblings.length + restForms.length,
-      types: [target.metadata?.morphType ?? null, ...restForms.map(() => null)],
+      types: [goesBy, ...restForms.map(() => null)],
     });
-    const firstMorphType =
-      types[0] != null && target.metadata?.morphType == null ? { morphType: types[0] } : {};
+    const firstMorphType = types[0] != null && goesBy == null ? { morphType: types[0] } : {};
     const firstMeta = resolved.virtual
       ? created(this, { form: firstForm, ...firstMorphType })
       : { ...formStamped(this, target, firstForm), ...firstMorphType };

@@ -138,6 +138,20 @@ describe('extractAnalysis', () => {
     });
   });
 
+  it('records the type a linked morpheme goes by beside the one it holds', () => {
+    // A linked morpheme stores no copy of its entry's type (R2): derive reads
+    // the entry's onto the token, and the cards and the tagset check read it.
+    const m = morph({ id: 'm2', form: 'ri', vocabItem: link('i-ri') });
+    const a = extractAnalysis(
+      word({
+        content: 'kari',
+        morphemes: [morph({ id: 'm1', form: 'ka' }), { ...m, morphType: 'enclitic' }],
+      }),
+    );
+    expect(a.morphemes[1].morphType).toBe(null);
+    expect(a.morphemes[1].goesBy).toBe('enclitic');
+  });
+
   it('returns null for unanalyzed words', () => {
     expect(extractAnalysis(word({ content: 'perro' }))).toBe(null);
   });
@@ -271,6 +285,17 @@ describe('filterAnalysis', () => {
     expect(nothingLeft).toBe(null);
   });
 
+  it('without links, a morpheme goes by the type it holds', () => {
+    const linked = {
+      word: { vocabItemId: null, fields: {} },
+      morphemes: [
+        { form: 'ri', morphType: 'suffix', goesBy: 'enclitic', vocabItemId: 'i-ri', fields: {} },
+      ],
+    };
+    expect(filterAnalysis(linked, { links: false }).morphemes[0].goesBy).toBe('suffix');
+    expect(filterAnalysis(linked).morphemes[0].goesBy).toBe('enclitic');
+  });
+
   it('without segmentation, a single morpheme survives as a carrier without form/type', () => {
     const single = {
       word: { vocabItemId: null, fields: {} },
@@ -282,6 +307,7 @@ describe('filterAnalysis', () => {
     expect(f.morphemes[0]).toEqual({
       form: null,
       morphType: null,
+      goesBy: null,
       vocabItemId: 'i-perro',
       fields: { Gloss: 'dog' },
     });

@@ -354,7 +354,7 @@ When no entry fits, **Create** adds one with the word's or morpheme's form and l
 Anyone who can edit the document can add an entry this way.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
-A linked morpheme takes its type from the entry, and the type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
+A linked morpheme takes its type from the entry, or goes by its own when the entry has none. The type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
 Only a vocabulary's maintainers can change an entry's type.
 
 Vocabularies have their own area in the app, under **Vocabularies** in the header.

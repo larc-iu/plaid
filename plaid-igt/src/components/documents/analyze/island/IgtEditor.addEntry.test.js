@@ -111,6 +111,50 @@ describe('a writer who does not maintain the lexicon', () => {
   });
 });
 
+describe('the type row of a morpheme linked to an untyped entry', () => {
+  // A linked morpheme goes by its entry's type, else its own, as the grid
+  // joins it. The row shows the one it goes by.
+  it('shows the type the morpheme holds', async () => {
+    const raw = buildRawDoc({
+      body: 'kari',
+      words: [{ id: 'w-1', begin: 0, end: 4 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 4, precedence: 1, metadata: { form: 'ka' } },
+        {
+          id: 'm-2',
+          begin: 0,
+          end: 4,
+          precedence: 2,
+          metadata: { form: 'ri', morphType: 'enclitic' },
+        },
+      ],
+    });
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = makeIgtDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          maintainers: ['wren@example.com'],
+          items: [{ id: 'i-ri', form: 'ri', metadata: {} }],
+          vocabLinks: [{ id: 'lk-ri', tokens: ['m-2'], vocabItem: { id: 'i-ri', form: 'ri' } }],
+        },
+      },
+      client,
+      user: { id: 'wren@example.com' },
+    });
+    client.documents.get = async () => doc.raw;
+    ({ host, editor } = mountIsland(doc, { canManageVocab: () => true }));
+    openOn('m-2');
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.querySelector('option[selected]').value).toBe('enclitic');
+    expect(row.querySelector('span').textContent).toBe('Type');
+  });
+});
+
 describe('the lexicon popover', () => {
   it('reads the lexicon again when it opens, so an entry added elsewhere since the page loaded is offered', async () => {
     const { doc, client } = mount();

@@ -667,6 +667,18 @@ describe('the unit a gloss is read in', () => {
     };
     expect(analysisViolations(analysis, tagsetFor).map((v) => v.value)).toEqual(['sbj:3.pfv']);
   });
+
+  it('reads a linked morpheme by the type its entry gives it', () => {
+    const tagsetFor = (scope) => (scope === 'morpheme' ? mixed : null);
+    const analysis = {
+      word: { fields: {} },
+      morphemes: [
+        { form: 'pa', morphType: 'stem', fields: { Gloss: 'pass.PST' } },
+        { form: 'ti', morphType: null, goesBy: 'suffix', fields: { Gloss: 'sbj:3.pfv' } },
+      ],
+    };
+    expect(analysisViolations(analysis, tagsetFor).map((v) => v.value)).toEqual(['sbj:3.pfv']);
+  });
 });
 
 describe('a value known only by its own morph type', () => {

@@ -190,6 +190,27 @@ def test_lexicon_precedent_counts_this_project_s_links_only():
     assert all(b['scope'] == {'project_ids': ['p1']} for b in seen)
 
 
+def test_entry_types_cover_the_headwords_the_prompt_leaves_out():
+    """A gloss-less headword whose sense spells it out is left out of the
+    prompt's lexicon, but a morpheme linked straight to it still goes by its
+    type in the examples, so the types come from every item."""
+    class VocabLayers:
+        def get(self, vid, include_items=False):
+            return {'name': 'L', 'items': [{'id': 'h', 'form': 'ri', 'metadata': {'morphType': 'enclitic'}},
+                                           {'id': 's', 'form': 'ri', 'metadata': {'gloss': 'and', 'parent': 'h'}}]}
+
+    class Client:
+        vocab_layers = VocabLayers()
+
+        def query(self, body):
+            return {'results': []}
+
+    types = {}
+    entries = llm.load_lexicon(Client(), {'id': 'p1', 'vocabs': [{'id': 'v', 'name': 'L'}]}, entry_types=types)
+    assert [e['id'] for e in entries] == ['s']
+    assert types == {'h': 'enclitic', 's': 'enclitic'}
+
+
 def test_the_lexicon_s_gloss_and_part_of_speech_come_from_stored_settings():
     """Never from a key's name: the gloss is the entry field the gloss field
     pairs with, else the vocabulary's gloss-role field, and the part of speech

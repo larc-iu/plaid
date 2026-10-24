@@ -303,7 +303,7 @@ export const analysisViolations = (analysis, tagsetFor) => {
     check('morpheme', m?.fields, (field) =>
       morphemeGlossReading(
         morphemes.map((x) => ({
-          morphType: x?.morphType,
+          morphType: x?.goesBy ?? x?.morphType,
           form: x?.form,
           gloss: x?.fields?.[field],
         })),
