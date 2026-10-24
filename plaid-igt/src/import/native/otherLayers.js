@@ -17,6 +17,7 @@ import { ensureLayerConstraints } from '../../../../plaid-ui/src/lib/layerConstr
 import { humanizeError } from '../../../../plaid-ui/src/lib/errors.js';
 import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
+import { escapeJsRegex } from '../../../../plaid-ui/src/lib/jsRegex.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import {
   UNCARRIED_PLAID_KEYS,
@@ -347,7 +348,7 @@ export const remapIds = (value, ids) => {
     const escaped = [...ids.keys()]
       .filter((id) => typeof id === 'string' && id)
       .sort((a, b) => b.length - a.length)
-      .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      .map(escapeJsRegex);
     pattern = escaped.length ? new RegExp(escaped.join('|'), 'g') : null;
     idPatterns.set(ids, pattern);
   }

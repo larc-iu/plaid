@@ -2,10 +2,11 @@
 // called, and what a document's file is called inside the zip.
 
 import { sanitizeFilename } from '../../lib/download.js';
+import { escapeJsRegex } from '../../lib/jsRegex.js';
 
 /** A file's name without its format's extension (or `.txt`): the document's name. */
 export const baseFileName = (name, extension) => {
-  const ext = extension.replace(/^\./, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ext = escapeJsRegex(extension.replace(/^\./, ''));
   return name.replace(new RegExp(`\\.(${ext}|txt)$`, 'i'), '') || name;
 };
 

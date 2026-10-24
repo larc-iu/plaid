@@ -9,6 +9,7 @@
 import { composeText } from '@larc-iu/plaid-client';
 import { countOf } from '@ui/lib/plural.js';
 import { isPictograph, isPunctOrSymbol } from '../../../plaid-ui/src/domain/punctuationClasses.js';
+import { escapeJsRegex } from '../../../plaid-ui/src/lib/jsRegex.js';
 
 /**
  * A reusable UTF-16 index → code-point index converter for one string.
@@ -305,13 +306,12 @@ export function alignSurfaces(body, begin, end, surfaces) {
 // A list cell cannot hold a tab, so the export writes each run of tabs and
 // line breaks inside a word as one space. A space in a surface therefore matches any
 // run of whitespace in the text.
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function findSurface(body, surface, at) {
   if (!surface.includes(' ')) {
     const i = body.indexOf(surface, at);
     return i < 0 ? null : { beginU16: i, endU16: i + surface.length };
   }
-  const re = new RegExp(surface.split(/ +/).map(escapeRegex).join('\\s+'), 'g');
+  const re = new RegExp(surface.split(/ +/).map(escapeJsRegex).join('\\s+'), 'g');
   re.lastIndex = at;
   const m = re.exec(body);
   return m ? { beginU16: m.index, endU16: m.index + m[0].length } : null;

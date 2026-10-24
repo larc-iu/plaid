@@ -15,6 +15,7 @@
 // behavior under test, so `bindings` asks the preset code for it.
 
 import { defaultCldfOptions } from '../../../export/cldf.js';
+import { escapeJsRegex } from '../../../../../plaid-ui/src/lib/jsRegex.js';
 import {
   baselineOf,
   byBegin,
@@ -612,11 +613,10 @@ export default {
             d.spans.filter((sp) => hasValue(sp.value)).flatMap((sp) => sp.tokens),
           );
           const bare = new Set();
-          const escape = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           for (const { word, morphemes } of wordsWithMorphemes(d)) {
             if (!morphemes.length || morphemes.some((m) => valued.has(m.key))) continue;
             const forms = morphemes.map((m) => String(m.metadata.form ?? ''));
-            const spelled = new RegExp(`^${forms.map(escape).join('[-=]')}$`, 'u');
+            const spelled = new RegExp(`^${forms.map(escapeJsRegex).join('[-=]')}$`, 'u');
             if (spelled.test(surface(d, word))) morphemes.forEach((m) => bare.add(m));
           }
           removeTokens(expected, d, (t) => bare.has(t));
