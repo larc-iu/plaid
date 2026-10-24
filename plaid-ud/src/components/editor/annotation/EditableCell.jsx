@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { notifyWarning } from '../../../utils/feedback.jsx';
+import { readValueProbs } from '@larc-iu/plaid-client';
 import {
-  readFieldProbs,
   groupSuggestions,
   probLabel,
   provCellTitle,
@@ -421,7 +421,7 @@ export const EditableCell = React.memo(
     // The name a screen reader gives the cell: its row and its word, as igt's
     // grid says "Gloss for dog". The tooltip stays a description.
     const cellName = `${fieldName(field)} for ${tokenForm ?? ''}`.trim();
-    const fieldProbs = readFieldProbs(provMeta, field);
+    const fieldProbs = readValueProbs(provMeta);
 
     // Read-only (viewer access or time travel): render the value as static text,
     // not an editable input, so cells can't be focused or typed into at all.

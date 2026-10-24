@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Combobox } from '@ui/components/shared/combobox';
-import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
+import { readValueProbs } from '@larc-iu/plaid-client';
+import { groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 import { notifyWarning } from '../../../utils/feedback.jsx';
 import { useEditorSession, controlledField } from './editorSession.js';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -11,7 +12,7 @@ import { textIncludes } from '@ui/domain/collation.js';
 // the configured DEPREL vocabulary: focusing shows the full list, the first
 // keystroke filters, and off-list values are still accepted (soft). When the
 // producing parser recorded a deprel distribution
-// (metadata.provDetail.deprelProbs), its top-k floats above the rest as a
+// (metadata.provDetail.valueProbs), its top-k floats above the rest as a
 // "Parser suggestions" group with dimmed probability suffixes.
 //
 // Matching/selection (once you start typing):
@@ -88,7 +89,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
     onCommit(next, typed);
   };
 
-  const deprelProbs = readFieldProbs(relation.metadata, 'deprel');
+  const deprelProbs = readValueProbs(relation.metadata);
 
   // "Use literally what's typed" escape hatch: when the typed value isn't a
   // known tag, offer it verbatim. It's appended LAST and never auto-selected,

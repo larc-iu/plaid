@@ -604,7 +604,7 @@ test("a value the parser weighed carries the parser's probability for it", async
     prov: 'inferred',
     provSource: 'service:stanza-parser',
     provProb: 0.7,
-    provDetail: { uposProbs: { NOUN: 0.7, PROPN: 0.2 } },
+    provDetail: { valueProbs: { NOUN: 0.7, PROPN: 0.2 } },
   };
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
   assert.deepEqual(client.calls[1][2], [
@@ -617,7 +617,7 @@ test("a value the parser weighed carries the parser's probability for it", async
     prov: 'inferred',
     provSource: 'service:stanza-parser',
     provProb: 0.6,
-    provDetail: { deprelProbs: { det: 0.6, nmod: 0.3 } },
+    provDetail: { valueProbs: { det: 0.6, nmod: 0.3 } },
   };
   assert.equal(await doc.updateRelation(rel.id, 'nmod'), true);
   const relAfter = doc.layerInfo.relationLayer.relations.find((r) => r.id === rel.id);

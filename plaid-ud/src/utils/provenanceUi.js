@@ -2,12 +2,10 @@
 // (manual, "Provenance"): rank selector suggestions by a parser's declared
 // distribution, and describe a machine-made annotation for tooltips.
 //
-// plaid-ud reads per-field distributions from these provDetail keys, each a
-// flat { label: probability } map (parsers that emit distributions should
-// write the top handful, not the whole tag set):
-//   UPOS  -> provDetail.uposProbs
-//   XPOS  -> provDetail.xposProbs
-//   deprel-> provDetail.deprelProbs
+// A parser's alternatives for an annotation's value are that annotation's own
+// provDetail.valueProbs, a flat { label: probability } map, as in igt (the
+// client's readValueProbs reads it). Parsers that emit distributions should
+// write the top handful, not the whole tag set.
 
 import {
   provState,
@@ -18,12 +16,6 @@ import {
   isDoubtful,
 } from '@larc-iu/plaid-client';
 import { confidenceNote } from '../../../plaid-ui/src/domain/confidence.js';
-
-const FIELD_PROBS_KEY = {
-  upos: 'uposProbs',
-  xpos: 'xposProbs',
-  deprel: 'deprelProbs',
-};
 
 export const PARSER_GROUP = 'Parser suggestions';
 
@@ -55,18 +47,6 @@ export const PROV_MARK_COLORS = Object.freeze({
   machine: '#6d28d9',
   contributed: '#b45309',
 });
-
-// The sanitized { label: prob } distribution a producer recorded for this
-// field, or null when there is none (the normal case today).
-export function readFieldProbs(metadata, field) {
-  const key = FIELD_PROBS_KEY[field];
-  const raw = key && metadata?.[PROV.detailKey]?.[key];
-  if (!raw || typeof raw !== 'object') return null;
-  const entries = Object.entries(raw).filter(
-    ([, p]) => typeof p === 'number' && Number.isFinite(p),
-  );
-  return entries.length ? Object.fromEntries(entries) : null;
-}
 
 // Group a selector's vocab so the producer's top-k floats above the rest:
 //   [{ group: 'Parser suggestions', items: top-k by prob desc },

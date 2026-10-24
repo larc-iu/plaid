@@ -380,7 +380,7 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
     switch (w.op) {
       case 'updateSpan': {
         b.spans.update(w.id, w.value);
-        const stamp = writer.valueEditStamp(w.metadata);
+        const stamp = writer.valueEditStamp(w.metadata, { value: w.value });
         if (stamp) b.spans.patchMetadata(w.id, metadataOps(stamp));
         break;
       }
@@ -393,7 +393,7 @@ function queueMain(b, main, writer, createStamp, lemmaOf) {
       case 'updateRelation': {
         b.relations.update(w.id, w.value);
         if (moved.has(w.id)) break;
-        const stamp = writer.valueEditStamp(w.metadata);
+        const stamp = writer.valueEditStamp(w.metadata, { value: w.value });
         if (stamp) b.relations.patchMetadata(w.id, metadataOps(stamp));
         break;
       }

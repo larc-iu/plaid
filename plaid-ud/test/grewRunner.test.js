@@ -185,6 +185,46 @@ test("apply: a rewritten value drops the replaced value's provProb", async () =>
   ]);
 });
 
+// R5 and REV-PROV-2: provProb is the parser's probability for the value now
+// held, however it was entered, so a rewrite to a value the parser weighed
+// carries the parser's number for it, as the editor does.
+test('apply: a rewrite to a value the parser weighed carries its probability', async () => {
+  const { raw, client, project, layerInfo } = setup({ provProb: 0.9 });
+  const aUpos = raw.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config.ud.upos).spans[3];
+  aUpos.metadata.provDetail = { valueProbs: { DET: 0.9, PRON: 0.08 } };
+  const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const patch = client.calls.find((c) => c.op === 'spans.patchMetadata');
+  assert.deepEqual(patch.args[1], [
+    { op: 'set', path: ['provConfirmed'], value: true },
+    { op: 'set', path: ['provProb'], value: 0.08 },
+  ]);
+});
+
+test('apply: a relabel to a label the parser weighed carries its probability', async () => {
+  const { raw, client, project, layerInfo } = setup();
+  for (const r of getUdLayerInfo(raw).relationLayer.relations) {
+    if (r.value === 'det')
+      r.metadata = {
+        prov: 'inferred',
+        provSource: 'parser',
+        provProb: 0.8,
+        provDetail: { valueProbs: { det: 0.8, nmod: 0.15 } },
+      };
+  }
+  const grs = parseGrs('pattern { e: H -[det]-> D } commands { e.label = nmod }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const patches = client.calls.filter((c) => c.op === 'relations.patchMetadata');
+  assert.ok(patches.length > 0);
+  for (const p of patches)
+    assert.deepEqual(p.args[1], [
+      { op: 'set', path: ['provConfirmed'], value: true },
+      { op: 'set', path: ['provProb'], value: 0.15 },
+    ]);
+});
+
 // A study reads the audit log: a rewrite is one bulk edit, named as a Grew
 // rewrite.
 test('apply: the operation is a bulk edit naming the Grew rewrite', async () => {

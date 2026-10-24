@@ -1070,7 +1070,7 @@ Plaid standardizes this as the <<Provenance>> convention:
     provProb: 0.8412,                       // flat -> queryable/sortable
     provDetail: {                           // open map for the rest
       model: "my-tagger==2.1",
-      uposProbs: { NOUN: 0.8412, PROPN: 0.0966, ADJ: 0.0014 }
+      valueProbs: { NOUN: 0.8412, PROPN: 0.0966, ADJ: 0.0014 }
     }
   }
 }

@@ -24,7 +24,9 @@ def prov_fragment(language, requester=Requester()):
     version and the language in provDetail. (Stanza's pipeline output carries
     no per-prediction probabilities, so there is no provProb; a producer that has real
     probabilities would add `prob=` here and put its top-k distribution in
-    the detail map.) See the manual, "Provenance". The detail also names who
+    each annotation's own ``provDetail.valueProbs``, which ud's selectors
+    rank and its editor reads a person's value against.) See the manual,
+    "Provenance". The detail also names who
     asked for the run (``requester``, see plaid_client.workflows.requester)."""
     return stamp_inferred(
         service_source('stanza-parser'),

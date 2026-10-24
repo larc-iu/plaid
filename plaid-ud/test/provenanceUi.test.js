@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
+import { readValueProbs } from '@larc-iu/plaid-client';
 import {
-  readFieldProbs,
   groupSuggestions,
   probLabel,
   provCellTitle,
@@ -25,26 +25,13 @@ const MACHINE_META = {
   provDetail: {
     model: 'my-parser==2.1',
     language: 'en',
-    uposProbs: { NOUN: 0.84, PROPN: 0.1, ADJ: 0.02 },
-    deprelProbs: { det: 0.9, nsubj: 0.05 },
+    valueProbs: { NOUN: 0.84, PROPN: 0.1, ADJ: 0.02 },
   },
 };
 
-test('readFieldProbs reads the field-specific distribution, sanitized', () => {
-  assert.deepEqual(readFieldProbs(MACHINE_META, 'upos'), { NOUN: 0.84, PROPN: 0.1, ADJ: 0.02 });
-  assert.deepEqual(readFieldProbs(MACHINE_META, 'deprel'), { det: 0.9, nsubj: 0.05 });
-  assert.equal(readFieldProbs(MACHINE_META, 'xpos'), null);
-  assert.equal(readFieldProbs(undefined, 'upos'), null);
-  assert.equal(
-    readFieldProbs({ provDetail: { uposProbs: { NOUN: 'high' } } }, 'upos'),
-    null,
-    'non-numeric entries are dropped; an all-junk map reads as no distribution',
-  );
-});
-
 test('groupSuggestions floats the top-k above the rest, ranked by prob', () => {
   const vocab = ['ADJ', 'ADV', 'NOUN', 'PROPN', 'VERB'];
-  const grouped = groupSuggestions(vocab, readFieldProbs(MACHINE_META, 'upos'));
+  const grouped = groupSuggestions(vocab, readValueProbs(MACHINE_META));
   assert.deepEqual(grouped, [
     { group: PARSER_GROUP, items: ['NOUN', 'PROPN', 'ADJ'] },
     { group: 'All tags', items: ['ADV', 'VERB'] },
@@ -66,7 +53,7 @@ test('groupSuggestions caps at topK', () => {
 });
 
 test('probLabel renders a percentage only for covered options', () => {
-  const probs = readFieldProbs(MACHINE_META, 'upos');
+  const probs = readValueProbs(MACHINE_META);
   assert.equal(probLabel(probs, 'NOUN'), '84%');
   assert.equal(probLabel(probs, 'VERB'), null);
   assert.equal(probLabel(null, 'NOUN'), null);

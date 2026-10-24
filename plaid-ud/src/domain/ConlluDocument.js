@@ -51,7 +51,6 @@ import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { readIgnoredTokensOf } from '../../../plaid-ui/src/domain/igtWordBreaks.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
-import { readFieldProbs } from '../utils/provenanceUi.js';
 
 // The lemma a new word starts with is a copy of its form, made by a rule and
 // by no person, so a parser may replace it (provenance write contract rule 1).
@@ -1029,7 +1028,7 @@ export class ConlluDocument extends DocumentModel {
           kind: 'update',
           span,
           value: want,
-          stamp: this.writer.valueEditStamp(span.metadata),
+          stamp: this.writer.valueEditStamp(span.metadata, { value: want }),
         });
       } else if (!span && want != null && formLayer?.id) {
         const stamp = this.writer.createStamp;
@@ -1343,6 +1342,7 @@ export class ConlluDocument extends DocumentModel {
         // branch below for the full rationale).
         const verifyFeat = this.writer.valueEditStamp(existingFeat.metadata, {
           changes: existingFeat.value !== pair,
+          value: pair,
         });
         // Optimistic overwrite: update the tag locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
@@ -1438,7 +1438,7 @@ export class ConlluDocument extends DocumentModel {
       // A value the producer weighed carries its probability for it.
       const verify = this.writer.valueEditStamp(existingSpan.metadata, {
         changes: existingSpan.value !== value,
-        prob: readFieldProbs(existingSpan.metadata, field)?.[value] ?? null,
+        value,
       });
       // Optimistic: update the value (+ metadata) locally before the round trip.
       this._applyRawPatch((next, infoNext) => {
@@ -1843,7 +1843,7 @@ export class ConlluDocument extends DocumentModel {
       .find((r) => r.id === relationId);
     const verify = this.writer.valueEditStamp(existing?.metadata, {
       changes: existing?.value !== deprel,
-      prob: readFieldProbs(existing?.metadata, 'deprel')?.[deprel] ?? null,
+      value: deprel,
     });
     // Optimistic: reflect the new value immediately, BEFORE the round trip,
     // so the label doesn't flash the previous value while the save is in
