@@ -51,7 +51,8 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
         metadata = _entry_field_write(ws, v, f, val, metadata, None)
     if morph:
         metadata['morphType'] = morph_type(morph)
-    # Stored without markers, the type from them where they name one (R27).
+    # Stored without markers, the type from them where they name one and
+    # none was given (R27, R38).
     form, typed = stored_entry_form(form, metadata.get('morphType'))
     if typed:
         metadata['morphType'] = typed

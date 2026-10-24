@@ -206,7 +206,7 @@ TOOLS = [
     _fn('create_entry',
         'PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the '
         'morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without '
-        'them and takes their type. The returned entry_id can be used by link_entry in the same '
+        'them, and takes their type when no type is given. The returned entry_id can be used by link_entry in the same '
         'plan. Use senses for a sense of an existing entry.',
         {'form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'type': {'type': 'string'}},

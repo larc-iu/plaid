@@ -243,7 +243,7 @@ def _lexicon_renames(ws: Workspace, rep, earlier=()) -> List[Dict[str, Any]]:
                 continue
             # Stored as every entry writer stores it (R27, Bulk Edit's
             # collectLexiconRows): without markers, the type they name where
-            # the entry's differs.
+            # the entry has none (R38).
             new, typed = stored_entry_form(spelled, own)
             extra = {'morph_type': typed} if typed and typed != own else {}
             if new == old and not extra:
@@ -1716,8 +1716,8 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
 
 def _renamed_form(new: str, current: Optional[str]) -> Tuple[str, Dict[str, Any]]:
     """A new headword as an entry stores it (R27): without markers, and the
-    ``morph_type`` the rename also writes where the markers name another type
-    than the entry has."""
+    ``morph_type`` the rename also writes where the markers name a type and
+    the entry has none (R38: a type the entry has is kept)."""
     form, typed = stored_entry_form(new, current)
     return form, ({'morph_type': typed} if typed and typed != current else {})
 

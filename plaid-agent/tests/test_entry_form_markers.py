@@ -24,11 +24,15 @@ def test_a_new_entry_typed_with_markers_is_stored_bare_with_their_type():
     call_tool(ws, 'create_entry', {'form': 'ka-', 'type': 'prefix'})
     [op] = _op(ws, 'create_entry')
     assert op['form'] == 'ka' and op['metadata']['morphType'] == 'prefix'
-    # Markers that name another type than the one given set the type.
+    # A type given is kept, the markers only dropped (R38).
     ws = _ws()
     call_tool(ws, 'create_entry', {'form': '=ri', 'type': 'stem'})
     [op] = _op(ws, 'create_entry')
-    assert op['form'] == 'ri' and op['metadata']['morphType'] == 'enclitic'
+    assert op['form'] == 'ri' and op['metadata']['morphType'] == 'stem'
+    ws = _ws()
+    call_tool(ws, 'create_entry', {'form': 'theŋjən-', 'type': 'bound stem'})
+    [op] = _op(ws, 'create_entry')
+    assert op['form'] == 'theŋjən' and op['metadata']['morphType'] == 'bound stem'
     # A form with no marker keeps its type.
     ws = _ws()
     call_tool(ws, 'create_entry', {'form': 'kai', 'type': 'stem'})

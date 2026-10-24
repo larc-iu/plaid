@@ -236,7 +236,7 @@ PLAN: remove a multi-word expression (the link its member words share); their ow
 
 ### create_entry
 
-PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without them and takes their type. The returned entry_id can be used by link_entry in the same plan. Use senses for a sense of an existing entry.
+PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...); a form written with markers (-s, ka-, =ri) is stored without them, and takes their type when no type is given. The returned entry_id can be used by link_entry in the same plan. Use senses for a sense of an existing entry.
 
 - `form` (string, required)
 - `lexicon` (string)
