@@ -6,7 +6,7 @@
 //
 // Needs the plaid-agent Python env: PLAID_AGENT_PYTHON, else the env's python
 // under the usual mamba roots (the lookup bb uses). `agentUnavailable()` says
-// why it cannot run, for a skip. The service dials the core the specs talk to
+// why it cannot run, and `skipUnlessAgent` skips on it (fails in CI). The service dials the core the specs talk to
 // (`coreUrl()`: PLAID_CORE_URL, which `bb e2e` sets to its private core).
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -30,7 +30,7 @@ const agentPython = () =>
     .find((p) => fs.existsSync(p));
 
 // Null when the service can be started here, else the reason it cannot.
-export function agentUnavailable() {
+function agentUnavailable() {
   const python = agentPython();
   if (!python) return 'no plaid-agent Python env (set PLAID_AGENT_PYTHON)';
   const probe = spawnSync(python, ['-c', 'import plaid_agent.igt.service, litellm'], {
@@ -40,6 +40,16 @@ export function agentUnavailable() {
   if (probe.status !== 0)
     return `plaid-agent does not import: ${probe.stderr.trim().split('\n').pop()}`;
   return null;
+}
+
+// Skips the calling test when the service cannot start here. In CI the
+// nightly installs plaid-agent so these specs run, and a night whose agent
+// does not import fails rather than going green with skips (REV-W3-REST B2).
+export function skipUnlessAgent(test) {
+  const unavailable = agentUnavailable();
+  if (!unavailable) return;
+  if (process.env.CI) throw new Error(`The assistant specs need plaid-agent in CI: ${unavailable}`);
+  test.skip(true, unavailable);
 }
 
 // An OpenAI-compatible endpoint that answers "OK." to anything, streamed or

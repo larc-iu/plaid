@@ -2,7 +2,7 @@ import PlaidClient, { ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
-import { agentUnavailable, startIgtAssistant } from './assistantService.js';
+import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 
 // The Assistant tab, without a model: conversations are records in the
 // user's key/value store that the service writes, so a plan can be seeded
@@ -174,8 +174,7 @@ test.beforeEach(async ({ page }) => {
 // The real assistant online on the fixture project for `fn`, then stopped
 // and forgotten, so no offline assistant is left there.
 const withAssistant = async (serviceId, fn) => {
-  const unavailable = agentUnavailable();
-  test.skip(!!unavailable, unavailable);
+  skipUnlessAgent(test);
   const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
   try {
     await expect
@@ -331,8 +330,7 @@ test('opening a conversation leaves the list in the order it was in', async ({ p
 
 test('approving a plan applies it under the user and settles the card', async ({ page }) => {
   test.setTimeout(150_000);
-  const unavailable = agentUnavailable();
-  test.skip(!!unavailable, unavailable);
+  skipUnlessAgent(test);
   const serviceId = 'igt:assist:e2e-fake';
   const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
   try {

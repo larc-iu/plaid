@@ -1,7 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
-import { agentUnavailable, startIgtAssistant } from './assistantService.js';
+import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 
 // What the assistant did, on screen (design/TRANSPARENCY.md): the real IGT
 // assistant on a scripted model writes text, reads the fixture document
@@ -45,8 +45,7 @@ const SCRIPT = [
 test('a turn keeps its text between calls and each step opens to what the tool returned', async ({
   page,
 }) => {
-  const unavailable = agentUnavailable();
-  test.skip(!!unavailable, unavailable);
+  skipUnlessAgent(test);
   const serviceId = 'igt:assist:e2e-trace';
   const service = await startIgtAssistant({
     token: readToken().token,
