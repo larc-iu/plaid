@@ -238,3 +238,37 @@
     (testing "after the deactivation the id is free"
       (is (nil? (:claimed-by (first (services-list fix/admin-token pid)))))
       (is (= 200 (:status (:resp (open! fix/user2-token pid "svc"))))))))
+
+(deftest a-claim-outlives-its-forgotten-registration-on-the-admin-listing
+  ;; REV-R4-CORE F3: forgetting an offline id deleted the only row that
+  ;; carried its Release button, and the claim stayed. N2: the holder's
+  ;; account id is for administrators, a reader sees the display name.
+  (events/reset-state!)
+  (let [pid (h/create-test-project admin-request "Claims F")
+        _ (writer! pid "user1@example.com")
+        _ (writer! pid "user2@example.com")
+        opened (open! fix/user1-token pid "svc")
+        holder-name (:user/display-name (plaid.sql.user/get fix/db "user1@example.com"))]
+    (is (= 200 (:status (:resp opened))))
+    (reset! (:closed opened) true)
+    (events/unregister-service-channel! pid "svc" (events/get-service-channel pid "svc"))
+    (testing "a reader sees who holds the id by name, not by account id"
+      (let [[entry] (services-list fix/user2-token pid)]
+        (is (= "svc" (:service-id entry)))
+        (is (= holder-name (:claimed-by-name entry)))
+        (is (not (contains? entry :claimed-by)))))
+    (testing "an administrator sees the account"
+      (is (= "user1@example.com" (:claimed-by (first (services-list fix/admin-token pid))))))
+    (is (= 204 (:status (fix/rest-handler ((as fix/admin-token) :delete
+                                                                (str "/api/v1/projects/" pid "/services/svc"))))))
+    (testing "the forgotten registration's claim is still listed for administrators"
+      (let [[entry :as entries] (services-list fix/admin-token pid)]
+        (is (= 1 (count entries)))
+        (is (= {:service-id "svc" :online false :seen false
+                :claimed-by "user1@example.com" :claimed-by-name holder-name}
+               entry))))
+    (testing "and not for readers"
+      (is (= [] (services-list fix/user2-token pid))))
+    (testing "the release still reaches it"
+      (is (= 204 (:status (release! fix/admin-token pid "svc"))))
+      (is (= [] (services-list fix/admin-token pid))))))

@@ -169,7 +169,10 @@ def discover_services(client, project_id):
     ``serves_you``, whether it would take the caller's requests on this
     project. A delegating service serves members other than its runner only
     where the runner is a maintainer or an admin. Every entry whose id an
-    account holds names it in ``claimed_by`` (see :func:`release_service`).
+    account holds gives its display name in ``claimed_by_name``. An admin also
+    gets the account in ``claimed_by`` (see :func:`release_service`), and an
+    entry with ``seen: False`` for each held id whose registration was
+    forgotten.
     """
     return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
 

@@ -18,6 +18,10 @@ import { countOf } from '@ui/lib/plural.js';
 // its projects underneath: the identity a person has in mind is the service,
 // and the project count is a property of it rather than a reason to repeat it.
 
+// An entry with `seen: false` is a claim whose registration was forgotten:
+// there is nothing to forget, only the id to release.
+const isRegistration = (e) => e.seen !== false;
+
 const groupByService = (registrations) => {
   const byId = new Map();
   registrations.forEach((r) => {
@@ -120,7 +124,7 @@ export const AdminServices = ({ client, currentUser }) => {
   };
 
   const discardEverywhere = async (row) => {
-    const offline = row.entries.filter((e) => !e.online);
+    const offline = row.entries.filter((e) => !e.online && isRegistration(e));
     const ok = await confirm({
       title: `Forget ${row.serviceName} everywhere?`,
       description: `Removes ${countOf(offline.length, 'registration')}, on every project where it is offline. Each reappears if it connects again.`,
@@ -197,7 +201,7 @@ export const AdminServices = ({ client, currentUser }) => {
       headerClassName: 'w-32',
       align: 'right',
       render: (r) =>
-        r.entries.some((e) => !e.online) ? (
+        r.entries.some((e) => !e.online && isRegistration(e)) ? (
           <Button size="sm" variant="ghost" onClick={() => discardEverywhere(r)}>
             Forget offline
           </Button>
@@ -228,7 +232,7 @@ export const AdminServices = ({ client, currentUser }) => {
       actions={
         <>
           <span className="text-sm text-muted-foreground">
-            {online} online, {countOf(registrations.length, 'registration')}
+            {online} online, {countOf(registrations.filter(isRegistration).length, 'registration')}
           </span>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className="h-4 w-4" /> Refresh
@@ -262,7 +266,7 @@ export const AdminServices = ({ client, currentUser }) => {
                       Release
                     </Button>
                   )}
-                  {!e.online && (
+                  {!e.online && isRegistration(e) && (
                     <Button size="sm" variant="ghost" onClick={() => discardOne(e)}>
                       Forget
                     </Button>

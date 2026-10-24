@@ -718,7 +718,8 @@ Another account connecting it is refused with 403, and the refusal names the acc
 An administrator releases the id with `DELETE /api/v1/projects/{id}/services/{service-id}/owner` (`releaseService` / `release_service`), and the next account to connect it then holds it.
 Forgetting an offline service does not release its id.
 Deactivating the account releases every id it holds.
-The project's services listing (`GET /api/v1/projects/{id}/services`) names the account holding each id in `claimed-by`, absent when no account holds it.
+The project's services listing (`GET /api/v1/projects/{id}/services`) gives the display name of whoever holds each id in `claimed-by-name`, absent when no account holds it.
+An administrator also gets the account in `claimed-by`, and an entry with `seen` false for each held id whose registration was forgotten, so it can still be released.
 Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
 `registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 

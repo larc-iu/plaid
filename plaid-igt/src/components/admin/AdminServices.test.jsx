@@ -71,4 +71,18 @@ describe('AdminServices release', () => {
     const view = await render(c);
     expect(releaseButtons(view)).toHaveLength(0);
   });
+
+  it('lists a held id whose registration was forgotten, with Release and no Forget', async () => {
+    // REV-R4-CORE F3: Forget deleted the only row that carried the Release.
+    const c = client({
+      p1: [{ serviceId: 'analyzer', online: false, seen: false, claimedBy: 'gone@x.com' }],
+    });
+    const view = await render(c);
+    expect(byText(view.container, 'td', 'Held by gone@x.com')).not.toBeNull();
+    const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
+    expect(buttons).toContain('Release');
+    expect(buttons).not.toContain('Forget');
+    expect(buttons).not.toContain('Forget offline');
+    expect(view.container.textContent).toContain('0 registrations');
+  });
 });

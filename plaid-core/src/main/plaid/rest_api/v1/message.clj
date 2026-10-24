@@ -835,8 +835,10 @@
      :get {:summary (str "List the services seen on a project: currently connected ones "
                          "(online true) plus previously-seen offline ones with a last-seen time. A connected one "
                          "names its runner (runner-name, run-by-you) and says whether it would take "
-                         "the caller's requests (serves-you). Each names the account its id belongs "
-                         "to (claimed-by), absent when no account holds it.")
+                         "the caller's requests (serves-you). Each names who its id belongs to "
+                         "(claimed-by-name), absent when no account holds it, and to an administrator "
+                         "the account (claimed-by). An administrator also gets each claimed id whose "
+                         "registration was forgotten (seen false), so it can be released.")
            :middleware [[pra/wrap-reader-required get-project-id]]
            :handler (fn [{{{:keys [id]} :path} :parameters db :db :as req}]
                       (let [live (map #(with-runner req db id %) (events/list-live-services id))
@@ -858,12 +860,21 @@
                                     (->> seen
                                          (remove #(live-ids (:service-id %)))
                                          (map #(assoc % :online false))))
-                            claimed (service-registry/claims db id)]
+                            claimed (service-registry/claims db id)
+                            admin? (user/admin? (:user/record req))
+                            names (memoize #(runner-name db %))
+                            listed (set (map :service-id merged))
+                            ;; A claim whose seen row was forgotten still holds
+                            ;; the id, so an administrator sees it to release it.
+                            claim-only (when admin?
+                                         (for [sid (keys claimed) :when (not (listed sid))]
+                                           {:service-id sid :online false :seen false}))]
                         {:status 200
-                         :body (->> merged
+                         :body (->> (concat merged claim-only)
                                     (map (fn [{:keys [service-id] :as entry}]
                                            (if-let [holder (get claimed service-id)]
-                                             (assoc entry :claimed-by holder)
+                                             (cond-> (assoc entry :claimed-by-name (names holder))
+                                               admin? (assoc :claimed-by holder))
                                              entry)))
                                     (sort-by :service-id)
                                     vec)}))}}]

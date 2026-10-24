@@ -137,12 +137,14 @@ export function serviceErrorMessage(error, serviceName = '', secrets = []) {
  * `runByYou`, and `servesYou`, whether it would take the caller's requests on
  * this project. A delegating service serves members other than its runner
  * only where the runner is a maintainer or an admin. Every entry whose id an
- * account holds names it in `claimedBy` (see `releaseService`). Goes over the
- * wire even while a batch is open on the client.
+ * account holds gives its display name in `claimedByName`. An admin also gets
+ * the account in `claimedBy` (see `releaseService`), and an entry with
+ * `seen: false` for each held id whose registration was forgotten. Goes over
+ * the wire even while a batch is open on the client.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
- * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt, runnerName, runByYou, servesYou, claimedBy}]
+ * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt, runnerName, runByYou, servesYou, claimedByName, claimedBy, seen}]
  */
 export function discoverServices(client, projectId) {
   return client._request('GET', `/api/v1/projects/${projectId}/services`);

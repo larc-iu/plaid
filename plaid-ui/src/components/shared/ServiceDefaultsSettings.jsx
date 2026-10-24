@@ -364,7 +364,9 @@ export const ServiceDefaultsSettings = ({
           client.messages.discoverServices(projectId),
         ]);
         if (!isCurrent()) return;
-        setServices(svcs || []);
+        // A forgotten registration's claim (seen false, an admin's listing)
+        // is not a service this screen offers or forgets.
+        setServices((svcs || []).filter((s) => s.seen !== false));
         if (servicesOnly) return;
         setProject(p);
         setDraft(p?.config?.[namespace]?.serviceDefaults || {});
