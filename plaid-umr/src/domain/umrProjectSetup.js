@@ -24,6 +24,7 @@
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, UMR_LAYER_FLAGS, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { relationRules } from './umrConstraints.js';
+import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { proposeIlg } from './ilg.js';
 import {
   declarePreserveOnSplit,
@@ -87,11 +88,21 @@ const queueUmrLayers = (
 // Bootstrap: the project, then every layer and its config in ONE atomic
 // batch. Each layer is made under an id minted here, so a later op in the
 // batch names it directly. A failed batch leaves an empty project, which the
-// catch handler deletes.
-const bootstrap = async (client, projectName) => {
-  const project = await client.projects.create(projectName);
-  const projectId = project.id;
+// catch handler deletes. The project is made under the id in `mint`, which
+// the dialog keeps across presses (createOnce.js): a create whose answer was
+// lost is rolled back by that id, and when the rollback cannot reach it
+// either, the next press sends the same id and carries on with the project
+// the first made rather than making a second.
+const bootstrap = async (client, projectName, mint) => {
+  mint.current ??= uuidv7();
+  let projectId = mint.current;
+  let created = false;
   try {
+    const project = await createOnce(mint, (id) =>
+      client.projects.create(projectName, undefined, { id }),
+    );
+    projectId = project.id;
+    created = true;
     const textLayerId = uuidv7();
     const sentenceLayerId = uuidv7();
     const wordLayerId = uuidv7();
@@ -144,6 +155,9 @@ const bootstrap = async (client, projectName) => {
     try {
       await client.projects.delete(projectId);
     } catch (deleteErr) {
+      // A create with no answer may have made nothing, so the delete has
+      // nothing to find. The press after this one names the same id.
+      if (!created) throw err;
       console.error('Setup failed:', err, 'Delete failed:', deleteErr);
       const wrapped = new Error(
         `Failed to set up the project, and the partial project was not deleted. Delete “${projectName.trim()}” by hand.`,
@@ -159,11 +173,13 @@ const bootstrap = async (client, projectName) => {
  * Create a fully configured UMR project as one audited operation.
  * @param {object} client - PlaidClient instance
  * @param {string} projectName
+ * @param {{ current: string|null }} [mint] - the project's id, kept across
+ *   presses by the dialog (createOnce.js)
  * @returns {Promise<object>} the created project
  */
-export const createUmrProject = (client, projectName) =>
+export const createUmrProject = (client, projectName, mint = { current: null }) =>
   client.withOperation(`Create UMR project "${projectName.trim()}"`, () =>
-    bootstrap(client, projectName),
+    bootstrap(client, projectName, mint),
   );
 
 /**

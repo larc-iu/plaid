@@ -384,6 +384,46 @@ describe('the shared chrome', () => {
     expect(document.body.textContent).toContain('a text layer and a sentence layer');
   });
 
+  it('NewProjectDialog keeps the id it makes the project under across presses, until the name changes', async () => {
+    // A press after an answer that never came names the same id (createOnce.js).
+    const mints = [];
+    const create = vi.fn(async (_client, _name, mint) => {
+      mint.current ??= `id-${mints.length}`;
+      mints.push(mint.current);
+      throw Object.assign(new Error('Failed to fetch'), { status: 0 });
+    });
+    auth.getClient = () => client;
+    await mount(
+      <NewProjectDialog
+        isOpen
+        onClose={() => {}}
+        onSuccess={() => {}}
+        title="New IGT project"
+        create={create}
+      >
+        <p>layers</p>
+      </NewProjectDialog>,
+    );
+    const input = document.body.querySelector('#project-name');
+    const typeInto = (text) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, text);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const press = () =>
+      view.step(async () => {
+        input
+          .closest('form')
+          .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+    await view.step(() => typeInto('Lezgi'));
+    await press();
+    await press();
+    await view.step(() => typeInto('Lezgian'));
+    await press();
+    expect(mints).toEqual(['id-0', 'id-0', 'id-2']);
+  });
+
   it('ProjectSettingsShell lists its sections and renders the one on the path', async () => {
     await mount(
       <Routes>

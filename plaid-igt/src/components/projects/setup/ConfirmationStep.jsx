@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -23,6 +23,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
   // partially failed. On retry, we resume against this id instead of creating
   // another project. Reset only on component unmount/remount (fresh wizard).
   const [createdProjectId, setCreatedProjectId] = useState(null);
+  // The ids setup names on the project and vocabularies it makes, kept across
+  // presses of Retry (executeSetup.js `mints`).
+  const mints = useRef({}).current;
 
   // Helper function to update progress
   const updateProgress = (percent, operation) => {
@@ -54,6 +57,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
         onProgress: updateProgress,
         // Persist immediately so a subsequent failure + retry won't recreate.
         onProjectCreated: setCreatedProjectId,
+        mints,
       });
 
       if (result.alreadyInitialized) {

@@ -55,6 +55,7 @@ import {
   wordLayerConstraints,
 } from '../../../domain/igtConstraints.js';
 import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
+import { createOnce } from '../../../../../plaid-ui/src/lib/createOnce.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 import { importRepairs } from '../../../domain/importFinish.js';
 import { proposeServiceFieldDefaults } from '../../../domain/serviceFieldDefaults.js';
@@ -90,7 +91,13 @@ async function executeProjectSetupImpl({
   onProgress,
   onProjectCreated,
   onVocabCreated,
+  // Where the ids of the project and each vocabulary this setup makes are
+  // kept between presses (createOnce.js): the caller holds one object for
+  // the life of its screen, so a press after an answer that never came names
+  // the same ids and opens what the first made rather than making a second.
+  mints = {},
 }) {
+  const mintOf = (key) => (mints[key] ??= { current: null });
   const updateProgress = (pct, msg) => onProgress?.(pct, msg);
 
   // Refuse to re-run setup on an already-initialized project. Re-running
@@ -131,7 +138,9 @@ async function executeProjectSetupImpl({
   // Step 1: Create project if new (skip if a prior attempt already did).
   if (isNewProject && !resumeProjectId && setupData.basicInfo?.projectName) {
     updateProgress(10, 'Creating new project…');
-    const newProject = await client.projects.create(setupData.basicInfo.projectName);
+    const newProject = await createOnce(mintOf('project'), (id) =>
+      client.projects.create(setupData.basicInfo.projectName, undefined, { id }),
+    );
     currentProjectId = newProject.id;
     resources.project = newProject;
     await onProjectCreated?.(newProject.id);
@@ -498,7 +507,9 @@ async function executeProjectSetupImpl({
           let newVocab = await madeEarlier(vocab.name);
           if (!newVocab) {
             updateProgress(70, `Creating vocabulary: ${vocab.name}…`);
-            newVocab = await client.vocabLayers.create(vocab.name);
+            newVocab = await createOnce(mintOf(`vocab:${nameKey(vocab.name)}`), (id) =>
+              client.vocabLayers.create(vocab.name, undefined, { id }),
+            );
             // Said before it is linked, so a run that dies in between leaves
             // a record naming it and the next one finishes it rather than
             // making a second.

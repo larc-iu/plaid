@@ -47,6 +47,8 @@ export function useProjectImportRun({ client, kind, resumeId }) {
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
+  // The ids setup names on what it makes, kept across retries (executeSetup.js).
+  const mints = useRef({}).current;
 
   const start = async ({
     source = null,
@@ -85,6 +87,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
           // import can make several.
           onVocabCreated: (vocab, made) =>
             markImportStarted(client, projectIdRef.current, kind, source, vocab, choices, made),
+          mints,
         });
         if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
         projectIdRef.current = setup.projectId;

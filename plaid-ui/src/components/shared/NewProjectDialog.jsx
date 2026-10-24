@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { humanizeError } from '../../lib/errors.js';
 import { Button } from '../ui/button';
@@ -7,9 +7,12 @@ import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle } from '../ui/dialog';
 
 /**
- * Name a project and make it. `create(client, name)` is the app's own setup
- * function, the same one its e2e fixture calls, and `children` is what that
- * setup will build, said in the app's words.
+ * Name a project and make it. `create(client, name, mint)` is the app's own
+ * setup function, the same one its e2e fixture calls, and `children` is what
+ * that setup will build, said in the app's words. `mint` holds the id the
+ * project is made under, kept across presses until the name changes or the
+ * dialog closes (lib/createOnce.js), so a press after an answer that never
+ * came does not make a second project.
  *
  * The failure stays in the dialog rather than becoming a toast: the name is
  * still typed in the box behind it, and it is what has to be tried again.
@@ -19,6 +22,10 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { getClient } = useAuth();
+  const mint = useRef(null);
+  useEffect(() => {
+    mint.current = null;
+  }, [projectName, isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,7 +36,7 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
     setLoading(true);
     setError('');
     try {
-      onSuccess(await create(getClient(), projectName));
+      onSuccess(await create(getClient(), projectName, mint));
     } catch (err) {
       console.error('Error creating project:', err);
       setError(humanizeError(err, 'Failed to create the project.'));

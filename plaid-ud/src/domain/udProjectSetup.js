@@ -44,6 +44,7 @@ import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js'
 import { newUdWord } from './newUdWord.js';
 import { wordsWithNoUdWord } from './sentenceRows.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
+import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import {
   declarePreserveOnSplit,
   declareSplitOnSpace,
@@ -71,12 +72,21 @@ export const SPAN_LAYER_SPECS = [
 // Bootstrap: the project, then every layer, its config and UD's layer rules
 // in ONE atomic batch. Each layer is made under an id minted here, so a later
 // op in the batch names it directly. A failed batch leaves an empty project,
-// which the catch handler deletes.
-const bootstrap = async (client, projectName) => {
-  const project = await client.projects.create(projectName);
-  const projectId = project.id;
-
+// which the catch handler deletes. The project is made under the id in
+// `mint`, which the dialog keeps across presses (createOnce.js): a create
+// whose answer was lost is rolled back by that id, and when the rollback
+// cannot reach it either, the next press sends the same id and carries on
+// with the project the first made rather than making a second.
+const bootstrap = async (client, projectName, mint) => {
+  mint.current ??= uuidv7();
+  let projectId = mint.current;
+  let created = false;
   try {
+    const project = await createOnce(mint, (id) =>
+      client.projects.create(projectName, undefined, { id }),
+    );
+    projectId = project.id;
+    created = true;
     const textLayerId = uuidv7();
     const sentenceLayerId = uuidv7();
     const wordLayerId = uuidv7();
@@ -157,6 +167,9 @@ const bootstrap = async (client, projectName) => {
     try {
       await client.projects.delete(projectId);
     } catch (deleteErr) {
+      // A create with no answer may have made nothing, so the delete has
+      // nothing to find. The press after this one names the same id.
+      if (!created) throw err;
       console.error('Failed to roll back partially-created project:', deleteErr);
       const original = err?.message || 'Unknown error';
       const dErr = deleteErr?.message || 'Unknown error';
@@ -179,11 +192,13 @@ const bootstrap = async (client, projectName) => {
  *
  * @param {object} client - PlaidClient instance
  * @param {string} projectName
+ * @param {{ current: string|null }} [mint] - the project's id, kept across
+ *   presses by the dialog (createOnce.js)
  * @returns {Promise<object>} the created project
  */
-export const createUdProject = (client, projectName) =>
+export const createUdProject = (client, projectName, mint = { current: null }) =>
   client.withOperation(`Create UD project "${projectName.trim()}"`, () =>
-    bootstrap(client, projectName),
+    bootstrap(client, projectName, mint),
   );
 
 /**

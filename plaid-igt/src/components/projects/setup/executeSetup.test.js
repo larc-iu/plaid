@@ -728,3 +728,86 @@ describe("setup writes a sentence field's role", () => {
     ]);
   });
 });
+
+// The project and each vocabulary setup makes are made under an id setup
+// mints and keeps across presses, so an answer lost past the client's resends
+// leaves neither an orphan nor, on the next press, a second one.
+describe('setup makes the project and its vocabularies under minted ids', () => {
+  const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const idTaken = () =>
+    Object.assign(new Error('HTTP 409'), { status: 409, responseData: { error: 'id-taken' } });
+
+  it('names a UUIDv7 on both creates', async () => {
+    const { client } = stub(null);
+    const sent = [];
+    const projectCreate = client.projects.create;
+    client.projects.create = async (name, audit, opts) => {
+      sent.push(['project', opts?.id]);
+      return projectCreate(name, audit, opts);
+    };
+    const vocabCreate = client.vocabLayers.create;
+    client.vocabLayers.create = async (name, audit, opts) => {
+      sent.push(['vocab', opts?.id]);
+      return vocabCreate(name, audit, opts);
+    };
+    const result = await run(client, null);
+    expect(result.failures).toEqual([]);
+    expect(sent.map(([k]) => k)).toEqual(['project', 'vocab']);
+    for (const [, id] of sent) expect(id).toMatch(UUIDV7);
+  });
+
+  it('sends the same ids on the next press, and takes id-taken as made', async () => {
+    const mints = {};
+    const sent = { project: [], vocab: [] };
+    const created = [];
+    const first = stub(null);
+    first.client.projects.create = async (name, audit, opts) => {
+      sent.project.push(opts?.id);
+      throw Object.assign(new Error('Failed to fetch'), { status: 0 });
+    };
+    await expect(
+      executeProjectSetup({
+        client: first.client,
+        isNewProject: true,
+        resumeProjectId: null,
+        setupData: SETUP_DATA,
+        onProgress: () => {},
+        mints,
+      }),
+    ).rejects.toThrow();
+
+    const second = stub(null);
+    second.client.projects.create = async (name, audit, opts) => {
+      sent.project.push(opts?.id);
+      throw idTaken();
+    };
+    let vocabTries = 0;
+    second.client.vocabLayers.create = async (name, audit, opts) => {
+      sent.vocab.push(opts?.id);
+      vocabTries += 1;
+      if (vocabTries === 1) throw Object.assign(new Error('Failed to fetch'), { status: 0 });
+      throw idTaken();
+    };
+    const again = () =>
+      executeProjectSetup({
+        client: second.client,
+        isNewProject: true,
+        resumeProjectId: created[0] ?? null,
+        setupData: SETUP_DATA,
+        onProgress: () => {},
+        onProjectCreated: (id) => created.push(id),
+        mints,
+      });
+    const failed = await again();
+    expect(failed.failures).toHaveLength(1);
+    expect(created).toEqual([sent.project[0]]);
+    expect(failed.projectId).toBe(sent.project[0]);
+    const done = await again();
+    expect(done.failures).toEqual([]);
+    expect(sent.project).toHaveLength(2);
+    expect(sent.project[1]).toBe(sent.project[0]);
+    expect(sent.vocab).toHaveLength(2);
+    expect(sent.vocab[1]).toBe(sent.vocab[0]);
+    expect(second.calls.linked.at(-1)).toBe(sent.vocab[0]);
+  });
+});
