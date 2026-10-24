@@ -129,23 +129,25 @@
 (deftest losing-the-writer-role-closes-the-channel
   (events/reset-state!)
   (let [pid (create-project!)]
+    ;; One service id per account: an id belongs to the first account that
+    ;; registered it (R10).
     (testing "removed from the project"
-      (let [closed (open! (writer! pid "svc-a@example.com") pid "svc")]
+      (let [closed (open! (writer! pid "svc-a@example.com") pid "svc-1")]
         (api-call admin-request {:method :delete
                                  :path (str "/api/v1/projects/" pid "/writers/svc-a@example.com")})
         (is @closed)
-        (is (not (live? pid "svc")))))
+        (is (not (live? pid "svc-1")))))
     (testing "demoted to reader"
-      (let [closed (open! (writer! pid "svc-b@example.com") pid "svc")]
+      (let [closed (open! (writer! pid "svc-b@example.com") pid "svc-2")]
         (grant! pid "readers" "svc-b@example.com")
         (is @closed)
-        (is (not (live? pid "svc")))))
+        (is (not (live? pid "svc-2")))))
     (testing "a role change for someone else leaves it open"
-      (let [closed (open! (writer! pid "svc-c@example.com") pid "svc")]
+      (let [closed (open! (writer! pid "svc-c@example.com") pid "svc-3")]
         (grant! pid "readers" "user1@example.com")
         (grant! pid "maintainers" "svc-c@example.com")
         (is (not @closed))
-        (is (live? pid "svc"))))))
+        (is (live? pid "svc-3"))))))
 
 (deftest a-demoted-admin-loses-a-channel-held-by-admin-standing
   (events/reset-state!)

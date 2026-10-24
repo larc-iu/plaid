@@ -145,8 +145,17 @@ export function createSSEConnection(client, projectId, onEvent, path) {
           // takes over.
           console.warn('Service registration rejected (409): another instance of this service is already connected; will retry');
         }
-        const refused = new Error(`HTTP ${response.status} ${response.statusText}`);
+        // A refusal says why in its body (`{error}`), as on every other route.
+        let said = null;
+        try {
+          said = await response.json();
+        } catch {
+          said = null;
+        }
+        const why = typeof said?.error === 'string' ? `: ${said.error}` : '';
+        const refused = new Error(`HTTP ${response.status} ${response.statusText}${why}`);
         refused.status = response.status;
+        if (said && typeof said === 'object') refused.responseData = said;
         throw refused;
       }
 

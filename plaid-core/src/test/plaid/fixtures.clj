@@ -145,6 +145,8 @@
    "project_users"
    ;; seen_services: persistent service-discovery rows (FK → projects).
    "seen_services"
+   ;; service_claims: who each service id belongs to (FK → projects, users).
+   "service_claims"
    "projects"])
 
 (defn reset-db!

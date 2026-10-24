@@ -30,6 +30,29 @@ test("a refused stream records the status", async () => {
   }
 });
 
+test("a refused stream keeps the reason the server gave", async () => {
+  const realFetch = globalThis.fetch;
+  const realWarn = console.warn;
+  console.warn = () => {};
+  const error = "Service 'svc' belongs to Ana on this project. An admin can release it.";
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 403,
+    statusText: "Forbidden",
+    json: async () => ({ error }),
+  });
+  try {
+    const conn = createSSEConnection(client, "p1", () => {});
+    await settled(conn);
+    assert.equal(conn.error?.status, 403);
+    assert.equal(conn.error?.responseData?.error, error);
+    assert.match(conn.error.message, /belongs to Ana/);
+  } finally {
+    globalThis.fetch = realFetch;
+    console.warn = realWarn;
+  }
+});
+
 test("a stream the server ends says so, and one closed here does not", async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => ({

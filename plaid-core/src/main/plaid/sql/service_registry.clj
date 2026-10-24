@@ -6,7 +6,11 @@
   `submit-operation!`) — they fire on every service channel open/close, which
   is operational bookkeeping, not annotation data. Rows are upserted on registration
   and removable via the discard endpoint; project deletion cascades them away
-  (FK ON DELETE CASCADE)."
+  (FK ON DELETE CASCADE).
+
+  Beside them, `service_claims` holds who each service id on a project
+  belongs to: the account that first opened a channel for it (ruling R10).
+  Forgetting a seen row leaves the claim, only an admin's release drops it."
   (:require [clojure.data.json :as json]
             [plaid.sql.common :as psc]))
 
@@ -63,6 +67,35 @@
   "Forget a previously-seen service. Returns the number of rows deleted (0 or 1)."
   [db project-id service-id]
   (psc/execute! db {:delete-from :seen_services
+                    :where [:and
+                            [:= :project_id project-id]
+                            [:= :service_id service-id]]}))
+
+(defn claim!
+  "Claim `service-id` on the project for `user-id` unless an account holds it
+  already, and answer the account that holds it now: `user-id` when the claim
+  was taken or was theirs, another account's id otherwise. One statement, so
+  two first registrations racing each other cannot both win. Unaudited, as
+  the seen rows are."
+  [db project-id service-id user-id]
+  (psc/execute! db {:insert-into :service_claims
+                    :values [{:project_id project-id
+                              :service_id service-id
+                              :user_id user-id
+                              :claimed_at (psc/now-iso)}]
+                    :on-conflict [:project_id :service_id]
+                    :do-nothing []})
+  (:user_id (psc/q1 db {:select [:user_id]
+                        :from :service_claims
+                        :where [:and
+                                [:= :project_id project-id]
+                                [:= :service_id service-id]]})))
+
+(defn release!
+  "Drop the claim on `service-id`, so the next account to open a channel for
+  it claims it. Returns the number of rows deleted (0 or 1)."
+  [db project-id service-id]
+  (psc/execute! db {:delete-from :service_claims
                     :where [:and
                             [:= :project_id project-id]
                             [:= :service_id service-id]]}))

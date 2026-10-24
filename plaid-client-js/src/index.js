@@ -33,6 +33,7 @@ import { markReplayed, wasReplayed } from "./replayed.js";
 import {
   discoverServices,
   discardService,
+  releaseService,
   serve,
   requestService,
   attachServiceRequest,
@@ -3811,6 +3812,18 @@ class PlaidClient {
        */
       discardService: (projectId, serviceId) =>
         discardService(this, projectId, serviceId),
+
+      /**
+       * Release a service id from the account that first registered it on
+       * the project, so the next account to register it claims it.
+       * Admin-only; 409 while the service is connected, 404 when no account
+       * holds it.
+       * @param {string} projectId - The UUID of the project
+       * @param {string} serviceId - The ID of the service to release
+       * @returns {Promise<void>}
+       */
+      releaseService: (projectId, serviceId) =>
+        releaseService(this, projectId, serviceId),
 
       /**
        * Register as a service and handle incoming work requests.

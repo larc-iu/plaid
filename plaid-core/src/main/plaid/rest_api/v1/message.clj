@@ -341,19 +341,30 @@
           (catch Exception e
             (log/error e "Could not re-check the open channels after a change of standing"))))))
 
+(defn- runner-name
+  "The display name of the account that runs a service, for the requester's
+  eyes."
+  [db runner-id]
+  (or (:user/display-name (user/get db runner-id)) "another member"))
+
 (defn service-channel-handler
   "SSE stream a service opens to RECEIVE work requests (server -> service).
   Holding this channel open IS the service's registration; its discovery
   metadata (service-name / description / extras) rides the query string, and
-  closing the channel deregisters it. 409 if another LIVE channel already
-  holds this service-id on the project (a dead-but-unclosed channel is taken
-  over, so reconnect-after-blip never self-409s). Registration also upserts
-  the persistent seen_services row so discovery can show the service offline
-  later."
+  closing the channel deregisters it. The first account to open one for a
+  service id on the project claims the id, and any other account is refused
+  (403) until an admin releases it (ruling R10). 409 if another LIVE channel
+  already holds this service-id on the project (a dead-but-unclosed channel is
+  taken over, so reconnect-after-blip never self-409s). Registration also
+  upserts the persistent seen_services row so discovery can show the service
+  offline later."
   [{{{:keys [id service-id]} :path
      {:keys [service-name description extras]} :query} :parameters
     user-id :user/id db :db :as req}]
-  (let [info {:service-name service-name
+  (let [;; Claims the id when nobody holds it. Forced only past the
+        ;; delegated-token refusal, so that token claims nothing.
+        owner (delay (service-registry/claim! db id service-id user-id))
+        info {:service-name service-name
               :description description
               :extras (when extras
                         (try (json/read-str extras :key-fn keyword)
@@ -375,6 +386,15 @@
       ;; with its own credential.
       (:auth/token-scope req)
       {:status 403 :body {:error "A delegated token cannot open a service channel."}}
+
+      ;; The id belongs to whoever first opened a channel for it here, so a
+      ;; member cannot stand in for another member's service while it is
+      ;; offline. Claimed before the live check: the account holding a live
+      ;; channel holds the claim too, unless an admin released it meanwhile.
+      (not= user-id @owner)
+      {:status 403
+       :body {:error (str "Service '" service-id "' belongs to " (runner-name db @owner)
+                          " on this project. An admin can release it.")}}
 
       (events/channel-alive? (events/get-service-channel id service-id))
       {:status 409 :body {:error (str "Service '" service-id "' is already connected to this project")}}
@@ -493,12 +513,6 @@
               (filter #(and (prj/get db %)
                             (pra/privileged? req :project/readers (constantly %)))))
         joined))
-
-(defn- runner-name
-  "The display name of the account that runs a service, for the requester's
-  eyes."
-  [db runner-id]
-  (or (:user/display-name (user/get db runner-id)) "another member"))
 
 (defn- names-list
   "\"A\", \"A and B\", \"A, B and C\"."
@@ -858,6 +872,26 @@
                            (if (pos? (service-registry/delete-seen! db id service-id))
                              {:status 204}
                              {:status 404 :body {:error (str "No seen service '" service-id "' on this project")}})))}}]
+
+   ;; R10: a service id belongs to the account that first opened a channel
+   ;; for it on the project. An admin lets it go, and the next account to
+   ;; open one claims it.
+   ["/services/:service-id/owner"
+    {:plaid/idempotency false
+     :parameters {:path [:map [:id :uuid] [:service-id :string]]}
+     :delete {:summary (str "Admin: release a service id from the account that claimed it, so the next "
+                            "account to register it claims it. 409 while it is connected.")
+              :middleware [[pra/wrap-admin-required]]
+              :handler (fn [{{{:keys [id service-id]} :path} :parameters db :db}]
+                         (cond
+                           (events/channel-alive? (events/get-service-channel id service-id))
+                           {:status 409 :body {:error (str "Service '" service-id "' is connected. Stop it first.")}}
+
+                           (pos? (service-registry/release! db id service-id))
+                           {:status 204}
+
+                           :else
+                           {:status 404 :body {:error (str "No account holds service '" service-id "' on this project")}}))}}]
 
    ;; Server-mediated RPC: the service's inbound request stream (GET) and the
    ;; client's work-submission stream (POST). Addressed, not broadcast. Opening

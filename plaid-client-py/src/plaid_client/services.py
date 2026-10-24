@@ -185,6 +185,21 @@ def discard_service(client, project_id, service_id):
         out_of_band=True)
 
 
+def release_service(client, project_id, service_id):
+    """Release a service id from the account that first registered it on the
+    project. A service id belongs to that account, and the server refuses any
+    other account's registration (403) until an admin releases it. The next
+    account to register it then claims it. Admin-only; 409 while the service
+    is connected, 404 when no account holds it. The JS twin is
+    ``releaseService``."""
+    # out_of_band: the registry is not project data (see the note at the top
+    # of http.py).
+    return client.messages._request(
+        'DELETE',
+        f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}/owner',
+        out_of_band=True)
+
+
 def _report_event(client, project_id, request_id, body):
     """POST a progress/result/error event for an in-flight request; the server
     relays it to the waiting requester. The JS twin is ``reportRequestEvent``.
@@ -209,11 +224,28 @@ def _error_status(error):
     return getattr(getattr(error, 'response', None), 'status_code', None)
 
 
+def _server_reason(error):
+    """The ``error`` a refused channel-open's body gave, or None."""
+    response = getattr(error, 'response', None)
+    try:
+        said = response.json()
+    except Exception:
+        return None
+    why = said.get('error') if isinstance(said, dict) else None
+    return why if isinstance(why, str) else None
+
+
 def _error_summary(error):
     """Why a channel-open attempt failed, for the operator. A 409 gets its own
-    wording because it is the one failure another OPERATOR causes."""
-    if _error_status(error) == 409:
+    wording because it is the one failure another OPERATOR causes. A refusal
+    that gave its reason says it (a service id another account holds says
+    whose it is), as the JS client's ``serve`` does."""
+    status = _error_status(error)
+    if status == 409:
         return 'another instance of this service is already connected (409)'
+    reason = _server_reason(error)
+    if status and reason:
+        return f'HTTP {status}: {reason}'
     return short_error(error)
 
 

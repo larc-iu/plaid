@@ -1411,6 +1411,31 @@ def test_a_reconnect_the_server_refuses_for_good_ends_the_registration():
         reg.stop()
 
 
+def test_a_refusal_for_a_service_id_another_account_holds_stops_with_the_servers_reason():
+    """The server refuses a service id another account registered first (403)
+    and says whose it is. The stop says so, as the JS client's does."""
+    import time as _t
+    reason = "Service 'x' belongs to Ana on this project. An admin can release it."
+    refused = _HTTPError(403)
+    refused.response.json = lambda: {'error': reason}
+    events = []
+    reg = ServiceRegistration({'service_id': 'x'}, _FakeConnection(1),
+                              project_id='p1', service_id='x',
+                              open_channel=lambda: _FakeConnection(2, error=refused),
+                              on_status=lambda e, pid, d=None: events.append((e, d)))
+    reg._connected = True
+    reg._ever_connected = True
+    reg._start_supervisor(check_interval_s=0.02)
+    try:
+        reg._connection.ready_state = 2
+        deadline = _t.monotonic() + 3.0
+        while _t.monotonic() < deadline and not any(e == 'stopped' for e, _ in events):
+            _t.sleep(0.01)
+        assert ('stopped', f'HTTP 403: {reason}') in events
+    finally:
+        reg.stop()
+
+
 def test_a_registration_that_ended_itself_is_served_again_once_access_returns(capsys):
     state = {'fail': False}
     made = []

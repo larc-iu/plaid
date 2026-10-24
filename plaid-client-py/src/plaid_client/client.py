@@ -2448,6 +2448,21 @@ class MessagesResource(_Resource):
         """
         return svc.discard_service(self._client, project_id, service_id)
 
+    def release_service(self, project_id: str, service_id: str) -> Any:
+        """Release a service id from the account that first registered it.
+
+        A service id on a project belongs to the first account that registered
+        it, and the server refuses any other account's registration (403)
+        until an admin releases it. The next account to register it then
+        claims it. Admin-only; 409 while the service is connected, 404 when no
+        account holds it.
+
+        Args:
+            project_id: The UUID of the project
+            service_id: The ID of the service to release
+        """
+        return svc.release_service(self._client, project_id, service_id)
+
     def serve(self, project_id: str, service_info: dict, on_service_request,
               extras: dict | None = None, on_status=None) -> svc.ServiceRegistration:
         """Register as a service and handle incoming work requests.

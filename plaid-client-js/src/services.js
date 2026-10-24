@@ -166,6 +166,26 @@ export function discardService(client, projectId, serviceId) {
 }
 
 /**
+ * Release a service id from the account that first registered it on the
+ * project. A service id belongs to that account, and the server refuses any
+ * other account's registration (403) until an admin releases it. The next
+ * account to register it then claims it. Admin-only; 409 while the service is
+ * connected, 404 when no account holds it.
+ *
+ * @param {Object} client - PlaidClient instance
+ * @param {string} projectId - Project UUID
+ * @param {string} serviceId - Service ID to release
+ * @returns {Promise<void>}
+ */
+export function releaseService(client, projectId, serviceId) {
+  // outOfBand: the registry is not project data (see the note at the top of
+  // http.js).
+  return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/owner`, {
+    outOfBand: true,
+  });
+}
+
+/**
  * POST a progress, result or error event for an in-flight request; the server
  * relays it to the waiting requester. The Python twin is `_report_event`.
  *
@@ -468,7 +488,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       if (PERMANENT_STATUSES.has(status)) {
         noteDisconnected();
         serviceRegistration.stop();
-        report('stopped', `HTTP ${status}`);
+        // The server's reason when it gave one (a service id another
+        // account holds says whose it is).
+        const why = connection.error?.responseData?.error;
+        report('stopped', typeof why === 'string' ? `HTTP ${status}: ${why}` : `HTTP ${status}`);
         return;
       }
       noteDisconnected();

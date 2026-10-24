@@ -145,6 +145,7 @@ def test_a_read_or_a_signal_shaped_like_a_write_goes_over_the_wire_from_a_batch(
          lambda: _report_event(b, 'p1', 'r1', {'status': 'progress'})),
         ('discover services', lambda: discover_services(b, 'p1')),
         ('forget a service', lambda: discard_service(b, 'p1', 's1')),
+        ('release a service id', lambda: b.messages.release_service('p1', 's1')),
         ('acquire a document lock', lambda: b.documents.acquire_lock('d1')),
         ('renew a document lock', lambda: b.documents.renew_lock('d1', 'L1')),
         ('release a document lock', lambda: b.documents.release_lock('d1', 'L1')),

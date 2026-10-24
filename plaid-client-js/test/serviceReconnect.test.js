@@ -109,6 +109,23 @@ test('a channel the server refuses for good ends the registration instead of ret
   }
 });
 
+test('a refusal for a service id another account holds stops with the server\'s reason', () => {
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    const events = [];
+    const error = "Service 'test:echo' belongs to Ana on this project. An admin can release it.";
+    const client = fakeClient(() =>
+      Object.assign(fakeConnection(2), { error: { status: 403, responseData: { error } } }));
+    const reg = serve(client, 'p1', INFO, () => {}, {}, (event, _p, detail) =>
+      events.push(detail ? `${event}: ${detail}` : event));
+    mock.timers.tick(3000);
+    assert.equal(reg.isRunning(), false);
+    assert.deepEqual(events, [`stopped: HTTP 403: ${error}`]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test('a transient refusal keeps the registration retrying', () => {
   mock.timers.enable({ apis: ['setInterval'] });
   try {

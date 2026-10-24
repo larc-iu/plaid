@@ -144,6 +144,7 @@ test("a read or a signal shaped like a write goes over the wire from a batch", a
     ["renew a document lock", () => b.documents.renewLock("d1", "L1")],
     ["release a document lock", () => b.documents.releaseLock("d1", "L1")],
     ["forget a service", () => b.messages.discardService("p1", "s1")],
+    ["release a service id", () => b.messages.releaseService("p1", "s1")],
     ["take a backup", () => b.admin.backup()],
     ["drop a stranded lock", () => b.admin.releaseLock("d1")],
     ["clear rate limits", () => b.admin.clearRateLimits()],

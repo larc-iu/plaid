@@ -149,3 +149,63 @@
     (is (nil? (:result (events/get-request rid))) "the request survived the takeover")
     (is (= 200 (report! api-token pid rid {:status "completed" :data {:ok true}})))
     (is (= "result" (-> (events/get-request rid) :result :event)))))
+
+(defn- body-text [resp]
+  (let [b (:body resp)] (if (string? b) b (slurp b))))
+
+(defn- release! [token pid sid]
+  (fix/rest-handler ((as token) :delete (str "/api/v1/projects/" pid "/services/" sid "/owner"))))
+
+(defn- maintainer! [pid email]
+  (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/maintainers/" email)}))
+
+(deftest a-service-id-belongs-to-the-account-that-first-registered-it
+  ;; R10: while user1's service is offline, user2 cannot register its id and
+  ;; take its requests. An admin releases the id, and then the next account
+  ;; to register it claims it.
+  (events/reset-state!)
+  (let [pid (h/create-test-project admin-request "Claims P")
+        _ (writer! pid "user1@example.com")
+        _ (maintainer! pid "user2@example.com")
+        first-open (open! fix/user1-token pid "svc")]
+    (is (= 200 (:status (:resp first-open))))
+    (reset! (:closed first-open) true)
+    (events/unregister-service-channel! pid "svc" (events/get-service-channel pid "svc"))
+    (testing "another account is refused while the service is offline, with who holds it"
+      (let [{:keys [resp]} (open! fix/user2-token pid "svc")]
+        (is (= 403 (:status resp)))
+        (is (re-find #"belongs to .+ on this project\. An admin can release it\." (body-text resp)))
+        (is (nil? (events/get-service-channel pid "svc")) "nothing registered")))
+    (testing "the same account comes back under another credential"
+      (let [api-token (:token (:body (api-call admin-request {:method :post
+                                                              :path "/api/v1/users/user1@example.com/tokens"
+                                                              :body {:name "svc"}})))
+            reopened (open! api-token pid "svc")]
+        (is (= 200 (:status (:resp reopened))))
+        (testing "an admin cannot release a connected id"
+          (is (= 409 (:status (release! fix/admin-token pid "svc")))))
+        (reset! (:closed reopened) true)
+        (events/unregister-service-channel! pid "svc" (events/get-service-channel pid "svc"))))
+    (testing "a maintainer forgetting the offline service does not release the id"
+      (is (= 204 (:status (api-call admin-request {:method :delete
+                                                   :path (str "/api/v1/projects/" pid "/services/svc")}))))
+      (is (= 403 (:status (:resp (open! fix/user2-token pid "svc"))))))
+    (testing "only an admin releases it"
+      (is (= 403 (:status (release! fix/user2-token pid "svc"))) "a maintainer is refused")
+      (is (= 403 (:status (release! fix/user1-token pid "svc"))) "so is the holder")
+      (is (= 204 (:status (release! fix/admin-token pid "svc"))))
+      (is (= 404 (:status (release! fix/admin-token pid "svc"))) "nothing left to release"))
+    (testing "after the release the next account claims it"
+      (is (= 200 (:status (:resp (open! fix/user2-token pid "svc")))))
+      (events/unregister-service-channel! pid "svc" (events/get-service-channel pid "svc"))
+      (is (= 403 (:status (:resp (open! fix/user1-token pid "svc"))))))))
+
+(deftest a-refused-delegated-token-claims-nothing
+  (events/reset-state!)
+  (let [pid (h/create-test-project admin-request "Claims Q")
+        _ (writer! pid "user1@example.com")
+        _ (writer! pid "user2@example.com")
+        delegated (auth/issue-delegated-token! fix/db "fake-secret" "user1@example.com" [pid])]
+    (is (= 403 (:status (:resp (open! delegated pid "svc")))))
+    (is (= 200 (:status (:resp (open! fix/user2-token pid "svc"))))
+        "the id was still free")))

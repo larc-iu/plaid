@@ -652,6 +652,10 @@ A client that wants to be able to come back mints the request id itself (the `re
 Sending the same id again rejoins the request rather than starting another, so retrying is safe.
 
 Each service id allows one connection per project, and a second one is refused with 409.
+A service id on a project belongs to the account that first connected it.
+Another account connecting it is refused with 403, and the refusal names the account it belongs to.
+An administrator releases the id with `DELETE /api/v1/projects/{id}/services/{service-id}/owner` (`releaseService` / `release_service`), and the next account to connect it then holds it.
+Forgetting an offline service does not release its id.
 Both clients reconnect a service whenever its connection drops, so restarting the Plaid server does not mean restarting its services.
 `registration.is_connected()` / `isConnected()` tells whether the server sees the service as online right now.
 
