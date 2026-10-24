@@ -14,7 +14,7 @@
 //
 // Node 18: `File` is not global — import it from node:buffer.
 
-import PlaidClient, { cpLength } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { readToken } from '../fixtures.js';
 import { File } from 'node:buffer';
@@ -42,17 +42,19 @@ export const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 export const randInt = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 
 // ---- layer resolution (mirrors fixtureProject.js resolveLayers + alignment) ----
+const roleOf = (l) => l?.config?.plaid?.role;
 export function resolveLayers(project) {
   const tl =
-    (project.textLayers || []).find((l) => l.config?.plaid?.primary) ||
+    (project.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE) ||
     (project.textLayers || [])[0];
   const tks = tl?.tokenLayers || [];
+  const byRole = (role) => tks.find((l) => roleOf(l) === role)?.id;
   return {
     textLayerId: tl?.id,
-    sentenceLayerId: tks.find((l) => l.config?.plaid?.sentence)?.id,
-    wordLayerId: tks.find((l) => l.config?.plaid?.primary)?.id,
-    morphemeLayerId: tks.find((l) => l.config?.plaid?.morpheme)?.id,
-    alignmentLayerId: tks.find((l) => l.config?.plaid?.alignment)?.id,
+    sentenceLayerId: byRole(ROLES.SENTENCE),
+    wordLayerId: byRole(ROLES.WORD),
+    morphemeLayerId: byRole(ROLES.MORPHEME),
+    alignmentLayerId: byRole(ROLES.TIME_ALIGNMENT),
   };
 }
 

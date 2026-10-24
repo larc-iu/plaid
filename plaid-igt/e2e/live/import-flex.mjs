@@ -16,6 +16,7 @@ import { parseFwdata } from '../../src/import/flex/fwdataParser.js';
 import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
 import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
+import { setupDataFor } from '../../src/import/project.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { fixture } from '../../src/test/fixturesDir.js';
 
@@ -52,33 +53,21 @@ console.log(`parsed in ${Date.now() - t0}ms:`, JSON.stringify(build.stats));
 // ---- setup ----
 const projectName = `flex-import-e2e-${Date.now() % 1e7}`;
 const vocabName = `${projectName} Lexicon`;
-const setupData = {
-  basicInfo: { projectName },
-  orthographies: {
-    orthographies: [
-      { name: 'Baseline', isBaseline: true },
-      ...config.orthographies.map((o) => ({ name: o.name })),
-    ],
-  },
-  fields: {
-    fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
-    ignoredTokens: {
-      mode: 'unicode-punctuation',
-      unicodePunctuationExceptions: [],
-      explicitIgnoredTokens: [],
-    },
-  },
-  vocabulary: {
-    vocabularies: [{ id: 'new-flex', name: vocabName, enabled: true, isCustom: true }],
-  },
-  documentMetadata: {
-    enabledFields: config.documentMetadata.map((m) => ({
-      name: m.name,
-      enabled: true,
-      isCustom: true,
-    })),
-  },
-};
+// The setup data the import screen hands setup (ImportFlexProject.jsx), so
+// the fields carry their language, Lexicon field and role as they do there.
+const setupData = setupDataFor({
+  projectName,
+  orthographies: config.orthographies.map((o) => o.name),
+  fields: config.fields.map((f) => ({
+    name: f.name,
+    scope: f.scope,
+    lang: f.ws ?? null,
+    lexiconField: f.lexiconField,
+    sentenceRole: f.sentenceRole,
+  })),
+  vocabularies: [{ id: 'new-flex', name: vocabName }],
+  documentMetadata: config.documentMetadata.map((m) => m.name),
+});
 const setup = await executeProjectSetup({
   client,
   isNewProject: true,

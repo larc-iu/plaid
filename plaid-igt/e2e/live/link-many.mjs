@@ -16,7 +16,10 @@ import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { readToken } from '../fixtures.js';
 
-const client = new PlaidClient('http://localhost:8085', readToken().token);
+const client = new PlaidClient(
+  process.env.PLAID_CORE_URL || 'http://localhost:8085',
+  readToken().token,
+);
 const roleOf = (l) => l?.config?.plaid?.role;
 let failures = 0;
 const check = (ok, label, detail = '') => {

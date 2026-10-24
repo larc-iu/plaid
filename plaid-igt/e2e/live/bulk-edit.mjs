@@ -9,7 +9,7 @@
 // the body is the one the server accepts, or that a bulk update of spans in two
 // documents lands in both. That is what this is for: each assertion re-reads
 // the documents and the lexicon from the server.
-import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, cpLength, writerPolicy } from '@larc-iu/plaid-client';
 import { IgtDocument, loadProjectVocabularies } from '../../src/domain/IgtDocument.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { buildReplacer } from '../../src/components/projects/bulk/bulkPlan.js';
@@ -32,10 +32,11 @@ import { getIgtLayerInfo } from '../../src/domain/layerInfo.js';
 import { searchDomains } from '../../src/components/projects/search/searchQueries.js';
 import { readToken } from '../fixtures.js';
 
-const client = new PlaidClient(
-  process.env.PLAID_CORE_URL || 'http://localhost:8085',
-  readToken().token,
-);
+const { token, userId } = readToken();
+const client = new PlaidClient(process.env.PLAID_CORE_URL || 'http://localhost:8085', token);
+// The stamp the Bulk Edit panels pass (bulkShared.js useWriter): the token's
+// user is an admin, so a verifier.
+const writer = writerPolicy(userId);
 const roleOf = (l) => l?.config?.plaid?.role;
 let failures = 0;
 const check = (ok, label, detail = '') => {
@@ -165,6 +166,7 @@ try {
     );
     check(plan.lexiconRows.length === 2, 'and both lexicon entries spelled that way');
     const res = await applyRespell(client, plan, {
+      writer,
       includeMorphemes: true,
       includeLexicon: true,
       label: 'Respell (live check)',
@@ -206,7 +208,7 @@ try {
       apply,
     });
     check(plan.rows.length === 3, 'previews the glosses in both documents', `${plan.rows.length}`);
-    const res = await applyField(client, plan, { label: 'Replace (live check)' });
+    const res = await applyField(client, plan, { writer, label: 'Replace (live check)' });
     check(res.changed === 3, 'reports every value replaced');
     const values = [];
     for (const id of [A.id, B.id]) {
@@ -227,15 +229,15 @@ try {
   {
     const { vocabularies } = await loadProjectVocabularies(client, await project2());
     const items = vocabularies[VID]?.items || [];
-    const plan = await planMerge(client, project, VID, [lose]);
-    check(plan.links.length === 2, 'finds the losing entry’s links in both documents');
+    const plan = await planMerge(client, VID, [lose], keep);
+    check(plan.links === 2 && plan.docs === 2, 'finds the losing entry’s links in both documents');
     const refUpdates = metadataUpdates(
       [{ id: other, metadata: { seeAlso: keep } }],
       new Map(items.map((it) => [it.id, it.metadata])),
     );
     const res = await applyMerge(
       client,
-      { links: plan.links, refUpdates },
+      { refUpdates },
       { survivorId: keep, loserIds: [lose], label: 'Merge (live check)' },
     );
     check(res.linksMoved === 2 && res.entriesRemoved === 1, 'reports the links moved');

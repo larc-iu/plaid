@@ -17,7 +17,11 @@ import { parseFlextextFiles } from '../../src/import/flex/flextextParser.js';
 import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
 import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
+import { setupDataFor } from '../../src/import/project.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
+import { priorImports } from '../../src/import/resume.js';
+import { readIgnoredTokens } from '../../src/domain/igtConfig.js';
+import { isTokenIgnored } from '@ui/domain/igtWordBreaks.js';
 import { fixture } from '../../src/test/fixturesDir.js';
 
 const args = process.argv.slice(2);
@@ -49,36 +53,20 @@ const setup = await executeProjectSetup({
   client,
   isNewProject: true,
   resumeProjectId: null,
-  setupData: {
-    basicInfo: { projectName },
-    orthographies: {
-      orthographies: [
-        { name: 'Baseline', isBaseline: true },
-        ...config.orthographies.map((o) => ({ name: o.name })),
-      ],
-    },
-    fields: {
-      fields: config.fields.map((f) => ({
-        name: f.name,
-        scope: f.scope,
-        lang: f.ws ?? null,
-        isCustom: true,
-      })),
-      ignoredTokens: {
-        mode: 'unicode-punctuation',
-        unicodePunctuationExceptions: [],
-        explicitIgnoredTokens: [],
-      },
-    },
-    vocabulary: { vocabularies: [] },
-    documentMetadata: {
-      enabledFields: config.documentMetadata.map((m) => ({
-        name: m.name,
-        enabled: true,
-        isCustom: true,
-      })),
-    },
-  },
+  // What the import screen hands setup (ImportFlexProject.jsx).
+  setupData: setupDataFor({
+    projectName,
+    orthographies: config.orthographies.map((o) => o.name),
+    fields: config.fields.map((f) => ({
+      name: f.name,
+      scope: f.scope,
+      lang: f.ws ?? null,
+      lexiconField: f.lexiconField,
+      sentenceRole: f.sentenceRole,
+    })),
+    vocabularies: [],
+    documentMetadata: config.documentMetadata.map((m) => m.name),
+  }),
 });
 check(setup.failures.length === 0, 'setup completed', setup.failures.join('; '));
 const projectId = setup.projectId;
@@ -124,25 +112,24 @@ try {
   const docs = await client.projects.listDocuments(projectId);
   check(docs.length === build.documents.length, `${build.documents.length} documents`);
   // By the id each document was stamped with at import, since two texts may
-  // share a name.
-  const bySource = new Map();
-  for (const d of docs) {
-    const full = await client.documents.get(d.id);
-    bySource.set(full?.metadata?.importSource, d);
-  }
+  // share a name, read as a resume reads it (import/resume.js).
+  const prior = await priorImports(client, projectId);
   const values = (list, key) => list.filter((x) => key(x) != null).length;
   let bodies = 0;
   let words = 0;
   let morphemes = 0;
   let wordGlosses = 0;
   let translations = 0;
-  const wantWords = build.stats.words;
+  // Every word the files hold is stored, and the grid reads all but the
+  // ones the ignored-token rule leaves as text (a lone "-").
+  let stored = 0;
+  let wantWords = 0;
   const glossField = config.fields.find((f) => f.kind === 'wordGloss');
   const trField = config.fields.find((f) => f.kind === 'freeTranslation');
   let wantGlosses = 0;
   let wantTranslations = 0;
   for (const target of build.documents) {
-    const entry = bySource.get(target.guid);
+    const entry = prior.find(target.guid);
     if (!entry) {
       check(false, `document "${target.name}" exists`);
       continue;
@@ -151,6 +138,11 @@ try {
     if (doc.body === target.body) bodies += 1;
     const tokens = doc.sortedSentences.flatMap((s) => s.tokens);
     words += tokens.length;
+    stored += doc.layerInfo.primaryTokenLayer.tokens.length;
+    const rule = readIgnoredTokens(doc.layerInfo.primaryTokenLayer.config);
+    wantWords += target.words.filter(
+      (w) => !isTokenIgnored(cpSlice(target.body, w.begin, w.end), rule),
+    ).length;
     morphemes += tokens.reduce(
       (n, t) => n + (t.morphemes ?? []).filter((m) => !m.virtual).length,
       0,
@@ -173,7 +165,8 @@ try {
     }
   }
   check(bodies === build.documents.length, 'every text round-trips exactly', `${bodies}`);
-  check(words === wantWords, `${wantWords} words`, `got ${words}`);
+  check(stored === build.stats.words, `${build.stats.words} words stored`, `got ${stored}`);
+  check(words === wantWords, `${wantWords} words read`, `got ${words}`);
   check(morphemes === build.stats.morphemes, `${build.stats.morphemes} morphemes`, `${morphemes}`);
   if (glossField) {
     check(wordGlosses === wantGlosses, `${wantGlosses} word glosses`, `got ${wordGlosses}`);

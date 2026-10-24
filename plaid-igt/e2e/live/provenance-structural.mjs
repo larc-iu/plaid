@@ -118,7 +118,7 @@ try {
   await client.spans.create(gl.id, [m2.id], 'HI', stampInferred('service:test'));
   await client.spans.create(gl.id, [m3.id], 'HUM');
 
-  // A2-03 edit a machine span: verified, value replaced, prob/detail kept
+  // A2-03 edit a machine span: verified, value replaced, detail kept
   d = await load();
   check(await d.updateMorphemeSpan(m1.id, 'Gloss', 'FIX'), 'A2-03 edit returns true');
   ({ d, W } = await fresh());
@@ -129,9 +129,11 @@ try {
     'A2-03 provConfirmed added, provSource kept',
     JSON.stringify(s?.metadata),
   );
+  // R5: provProb is the producer's probability for the value held, and it
+  // never weighed FIX.
   check(
-    s?.metadata?.provProb === 0.42 && s.metadata.provDetail?.alts?.[1] === 'b',
-    'A2-14 provProb/provDetail survive the edit',
+    s?.metadata?.provProb === undefined && s.metadata.provDetail?.alts?.[1] === 'b',
+    'A2-14 provDetail survives the edit, and the old value’s provProb goes',
     JSON.stringify(s?.metadata),
   );
   const fixId = s.id;
@@ -440,22 +442,22 @@ try {
     W('be') && W('ta') && (await linksOf(betaMorph)).length === 0,
     'B10-02 morpheme link gone after the word split',
   );
-  // B10-03 merge two word-linked words: survivor keeps its own link, one link total
+  // B10-03 merge two word-linked words: core moves the merged-away word's link
+  // onto the survivor, so no link is lost. The fixture declares no
+  // single-link rule (setup declares one, and core's merge then keeps only
+  // the survivor's own, igtConstraints.test.js), so both stay here.
   const be = W('be');
   const taW = W('ta');
   const beLink = await client.vocabLinks.create(item('free').id, [be.id]);
-  await client.vocabLinks.create(item('human').id, [taW.id]);
+  const taLink = await client.vocabLinks.create(item('human').id, [taW.id]);
   d = await load();
   await d.mergeTokens([be.id, taW.id]);
   ({ d, W } = await fresh());
   let merged = W('beta');
   let ml = await linksOf(merged.id);
   check(
-    merged &&
-      ml.length === 1 &&
-      ml[0].id === beLink.id &&
-      merged.vocabItem.form === item('free').form,
-    'B10-03 survivor keeps exactly its own link',
+    merged && ml.length === 2 && [beLink.id, taLink.id].every((id) => ml.some((l) => l.id === id)),
+    'B10-03 the survivor holds its own link and the merged-away word’s',
     JSON.stringify(ml.map((l) => l.id)),
   );
   // B10-04 morpheme merge where the merged-away morpheme is linked

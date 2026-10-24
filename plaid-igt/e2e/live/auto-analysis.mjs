@@ -137,10 +137,9 @@ try {
     link(W(d, 'Todos').morphemes[0])?.id === items.todos,
     'A5-04 sentence-initial Todos links casefolded todos',
   );
-  check(
-    !link(W(d, '...').morphemes[0]) && !W(d, '...').vocabItem && !link(W(d, '$').morphemes[0]),
-    'A5-08 ignored tokens never proposed',
-  );
+  // An ignored token reads as text, not as a word (derive.js), so it is
+  // never a word to link, and the five links above are all the run made.
+  check(!W(d, '...') && !W(d, '$'), 'A5-08 ignored tokens never proposed');
   check(
     link(W(d, '😀').morphemes[0])?.id === items.emoji,
     'A5-08 emoji is proposed when an entry exists',
@@ -209,15 +208,21 @@ try {
   res = await runBuiltinAnalysis(d, { link: true, copy: false });
   check(res.linked === 0, 'A5-05 unchanged proposals write nothing', JSON.stringify(res));
 
-  // A5-06 the rule loses its opinion (item renamed): the machine link stays.
+  // A5-06 the linked entry no longer has the word's form (renamed): the
+  // unverified machine link is open again (R29, e34e3b8ae), and the
+  // precedent T2's human link set (gato -> mesa) replaces it.
   await client.vocabItems.update(items.gato, 'perro');
   d = await load(T1.id);
   res = await runBuiltinAnalysis(d, { link: true, copy: false });
   d = await load(T1.id);
+  const gatoNow = link(W(d, 'gato').morphemes[0]);
   check(
-    res.linked === 0 && link(W(d, 'gato').morphemes[0])?.linkId === gatoLinkId,
-    'A5-06 unresolvable form keeps its existing machine link',
-    JSON.stringify(res),
+    res.linked === 1 &&
+      gatoNow?.id === items.mesa &&
+      gatoNow.linkId !== gatoLinkId &&
+      gatoNow.prov === 'machine',
+    'A5-06 a machine link whose entry lost the form is replaced by precedent',
+    JSON.stringify({ res, gatoNow }),
   );
 
   // ================= A6: analysis copy =================

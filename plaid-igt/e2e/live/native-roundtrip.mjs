@@ -44,6 +44,7 @@ import { parseFwdata } from '../../src/import/flex/fwdataParser.js';
 import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
 import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
+import { setupDataFor } from '../../src/import/project.js';
 import {
   findBaselineTextLayer,
   findAlignmentTokenLayer,
@@ -436,33 +437,21 @@ try {
     client,
     isNewProject: true,
     resumeProjectId: null,
-    setupData: {
-      basicInfo: { projectName: nameA },
-      orthographies: {
-        orthographies: [
-          { name: 'Baseline', isBaseline: true },
-          ...config.orthographies.map((o) => ({ name: o.name })),
-        ],
-      },
-      fields: {
-        fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
-        ignoredTokens: {
-          mode: 'unicode-punctuation',
-          unicodePunctuationExceptions: [],
-          explicitIgnoredTokens: [],
-        },
-      },
-      vocabulary: {
-        vocabularies: [{ id: 'new-flex', name: `${nameA} Lexicon`, enabled: true, isCustom: true }],
-      },
-      documentMetadata: {
-        enabledFields: config.documentMetadata.map((m) => ({
-          name: m.name,
-          enabled: true,
-          isCustom: true,
-        })),
-      },
-    },
+    // What the FLEx import screen hands setup (ImportFlexProject.jsx), so the
+    // fields carry their language, Lexicon field and role into the archive.
+    setupData: setupDataFor({
+      projectName: nameA,
+      orthographies: config.orthographies.map((o) => o.name),
+      fields: config.fields.map((f) => ({
+        name: f.name,
+        scope: f.scope,
+        lang: f.ws ?? null,
+        lexiconField: f.lexiconField,
+        sentenceRole: f.sentenceRole,
+      })),
+      vocabularies: [{ id: 'new-flex', name: `${nameA} Lexicon` }],
+      documentMetadata: config.documentMetadata.map((m) => m.name),
+    }),
   });
   check(setupA.failures.length === 0, 'project A setup', setupA.failures.join('; '));
   createdProjects.push(setupA.projectId);
