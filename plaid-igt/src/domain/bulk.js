@@ -53,4 +53,4 @@ export async function bulkInChunks(items, check, send) {
  * one. A request whose answer was lost past the client's resends then made
  * rows that can be named, rather than rows nothing knows the ids of.
  */
-export const withMintedIds = (specs) => specs.map((s) => (s.id ? s : { id: uuidv7(), ...s }));
+export const withMintedIds = (specs) => specs.map((s) => (s.id ? s : { ...s, id: uuidv7() }));
