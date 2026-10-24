@@ -134,7 +134,7 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
 
 
 def analysis_result(document_id, sentences, sentences_sent, skipped, *, written=0, replaced=0,
-                    failed=(), translation_missing=None, **extra):
+                    failed=(), not_asked=(), translation_missing=None, **extra):
     """The result every ``analyze`` service sends, in one shape (the core
     manual, "Service results"). The app words what the person is told from
     these counts, so a service sends no notice of its own.
@@ -144,7 +144,9 @@ def analysis_result(document_id, sentences, sentences_sent, skipped, *, written=
     alone: ``protected`` (a person's analysis, Overwrite off), ``precedent``
     (a word the requester's own copy step wrote) and ``unaligned`` (the
     model gave the word no analysis). ``failed`` names each sentence the run
-    could not analyze as ``{'sentence_id', 'reason'}``. ``translation_missing``
+    could not analyze as ``{'sentence_id', 'reason'}``, and ``not_asked`` the
+    ids of the sentences never sent because the model stopped answering.
+    ``translation_missing``
     is the translation field the request named and the document lacks, read
     for context only. ``extra`` adds a service's own counts beside them."""
     return {
@@ -153,6 +155,7 @@ def analysis_result(document_id, sentences, sentences_sent, skipped, *, written=
         'words_written': written, 'words_replaced': replaced,
         'skipped': {'protected': 0, 'precedent': 0, 'unaligned': 0, **(skipped or {})},
         'sentences_failed': list(failed),
+        'sentences_not_asked': list(not_asked),
         'translation_field_missing': translation_missing,
         **extra,
     }

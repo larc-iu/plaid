@@ -125,7 +125,14 @@ class AlignmentProcessor:
             
         Raises:
             ValueError: If the download fails, with a reason the requester reads
+            RuntimeError: Called with no document held. The media is part of
+                what the run reads, so it is read under the lock the run
+                writes under, and a service file older than this client
+                stops here rather than after the transcription.
         """
+        if getattr(client, 'strict_mode_document_id', None) is None:
+            raise RuntimeError('Download the media inside locked_for_writes or held_run. '
+                               'This service file is older than plaid-client: update it with the client.')
         try:
             # The token goes in the header, not the query string. A media URL
             # already carries a `?v=` cache-buster, so appending `?token=` made

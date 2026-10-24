@@ -52,6 +52,15 @@ from .penman import (Graph, attr_value_problem, concept_problem, is_variable,
 from .write import (DraftProgress, anchor_pieces, draft_params, drafting,
                     finish_draft, run_label, write_graphs)
 
+def __getattr__(name):
+    # A service file older than this client imports what drafting() replaced.
+    # It fails at startup with the reason, not after the model has run.
+    if name == 'begin_draft':
+        raise ImportError('begin_draft is gone from plaid_client.workflows.umr: this service file '
+                          'is older than plaid-client. Update the service files with the client.')
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+
 __all__ = [
     'graph', 'inventory', 'layers', 'penman', 'write',
     # inventory

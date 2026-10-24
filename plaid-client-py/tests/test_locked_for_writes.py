@@ -139,6 +139,9 @@ class _Helper:
     def progress(self, percent, message):
         self.sent.append(('progress', percent, message, self.depth))
 
+    def error(self, message):
+        self.sent.append(('error', message, self.client.strict_mode_document_id))
+
     def complete(self, result):
         # What the requester reads, and whether the document was free by then.
         self.sent.append(('complete', result, self.client.strict_mode_document_id))
@@ -197,3 +200,29 @@ def test_a_held_run_that_reported_a_refusal_or_failed_sends_nothing_more():
             raise RuntimeError('boom')
     assert helper.sent == []
     assert client.kinds[-1] == 'unlock'
+
+
+def test_a_held_run_sends_its_refusal_once_the_document_is_let_go():
+    # REV-W3-SVC F7: the requester's app unlocks on the answer, so a refusal
+    # sent under the lock met a 423 on the person's next write.
+    from plaid_client.service import held_run
+    client = FakeClient([{'id': 'd1', 'version': 4}])
+    helper = _Helper(client)
+    with held_run(client, helper, 'd1') as run:
+        run.refusal = 'The document has no gloss field.'
+    assert client.kinds[-1] == 'unlock'
+    assert helper.sent == [('error', 'The document has no gloss field.', None)]
+
+
+# --- a service file older than the client stops before its work (REV-W3-SVC F4) -
+
+def test_an_old_umr_drafting_service_fails_at_import_with_the_reason():
+    with pytest.raises(ImportError, match='older than plaid-client'):
+        exec('from plaid_client.workflows.umr import DraftProgress, begin_draft', {})
+
+
+def test_the_media_is_not_downloaded_with_no_document_held(tmp_path):
+    from plaid_client.workflows.asr.alignment_processor import AlignmentProcessor
+    client = FakeClient([{'id': 'd1', 'version': 4}])
+    with pytest.raises(RuntimeError, match='older than plaid-client'):
+        AlignmentProcessor().download_media_file(client, 'http://x/media', str(tmp_path))

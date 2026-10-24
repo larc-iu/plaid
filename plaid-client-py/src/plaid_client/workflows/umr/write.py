@@ -594,7 +594,8 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     :func:`drafting` holds, which sends it.
 
     ``failures`` are ``{'sentence': n, 'reason': str}`` for the sentences the
-    service could not plan, each also printed to the operator's log here.
+    service could not plan, or ``{'sentence': n, 'code': str}`` for a cause
+    the app words itself, each also printed to the operator's log here.
     ``operation`` names the write in the history, or makes that name from the
     plans that are written (see :func:`run_label`), with the requester added
     here, as it is to ``frag``'s ``provDetail``. ``writing`` is the progress
@@ -611,7 +612,7 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     """
     require_held(client, run.document_id)
     for failure in failures:
-        print(f"Sentence {failure['sentence']} not drafted: {failure['reason']}")
+        print(f"Sentence {failure['sentence']} not drafted: {failure.get('reason') or failure.get('code')}")
     if not_drafted:
         print(f'Not asked: sentences {", ".join(str(n) for n in not_drafted)}')
     if plans:

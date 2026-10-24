@@ -119,7 +119,7 @@ class _FakeClient:
             return self._client._documents[index]
 
         @contextlib.contextmanager
-        def locked(self, document_id):
+        def locked(self, document_id, should_renew=None):
             self._client._record(('lock', document_id))
             try:
                 yield

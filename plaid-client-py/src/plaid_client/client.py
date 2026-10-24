@@ -2024,7 +2024,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
             raise
 
     @contextmanager
-    def locked(self, document_id: str, *, keep_alive: bool = True):
+    def locked(self, document_id: str, *, keep_alive: bool = True, should_renew=None):
         """Hold this document's server-enforced lock for a ``with`` block,
         releasing it on exit (including on error).
 
@@ -2059,6 +2059,10 @@ class DocumentsResource(_MetadataMethods, _Resource):
             keep_alive: Renew the lock on a timer while the block runs
                 (default). Pass False for a block that writes as it goes and
                 wants no background thread.
+            should_renew: Asked before each renewal. While it answers False
+                nothing is renewed, and the lock lapses once its window runs
+                out (the block's next write then raises
+                :class:`DocumentLockLost`).
 
         Notes:
         - The lock is per HOLDER and TTL-bound (server default 60s, and the
@@ -2091,7 +2095,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
             client.document_lock_lost = None
             keeper = LockKeeper(
                 lambda doc_id: self.renew_lock(doc_id, lock_id), document_id, ttl_s,
-                on_lost=lambda lost: setattr(client, 'document_lock_lost', lost))
+                on_lost=lambda lost: setattr(client, 'document_lock_lost', lost),
+                should_renew=should_renew)
             keeper.start()
         raised = False
         try:

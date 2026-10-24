@@ -77,9 +77,9 @@ class ModelTimeout(Exception):
 #: full deadline per sentence, and the document stays locked for hours.
 UNANSWERED_IN_A_ROW = 2
 
-#: The per-sentence reason, in igt's lower-case style, for a sentence a run
-#: never asked about because it had stopped.
-NOT_ASKED = f'not asked: the model did not answer {UNANSWERED_IN_A_ROW} sentences in a row'
+# A sentence a run never asked about because it had stopped is no failure:
+# a service lists it in its result's ``sentences_not_asked`` (the core
+# manual, "Service results").
 
 
 def did_not_answer(exc: BaseException) -> bool:

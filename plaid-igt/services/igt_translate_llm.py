@@ -34,7 +34,7 @@ from typing import Dict, Optional
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
-from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
+from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.provenance import stamp_inferred, prov_state, MACHINE
 from plaid_client.workflows.igt import NoGlossField, derive, field_layer_id
@@ -141,18 +141,20 @@ def sentence_state(span) -> str:
 
 
 def translation_result(document_id, sentences, skipped, *, written=0, replaced=0, failed=(),
-                       gloss_missing=None):
+                       not_asked=(), gloss_missing=None):
     """The result of a ``translate`` run, in one shape (the core manual,
     "Service results"): the app words what the person is told from it.
     ``skipped`` counts sentences left alone, ``protected`` (a person's
     translation, Overwrite off) and ``empty`` (no words). ``failed`` names
     each sentence the model could not translate as ``{'sentence_id',
-    'reason'}``, and ``gloss_missing`` is the gloss field the request named
+    'reason'}``, ``not_asked`` lists the ids of the sentences never sent
+    because the model stopped answering, and ``gloss_missing`` is the gloss field the request named
     and the document lacks, read for context only."""
     return {
         'document_id': document_id, 'status': 'success', 'sentences': sentences,
         'sentences_written': written, 'sentences_replaced': replaced,
         'skipped': {'protected': 0, 'empty': 0, **skipped}, 'sentences_failed': list(failed),
+        'sentences_not_asked': list(not_asked),
         'gloss_field_missing': gloss_missing,
     }
 
@@ -243,13 +245,13 @@ class LLMTranslateService(BaseService):
                     sentences, _ = derive(doc, *layers, gloss_field=None,
                                           translation_field=translation_field, orthography=orthography)
             except ValueError as e:
-                response_helper.error(str(e))
+                run.refusal = str(e)
                 return
             # The field derive read the translations from, by the same rule.
             tr_layer_id = field_layer_id(doc, sent_layer_id, translation_field, 'Sentence')
             if not tr_layer_id:
-                response_helper.error(f'No sentence-scope field named "{translation_field}". Set the Translation '
-                                      'field parameter to one of the project\'s sentence fields.')
+                run.refusal = (f'No sentence-scope field named "{translation_field}". Set the Translation '
+                               'field parameter to one of the project\'s sentence fields.')
                 return
 
             # Targets under the write contract.
@@ -278,6 +280,7 @@ class LLMTranslateService(BaseService):
             drafts: Dict[str, str] = {}
             plans = []  # (sentence, existing span or None, text)
             failed = []
+            not_asked = []
             # A model that does not answer at all is down: the run stops after two
             # sentences in a row get no answer, rather than wait out a deadline on
             # every sentence with the document locked.
@@ -307,7 +310,7 @@ class LLMTranslateService(BaseService):
                         ended = unanswered.stop_line(len(untried), verb='translated')
                         if untried:
                             print(f'{ended} Not asked: {", ".join(untried)}')
-                        failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
+                        not_asked = untried
                         break
                     continue
                 unanswered.answered()
@@ -344,6 +347,7 @@ class LLMTranslateService(BaseService):
 
             run.result = translation_result(document_id, len(sentences), skipped,
                                             written=len(plans), replaced=replaced, failed=failed,
+                                            not_asked=not_asked,
                                             gloss_missing=gloss_missing)
 
 

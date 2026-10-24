@@ -242,12 +242,8 @@ def test_a_sentence_with_nothing_to_go_on_is_a_counted_failure():
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (0, 1)
     assert result['sentences_failed'] == [
-        {'sentence': 1, 'reason': 'No word has a vocabulary link or a gloss.'}]
+        {'sentence': 1, 'code': 'no-link-or-gloss'}]
     assert service.client.writes == []
-
-
-NO_GLOSS_LINE = ('No word has a vocabulary link, and no gloss line in UMR settings is a word '
-                 'or morpheme gloss.')
 
 
 @pytest.mark.parametrize('config', [
@@ -258,7 +254,7 @@ NO_GLOSS_LINE = ('No word has a vocabulary link, and no gloss line in UMR settin
 ])
 def test_a_project_whose_lines_read_no_gloss_names_no_node_from_one_and_says_so(config):
     """No line of the project's mapping is a gloss: a gloss names nothing,
-    whatever its layer is called, and the failure says where lines are set."""
+    whatever its layer is called, and the failure's code says why."""
     document = _document()
     document['text_layers'][0]['token_layers'][1]['vocabs'] = []
     service = _service(documents=[document])
@@ -266,7 +262,7 @@ def test_a_project_whose_lines_read_no_gloss_names_no_node_from_one_and_says_so(
     helper = servicetest.run(service, REQUEST)
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (0, 1)
-    assert result['sentences_failed'] == [{'sentence': 1, 'reason': NO_GLOSS_LINE}]
+    assert result['sentences_failed'] == [{'sentence': 1, 'code': 'no-link-no-gloss-line'}]
     assert service.client.writes == []
 
 

@@ -381,7 +381,7 @@ class _Documents:
         self._client.record('documents.patch_metadata', (document_id, body))
 
     @contextlib.contextmanager
-    def locked(self, document_id):
+    def locked(self, document_id, should_renew=None):
         self._client.calls.append(('lock', document_id))
         try:
             yield self
@@ -870,7 +870,7 @@ def test_a_document_someone_else_holds_is_refused_without_writing():
     service = _service()
     said = "This document is being edited by ann@x.com. Try again once they're done."
 
-    def locked(document_id):
+    def locked(document_id, should_renew=None):
         raise PlaidAPIError(said, status=423, url='http://plaid.internal:8085/api/v1/lock')
 
     service.client.documents.locked = locked

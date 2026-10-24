@@ -547,11 +547,9 @@ class UmrBootstrapService(BaseService):
             listed = listed_forms(headwords)
             glosses = lexical_gloss_layers(project, run.layers)
             # The gloss lines are read from the project's mapping alone: when no
-            # line of it is a word or morpheme gloss, no gloss names a node, and a
-            # sentence that fails says where the lines are set.
-            no_node = ('No word has a vocabulary link, and no gloss line in UMR settings is a '
-                       'word or morpheme gloss.' if not glosses
-                       else 'No word has a vocabulary link or a gloss.')
+            # line of it is a word or morpheme gloss, no gloss names a node. A
+            # sentence that fails carries a code the app words (Luke's ruling R23).
+            no_node = 'no-link-no-gloss-line' if not glosses else 'no-link-or-gloss'
             run.progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
             plans = []
@@ -561,7 +559,7 @@ class UmrBootstrapService(BaseService):
                                                      links, headwords, self.abbreviations, run.taken,
                                                      listed, entry_types)
                 if not nodes:
-                    failures.append({'sentence': sentence.number, 'reason': no_node})
+                    failures.append({'sentence': sentence.number, 'code': no_node})
                     continue
                 plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
                               'edges': edges})

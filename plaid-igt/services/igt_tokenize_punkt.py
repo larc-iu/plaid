@@ -153,8 +153,7 @@ class NLTKTokenizerService(BaseService):
 
     def _tokenize(self, document_id, text_layer_id, primary_token_layer_id, sentence_layer_id,
                   language, overwrite, requester, response_helper):
-        """Read, tokenize and write, under the caller's lock. The result, or
-        None after a refusal it has already reported."""
+        """Read, tokenize and write, under the caller's lock. The result."""
         response_helper.progress(5, "Fetching document…")
         full_document = self.client.documents.get(document_id, include_body=True)
 
@@ -169,17 +168,19 @@ class NLTKTokenizerService(BaseService):
             raise setup_incomplete(f"text layer {text_layer_id} not found in document {document_id}")
 
         text_content = (text_layer.get("text") or {}).get("body") or ""
+        # An empty run is an ordinary result, worded by the app (Luke's
+        # ruling R23).
+        nothing = {"document_id": document_id, "status": "success",
+                   "tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
         if not text_content.strip():
-            response_helper.error("The document has no text.")
-            return None
+            return {**nothing, "reason": "no-text"}
 
         # Tokenize with our model
         response_helper.progress(25, f"Tokenizing text ({language})…")
         sentences, words = self.tokenizer_model.tokenize_text(text_content, language)
 
         if not words:
-            response_helper.error("No words found in the text.")
-            return None
+            return {**nothing, "reason": "no-words"}
 
         response_helper.progress(30, f"Found {len(sentences)} sentences and {len(words)} words…")
 

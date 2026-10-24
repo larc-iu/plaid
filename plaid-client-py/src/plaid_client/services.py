@@ -516,6 +516,7 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             _scope = CancelScope(cancel_flag.is_set)
 
             cancelled = property(lambda self: self._scope.cancelled)
+            stopping = property(lambda self: self._scope.stopping)
             raise_if_cancelled = lambda self: self._scope.raise_if_cancelled()  # noqa: E731
             critical = lambda self: self._scope.critical()  # noqa: E731
 
@@ -660,6 +661,12 @@ class CancelScope:
         """True once the requester has asked the request to stop."""
         return bool(self._is_cancelled())
 
+    @property
+    def stopping(self):
+        """True once a stop is asked for and no ``critical()`` block is open:
+        the next checkpoint will raise."""
+        return self.cancelled and self._critical_depth == 0
+
     def raise_if_cancelled(self):
         """Stop here if the requester has asked the request to stop.
 
@@ -667,7 +674,7 @@ class CancelScope:
         it in a long loop that reports no progress; a loop that does report
         progress is already checked.
         """
-        if self.cancelled and self._critical_depth == 0:
+        if self.stopping:
             raise ServiceCancelled('The requester stopped this request')
 
     @contextlib.contextmanager

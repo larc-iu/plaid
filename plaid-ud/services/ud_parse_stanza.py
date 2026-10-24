@@ -775,7 +775,8 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
     never human-made/verified work: substrate-preserving mode skips sentences
     that carry any (unless `overwrite`); a from-scratch re-tokenize refuses
     outright if such annotations would be lost (unless `overwrite`). Returns a
-    summary dict {mode, parsed_sentences, skipped_sentences}."""
+    summary dict {mode, parsed_sentences, skipped_sentences}, with
+    `reason: "no-text"` for a document that has no text."""
     frag = stamp
     progress = ParseProgress(helper)
 
@@ -803,7 +804,9 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
     text_id = text_layer["text"]["id"]
     body = text_layer["text"]["body"]
     if not (body or "").strip():
-        raise RuntimeError("The document has no text.")
+        # An ordinary result, worded by the app (Luke's ruling R23).
+        return {"mode": "full", "parsed_sentences": 0, "skipped_sentences": 0,
+                "reason": "no-text"}
 
     # Substrate token layers are bound by their shared role (config.plaid.role),
     # NOT by the per-app ud.* flags. UD's "Morphemes" layer carries role
@@ -1178,6 +1181,10 @@ class StanzaParserService(BaseService):
         # it, and if someone else already holds it `locked` raises and we refuse
         # rather than clobber their work.
         response_helper.progress(2, "Starting…")
+        # The language's models load (and on first use download) before the
+        # document is held, so nobody waits on the document meanwhile.
+        with progress_heartbeat(response_helper, 2, "Loading the parser…"):
+            self.pipeline_provider.get(language)
         # Group every write this parse makes into ONE labeled audit-log entry (each
         # op keeps its own description underneath).
         # `parse_document` reports the rest of the way and is a cancellation
@@ -1185,7 +1192,7 @@ class StanzaParserService(BaseService):
         # writes begin and leaves the document untouched.
         with self.client.operation(requester.label(f"Stanza UD parse ({language})"),
                                    kind='service-run', ref=service_source(self.service_id)):
-            with locked_for_writes(self.client, document_id):
+            with locked_for_writes(self.client, document_id, response_helper=response_helper):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
                                          stamp=self.prov_fragment(language, requester),
                                          language=language, overwrite=overwrite,

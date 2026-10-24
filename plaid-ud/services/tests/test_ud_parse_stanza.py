@@ -243,7 +243,8 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     assert by_value['det'][0] == by_value['nsubj'][1]   # the noun heads the det
 
     assert service.client.operations == ['Stanza UD parse (en)']
-    assert service.pipeline_provider.asked == [('en', False)]
+    # The first ask is the load before the document is held.
+    assert service.pipeline_provider.asked == [('en', False), ('en', False)]
     assert service.pipeline_provider.inputs == [BODY]
 
 
@@ -307,7 +308,7 @@ def test_an_already_tokenized_document_keeps_its_substrate():
     [result] = helper.results
     assert result['mode'] == 'preserve'
     assert result['parsed_sentences'] == 1 and result['skipped_sentences'] == 0
-    assert service.pipeline_provider.asked == [('en', True)]
+    assert service.pipeline_provider.asked == [('en', False), ('en', True)]
     assert service.pipeline_provider.inputs == [[['the', 'dog', 'barks']]]
 
     # The syntactic words and the substrate stay.
@@ -397,7 +398,7 @@ def test_a_document_someone_else_holds_is_refused_without_writing():
     service = _service()
     said = "This document is being edited by ann@x.com. Try again once they're done."
 
-    def locked(document_id):
+    def locked(document_id, should_renew=None):
         raise PlaidAPIError(said, status=423, url='http://plaid.internal:8085/api/v1/lock')
 
     service.client.documents.locked = locked
@@ -526,13 +527,35 @@ def test_a_project_without_the_substrate_is_refused_once_and_named():
     assert service.client.writes == []
 
 
-def test_an_empty_document_is_refused_once():
+def test_an_empty_document_is_an_empty_result():
+    # Luke's ruling R23: zero counts and a reason code, worded by the app.
     service = _service(documents=[_document(body='   ')])
     helper = servicetest.run(service, REQUEST)
 
-    assert len(helper.errors) == 1
-    assert helper.errors[0].endswith('The document has no text.')
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['reason'] == 'no-text'
+    assert (result['parsed_sentences'], result['skipped_sentences']) == (0, 0)
     assert service.client.writes == []
+
+
+def test_the_language_loads_before_the_document_is_held():
+    # REV-W3-SVC F6: a first parse in a language downloads its models, and
+    # nobody waits on the document meanwhile.
+    service = _service()
+    calls = service.client.calls
+    held_at_first_ask = []
+    get = service.pipeline_provider.get
+
+    def asked(*args, **kwargs):
+        if not held_at_first_ask:
+            held_at_first_ask.append(any(c[0] == 'lock' for c in calls))
+        return get(*args, **kwargs)
+    service.pipeline_provider.get = asked
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert held_at_first_ask == [False]
 
 
 def test_a_misaligned_pretokenized_parse_aborts_rather_than_guessing():
@@ -875,7 +898,7 @@ def test_a_sentence_with_no_words_is_tokenized_and_parsed_with_its_words():
     assert result['mode'] == 'preserve' and result['parsed_sentences'] == 2
     # The words come from a pipeline that only finds words, the parse from
     # the pretokenized one.
-    assert provider.asked == [('en', False, 'words'), ('en', True)]
+    assert provider.asked == [('en', False), ('en', False, 'words'), ('en', True)]
     assert 'the dog barks' in provider.inputs
     [batch] = service.client.batches
     words = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL')

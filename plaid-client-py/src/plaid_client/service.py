@@ -105,7 +105,7 @@ def check_unchanged(client, document_id, version, current=None) -> None:
 
 
 @contextlib.contextmanager
-def locked_for_writes(client, document_id, read_version=None):
+def locked_for_writes(client, document_id, read_version=None, response_helper=None):
     """Hold ``document_id`` for a whole run, and make every write carry the
     version the document has once it is held (strict mode).
 
@@ -128,10 +128,21 @@ def locked_for_writes(client, document_id, read_version=None):
     question at it (:func:`check_unchanged`). A document that has moved since
     is refused before anything is read.
 
+    ``response_helper`` is the request's, when the block serves one. Once
+    the requester presses Stop and no ``critical()`` block is open, the lock
+    is no longer renewed: a run stuck in a model call that never reaches a
+    checkpoint lets the document go within the lock window, and a write it
+    makes after that is refused (:class:`~plaid_client.document_lock.DocumentLockLost`).
+    A stopped run writes nothing before its next checkpoint, so nothing is
+    left half done.
+
     Yields the :class:`~plaid_client.document_lock.DocumentLock`. Strict mode
     is put back as it was on the way out.
     """
-    with client.documents.locked(document_id) as lock:
+    should_renew = None
+    if response_helper is not None:
+        should_renew = lambda: not response_helper.stopping  # noqa: E731
+    with client.documents.locked(document_id, should_renew=should_renew) as lock:
         current = (client.documents.get(document_id) or {}).get('version')
         check_unchanged(client, document_id, read_version, current=current)
         previous = client.strict_mode_document_id
@@ -145,12 +156,14 @@ def locked_for_writes(client, document_id, read_version=None):
 
 
 class HeldRun:
-    """What :func:`held_run` yields. Set ``result`` to the run's result, and
-    it is sent once the document is let go."""
+    """What :func:`held_run` yields. Set ``result`` to the run's result, or
+    ``refusal`` to the words of a refusal, and it is sent once the document
+    is let go."""
 
     def __init__(self, lock=None):
         self.lock = lock
         self.result = None
+        self.refusal = None
 
 
 @contextlib.contextmanager
@@ -158,18 +171,22 @@ def held_run(client, response_helper, document_id, read_version=None):
     """A whole run that reads ``document_id`` and writes it, held by
     :func:`locked_for_writes` from the first read through the last write.
 
-    The body sets ``run.result`` and may ``return`` straight after: the
-    result is sent once the block has let the document go, so the document
-    is free by the time the requester reads it, and the report is no
-    cancellation checkpoint (a stop after the last write has nothing left to
-    prevent). A body that reported a refusal itself leaves ``result`` unset,
-    and nothing more is sent. An exception sends nothing here either:
-    BaseService reports it.
+    The body sets ``run.result`` (or ``run.refusal``) and may ``return``
+    straight after: either is sent once the block has let the document go,
+    so the document is free by the time the requester reads it, and the
+    report is no cancellation checkpoint (a stop after the last write has
+    nothing left to prevent). An exception sends nothing here: BaseService
+    reports it.
+
+    The lock stops being renewed once the requester presses Stop outside the
+    run's writes (see :func:`locked_for_writes`).
     """
-    with locked_for_writes(client, document_id, read_version) as lock:
+    with locked_for_writes(client, document_id, read_version, response_helper) as lock:
         run = HeldRun(lock)
         yield run
-    if run.result is not None:
+    if run.refusal is not None:
+        response_helper.error(run.refusal)
+    elif run.result is not None:
         with response_helper.critical():
             response_helper.progress(100, 'Done')
             response_helper.complete(run.result)

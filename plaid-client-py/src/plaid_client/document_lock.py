@@ -13,6 +13,10 @@ A ``locked()`` block therefore renews on a timer of its own. The renewal is an
 acquire that names the holder's ``lock_id``: the server refreshes the lock that
 id holds, and refuses one somebody else holds (the same user included).
 
+A block may also say when to stop renewing (``should_renew``): a service run
+that has been stopped and is not inside its writes lets the lock lapse, so a
+model call that hangs after Stop cannot hold the document past the window.
+
 The beat is unconditional rather than "only when no write has gone out
 recently". The request layer knows the method of a call but not which document
 it touched, so a write to some other document would count as a renewal here and
@@ -81,13 +85,21 @@ class LockKeeper:
     ``on_lost`` is called once, with the :class:`DocumentLockLost`, when the
     lock can no longer be assumed.
 
+    ``should_renew``, when given, is asked before each renewal. While it
+    answers False the keeper renews nothing and asks again every
+    :attr:`retry_s`, and once the window it last renewed has run out the lock
+    is lost as if a renewal had failed. A stopped service run uses it to let
+    the document go while its main thread is stuck in a call that never
+    reaches a checkpoint.
+
     ``clock`` and ``sleep`` exist so the whole policy can be run on a fake
     clock: ``sleep(delay)`` returns True once the block has exited.
     """
 
     def __init__(self, refresh, document_id, ttl_s, *, on_lost=None,
-                 clock=time.monotonic, sleep=None):
+                 should_renew=None, clock=time.monotonic, sleep=None):
         self._refresh = refresh
+        self._should_renew = should_renew
         self._document_id = document_id
         self._ttl_s = float(ttl_s)
         self._on_lost = on_lost
@@ -115,6 +127,12 @@ class LockKeeper:
         deadline = self._clock() + self._ttl_s
         delay = self.interval_s
         while not self._sleep(delay):
+            if self._should_renew is not None and not self._should_renew():
+                if self._clock() >= deadline:
+                    self._fail(None)
+                    return
+                delay = self.retry_s
+                continue
             try:
                 self._refresh(self._document_id)
             except Exception as error:
@@ -139,11 +157,14 @@ class LockKeeper:
 
     def _fail(self, error) -> None:
         from plaid_client.http import short_error
-        logger.warning('Could not renew the lock on document %s: %s',
-                       self._document_id, short_error(error))
-        self.lost = DocumentLockLost(
-            f'The lock on document {self._document_id} lapsed: it could not be renewed.',
-            document_id=self._document_id, cause=error)
+        if error is None:
+            logger.info('Let the lock on document %s lapse: the run was stopped', self._document_id)
+            message = f'The lock on document {self._document_id} lapsed: the run was stopped.'
+        else:
+            logger.warning('Could not renew the lock on document %s: %s',
+                           self._document_id, short_error(error))
+            message = f'The lock on document {self._document_id} lapsed: it could not be renewed.'
+        self.lost = DocumentLockLost(message, document_id=self._document_id, cause=error)
         if self._on_lost is not None:
             self._on_lost(self.lost)
 

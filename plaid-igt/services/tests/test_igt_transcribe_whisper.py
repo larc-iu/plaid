@@ -404,14 +404,39 @@ def test_a_download_failure_names_what_failed_and_not_where(monkeypatch):
     assert 'plaid.internal' not in helper.errors[0]
 
 
-def test_a_recording_with_no_speech_in_it_is_refused_once(monkeypatch):
+def test_a_recording_with_no_speech_in_it_is_an_empty_result(monkeypatch):
+    # Luke's ruling R23: an empty run is an ordinary result with zero counts
+    # and a reason code, and the app words it.
     _media(monkeypatch)
     module, _ = load_whisper(segments=[])
     service = _service(module)
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.reports == [('error', 'No speech found in the recording.')]
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['reason'] == 'no-speech'
+    assert (result['segments_transcribed'], result['segments_added'],
+            result['segments_skipped'], result['tokens_created']) == (0, 0, 0, 0)
     assert service.client.writes == []
+
+
+def test_the_requested_model_loads_before_the_document_is_held(monkeypatch):
+    _media(monkeypatch)
+    module, _ = load_whisper()
+    service = _service(module)
+    calls = service.client.calls
+    loaded_under = []
+    load = service.asr_model.load_model
+
+    def load_model(name=None):
+        loaded_under.append(('lock', DOC) in calls and ('unlock', DOC) not in calls)
+        return load(name)
+
+    service.asr_model.load_model = load_model
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert loaded_under == [False]
 
 
 # --- progress through the long stretches -------------------------------------

@@ -148,6 +148,66 @@ def test_a_423_loses_the_lock_at_once():
     assert keeper.lost is not None
 
 
+def test_a_stopped_run_stops_renewing_and_loses_the_lock_once_the_window_is_out():
+    # REV-W3-SVC F3: a run stopped while its model call hangs lets the
+    # document go within the window instead of holding it until the call ends.
+    clock = FakeClock(stop_after=20)
+    calls, lost = [], []
+    stopping = []
+    keeper = LockKeeper(calls.append, 'd1', TTL_S, clock=clock.now, sleep=clock.sleep,
+                        on_lost=lost.append, should_renew=lambda: not stopping)
+
+    def sleep(delay):
+        if clock.t >= 30:
+            stopping.append(True)        # Stop pressed after the first renewal
+        return clock.sleep(delay)
+    keeper._sleep = sleep
+    keeper.run()
+    # Renewed at 30, then asked every 6 s and renewed nothing, lost at 90:
+    # the window the 30 s renewal gave.
+    assert calls == ['d1']
+    assert clock.t == 90.0
+    assert keeper.lost is not None and lost == [keeper.lost]
+    assert 'stopped' in str(keeper.lost)
+
+
+def test_renewal_goes_on_once_the_run_is_inside_its_writes_again():
+    clock = FakeClock(stop_after=6)
+    calls = []
+    answers = iter([True, False, False, True, True, True])
+    keeper = LockKeeper(calls.append, 'd1', TTL_S, clock=clock.now, sleep=clock.sleep,
+                        should_renew=lambda: next(answers))
+    keeper.run()
+    assert clock.slept == [30.0, 30.0, 6.0, 6.0, 30.0, 30.0]
+    assert len(calls) == 4
+    assert keeper.lost is None
+
+
+def test_locked_hands_should_renew_to_its_keeper(monkeypatch):
+    client, _ = _client(monkeypatch, _ManualKeeper)
+    ask = lambda: True  # noqa: E731
+    with client.documents.locked('d1', should_renew=ask):
+        pass
+    assert _ManualKeeper.made[0].should_renew is ask
+
+
+def test_locked_for_writes_stops_renewing_once_a_stop_is_pending_outside_the_writes(monkeypatch):
+    from plaid_client.service import locked_for_writes
+    from plaid_client.testing import Helper
+    client, _ = _client(monkeypatch, _ManualKeeper)
+    monkeypatch.setattr(client.documents, 'get', lambda *a, **k: {'id': 'd1', 'version': 3})
+    helper = Helper()
+    with locked_for_writes(client, 'd1', response_helper=helper):
+        should_renew = _ManualKeeper.made[0].should_renew
+        assert should_renew() is True
+        helper.stop()
+        assert should_renew() is False
+        with helper.critical():
+            assert should_renew() is True     # the writes are under way
+    with locked_for_writes(client, 'd1'):
+        assert _ManualKeeper.made[1].should_renew is None
+
+
 def _raise(error):
     def fn(_document_id):
         raise error
@@ -199,8 +259,10 @@ class _ManualKeeper:
 
     made = []
 
-    def __init__(self, refresh, document_id, ttl_s, *, on_lost=None, **kwargs):
+    def __init__(self, refresh, document_id, ttl_s, *, on_lost=None, should_renew=None,
+                 **kwargs):
         self.refresh = refresh
+        self.should_renew = should_renew
         self.document_id = document_id
         self.ttl_s = ttl_s
         self._on_lost = on_lost

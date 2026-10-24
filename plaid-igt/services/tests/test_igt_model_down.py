@@ -10,7 +10,7 @@ import pathlib
 
 import pytest
 from plaid_client import testing as servicetest
-from plaid_client.workflows.llm import NOT_ASKED, ModelTimeout, Reply
+from plaid_client.workflows.llm import ModelTimeout, Reply
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 translate = servicetest.load_service(SERVICES / 'igt_translate_llm.py')
@@ -99,10 +99,10 @@ def test_a_run_stops_after_two_sentences_in_a_row_get_no_answer(module, cls, rep
     assert service.model.calls == 3
     [result] = helper.results
     failed = result['sentences_failed']
-    assert [f['sentence_id'] for f in failed] == ['s2', 's3', 's4', 's5']
+    assert [f['sentence_id'] for f in failed] == ['s2', 's3']
     assert all(f['reason'].startswith('model error: The model did not answer')
-               for f in failed[:2])
-    assert [f['reason'] for f in failed[2:]] == [NOT_ASKED] * 2
+               for f in failed)
+    assert result['sentences_not_asked'] == ['s4', 's5']
     assert 'so the run stopped. 2 sentences were not' in capsys.readouterr().out
 
 

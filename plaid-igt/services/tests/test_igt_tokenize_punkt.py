@@ -44,13 +44,15 @@ def test_a_missing_text_layer_is_refused_with_the_shared_setup_line():
     assert service.client.writes == []
 
 
-def test_an_empty_document_is_refused_once():
+def test_an_empty_document_is_an_empty_result():
+    # Luke's ruling R23: zero counts and a reason code, worded by the app.
     service = _service(_document(body='   '))
     helper = servicetest.run(service, REQUEST)
 
-    assert len(helper.errors) == 1
-    assert helper.errors[0].endswith('The document has no text.')
-    assert 'd1' not in helper.errors[0]
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['reason'] == 'no-text'
+    assert (result['tokens_created'], result['tokens_deleted'], result['sentences_created']) == (0, 0, 0)
     assert service.client.writes == []
 
 

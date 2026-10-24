@@ -239,7 +239,7 @@ class PolyGlossService(BaseService):
                     doc, word_layer_id, morph_layer_id, sent_layer_id,
                     gloss_field=gloss_field, translation_field=translation_field)
             except ValueError as e:
-                response_helper.error(str(e))
+                run.refusal = str(e)
                 return
             # The translation is context only, so a run goes on without it, and
             # says so rather than analyzing a little worse without a word.

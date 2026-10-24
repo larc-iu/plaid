@@ -611,10 +611,15 @@ In JavaScript, `filterServicesByTask` picks the services for a slot, and `getPar
 A service that reads a document and then writes it holds the document's lock (see <<Locking>>) from that read through its last write, for the whole run.
 No one else can edit the document meanwhile, so the run never writes over an edit made while its model worked, and it needs no check that the document is as it read it.
 The lock is renewed for as long as the run takes, and the requester's own app keeps the document read-only until the run ends.
+A change made to the project rather than to the document still reaches it: renaming a vocabulary the document links to, changing that vocabulary's configuration, deleting a vocabulary or a layer.
+Each moves the document to a new version, and the run's next write is then refused with a conflict (409).
+
+Load a model before taking the lock, so no one waits on the document while it loads or downloads.
+Once the requester stops the run and it is not inside its writes (`critical()`, see <<Stopping a request>>), the lock is no longer renewed: a run stuck in a call that never reaches a checkpoint lets the document go within the lock window, and a write it makes afterwards is refused.
 
 In Python, `held_run` from `plaid_client.service` takes the lock, puts the client in strict mode for that document (see <<Strict Mode>>), and sends the run's result once the lock is released.
-The handler sets `run.result` and may return straight after.
-A handler that reports a refusal with `error` leaves it unset.
+The handler sets `run.result`, or `run.refusal` to the words of a refusal, and may return straight after.
+Either is sent after the lock is released.
 
 [,python]
 ----
@@ -634,6 +639,7 @@ class Glosser(BaseService):
 ----
 
 `locked_for_writes` is the same lock without the result.
+Pass it the `response_helper` so that a stop lets the lock lapse as `held_run` does.
 It takes an optional version, for a request that carries the version the app asked a question at, such as a re-tokenize that deletes work only with the requester's leave, and refuses a document no longer at it.
 
 === Service results
@@ -641,16 +647,18 @@ It takes an optional version, for a request that carries the version the app ask
 A service reports what it did as counts in its result, and sends no message of its own.
 The app that asked words what the person is told, in its own terms, and the same counts serve again when the page reloads mid-run and the run is picked up later (see <<Presence and persistence>>).
 A run that fails on some items still finishes with `status: "success"`, and its counts say which items failed.
+A run with nothing to work on is a result too, with zero counts and a `reason` code the app words: `no-text` (a document with no text), `no-words` (a tokenizer found none) or `no-speech` (a recording with none).
+An error is for a run that could not be done.
 Every result has the `document_id` and a `status`, and a stopped run comes back as `stopped: true` instead.
 These are the results of each task, in the snake_case a Python service writes, which a JavaScript client reads in camelCase.
 
-`tokenize`:: `tokens_created`, `tokens_deleted` and `sentences_created`.
-`parse`:: `mode` (`full` for a document parsed whole, `preserve` for one whose sentences a person worked on were kept), `parsed_sentences` and `skipped_sentences`.
-`transcribe`:: `segments_transcribed`, the segments the model heard, `segments_added`, the ones put in the transcript, and `segments_skipped`, the ones whose time a segment already held. `tokens_created` equals `segments_added`.
+`tokenize`:: `tokens_created`, `tokens_deleted` and `sentences_created`, with `reason` `no-text` or `no-words` when there was nothing to tokenize.
+`parse`:: `mode` (`full` for a document parsed whole, `preserve` for one whose sentences a person worked on were kept), `parsed_sentences` and `skipped_sentences`, with `reason` `no-text` for a document with no text.
+`transcribe`:: `segments_transcribed`, the segments the model heard, `segments_added`, the ones put in the transcript, and `segments_skipped`, the ones whose time a segment already held. `tokens_created` equals `segments_added`. `reason` is `no-speech` for a recording with no speech in it.
 `detect-speech`:: `segments`, the time regions found, each `{time_begin, time_end}` in seconds with an optional `speaker`. Nothing is written.
-`analyze`:: `sentences` in the document, `sentences_sent`, the ones holding a word the run could write, `words_written` and `words_replaced`. `skipped` counts the words left alone: `protected` (a person's analysis, with overwriting off), `precedent` (named in the request's `skip_word_ids`) and `unaligned` (given no analysis by the model). `sentences_failed` lists `{sentence_id, reason}` for each sentence the run could not analyze, and `translation_field_missing` names a translation field the request asked for that the document lacks.
-`translate`:: `sentences`, `sentences_written` and `sentences_replaced`. `skipped` counts `protected` sentences (a person's translation, with overwriting off) and `empty` ones (no words). `sentences_failed` lists `{sentence_id, reason}`, and `gloss_field_missing` names a gloss field the request asked for that the document lacks.
-`draft-graph`:: `sentences` in the document and `drafted`. `skipped` counts the sentences with a machine-made graph left alone with overwriting off, `kept` the ones a person made, contributed to or accepted something in, and `linked` the ones another sentence's graph links into. `failed` and `sentences_failed`, a list of `{sentence, reason}` by sentence number, name the sentences the run could not draft, and `sentences_not_drafted` lists, by number, the ones never asked about because the model stopped answering.
+`analyze`:: `sentences` in the document, `sentences_sent`, the ones holding a word the run could write, `words_written` and `words_replaced`. `skipped` counts the words left alone: `protected` (a person's analysis, with overwriting off), `precedent` (named in the request's `skip_word_ids`) and `unaligned` (given no analysis by the model). `sentences_failed` lists `{sentence_id, reason}` for each sentence the run could not analyze, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `translation_field_missing` names a translation field the request asked for that the document lacks.
+`translate`:: `sentences`, `sentences_written` and `sentences_replaced`. `skipped` counts `protected` sentences (a person's translation, with overwriting off) and `empty` ones (no words). `sentences_failed` lists `{sentence_id, reason}`, `sentences_not_asked` the ids of the sentences never sent because the model stopped answering, and `gloss_field_missing` names a gloss field the request asked for that the document lacks.
+`draft-graph`:: `sentences` in the document and `drafted`. `skipped` counts the sentences with a machine-made graph left alone with overwriting off, `kept` the ones a person made, contributed to or accepted something in, and `linked` the ones another sentence's graph links into. `failed` and `sentences_failed`, a list of `{sentence, reason}` by sentence number, name the sentences the run could not draft (`{sentence, code}` for a cause the app words: `no-link-or-gloss`, no word has a vocabulary link or a gloss, and `no-link-no-gloss-line`, no word has a vocabulary link and the project's UMR settings name no word or morpheme gloss line), and `sentences_not_drafted` lists, by number, the ones never asked about because the model stopped answering.
 `compare`:: `against`, the `{id, name}` of the document scored against, `scope`, `scores` (`sentence`, and `comprehensive` or null), `sentences`, `sentences_scored` and `sentences_skipped`, the ones the metric could not read.
 
 A reason in a failure list is the service's own account of one item, and the app shows it as it stands.

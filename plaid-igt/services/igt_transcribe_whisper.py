@@ -68,7 +68,7 @@ class WhisperASRModel(ASRModel):
         return model
 
     def transcribe_with_alignments(self, audio_path: str, model_size: str = None,
-                                   language: str = None) -> List[Alignment]:
+                                   language: str = None, model=None) -> List[Alignment]:
         """
         Transcribe audio and return segment-level alignments.
 
@@ -77,9 +77,12 @@ class WhisperASRModel(ASRModel):
             model_size: Optional per-request model size (defaults to the
                 operator-configured size).
             language: Optional ISO language code to force (None = auto-detect).
+            model: The model ``load_model(model_size)`` gave, when the caller
+                loaded it already.
         """
         name = model_size or self.model_name
-        model = self.load_model(name)
+        if model is None:
+            model = self.load_model(name)
 
         print(f"Transcribing audio file: {audio_path} (model={name}, language={language or 'auto'})")
 
@@ -199,6 +202,12 @@ class WhisperASRService(BaseService):
             response_helper.error("Missing required parameter: alignmentTokenLayerId")
             return
         
+        # Loaded (on first use downloaded) before the document is held, so
+        # nobody waits on the document while it loads.
+        response_helper.progress(2, f"Loading the Whisper model ({model_size or self.asr_model.model_name})…")
+        with progress_heartbeat(response_helper, 2, "Loading the Whisper model…"):
+            model = self.asr_model.load_model(model_size)
+
         temp_dir = tempfile.mkdtemp()
 
         try:
@@ -210,7 +219,7 @@ class WhisperASRService(BaseService):
             with held_run(self.client, response_helper, document_id) as run:
                 run.result = self._transcribe(document_id, text_layer_id, alignment_token_layer_id,
                                               sentence_token_layer_id, model_size, language,
-                                              requester, temp_dir, response_helper)
+                                              requester, temp_dir, response_helper, model)
 
         finally:
             # Clean up temporary files. Reporting a failure is BaseService's
@@ -222,7 +231,7 @@ class WhisperASRService(BaseService):
 
     def _transcribe(self, document_id, text_layer_id, alignment_token_layer_id,
                     sentence_token_layer_id, model_size, language, requester, temp_dir,
-                    response_helper):
+                    response_helper, model=None):
         """Read, transcribe and write, under the caller's lock. The result."""
         # Get document to fetch media URL
         response_helper.progress(5, "Fetching document…")
@@ -258,14 +267,16 @@ class WhisperASRService(BaseService):
         # requester cannot tell from a wedged service, and which outlasts
         # any deadline it is willing to wait through. The heartbeat keeps
         # the request alive by saying the same thing at intervals.
-        response_helper.progress(30, f"Loading the Whisper model ({model_size or self.asr_model.model_name})…")
         response_helper.progress(40, "Transcribing audio…")
         with progress_heartbeat(response_helper, 40, "Transcribing audio…"):
             alignments = self.asr_model.transcribe_with_alignments(
-                audio_file, model_size=model_size, language=language)
-        
+                audio_file, model_size=model_size, language=language, model=model)
+
         if not alignments:
-            raise ValueError("No speech found in the recording.")
+            # An ordinary result (Luke's ruling R23): the app words it.
+            return {"document_id": document_id, "status": "success", "reason": "no-speech",
+                    "tokens_created": 0, "segments_transcribed": 0,
+                    "segments_added": 0, "segments_skipped": 0}
         
         # The last point a stop costs nothing: the transcription itself is
         # one blocking call with nothing to poll inside it, so a request

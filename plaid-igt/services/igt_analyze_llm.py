@@ -49,7 +49,7 @@ from typing import List, Optional
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
-from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
+from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.workflows.igt.senses import build_sense_tree, entry_morph_types, morph_type_of, morpheme_morph_type
 from plaid_client.workflows.igt import (
@@ -460,7 +460,7 @@ class LLMAnalyzeService(BaseService):
                 sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
                                                    translation_field=translation_field)
             except ValueError as e:
-                response_helper.error(str(e))
+                run.refusal = str(e)
                 return
             # The translation is context only, so a run goes on without it, and
             # says so rather than analyzing a little worse without a word.
@@ -499,6 +499,7 @@ class LLMAnalyzeService(BaseService):
                                                            language=language, metalanguage=metalanguage))
             plans = []
             failed = []
+            not_asked = []
             replaced = 0
             total = len(targets)
             # A model that does not answer at all is down: the run stops after two
@@ -526,7 +527,7 @@ class LLMAnalyzeService(BaseService):
                         ended = unanswered.stop_line(len(untried), verb='glossed')
                         if untried:
                             print(f'{ended} Not asked: {", ".join(untried)}')
-                        failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
+                        not_asked = untried
                         break
                     continue
                 unanswered.answered()
@@ -570,7 +571,7 @@ class LLMAnalyzeService(BaseService):
 
             run.result = analysis_result(
                 document_id, len(sentences), total, skipped,
-                written=written, replaced=replaced, failed=failed,
+                written=written, replaced=replaced, failed=failed, not_asked=not_asked,
                 translation_missing=translation_missing,
                 lexicon_entries=len(lexicon), example_sentences=len(pool),
                 tagset=tagset['name'] if tagset else None)

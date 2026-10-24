@@ -129,6 +129,10 @@ class Helper:
     def cancelled(self):
         return self._scope.cancelled
 
+    @property
+    def stopping(self):
+        return self._scope.stopping
+
     def raise_if_cancelled(self):
         self._scope.raise_if_cancelled()
 
@@ -1334,7 +1338,7 @@ class FakeClient:
             return _pruned(doc, named)
 
         @contextlib.contextmanager
-        def locked(self, document_id, *, keep_alive=True):
+        def locked(self, document_id, *, keep_alive=True, should_renew=None):
             # The lock routes are out-of-band signals: made on the client, and
             # logged straight through. The fake's lock is never lost.
             self._root.calls.append(('lock', document_id))

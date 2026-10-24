@@ -116,7 +116,7 @@ class _FakeClient:
             return self._owner.document
 
         @contextlib.contextmanager
-        def locked(self, document_id):
+        def locked(self, document_id, should_renew=None):
             self._owner.locked_documents.append(document_id)
             self._owner._record(('lock', document_id))
             try:
