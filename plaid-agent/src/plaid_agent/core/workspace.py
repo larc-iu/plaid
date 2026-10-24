@@ -905,7 +905,7 @@ class BaseWorkspace:
                 listed = list(rule.get('values') or [])
                 shown = ', '.join(listed[:60]) + (f' and {len(listed) - 60} more' if len(listed) > 60 else '')
                 raise ToolError(f'"{value}" is not on the list {name or "this layer"} is held to, so '
-                                f'the plan would be refused. Allowed: {shown}', kind='not-allowed')
+                                f'the plan would be refused. Allowed: {shown}', kind='invalid-argument')
 
     def reserve(self, n: int) -> None:
         """Refuse BEFORE staging what would push the plan past what a record

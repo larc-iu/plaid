@@ -58,7 +58,25 @@ NO_ANSWER = '(The model did not answer.)'
 ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for name, rx in (
     ('query-refused', r'^Query rejected'),
     ('tool-fault', r'which is a fault in the tool'),
-    ('code-failed', r'^Traceback'),
+    # run_code's own refusals (core.sandbox.CodeError), by their openings.
+    ('code-failed', r'^Traceback|^The code could not be read'),
+    ('unavailable', r'^Code cannot run on this assistant'),
+    ('invalid-argument', r'^This run_code call arrived with no code|^"code" is the Python to run'),
+    ('too-large', r'^The code was stopped\.'),
+    ('tool-fault', r'^The sandbox stopped while running'),
+    # A read the server refused says its status ("could not be read: HTTP 404 ...").
+    ('not-found', r'could not be read: HTTP 404\b'),
+    ('not-allowed', r'could not be read: HTTP 40[13]\b'),
+    ('conflict', r'could not be read: HTTP (409|423)\b'),
+    ('too-large', r'could not be read: HTTP (408|413)\b'),
+    ('invalid-argument', r'could not be read: HTTP (400|422)\b'),
+    # What this user or this assistant may not do: a lexicon they do not
+    # maintain, a turn that read the web, a conversation planning elsewhere.
+    ('not-allowed', r'^Only a maintainer|does not maintain the lexicon|needs maintainer access|'
+                    r'cannot also plan changes|^This conversation plans changes in "'),
+    # A value a closed list does not take.
+    ('invalid-argument', r'is not on the list .* is held to|is not a value of \S+ here|'
+                         r'feature inventory, which is closed'),
     ('invalid-argument', r'cannot be called with those arguments|has the wrong type|unexpected keyword|'
                          r'not valid JSON|^Give |must be (a|an|one of|given)|is not a (number|whole number|list)'),
     # A reference at the wrong level: a word where a morpheme was wanted, a

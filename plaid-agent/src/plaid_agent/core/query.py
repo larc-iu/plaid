@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from .args import clamp_limit
 from .bidi import plain_quote
 from .limits import READ_LIMITS
-from .tools import ToolError, truncate
+from .tools import ToolError, engine_refusal_kind, truncate
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 LAYER_SLOTS = ('layer', 'token-layer', 'text-layer', 'parent-token-layer', 'span-layer',
@@ -80,7 +80,13 @@ MORE = f'the tool\'s limit argument shows up to {READ_LIMITS["query"][1]}'
 
 
 class QueryRefused(Exception):
-    """The engine turned the query down, with its own reason."""
+    """The query was turned down, here or by the engine, with the reason.
+    ``kind`` is ``query-refused`` unless the server's answer said otherwise
+    (a 5xx or a dropped connection is not the query's fault)."""
+
+    def __init__(self, message: str, kind: str = 'query-refused'):
+        super().__init__(message)
+        self.kind = kind
 
 
 #: The kind of layer each entity clause names in its "layer", and what a
@@ -282,7 +288,7 @@ def run(client, q: Dict[str, Any], project_id: str) -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001 - the engine's complaint is the answer
         msg = str(e)
         m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
-        raise QueryRefused('Query rejected: ' + (m.group(1) if m else msg[:400]))
+        raise QueryRefused('Query rejected: ' + (m.group(1) if m else msg[:400]), kind=engine_refusal_kind(e))
 
 
 def cell(entity: Any, refs: Dict[str, str], layer_names: Dict[str, str]) -> str:
@@ -411,7 +417,7 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
         ws.on_progress('Running the query…')
         res = run(ws.client, q, ws.project.id)
     except QueryRefused as e:
-        raise ToolError(str(e), kind='query-refused')
+        raise ToolError(str(e), kind=e.kind)
     # A name another document shares carries its id, which document= reads back.
     from .history import doc_labels
     doc_names = doc_labels(ws)

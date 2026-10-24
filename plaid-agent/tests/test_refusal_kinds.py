@@ -123,3 +123,67 @@ def test_the_extractor_reads_the_stored_kind_and_the_words_only_without_it():
 def test_the_words_are_classed_in_the_same_kinds_as_the_steps_store():
     from plaid_agent.research.records import ERROR_CLASSES
     assert {name for name, _ in ERROR_CLASSES} <= set(REFUSAL_KINDS)
+
+
+# REV-W3-REST A1 to A6: one cause, one kind, in every app.
+
+@pytest.mark.parametrize('status,kind', [(400, 'query-refused'), (422, 'query-refused'), (500, 'unavailable'),
+                                         (0, 'unavailable'), (423, 'conflict'), (408, 'too-large')])
+def test_a_query_the_server_answered_is_query_refused_only_when_the_engine_refused_it(status, kind):
+    from plaid_agent.core.corpus import query_refused
+    from plaid_agent.core.query import QueryRefused, run
+
+    assert query_refused(_HttpError(status)).kind == kind
+
+    class Client:
+        def query(self, q):
+            raise _HttpError(status)
+    with pytest.raises(QueryRefused) as e:
+        run(Client(), {'where': [], 'find': ['?x']}, 'p1')
+    assert e.value.kind == kind
+
+
+def test_a_query_refused_before_it_is_sent_is_query_refused():
+    from plaid_agent.core.query import QueryRefused
+    assert QueryRefused('query must be a JSON object').kind == 'query-refused'
+
+
+@pytest.mark.parametrize('status,kind', [(423, 'conflict'), (408, 'too-large')])
+def test_a_held_document_and_a_query_timeout_have_their_own_kinds(status, kind):
+    from plaid_agent.core.tools import kind_of_status
+    assert kind_of_status(_HttpError(status)) == kind
+
+
+@pytest.mark.parametrize('code,reason,kind', [('', None, 'invalid-argument'), (5, None, 'invalid-argument'),
+                                              ('1', 'not installed', 'unavailable')])
+def test_run_code_refusals_take_the_kind_of_their_cause(code, reason, kind, monkeypatch):
+    from plaid_agent.core import sandbox
+    monkeypatch.setattr(sandbox, 'available', lambda: reason)
+    with pytest.raises(sandbox.CodeError) as e:
+        sandbox.run(code, {}, session=None)
+    assert e.value.kind == kind
+    assert sandbox.CodeError('x').kind == 'code-failed'
+    assert kind_of(sandbox.CodeError('x', kind='too-large'), 'code-failed') == 'too-large'
+
+
+def test_a_value_off_a_closed_list_is_an_invalid_argument_in_igt_and_ud():
+    from plaid_agent.core.workspace import BaseWorkspace
+    from plaid_agent.ud.tools import _check_feature
+
+    class Held:
+        def value_rules(self, layer_id):
+            return 'Gloss', [{'values': ['a', 'b']}]
+    with pytest.raises(ToolError) as e:
+        BaseWorkspace.refuse_value(Held(), 'l1', 'c')
+    assert e.value.kind == 'invalid-argument'
+
+    class Project:
+        vocab = {'feats': {'Number': ['Sing', 'Plur']}}
+        modes = {'feats': 'closed'}
+
+    class UdWs:
+        project = Project()
+    for feature, value in (('Case', 'Nom'), ('Number', 'Dual')):
+        with pytest.raises(ToolError) as e:
+            _check_feature(UdWs(), feature, value)
+        assert e.value.kind == 'invalid-argument'

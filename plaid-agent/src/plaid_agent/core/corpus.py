@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .java_regex import PatternError, translate
 from .limits import GROUP_LIMIT, ROW_LIMIT
-from .tools import ToolError
+from .tools import ToolError, engine_refusal_kind
 
 
 class Clipping:
@@ -132,7 +132,7 @@ def query_refused(e: Exception) -> ToolError:
     """The engine's own complaint, for the model to read and correct."""
     msg = str(e)
     m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
-    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]), kind='invalid-argument')
+    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]), kind=engine_refusal_kind(e))
 
 
 def _bound(clauses: List[Any]) -> List[str]:

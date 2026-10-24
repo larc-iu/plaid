@@ -37,6 +37,8 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .tools import ValueRefusal
+
 import regex
 
 # --- the numbers both producers use ---------------------------------------------
@@ -709,7 +711,7 @@ def page_span(lines: Sequence[str], page: str) -> Tuple[int, int, str]:
     PDF's own count second. Raises ValueError saying what pages there are."""
     marks = markers(lines)
     if not any(m.kind == 'page' for m in marks):
-        raise ValueError('it has no page markers, so it is read by line')
+        raise ValueRefusal('it has no page markers, so it is read by line', kind='unavailable')
     wanted = str(page).strip()
     parts = re.split(r'\s*[-–]\s*', wanted, maxsplit=1) if not wanted.startswith('-') else [wanted]
     first = _find_page(marks, parts[0])
@@ -758,7 +760,7 @@ def section_span(lines: Sequence[str], section: str) -> Tuple[int, int, str]:
     Raises ValueError."""
     q = ' '.join(str(section or '').split())
     if not q:
-        raise ValueError('say which section')
+        raise ValueRefusal('say which section', kind='invalid-argument')
     marks = markers(lines)
     sections = [m for m in marks if m.kind == 'section']
     num = _NUMBER_RE.match(q)

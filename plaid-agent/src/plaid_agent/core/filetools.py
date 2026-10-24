@@ -24,7 +24,7 @@ from . import pdftext
 from .args import clamp_limit, whole
 from .files import FileGone, PREVIEW_ROWS
 from .limits import MAX_RESULT_CHARS, READ_LIMITS
-from .tools import ToolError, ValueRefusal, limit_arg, truncate
+from .tools import ToolError, ValueRefusal, kind_of, limit_arg, truncate
 
 NAMES = ('read_file',)
 
@@ -248,8 +248,8 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
             if a.source:
                 # The pages and titles it names are the PDF's, from the web.
                 from .webtools import WARNING, fenced
-                raise ToolError(f'"{a.name}", from {a.source}: {WARNING}\n{fenced(f"{e}.")}', kind='unavailable')
-            raise ToolError(f'"{a.name}": {e}.', kind='unavailable')
+                raise ToolError(f'"{a.name}", from {a.source}: {WARNING}\n{fenced(f"{e}.")}', kind=kind_of(e, 'not-found'))
+            raise ToolError(f'"{a.name}": {e}.', kind=kind_of(e, 'not-found'))
         # A page or a section is shown whole unless asked otherwise: what was
         # asked for is all of it, and the result's budget cuts it if need be.
         start = max(start, first + 1) if start_line not in (None, '') else first + 1

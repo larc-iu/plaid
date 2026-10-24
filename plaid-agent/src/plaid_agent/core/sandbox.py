@@ -26,7 +26,7 @@ import threading
 from typing import Any, Callable, Dict, List, Optional
 
 from .limits import MAX_RESULT_CHARS, cuts, forget_cuts, note_cut
-from .tools import ToolError
+from .tools import ToolError, kind_of
 
 # Characters of output handed back. Literally every tool result's budget, not
 # a number of its own that happens to match.
@@ -238,7 +238,13 @@ def _unkeyed(text: str) -> str:
 
 
 class CodeError(Exception):
-    """A run that did not finish, in words the model can act on."""
+    """A run that did not finish, in words the model can act on. ``kind`` is
+    the refusal kind by cause: ``code-failed`` for code that raised, and
+    another kind when the code never ran or the sandbox, not the code, failed."""
+
+    def __init__(self, message: str, kind: str = 'code-failed'):
+        super().__init__(message)
+        self.kind = kind
 
 
 _state: Dict[str, Any] = {'checked': False, 'reason': None, 'pool': None}
@@ -361,15 +367,16 @@ def run(code: str, api: Dict[str, Callable], *, session: Session, shape: str = '
     code printed."""
     reason = available()
     if reason:
-        raise CodeError(f'Code cannot run on this assistant: {reason}.')
+        raise CodeError(f'Code cannot run on this assistant: {reason}.', kind='unavailable')
     cut_before = cuts()
     # A call that arrives with an empty argument, or none, lost its code on
     # the way (2026-10-12 survey), so the answer says that rather than asking
     # for code as if none had been written.
     if code is None or isinstance(code, str) and not code.strip():
-        raise CodeError('This run_code call arrived with no code. Send it again with the Python in "code".')
+        raise CodeError('This run_code call arrived with no code. Send it again with the Python in "code".',
+                        kind='invalid-argument')
     if not isinstance(code, str):
-        raise CodeError('"code" is the Python to run, as one string.')
+        raise CodeError('"code" is the Python to run, as one string.', kind='invalid-argument')
     from pydantic_monty import CollectString
     printed = CollectString(max_bytes=4 * 1024 * 1024)
     try:
@@ -410,9 +417,9 @@ def _run(code: str, api: Dict[str, Callable], session: Session, shape: str, tall
                 f'The code was stopped. One turn\'s run_code calls share {TURN_EXEC_SECONDS / 60:.0f} '
                 f'minutes of computation between them, and one call may take {WALL_SECONDS / 60:.0f} '
                 f'minutes including the time its reads wait on the server. Narrow it: fewer documents, '
-                f'or a query() for the counting.' + _partial(printed))
+                f'or a query() for the counting.' + _partial(printed), kind='too-large')
         raise CodeError('The sandbox stopped while running this code. Try again with less at once.'
-                        + _partial(printed))
+                        + _partial(printed), kind='tool-fault')
     out = (printed.output or '').rstrip('\n')
     if tally is not None:
         tally.printed = len(out.splitlines())
@@ -774,6 +781,6 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally,
                   returns=returns)
     except CodeError as e:
-        raise ToolError(str(e) + tally.plan_note(ws), kind='code-failed')
+        raise ToolError(str(e) + tally.plan_note(ws), kind=kind_of(e, 'code-failed'))
     tally.note(ws)
     return out + tally.plan_note(ws)

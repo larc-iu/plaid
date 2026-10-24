@@ -99,7 +99,19 @@ def kind_of(e: Exception, otherwise: str) -> str:
 def kind_of_status(e: Exception, otherwise: str = 'unavailable') -> str:
     """The refusal kind for a server's answer, by its HTTP status."""
     return {403: 'not-allowed', 401: 'not-allowed', 404: 'not-found', 409: 'conflict', 413: 'too-large',
-            400: 'invalid-argument', 422: 'invalid-argument'}.get(getattr(e, 'status', None), otherwise)
+            400: 'invalid-argument', 422: 'invalid-argument',
+            # A document a service holds is the data as it stands, and a
+            # query the engine gave up on is over its time limit.
+            423: 'conflict', 408: 'too-large'}.get(getattr(e, 'status', None), otherwise)
+
+
+def engine_refusal_kind(e: Exception) -> str:
+    """The kind for a query the server answered with ``e``: a query the
+    engine turned down (400, 422) is ``query-refused``, anything else (a 5xx,
+    a dropped connection, a held document) is said by its status."""
+    if getattr(e, 'status', None) in (400, 422):
+        return 'query-refused'
+    return kind_of_status(e)
 
 
 def truncate(s: str) -> str:

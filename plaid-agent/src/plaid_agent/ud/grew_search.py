@@ -143,7 +143,7 @@ def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limi
             if getattr(e.__context__, 'status', None) == 408:
                 raise ToolError('The engine gave up on this pattern after 30 s. Name a document, or '
                                 'constrain the nodes more (a upos, a lemma, an edge label).',
-                                kind='too-large') from None
+                                kind=e.kind) from None
             raise
         rows = [dict(zip(q['find'], r)) for r in res.get('results') or []]
         truncated = bool(res.get('truncated'))

@@ -654,3 +654,20 @@ def test_a_turn_whose_reply_the_store_refuses_keeps_what_the_answer_names(monkey
     [kept] = done['item']['files']
     assert kept['name'] == 'g.pdf'
     assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') != []
+
+
+def test_a_page_or_section_the_pdf_lacks_is_not_found_and_an_empty_section_is_invalid():
+    # REV-W3-REST A4.
+    w = Ws(attached_pdf())
+    with pytest.raises(ToolError) as e:
+        filetools.t_read_file(w, name='grammar.pdf', page='999')
+    assert e.value.kind == 'not-found'
+    with pytest.raises(ToolError) as e:
+        filetools.t_read_file(w, name='grammar.pdf', section='no such heading anywhere')
+    assert e.value.kind == 'not-found'
+    with pytest.raises(pdftext.ValueRefusal) as e:
+        pdftext.section_span(SAMPLE.text.split('\n'), '')
+    assert e.value.kind == 'invalid-argument'
+    with pytest.raises(pdftext.ValueRefusal) as e:
+        pdftext.page_span(['plain', 'text'], '1')
+    assert e.value.kind == 'unavailable'

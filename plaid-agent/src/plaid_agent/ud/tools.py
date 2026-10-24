@@ -744,11 +744,11 @@ def _check_feature(ws: Workspace, feature: str, value: str) -> None:
         return
     if feature not in inventory:
         raise ToolError(f'"{feature}" is not in this project\'s feature inventory, which is closed. '
-                        f'Features: ' + ', '.join(sorted(inventory)), kind='not-allowed')
+                        f'Features: ' + ', '.join(sorted(inventory)), kind='invalid-argument')
     allowed = inventory.get(feature) or []
     if allowed and value not in allowed:
         raise ToolError(f'"{value}" is not a value of {feature} here. Allowed: ' + ', '.join(allowed),
-                        kind='not-allowed')
+                        kind='invalid-argument')
 
 
 def _is_feature_op(op: Dict[str, Any], layer_id: str, word_id: str) -> bool:
