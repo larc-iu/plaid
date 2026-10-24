@@ -1,4 +1,4 @@
-import { UmrDocument } from './UmrDocument.js';
+import { UmrDocument, readEntryLexicon } from './UmrDocument.js';
 import { UnwritableUmrError } from './format/umrFile.js';
 
 /**
@@ -11,13 +11,16 @@ import { UnwritableUmrError } from './format/umrFile.js';
  */
 export async function exportProjectUmr(client, projectId, project, { onProgress } = {}) {
   const docs = await client.projects.listDocuments(projectId);
+  // The vocabularies, for the type each linked morpheme goes by, which sets
+  // the joints of the gloss lines.
+  const lexicon = docs.length ? ((await readEntryLexicon(client, project))?.lexicon ?? null) : null;
   const out = [];
   const problems = [];
   for (let i = 0; i < docs.length; i++) {
     const summary = docs[i];
     onProgress?.(i, docs.length, summary.name);
     const raw = await client.documents.get(summary.id, true);
-    const doc = new UmrDocument({ raw, client, projectId, project });
+    const doc = new UmrDocument({ raw, client, projectId, project, lexicon });
     const found = doc.exportProblems;
     if (found.length) problems.push(...found.map((p) => ({ ...p, document: summary.name })));
     else out.push({ name: summary.name, text: doc.toUmr() });

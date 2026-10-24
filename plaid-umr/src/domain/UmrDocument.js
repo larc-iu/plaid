@@ -215,12 +215,14 @@ export class UmrDocument extends DocumentModel {
     return this._lexicon;
   }
 
-  /** Take a lexicon read elsewhere: the entry checks are read again. */
+  /**
+   * Take a lexicon read elsewhere: the entry checks are read again, and the
+   * graph, whose linked morphemes go by their entries' types.
+   */
   setLexicon(lexicon) {
     if (this._lexicon === lexicon) return;
     this._lexicon = lexicon;
-    this._derivedCache.delete('problems');
-    this._derivedCache.delete('problemsBySentence');
+    this._derivedCache.clear();
     this._emit();
   }
 
@@ -374,7 +376,10 @@ export class UmrDocument extends DocumentModel {
     return this._derived('graph', () => {
       const info = this.layerInfo;
       const mapping = resolveIlg(readIlgConfig(this._project));
-      const built = buildDocumentGraph(info, { ilg: (s) => ilgLinesFor(s, info, mapping) });
+      const built = buildDocumentGraph(info, {
+        ilg: (s) => ilgLinesFor(s, info, mapping),
+        entryTypes: this._lexicon?.entryTypes ?? null,
+      });
       const graph = keepUnchangedSentences(this._lastGraph, built);
       this._lastGraph = graph;
       return graph;

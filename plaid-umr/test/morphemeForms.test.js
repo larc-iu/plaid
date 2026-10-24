@@ -125,3 +125,33 @@ test('a morpheme with no type joins with the default', () => {
   const graph = buildDocumentGraph(layerInfo());
   assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[0], ['', '-', '-', '-']);
 });
+
+// A morpheme linked to a lexicon entry stores no copy of the entry's morph
+// type (R2, 2026-10-24): the graph draws it with the type its entry goes by,
+// a headword's for a sense with none of its own, and with its own type
+// otherwise. The joint before it follows.
+test("a linked morpheme is drawn with its entry's type, an unlinked one with its own", async () => {
+  const { buildLexicon } = await import('../src/domain/vocabLexicon.js');
+  const info = layerInfo();
+  info.morphemeTokenLayer.tokens[3].metadata = { form: 'də', morphType: 'suffix' };
+  info.morphemeTokenLayer.vocabs = [
+    {
+      id: 'v1',
+      vocabLinks: [{ id: 'l1', tokens: ['m-2'], vocabItem: { id: 'sense', form: 'ŋəy' } }],
+    },
+  ];
+  const lexicon = buildLexicon([
+    {
+      id: 'v1',
+      items: [
+        { id: 'head', form: 'ŋəy', metadata: { morphType: 'enclitic' } },
+        { id: 'sense', form: 'ŋəy', metadata: { parent: 'head' } },
+      ],
+    },
+  ]);
+  const typesOf = (graph) => graph.sentences[0].morphemes.map((m) => m.morphType);
+  assert.deepEqual(typesOf(buildDocumentGraph(info)), [null, null, null, 'suffix']);
+  const graph = buildDocumentGraph(info, { entryTypes: lexicon.entryTypes });
+  assert.deepEqual(typesOf(graph), [null, null, 'enclitic', 'suffix']);
+  assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[0], ['', '-', '=', '=']);
+});

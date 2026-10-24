@@ -14,6 +14,7 @@
 // is offered first. The rest of the lexicon is reachable by typing.
 
 import { argsOf, argSummary } from './lexicon.js';
+import { entryMorphType } from '../../../plaid-ui/src/domain/morphemes.js';
 
 const uniqBy = (list, key) => {
   const seen = new Set();
@@ -27,7 +28,11 @@ const uniqBy = (list, key) => {
 };
 
 /** The empty lexicon, for a project with no vocabulary. */
-export const EMPTY_LEXICON = Object.freeze({ entries: Object.freeze([]), byId: new Map() });
+export const EMPTY_LEXICON = Object.freeze({
+  entries: Object.freeze([]),
+  byId: new Map(),
+  entryTypes: new Map(),
+});
 
 // Every vocabulary linked to the project, with its items. One that cannot
 // be read is left out, and the rest still load.
@@ -63,15 +68,25 @@ const headwordOf = (item, byId) => {
 
 /**
  * The lexicon over vocabularies as `vocabLayers.get(id, true)` returns them.
- * @returns {{ entries: Array<object>, byId: Map<string, object> }}
+ * `entryTypes` is the morph type each entry goes by, its own or its
+ * headword's, for the entries that go by one: the type a morpheme linked to
+ * the entry is drawn with (sentenceGraph.js).
+ * @returns {{ entries: Array<object>, byId: Map<string, object>, entryTypes: Map<string, string> }}
  */
 export function buildLexicon(vocabularies) {
   const entries = [];
   const byId = new Map();
+  const entryTypes = new Map();
   (vocabularies || []).forEach((vocab) => {
     const items = vocab?.items || [];
     const itemsById = new Map(items.map((it) => [it.id, it]));
     items.forEach((it) => {
+      const type = entryMorphType(
+        it.id,
+        (id) => itemsById.get(id)?.metadata?.morphType,
+        (id) => itemsById.get(id)?.metadata?.parent,
+      );
+      if (type) entryTypes.set(it.id, type);
       const umr = it.metadata?.umr || {};
       const gloss = it.metadata?.gloss;
       const entry = {
@@ -90,7 +105,7 @@ export function buildLexicon(vocabularies) {
     });
   });
   entries.sort((a, b) => a.form.localeCompare(b.form) || a.id.localeCompare(b.id));
-  return { entries, byId };
+  return { entries, byId, entryTypes };
 }
 
 // The entries linked from the document's word and morpheme tokens, by

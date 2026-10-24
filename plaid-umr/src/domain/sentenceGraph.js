@@ -59,6 +59,7 @@ import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { morphemeMorphType } from '../../../plaid-ui/src/domain/morphemes.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -241,10 +242,15 @@ const anchorPieces = (span, tokensById) => {
  * Every sentence of the document with its words, gloss lines, nodes, edges
  * and document-level triples. Pure: takes the layer info of a raw document.
  *
+ * `entryTypes` is the morph type each lexicon entry goes by (the lexicon's
+ * `entryTypes`, vocabLexicon.js): a morpheme linked to an entry that goes by
+ * one is drawn with it, and stores no copy of it. Without it a morpheme is
+ * drawn with its own type.
+ *
  * @param {object} layerInfo from getUmrLayerInfo(raw)
  * @returns {{ sentences: Array, constants: Array, nodesById: Map }}
  */
-export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
+export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } = {}) {
   const body = layerInfo.textLayer?.text?.body ?? '';
   // One code-point view of the body for every slice below: `cpSlice` spread
   // the whole body once per word, which on a 320-sentence document was about
@@ -320,6 +326,15 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   // An empty form is IGT's "emptied by hand" and is left empty rather than
   // falling back to the word: the gloss line writes it as `_`, which is what
   // a morpheme with no form is.
+  // The entry each morpheme's own link names, for the type it goes by.
+  const entryOf = new Map();
+  (layerInfo.morphemeTokenLayer?.vocabs || []).forEach((vocab) => {
+    (vocab.vocabLinks || []).forEach((link) => {
+      if (link?.tokens?.length === 1 && link.vocabItem?.id) {
+        entryOf.set(link.tokens[0], link.vocabItem.id);
+      }
+    });
+  });
   morphemeTokens.forEach((token) => {
     const s = sentenceOf(token);
     if (!s) return;
@@ -330,8 +345,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       end: token.end,
       text: typeof form === 'string' ? form : slice(token.begin, token.end),
       // The FLEx morph-type name, which says how this morpheme joins the one
-      // before it when the word is drawn. Absent on every hand-entered one.
-      morphType: token.metadata?.morphType ?? null,
+      // before it when the word is drawn: its entry's, else its own. Absent
+      // on every hand-entered one.
+      morphType: morphemeMorphType(token.metadata, entryTypes?.get(entryOf.get(token.id)) ?? null),
       precedence: token.precedence ?? null,
     });
   });
