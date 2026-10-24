@@ -107,7 +107,7 @@ test('a set-up declares the rules of every layer it makes in the batch that make
 });
 
 // R3a (2026-10-24): a set-up makes every word's missing UD word, with its
-// lemma copied from its form, in the set-up's own batch, since Grew search,
+// lemma copied from its form, in batches after the one making its layers, since Grew search,
 // Rewrite and the Words count read stored words. An open after it writes
 // nothing.
 
@@ -197,7 +197,7 @@ const afterSetUp = (doc, batches) => {
   return raw;
 };
 
-test("a set-up makes every word's missing UD word and its lemma in its own batch, and an open after it writes nothing", async () => {
+test("a set-up makes every word's missing UD word and its lemma after its layers, and an open after it writes nothing", async () => {
   const doc = substrateDoc();
   const { client, batches } = adoptClient(substrateOnly(), [doc]);
   await adoptSubstrate(client, substrateOnly());
@@ -205,7 +205,8 @@ test("a set-up makes every word's missing UD word and its lemma in its own batch
   const made = opsNamed(batches, 'tokens.bulkCreate');
   assert.equal(made.length, 1, 'one create of words');
   const layerBatch = batches.find((ops) => ops.some((o) => o.op === 'tokenLayers.create'));
-  assert.ok(layerBatch.includes(made[0]), "in the batch that makes UD's layers");
+  assert.equal(batches.indexOf(layerBatch), 0, "UD's layers first");
+  assert.ok(batches[1].includes(made[0]), 'the words in the batch after them');
   const wordLayerMade = layerBatch.find(
     (o) => o.op === 'tokenLayers.create' && o.args[1] === 'Words',
   );
@@ -288,4 +289,71 @@ test('a set-up of a project with no words reads no document', async () => {
   const { client, read } = adoptClient(project, [substrateDoc()]);
   await adoptSubstrate(client, project);
   assert.deepEqual(read, []);
+});
+
+// REV-W2B-OPENS H1: a project whose documents lack more UD words than fit in
+// one request body is still set up. The layers go first, in a batch of their
+// own, and the words follow in batches well under the core's body cap (10 MB
+// by default) and op cap (1000), all under the set-up's one operation.
+test('a set-up of a project lacking 30k UD words sends them in batches well under the body cap, after the layers', async () => {
+  // A document of `count` words and one sentence over them, built by hand
+  // (the CoNLL-U fixture builder is slow at this size), with no UD word.
+  const big = (id, count) => {
+    const raw = substrateDoc();
+    raw.id = id;
+    const layer = raw.textLayers[0];
+    const forms = Array.from({ length: count }, (_, i) => `palabra${id}x${i}`);
+    layer.text = { ...layer.text, id: `text-${id}`, body: forms.join(' ') };
+    let at = 0;
+    const tokens = forms.map((form, i) => {
+      const token = { id: `${id}-w${i}`, begin: at, end: at + form.length, precedence: 0 };
+      at += form.length + 1;
+      return token;
+    });
+    for (const tl of layer.tokenLayers) {
+      const role = tl.config?.plaid?.role;
+      if (role === 'word') tl.tokens = tokens;
+      if (role === 'sentence') tl.tokens = [{ id: `${id}-s`, begin: 0, end: at - 1 }];
+    }
+    return raw;
+  };
+  const docs = [big('d1', 25000), big('d2', 5000)];
+  const { client, batches } = adoptClient(substrateOnly(), docs);
+  let open = 0;
+  const inOperation = [];
+  const batched = client.batched;
+  client.batched = async (fn) => {
+    inOperation.push(open > 0);
+    return batched(fn);
+  };
+  client.withOperation = async (_label, fn) => {
+    open++;
+    try {
+      return await fn(() => {});
+    } finally {
+      open--;
+    }
+  };
+  await adoptSubstrate(client, substrateOnly());
+
+  const MB = 1024 * 1024;
+  for (const ops of batches) {
+    const body = Buffer.byteLength(JSON.stringify(ops.map((o) => [o.op, o.args])));
+    assert.ok(body < 4 * MB, `a batch body of ${body} bytes`);
+    assert.ok(ops.length <= 500, `a batch of ${ops.length} ops`);
+  }
+  assert.ok(inOperation.length > 2 && inOperation.every(Boolean), 'every batch in the operation');
+  assert.ok(
+    batches[0].some((o) => o.op === 'tokenLayers.create'),
+    'the layers first',
+  );
+  assert.ok(!batches[0].some((o) => o.op === 'tokens.bulkCreate'), 'no word with the layers');
+  const words = opsNamed(batches, 'tokens.bulkCreate').flatMap((o) => o.args[0]);
+  const lemmas = opsNamed(batches, 'spans.bulkCreate').flatMap((o) => o.args[0]);
+  assert.equal(words.length, 30000);
+  assert.equal(new Set(words.map((w) => `${w.text}:${w.begin}`)).size, 30000);
+  assert.deepEqual(
+    lemmas.map((l) => l.tokens[0]),
+    words.map((w) => w.id),
+  );
 });

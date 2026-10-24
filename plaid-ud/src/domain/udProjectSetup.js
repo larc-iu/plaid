@@ -185,11 +185,14 @@ export const createUdProject = (client, projectName) =>
  * role, and a project made by any Plaid app has exactly one; failing that, the
  * project's only text layer, or a new one when it has none. Everything below
  * is found by role or by UD's own config flag, and created where it is
- * missing. Every layer it makes is made under an id minted here, so the whole
- * set-up is one batch: it lands whole or not at all, and a layer is never left
- * without the flag or role a re-run would find it by. The same batch makes
- * the UD word, and its lemma copied from its form, of every word in every
- * document that has none (R3a), read from the documents first.
+ * missing. Every layer it makes is made under an id minted here, so the
+ * layers are one batch: they land whole or not at all, and a layer is never
+ * left without the flag or role a re-run would find it by. Batches after it,
+ * under the same operation, make the UD word, and its lemma copied from its
+ * form, of every word in every document that has none (R3a), read from the
+ * documents first. They are sized well under the core's caps on a request's
+ * body and op count, so a large project can be set up. A failure partway
+ * leaves the words not yet made to a re-run, which finds only those.
  *
  * The plan is made from the project as it is now, read here, never from the
  * page's copy: a set-up another tab or maintainer ran since, or this page's
@@ -213,6 +216,8 @@ export const adoptSubstrate = (client, page) =>
     const existingTextLayer = baseline || textLayers[0] || null;
     const lacking = await wordsLackingUdWords(client, project.id, existingTextLayer);
 
+    let morphemeLayerId = null;
+    let lemmaLayerId = null;
     await client.batched(async (b) => {
       // The layers this batch makes, by getUdLayerInfo's key: they are empty,
       // so their rules go in this batch and cannot be refused.
@@ -252,7 +257,7 @@ export const adoptSubstrate = (client, page) =>
       if (!splitsOnSpace(wordLayer)) {
         declareSplitOnSpace(b, wordLayerId);
       }
-      const morphemeLayerId = ensureTokenLayer(ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayerId);
+      morphemeLayerId = ensureTokenLayer(ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayerId);
       if (!findByRole(existingTextLayer?.tokenLayers, ROLES.SYNTACTIC_WORD)) {
         made.morphemeTokenLayer = { id: morphemeLayerId };
       }
@@ -268,7 +273,6 @@ export const adoptSubstrate = (client, page) =>
         (layers || []).find((layer) => layer.config?.[UD_NAMESPACE]?.[key] === true) || null;
 
       let lemmaLayer = null;
-      let lemmaLayerId = null;
       for (const [name, configKey] of SPAN_LAYER_SPECS) {
         const existing = findFlagged(existingMorphemeLayer?.spanLayers, configKey);
         let id = existing?.id;
@@ -306,19 +310,21 @@ export const adoptSubstrate = (client, page) =>
           wordTokenLayer: { id: wordLayerId },
         }),
       );
-      // Every word with no UD word gets one now, with its lemma copied from
-      // its form, so Grew search, Rewrite and the Words count read every word
-      // (R3a). Nothing makes one on open.
-      for (const { textId, words } of lacking) {
-        const made = words.map(({ begin, end, form }) =>
-          newUdWord({ begin, end, precedence: 0 }, form, { id: lemmaLayerId }, uuidv7),
-        );
-        b.tokens.bulkCreate(
-          made.map(({ word }) => ({ ...word, tokenLayerId: morphemeLayerId, text: textId })),
-        );
-        b.spans.bulkCreate(made.map(({ lemma }) => ({ ...lemma, spanLayerId: lemmaLayerId })));
-      }
     });
+
+    // Every word with no UD word gets one now, with its lemma copied from its
+    // form, so Grew search, Rewrite and the Words count read every word (R3a).
+    // Nothing makes one on open.
+    for (const chunk of wordBatches(lacking, lemmaLayerId)) {
+      await client.batched(async (b) => {
+        for (const { textId, made } of chunk) {
+          b.tokens.bulkCreate(
+            made.map(({ word }) => ({ ...word, tokenLayerId: morphemeLayerId, text: textId })),
+          );
+          b.spans.bulkCreate(made.map(({ lemma }) => ({ ...lemma, spanLayerId: lemmaLayerId })));
+        }
+      });
+    }
 
     // UD's layer rules on the layers it found. They may hold another app's
     // data, which the server repairs first where a rule has a repair. A rule
@@ -326,6 +332,54 @@ export const adoptSubstrate = (client, page) =>
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
   });
+
+// The words `lacking` (wordsLackingUdWords) as batches of the rows that make
+// them, each `[{ textId, made: [{ word, lemma }] }]`. A batch holds at most
+// WORDS_PER_BATCH words, BYTES_PER_BATCH bytes of rows and OPS_PER_BATCH ops,
+// well under the core's caps (`max_json_body_mb`, 10 by default, and 1000 ops),
+// so no request is refused for its size and the client never splits one.
+const WORDS_PER_BATCH = 2000;
+const BYTES_PER_BATCH = 2 * 1024 * 1024;
+const OPS_PER_BATCH = 200;
+// The layer and text ids each row gains on top of `made`.
+const ROW_IDS_BYTES = 200;
+const encoder = new TextEncoder();
+const wordBatches = (lacking, lemmaLayerId) => {
+  const batches = [];
+  let batch = [];
+  let words = 0;
+  let bytes = 0;
+  const close = () => {
+    if (batch.length) batches.push(batch);
+    batch = [];
+    words = 0;
+    bytes = 0;
+  };
+  for (const { textId, words: lackingWords } of lacking) {
+    let entry = null;
+    for (const { begin, end, form } of lackingWords) {
+      const made = newUdWord({ begin, end, precedence: 0 }, form, { id: lemmaLayerId }, uuidv7);
+      const size = encoder.encode(JSON.stringify(made)).length + ROW_IDS_BYTES;
+      const full =
+        words + 1 > WORDS_PER_BATCH ||
+        bytes + size > BYTES_PER_BATCH ||
+        (!entry && (batch.length + 1) * 2 > OPS_PER_BATCH);
+      if (full && batch.length) {
+        close();
+        entry = null;
+      }
+      if (!entry) {
+        entry = { textId, made: [] };
+        batch.push(entry);
+      }
+      entry.made.push(made);
+      words += 1;
+      bytes += size;
+    }
+  }
+  close();
+  return batches;
+};
 
 // The words with no UD word under them in each of the project's documents,
 // as the set-up finds them: `[{ textId, words: [{ begin, end, form }] }]`,
