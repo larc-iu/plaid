@@ -1187,21 +1187,40 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
                 n += edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), morph_type=t)
         return ws.planned_note(n)
     m = _need(resolve(doc, ref), Morpheme, ref)
+    if type is not None and m.link is not None:
+        # A linked morpheme's type is its entry's, as the editor's type row
+        # edits the entry: a type planned on the morpheme would change nothing
+        # anyone sees.
+        vocab = next((v for v in ws.project.vocabs if v['id'] == m.link.vocab_id), None)
+        entry = ws.view(vocab).label(m.link.item_id) if vocab else 'a lexicon entry'
+        goes = f'goes by its type {qv(m.entry_type)}' if m.entry_type else 'has no type'
+        raise ToolError(f'{ref} is linked to {entry}, which {goes}, and a linked morpheme\'s type is its '
+                        f'entry\'s. Set it with set_entry_field (field "morphType") on {entry}, or '
+                        f'unlink_entry first to give this morpheme a type of its own.')
     word_ref_ = ref.rsplit('.', 1)[0]
     w = resolve(doc, word_ref_)
     refuse_shape_and_analysis(ws, w.id, word_ref_, analysing=True)
     staged: List[Dict[str, Any]] = []
+    dropped: List[Dict[str, Any]] = []
     if new is not None and new != m.form:
         # A correction of this one morpheme: stamped when applied, unlike a
         # respelling carried into the forms.
         staged.append({**morpheme_form_op(ws, doc, word_ref_, w, m, new), 'restamp': True})
     if type is not None:
+        op = {'kind': 'set_morph_type', 'morpheme_id': m.id, 'morph_type': t,
+              **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} (in {qv(w.surface)})',
+                         'morpheme type ' + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ')
+                         + (qv(t) if t else '(cleared)'))}
         if t != (m.morph_type or None):
-            staged.append({'kind': 'set_morph_type', 'morpheme_id': m.id, 'morph_type': t,
-                           **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} (in {qv(w.surface)})',
-                                      'morpheme type ' + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ')
-                                      + (qv(t) if t else '(cleared)'))})
+            staged.append(op)
+        elif (at := ws.replacing(op)) is not None:
+            # Set back to what it holds: the type change planned for it goes.
+            dropped.append(ws.ops[at])
     ws.add_ops(staged)
+    ws.take_back(dropped)
+    if dropped:
+        return (f'Took back the planned type change to {ref}: it keeps its stored type. '
+                + ws.planned_note(len(staged)))
     return ws.planned_note(len(staged))
 
 

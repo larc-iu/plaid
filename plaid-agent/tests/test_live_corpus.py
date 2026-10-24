@@ -323,3 +323,59 @@ def test_a_linked_morpheme_is_read_by_its_entrys_type(proj, bare):
         want = fixture_ids(proj, call_tool(workspace(proj), tool, args))
         assert fixture_ids(bare, call_tool(workspace(bare), tool, args)) == want, (tool, args)
     assert 'Type: suffix (1)' in call_tool(workspace(bare), 'analyses_of', {'form': 'di'})
+
+
+def test_a_type_condition_sends_no_id_of_an_entry_that_holds_its_type():
+    """An entry that holds its type is matched by a join on it, so a FLEx
+    dictionary, which types every entry and sense, does not put every id in
+    the statement (past SQLite's bound-parameter limit). Only an entry that
+    takes its type from a headword is sent by id."""
+    import copy
+    from fixtures import FakeClient, fake_ws
+    lex = copy.deepcopy(lexicon_raw())
+    lex['items'] += [{'id': f'vi-{i}', 'form': f'x{i}', 'metadata': {'morphType': 'stem'}} for i in range(50)]
+    lex['items'].append({'id': 'vi-erg-s', 'form': '-di', 'metadata': {'gloss': 'ERG', 'parent': 'vi-erg'}})
+    w = fake_ws(FakeClient(lexicon=lex))
+    for pattern in ('suffix', 'stem', 'enclitic'):
+        sent = json.dumps(w.corpus.morph_type_clauses('?m', {'regex': pattern}, pattern, False))
+        assert 'vi-erg"' not in sent and 'vi-1"' not in sent, sent
+        assert 'vi-erg-s' in sent
+
+
+def test_a_morpheme_linked_to_a_sense_goes_by_its_headwords_type(live_client):
+    """-di linked to an untyped sense of the suffix entry -di is a suffix, and
+    its own enclitic is hidden by that, on the real engine."""
+    raw = document_raw()
+    tokens = next(tl for tl in raw['text_layers'][0]['token_layers'] if tl['id'] == MORPH_LAYER)['tokens']
+    next(t for t in tokens if t['id'] == 'm-1b')['metadata']['morphType'] = 'enclitic'
+    s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: lexicon_raw()}, name='igt-agent test, sense type')
+    try:
+        c = s.client
+        sense = c.vocab_items.create(s.ids[VOCAB], '-di', {'gloss': 'ERG', 'parent': s.ids['vi-erg']})['id']
+        c.vocab_links.delete(s.ids['l-2'])
+        c.vocab_links.create(sense, [s.ids['m-1b']])
+        w = Workspace(c, load_project(c, s.project_id))
+        out = call_tool(w, 'sequence_search', {'sequence': [{'type': 'suffix'}, {'form': 'gam'}]})
+        assert out.startswith('1 sentence match'), out
+        assert call_tool(w, 'sequence_search', {'sequence': [{'type': 'enclitic', 'form': 'Ali-di'}]}).startswith('No'), out
+    finally:
+        s.delete()
+
+
+def test_a_bulk_analysis_card_shows_the_old_segmentation_by_the_entrys_type(live_client):
+    """The card of set_analysis_for_form joins a linked morpheme that holds
+    no type by its entry's: -di, linked to the enclitic entry -di, reads
+    Ali=di."""
+    import copy
+    raw = document_raw()
+    tokens = next(tl for tl in raw['text_layers'][0]['token_layers'] if tl['id'] == MORPH_LAYER)['tokens']
+    next(t for t in tokens if t['id'] == 'm-1b')['metadata'].pop('morphType')
+    lex = copy.deepcopy(lexicon_raw())
+    next(it for it in lex['items'] if it['id'] == 'vi-erg')['metadata']['morphType'] = 'enclitic'
+    s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: lex}, name='igt-agent test, enclitic entry')
+    try:
+        w = workspace(s)
+        call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'de'}]})
+        assert ': Ali=di → ' in w.ops[0]['label'], w.ops[0]['label']
+    finally:
+        s.delete()

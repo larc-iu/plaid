@@ -9,6 +9,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from plaid_client.workflows.igt import precedence
+from plaid_client.workflows.igt.senses import morpheme_morph_type
 
 from ..core import keep as _keep, rules, work
 from ..core.bidi import plain_quote, qv
@@ -1526,7 +1527,9 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         raise ToolError('This project has no morpheme layer.')
     out = parse_analysis(ws, morphemes)
     with ws.corpus.within(document):
-        words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
+        words, chains, spans, entries = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
+    # A linked morpheme goes by its entry's type and stores no copy of it (R2).
+    types = ws.corpus.entry_types() if entries else {}
     _check_cap(len(words))
     ws.note_versions(w['document'] for w in words)
     budget = _docs_of([[w] for w in words])
@@ -1545,7 +1548,8 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
         chain = sorted(chains.get(w['id']) or [], key=lambda m: (precedence(m), m.get('id')))
         existing = [{'id': m['id'], 'span_ids': spans.get(m['id']) or []} for m in chain]
         seg = join_morphemes([((m.get('metadata') or {}).get('form') or m.get('value') or '',
-                               (m.get('metadata') or {}).get('morphType')) for m in chain])
+                               morpheme_morph_type(m.get('metadata'), types.get(entries.get(m['id']))))
+                              for m in chain])
         had_values = sum(len(spans.get(m['id']) or []) for m in chain)
         head = ws.corpus.label_ref(w['document'], w['id'], budget) + f' {qv(w.get("value") or "")}'
         op, note = analysis_op(ws, head, w.get('value') or '', w['id'], w['text'], w['begin'], w['end'],

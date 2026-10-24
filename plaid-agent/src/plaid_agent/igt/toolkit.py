@@ -164,7 +164,8 @@ TOOLS = [
         ['document']),
     _fn('set_morpheme',
         'PLAN: change one morpheme\'s stored form and/or type in place, keeping the chain and every value on it '
-        '(e.g. make sN.wN.m2 an enclitic). type "" clears the type.',
+        '(e.g. make sN.wN.m2 an enclitic). type "" clears the type. A linked morpheme goes by its entry\'s type: '
+        'set that with set_entry_field (field "morphType").',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The morpheme, sN.wN.mN.'},
          'form': {'type': 'string'}, 'type': {'type': 'string'}}, ['document', 'ref']),
     _fn('set_orthography',

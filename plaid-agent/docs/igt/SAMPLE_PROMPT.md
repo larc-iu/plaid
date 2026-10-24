@@ -173,7 +173,7 @@ PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morpheme
 
 ### set_morpheme
 
-PLAN: change one morpheme's stored form and/or type in place, keeping the chain and every value on it (e.g. make sN.wN.m2 an enclitic). type "" clears the type.
+PLAN: change one morpheme's stored form and/or type in place, keeping the chain and every value on it (e.g. make sN.wN.m2 an enclitic). type "" clears the type. A linked morpheme goes by its entry's type: set that with set_entry_field (field "morphType").
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The morpheme, sN.wN.mN.

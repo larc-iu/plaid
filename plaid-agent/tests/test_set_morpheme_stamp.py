@@ -48,12 +48,13 @@ def test_an_approved_form_correction_is_stamped():
 
 def test_an_approved_type_correction_is_stamped_and_a_contributors_is_contributed():
     w = fake_ws(FakeClient(documents={'d1': machine_analysed()}))
-    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m2', 'type': 'prefix'})
+    # m1, since m2 is linked and goes by its entry's type.
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': 'root'})
     w.client.calls.clear()
     execute_plan(w.client, w.ops, source=SOURCE, label='l', project=w.project,
                  stamp_mode='contributed', contributor='bob@x.com')
-    patch = _token_patch(w.client, 'm-1b')
-    assert patch['morphType'] == 'prefix'
+    patch = _token_patch(w.client, 'm-1a')
+    assert patch['morphType'] == 'root'
     assert patch['prov'] == 'contributed' and patch['provSource'] == 'user:bob@x.com'
     assert patch['provConfirmed'] is None
 

@@ -1744,7 +1744,8 @@ def _derived_morpheme(ws: Workspace, word: Dict[str, Any]) -> Dict[str, Any]:
 
 def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     """Word occurrences of a form with their current morpheme chains (ids,
-    precedence, span ids), without loading documents."""
+    precedence, span ids) and the entry each linked morpheme of them is linked
+    to, without loading documents."""
     c = ws.corpus
     where = [c.word('?w', value=rx(form, whole=True))]
     if skip_analyzed:
@@ -1756,6 +1757,7 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     words = [r[0] for r in rows if isinstance(r[0], dict) and not c.ignored(r[0].get('value'))]
     chains: Dict[str, List[dict]] = defaultdict(list)
     spans: Dict[str, List[str]] = defaultdict(list)
+    entries: Dict[str, str] = {}
     if c.M and words:
         # Even an unanalyzed word carries its default morpheme, which the executor reuses.
         base = [c.word('?w', value=rx(form, whole=True))] + c.in_word('?m', '?w')
@@ -1767,4 +1769,8 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
             if isinstance(sp, dict) and isinstance(m, dict):
                 spans[m['id']].append(sp['id'])
                 ws.note_metadata(sp['id'], sp.get('metadata'))
-    return words, chains, spans
+        if c.p.vocabs:
+            for m, v in c.entities(base + [['vocab-link', '?m', '?v']], ['?m', '?v'], ROW_LIMIT):
+                if isinstance(m, dict) and isinstance(v, dict):
+                    entries[m['id']] = v['id']
+    return words, chains, spans, entries

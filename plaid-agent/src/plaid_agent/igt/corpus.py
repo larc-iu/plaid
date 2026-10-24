@@ -29,6 +29,15 @@ LABEL_DOC_BUDGET = 10      # documents a bulk tool may load just to write positi
 RENDER_DOC_BUDGET = 8
 
 
+#: Any type an entry holds of its own: a non-empty string.
+ANY_TYPE = {'regex': '.+'}
+
+
+def _own_type(item: dict) -> bool:
+    t = (item.get('metadata') or {}).get('morphType')
+    return isinstance(t, str) and t != ''
+
+
 class Corpus(BaseCorpus):
     """Query helpers bound to one workspace (its client, project, caches)."""
 
@@ -135,22 +144,45 @@ class Corpus(BaseCorpus):
                 tally[(*keys, t or None)] += k
         return [[*key, n] for key, n in sorted(tally.items(), key=lambda kv: -kv[1])]
 
+    def inherited_types(self) -> Dict[str, str]:
+        """The entries of the project's lexicons that go by a type they do not
+        hold of their own (a sense under a typed headword), by id."""
+        out: Dict[str, str] = {}
+        for v in self.p.vocabs:
+            own = {it['id'] for it in self.ws.lexicon(v) if _own_type(it)}
+            out.update((i, t) for i, t in self.ws.entry_types(v).items() if i not in own)
+        return out
+
     def morph_type_clauses(self, var: str, spec: Dict[str, Any], pattern: str, regex: bool) -> List[list]:
         """A morpheme ``var`` that goes by a morph type ``spec`` matches
         (``rx(pattern, regex=regex, whole=not regex)``): one linked to an entry
         whose type matches, or one whose entry goes by none, or that has none,
-        and whose own type matches."""
+        and whose own type matches.
+
+        An entry that holds its type is matched by a join on it, and only the
+        entries that take theirs from a headword are sent by id: a FLEx
+        dictionary types every entry and sense, and the ids of all of them
+        could pass SQLite's limit on a statement's bound parameters."""
         own = [self.morph(var, metadata={'morphType': spec})]
         types = self.entry_types() if self.p.vocabs else {}
         if not types:
             return own
+        inherited = self.inherited_types()
         test = compile_local(pattern, literal=not regex, case_insensitive=True, whole=not regex)
-        hits = [i for i, t in types.items() if test.search(t)]
-        untyped = own + [['not', ['link', f'{var}n', {'item': list(types)}], ['link-token', f'{var}n', var]]]
-        if not hits:
+        untyped = own + [['not', ['vocab', f'{var}n', {'metadata': {'morphType': ANY_TYPE}}],
+                          ['vocab-link', var, f'{var}n']]]
+        if inherited:
+            untyped.append(['not', ['link', f'{var}i', {'item': list(inherited)}], ['link-token', f'{var}i', var]])
+        branches = []
+        if any(test.search(t) for i, t in types.items() if i not in inherited):
+            branches.append([self.morph(var), ['vocab', f'{var}h', {'metadata': {'morphType': spec}}],
+                             ['vocab-link', var, f'{var}h']])
+        hits = [i for i, t in inherited.items() if test.search(t)]
+        if hits:
+            branches.append([self.morph(var), ['link', f'{var}l', {'item': hits}], ['link-token', f'{var}l', var]])
+        if not branches:
             return untyped
-        linked = [self.morph(var), ['link', f'{var}l', {'item': hits}], ['link-token', f'{var}l', var]]
-        return [['or', linked, untyped]]
+        return [['or', *branches, untyped]]
 
     # --- conventions ----------------------------------------------------------
 

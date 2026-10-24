@@ -47,6 +47,39 @@ def test_set_analysis_takes_several_words_and_stages_them_together():
     assert 's2.w1 (note: forms "gamar" differ from the surface "Gam-ar"' in out
 
 
+def _no_type_copy():
+    """The fixture as after R2's backfill: m-1b, linked to the suffix entry
+    vi-erg, holds no type of its own."""
+    from fixtures import document_raw
+    raw = document_raw()
+    for tl in raw['text_layers']:
+        for tk in tl['token_layers']:
+            for t in tk.get('tokens', []):
+                if t['id'] == 'm-1b':
+                    t['metadata'] = {'form': 'di'}
+    return raw
+
+
+def test_set_morpheme_refuses_a_type_on_a_linked_morpheme_and_points_to_its_entry():
+    # A linked morpheme goes by its entry's type, so a type planned on the
+    # morpheme would change nothing anyone sees. The editor edits the entry.
+    w = fake_ws(FakeClient(documents={'d1': _no_type_copy()}))
+    for t in ('enclitic', 'suffix', ''):
+        out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m2', 'type': t})
+        assert 'linked to "-di"' in out and 'set_entry_field' in out and 'unlink_entry' in out, out
+        assert '"suffix"' in out
+    assert w.ops == []
+    # Its form is the morpheme's own.
+    assert 'Planned 1' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m2', 'form': 'de'})
+
+
+def test_set_morpheme_set_back_to_the_stored_type_takes_the_planned_change_back():
+    w = ws()
+    assert 'Planned 1' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'suffix'})
+    out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'enclitic'})
+    assert w.ops == [] and 'Took back' in out
+
+
 def test_set_morpheme_changes_form_or_type_in_place():
     w = ws()
     out = call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'suffix'})
