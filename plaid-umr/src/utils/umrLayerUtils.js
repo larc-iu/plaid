@@ -50,11 +50,9 @@ const REQUIRED = [
 
 const hasFlag = (layer, flag) => layer?.config?.[UMR_NAMESPACE]?.[flag] === true;
 
-// The baseline text layer: the one tagged `baseline`, else the first.
-const findTextLayer = (document) => {
-  const layers = document?.textLayers || [];
-  return findByRole(layers, ROLES.BASELINE) || layers[0] || null;
-};
+// The baseline text layer: the one tagged `baseline`, and none when no layer
+// is, which reads as a project not set up for UMR.
+const findTextLayer = (document) => findByRole(document?.textLayers || [], ROLES.BASELINE) ?? null;
 
 const findTokenLayerByRole = (textLayer, role) => findByRole(textLayer?.tokenLayers, role);
 
