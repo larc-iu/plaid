@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { onTestFinished } from 'vitest';
 
 // What the repo-wide gates (the *.test.js files at this package's root that
 // read every package) share: a `git grep -P` over the tracked files, the
@@ -72,10 +73,12 @@ export const unmarked = (root, hits, tag) => {
 
 /**
  * A throwaway git repo holding `files` (path -> content), every file added,
- * for a gate's self-test. Returns its root.
+ * for a gate's self-test. Returns its root, which is removed when the test
+ * that made it ends.
  */
 export const scratchRepo = (files) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plaid-gate-'));
+  onTestFinished(() => fs.rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '-q', root]);
   for (const [rel, content] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
