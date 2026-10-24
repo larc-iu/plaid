@@ -23,7 +23,7 @@
 // and it is the slowest: precedent means fetching up to MAX_SOURCE_DOCS other
 // documents.
 
-import { IgtDocument } from './IgtDocument.js';
+import { IgtDocument, rebaseVocabLinks } from './IgtDocument.js';
 import { readIgnoredTokens } from './igtConfig.js';
 import {
   ANALYSIS_COPY_SOURCE,
@@ -193,7 +193,14 @@ async function remoteTalliesFor(
       const docId = docIds[i];
       try {
         const raw = await doc.client.documents.get(docId, true);
-        const source = new IgtDocument({ raw, vocabularies: {}, client: doc.client });
+        // Read with this project's vocabularies, so a linked morpheme goes by
+        // its entry's type (a copy without links writes that type). A copy
+        // of them: the constructor adds the source's links to what it is given.
+        const source = new IgtDocument({
+          raw,
+          vocabularies: rebaseVocabLinks(doc.vocabularies),
+          client: doc.client,
+        });
         const srcIgnored = readIgnoredTokens(source.layerInfo.primaryTokenLayer?.config);
         tallies[i] = tallyAnalyses(new Map(), source.sentences, srcIgnored);
       } catch (err) {
@@ -209,7 +216,7 @@ async function remoteTalliesFor(
       });
     }
   };
-  onProgress({ percent: 0, message: `Reading ${countOf(docIds.length, 'document')}…` });
+  onProgress({ percent: null, message: `Reading ${countOf(docIds.length, 'document')}…` });
   await Promise.all(
     Array.from({ length: Math.min(SOURCE_FETCHES_IN_FLIGHT, docIds.length) }, worker),
   );

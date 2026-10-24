@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { runBuiltinAnalysis } from './autoPass.js';
+import { buildRawDoc } from './test-helpers.js';
 
 // A phase that writes stamps its rule's version, whose source texts are a
 // module loaded on first use. Loaded here, outside any test's timeout: in a
@@ -173,6 +174,58 @@ describe('runBuiltinAnalysis: reading the source documents', () => {
     expect(res.stopped).toBe(false);
     expect(doc.gets).toHaveLength(10);
     expect(most).toBe(4);
+  });
+});
+
+// HUNT-recent 9: a linked morpheme's type is its entry's (R2), so a source
+// document read with no vocabularies gave its clitic no type, and a copy with
+// Copy links off wrote `kat-ri` for `kat=ri`.
+describe('runBuiltinAnalysis: an analysis copied from another document', () => {
+  it('keeps the type a linked morpheme reads from its entry, with links not copied', async () => {
+    const entry = { id: 'e-ri', form: 'ri', metadata: { morphType: 'enclitic' } };
+    const source = buildRawDoc({
+      body: 'katri',
+      words: [{ id: 'w-1', begin: 0, end: 5 }],
+      morphemes: [
+        {
+          id: 'm-1',
+          text: 'text-1',
+          begin: 0,
+          end: 5,
+          precedence: 1,
+          metadata: { form: 'kat', morphType: 'stem' },
+        },
+        { id: 'm-2', text: 'text-1', begin: 0, end: 5, precedence: 2, metadata: { form: 'ri' } },
+      ],
+      morphVocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          vocabLinks: [{ id: 'l1', tokens: ['m-2'], vocabItem: { id: 'e-ri', form: 'ri' } }],
+        },
+      ],
+    });
+    source.id = 'src-0';
+    const doc = makeDoc(1);
+    const target = unanalyzed('katri');
+    target.morphemes[0].content = 'katri';
+    doc.sentences = [{ tokens: [{ id: 'w-9', ...target }] }];
+    doc.client.query = vi.fn(async () => ({ results: [['src-0', 'katri', 1]] }));
+    doc.client.documents.get = vi.fn(async () => structuredClone(source));
+    doc.vocabularies = { v1: { id: 'v1', name: 'Lexicon', items: [entry], vocabLinks: [] } };
+    const res = await runBuiltinAnalysis(doc, {
+      copy: true,
+      link: false,
+      copyContents: { segmentation: true, links: false, fields: true },
+    });
+    expect(res.ok).toBe(true);
+    const [proposals] = doc.bulkApplyAnalyses.mock.calls[0];
+    expect(proposals[0].analysis.morphemes.map((m) => [m.form, m.morphType])).toEqual([
+      ['kat', 'stem'],
+      ['ri', 'enclitic'],
+    ]);
+    // The document's own vocabularies are read, never written.
+    expect(doc.vocabularies.v1.vocabLinks).toEqual([]);
   });
 });
 
