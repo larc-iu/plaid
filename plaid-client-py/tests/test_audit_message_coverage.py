@@ -1,7 +1,9 @@
-"""Coverage guard: EVERY write method (POST/PUT/PATCH/DELETE) on the resource
-bundles must accept an ``audit_message`` keyword and thread it into the request
-URL as ``?audit-message=``. Auto-discovers methods via a stubbed session, so a
-new write method added without the param will fail this test.
+"""Coverage guard: EVERY write method (POST/PUT/PATCH/DELETE) on the audited
+resource bundles must accept an ``audit_message`` keyword and thread it into the
+request URL as ``?audit-message=``. A method is a write by the verb it sends,
+found by calling it against a stubbed session, not by its signature, so a new
+write method added without the param fails this test. The twin of the JS
+``auditMessageCoverage.test.js``.
 """
 
 import inspect
@@ -14,6 +16,17 @@ from plaid_client.client import PlaidClient
 
 WRITE = {'POST', 'PUT', 'PATCH', 'DELETE'}
 SENT = 'COVPROBE'
+
+# Bundles whose writes core does not audit: comments, user data, admin and
+# auth, events and messages (the services' real-time routes), operation
+# groups, and the reads.
+UNAUDITED = {'admin', 'audit', 'auth', 'comments', 'events', 'messages', 'operation_groups',
+             'server', 'user_data'}
+# Reads that travel as a POST take no audit message.
+READ_POSTS = {
+    'token_layers.check_constraints', 'span_layers.check_constraints',
+    'relation_layers.check_constraints', 'token_layers.count_matching', 'users.avatar_token',
+}
 
 
 class _Resp:
@@ -43,29 +56,35 @@ def test_every_write_method_threads_audit_message():
     client.session = _Sess()
     checked = []
 
-    def probe(label, method):
+    def call(method, **kw):
         sig = inspect.signature(method)
-        if 'audit_message' not in sig.parameters:
-            return  # GET / non-write
         required = [p for p in sig.parameters.values()
                     if p.default is p.empty
                     and p.kind in (p.POSITIONAL_OR_KEYWORD, p.POSITIONAL_ONLY)
                     and p.name != 'self']
         last.clear()
         try:
-            method(*(['x'] * len(required)), audit_message=SENT)
+            method(*(['x'] * len(required)), **kw)
         except Exception:
-            return
-        if last.get('method') in WRITE:
-            checked.append(label)
-            assert 'audit-message=' + SENT in last.get('url', ''), \
-                f"{label} ({last['method']}) did not thread audit_message: {last.get('url')}"
+            return None
+        return last.get('method')
+
+    def probe(label, method):
+        if call(method) not in WRITE:
+            return  # a read, or a call the stub cannot answer
+        checked.append(label)
+        assert 'audit_message' in inspect.signature(method).parameters, \
+            f'{label} is a write and takes no audit_message'
+        call(method, audit_message=SENT)
+        assert 'audit-message=' + SENT in last.get('url', ''), \
+            f"{label} ({last.get('method')}) did not thread audit_message: {last.get('url')}"
 
     for name, res in vars(client).items():
-        if type(res).__name__.endswith('Resource'):
+        if type(res).__name__.endswith('Resource') and name not in UNAUDITED:
             for mname, fn in inspect.getmembers(res, inspect.ismethod):
-                if not mname.startswith('_'):
-                    probe(f'{name}.{mname}', fn)
+                label = f'{name}.{mname}'
+                if not mname.startswith('_') and label not in READ_POSTS:
+                    probe(label, fn)
     # ``query`` is a read that travels as a POST, so it takes no audit message.
 
     assert len(checked) >= 105, f'expected ~109 write methods, only checked {len(checked)}'
