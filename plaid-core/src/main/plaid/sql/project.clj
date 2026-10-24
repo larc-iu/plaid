@@ -1069,8 +1069,9 @@
                           (write-config! tx table layer-id new-config))))))
 
 (defn dissoc-editor-config-pair
-  "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
-  is the row's own table, as in `assoc-editor-config-pair`.
+  "Remove <editor-name>/<config-key> from the layer's :config JSON, and the
+  namespace when that was its last key. `table` is the row's own table, as in
+  `assoc-editor-config-pair`.
   `acting-user-id` attributes the op (a maintainer-level action). `check`
   is the same compare-and-set as on `assoc-editor-config-pair`. A cell that
   is absent already is not written and the operation leaves no audit row,
@@ -1089,7 +1090,13 @@
                             current (psc/parse-config (:config row))
                             [ed-key cfg-key :as cell] (config-cell-keys editor-name config-key)
                             _ (assert-config-unchanged! current cell (some-> check (assoc :value nil)))
-                            new-config (update current ed-key dissoc cfg-key)]
+                            ;; The last key takes its namespace with it, so a
+                            ;; row whose settings were all unset reads as one
+                            ;; that never had any.
+                            left (dissoc (clojure.core/get current ed-key) cfg-key)
+                            new-config (if (empty? left)
+                                         (dissoc current ed-key)
+                                         (assoc current ed-key left))]
                         (when (contains? (clojure.core/get current ed-key) cfg-key)
                           (write-config! tx table layer-id new-config))))))
 
