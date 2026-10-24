@@ -24,7 +24,7 @@ from plaid_client.workflows.igt.glossing import is_lexical_part
 from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset
 
 from ..core.bidi import qv
-from ..core.tools import ToolError
+from ..core.tools import ToolError, kind_of
 from .vocab import ROLE_STATUS, fields_with_role
 
 PROJECT = 'project'
@@ -71,15 +71,16 @@ def t_tagsets(ws, action: str, tagset: Optional[str] = None, field: Optional[str
         return _edit(ws, _need(tagset, 'tagset'), lexicon, changes or {})
     if act == 'assign':
         if tagset is None:
-            raise ToolError('assign needs tagset: a tagset name, or "" for none.')
+            raise ToolError('assign needs tagset: a tagset name, or "" for none.', kind='invalid-argument')
         return _assign(ws, _need(field, 'field'), tagset, lexicon)
-    raise ToolError('action is one of help, check, edit, assign. Call with action "help" first.')
+    raise ToolError('action is one of help, check, edit, assign. Call with action "help" first.',
+                    kind='invalid-argument')
 
 
 def _need(value, name: str) -> str:
     v = (value or '').strip() if isinstance(value, str) else ''
     if not v:
-        raise ToolError(f'This action needs {name}.')
+        raise ToolError(f'This action needs {name}.', kind='invalid-argument')
     return v
 
 
@@ -91,7 +92,7 @@ def _owner(ws, lexicon: Optional[str]) -> Tuple[str, str, Optional[dict]]:
         try:
             v = ws.project.vocab(lexicon)
         except ValueError as e:
-            raise ToolError(str(e))
+            raise ToolError(str(e), kind=kind_of(e, 'not-found'))
         return v['id'], f'lexicon {qv(v["name"])}', v
     return PROJECT, 'the project', None
 
@@ -156,7 +157,7 @@ def _find(tagsets: Dict[str, dict], name: str) -> Optional[str]:
 
 def _no_tagset(name: str, where: str, tagsets: Dict[str, dict]) -> ToolError:
     return ToolError(f'{where.capitalize()} has no tagset {qv(name)}. Tagsets: '
-                     + (', '.join(qv(n) for n in tagsets) or '(none)'))
+                     + (', '.join(qv(n) for n in tagsets) or '(none)'), kind='not-found')
 
 
 # --- what the fields hold ---------------------------------------------------------
@@ -379,11 +380,12 @@ def _field(ws, owner: str, fields: List[dict], name: str) -> dict:
             if meta:
                 return meta[0]
             raise ToolError(f'{e} Document metadata fields: '
-                            + (', '.join(ws.project.document_metadata) or '(none)'))
+                            + (', '.join(ws.project.document_metadata) or '(none)'), kind=kind_of(e, 'not-found'))
         return next(f for f in fields if f['kind'] == SPAN and f['key'] == layer.layer_id)
     hit = [f for f in fields if f['key'].casefold() == key.casefold()]
     if not hit:
-        raise ToolError(f'No entry field {qv(key)}. Entry fields: ' + ', '.join(f['key'] for f in fields))
+        raise ToolError(f'No entry field {qv(key)}. Entry fields: ' + ', '.join(f['key'] for f in fields),
+                        kind='not-found')
     return hit[0]
 
 
@@ -406,20 +408,20 @@ def _require_maintainer(ws, lexicon: Optional[dict]) -> None:
         what = 'this project'
     if uid not in maintainers:
         raise ToolError(f'Only a maintainer of {what} may change its tagsets, and the user is not one. '
-                        'Tell them who can.')
+                        'Tell them who can.', kind='not-allowed')
 
 
 def _values(raw, name: str) -> List[dict]:
     if raw is None:
         return []
     if not isinstance(raw, list):
-        raise ToolError(f'{name} is a list.')
+        raise ToolError(f'{name} is a list.', kind='invalid-argument')
     out = []
     for v in raw:
         if isinstance(v, str):
             v = {'value': v}
         if not isinstance(v, dict) or not isinstance(v.get('value'), str) or not v['value'].strip():
-            raise ToolError(f'Each value in {name} is a string or {{"value", "description"}}.')
+            raise ToolError(f'Each value in {name} is a string or {{"value", "description"}}.', kind='invalid-argument')
         # Only what the app writes for a value it is given: a stored value's
         # other keys stay as stored, and approval reads back exactly this.
         rec = {'value': v['value'].strip()}
@@ -434,10 +436,11 @@ EDIT_KEYS = ('mode', 'delimiters', 'add', 'remove', 'add_used', 'from_fields', '
 
 def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str:
     if not isinstance(changes, dict):
-        raise ToolError('changes is an object. See action "help".')
+        raise ToolError('changes is an object. See action "help".', kind='invalid-argument')
     unknown = [k for k in changes if k not in EDIT_KEYS]
     if unknown:
-        raise ToolError(f'Unknown in changes: {", ".join(unknown)}. They are: {", ".join(EDIT_KEYS)}.')
+        raise ToolError(f'Unknown in changes: {", ".join(unknown)}. They are: {", ".join(EDIT_KEYS)}.',
+                        kind='invalid-argument')
     owner, where, vocab = _owner(ws, lexicon)
     _require_maintainer(ws, vocab)
     tagsets = planned_tagsets(ws, owner)
@@ -451,7 +454,8 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
         gone = next((op for op in _ops(ws, 'set_tagset', owner)
                      if op['was'].casefold() == name.casefold()), None)
         if gone is not None and gone.get('after') is not None:
-            raise ToolError(f'This plan renames {qv(gone["was"])} to {qv(gone["name"])}: edit {qv(gone["name"])}.')
+            raise ToolError(f'This plan renames {qv(gone["was"])} to {qv(gone["name"])}: edit {qv(gone["name"])}.',
+                            kind='conflict')
         if gone is not None:
             name = gone['was']
     was = prior['was'] if prior else (key or name)
@@ -464,20 +468,20 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
             raise _no_tagset(name, where, tagsets)
         if using:
             raise ToolError(f'{", ".join(f["name"] for f in using)} use {qv(key)}. Assign those fields another '
-                            'tagset or none first.')
+                            'tagset or none first.', kind='conflict')
         return _stage_tagset(ws, owner, was, key, stored, None, f'Delete the tagset {qv(key)}', notes)
 
     t = dict(tagsets[key]) if key is not None else {'name': name, 'mode': 'suggest', 'delimiters': '', 'values': []}
     new = key is None
     if new and changes.get('rename_to'):
-        raise ToolError(f'{where.capitalize()} has no tagset {qv(name)} to rename.')
+        raise ToolError(f'{where.capitalize()} has no tagset {qv(name)} to rename.', kind='not-found')
     said: List[str] = []
     if 'mode' in changes:
         mode = str(changes['mode'] or '').strip().lower()
         if mode == 'open':
             mode = 'suggest'
         if mode not in MODES:
-            raise ToolError('mode is suggest, mixed or closed.')
+            raise ToolError('mode is suggest, mixed or closed.', kind='invalid-argument')
         if mode != t['mode']:
             said.append(f'mode {t["mode"]} → {mode}' if not new else f'mode {mode}')
         t['mode'] = mode
@@ -509,15 +513,16 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     used = changes.get('add_used')
     if used is not None:
         if used not in ('tags', 'all'):
-            raise ToolError('add_used is "tags" or "all".')
+            raise ToolError('add_used is "tags" or "all".', kind='invalid-argument')
         sources = using
         if changes.get('from_fields') is not None:
             names = changes['from_fields']
             if not isinstance(names, list) or not names:
-                raise ToolError('from_fields is a list of field names.')
+                raise ToolError('from_fields is a list of field names.', kind='invalid-argument')
             sources = [_field(ws, owner, fields, str(n)) for n in names]
         if not sources:
-            raise ToolError(f'No field uses {qv(name)}, so add_used has nothing to read. Name fields in from_fields.')
+            raise ToolError(f'No field uses {qv(name)}, so add_used has nothing to read. Name fields in from_fields.',
+                            kind='not-found')
         ws.corpus.forget_clipping()
         reading = {**t, 'values': values, 'mode': 'suggest'}
         before = len(added)
@@ -539,7 +544,7 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
             raise ToolError(f'Nothing planned: {words} of the {n_added} values add_used would add are word glosses, '
                             'which a closed list would hold as tags. First ask the user whether they mean mixed (tags '
                             'enforced, word glosses free). Then call again, listing in add the values they want '
-                            'listed.')
+                            'listed.', kind='conflict')
         if words:
             notes.append(ws.warned(f'{words} of them are ordinary word glosses, which make a tag list a word list: '
                                    'say so to the user, and ask before planning it unless they asked for exactly '
@@ -552,7 +557,8 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     reserved = _reserved_values(vocab, {was, key})
     for v in _values(changes.get('remove'), 'remove'):
         if v['value'] in reserved:
-            raise ToolError(f'{qv(v["value"])} is a reserved Status value and cannot be removed. Nothing planned.')
+            raise ToolError(f'{qv(v["value"])} is a reserved Status value and cannot be removed. Nothing planned.',
+                            kind='not-allowed')
         if v['value'] in by_value:
             values.remove(by_value.pop(v['value']))
             removed.append(v['value'])
@@ -570,14 +576,14 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     if rename is not None:
         rename = str(rename).strip()
         if not rename:
-            raise ToolError('rename_to is a name.')
+            raise ToolError('rename_to is a name.', kind='invalid-argument')
         clash = _find(tagsets, rename)
         if clash is not None and clash != key:
-            raise ToolError(f'{where.capitalize()} already has a tagset {qv(clash)}.')
+            raise ToolError(f'{where.capitalize()} already has a tagset {qv(clash)}.', kind='conflict')
         taken = _find(_stored_tagsets(ws, owner), rename)
         if taken is not None and taken != was:
             raise ToolError(f'{qv(taken)} is a stored tagset\'s name, which this plan frees: a tagset can take it '
-                            'in a later plan, once this one is approved.')
+                            'in a later plan, once this one is approved.', kind='conflict')
         if rename != key:
             said.append(f'rename to {qv(rename)}')
             target = rename

@@ -109,14 +109,14 @@ def _binding(row: Dict[str, Any], doc: UdDoc, enhanced: Optional[str]) -> str:
 def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limit: int = None) -> str:
     """Sentences matching a Grew pattern, with the matched words marked."""
     if not isinstance(pattern, str) or not pattern.strip():
-        raise ToolError('Give a Grew pattern, e.g. pattern { V [upos=VERB]; V -[nsubj]-> S }.')
+        raise ToolError('Give a Grew pattern, e.g. pattern { V [upos=VERB]; V -[nsubj]-> S }.', kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     try:
         compiled = parse_and_compile(pattern, layers_of(ws.project), limit=FETCH)
     except GrewParseError as e:
-        raise ToolError(_parse_error(e))
+        raise ToolError(_parse_error(e), kind='query-refused')
     except GrewUnsupportedError as e:
-        raise ToolError(f'Not supported (the Search tab refuses it too): {e.message}')
+        raise ToolError(f'Not supported (the Search tab refuses it too): {e.message}', kind='query-refused')
     echo = _echo(pattern)
     notes = ''.join(f'\n(note) {w}' for w in compiled.warnings)
     if compiled.impossible:
@@ -132,7 +132,8 @@ def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limi
         except ToolError as e:
             if getattr(e.__context__, 'status', None) == 408:
                 raise ToolError('The engine gave up on this pattern after 30 s. Name a document, or '
-                                'constrain the nodes more (a upos, a lemma, an edge label).') from None
+                                'constrain the nodes more (a upos, a lemma, an edge label).',
+                                kind='too-large') from None
             raise
         rows = [dict(zip(q['find'], r)) for r in res.get('results') or []]
         truncated = bool(res.get('truncated'))

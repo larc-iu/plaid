@@ -30,6 +30,7 @@ from plaid_client.workflows.umr import layers as umr_layers
 from ..core.bidi import plain_quote
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer  # noqa: F401  (re-exported for the tools)
+from ..core.tools import ValueRefusal
 
 
 # --- project ----------------------------------------------------------------
@@ -100,8 +101,8 @@ def parse_ref(ref: str) -> Tuple[int, Optional[str]]:
     """``s3`` -> (3, None); ``s3.s3e`` -> (3, 's3e')."""
     m = REF_RE.match(ref or '')
     if not m:
-        raise ValueError(f'Bad reference "{ref}": use s<n> for a sentence and s<n>.<variable> for '
-                         f'a node in it, e.g. s3 or s3.s3e')
+        raise ValueRefusal(f'Bad reference "{ref}": use s<n> for a sentence and s<n>.<variable> for '
+                           f'a node in it, e.g. s3 or s3.s3e', kind='invalid-argument')
     return int(m.group(1)), m.group(2)
 
 
@@ -123,7 +124,7 @@ def by_number(doc: UmrDoc, number: int) -> Sentence:
     file's own in a document numbered by its file, else its position."""
     s = doc.by_number(number)
     if s is None:
-        raise ValueError(f's{number}: {numbering(doc)}')
+        raise ValueRefusal(f's{number}: {numbering(doc)}', kind='not-found')
     return s
 
 
@@ -133,13 +134,13 @@ def resolve(doc: UmrDoc, ref: str):
     number, var = parse_ref(ref)
     s = doc.by_number(number)
     if s is None:
-        raise ValueError(f'{ref}: {numbering(doc)}')
+        raise ValueRefusal(f'{ref}: {numbering(doc)}', kind='not-found')
     if var is None:
         return s
     node = s.node(var)
     if node is None:
         known = ', '.join(n.var for n in s.nodes[:20]) or 'none'
-        raise ValueError(f'{ref}: sentence s{number} has no node {var}. Its nodes: {known}')
+        raise ValueRefusal(f'{ref}: sentence s{number} has no node {var}. Its nodes: {known}', kind='not-found')
     return node
 
 

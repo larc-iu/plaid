@@ -38,7 +38,7 @@ def _token_of(ws: Workspace, doc: UdDoc, ref: str) -> Token:
     if isinstance(thing, Word):
         return thing.token
     raise ToolError(f'{ref} is a sentence. Name a token: s{thing.index}.w1, or s{thing.index}.w1-2 '
-                    f'for one that is already a multi-word token.')
+                    f'for one that is already a multi-word token.', kind='invalid-argument')
 
 
 def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None) -> str:
@@ -50,11 +50,12 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
         forms = [forms]
     clean = [f.strip() for f in (forms or []) if isinstance(f, str) and f.strip()]
     if not clean:
-        raise ToolError('Give forms: the words this token holds, in order, as a list of strings.')
+        raise ToolError('Give forms: the words this token holds, in order, as a list of strings.',
+                        kind='invalid-argument')
     sentence = next(s for s in doc.sentences if any(t is token for t in s.tokens))
     if clean == [w.form for w in token.words]:
         raise ToolError(f'Nothing to change: "{token.surface}" in s{sentence.index} already holds '
-                        + ' + '.join(f'"{f}"' for f in clean) + '.')
+                        + ' + '.join(f'"{f}"' for f in clean) + '.', kind='conflict')
     # A stand-in (no UD word yet) holds nothing, so its token's words are
     # made, not respelled.
     stored = [w for w in token.words if not w.virtual]
@@ -65,7 +66,8 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
         # wanted ten tokens (2026-10-12 survey).
         raise ToolError(f'"{visible(token.surface)}" in s{sentence.index} holds whitespace, so this would make '
                         f'it ONE multi-word token of {len(clean)} words, not {len(clean)} tokens. Nothing was '
-                        f'planned. To make tokens of it, use split_token on s{sentence.index}.{token.ref_range}.')
+                        f'planned. To make tokens of it, use split_token on s{sentence.index}.{token.ref_range}.',
+                        kind='invalid-argument')
 
     annotated = sum(1 for w in token.words for f in ('lemma', 'upos', 'xpos', 'features')
                     if w.value(f))
@@ -218,14 +220,14 @@ def _pieces(surface: str, parts) -> List[tuple]:
         found = [(m.start(), m.end()) for m in re.finditer(r'\S+', surface)]
         if len(found) < 2:
             raise ToolError(f'"{visible(surface)}" holds no space to split at. Give parts: the new tokens\' '
-                            'texts in order, e.g. ' + _example(surface) + '.')
+                            'texts in order, e.g. ' + _example(surface) + '.', kind='invalid-argument')
         return found
     if isinstance(parts, str):
         parts = [parts]
     texts = [p.strip() for p in parts if isinstance(p, str) and p.strip()]
     if len(texts) < 2:
         raise ToolError('Give parts: two or more texts that spell the token in order, e.g. '
-                        + _example(surface) + '.')
+                        + _example(surface) + '.', kind='invalid-argument')
     out, at = [], 0
     for p in texts:
         while at < len(surface) and surface[at].isspace():
@@ -235,12 +237,14 @@ def _pieces(surface: str, parts) -> List[tuple]:
             rest = surface[at:].strip()
             raise ToolError(f'The parts must spell "{visible(surface)}" in order, without the spaces '
                             f'between them. ' + (f'After "{visible(done)}" comes ' if done else 'It starts ')
-                            + f'"{visible(clip(rest))}", not "{visible(p)}". Nothing was planned.')
+                            + f'"{visible(clip(rest))}", not "{visible(p)}". Nothing was planned.',
+                            kind='invalid-argument')
         out.append((at, at + len(p)))
         at += len(p)
     if surface[at:].strip():
         raise ToolError(f'The parts leave out "{visible(surface[at:].strip())}" at the end of '
-                        f'"{visible(surface)}". Every letter goes in a part. Nothing was planned.')
+                        f'"{visible(surface)}". Every letter goes in a part. Nothing was planned.',
+                        kind='invalid-argument')
     return out
 
 
@@ -259,7 +263,7 @@ def t_split_token(ws: Workspace, document: str = None, ref: str = None, parts=No
     doc = ws.doc(document)
     _guards(ws, doc)
     if not ref:
-        raise ToolError('Give ref: the token, "s3.w2", or "s3.w2-3" for a multi-word token.')
+        raise ToolError('Give ref: the token, "s3.w2", or "s3.w2-3" for a multi-word token.', kind='invalid-argument')
     token = _token_of(ws, doc, ref)
     sentence = next(s for s in doc.sentences if any(t is token for t in s.tokens))
     pieces = _pieces(token.surface, parts)

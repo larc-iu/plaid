@@ -155,12 +155,12 @@ class Reach:
             return named[0]
         if len(named) > 1:
             raise ToolError(f'Several projects in this conversation are named "{wanted}"; use an id: '
-                            + ', '.join(p.id for p in named))
+                            + ', '.join(p.id for p in named), kind='ambiguous')
         starts = [p for p in projects if (p.name or '').casefold().startswith(key)]
         if len(starts) == 1:
             return starts[0]
         raise ToolError(f'No project "{wanted}" in this conversation. It reads: '
-                        + ', '.join(f'"{label}"' for label in self.labels()) + '.')
+                        + ', '.join(f'"{label}"' for label in self.labels()) + '.', kind='not-found')
 
     def workspace(self, project: Any):
         """The workspace for ``project`` (see :meth:`resolve`), made on first
@@ -209,7 +209,7 @@ def target(ws, project: Any):
     wanted = str(project).strip()
     if wanted == ws.project.id or wanted.casefold() == (ws.project.name or '').casefold():
         return ws
-    raise ToolError(f'No project "{wanted}" in this conversation. It reads "{ws.project.name}" only.')
+    raise ToolError(f'No project "{wanted}" in this conversation. It reads "{ws.project.name}" only.', kind='not-found')
 
 
 def route(ws, name: str, args: Any) -> Tuple[Any, Any]:

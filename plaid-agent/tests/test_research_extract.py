@@ -14,30 +14,30 @@ from plaid_agent.research.records import error_class, snake, turn_end, uuid7_tim
 
 
 @pytest.mark.parametrize('text,cls', [
-    ('Error: Query rejected: HTTP 400 :find must be a list of vars', 'query_rejected'),
+    ('Error: Query rejected: HTTP 400 :find must be a list of vars', 'query-refused'),
     ('Error: "Gloss" names several fields; say which: Gloss (Word), Gloss (Morpheme)', 'ambiguous'),
     ('Error: Several entries match "kai"; pass entry_id', 'ambiguous'),
-    ('Error: No lexicon entry "kai". Use read_lexicon to look', 'not_found'),
-    ('Error: s1.w2: sentence s1 has 1 words', 'not_found'),
-    ("Error: lexicon_entry cannot be called with those arguments. It takes: form.", 'bad_arguments'),
-    ('Error: That would bring the plan to 3163 changes, more than the 3000 one plan may hold.', 'plan_limit'),
-    ('Error: Traceback (most recent call last):\n  File "x"', 'code_exception'),
+    ('Error: No lexicon entry "kai". Use read_lexicon to look', 'not-found'),
+    ('Error: s1.w2: sentence s1 has 1 words', 'not-found'),
+    ("Error: lexicon_entry cannot be called with those arguments. It takes: form.", 'invalid-argument'),
+    ('Error: That would bring the plan to 3163 changes, more than the 3000 one plan may hold.', 'too-large'),
+    ('Error: Traceback (most recent call last):\n  File "x"', 'code-failed'),
     ('Error: No parser is connected to this project right now.', 'unavailable'),
-    ('Error: query failed, which is a fault in the tool rather than in the request.', 'tool_fault'),
-    ('Error: s1.w5 already starts sentence s1.', 'plan_conflict'),
-    ('Error: s2.w3 is not a morpheme (sN.wN.mN)', 'wrong_level'),
-    ('Error: s1.w1.m1 is not a word (sN.wN)', 'wrong_level'),
-    ('Error: s1.w1 is not a sentence (sN)', 'wrong_level'),
-    ('Error: s4 is not a sentence. A comment sits on a sentence (s3) or on the document.', 'wrong_level'),
-    ('Error: s3.w2-3 names a sentence or a multi-word token. Name the WORD the new one goes after.', 'wrong_level'),
-    ('Error: s3.w2-3 is a multi-word token, which carries no annotation of its own.', 'wrong_level'),
-    ('Error: s1: link words (sN.wN) or morphemes (sN.wN.mN), not sentences', 'wrong_level'),
-    ('Error: s1.w1.m1: discard_analysis works on words (sN.wN), not single morphemes', 'wrong_level'),
-    ('Error: "Gloss" is a word field, not a morpheme field; use set_field for it', 'wrong_level'),
+    ('Error: query failed, which is a fault in the tool rather than in the request.', 'tool-fault'),
+    ('Error: s1.w5 already starts sentence s1.', 'conflict'),
+    ('Error: s2.w3 is not a morpheme (sN.wN.mN)', 'invalid-argument'),
+    ('Error: s1.w1.m1 is not a word (sN.wN)', 'invalid-argument'),
+    ('Error: s1.w1 is not a sentence (sN)', 'invalid-argument'),
+    ('Error: s4 is not a sentence. A comment sits on a sentence (s3) or on the document.', 'invalid-argument'),
+    ('Error: s3.w2-3 names a sentence or a multi-word token. Name the WORD the new one goes after.', 'invalid-argument'),
+    ('Error: s3.w2-3 is a multi-word token, which carries no annotation of its own.', 'invalid-argument'),
+    ('Error: s1: link words (sN.wN) or morphemes (sN.wN.mN), not sentences', 'invalid-argument'),
+    ('Error: s1.w1.m1: discard_analysis works on words (sN.wN), not single morphemes', 'invalid-argument'),
+    ('Error: "Gloss" is a word field, not a morpheme field; use set_field for it', 'invalid-argument'),
     ('Error: s1."mar": s1 has 2 words spelled "mar": s1.w2, s1.w5. Name one by its number.', 'ambiguous'),
-    ('Error: s1."mar" #3: s1 has 2 word(s) spelled "mar", so there is no #3.', 'not_found'),
-    ('Error: s1.w2 "mar": s1.w2 is "a", not "mar" ("mar" is s1.w5). Name the word by its number.', 'not_found'),
-    ('Error: s1.w1.m2: in the analysis this plan gives "Vamos", m2 is "-mos", not "-os".', 'not_found'),
+    ('Error: s1."mar" #3: s1 has 2 word(s) spelled "mar", so there is no #3.', 'not-found'),
+    ('Error: s1.w2 "mar": s1.w2 is "a", not "mar" ("mar" is s1.w5). Name the word by its number.', 'not-found'),
+    ('Error: s1.w1.m2: in the analysis this plan gives "Vamos", m2 is "-mos", not "-os".', 'not-found'),
     ('Error: something new', 'other'),
     (None, 'unknown'),
 ])
@@ -131,7 +131,8 @@ def test_a_failed_turns_calls_are_read_off_its_own_item():
     assert turn['asked_at'] == '2026-10-06T01:00:00.000Z' and turn['created_at'] == '2026-10-06T01:00:09.000Z'
     first, second = conv.tool_calls
     assert first['result_kept'] and not first['failed'] and first['arg_names'] == ['pattern']
-    assert second['error_class'] == 'bad_arguments' and second['arg_names'] == ['form']
+    assert second['error_class'] == 'invalid-argument' and second['arg_names'] == ['form']
+    assert second['error_class_from'] == 'text' and first['error_class_from'] is None
     assert {c['turn_end'] for c in conv.tool_calls} == {'failed'}
     assert arg_names(None) is None and arg_names('not json') == ['(not an object)']
     assert arg_names({'x' * 40: 1}) == ['x' * 23 + '…']
@@ -460,5 +461,5 @@ def test_a_step_is_failed_only_by_its_flag_in_every_shape():
         conv = rows(steps, calls)
         [row] = conv.tool_calls
         assert row['failed'] is want, (steps, row)
-        assert row['error_class'] == ('not_found' if want else None)
+        assert row['error_class'] == ('not-found' if want else None)
         assert conv.turns[0]['n_failed_steps'] == int(want)

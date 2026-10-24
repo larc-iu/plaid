@@ -307,12 +307,12 @@ def t_read_guideline(ws, title: str) -> str:
     two."""
     guidelines = in_reading_order(getattr(ws.project, 'guidelines', None) or [])
     if not guidelines:
-        raise ToolError('This project has no guidelines.')
+        raise ToolError('This project has no guidelines.', kind='not-found')
     wanted = str(title or '').strip().casefold()
     found = [g for g in guidelines if g.title.casefold() == wanted]
     if not found:
         have = ', '.join(f'"{g.title}"' for g in guidelines)
-        raise ToolError(f'No guideline is titled "{title}". This project has: {have}.')
+        raise ToolError(f'No guideline is titled "{title}". This project has: {have}.', kind='not-found')
     if len(found) == 1:
         return truncate(_one(found[0]))
     preamble = f'This project has {len(found)} guidelines titled "{found[0].title}". All of them:'
@@ -365,10 +365,10 @@ def _resolve_one(ws, title: str):
     if not found:
         have = ', '.join(f'"{g.title}"' for g in guidelines) or 'none'
         raise ToolError(f'No guideline is titled "{title}". This project has: {have}. '
-                        f'Use add_guideline to write a new one.')
+                        f'Use add_guideline to write a new one.', kind='not-found')
     if len(found) > 1:
         raise ToolError(f'This project has {len(found)} guidelines titled "{found[0].title}", so that '
-                        f'title does not say which to revise. Ask the user which one they mean.')
+                        f'title does not say which to revise. Ask the user which one they mean.', kind='ambiguous')
     return found[0]
 
 
@@ -383,14 +383,14 @@ def title_cap(client, default: int = TITLE_CHARS_FALLBACK) -> int:
 
 def _check_draft(ws, title: str, body: str) -> None:
     if title is not None and not str(title).strip():
-        raise ToolError('A guideline needs a title.')
+        raise ToolError('A guideline needs a title.', kind='invalid-argument')
     if title is not None:
         cap = title_cap(ws.client)
         if len(str(title)) > cap:
-            raise ToolError(f'A guideline title is at most {cap} characters.')
+            raise ToolError(f'A guideline title is at most {cap} characters.', kind='too-large')
     if body is not None and len(str(body)) > DRAFT_BODY_CHARS:
         raise ToolError(f'Keep a guideline under {DRAFT_BODY_CHARS} characters. A guideline states one '
-                        f'convention; anything longer is several, and belongs in several guidelines.')
+                        f'convention; anything longer is several, and belongs in several guidelines.', kind='too-large')
 
 
 def t_add_guideline(ws, title: str, body: str) -> str:
@@ -431,15 +431,16 @@ def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:
     """PLAN: change one passage of a guideline, leaving the rest exactly as it is."""
     g = _resolve_one(ws, title)
     if not str(find or ''):
-        raise ToolError('Say which text to change. To replace the whole guideline, use rewrite_guideline.')
+        raise ToolError('Say which text to change. To replace the whole guideline, use rewrite_guideline.',
+                        kind='invalid-argument')
     body = g.body or ''
     hits = body.count(find)
     if hits == 0:
         raise ToolError(f'That text is not in "{g.title}". Read it first and quote it exactly, '
-                        f'character for character, including punctuation and line breaks.')
+                        f'character for character, including punctuation and line breaks.', kind='not-found')
     if hits > 1:
         raise ToolError(f'That text appears {hits} times in "{g.title}", so it does not say which to '
-                        f'change. Quote more around it until it is unique.')
+                        f'change. Quote more around it until it is unique.', kind='ambiguous')
     if find == replace:
         return 'That guideline already says this. Nothing planned.'
     _check_draft(ws, None, body.replace(find, replace))

@@ -369,7 +369,8 @@ class Workspace(BaseWorkspace):
         the same in the Comments tab whoever posted it."""
         if not ref:
             if field:
-                raise ToolError('field needs a ref (the annotated sentence, word, or morpheme)')
+                raise ToolError('field needs a ref (the annotated sentence, word, or morpheme)',
+                                kind='invalid-argument')
             return 'document', doc.id, doc.name or 'This document', doc.name
         obj = resolve(doc, ref)
         if isinstance(obj, Sentence):
@@ -383,7 +384,7 @@ class Workspace(BaseWorkspace):
             f = self.project.field(field)
             sp = obj.fields.get(f.name)
             if not sp:
-                raise ToolError(f'{ref} has no {f.name} value to comment on')
+                raise ToolError(f'{ref} has no {f.name} value to comment on', kind='not-found')
             if isinstance(obj, Sentence):
                 return 'span', sp.id, f'{f.name} of sentence {s.index}', s.text
             head = f'{f.name} of {m.form}' if m else f'{f.name} of {w.surface}'
@@ -393,7 +394,7 @@ class Workspace(BaseWorkspace):
             return 'token', s.id, f'Sentence {s.index}', s.text
         if m and m.virtual:
             raise ToolError(f'{ref}: "{w.surface}" is not segmented yet, so its morpheme is the word itself. '
-                            f'Comment on the word ({ref.rsplit(".", 1)[0]}).')
+                            f'Comment on the word ({ref.rsplit(".", 1)[0]}).', kind='invalid-argument')
         if m:
             return 'token', m.id, f'{m.form}, in {w.surface}, {where}', m.form
         return 'token', w.id, f'{w.surface}, {where}', w.surface
@@ -466,7 +467,7 @@ class Workspace(BaseWorkspace):
     def all_docs(self) -> List[IgtDoc]:
         docs = self.documents()
         if len(docs) > MAX_DOCS_PER_SEARCH:
-            raise ToolError(f'{len(docs)} documents is too many to scan at once; name a document.')
+            raise ToolError(f'{len(docs)} documents is too many to scan at once; name a document.', kind='too-large')
         # Every one of them is wanted, so there is nothing to guess at: start
         # them all and take them in order as they land.
         self.read_ahead(docs)
@@ -543,7 +544,8 @@ class Workspace(BaseWorkspace):
                 # entry (2026-10-12 survey).
                 raise ToolError(f'No entry in this plan has id {entry_id}. A new: id names an entry only within '
                                 'the plan that created it. Once that plan is approved, name the entry by its '
-                                'form, with its number if several share it ("gam#2"), as read_lexicon shows it.')
+                                'form, with its number if several share it ("gam#2"), as read_lexicon shows it.',
+                                kind='not-found')
             # A value one of the entry's fields holds, which read_lexicon
             # prints like an id (an import's "cldfEntry=e107/e107-1"): the
             # bench saw it passed as entry_id 21 times in two runs.
@@ -557,15 +559,17 @@ class Workspace(BaseWorkspace):
                             name = view.label(it['id'])
                             part = '' if str(val).strip() == entry_id.strip() else 'part of '
                             raise ToolError(f'"{entry_id}" is {part}the {k} field of {name}, not an id. Name it with '
-                                            f'entry_form {name}, as read_lexicon numbers it. {_ENTRY_ID_IS}')
+                                            f'entry_form {name}, as read_lexicon numbers it. {_ENTRY_ID_IS}',
+                                            kind='invalid-argument')
             raise ToolError(f'No lexicon entry with id {entry_id}. {_ENTRY_ID_IS} Name an entry by its form with '
-                            'entry_form ("gam", "gam#2", "kwatha#1.2" for a sense), as read_lexicon shows it.')
+                            'entry_form ("gam", "gam#2", "kwatha#1.2" for a sense), as read_lexicon shows it.',
+                            kind='not-found')
 
         if not form:
-            raise ToolError('Give entry_form (or entry_id).')
+            raise ToolError('Give entry_form (or entry_id).', kind='invalid-argument')
         vocabs = [self.project.vocab(lexicon)] if lexicon else self.project.vocabs
         if not vocabs:
-            raise ToolError('This project has no lexicon.')
+            raise ToolError('This project has no lexicon.', kind='not-found')
         # A "#" suffix is always the number the user is SHOWN beside the
         # form: the dotted number, which names a sense ("kwatha#1.2") or one
         # of several entries spelled alike ("gam#2").
@@ -596,7 +600,7 @@ class Workspace(BaseWorkspace):
                 raise ToolError(
                     f'"{form}#{suffix}" is not a name any more: this plan deletes or merges away an '
                     f'entry spelled "{form}", so the numbers beside the others have moved. '
-                    'Pass entry_id, or discard_plan and plan again without that change.')
+                    'Pass entry_id, or discard_plan and plan again without that change.', kind='conflict')
         g = (gloss or '').strip().casefold()
 
         def has_gloss(meta, view=None):
@@ -668,7 +672,7 @@ class Workspace(BaseWorkspace):
                     raise ToolError('\n'.join(
                         [f'No entry "{form}" has a field valued "{gloss}". Entries spelled "{form}" (pass '
                          'entry_id, or entry_gloss as one of them gives it):']
-                        + self.entry_lines(spelled, unglossed)))
+                        + self.entry_lines(spelled, unglossed)), kind='not-found')
             hint = ''
             if suffix is not None and any(self.view(v).tree_has_form(form) for v in vocabs):
                 hint = (f' Headword "{form}" has no sense {suffix}; lexicon_entry shows the senses '
@@ -678,10 +682,10 @@ class Workspace(BaseWorkspace):
                 hint += (' Spelled close to it: ' + ', '.join(close)
                          + (f', and {more} more (read_lexicon lists them)' if more else '') + '.')
             raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
-                            + '.' + hint + ' Use read_lexicon to look, or create_entry to add one.')
+                            + '.' + hint + ' Use read_lexicon to look, or create_entry to add one.', kind='not-found')
         raise ToolError('\n'.join(
             [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one '
-             f'out), or entry_form as the list shows it:'] + self.entry_lines(hits, news)))
+             f'out), or entry_form as the list shows it:'] + self.entry_lines(hits, news)), kind='ambiguous')
 
     def entry_lines(self, hits, news) -> List[str]:
         """Entries as a refusal lists them to choose from: existing ones
@@ -789,12 +793,12 @@ class Workspace(BaseWorkspace):
         others = [o for i, o in enumerate(self.ops) if i != replacing]
         settings = op.get('kind') in SETTINGS_KINDS
         if others and any((o.get('kind') in SETTINGS_KINDS) != settings for o in others):
-            raise ToolError(SETTINGS_APART)
+            raise ToolError(SETTINGS_APART, kind='conflict')
         v = self.lexicon_maintained_by(op)
         if v is not None and not self.can_manage_vocab(v):
             if op.get('kind') == 'create_entry' and not (op.get('metadata') or {}).get(PARENT_KEY):
-                raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']))
-            raise ToolError(MAINTAINERS_ONLY.format(lexicon=v['name']))
+                raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']), kind='not-allowed')
+            raise ToolError(MAINTAINERS_ONLY.format(lexicon=v['name']), kind='not-allowed')
 
     def guard_new_entry_field(self, vocab_id: Optional[str]) -> None:
         """Refuse a field set on an entry this plan creates when the user
@@ -803,7 +807,7 @@ class Workspace(BaseWorkspace):
         in place, past :meth:`guard_op`, so it is asked here."""
         v = next((x for x in self.project.vocabs if x['id'] == vocab_id), None)
         if v is not None and not self.can_manage_vocab(v):
-            raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']))
+            raise ToolError(NEW_ENTRY_FORM_ONLY.format(lexicon=v['name']), kind='not-allowed')
 
     def lexicon_maintained_by(self, op: Dict[str, Any]) -> Optional[dict]:
         """The lexicon whose maintainers alone may make ``op``, or None for an
@@ -898,7 +902,8 @@ class Workspace(BaseWorkspace):
                 continue
             hit = _found(self, op[key])
             if hit is None or hit[1] is None:
-                raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn')
+                raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn',
+                                kind='conflict')
             op['virtual_at'] = virtual_at(self.project, hit[1])
             return
 
@@ -941,7 +946,7 @@ class Workspace(BaseWorkspace):
         if self.moot_under(op, analysed_morphemes(planned)):
             raise ToolError(f'{op.get("label") or "That change"}: the analysis planned for this word replaces this '
                             'morpheme and every value on it. Change the planned analysis instead: set_field and '
-                            'set_morpheme with sN.wN.mN name the morphemes it plans.')
+                            'set_morpheme with sN.wN.mN name the morphemes it plans.', kind='conflict')
 
     def unlink_orphans(self) -> int:
         """Take out of the plan every link to a morpheme of a planned analysis
@@ -1259,7 +1264,7 @@ def _refs(refs) -> List[str]:
         starts = [m.start() for m in _REF_START.finditer(item)]
         if not starts:
             if item.strip():
-                raise ToolError(f'Bad reference "{item.strip()}": {BAD_REF}')
+                raise ToolError(f'Bad reference "{item.strip()}": {BAD_REF}', kind='invalid-argument')
             continue
         for a, b in zip(starts, starts[1:] + [len(item)]):
             piece = item[a:b]
@@ -1270,7 +1275,7 @@ def _refs(refs) -> List[str]:
                 piece = cut
             if read_ref(piece, 'wm') is None:
                 raise ToolError(f'Bad reference "{piece.strip()}" in "{item.strip()}": {BAD_REF}. '
-                                'Several references go in a list: ["s3.w2", "s3.w4"].')
+                                'Several references go in a list: ["s3.w2", "s3.w4"].', kind='invalid-argument')
             out.append(piece.strip())
     return out
 
@@ -1286,7 +1291,7 @@ def _matcher(pattern: str, regex: bool, case_sensitive: bool = False, whole: boo
         return matcher(pattern or '', literal=not regex, case_insensitive=not case_sensitive,
                        whole=whole)
     except PatternError as e:
-        raise ToolError(f'That pattern cannot be used: {e}') from None
+        raise ToolError(f'That pattern cannot be used: {e}', kind='invalid-argument') from None
 
 
 def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss,
@@ -1303,7 +1308,7 @@ def _meta_of(ws: Workspace, item: dict) -> dict:
 def _need(obj, kind, ref):
     if not isinstance(obj, kind):
         want = {Sentence: 'a sentence (sN)', Word: 'a word (sN.wN)', Morpheme: 'a morpheme (sN.wN.mN)'}[kind]
-        raise ToolError(f'{ref} is not {want}')
+        raise ToolError(f'{ref} is not {want}', kind='invalid-argument')
     return obj
 
 
@@ -1325,6 +1330,6 @@ def _sentence_of(doc: IgtDoc, w: Word) -> Sentence:
     for s in doc.sentences:
         if w in s.words:
             return s
-    raise ToolError('internal: word not in document')
+    raise ToolError('internal: word not in document', kind='tool-fault')
 
 

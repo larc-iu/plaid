@@ -26,6 +26,7 @@ from ..core.opkind import OpKind
 from ..core.java_regex import matcher
 from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher, docs_of_op)
 from .project import load_document, node_ref, with_attribute
+from ..core.tools import ValueRefusal
 
 UMR = 'umr'
 
@@ -71,7 +72,7 @@ class Context:
         var = op.get(f'{side}_var')
         found = self.span_at.get((op['document_id'], var))
         if not found:
-            raise ValueError(f'{op.get("label") or "an edge"}: no node {var} to hang it on')
+            raise ValueRefusal(f'{op.get("label") or "an edge"}: no node {var} to hang it on', kind='not-found')
         return found
 
 
@@ -583,8 +584,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             if not op.get(key):
                 raise ValueError(f'op {i} ({spec.name}): missing {key}')
         if spec.shape == ok.EXCLUSIVE and len(ops) > 1:
-            raise ValueError(f'op {i + 1} ({spec.name}): a {spec.noun[0]} must be the only op '
-                             f'in its plan')
+            raise ValueRefusal(f'op {i + 1} ({spec.name}): a {spec.noun[0]} must be the only op '
+                               f'in its plan', kind='conflict')
     # A sentence graph replaced by one call and changed by another. Whichever
     # was staged second was worked out against a graph the other replaces, so
     # its variables and its ids mean something else by the time it runs. The
@@ -604,8 +605,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             stagings.setdefault(key, set()).add(op.get('staging') or '')
     crowded = sorted(k for k, v in stagings.items() if len(v) > 1)
     if crowded:
-        raise ValueError('this plan holds two separate changes to one sentence graph: '
-                         + ', '.join(crowded))
+        raise ValueRefusal('this plan holds two separate changes to one sentence graph: '
+                           + ', '.join(crowded), kind='conflict')
     # A change to something the plan deletes. The tools refuse the pair in
     # either order as it is staged; reaching here means the plan was built some
     # way neither covers.
@@ -614,8 +615,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         # deletion, since a delete of a relation names it so that a SECOND
         # delete of the same one is refused (ok.doomed_writes).
         if doomed:
-            raise ValueError(f'{op.get("label") or op.get("kind")}: this plan deletes what '
-                             f'it writes to')
+            raise ValueRefusal(f'{op.get("label") or op.get("kind")}: this plan deletes what '
+                               f'it writes to', kind='conflict')
 
 
 def normalize_ops(ops: List[Dict[str, Any]]):

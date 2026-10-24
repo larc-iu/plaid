@@ -64,7 +64,7 @@ def _turn(monkeypatch, script, call_tool=lambda ws, n, a: 'ok', ws=None, **cfg):
 def test_a_refused_plan_call_is_marked_failed_and_left_out_of_the_count(monkeypatch):
     def call_tool(ws, name, args):
         if args.get('what') == 'bad':
-            return refused('s99: document "d" has 12 sentences')
+            return refused('s99: document "d" has 12 sentences', 'not-found')
         ws.ops.append({'kind': 'x'})
         return 'Planned.'
 
@@ -73,7 +73,8 @@ def test_a_refused_plan_call_is_marked_failed_and_left_out_of_the_count(monkeypa
                     _resp('Done.'))
     turn = _turn(monkeypatch, script, call_tool)
     bad, good = turn.steps
-    assert bad == {'id': 'c1', 'name': 'plan_a', 'kind': PLAN, 'label': 'Could not plan bad', 'failed': True}
+    assert bad == {'id': 'c1', 'name': 'plan_a', 'kind': PLAN, 'label': 'Could not plan bad', 'failed': True,
+                   'error_kind': 'not-found'}
     assert good['label'] == 'Planned good' and 'failed' not in good
     assert turn.summary == '1 planned change · 2 steps'
 
@@ -82,7 +83,7 @@ def test_a_read_whose_answer_starts_with_error_went_through(monkeypatch):
     """A run_code that printed "Error ..." was traced as a failed step
     (REV-ASSISTANT 2026-09-28). A refusal is known by its type."""
     def call_tool(ws, name, args):
-        return 'Errors found: 3' if args.get('what') == 'print' else refused('No word nope.')
+        return 'Errors found: 3' if args.get('what') == 'print' else refused('No word nope.', 'not-found')
 
     script = Script(_resp(calls=[_call(1, 'read_a', '{"what": "print"}'), _call(2, 'read_a', '{"what": "x"}')]),
                     _resp('Done.'))
@@ -155,7 +156,7 @@ def test_the_same_failing_call_three_times_ends_the_turn(monkeypatch):
 
 def test_a_failing_call_that_changes_its_arguments_is_not_a_repeat(monkeypatch):
     def call_tool(ws, name, args):
-        return refused('no such node')
+        return refused('no such node', 'not-found')
 
     script = Script(*([_resp(calls=[_call(i, 'plan_a', f'{{"what": "v{i}"}}')]) for i in range(4)]
                       + [_resp('Gave up.')]))

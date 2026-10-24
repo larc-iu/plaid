@@ -169,7 +169,8 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
 
     Case-insensitive by default, like search, so what search found is what the
     replacement hits. A pattern that cannot be built raises ``error``, by
-    default :class:`core.tools.ToolError`, whose message reaches the model.
+    default :class:`core.tools.ToolError` (``invalid-argument``), whose
+    message reaches the model.
 
     With ``keep_case`` an any-case match writes the replacement in the
     match's capitals (:func:`match_case`), when neither the pattern nor the
@@ -177,7 +178,10 @@ def replacer(pattern: str, replacement: str, regex_mode: bool, whole: bool,
     capitals to go. A respelling asks for it, as the app's own does.
     """
     if error is None:
-        from .tools import ToolError as error
+        from .tools import ToolError
+
+        def error(message):
+            return ToolError(message, kind='invalid-argument')
     if not pattern:
         raise error('Give a pattern.')
     replacement = '' if replacement is None else str(replacement)

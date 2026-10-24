@@ -50,5 +50,5 @@ def unmark(value, what: str = 'value'):
     out = body[:-1]
     if not out.strip():
         raise ToolError(f'"{value}" is only a review mark: {UNVERIFIED} and {CONTRIBUTED} in a read say who '
-                        f'made a value and are not part of it. Give the {what} itself.')
+                        f'made a value and are not part of it. Give the {what} itself.', kind='invalid-argument')
     return out

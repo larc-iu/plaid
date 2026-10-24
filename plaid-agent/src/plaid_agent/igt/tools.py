@@ -23,7 +23,7 @@ from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, confirm_preview, held_changes, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
-from ..core.tools import ToolError
+from ..core.tools import ToolError, kind_of
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref, REVIEWABLE,
@@ -45,24 +45,27 @@ def t_set_field(ws: Workspace, document: str, refs, field: Optional[str] = None,
     refs = list(dict.fromkeys(_refs(refs)))
     if values is not None:
         if not isinstance(values, dict) or not values:
-            raise ToolError('values maps field names to values, e.g. {"Gloss": "conj", "POS": "conj"}.')
+            raise ToolError('values maps field names to values, e.g. {"Gloss": "conj", "POS": "conj"}.',
+                            kind='invalid-argument')
         if field is not None or value is not None:
-            raise ToolError('Give field and value, or values, not both.')
+            raise ToolError('Give field and value, or values, not both.', kind='invalid-argument')
         pairs, named = [], {}
         for name, val in values.items():
             f = _field_named(ws, name)
             if val is None:
-                raise ToolError(f'values: "{name}" has no value. Give it one ("" clears the field).')
+                raise ToolError(f'values: "{name}" has no value. Give it one ("" clears the field).',
+                                kind='invalid-argument')
             if f.layer_id in named:
                 raise ToolError(f'values: "{named[f.layer_id]}" and "{name}" both name the field {f.name}. '
-                                'Give it once.')
+                                'Give it once.', kind='invalid-argument')
             named[f.layer_id] = name
             pairs.append((f, val))
     else:
         if field is None:
-            raise ToolError('Give field and value, or values (a map of field names to values).')
+            raise ToolError('Give field and value, or values (a map of field names to values).',
+                            kind='invalid-argument')
         if value is None:
-            raise ToolError('Give value ("" clears the field).')
+            raise ToolError('Give value ("" clears the field).', kind='invalid-argument')
         pairs = [(_field_named(ws, field), value)]
     doc = ws.doc(document)
     several = values is not None
@@ -168,7 +171,8 @@ def _field_named(ws: Workspace, name: str):
             ortho = ws.project.orthography(name)
         except ValueError:
             raise e from None
-        raise ToolError(f'"{ortho}" is an orthography, not a field: set it with set_orthography.') from None
+        raise ToolError(f'"{ortho}" is an orthography, not a field: set it with set_orthography.',
+                        kind='invalid-argument') from None
 
 
 def _scope_of(doc, ref: str) -> str:
@@ -191,12 +195,13 @@ def _refuse_unmatched_scopes(doc, refs: List[str], fields) -> None:
     for f in fields:
         if f.scope not in scopes.values():
             raise ToolError(f'"{f.name}" is a {f.scope} field and no ref is a {f.scope.lower()} '
-                            f'({_REF_SHAPE[f.scope]}). Refs given: {", ".join(refs) or "none"}.')
+                            f'({_REF_SHAPE[f.scope]}). Refs given: {", ".join(refs) or "none"}.',
+                            kind='invalid-argument')
     named = {f.scope for f in fields}
     for ref, scope in scopes.items():
         if scope not in named:
             raise ToolError(f'{ref} is a {scope.lower()}, and no field in values is a {scope} field. Fields given: '
-                            + ', '.join(f'{f.name} ({f.scope})' for f in fields) + '.')
+                            + ', '.join(f'{f.name} ({f.scope})' for f in fields) + '.', kind='invalid-argument')
 
 
 _REF_SHAPE = {'Sentence': 'sN', 'Word': 'sN.wN', 'Morpheme': 'sN.wN.mN'}
@@ -220,26 +225,26 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
     at once (``analyses``: a list of {ref, morphemes}), so a whole sentence
     is one call. Staged together: a bad item leaves nothing planned."""
     if not ws.project.morpheme_layer_id:
-        raise ToolError('This project has no morpheme layer.')
+        raise ToolError('This project has no morpheme layer.', kind='not-found')
     doc = ws.doc(document)
     reshape_guards(ws, doc)
     items = list(analyses or [])
     if ref or morphemes:
         items.insert(0, {'ref': ref, 'morphemes': morphemes})
     if not items:
-        raise ToolError('Give ref and morphemes, or analyses (a list of {ref, morphemes}).')
+        raise ToolError('Give ref and morphemes, or analyses (a list of {ref, morphemes}).', kind='invalid-argument')
     if len(items) > MAX_ANALYSES_PER_CALL:
-        raise ToolError(f'At most {MAX_ANALYSES_PER_CALL} analyses per call; split the list.')
+        raise ToolError(f'At most {MAX_ANALYSES_PER_CALL} analyses per call; split the list.', kind='too-large')
     staged: List[Dict[str, Any]] = []
     notes: List[str] = []
     seen = set()
     for item in items:
         if not isinstance(item, dict) or not item.get('ref'):
-            raise ToolError('each analysis needs a ref (sN.wN) and morphemes')
+            raise ToolError('each analysis needs a ref (sN.wN) and morphemes', kind='invalid-argument')
         r = str(item['ref']).strip()
         w = _need(resolve(doc, r), Word, r)
         if w.id in seen:
-            raise ToolError(f'{r} is analysed twice in one call')
+            raise ToolError(f'{r} is analysed twice in one call', kind='invalid-argument')
         seen.add(w.id)
         refuse_shape_and_analysis(ws, w.id, r, analysing=True)
         out = parse_analysis(ws, item.get('morphemes'))
@@ -287,11 +292,11 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
         if ids & _reshaped_words(ws):
             raise ToolError(f'{ref} is split, merged, deleted or retyped in this plan, so its analysis cannot '
                             'also change: a boundary change deletes the word\'s morphemes. discard_plan to '
-                            'start over, or plan the two in separate turns.')
+                            'start over, or plan the two in separate turns.', kind='conflict')
     elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') in ids for op in ws.ops):
         raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
                         'boundary change deletes the morphemes that analysis writes. discard_plan to start '
-                        'over, or plan the two in separate turns.')
+                        'over, or plan the two in separate turns.', kind='conflict')
 
 
 # A text edit names every word and morpheme of the region it rewrites, and
@@ -326,17 +331,17 @@ def refuse_comment_and_text_edit(ws: Workspace, ids, where: str, *, commenting: 
     if clash:
         raise ToolError(f'{where}: this plan rewrites the text over a word it also comments on, and the '
                         'rewrite may take the word the comment is anchored to. discard_plan to start over, '
-                        'or plan the two in separate turns.')
+                        'or plan the two in separate turns.', kind='conflict')
 
 
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
     """The validated morpheme list of a set_analysis call."""
     if not morphemes or not isinstance(morphemes, list):
-        raise ToolError('morphemes must be a non-empty list of {form, type?, fields?}')
+        raise ToolError('morphemes must be a non-empty list of {form, type?, fields?}', kind='invalid-argument')
     out = []
     for i, m in enumerate(morphemes):
         if not isinstance(m, dict) or not (m.get('form') or '').strip():
-            raise ToolError('each morpheme needs a non-empty form')
+            raise ToolError('each morpheme needs a non-empty form', kind='invalid-argument')
         if i == len(morphemes) - 1 and isinstance(m.get('form'), str):
             # A read marks a segmentation once, after its last form.
             m = {**m, 'form': unmark(m['form'], 'form')}
@@ -346,7 +351,8 @@ def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
         for name, val in (m.get('fields') or {}).items():
             f = ws.project.field(name)
             if f.scope != 'Morpheme':
-                raise ToolError(f'"{f.name}" is a {f.scope} field, not a morpheme field; use set_field for it')
+                raise ToolError(f'"{f.name}" is a {f.scope} field, not a morpheme field; use set_field for it',
+                                kind='invalid-argument')
             fvals.append({'layer_id': f.layer_id, 'value': '' if val is None else unmark(str(val), f.name)})
         out.append({'form': m['form'].strip(), 'morph_type': m.get('type') or None, 'fields': fvals})
     return out
@@ -410,7 +416,7 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
     new_text = (new_text or '').strip()
     if not new_text:
         raise ToolError('new_text must not be empty (to remove a word from the text, retype_sentence without it; '
-                        'delete_word removes only the token)')
+                        'delete_word removes only the token)', kind='invalid-argument')
     if new_text == w.surface:
         return ws.planned_note(0)
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
@@ -443,11 +449,11 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
     for b, e in ws.planned_respells(text_id):
         if (b, e) != (begin, end) and b < end and begin < e:
             raise ToolError(f'{where}: overlaps a respelling already planned for {b}-{e} in the same text; '
-                            f'discard_plan or narrow the pattern')
+                            f'discard_plan or narrow the pattern', kind='conflict')
     for op in ws.ops:
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and op['begin'] < end:
             raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
-                            'respell it in a separate plan')
+                            'respell it in a separate plan', kind='conflict')
     doc = next((d for d in ws._docs.values() if d.text_id == text_id), None)
     # A word this plan splits, merges or deletes is cut again before the
     # respelling lands, and the respelling replaces the range as read: a
@@ -460,7 +466,7 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
             for w in sentence.words:
                 if w.id in reshaped and w.begin < end and begin < w.end:
                     raise ToolError(f'{where}: this plan already splits, merges or deletes this word. Plan the '
-                                    'respelling on its own once that is applied.')
+                                    'respelling on its own once that is applied.', kind='conflict')
     no_scope_reaches(ws, doc.id if doc is not None else None, where, placed=True)
 
 
@@ -471,7 +477,7 @@ def refuse_shape_and_respell(ws: Workspace, words, where: str) -> None:
         for b, e in ws.planned_respells(w.text_id):
             if b < w.end and w.begin < e:
                 raise ToolError(f'{where}: this plan already respells this word. Plan the split, merge or '
-                                'delete on its own once that is applied.')
+                                'delete on its own once that is applied.', kind='conflict')
 
 
 def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
@@ -501,7 +507,7 @@ def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str, placed: b
         what = ('reaches this document' if scope_reaches(ws, doc_id)
                 else 'rewrites text, which nothing that reshapes words can share a plan with')
         raise ToolError(f'{where}: this plan already holds a corpus-wide change that {what}. '
-                        'Apply it first, then plan this.')
+                        'Apply it first, then plan this.', kind='conflict')
 
 
 def _entry_named(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss):
@@ -545,10 +551,11 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             continue
         obj = _resolve_for_link(doc, ref)
         if isinstance(obj, Sentence):
-            raise ToolError(f'{ref}: link words (sN.wN) or morphemes (sN.wN.mN), not sentences')
+            raise ToolError(f'{ref}: link words (sN.wN) or morphemes (sN.wN.mN), not sentences',
+                            kind='invalid-argument')
         if _planned_phrase_over(ws, obj.id):
             raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
-                            'link inside one, so discard_plan first if you meant to replace it')
+                            'link inside one, so discard_plan first if you meant to replace it', kind='conflict')
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:
             back.append((ref, ws.op_target({'kind': 'link', 'token_id': obj.id})))
             continue
@@ -637,12 +644,12 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
     if not 1 <= mi <= len(chain):
         raise ToolError(f'{ref}: the analysis this plan gives "{w.surface}" has {len(chain)} '
                         f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
-                        f'sN.wN.mN names while it is in the plan)')
+                        f'sN.wN.mN names while it is in the plan)', kind='not-found')
     # A form written beside the number is a check, here as in `resolve`.
     given = r.form
     if given and not same_form(given, chain[mi - 1].get('form'), MARKERS):
         raise ToolError(f'{ref}: in the analysis this plan gives "{w.surface}", m{mi} is '
-                        f'"{chain[mi - 1].get("form")}", not "{given}".')
+                        f'"{chain[mi - 1].get("form")}", not "{given}".', kind='not-found')
     # The analysis keeps its own first stored morpheme (``existing[0]``) as
     # its first and deletes the rest, so that one is what m1 names, and
     # every later place is a new morpheme with no link yet. Found by the id
@@ -654,7 +661,7 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
         kept = next((m for m in w.morphemes if m.id == first['id']), None)
         if kept is None:
             raise ToolError(f'{ref}: the analysis planned for "{w.surface}" was made from another reading of the '
-                            'document. Plan the analysis again (set_analysis), then link.')
+                            'document. Plan the analysis again (set_analysis), then link.', kind='conflict')
     return _Place(w, analysis, mi, kept)
 
 
@@ -736,7 +743,7 @@ def _resolve_for_link(doc: IgtDoc, ref: str):
         if r is None or r.by_form or r.parts[1] is None:
             raise
         raise ToolError(f'{e}. To link a morpheme the word does not have yet, plan its analysis first '
-                        '(set_analysis), then link sN.wN.mN in the same plan.') from None
+                        '(set_analysis), then link sN.wN.mN in the same plan.', kind=kind_of(e, 'not-found')) from None
 
 
 def _planned_phrase_over(ws: Workspace, token_id: str) -> bool:
@@ -780,7 +787,7 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
         staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what)}', f'unlink {qv(_linked(ws, obj.link))}')})
     if only_mwe and not staged and not planned:
-        raise ToolError('; '.join(only_mwe))
+        raise ToolError('; '.join(only_mwe), kind='not-found')
     with ws.staging():
         taken = _take_out(ws, [key for _, key in planned])
         ws.add_ops(staged)
@@ -801,7 +808,8 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
     doc = ws.doc(document)
     words = _words_of(doc, refs)
     if len(words) < 2:
-        raise ToolError('A multi-word expression needs two or more distinct words, e.g. ["s3.w2", "s3.w3"]')
+        raise ToolError('A multi-word expression needs two or more distinct words, e.g. ["s3.w2", "s3.w3"]',
+                        kind='invalid-argument')
     kind, target = _entry_named(ws, entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     token_ids = [w.id for _, _, w in words]
@@ -842,7 +850,7 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
     doc = ws.doc(document)
     words = _words_of(doc, refs)
     if not words:
-        raise ToolError('Name at least one member word, e.g. ["s3.w2"]')
+        raise ToolError('Name at least one member word, e.g. ["s3.w2"]', kind='invalid-argument')
     named = {w.id for _, _, w in words}
     candidates: Dict[str, Link] = {}
     for _, _, w in words:
@@ -851,14 +859,15 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
     s = words[0][1]
     if not candidates:
         raise ToolError(', '.join(r for r, _, _ in words) + ' belong to no multi-word expression'
-                        + (' (unlink_entry removes a word\'s own link)' if any(w.link for _, _, w in words) else ''))
+                        + (' (unlink_entry removes a word\'s own link)' if any(w.link for _, _, w in words) else ''),
+                        kind='not-found')
     # Every named word must be a member. Among the expressions they name,
     # the one containing all of them wins, else ask.
     full = [l for l in candidates.values() if named <= set(l.tokens)]
     if len(full) != 1:
         raise ToolError('Several multi-word expressions include those words: '
                         + '; '.join(_mwe_desc(l, s) for l in candidates.values())
-                        + '. Name a member set that belongs to just one of them.')
+                        + '. Name a member set that belongs to just one of them.', kind='ambiguous')
     l = full[0]
     ws.add_op({'kind': 'unlink', 'link_id': l.id, 'token_id_hint': l.tokens[0], 'token_ids': list(l.tokens),
                **labelled(f'{ws.doc_label(doc.id)} s{s.index} {mwe_ref(l, s.index)}',
@@ -870,7 +879,8 @@ def t_set_document_metadata(ws: Workspace, document: str, field: str, value: str
     names = ws.project.document_metadata
     name = next((n for n in names if n.lower() == (field or '').lower()), None)
     if not name:
-        raise ToolError(f'No document metadata field "{field}". Fields: ' + (', '.join(names) or '(none configured)'))
+        raise ToolError(f'No document metadata field "{field}". Fields: ' + (', '.join(names) or '(none configured)'),
+                        kind='not-found')
     doc = ws.doc(document)
     old = doc.metadata.get(name, '')
     value = '' if value is None else str(value)
@@ -886,18 +896,20 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
     a Baseline save gives a first text, which the server makes."""
     name = (name or '').strip()
     if not name:
-        raise ToolError('name must not be empty')
+        raise ToolError('name must not be empty', kind='invalid-argument')
     clash = next((d for d in ws.documents() if name_fold(d.get('name') or '') == name_fold(name)), None)
     if clash is not None:
-        raise ToolError(f'A document named {plain_quote(clash.get("name"))} already exists. Pick a different name.')
+        raise ToolError(f'A document named {plain_quote(clash.get("name"))} already exists. Pick a different name.',
+                        kind='conflict')
     text = (text or '').replace('\r\n', '\n')
     if not text.strip():
-        raise ToolError('text must not be empty')
+        raise ToolError('text must not be empty', kind='invalid-argument')
     meta = {}
     for k, v in (metadata or {}).items():
         n = next((x for x in ws.project.document_metadata if x.lower() == k.lower()), None)
         if not n:
-            raise ToolError(f'No document metadata field "{k}". Fields: ' + (', '.join(ws.project.document_metadata) or '(none)'))
+            raise ToolError(f'No document metadata field "{k}". Fields: ' + (', '.join(ws.project.document_metadata) or '(none)'),
+                            kind='not-found')
         meta[n] = '' if v is None else str(v)
     sents = split_sentences(text)
     words = planned_word_count(ws.project, text)
@@ -1032,7 +1044,7 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
     left: List[tuple] = []
     refs = _refs(refs)
     if refs and not document:
-        raise ToolError('refs need a document')
+        raise ToolError('refs need a document', kind='invalid-argument')
     if isinstance(documents, list) and len(documents) == 1 and str(documents[0]).strip().lower() == 'all':
         documents = 'all'
     # Only the WORD "all" means the whole project. The branch below tested the
@@ -1043,7 +1055,7 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         documents = [documents]
     if not document and not documents:
         raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
-                        'annotations awaiting review.')
+                        'annotations awaiting review.', kind='invalid-argument')
     if not document:
         # The documents with reviewable spans or morphemes by query, then
         # each is read so links and multi-word expressions count too.
@@ -1052,7 +1064,8 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             ids = q_review_docs(ws, f)
             if len(ids) > MAX_SCOPE_DOCS:
                 raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
-                                f'{MAX_SCOPE_DOCS} one plan covers; confirm document by document, or narrow with field.')
+                                f'{MAX_SCOPE_DOCS} one plan covers; confirm document by document, or narrow with field.',
+                                kind='too-large')
             docs = [ws.doc(i) for i in ids]
         else:
             # By id, so a list that names one document twice (by name and by
@@ -1063,7 +1076,8 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
                 if did not in ids:
                     ids.append(did)
             if len(ids) > MAX_SCOPE_DOCS:
-                raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers.')
+                raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers.',
+                                kind='too-large')
             docs = [ws.doc(did) for did in ids]
         for doc in docs:
             op = _document_confirm_op(ws, doc, f, left)
@@ -1125,7 +1139,8 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
         elif isinstance(obj, Word):
             words.append((ref, obj))
         else:
-            raise ToolError(f'{ref}: discard_analysis works on words (sN.wN), not single morphemes')
+            raise ToolError(f'{ref}: discard_analysis works on words (sN.wN), not single morphemes',
+                            kind='invalid-argument')
     staged: List[Dict[str, Any]] = []
     for ref, w in words:
         refuse_shape_and_analysis(ws, w.id, ref, analysing=True)
@@ -1168,12 +1183,13 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     doc = ws.doc(document)
     ref = (ref or '').strip()
     if form is None and type is None:
-        raise ToolError('Give form and/or type.')
+        raise ToolError('Give form and/or type.', kind='invalid-argument')
     new = None
     if form is not None:
         new = str(form).strip()
         if not new:
-            raise ToolError('form must not be empty (set_analysis to remove a morpheme from the chain)')
+            raise ToolError('form must not be empty (set_analysis to remove a morpheme from the chain)',
+                            kind='invalid-argument')
     t = (morph_type(type) if str(type).strip() else None) if type is not None else None
     if _planned_place(ws, doc, ref) is not None:
         # A morpheme of the analysis this plan writes for the word: the
@@ -1196,7 +1212,7 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
         goes = f'goes by its type {qv(m.entry_type)}' if m.entry_type else 'has no type'
         raise ToolError(f'{ref} is linked to {entry}, which {goes}, and a linked morpheme\'s type is its '
                         f'entry\'s. Set it with set_entry_field (field "morphType") on {entry}, or '
-                        f'unlink_entry first to give this morpheme a type of its own.')
+                        f'unlink_entry first to give this morpheme a type of its own.', kind='conflict')
     word_ref_ = ref.rsplit('.', 1)[0]
     w = resolve(doc, word_ref_)
     refuse_shape_and_analysis(ws, w.id, word_ref_, analysing=True)

@@ -161,7 +161,8 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
     key = next((k for k in project.document_metadata if k.lower() == by.lower()), None)
     if not key:
-        raise ToolError('by must be "document" or a document metadata field: ' + ', '.join(project.document_metadata))
+        raise ToolError('by must be "document" or a document metadata field: ' + ', '.join(project.document_metadata),
+                        kind='invalid-argument')
     groups: Dict[str, List[str]] = defaultdict(list)
     for did in rows:
         groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)
@@ -230,14 +231,15 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     cond = condition_of(where)
     n = read_int(ngram, 'ngram', 1, minimum=1) if ngram is not None else 1
     if n > NGRAM_MAX:
-        raise ToolError(f'ngram is at most {NGRAM_MAX}. For longer patterns use sequence_search.')
+        raise ToolError(f'ngram is at most {NGRAM_MAX}. For longer patterns use sequence_search.', kind='too-large')
     if n > 1:
         if what_l == 'morpheme' or (field is not None and field.scope != 'Word'):
             raise ToolError('ngram counts sequences of words: what="wordform" or a word field '
-                            '(' + (', '.join(f.name for f in ws.project.fields_by_scope('Word')) or 'none') + ').')
+                            '(' + (', '.join(f.name for f in ws.project.fields_by_scope('Word')) or 'none') + ').',
+                            kind='invalid-argument')
         if cond:
             raise ToolError('where and ngram do not combine. For sequences with conditions on their words use '
-                            'sequence_search.')
+                            'sequence_search.', kind='invalid-argument')
     from .queries import q_frequency_list, q_ngrams
     with ws.corpus.within(document):
         if n > 1:
@@ -301,10 +303,10 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     contributor)."""
     kind = (kind or 'unglossed').lower()
     if kind not in KINDS:
-        raise ToolError('kind must be one of: ' + ', '.join(KINDS))
+        raise ToolError('kind must be one of: ' + ', '.join(KINDS), kind='invalid-argument')
     user = (user or '').strip() or None
     if user and kind != 'contributed':
-        raise ToolError('user= goes with kind="contributed"')
+        raise ToolError('user= goes with kind="contributed"', kind='invalid-argument')
     project = ws.project
     limit = clamp_limit(limit, *READ_LIMITS['worklist'])
     f = None
@@ -314,7 +316,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         else:
             f = project.gloss_field('Morpheme') or project.gloss_field('Word')
             if not f:
-                raise ToolError('No word or morpheme field to check; name one with field=')
+                raise ToolError('No word or morpheme field to check; name one with field=', kind='not-found')
     lvl = (level or '').lower() or ('morpheme' if (project.morpheme_layer_id and kind in ('unlinked', 'unglossed')
                                                  and (f is None or f.scope == 'Morpheme')) else 'word')
     if f and f.scope == 'Word':
@@ -388,7 +390,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         return 'This project has no lexicon.'
     section = (section or 'all').lower()
     if section != 'all' and section not in LEXICON_SECTIONS:
-        raise ToolError('section must be "all" or one of: ' + ', '.join(LEXICON_SECTIONS))
+        raise ToolError('section must be "all" or one of: ' + ', '.join(LEXICON_SECTIONS), kind='invalid-argument')
     only = None if section == 'all' else section
     cap = 200 if only else 12  # one section: generous; the overview: a taste of each
     want = lambda name: only is None or only == name  # noqa: E731
@@ -630,7 +632,8 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
     adjacent=false allows other words in between, in order. One match per
     sentence is reported, so the count is sentences, not occurrences."""
     if not isinstance(sequence, list) or not sequence or not all(isinstance(c, dict) and c for c in sequence):
-        raise ToolError('sequence must be a non-empty list of condition objects, e.g. [{"POS":"v"},{"Gloss":"PL"}]')
+        raise ToolError('sequence must be a non-empty list of condition objects, e.g. [{"POS":"v"},{"Gloss":"PL"}]',
+                        kind='invalid-argument')
     limit = clamp_limit(limit, 40, 200)
     out: List[str] = []
 

@@ -411,7 +411,7 @@ def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Calla
         ws.on_progress('Running the query…')
         res = run(ws.client, q, ws.project.id)
     except QueryRefused as e:
-        raise ToolError(str(e))
+        raise ToolError(str(e), kind='query-refused')
     # A name another document shares carries its id, which document= reads back.
     from .history import doc_labels
     doc_names = doc_labels(ws)

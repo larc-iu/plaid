@@ -90,7 +90,7 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
                  case_sensitive: bool = False, limit: int = None) -> str:
     """Nodes by their concept, by a relation they carry, or by an attribute."""
     if not any((concept, role, attribute)):
-        raise ToolError('Give concept, role or attribute: what to look for.')
+        raise ToolError('Give concept, role or attribute: what to look for.', kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     corpus = ws.corpus
     if concept:
@@ -191,7 +191,7 @@ def _matches(value: str, pattern: str, regex: bool, whole: bool, case_sensitive:
     try:
         found = matcher(pattern, literal=not regex, case_insensitive=not case_sensitive, whole=whole)
     except PatternError as e:
-        raise ToolError(f'That pattern cannot be used: {e}') from None
+        raise ToolError(f'That pattern cannot be used: {e}', kind='invalid-argument') from None
     return found(value)
 
 
@@ -200,9 +200,9 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
              limit: int = None) -> str:
     """Sentences whose words, or whose graph concepts, match."""
     if not pattern:
-        raise ToolError('Give a pattern to search for.')
+        raise ToolError('Give a pattern to search for.', kind='invalid-argument')
     if where not in SEARCHABLE:
-        raise ToolError(f'where must be one of: {", ".join(SEARCHABLE)}.')
+        raise ToolError(f'where must be one of: {", ".join(SEARCHABLE)}.', kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     corpus = ws.corpus
     if document:
@@ -288,7 +288,7 @@ def t_worklist(ws: Workspace, kind: str = None, document: str = None, limit: int
     kinds = [kind] if kind else list(WORKLIST_KINDS)
     for k in kinds:
         if k not in WORKLIST_KINDS:
-            raise ToolError(f'Unknown kind "{k}". One of: ' + ', '.join(WORKLIST_KINDS))
+            raise ToolError(f'Unknown kind "{k}". One of: ' + ', '.join(WORKLIST_KINDS), kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['worklist'])
     # Whether a graph is finished is a property of the parsed document: the
     # query engine indexes the nodes but not what they add up to, so this
@@ -332,7 +332,7 @@ def t_frequency_list(ws: Workspace, what: str = 'concept', document: str = None,
                      limit: int = None) -> str:
     """The commonest concepts, roles or document-level relations, with counts."""
     if what not in COUNTABLE:
-        raise ToolError(f'what must be one of: {", ".join(COUNTABLE)}.')
+        raise ToolError(f'what must be one of: {", ".join(COUNTABLE)}.', kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
     corpus = ws.corpus
     if what == 'attribute':

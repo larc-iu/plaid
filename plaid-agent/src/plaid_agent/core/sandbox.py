@@ -774,6 +774,6 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]],
         out = run(code, noted(ws, tally.wrap(api(ws))), session=ws.code, shape=shape, tally=tally,
                   returns=returns)
     except CodeError as e:
-        raise ToolError(str(e) + tally.plan_note(ws))
+        raise ToolError(str(e) + tally.plan_note(ws), kind='code-failed')
     tally.note(ws)
     return out + tally.plan_note(ws)

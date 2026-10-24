@@ -198,7 +198,7 @@ def need_web(ws):
     configured, but a model that saw them in an earlier turn can still name
     one, so this is what it is told."""
     if ws.web is None:
-        raise ToolError('Web lookup is not configured on this assistant.')
+        raise ToolError('Web lookup is not configured on this assistant.', kind='unavailable')
     return ws.web
 
 
@@ -208,7 +208,7 @@ def t_web_search(ws, query: str, limit: int = 5) -> str:
     try:
         return truncate(web_search(ws, query, limit))
     except WebError as e:
-        raise ToolError(str(e))
+        raise ToolError(str(e), kind='unavailable')
 
 
 def t_read_url(ws, url: str) -> str:
@@ -217,4 +217,4 @@ def t_read_url(ws, url: str) -> str:
     try:
         return truncate(read_url(ws, url))
     except WebError as e:
-        raise ToolError(str(e))
+        raise ToolError(str(e), kind='unavailable')

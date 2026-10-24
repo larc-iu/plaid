@@ -66,7 +66,7 @@ def _doc_of_op(ws: Workspace, op: Dict[str, Any]) -> Optional[str]:
 def _check_cap(n: int):
     if n > PLAN_MAX_OPS:
         raise ToolError(f'That would change {n} items, more than the {PLAN_MAX_OPS} one plan may hold. '
-                        f'Narrow it (a document, a stricter pattern) and go in passes.')
+                        f'Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
 
 
 def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str, regex: bool = False,
@@ -126,15 +126,16 @@ def condition_of(where) -> Optional[Dict[str, str]]:
         return None
     if not isinstance(where, dict):
         raise ToolError('where is one word\'s conditions, as sequence_search takes them: e.g. {"form": "di"} or '
-                        '{"Gloss (Morpheme)": "CAUS"}.')
+                        '{"Gloss (Morpheme)": "CAUS"}.', kind='invalid-argument')
     out = {}
     for k, v in where.items():
         if not isinstance(k, str) or not k.strip() or v is None or isinstance(v, (dict, list)):
-            raise ToolError(f'where: {k!s} must name a key with one value, e.g. {{"form": "di"}}.')
+            raise ToolError(f'where: {k!s} must name a key with one value, e.g. {{"form": "di"}}.',
+                            kind='invalid-argument')
         if not str(v).strip():
             # An empty value matches nothing, silently (H16-REVIEW-7).
             raise ToolError(f'where: {k.strip()} is empty, which matches nothing. A condition is a value the word '
-                            'holds. For the words with no value in a field use worklist.')
+                            'holds. For the words with no value in a field use worklist.', kind='invalid-argument')
         out[k.strip()] = str(v)
     return out
 
@@ -270,7 +271,7 @@ def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
     staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms')), cap, earlier)
     if n_words > cap:
         raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
-                        f'Narrow it (a document, a stricter pattern) and go in passes.')
+                        f'Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
     if a.get('lexicon'):
         staged = staged + _lexicon_renames(ws, rep, earlier)
     return staged
@@ -352,7 +353,7 @@ def _stage_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit, *, change:
                     ws.refuse_off_list(o)
         full = rules.too_many(KIND, ws.ops)
         if full:
-            raise ToolError(full)
+            raise ToolError(full, kind='too-large')
     except BaseException:
         ws.restore(saved)
         raise
@@ -718,7 +719,7 @@ def _refuse_merged_away(ws: Workspace, found: List[Dict[str, Any]]) -> None:
         merge = gone.get(o.get('token_id')) if o.get('kind') == 'set_span' else None
         if merge is not None:
             from ..core.opkind import clash_message
-            raise ToolError(clash_message(o, merge))
+            raise ToolError(clash_message(o, merge), kind='conflict')
 
 
 def refuse_rule_on_merged(ws: Workspace, merge: Dict[str, Any]) -> None:
@@ -733,7 +734,7 @@ def refuse_rule_on_merged(ws: Workspace, merge: Dict[str, Any]) -> None:
         for o in ws.rule_found.get(rules.target(op), []):
             if o.get('kind') == 'set_span' and o.get('token_id') in ids:
                 from ..core.opkind import clash_message
-                raise ToolError(clash_message(o, merge))
+                raise ToolError(clash_message(o, merge), kind='conflict')
 
 
 def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
@@ -1074,7 +1075,7 @@ def resolve_rule(ws: Workspace, tool: str, args: Dict[str, Any], earlier,
     the lexicon does not rename; None reads them from the plan as it stands."""
     fn = SCOPED.get(tool)
     if fn is None:
-        raise ToolError(f'unknown corpus-wide tool {tool!r}')
+        raise ToolError(f'unknown corpus-wide tool {tool!r}', kind='tool-fault')
     kept = kept_targets(ws.ops) if kept is None else kept
     if kept:
         earlier = [[o for o in found if op_target(o) not in kept] for found in earlier]
@@ -1154,7 +1155,7 @@ def clear_of_reshapes(ops: List[Dict[str, Any]], docs, what: str) -> None:
         if op.get('kind') in RESHAPES and (op.get('doc') in reach or not op.get('doc')):
             raise ToolError(f'This plan already reshapes text or words in a document this {what} '
                             'reaches. Let the user approve one, then plan the other, or discard_plan and plan '
-                            'this alone.')
+                            'this alone.', kind='conflict')
 
 
 def _names_morpheme_forms(ws: Workspace, field: str) -> bool:
@@ -1232,10 +1233,11 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     cond = condition_of(where)
     f = ws.project.field(field)
     if f.scope == 'Sentence':
-        raise ToolError(f'"{f.name}" is a sentence field; use set_field with sentence references')
+        raise ToolError(f'"{f.name}" is a sentence field; use set_field with sentence references',
+                        kind='invalid-argument')
     form = (form or '').strip()
     if not form:
-        raise ToolError('Give a form.')
+        raise ToolError('Give a form.', kind='invalid-argument')
     value = '' if value is None else unmark(str(value), f.name)
     doc_id = ws.doc(document).id if document else None
     args = rules.normalize({'form': form, 'field': field, 'value': value, 'only_empty': only_empty,
@@ -1521,10 +1523,10 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     op per word."""
     form = (form or '').strip()
     if not form:
-        raise ToolError('Give a form.')
+        raise ToolError('Give a form.', kind='invalid-argument')
     from .queries import q_analysis_targets, _docs_of
     if not ws.project.morpheme_layer_id:
-        raise ToolError('This project has no morpheme layer.')
+        raise ToolError('This project has no morpheme layer.', kind='not-found')
     out = parse_analysis(ws, morphemes)
     with ws.corpus.within(document):
         words, chains, spans, entries = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
@@ -1569,7 +1571,8 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
 def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None, what: str = 'be changed') -> dict:
     kind, target = ws.find_entry(form, lexicon, entry_id, gloss)
     if kind == 'new':
-        raise ToolError('That entry is new in this plan; approve the plan first, then merge or rename it.')
+        raise ToolError('That entry is new in this plan; approve the plan first, then merge or rename it.',
+                        kind='conflict')
     _refuse_doomed_entry(ws, target, what)
     return target
 
@@ -1654,7 +1657,7 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     keep = _existing(ws, keep_form, lexicon, keep_id, keep_gloss, 'be merged into')
     remove = _existing(ws, remove_form, lexicon, remove_id, remove_gloss, 'be merged away')
     if keep['id'] == remove['id']:
-        raise ToolError('keep and remove are the same entry')
+        raise ToolError('keep and remove are the same entry', kind='invalid-argument')
     # Merges do not chain: this one's links are the ones the entry holds now,
     # so folding the survivor of an earlier merge into a third entry would
     # leave the links that earlier merge moved on an entry being deleted.
@@ -1706,7 +1709,7 @@ def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = Non
     """PLAN: change an entry's headword form (links are unaffected)."""
     new_form = (new_form or '').strip()
     if not new_form:
-        raise ToolError('new_form must not be empty')
+        raise ToolError('new_form must not be empty', kind='invalid-argument')
     it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renamed')
     if it.get('form') == new_form:
         return ws.planned_note(0)
@@ -1720,7 +1723,7 @@ def t_rename_document(ws: Workspace, document: str, new_name: str) -> str:
     """PLAN: rename a document."""
     new_name = (new_name or '').strip()
     if not new_name:
-        raise ToolError('new_name must not be empty')
+        raise ToolError('new_name must not be empty', kind='invalid-argument')
     doc = ws.doc(document)
     if doc.name == new_name:
         return ws.planned_note(0)
@@ -1728,7 +1731,8 @@ def t_rename_document(ws: Workspace, document: str, new_name: str) -> str:
     # naming the name as the other document spells it.
     clash = [d for d in ws.documents() if d['id'] != doc.id and name_fold(d.get('name') or '') == name_fold(new_name)]
     if clash:
-        raise ToolError(f'Another document is already named {plain_quote(clash[0].get("name"))}. Pick a different name.')
+        raise ToolError(f'Another document is already named {plain_quote(clash[0].get("name"))}. Pick a different name.',
+                        kind='conflict')
     ws.add_op({'kind': 'rename_document', 'document_id': doc.id, 'name': new_name,
                'label': f'Rename document {ws.doc_label(doc.id, quote=True)} → {qv(new_name)}'})
     return ws.planned_note(1)

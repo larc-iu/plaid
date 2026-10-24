@@ -79,9 +79,9 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
              whole: bool = False, regex: bool = False, limit: int = None, case_sensitive: bool = False) -> str:
     """Words whose field matches, each in its context."""
     if field not in SEARCHABLE:
-        raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE))
+        raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE), kind='invalid-argument')
     if not pattern:
-        raise ToolError('Give a pattern to search for.')
+        raise ToolError('Give a pattern to search for.', kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     spec = rx(pattern, regex=regex, whole=whole, case_sensitive=bool(case_sensitive))
     # The server's reading of the pattern (rx already refused one it cannot use).
@@ -208,7 +208,7 @@ def where_clauses(c: Corpus, where, word: str = '?t') -> tuple:
                                               for k, v in where.items()):
         raise ToolError('where is one word\'s conditions, column or feature to a whole value, e.g. '
                         '{"upos": "NOUN", "Number": "Plur"}. Columns: ' + ', '.join(WHERE_COLUMNS)
-                        + '; any other key is a feature.')
+                        + '; any other key is a feature.', kind='invalid-argument')
     out: List[list] = []
     said: List[str] = []
     for i, (key, value) in enumerate(where.items()):
@@ -225,7 +225,7 @@ def where_clauses(c: Corpus, where, word: str = '?t') -> tuple:
         else:
             if not re.match(r'^[A-Za-z][A-Za-z0-9\[\]:_]*$', key) or '=' in value or '|' in value:
                 raise ToolError(f'"{key}" is not a column or a feature. Columns: ' + ', '.join(WHERE_COLUMNS)
-                                + '; a feature is written {"Number": "Plur"}.')
+                                + '; a feature is written {"Number": "Plur"}.', kind='invalid-argument')
             out += [c.field(FEATURES, v, value=f'{key}={value}'), c.on(v, word)]
             col = key
         said.append(f'{col}={value}')
@@ -325,16 +325,17 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     of runs of ``ngram`` adjacent words (survey item 8: word-order questions).
     Grouped reads, held to the document or documents named."""
     if what not in COUNTABLE:
-        raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
+        raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE), kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
     n = read_int(ngram, 'ngram', 1, minimum=1) if ngram is not None else 1
     if n > NGRAM_MAX:
-        raise ToolError(f'ngram is at most {NGRAM_MAX}. For longer patterns use grew_search.')
+        raise ToolError(f'ngram is at most {NGRAM_MAX}. For longer patterns use grew_search.', kind='too-large')
     if n > 1 and what not in NGRAM_COLUMNS:
-        raise ToolError('ngram counts runs of words by one column: what is one of ' + ', '.join(NGRAM_COLUMNS) + '.')
+        raise ToolError('ngram counts runs of words by one column: what is one of ' + ', '.join(NGRAM_COLUMNS) + '.',
+                        kind='invalid-argument')
     if n > 1 and where:
         raise ToolError('where and ngram do not combine. For runs of words with conditions use grew_search '
-                        '(X < Y is the next word).')
+                        '(X < Y is the next word).', kind='invalid-argument')
     column = 'features' if what == 'feature-bundles' else what
     c = ws.corpus
     cond, said = where_clauses(c, where)
@@ -402,7 +403,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25, docume
     kinds = [kind] if kind else list(CONSISTENCY)
     for k in kinds:
         if k not in CONSISTENCY:
-            raise ToolError(f'Unknown check "{k}". One of: ' + ', '.join(CONSISTENCY))
+            raise ToolError(f'Unknown check "{k}". One of: ' + ', '.join(CONSISTENCY), kind='invalid-argument')
     limit = clamp_limit(limit, 25, 100)
     c = ws.corpus
     with c.within(document) as held:
@@ -520,7 +521,7 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
               limit: Optional[int], listed: List[int]) -> str:
     """:func:`t_worklist`, adding what it shows and what there was to ``listed``."""
     if kind not in WORKLIST_KINDS:
-        raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
+        raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS), kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['worklist'])
     c = ws.corpus
     # A per-document count read from a clipped result is the top of a prefix,
@@ -531,7 +532,7 @@ def _worklist(ws: Workspace, kind: str, field: Optional[str], document: Optional
     fields = [field] if field else list(FIELDS) + ['deprel']
     for f in fields:
         if f not in FIELDS + ('deprel',):
-            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(FIELDS + ('deprel',)))
+            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(FIELDS + ('deprel',)), kind='invalid-argument')
     out: List[str] = []
 
     if kind == 'missing':

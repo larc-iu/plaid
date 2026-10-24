@@ -48,7 +48,7 @@ def guide_source() -> str:
     for path in (REPO_GUIDE, PACKAGED_GUIDE):
         if path.is_file():
             return path.read_text(encoding='utf-8')
-    raise ToolError('The app guide is not installed with this assistant.')
+    raise ToolError('The app guide is not installed with this assistant.', kind='unavailable')
 
 
 def _clean(line: str, names=None) -> str:

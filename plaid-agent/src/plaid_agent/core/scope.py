@@ -24,7 +24,8 @@ def resolve_documents(ws, documents) -> List[str]:
     if isinstance(documents, str):
         documents = [documents]
     if not isinstance(documents, list) or not all(isinstance(d, str) and d.strip() for d in documents):
-        raise ToolError('documents is a list of document names or ids, e.g. ["Text 1", "Text 2"].')
+        raise ToolError('documents is a list of document names or ids, e.g. ["Text 1", "Text 2"].',
+                        kind='invalid-argument')
     ids: List[str] = []
     for d in documents:
         did = ws.resolve_document_id(d.strip())
@@ -45,7 +46,7 @@ def among_documents(fn: Callable) -> Callable:
             return fn(ws, *args, **kwargs)
         bound = sig.bind(ws, *args, **kwargs)
         if bound.arguments.get('document'):
-            raise ToolError('Give document or documents, not both.')
+            raise ToolError('Give document or documents, not both.', kind='invalid-argument')
         ids = resolve_documents(ws, documents)
         # The documents as resolved, for the trace to count each once
         # (`core.agent`): an id and a name of one document are one.

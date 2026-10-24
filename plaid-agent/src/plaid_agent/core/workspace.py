@@ -357,9 +357,9 @@ class BaseWorkspace:
         a Python error about ``lower``."""
         if document is not None and not isinstance(document, str):
             raise ToolError('document must be a document\'s name or id, as text. For an entry of documents(), '
-                            'pass its "id".')
+                            'pass its "id".', kind='invalid-argument')
         if not document:
-            raise ToolError('Name a document (id or exact name); project_overview lists them.')
+            raise ToolError('Name a document (id or exact name); project_overview lists them.', kind='invalid-argument')
         docs = self.documents()
         for d in docs:
             if d['id'] == document:
@@ -388,7 +388,7 @@ class BaseWorkspace:
         if len(by_name) > 1:
             raise ToolError(f'Several documents match {plain_quote(document)}: '
                             + ', '.join(plain_quote(d.get('name') or '') for d in by_name)
-                            + '. Name one exactly.')
+                            + '. Name one exactly.', kind='ambiguous')
         starts = [d for d in docs if name_key(d.get('name') or '').startswith(name_key(document))]
         if len(starts) == 1:
             return starts[0]['id']
@@ -400,10 +400,10 @@ class BaseWorkspace:
                           difflib.get_close_matches(name_key(document), list(keys), n=5, cutoff=0.5))
         elsewhere = self._document_elsewhere(names)
         if elsewhere is not None:
-            raise ToolError(elsewhere)
+            raise ToolError(elsewhere, kind='not-found')
         labels = doc_labels(self, plain_quote)
         raise ToolError(f'No document "{document}".' + (f' Closest: {close}.' if close else '') + ' Documents: '
-                        + ', '.join(labels[d['id']] for d in docs[:50]))
+                        + ', '.join(labels[d['id']] for d in docs[:50]), kind='not-found')
 
     def _document_elsewhere(self, names: List[str]) -> Optional[str]:
         """Where a document this project does not have is, among the other
@@ -476,7 +476,8 @@ class BaseWorkspace:
         and never on a value. An app whose comments can sit on a value
         overrides this."""
         if field:
-            raise ToolError('A comment here sits on a sentence or on the document, never on one value.')
+            raise ToolError('A comment here sits on a sentence or on the document, never on one value.',
+                            kind='invalid-argument')
         return 'token', self.comment_anchor(doc, ref)
 
     def comment_placed(self, doc, ref: Optional[str], field: Optional[str], short: str) -> Dict[str, Any]:
@@ -714,7 +715,7 @@ class BaseWorkspace:
         """
         self.refuse_read_only()
         if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
-            raise ToolError(WEB_READ_REFUSAL)
+            raise ToolError(WEB_READ_REFUSAL, kind='not-allowed')
         at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)
         self.guard_op(op, replacing=at)
@@ -786,7 +787,7 @@ class BaseWorkspace:
         project's, in a conversation that belongs to one project."""
         if not self.writable:
             home = self.reach.home_project.name if self.reach is not None else ''
-            raise ToolError(READ_ONLY_REFUSAL.format(home=home, here=self.project.name))
+            raise ToolError(READ_ONLY_REFUSAL.format(home=home, here=self.project.name), kind='not-allowed')
 
     @contextmanager
     def staging(self):
@@ -840,9 +841,9 @@ class BaseWorkspace:
         planned = [o for i, o in enumerate(self.ops) if i != replacing]
         if kind in exclusive:
             if planned:
-                raise ToolError(self.exclusive_message(staging_it=True))
+                raise ToolError(self.exclusive_message(staging_it=True), kind='conflict')
         elif any(o.get('kind') in exclusive for o in planned):
-            raise ToolError(self.exclusive_message(staging_it=False))
+            raise ToolError(self.exclusive_message(staging_it=False), kind='conflict')
 
     def refuse_exclusive_early(self, op: Dict[str, Any]) -> None:
         """:meth:`refuse_exclusive` asked of the op a tool is ABOUT to stage,
@@ -904,7 +905,7 @@ class BaseWorkspace:
                 listed = list(rule.get('values') or [])
                 shown = ', '.join(listed[:60]) + (f' and {len(listed) - 60} more' if len(listed) > 60 else '')
                 raise ToolError(f'"{value}" is not on the list {name or "this layer"} is held to, so '
-                                f'the plan would be refused. Allowed: {shown}')
+                                f'the plan would be refused. Allowed: {shown}', kind='not-allowed')
 
     def reserve(self, n: int) -> None:
         """Refuse BEFORE staging what would push the plan past what a record
@@ -912,12 +913,12 @@ class BaseWorkspace:
         try:
             core_reserve(len(self.ops), n, self.PLAN_NOTE, PLAN_MAX_OPS)
         except PlanFull as e:
-            raise ToolError(str(e)) from None
+            raise ToolError(str(e), kind='too-large') from None
         # A rule stored as one op stands for many changes, which count too.
         from . import rules
         full = rules.too_many(self.KIND, self.ops, n)
         if full:
-            raise ToolError(full)
+            raise ToolError(full, kind='too-large')
 
     def certainly_gone(self) -> set:
         """What the plan certainly deletes. Rebuilt whenever the plan was
@@ -941,7 +942,7 @@ class BaseWorkspace:
             planned, gone = [o for i, o in enumerate(self.ops) if i != replacing], None
         clash = opkind.delete_clash(self.KIND, planned, op, gone)
         if clash:
-            raise ToolError(self.clash_message(*clash))
+            raise ToolError(self.clash_message(*clash), kind='conflict')
 
     def clash_message(self, victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
         """What to tell the model when one change in the plan writes to what

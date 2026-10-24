@@ -94,7 +94,8 @@ class Workspace(BaseWorkspace):
         # names.
         _guards(self, doc)
         if field:
-            raise ToolError('A comment here sits on a sentence or on the document, never on one value.')
+            raise ToolError('A comment here sits on a sentence or on the document, never on one value.',
+                            kind='invalid-argument')
         if not ref:
             return {'entity_type': 'document', 'entity_id': doc.id, 'anchor_label': (doc.name or '')[:200],
                     'ref': None, 'label': f'comment on the document: {qv(short)}'}
@@ -108,7 +109,7 @@ class Workspace(BaseWorkspace):
         thing = resolve(doc, ref)
         if not isinstance(thing, Sentence):
             raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on '
-                            f'the document.')
+                            f'the document.', kind='invalid-argument')
         return thing.id
 
     def __init__(self, client, project: UdProject, on_progress=None):
@@ -144,7 +145,7 @@ class Workspace(BaseWorkspace):
         for s in doc.sentences:
             if any(x is w for x in s.words):
                 return s
-        raise ToolError('internal: word not in document')
+        raise ToolError('internal: word not in document', kind='tool-fault')
 
     # --- the plan --------------------------------------------------------
 
@@ -167,7 +168,8 @@ class Workspace(BaseWorkspace):
             doc = self.doc(op['document_id'])
             word = next((w for s in doc.sentences for w in s.words if w.id == wid), None)
             if word is None:
-                raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn')
+                raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn',
+                                kind='conflict')
             op[at] = virtual_at(self.project, doc, word)
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
@@ -227,7 +229,7 @@ class Workspace(BaseWorkspace):
             raise ToolError(f'{word} cannot take {head} as its head: {head} hangs below it, through the heads '
                             f'{chain} (each word, then its head, with the heads this plan gives), so the tree '
                             'would hold a cycle. Nothing was planned. Any other head that would change is the '
-                            'user\'s to ask for.')
+                            'user\'s to ask for.', kind='conflict')
 
     def exclusive_message(self, staging_it: bool) -> str:
         if staging_it:
@@ -268,7 +270,8 @@ class Workspace(BaseWorkspace):
             if any(prev.get('kind') in RESHAPES_TOKEN
                    and words & set(prev.get('existing_word_ids') or []) for prev in planned):
                 raise ToolError('This plan already reshapes this token. Keep one of the two '
-                                '(discard_plan and stage the rest again), or plan them in separate turns.')
+                                '(discard_plan and stage the rest again), or plan them in separate turns.',
+                                kind='conflict')
             # A split deletes no word: each keeps its id and its values, so a
             # scope over the document finds them as it would without it.
             other = SCOPE_KINDS if kind not in SPLITS_KEEP_WORDS else ()
@@ -278,7 +281,8 @@ class Workspace(BaseWorkspace):
         if any(prev.get('kind') in other and docs_of_op(prev) & reach for prev in planned):
             raise ToolError('This plan both reshapes a token and changes every matching word of '
                             'its document, and the reshape deletes some of them. Keep one of the '
-                            'two (discard_plan and stage the rest again), or plan them in separate turns.')
+                            'two (discard_plan and stage the rest again), or plan them in separate turns.',
+                            kind='conflict')
 
     def refuse_scope_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """Two changes that cover a whole document, reaching one document,
@@ -301,7 +305,7 @@ class Workspace(BaseWorkspace):
             raise ToolError(
                 f'{prev.get("label") or prev.get("kind")} already covers a document this change '
                 'covers, and one of the two throws values away. Keep one of them '
-                '(discard_plan and stage the rest again), or plan them in separate turns.')
+                '(discard_plan and stage the rest again), or plan them in separate turns.', kind='conflict')
 
     def plan_view(self) -> List[Dict[str, Any]]:
         from .settle import settle_scopes
@@ -408,7 +412,7 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
         if op.get('kind') in REWRITES_DOCUMENT and doc.id in docs_of_op(op):
             raise ToolError(f'This plan already parses {doc_label(ws, doc.id, qname)}, and a parse rewrites the '
                             f'document from scratch, so this change would be thrown away. Plan '
-                            f'the parse on its own, or discard_plan and plan this without it.')
+                            f'the parse on its own, or discard_plan and plan this without it.', kind='conflict')
 
 
 def _no_restore_planned(ws: Workspace) -> None:
@@ -428,7 +432,7 @@ def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
         if op.get('kind') in RESHAPES_DOCUMENT and op.get('document_id') == doc.id:
             raise ToolError(f'This plan already moves a sentence boundary in {doc_label(ws, doc.id, qname)}, and '
                             f'that renumbers the sentences every other reference names. Apply it '
-                            f'on its own, then plan the rest against the new numbering.')
+                            f'on its own, then plan the rest against the new numbering.', kind='conflict')
 
 
 def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
@@ -440,7 +444,7 @@ def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
     if any(doc.id in docs_of_op(op) for op in ws.ops):
         raise ToolError(f'This plan already changes {doc_label(ws, doc.id, qname)}, and moving a sentence boundary '
                         f'renumbers the sentences every other reference names, so it has to be a '
-                        f'plan of its own. Apply what is planned, then move the boundary.')
+                        f'plan of its own. Apply what is planned, then move the boundary.', kind='conflict')
 
 
 def _guards(ws: Workspace, doc: UdDoc) -> None:
@@ -550,14 +554,14 @@ def resolve_in(ws: Workspace, doc: UdDoc, ref: str):
         if r is not None and r.parts[0] and 1 <= r.sentence <= len(doc.sentences):
             note = planned_word_refusal(ws, doc, doc.sentences[r.sentence - 1], r.until or r.parts[0], ref)
             if note:
-                raise ToolError(note) from None
+                raise ToolError(note, kind='conflict') from None
         raise
     r = read_ref(ref, 'w', ranged=True)
     if isinstance(thing, (Word, Token)) and not r.form and not r.by_form:
         first = thing if isinstance(thing, Word) else (thing.words or [None])[0]
         note = first and renumbered_refusal(ws, doc, doc.sentences[r.sentence - 1], first.index, ref)
         if note:
-            raise ToolError(note)
+            raise ToolError(note, kind='conflict')
     return thing
 
 
@@ -568,23 +572,24 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
     if isinstance(refs, str):
         refs = [refs]
     if not refs:
-        raise ToolError('Name at least one word, as a list of references like ["s1.w2"].')
+        raise ToolError('Name at least one word, as a list of references like ["s1.w2"].', kind='invalid-argument')
     out = []
     for ref in refs:
         thing = resolve_in(ws, doc, str(ref))
         if isinstance(thing, Sentence):
             raise ToolError(f'{ref} is a sentence. Name its words (s{thing.index}.w1 and so on): '
-                            f'an annotation sits on a word.')
+                            f'an annotation sits on a word.', kind='invalid-argument')
         if isinstance(thing, Token):
             raise ToolError(f'{ref} is a multi-word token, which carries no annotation of its own. '
-                            f'Name its words: ' + ', '.join(f's?.w{w.index}' for w in thing.words))
+                            f'Name its words: ' + ', '.join(f's?.w{w.index}' for w in thing.words),
+                            kind='invalid-argument')
         out.append(thing)
     return out
 
 
 def _field_layer(ws: Workspace, field: str) -> str:
     if field not in FIELDS:
-        raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(FIELDS))
+        raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(FIELDS), kind='invalid-argument')
     return ws.project.layer('features' if field == 'features' else field)
 
 
@@ -721,12 +726,13 @@ def _pairs(bundle: str) -> Dict[str, str]:
         pair = normalize_feature(raw)
         if not pair:
             raise ToolError(f'"{raw}" is not a feature: write each one as Feature=Value, '
-                            f'joined by |, e.g. Case=Nom|Number=Sing.')
+                            f'joined by |, e.g. Case=Nom|Number=Sing.', kind='invalid-argument')
         refusal = feature_refusal(pair[2])
         if refusal:
-            raise ToolError(f'"{raw}": {refusal}')
+            raise ToolError(f'"{raw}": {refusal}', kind='invalid-argument')
         if pair[0] in out:
-            raise ToolError(f'{pair[0]} is named twice. A word holds one value of each feature.')
+            raise ToolError(f'{pair[0]} is named twice. A word holds one value of each feature.',
+                            kind='invalid-argument')
         out[pair[0]] = pair[1]
     return out
 
@@ -738,10 +744,11 @@ def _check_feature(ws: Workspace, feature: str, value: str) -> None:
         return
     if feature not in inventory:
         raise ToolError(f'"{feature}" is not in this project\'s feature inventory, which is closed. '
-                        f'Features: ' + ', '.join(sorted(inventory)))
+                        f'Features: ' + ', '.join(sorted(inventory)), kind='not-allowed')
     allowed = inventory.get(feature) or []
     if allowed and value not in allowed:
-        raise ToolError(f'"{value}" is not a value of {feature} here. Allowed: ' + ', '.join(allowed))
+        raise ToolError(f'"{value}" is not a value of {feature} here. Allowed: ' + ', '.join(allowed),
+                        kind='not-allowed')
 
 
 def _is_feature_op(op: Dict[str, Any], layer_id: str, word_id: str) -> bool:
@@ -857,12 +864,14 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
     as they are. set_field on features replaces them all."""
     feature = (feature or '').strip()
     if not feature or '=' in feature or '|' in feature:
-        raise ToolError('Give feature: one feature name, like Number (the value goes in value).')
+        raise ToolError('Give feature: one feature name, like Number (the value goes in value).',
+                        kind='invalid-argument')
     value = '' if value is None else unmark(str(value), 'value').strip()
     if value:
         refusal = feature_refusal(f'{feature}={value}')
         if refusal or '|' in value:
-            raise ToolError(refusal or 'Give value: one value, like Sing. Set each feature on its own.')
+            raise ToolError(refusal or 'Give value: one value, like Sing. Set each feature on its own.',
+                            kind='invalid-argument')
     _check_feature(ws, feature, value)
     doc = ws.doc(document)
     layer_id = ws.project.layer(FEATURES)
@@ -914,15 +923,18 @@ def _head_id(head, doc: Optional[UdDoc] = None, sentence: Optional[Sentence] = N
         if r is not None and (r.parts[0] or r.by_form):
             if r.sentence != sentence.index:
                 raise ToolError(f'"{head}" is in s{r.sentence}, and a head is a word of the same sentence '
-                                f'(s{sentence.index}). Give its number there: {words_listing(sentence)}.')
+                                f'(s{sentence.index}). Give its number there: {words_listing(sentence)}.',
+                                kind='invalid-argument')
             thing = resolve_in(ws, doc, text) if ws is not None else resolve(doc, text)
             if isinstance(thing, Word):
                 return thing.index
             raise ToolError(f'"{head}" is a multi-word token. A head is one of its words: '
-                            + ', '.join(f'{w.index} ("{clip(w.form)}")' for w in thing.words) + '.')
+                            + ', '.join(f'{w.index} ("{clip(w.form)}")' for w in thing.words) + '.',
+                            kind='invalid-argument')
     raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
                     '(1, 2, 3 …), or 0 for the root.'
-                    + (f' s{sentence.index} has: {words_listing(sentence)}.' if sentence is not None else ''))
+                    + (f' s{sentence.index} has: {words_listing(sentence)}.' if sentence is not None else ''),
+                    kind='invalid-argument')
 
 
 def _other_roots(ws: Workspace, sentence: Sentence, word: Word) -> List[Word]:
@@ -955,31 +967,35 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
         if len(others) > 1:
             raise ToolError(f's{sentence.index} already has {len(others)} roots ('
                             + ', '.join(word_ref(sentence, w) for w in others)
-                            + '). Give each of them a head first (set_head).')
+                            + '). Give each of them a head first (set_head).', kind='conflict')
         if others and old_root_head is None:
             old = others[0]
             raise ToolError(f'{word_ref(sentence, old)} ("{old.form}") is the root of s{sentence.index}, and a '
                             f'sentence has one. To make {word_ref(sentence, word)} the root instead, say where '
                             f'{word_ref(sentence, old)} goes: old_root_head (its new head\'s id, often '
-                            f'{word.index}) and old_root_deprel.')
+                            f'{word.index}) and old_root_deprel.', kind='invalid-argument')
         if others:
             old = others[0]
             if not (old_root_deprel or '').strip():
-                raise ToolError('Give old_root_deprel: the relation the old root takes to its new head.')
+                raise ToolError('Give old_root_deprel: the relation the old root takes to its new head.',
+                                kind='invalid-argument')
             if _head_id(old_root_head, doc, sentence, ws) == 0:
-                raise ToolError('old_root_head is the old root\'s new head word, not 0: a sentence has one root.')
+                raise ToolError('old_root_head is the old root\'s new head word, not 0: a sentence has one root.',
+                                kind='invalid-argument')
             if _head_id(old_root_head, doc, sentence, ws) == old.index:
                 # Said in the parameter's terms: "A word cannot be its own
                 # head" read as being about the new root, and a model gave up.
                 raise ToolError(f'old_root_head {old.index} is {word_ref(sentence, old)} ("{old.form}") itself. '
                                 f'old_root_head is the word {word_ref(sentence, old)} will hang from once '
-                                f'{word_ref(sentence, word)} is the root, often {word.index}. Nothing was planned.')
+                                f'{word_ref(sentence, word)} is the root, often {word.index}. Nothing was planned.',
+                                kind='invalid-argument')
             with ws.staging():
                 note = _stage_head(ws, doc, word, sentence, head, deprel)
                 old_note = _stage_head(ws, doc, old, sentence, old_root_head, old_root_deprel)
             return f'{note} {old_note}'
     elif old_root_head is not None or old_root_deprel:
-        raise ToolError('old_root_head and old_root_deprel go with head 0, when another word is the root.')
+        raise ToolError('old_root_head and old_root_deprel go with head 0, when another word is the root.',
+                        kind='invalid-argument')
     return _stage_head(ws, doc, word, sentence, head, deprel)
 
 
@@ -988,13 +1004,14 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     ``deprel``, refusing what a tree cannot hold."""
     ref = word_ref(sentence, word)
     if head is None:
-        raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
+        raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.',
+                        kind='invalid-argument')
     given = head
     head = _head_id(head, doc, sentence, ws)
     if head and sentence.word(head) is None:
         raise ToolError(planned_word_refusal(ws, doc, sentence, head, f's{sentence.index}.w{head}')
                         or f'Sentence s{sentence.index} has no word {head}. Its words: '
-                        f'{words_listing(sentence)}.')
+                        f'{words_listing(sentence)}.', kind='not-found')
     # A head given as a plain number names a word by its number now, as a
     # reference does, and is refused the same way where this plan renumbers
     # it. One given as a reference was read by `resolve_in` already.
@@ -1005,18 +1022,20 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
         plain = False
     note = plain and head and renumbered_refusal(ws, doc, sentence, head, f'Head {head}')
     if note:
-        raise ToolError(note)
+        raise ToolError(note, kind='conflict')
     if head == word.index:
-        raise ToolError(f'A word cannot be its own head. Use head 0 to make {ref} the root of s{sentence.index}.')
+        raise ToolError(f'A word cannot be its own head. Use head 0 to make {ref} the root of s{sentence.index}.',
+                        kind='invalid-argument')
     deprel = unmark(deprel or '', 'deprel').strip()
     if head == 0 and not deprel:
         deprel = 'root'
     if not deprel:
-        raise ToolError('Give deprel: the relation label, e.g. nsubj, obj, det.')
+        raise ToolError('Give deprel: the relation label, e.g. nsubj, obj, det.', kind='invalid-argument')
     if head == 0 and deprel != 'root':
-        raise ToolError(f'Head 0 is the sentence root, whose deprel is "root", not "{deprel}".')
+        raise ToolError(f'Head 0 is the sentence root, whose deprel is "root", not "{deprel}".',
+                        kind='invalid-argument')
     if head != 0 and deprel == 'root':
-        raise ToolError('The deprel "root" belongs to head 0. Give the head word\'s id.')
+        raise ToolError('The deprel "root" belongs to head 0. Give the head word\'s id.', kind='invalid-argument')
     head_word = sentence.word(head) if head else word
     lemma, head_lemma = word.fields.get('lemma'), head_word.fields.get('lemma')
     # The suppressors this write leaves stranded: the one over the relation it
@@ -1109,7 +1128,7 @@ def _review_fields(field: str) -> List[str]:
     fields = [field] if field else list(REVIEW_FIELDS)
     for f in fields:
         if f not in REVIEW_FIELDS:
-            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(REVIEW_FIELDS))
+            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(REVIEW_FIELDS), kind='invalid-argument')
     return fields
 
 
@@ -1139,7 +1158,7 @@ def _refs_need_a_document(document, refs) -> None:
     """A reference is positional inside one document, so refs without a
     document to read them against are a request that cannot be answered."""
     if refs and not document:
-        raise ToolError('refs need a document')
+        raise ToolError('refs need a document', kind='invalid-argument')
 
 
 def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> List[str]:
@@ -1164,7 +1183,7 @@ def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> 
                     if did not in ids:
                         ids.append(did)
         if not ids:
-            raise ToolError('Nothing is waiting for review anywhere in the project.')
+            raise ToolError('Nothing is waiting for review anywhere in the project.', kind='not-found')
     else:
         if isinstance(documents, str):
             documents = [documents]
@@ -1174,10 +1193,11 @@ def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> 
             if did not in ids:
                 ids.append(did)
         if not ids:
-            raise ToolError('Name the documents as a list, or "all" for every document with something waiting.')
+            raise ToolError('Name the documents as a list, or "all" for every document with something waiting.',
+                            kind='invalid-argument')
     if len(ids) > MAX_SCOPE_DOCS:
         raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers. Go in passes: '
-                        f'worklist lists them by document.')
+                        f'worklist lists them by document.', kind='too-large')
     return ids
 
 
@@ -1223,7 +1243,7 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
         return _many(ws, documents, field, t_confirm)
     if not document:
         raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
-                        'something waiting.')
+                        'something waiting.', kind='invalid-argument')
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
@@ -1281,7 +1301,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
         return _many(ws, documents, field, t_discard_predictions)
     if not document:
         raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
-                        'unconfirmed machine values.')
+                        'unconfirmed machine values.', kind='invalid-argument')
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
@@ -1346,19 +1366,20 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     if isinstance(documents, str):
         documents = [documents]
     if not documents:
-        raise ToolError('Name the documents to parse, as a list.')
+        raise ToolError('Name the documents to parse, as a list.', kind='invalid-argument')
     online = parse_services(ws)
     if not online:
         raise ToolError('No parser is connected to this project right now. A parse cannot be '
-                        'planned until the operator starts one.')
+                        'planned until the operator starts one.', kind='unavailable')
     if service_id:
         chosen = next((s for s in online if s.get('service_id') == service_id), None)
         if not chosen:
             raise ToolError(f'No connected parser "{service_id}". Connected: '
-                            + ', '.join(s.get('service_id') for s in online))
+                            + ', '.join(s.get('service_id') for s in online), kind='not-found')
     elif len(online) > 1:
         raise ToolError('Several parsers are connected; name one in service_id: '
-                        + ', '.join(f'{s.get("service_id")} ({s.get("service_name")})' for s in online))
+                        + ', '.join(f'{s.get("service_id")} ({s.get("service_name")})' for s in online),
+                        kind='ambiguous')
     else:
         chosen = online[0]
 
@@ -1369,7 +1390,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
             ids.append(did)   # named twice is parsed once
     if len(ids) > MAX_SCOPE_DOCS:
         raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers. '
-                        f'Go in passes.')
+                        f'Go in passes.', kind='too-large')
     # Names come from the document LIST, which is already in hand: reading
     # every named document just to write its name into a label cost a full
     # fetch per document, which on a corpus-sized parse is most of the call.
@@ -1382,11 +1403,11 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
         names = ', '.join(listed.get(i, i) for i in clash)
         raise ToolError(f'This plan already changes {names}, and a parse rewrites a document from '
                         f'scratch, so those changes would be thrown away. Plan the parse on its own, '
-                        f'or discard_plan and plan it alone.')
+                        f'or discard_plan and plan it alone.', kind='conflict')
     lang = (language or ws.project.language or '').strip()
     if not lang:
         raise ToolError('Give language: the project does not record one, and the parser needs to '
-                        'know which models to load.')
+                        'know which models to load.', kind='invalid-argument')
     # The service coerces its request against its declared parameters, so a
     # language its enum leaves out would quietly become its default.
     declared = next((p for p in ((chosen.get('extras') or {}).get('parameters') or [])
@@ -1396,7 +1417,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
         if offered and lang not in offered:
             raise ToolError(f'{chosen.get("service_name")} does not offer "{lang}". It offers: '
                             + ', '.join(offered) + '. Give language as one of these to parse '
-                            'with that language\'s models.')
+                            'with that language\'s models.', kind='invalid-argument')
     names = [listed.get(i, i) for i in ids]
     ws.add_op({'kind': 'run_parse', 'document_ids': ids, 'service_id': chosen.get('service_id'),
                'project_id': ws.project.id, 'language': lang, 'overwrite': bool(overwrite),

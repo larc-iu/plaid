@@ -43,7 +43,8 @@ def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -
     came first: see :func:`refuse_shape_and_analysis`.
     """
     if obj.id in reshaped_subjects(ws.ops, merges_only=not merging):
-        raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over')
+        raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over',
+                        kind='conflict')
     if isinstance(obj, Word):
         refuse_shape_and_respell(ws, [obj], ref)
     refuse_shape_and_analysis(ws, word_ids if word_ids is not None else obj.id, ref, analysing=False)
@@ -165,12 +166,13 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
         left = at.strip() if isinstance(at, str) else ''
         if not left:
             raise ToolError('at must be the number of characters in the left part (a whole number), '
-                            'or the left part itself') from None
+                            'or the left part itself', kind='invalid-argument') from None
         if not w.surface.startswith(left):
-            raise ToolError(f'"{left}" is not the start of "{w.surface}"; give the left part, or the number of characters in it') from None
+            raise ToolError(f'"{left}" is not the start of "{w.surface}"; give the left part, or the number of characters in it',
+                            kind='invalid-argument') from None
         n = len(left)
     if not 0 < n < len(w.surface):
-        raise ToolError(f'at must be between 1 and {len(w.surface) - 1} for "{w.surface}"')
+        raise ToolError(f'at must be between 1 and {len(w.surface) - 1} for "{w.surface}"', kind='invalid-argument')
     # A cut next to whitespace (in a word made over a space, as phrase
     # imports make them) goes around the whole run of it, as the editor's
     # split does: the right part starts after the run and the left part ends
@@ -207,19 +209,21 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     reshape_guards(ws, doc)
     refs = _refs(refs)
     if len(refs) < 2:
-        raise ToolError('Give at least two word references in one sentence, e.g. ["s3.w2", "s3.w3"]')
+        raise ToolError('Give at least two word references in one sentence, e.g. ["s3.w2", "s3.w3"]',
+                        kind='invalid-argument')
     words = [_need(resolve(doc, r), Word, r) for r in refs]
     sents = {resolve(doc, r.split('.')[0]).id for r in refs}
     if len(sents) != 1:
-        raise ToolError('Words to merge must be in the same sentence')
+        raise ToolError('Words to merge must be in the same sentence', kind='invalid-argument')
     words.sort(key=lambda w: w.begin)
     for a, b in zip(words, words[1:]):
         if b.index != a.index + 1:
-            raise ToolError(f'w{a.index} and w{b.index} are not consecutive; merge only adjacent words')
+            raise ToolError(f'w{a.index} and w{b.index} are not consecutive; merge only adjacent words',
+                            kind='invalid-argument')
         gap = doc.body[a.end:b.begin]
         if gap.strip():
             raise ToolError(f'"{gap.strip()}" lies between "{a.surface}" and "{b.surface}"; a merge would swallow it. '
-                            'Respell or delete the punctuation first if the merge is really wanted.')
+                            'Respell or delete the punctuation first if the merge is really wanted.', kind='conflict')
     for w in words:
         _guard(ws, w, word_ref(next(s for s in doc.sentences if s.id in sents), w), merging=True)
     first, last = words[0], words[-1]
@@ -309,9 +313,11 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     try:
         n = whole(before_word, 'before_word')
     except ValueError:
-        raise ToolError('before_word must be a word number (the first word of the new sentence)') from None
+        raise ToolError('before_word must be a word number (the first word of the new sentence)',
+                        kind='invalid-argument') from None
     if not 2 <= n <= len(s.words):
-        raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)')
+        raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)',
+                        kind='invalid-argument')
     w = s.words[n - 1]
     left = doc.body[s.begin:w.begin].strip()
     right = doc.body[w.begin:s.end].strip()
@@ -333,7 +339,8 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
     if s.index < 2:
-        raise ToolError(f'{ref} is the first sentence; name the sentence to merge into the one before it')
+        raise ToolError(f'{ref} is the first sentence; name the sentence to merge into the one before it',
+                        kind='invalid-argument')
     prev = doc.sentences[s.index - 2]
     _guard(ws, s, ref, merging=True)
     _guard(ws, prev, f's{prev.index}', merging=True)
@@ -361,18 +368,19 @@ def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int
     for b, e in ws.planned_respells(text_id):
         if e > begin:
             raise ToolError(f'{where}: a respelling is planned at {b}-{e} in the same text, after this point; '
-                            'plan the respellings in a separate plan (or discard_plan)')
+                            'plan the respellings in a separate plan (or discard_plan)', kind='conflict')
     for op in ws.ops:
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and (op['begin'], op['end']) != (begin, end) \
                 and op['begin'] < max(end, begin + 1) and begin < max(op['end'], op['begin'] + 1):
-            raise ToolError(f'{where}: overlaps a text edit already planned at {op["begin"]}-{op["end"]}')
+            raise ToolError(f'{where}: overlaps a text edit already planned at {op["begin"]}-{op["end"]}',
+                            kind='conflict')
     refuse_comment_and_text_edit(ws, token_ids, where, commenting=False)
 
 
 def _clean_text(text: str) -> str:
     text = (text or '').replace('\r\n', '\n').strip('\n')
     if not text.strip():
-        raise ToolError('text must not be empty')
+        raise ToolError('text must not be empty', kind='invalid-argument')
     return text
 
 

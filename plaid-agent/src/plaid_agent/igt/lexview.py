@@ -28,7 +28,7 @@ def morph_type(t: str) -> str:
     k = (t or '').strip().lower()
     if k in FLEX_MORPH_TYPES:
         return k
-    raise ToolError(f'Unknown morph type "{t}". Types: ' + ', '.join(FLEX_MORPH_TYPES))
+    raise ToolError(f'Unknown morph type "{t}". Types: ' + ', '.join(FLEX_MORPH_TYPES), kind='invalid-argument')
 
 # --- the lexicon as one turn reads it ----------------------------------------
 class LexView:

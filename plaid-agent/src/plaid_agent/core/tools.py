@@ -15,24 +15,91 @@ from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDE
 from .trace import ranges
 
 
+# What kind of refusal a tool's answer is, one word from this closed list,
+# stored on the conversation step (``error_kind``) so the research dataset
+# reads it rather than guessing it from the refusal's wording, which the
+# polish rounds reword often.
+REFUSAL_KINDS = {
+    'not-found': 'a name, number or reference that names nothing there',
+    'ambiguous': 'a name that names several things',
+    'invalid-argument': 'an argument of the wrong shape, type, level or value',
+    'not-allowed': 'something this user or this assistant may not do',
+    'conflict': 'a request that clashes with the plan or the data as they stand',
+    'too-large': 'a request over one of the limits',
+    'unavailable': 'a capability, service or server answer that is not there',
+    'query-refused': 'a query the engine refused',
+    'code-failed': 'run_code whose code raised',
+    'tool-fault': 'a fault in the tool, not in the request',
+}
+
+
+def refusal_kind(kind: str) -> str:
+    """``kind`` when it is one of :data:`REFUSAL_KINDS`, else a ValueError,
+    so a misspelt kind fails where it is written rather than in the data."""
+    if kind not in REFUSAL_KINDS:
+        raise ValueError(f'refusal kind {kind!r} is not one of {sorted(REFUSAL_KINDS)}')
+    return kind
+
+
 class ToolError(Exception):
     """A tool-level failure whose message goes back to the model as the result.
 
     One class, not one per app: the workspace and the corpus helper both raise
     it from shared code, and an app that caught only its own would let those
     through as a traceback instead of as a sentence the model can act on.
+    Every raise names its ``kind`` (:data:`REFUSAL_KINDS`).
     """
+
+    def __init__(self, message: str, *, kind: str):
+        super().__init__(message)
+        self.kind = refusal_kind(kind)
+
+
+class ValueRefusal(ValueError):
+    """A ValueError whose message the model reads, with its kind.
+
+    The name and reference lookups raise ValueError, and many callers catch
+    that to try another reading, so they keep its type and add the kind. A
+    plain ValueError that reaches :func:`run_tool` is ``invalid-argument``.
+    """
+
+    def __init__(self, message: str, *, kind: str):
+        super().__init__(message)
+        self.kind = refusal_kind(kind)
 
 
 class Refusal(str):
     """A tool's answer that says it did not do what was asked: "Error: ...",
     marked by its type, so a successful answer whose text happens to start
-    with "Error" (a run_code that printed it) is not traced as a failed step."""
+    with "Error" (a run_code that printed it) is not traced as a failed step.
+    ``kind`` is what kind of refusal it is (:data:`REFUSAL_KINDS`)."""
+
+    kind = 'tool-fault'
 
 
-def refused(reason: str) -> Refusal:
+def refused(reason: str, kind: str) -> Refusal:
     """The answer for a call refused for ``reason``."""
-    return Refusal(f'Error: {reason}')
+    r = Refusal(f'Error: {reason}')
+    r.kind = refusal_kind(kind)
+    return r
+
+
+def refused_for(e: Exception) -> Refusal:
+    """The answer for a call refused by ``e``, of ``e``'s kind."""
+    return refused(str(e), kind_of(e, 'invalid-argument'))
+
+
+def kind_of(e: Exception, otherwise: str) -> str:
+    """The kind ``e`` carries (a ToolError or a ValueRefusal), or
+    ``otherwise`` for one that carries none."""
+    kind = getattr(e, 'kind', None)
+    return kind if kind in REFUSAL_KINDS else refusal_kind(otherwise)
+
+
+def kind_of_status(e: Exception, otherwise: str = 'unavailable') -> str:
+    """The refusal kind for a server's answer, by its HTTP status."""
+    return {403: 'not-allowed', 401: 'not-allowed', 404: 'not-found', 409: 'conflict', 413: 'too-large',
+            400: 'invalid-argument', 422: 'invalid-argument'}.get(getattr(e, 'status', None), otherwise)
 
 
 def truncate(s: str) -> str:
@@ -54,7 +121,7 @@ def server_refused(what: str, e: Exception) -> ToolError:
     either app reads the same and none of them hands the model a traceback.
     """
     reason = ' '.join(str(e).split())[:200]
-    return ToolError(f'{what} could not be read' + (f': {reason}' if reason else '.'))
+    return ToolError(f'{what} could not be read' + (f': {reason}' if reason else '.'), kind=kind_of_status(e))
 
 
 def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
@@ -75,16 +142,18 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
         bound = inspect.signature(fn_).bind(ws, **(args or {}))
     except TypeError:
         params = [p for p in inspect.signature(fn_).parameters if p != 'ws']
-        return refused(f'{name} cannot be called with those arguments. It takes: ' + ', '.join(params) + '.')
+        return refused(f'{name} cannot be called with those arguments. It takes: ' + ', '.join(params) + '.',
+                       'invalid-argument')
     try:
         out = truncate(fn_(*bound.args, **bound.kwargs))
         return planned_where(ws, name, after(out) if after else out)
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
-        return refused(str(e))
+        return refused_for(e)
     except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
         traceback.print_exc()
         return refused(f'{name} failed, which is a fault in the tool rather than in the request. '
-                       'Tell the user, and try another way of asking rather than the same call again.')
+                       'Tell the user, and try another way of asking rather than the same call again.',
+                       'tool-fault')
 
 
 def fn(name: str, description: str, properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:

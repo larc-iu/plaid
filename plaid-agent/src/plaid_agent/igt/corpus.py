@@ -52,7 +52,7 @@ class Corpus(BaseCorpus):
 
     def morph(self, var: str = '?m', **c) -> list:
         if not self.M:
-            raise ToolError('This project has no morpheme layer.')
+            raise ToolError('This project has no morpheme layer.', kind='not-found')
         return ['token', var, {'layer': self.M, **c}]
 
     def sent(self, var: str = '?sent', **c) -> list:
@@ -64,7 +64,7 @@ class Corpus(BaseCorpus):
         if scope == 'Sentence':
             return self.S
         if not self.M:
-            raise ToolError('This project has no morpheme layer.')
+            raise ToolError('This project has no morpheme layer.', kind='not-found')
         return self.M
 
     @staticmethod
@@ -90,7 +90,7 @@ class Corpus(BaseCorpus):
         its extent. The editor shows it one morpheme all the same, the whole
         word (``project.virtual_morpheme_id``), which the engine cannot see."""
         if not self.M:
-            raise ToolError('This project has no morpheme layer.')
+            raise ToolError('This project has no morpheme layer.', kind='not-found')
         vs = {'doc': {'var': '?bxd'}, 'begin': {'var': '?bxb'}, 'end': {'var': '?bxe'}}
         return [self.word(var, **c), ['token', var, {'layer': self.W, **vs}],
                 ['not', ['token', '?bxm', {'layer': self.M, **vs}]]]

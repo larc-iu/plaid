@@ -41,6 +41,7 @@ from ..core.project import declares, find_layer, value_set_rules, word_ref  # no
 from ..core.provenance import review_mark
 from ..core.args import sentence_number
 from ..core.refs import clip, read_ref, same_form
+from ..core.tools import ValueRefusal
 
 UD = 'ud'
 MISSING = '_'
@@ -208,7 +209,7 @@ class UdProject:
         """The span layer id for an annotation field, by its UD name."""
         lid = self.span_layers.get(field)
         if not lid:
-            raise ValueError(f'This project has no {field} layer')
+            raise ValueRefusal(f'This project has no {field} layer', kind='not-found')
         return lid
 
     def rule(self, field: str) -> str:
@@ -713,7 +714,7 @@ def parse_ref(ref: str) -> Tuple[int, Optional[int], Optional[int]]:
     by its form has no numbers until :func:`resolve` finds it."""
     r = read_ref(ref, 'w', ranged=True)
     if r is None or r.by_form:
-        raise ValueError(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2)')
+        raise ValueRefusal(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2)', kind='invalid-argument')
     return r.sentence, r.parts[0], r.until
 
 
@@ -752,16 +753,16 @@ def _by_form(s: 'Sentence', ref: str, r) -> Any:
     if r.nth is not None:
         if 1 <= r.nth <= len(words):
             return words[r.nth - 1]
-        raise ValueError(f'{ref}: s{s.index} has {len(words)} word(s) spelled "{clip(r.form)}", '
-                         f'so there is no #{r.nth}. {has_words(s, "Sentence")}.')
+        raise ValueRefusal(f'{ref}: s{s.index} has {len(words)} word(s) spelled "{clip(r.form)}", '
+                           f'so there is no #{r.nth}. {has_words(s, "Sentence")}.', kind='not-found')
     if len(words) == 1:
         return words[0]
     if not words:
-        raise ValueError(f'{ref}: s{s.index} has no word "{clip(r.form)}". '
-                         f'{has_words(s, "Sentence")}.')
+        raise ValueRefusal(f'{ref}: s{s.index} has no word "{clip(r.form)}". '
+                           f'{has_words(s, "Sentence")}.', kind='not-found')
     addrs = [f's{s.index}.{x.ref_range}' if isinstance(x, Token) else f's{s.index}.w{x.index}' for x in words]
-    raise ValueError(f'{ref}: s{s.index} has {len(words)} words spelled "{clip(r.form)}": '
-                     + ', '.join(addrs) + '. Name one by its number.')
+    raise ValueRefusal(f'{ref}: s{s.index} has {len(words)} words spelled "{clip(r.form)}": '
+                       + ', '.join(addrs) + '. Name one by its number.', kind='ambiguous')
 
 
 def _check_form(s: 'Sentence', ref: str, thing, form: str) -> None:
@@ -777,20 +778,21 @@ def _check_form(s: 'Sentence', ref: str, thing, form: str) -> None:
             return
         have = thing.form
     where = [f's{s.index}.w{w.index}' for w in s.words if same_form(form, w.form)]
-    raise ValueError(f'{ref}: s{s.index}.{thing.ref_range if isinstance(thing, Token) else "w" + str(thing.index)} '
-                     f'is "{clip(have)}", not "{clip(form)}"'
-                     + (f' ("{clip(form)}" is {", ".join(where)})' if where else '')
-                     + '. Name the word by its number, as read_document shows it.')
+    raise ValueRefusal(f'{ref}: s{s.index}.{thing.ref_range if isinstance(thing, Token) else "w" + str(thing.index)} '
+                       f'is "{clip(have)}", not "{clip(form)}"'
+                       + (f' ("{clip(form)}" is {", ".join(where)})' if where else '')
+                       + '. Name the word by its number, as read_document shows it.', kind='not-found')
 
 
 def resolve(doc: UdDoc, ref: str):
     """-> Sentence | Word | Token for a positional reference into ``doc``."""
     r = read_ref(ref, 'w', ranged=True)
     if r is None:
-        raise ValueError(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2).' + example_ref(doc))
+        raise ValueRefusal(f'Bad reference "{ref}": {BAD_REF} (e.g. s3.w2, s3.w1-2).' + example_ref(doc),
+                           kind='invalid-argument')
     si, a, b = r.sentence, r.parts[0], r.until
     if not 1 <= si <= len(doc.sentences):
-        raise ValueError(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences')
+        raise ValueRefusal(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences', kind='not-found')
     s = doc.sentences[si - 1]
     if r.by_form:
         return _by_form(s, ref, r)
@@ -799,7 +801,7 @@ def resolve(doc: UdDoc, ref: str):
     if b is None or b == a:
         w = s.word(a)
         if w is None:
-            raise ValueError(f'{ref}: {has_words(s)}.')
+            raise ValueRefusal(f'{ref}: {has_words(s)}.', kind='not-found')
         if r.form:
             _check_form(s, ref, w, r.form)
         return w
@@ -808,8 +810,8 @@ def resolve(doc: UdDoc, ref: str):
             if r.form:
                 _check_form(s, ref, t, r.form)
             return t
-    raise ValueError(f'{ref}: sentence s{si} has no multi-word token spanning words {a} to {b}. '
-                     f'Its words: {words_listing(s)}.')
+    raise ValueRefusal(f'{ref}: sentence s{si} has no multi-word token spanning words {a} to {b}. '
+                       f'Its words: {words_listing(s)}.', kind='not-found')
 
 
 # --- rendering ---------------------------------------------------------------
@@ -876,7 +878,8 @@ def by_stored_sent_id(doc: 'UdDoc', item: Any) -> Optional[int]:
     if explicit:
         text = text.split('=', 1)[1].strip()
         if not text:
-            raise ValueError(f'"{item}" names no sent_id: write the stored id after it, as "sent_id=a3".')
+            raise ValueRefusal(f'"{item}" names no sent_id: write the stored id after it, as "sent_id=a3".',
+                               kind='invalid-argument')
     else:
         try:
             sentence_number(item, 'sentences')
@@ -891,10 +894,10 @@ def by_stored_sent_id(doc: 'UdDoc', item: Any) -> Optional[int]:
     if len(found) == 1:
         return found[0]
     if found:
-        raise ValueError(f'"{text}" is the stored sent_id of {len(found)} sentences in {doc.quoted}: '
-                         + ', '.join(f's{n}' for n in found) + '. Read them by those refs.')
-    raise ValueError(f'No sentence in {doc.quoted} has the stored sent_id "{text}". A read prints it as '
-                     f'"# {STORED_SENT_ID} = ...", beside the ref (s3) that every tool takes.')
+        raise ValueRefusal(f'"{text}" is the stored sent_id of {len(found)} sentences in {doc.quoted}: '
+                           + ', '.join(f's{n}' for n in found) + '. Read them by those refs.', kind='ambiguous')
+    raise ValueRefusal(f'No sentence in {doc.quoted} has the stored sent_id "{text}". A read prints it as '
+                       f'"# {STORED_SENT_ID} = ...", beside the ref (s3) that every tool takes.', kind='not-found')
 
 
 def render_sentence(s: Sentence, *, header: bool = True) -> str:

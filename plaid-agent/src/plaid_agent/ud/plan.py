@@ -37,6 +37,7 @@ from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, Tracki
                          docs_of_op)
 from .project import feature_key, load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
+from ..core.tools import ValueRefusal
 
 # `.shape` and `.sentences` are imported where they are used rather than here:
 # both reach the tools for their refusals, and the tools read this module's
@@ -752,7 +753,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         # registry's tag, so a second kind that owns its plan is refused by
         # declaring itself rather than by being named here.
         if spec.shape == ok.EXCLUSIVE and len(ops) > 1:
-            raise ValueError(f'op {i + 1} ({kind}): a {spec.noun[0]} must be the only op in its plan')
+            raise ValueRefusal(f'op {i + 1} ({kind}): a {spec.noun[0]} must be the only op in its plan',
+                               kind='conflict')
     # A parse rewrites a document from scratch, so anything else this plan
     # writes into the same document would be thrown away by it. The tools
     # refuse the combination as it is built. This is the backstop, because a
@@ -767,8 +769,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                      if op.get('kind') in RESHAPES_TOKEN and op.get('kind') != 'split_token'}
     for op in ops:
         if op.get('kind') in SCOPES and docs_of_op(op) & reshaped_docs:
-            raise ValueError('this plan both reshapes a token and changes every matching word of its '
-                             'document, and the reshape deletes some of them')
+            raise ValueRefusal('this plan both reshapes a token and changes every matching word of its '
+                               'document, and the reshape deletes some of them', kind='conflict')
     if reshaped:
         # What each kind writes to is the registry's own declaration, so a new
         # kind that names a word joins this check by declaring its keys.
@@ -776,8 +778,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             if op.get('kind') in RESHAPES_TOKEN:
                 continue
             if ok.written_to(KIND, op) & reshaped:
-                raise ValueError('this plan both reshapes a token and annotates one of its words, '
-                                 'and the reshape deletes that word')
+                raise ValueRefusal('this plan both reshapes a token and annotates one of its words, '
+                                   'and the reshape deletes that word', kind='conflict')
     # Two reshapes of the same token delete its words twice and then create
     # both sets, so the token ends up holding the union or the batch fails
     # outright. Either way it is not what was approved.
@@ -787,8 +789,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             continue
         words = frozenset(op.get('existing_word_ids') or [])
         if words & seen_reshapes:
-            raise ValueError('this plan reshapes the same token twice; keep the one you want '
-                             '(discard_plan and stage the rest again)')
+            raise ValueRefusal('this plan reshapes the same token twice; keep the one you want '
+                               '(discard_plan and stage the rest again)', kind='conflict')
         seen_reshapes |= words
     # A sentence boundary moving renumbers every sentence after it, and every
     # reference in this plan is positional: s7.w2 means a different word once
@@ -809,21 +811,21 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                                if op.get('kind') not in RESHAPES_DOCUMENT
                                and not op.get('with_merge'))) & set(moved)
         if others:
-            raise ValueError('this plan both moves a sentence boundary in and edits '
-                             + ', '.join(sorted(others))
-                             + ', and the boundary renumbers the references the edits use')
+            raise ValueRefusal('this plan both moves a sentence boundary in and edits '
+                               + ', '.join(sorted(others))
+                               + ', and the boundary renumbers the references the edits use', kind='conflict')
         crowded = sorted(d for d, n in moved.items() if n > 1)
         if crowded:
-            raise ValueError('a plan moves at most one sentence boundary per document, and this '
-                             'one moves several in ' + ', '.join(crowded)
-                             + ': each renumbers the sentences the next would name')
+            raise ValueRefusal('a plan moves at most one sentence boundary per document, and this '
+                               'one moves several in ' + ', '.join(crowded)
+                               + ': each renumbers the sentences the next would name', kind='conflict')
     parsed = set().union(*(docs_of_op(op) for op in ops if op.get('kind') in REWRITES_DOCUMENT))
     if parsed:
         clash = set().union(*(docs_of_op(op) for op in ops
                               if op.get('kind') not in REWRITES_DOCUMENT)) & parsed
         if clash:
-            raise ValueError('this plan both parses and edits ' + ', '.join(sorted(clash))
-                             + ', and a parse would throw the edits away')
+            raise ValueRefusal('this plan both parses and edits ' + ', '.join(sorted(clash))
+                               + ', and a parse would throw the edits away', kind='conflict')
 
 
 def normalize_ops(ops: List[Dict[str, Any]]):
@@ -842,7 +844,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
         # Refusing the whole plan says so, where dropping the change left a
         # card promising it.
         if doomed:
-            raise ValueError(f'{op.get("label") or kind}: this plan deletes what it writes to')
+            raise ValueRefusal(f'{op.get("label") or kind}: this plan deletes what it writes to', kind='conflict')
         # What an op writes to is the registry's own declaration, the same one
         # the workspace supersedes by while the plan is built. Written here as
         # well, the two drifted: a kind declared with a target was deduped

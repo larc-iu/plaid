@@ -38,6 +38,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from plaid_client.http import PlaidAPIError
 
+from .tools import ValueRefusal
+
 # Suffixes read as a table of rows. Everything else attached is read as text,
 # except JSON, which is a table when it parses as a list of objects.
 TABLE_SUFFIXES = ('.csv', '.tsv', '.tab')
@@ -389,9 +391,9 @@ class Attachments:
                 found = a
                 break
         if found is None:
-            raise ValueError(f'No file called "{name}" is attached to this conversation. '
-                             + (f'Attached: {self.listed()}.' if self.items
-                                else 'Nothing is attached to it.'))
+            raise ValueRefusal(f'No file called "{name}" is attached to this conversation. '
+                               + (f'Attached: {self.listed()}.' if self.items
+                                else 'Nothing is attached to it.'), kind='not-found')
         return found
 
     def listed(self) -> str:
@@ -542,8 +544,8 @@ class FileKeeper:
         clashed with an attachment."""
         earlier = self._made.get(name.casefold())
         if earlier is None and len({id(a) for a in self._made.values()}) >= MAX_SAVED:
-            raise ValueError(f'One reply can carry {MAX_SAVED} files, and this one already has '
-                             f'{MAX_SAVED}. Put what is left in one of them.')
+            raise ValueRefusal(f'One reply can carry {MAX_SAVED} files, and this one already has '
+                               f'{MAX_SAVED}. Put what is left in one of them.', kind='too-large')
         # The earlier file steps aside so the new one takes its name, and comes
         # back if the new one cannot be stored.
         if earlier is not None:

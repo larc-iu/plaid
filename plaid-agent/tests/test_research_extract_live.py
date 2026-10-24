@@ -321,7 +321,7 @@ def test_tool_use(world):
     calls = world['rows']('tool_calls.jsonl')
     q = [c for c in calls if c['tool'] == 'query']
     assert [c['failed'] for c in q] == [True, False]
-    assert q[0]['error_class'] == 'query_rejected' and q[0]['recovered_in_turn'] is True
+    assert q[0]['error_class'] == 'query-refused' and q[0]['recovered_in_turn'] is True
     s = next(c for c in calls if c['tool'] == 'search')
     assert s['failed'] and s['error_class'] == 'unknown' and not s['result_kept']
     ends = sorted(t['end'] for t in world['rows']('turns.jsonl'))
@@ -384,7 +384,7 @@ def test_a_failed_turn_keeps_its_tool_calls(world):
     calls = [c for c in world['rows']('tool_calls.jsonl') if c['item_index'] == fail['item_index']]
     assert [c['tool'] for c in calls] == ['search', 'lexicon_entry']
     assert all(c['turn_end'] == 'failed' and c['result_kept'] for c in calls)
-    assert calls[1]['error_class'] == 'bad_arguments' and calls[1]['arg_names'] == ['form']
+    assert calls[1]['error_class'] == 'invalid-argument' and calls[1]['arg_names'] == ['form']
     assert calls[0]['arg_names'] == ['query_text']
 
 

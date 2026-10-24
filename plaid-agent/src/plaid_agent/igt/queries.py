@@ -1206,7 +1206,8 @@ def word_condition(c: Corpus, cond: Dict[str, Any], wvar: str, tag: str, regex: 
     apart. sequence_search and the ``where`` of the corpus-wide plan tools
     read conditions here, so they take the same keys."""
     if not isinstance(cond, dict) or not cond:
-        raise ToolError('A condition is an object of keys and values, e.g. {"form": "di"} or {"Gloss": "CAUS"}.')
+        raise ToolError('A condition is an object of keys and values, e.g. {"form": "di"} or {"Gloss": "CAUS"}.',
+                        kind='invalid-argument')
     p = c.p
     cons: Dict[str, Any] = {}
     extra: List[Any] = []
@@ -1236,7 +1237,8 @@ def word_condition(c: Corpus, cond: Dict[str, Any], wvar: str, tag: str, regex: 
                     branches.append([c.span(f'?s{tag}m', f.layer_id, value=spec), ['covers', f'?s{tag}m', f'?m{tag}g']]
                                     + c.in_word(f'?m{tag}g', wvar, f'{tag}g'))
                 else:
-                    raise ToolError(f'"{f.name}" is a sentence field; conditions are on a word')
+                    raise ToolError(f'"{f.name}" is a sentence field; conditions are on a word',
+                                    kind='invalid-argument')
             extra += branches[0] if len(branches) == 1 else [['or', *branches]]
     return cons, extra, shared
 
@@ -1250,7 +1252,7 @@ def target_condition(c: Corpus, cond: Optional[Dict[str, Any]], var: str, scope:
         return []
     if scope == 'Sentence':
         raise ToolError('where is a condition on a word, and a sentence field has no one word to hold it to. '
-                        'Use query or run_code to choose sentences.')
+                        'Use query or run_code to choose sentences.', kind='invalid-argument')
     wvar = var if scope == 'Word' else '?cw'
     cons, extra, _shared = word_condition(c, cond, wvar, 'c')
     out = [c.word(wvar, **cons)] + extra
@@ -1298,7 +1300,7 @@ def _condition_field(p, key: str):
         fields = [f.name for f in p.fields.values() if f.scope != 'Sentence']
         raise ToolError(f'No condition key "{key}". A condition takes ' + ', '.join(f'"{k}"' for k in SEQUENCE_KEYS)
                         + (', or a field: ' + ', '.join(f'"{f}"' for f in fields) if fields else '')
-                        + '. regex is a flag on the call (regex=true), not a key.') from None
+                        + '. regex is a flag on the call (regex=true), not a key.', kind='invalid-argument') from None
 
 
 # --- lexicon_entry --------------------------------------------------------------------
@@ -1343,7 +1345,8 @@ def q_entry_links(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
         # documents' links. A merge or a delete that misses one moves nothing
         # there and the entry takes those links with it when it goes.
         raise ToolError('That entry holds more links than one read will return, so this cannot tell where all '
-                        'of them are. Merge or delete it in the editor, which works one document at a time.')
+                        'of them are. Merge or delete it in the editor, which works one document at a time.',
+                        kind='too-large')
     doc_ids = list(dict.fromkeys(r[0]['document'] for r in rows if isinstance(r[0], dict)))
     out = []
     for did in doc_ids:
@@ -1412,7 +1415,7 @@ def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int,
     rows = q_replace_matches(ws, f, spec, cap, cond)
     if len(rows) > cap:
         raise ToolError(f'More than {cap} {f.name} values match, which is more than one pass may '
-                        f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
+                        f'consider. Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
     return q_replace_changes(ws, f, rep, rows)
 
 
@@ -1489,7 +1492,7 @@ def respell_guard(ws: Workspace, words: List[Dict[str, Any]], earlier_words: Dic
         for b, e in at.get(op['text_id'], ()):
             if (b, e) != (op['begin'], op['end']) and b < op['end'] and op['begin'] < e:
                 raise ToolError(f'{_place_of(op)}: overlaps a respelling already planned for {b}-{e} in the same '
-                                'text. Apply one, then plan the other.')
+                                'text. Apply one, then plan the other.', kind='conflict')
 
 
 def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int, earlier=()):
@@ -1506,7 +1509,7 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
     # were never looked at, whatever the rows read hold (H12-RULES-2).
     if len(rows) > cap:
         raise ToolError(f'More than {cap:,} words match, which is more than one pass may consider. '
-                        f'Narrow it (a document, a stricter pattern) and go in passes.')
+                        f'Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
     budget = _docs_of(rows)
     before_w, before_m, _before_e = respelled_before(earlier)
     # (word id, text, begin, end, document, place, stored spelling, spelling as the rules before leave it)
@@ -1531,7 +1534,8 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
             continue
         head = place if place is not None else c.label_ref(doc, wid, budget)
         if not new.strip():
-            raise ToolError(f'{head}: "{old}" would become empty; there is no delete-word tool')
+            raise ToolError(f'{head}: "{old}" would become empty; there is no delete-word tool',
+                            kind='invalid-argument')
         respelled.add(wid)
         words.append({'kind': 'respell', 'text_id': text_id, 'begin': begin, 'end': end, 'value': new,
                       'doc': doc, **labelled(head, f'respell {qv(stored)} → {qv(new)}'),
@@ -1544,7 +1548,7 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
                            ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
         if len(mrows) > cap:
             raise ToolError(f'More than {cap:,} morpheme forms match, which is more than one pass may '
-                            f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
+                            f'consider. Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
         found: List[tuple] = []
         for m, w in mrows:
             if not (isinstance(m, dict) and isinstance(w, dict)) or c.ignored(w.get('value')):
@@ -1600,7 +1604,7 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
     rows = c.entities(where, ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
     if len(rows) > cap:
         raise ToolError(f'More than {cap} morpheme forms match, which is more than one pass may '
-                        f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
+                        f'consider. Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
     budget = _docs_of(rows)
     staged = []
     seen = set()
@@ -1615,7 +1619,7 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
             continue
         head = c.label_ref(m['document'], m['id'], budget)
         if not new.strip():
-            raise ToolError(f'{head}: "{old}" would become empty')
+            raise ToolError(f'{head}: "{old}" would become empty', kind='invalid-argument')
         ws.note_metadata(m['id'], m.get('metadata'))
         staged.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
                        **labelled(f'{head} (in {qv(w.get("value"))})', f'morpheme form {qv(stored)} → {qv(new)}'),
@@ -1635,7 +1639,7 @@ def q_morpheme_forms(ws: Workspace, rep, spec: Dict[str, Any], cap: int,
             continue
         head = _place_of(op)
         if not new.strip():
-            raise ToolError(f'{head}: "{old}" would become empty')
+            raise ToolError(f'{head}: "{old}" would become empty', kind='invalid-argument')
         hit, md = ws.metadata_of(mid)
         stored = ((md or {}).get('form') if hit else None) or old
         staged.append({**{k: v for k, v in op.items() if k not in ('label', 'change_at')}, 'form': new,
@@ -1655,7 +1659,7 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
         # read the same words again, so it is refused.
         if overwrite:
             raise ToolError(f'More than {cap:,} words are candidates, which is more than one pass may '
-                            f'consider. Narrow it to a document and go in passes.')
+                            f'consider. Narrow it to a document and go in passes.', kind='too-large')
         rows = rows[:cap]
         ws.partial_read = [cap, c.count(where, ['?t'])]
     budget = _docs_of(rows)
@@ -1705,7 +1709,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     if len(with_span) > cap or len(without) > cap or len(bare) > cap:
         raise ToolError(f'"{form}" occurs more than {cap} times, which is more than one pass can '
                         f'read, so setting {f.name} across the project here would only see part of '
-                        f'the corpus. Narrow it to a document and go in passes.')
+                        f'the corpus. Narrow it to a document and go in passes.', kind='too-large')
     budget = _docs_of([[u] for u, _ in rows])
     staged = []
     for tok, sp in rows:
@@ -1753,7 +1757,7 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     rows = c.entities(where, ['?w'], cap + 1, [['?w.doc'], ['?w.begin']])
     if len(rows) > cap:
         raise ToolError(f'"{form}" occurs more than {cap:,} times, more than one plan may hold. '
-                        f'Narrow it to a document and go in passes.')
+                        f'Narrow it to a document and go in passes.', kind='too-large')
     words = [r[0] for r in rows if isinstance(r[0], dict) and not c.ignored(r[0].get('value'))]
     chains: Dict[str, List[dict]] = defaultdict(list)
     spans: Dict[str, List[str]] = defaultdict(list)

@@ -36,7 +36,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     """A new entry, or a new sense when ``parent`` is the entry it sits under."""
     form = (form or '').strip()
     if not form:
-        raise ToolError('form must not be empty')
+        raise ToolError('form must not be empty', kind='invalid-argument')
     view = ws.view(v)
     metadata: dict = {}
     for k, val in (fields or {}).items():
@@ -47,7 +47,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
             # reader to something that refuses the same write.
             head = view.tree.root_of.get(parent['id']) or parent['id']
             raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense, so a new sense '
-                            f'cannot carry it. Set it on {view.label(head)}.')
+                            f'cannot carry it. Set it on {view.label(head)}.', kind='invalid-argument')
         metadata = _entry_field_write(ws, v, f, val, metadata, None)
     if morph:
         metadata['morphType'] = morph_type(morph)
@@ -105,7 +105,7 @@ def lexicon_field(vocab: dict, name: str) -> dict:
     if is_reserved_field_name(name):
         hint = _RESERVED_HINTS.get(str(name).strip().lower(),
                                    'It is structure the app keeps on an entry, not a field.')
-        raise ToolError(f'"{name}" is not an entry field. {hint}')
+        raise ToolError(f'"{name}" is not an entry field. {hint}', kind='invalid-argument')
     fields = vocab.get('fields') or []
     hit = field_by_name(fields, name)
     if hit:
@@ -116,7 +116,7 @@ def lexicon_field(vocab: dict, name: str) -> dict:
     if not any(f.get('declared') for f in fields) or name == 'morphType':
         return {**_FREE_FIELD, 'name': name}
     raise ToolError(f'"{vocab["name"]}" has no entry field "{name}". Fields: '
-                    + ', '.join(vocab_field_summary(vocab)))
+                    + ', '.join(vocab_field_summary(vocab)), kind='not-found')
 
 
 def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Optional[str]) -> str:
@@ -127,7 +127,8 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
         target = value
     elif value in ws.new_entries:
         raise ToolError(f'"{field["name"]}" must name an entry that already exists. "{value}" is created by this '
-                        'same plan and has no id until it is approved: approve the plan, then set the reference.')
+                        'same plan and has no id until it is approved: approve the plan, then set the reference.',
+                        kind='conflict')
     else:
         form, suffix = value, None
         if '#' in value:
@@ -136,7 +137,8 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
         hits = _hits_in(ws, vocab, form, suffix, lambda m, v: True)
         if not hits:
             raise ToolError(f'"{vocab["name"]}" has no entry "{value}" for {field["name"]} to refer to. '
-                            'read_lexicon lists them, and a reference always names an entry of the same lexicon.')
+                            'read_lexicon lists them, and a reference always names an entry of the same lexicon.',
+                            kind='not-found')
         if len(hits) > 1:
             lines = [f'"{value}" names several entries, so {field["name"]} cannot tell which. '
                      'Pass one of these forms, or its id:']
@@ -144,10 +146,11 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
                 addr = view.address(it['id'])
                 shown = f' form={addr}' if addr != (it.get('form') or '') else ''
                 lines.append(f'  id={it["id"]}{shown} {entry_line(it, view)}')
-            raise ToolError('\n'.join(lines))
+            raise ToolError('\n'.join(lines), kind='ambiguous')
         target = hits[0]['id']
     if own_id and target == own_id:
-        raise ToolError(f'{view.label(own_id)} cannot refer to itself through {field["name"]}.')
+        raise ToolError(f'{view.label(own_id)} cannot refer to itself through {field["name"]}.',
+                        kind='invalid-argument')
     return target
 
 
@@ -180,7 +183,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
         e = ws.new_entries[target]
         ws.guard_new_entry_field(e.get('vocab_id'))
         if vocab and f['scope'] == SCOPE_ENTRY and parent_of(e):
-            raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense.')
+            raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense.', kind='invalid-argument')
         # The pending entry and the op that creates it carry the same fields,
         # so they are written together or not at all.
         with ws.staging():
@@ -196,7 +199,8 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
     if view is not None and f['scope'] == SCOPE_ENTRY and view.is_sense(target['id']):
         head = view.tree.root_of.get(target['id'])
         raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense, and '
-                        f'{view.label(target["id"])} is a sense. Set it on {view.label(head)} instead.')
+                        f'{view.label(target["id"])} is a sense. Set it on {view.label(head)} instead.',
+                        kind='invalid-argument')
     before = ws.item_patches.get(target['id'], target.get('metadata') or {})
     meta = _entry_field_write(ws, vocab, f, value, before, target['id'])
     new_value = meta.get(f['name'])
@@ -248,7 +252,7 @@ def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what:
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'new':
         raise ToolError(f'"{ws.new_entries[target]["form"]}" is created by this same plan and has no id until it '
-                        f'is approved, so it cannot {what} yet.')
+                        f'is approved, so it cannot {what} yet.', kind='conflict')
     # find_entry found this item by scanning the project's own lexicons, which
     # is the list vocab_of_item scans, so the lookup lands.
     vocab = ws.vocab_of_item(target['id'])
@@ -268,7 +272,8 @@ def _refuse_doomed_entry(ws: Workspace, item: dict, what: str):
     """
     if item['id'] in ws.doomed_entries():
         raise ToolError(f'{ws.entry_name(item)} is deleted or merged away by this same plan, so it cannot '
-                        f'{what}. Leave that change out (discard_plan and stage the rest again), or work on the entry that survives.')
+                        f'{what}. Leave that change out (discard_plan and stage the rest again), or work on the entry that survives.',
+                        kind='conflict')
 
 
 def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
@@ -277,7 +282,8 @@ def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
     itself after the user has approved it."""
     if any(op.get('kind') == 'merge_entries' and op.get('keep_id') == item['id'] for op in ws.ops):
         raise ToolError(f'{ws.entry_name(item)} is what another change in this plan merges into, so it cannot '
-                        f'{what}. Leave that merge out (discard_plan and stage the rest again), or merge into an entry that stays.')
+                        f'{what}. Leave that merge out (discard_plan and stage the rest again), or merge into an entry that stays.',
+                        kind='conflict')
 
 
 def t_add_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
@@ -297,7 +303,7 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renumbered')
     if not view.is_sense(target['id']):
         raise ToolError(f'{view.label(target["id"])} is a headword, and a headword is not numbered among '
-                        'senses. make_sense_of moves it under another entry.')
+                        'senses. make_sense_of moves it under another entry.', kind='invalid-argument')
     was = view.number(target['id'])
     # A sense is shown with a dotted number ("2.1.3"), but it moves among its
     # own siblings, so only the last segment says where it should land.
@@ -307,7 +313,7 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     except ValueError:
         raise ToolError(f'"{number}" is not a sense number. Give the place among the senses of '
                         f'{view.label(view.tree.root_of.get(target["id"]) or target["id"])}, '
-                        'counting from 1.') from None
+                        'counting from 1.', kind='invalid-argument') from None
     patches = plan_sense_set_number(view.tree, target['id'], wanted)
     if not patches:
         sibs = len(view.tree.senses_of(view.tree.parent_of[target['id']]))
@@ -352,12 +358,13 @@ def t_make_sense_of(ws: Workspace, under_form: Optional[str] = None, under_id: O
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be moved')
     _, under_view, under = _dict_entry(ws, under_form, lexicon, under_id, None, 'take a sense')
     if under_view.vocab['id'] != vocab['id']:
-        raise ToolError('A sense sits under an entry of the same lexicon; these are in different ones.')
+        raise ToolError('A sense sits under an entry of the same lexicon; these are in different ones.',
+                        kind='invalid-argument')
     if under['id'] == target['id']:
-        raise ToolError('An entry cannot be a sense of itself.')
+        raise ToolError('An entry cannot be a sense of itself.', kind='invalid-argument')
     if under['id'] in {d['id'] for d in descendants_of(view.tree, target['id'])}:
         raise ToolError(f'{under_view.label(under["id"])} is already below {view.label(target["id"])}, so moving '
-                        'it there would make a loop. Free it first.')
+                        'it there would make a loop. Free it first.', kind='conflict')
     before = _meta_of(ws, target)
     # Senses this same plan adds under the entry take the orders after its
     # own, so two writes never claim one place.
@@ -403,7 +410,7 @@ def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
     group = homograph_group(view.items, target['id'])
     if not group:
         raise ToolError(f'{view.label(target["id"])} is the only headword spelled that way, so there is '
-                        'no order to set.')
+                        'no order to set.', kind='invalid-argument')
     wanted = [str(x).strip() for x in (order if isinstance(order, list) else [order]) if str(x).strip()]
     by_num = {view.number(r['id']): r for r in group}
     ids = []
@@ -414,13 +421,13 @@ def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
         if r is None:
             raise ToolError(f'"{token}" is not one of the {len(group)} headwords spelled '
                             f'"{group[0].get("form")}". They are numbered '
-                            + ', '.join(view.number(r['id']) for r in group) + '.')
+                            + ', '.join(view.number(r['id']) for r in group) + '.', kind='not-found')
         if r['id'] in ids:
-            raise ToolError(f'"{token}" is named twice; give each entry once.')
+            raise ToolError(f'"{token}" is named twice; give each entry once.', kind='invalid-argument')
         ids.append(r['id'])
     if len(ids) != len(group):
         raise ToolError(f'Give all {len(group)} headwords spelled "{group[0].get("form")}" in the order they '
-                        'should be numbered; ' + str(len(ids)) + ' were given.')
+                        'should be numbered; ' + str(len(ids)) + ' were given.', kind='invalid-argument')
     patches = plan_homograph_order(group, ids)
     if not patches:
         return ws.planned_note(0) + ' They already stand in that order.'
@@ -447,7 +454,7 @@ def t_promote_example(ws: Workspace, document: str, ref: str, entry_form: Option
     doc = ws.doc(document)
     found = _words_of(doc, ref)
     if len(found) != 1:
-        raise ToolError('Give one word reference, e.g. "s3.w2".')
+        raise ToolError('Give one word reference, e.g. "s3.w2".', kind='invalid-argument')
     _, sent, word = found[0]
     before = _meta_of(ws, target)
     after = with_example_added(before, {'document': doc.id, 'token': word.id})
@@ -468,7 +475,7 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
     before = _meta_of(ws, target)
     exs = all_examples({'metadata': before})
     if not exs:
-        raise ToolError(f'{view.label(target["id"])} has no usage examples.')
+        raise ToolError(f'{view.label(target["id"])} has no usage examples.', kind='not-found')
     # One sentence for a number out of range and for something that is not a
     # number at all: int() answered the second with its own error text, and
     # cut 1.5 down to example 1 for an argument that named no example.
@@ -478,7 +485,7 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
         i = None
     if i is None or i < 0 or i >= len(exs):
         raise ToolError(f'"{index}" is not one of {view.label(target["id"])}\'s {len(exs)} example(s), which are '
-                        f'numbered 0 to {len(exs) - 1}. lexicon_entry lists them with their numbers.')
+                        f'numbered 0 to {len(exs) - 1}. lexicon_entry lists them with their numbers.', kind='not-found')
     with ws.staging():
         ws.add_op(_meta_op(ws, target['id'], before, with_example_removed(before, i),
                            f'drop usage example [{i}] ' + _example_line(ws, exs[i]),

@@ -40,6 +40,7 @@ from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
 from plaid_client.workflows.igt.word_breaks import (is_js_space, is_unicode_punctuation,  # noqa: F401
                                                     split_words)
 from .vocab import CORE_VOCAB_FIELDS, ROLE_GLOSS, fields_with_role, normalize_vocab_fields, vocab_field_summary
+from ..core.tools import ValueRefusal
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -173,14 +174,15 @@ class IgtProject:
         if len(base) == 1:
             return base[0]
         if len(base) > 1:
-            raise ValueError(f'"{name}" names several fields; say which: ' + ', '.join(f.name for f in base))
+            raise ValueRefusal(f'"{name}" names several fields; say which: ' + ', '.join(f.name for f in base),
+                               kind='ambiguous')
         qualified = [f for f in self.fields.values() if f'{f.base_name} ({f.scope})'.lower() == key]
         if len(qualified) == 1:
             return qualified[0]
         scoped = self._scoped(key)
         if scoped is not None:
             return scoped
-        raise ValueError(f'No field named "{name}". Fields: ' + self.field_list())
+        raise ValueRefusal(f'No field named "{name}". Fields: ' + self.field_list(), kind='not-found')
 
     def fields_sharing_name(self, name: str) -> List[Field]:
         """The fields a bare layer name stands for when it stands for several
@@ -277,8 +279,8 @@ class IgtProject:
         for o in self.orthographies:
             if o.lower() == (name or '').lower():
                 return o
-        raise ValueError(f'No orthography named "{name}". Orthographies: '
-                         + (', '.join(self.orthographies) or '(none)'))
+        raise ValueRefusal(f'No orthography named "{name}". Orthographies: '
+                           + (', '.join(self.orthographies) or '(none)'), kind='not-found')
 
     def vocab(self, name: Optional[str] = None) -> dict:
         """The lexicon by (case-insensitive) name, or the only one when
@@ -286,19 +288,19 @@ class IgtProject:
         that matches more than one is refused rather than resolved to
         whichever comes first."""
         if not self.vocabs:
-            raise ValueError('This project has no lexicon (vocabulary).')
+            raise ValueRefusal('This project has no lexicon (vocabulary).', kind='not-found')
         if name:
             named = [v for v in self.vocabs if v['name'].lower() == name.lower()]
             if len(named) == 1:
                 return named[0]
             if len(named) > 1:
-                raise ValueError(f'Several lexicons are named "{name}", so the name does not say which. '
-                                 'Use read_lexicon to see them, and address entries by entry_id.')
-            raise ValueError(f'No lexicon named "{name}". Lexicons: '
-                             + ', '.join(v['name'] for v in self.vocabs))
+                raise ValueRefusal(f'Several lexicons are named "{name}", so the name does not say which. '
+                                   'Use read_lexicon to see them, and address entries by entry_id.', kind='ambiguous')
+            raise ValueRefusal(f'No lexicon named "{name}". Lexicons: '
+                               + ', '.join(v['name'] for v in self.vocabs), kind='not-found')
         if len(self.vocabs) == 1:
             return self.vocabs[0]
-        raise ValueError('Several lexicons; name one: ' + ', '.join(v['name'] for v in self.vocabs))
+        raise ValueRefusal('Several lexicons; name one: ' + ', '.join(v['name'] for v in self.vocabs), kind='ambiguous')
 
 
 def load_project(client, project_id: str) -> IgtProject:
@@ -737,7 +739,7 @@ def parse_ref(ref: str):
     named by its form has no numbers until :func:`resolve` finds it."""
     r = read_ref(ref, 'wm')
     if r is None or r.by_form:
-        raise ValueError(f'Bad reference "{ref}": {BAD_REF}')
+        raise ValueRefusal(f'Bad reference "{ref}": {BAD_REF}', kind='invalid-argument')
     return (r.sentence,) + r.parts
 
 
@@ -766,14 +768,16 @@ def _word_by_form(s: 'Sentence', ref: str, r) -> 'Word':
     if r.nth is not None:
         if 1 <= r.nth <= len(words):
             return words[r.nth - 1]
-        raise ValueError(f'{ref}: s{s.index} has {len(words)} word(s) spelled "{clip(r.form)}", '
-                         f'so there is no #{r.nth}. {_has_words(s, "Sentence")}.')
+        raise ValueRefusal(f'{ref}: s{s.index} has {len(words)} word(s) spelled "{clip(r.form)}", '
+                           f'so there is no #{r.nth}. {_has_words(s, "Sentence")}.', kind='not-found')
     if len(words) == 1:
         return words[0]
     if not words:
-        raise ValueError(f'{ref}: s{s.index} has no word "{clip(r.form)}". {_has_words(s, "Sentence")}.')
-    raise ValueError(f'{ref}: s{s.index} has {len(words)} words spelled "{clip(r.form)}": '
-                     + ', '.join(f's{s.index}.w{w.index}' for w in words) + '. Name one by its number.')
+        raise ValueRefusal(f'{ref}: s{s.index} has no word "{clip(r.form)}". {_has_words(s, "Sentence")}.',
+                           kind='not-found')
+    raise ValueRefusal(f'{ref}: s{s.index} has {len(words)} words spelled "{clip(r.form)}": '
+                       + ', '.join(f's{s.index}.w{w.index}' for w in words) + '. Name one by its number.',
+                       kind='ambiguous')
 
 
 def plain_ref(doc: IgtDoc, ref: str) -> str:
@@ -799,31 +803,31 @@ def resolve(doc: IgtDoc, ref: str):
     number and form disagree is refused, never read as either."""
     r = read_ref(ref, 'wm')
     if r is None:
-        raise ValueError(f'Bad reference "{ref}": {BAD_REF}.' + _example(doc))
+        raise ValueRefusal(f'Bad reference "{ref}": {BAD_REF}.' + _example(doc), kind='invalid-argument')
     si, (wi, mi) = r.sentence, r.parts
     if not 1 <= si <= len(doc.sentences):
-        raise ValueError(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences')
+        raise ValueRefusal(f'{ref}: document {doc.quoted} has {len(doc.sentences)} sentences', kind='not-found')
     s = doc.sentences[si - 1]
     if r.by_form:
         return _word_by_form(s, ref, r)
     if wi is None:
         return s
     if not 1 <= wi <= len(s.words):
-        raise ValueError(f'{ref}: {_has_words(s, "sentence")}.')
+        raise ValueRefusal(f'{ref}: {_has_words(s, "sentence")}.', kind='not-found')
     w = s.words[wi - 1]
     if mi is None:
         if r.form and not same_form(r.form, w.surface):
             where = [f's{si}.w{x.index}' for x in s.words if same_form(r.form, x.surface)]
-            raise ValueError(f'{ref}: s{si}.w{wi} is "{clip(w.surface)}", not "{clip(r.form)}"'
-                             + (f' ("{clip(r.form)}" is {", ".join(where)})' if where else '')
-                             + '. Name the word by its number, as read_document shows it.')
+            raise ValueRefusal(f'{ref}: s{si}.w{wi} is "{clip(w.surface)}", not "{clip(r.form)}"'
+                               + (f' ("{clip(r.form)}" is {", ".join(where)})' if where else '')
+                               + '. Name the word by its number, as read_document shows it.', kind='not-found')
         return w
     if not 1 <= mi <= len(w.morphemes):
-        raise ValueError(f'{ref}: word s{si}.w{wi} "{w.surface}" has {len(w.morphemes)} morphemes')
+        raise ValueRefusal(f'{ref}: word s{si}.w{wi} "{w.surface}" has {len(w.morphemes)} morphemes', kind='not-found')
     m = w.morphemes[mi - 1]
     if r.form and not same_form(r.form, m.form, MARKERS):
-        raise ValueError(f'{ref}: s{si}.w{wi}.m{mi} is "{clip(m.form)}", not "{clip(r.form)}". The word is '
-                         + ' '.join(f'm{x.index} "{clip(x.form)}"' for x in w.morphemes) + '.')
+        raise ValueRefusal(f'{ref}: s{si}.w{wi}.m{mi} is "{clip(m.form)}", not "{clip(r.form)}". The word is '
+                           + ' '.join(f'm{x.index} "{clip(x.form)}"' for x in w.morphemes) + '.', kind='not-found')
     return m
 
 
@@ -893,9 +897,10 @@ def read_view(project: IgtProject, names) -> View:
             parts.add(part)
             shown.append(part)
         else:
-            raise ValueError(f'fields: nothing is called "{name}". The names are ' + view_names(project) + '.')
+            raise ValueRefusal(f'fields: nothing is called "{name}". The names are ' + view_names(project) + '.',
+                               kind='not-found')
     if not shown:
-        raise ValueError('fields: name at least one, from ' + view_names(project) + '.')
+        raise ValueRefusal('fields: name at least one, from ' + view_names(project) + '.', kind='invalid-argument')
     return View(tuple(dict.fromkeys(shown)), frozenset(fields), frozenset(orthos),
                 'segmentation' in parts, 'links' in parts)
 

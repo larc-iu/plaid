@@ -24,7 +24,7 @@ from . import pdftext
 from .args import clamp_limit, whole
 from .files import FileGone, PREVIEW_ROWS
 from .limits import MAX_RESULT_CHARS, READ_LIMITS
-from .tools import ToolError, limit_arg, truncate
+from .tools import ToolError, ValueRefusal, limit_arg, truncate
 
 NAMES = ('read_file',)
 
@@ -192,7 +192,7 @@ def need_files(ws):
     attached = getattr(ws, 'files', None)
     if not attached:
         raise ToolError('Nothing is attached to this conversation. A file is attached in the chat, '
-                        'with the paperclip beside the message box.')
+                        'with the paperclip beside the message box.', kind='not-found')
     return attached
 
 
@@ -231,7 +231,7 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
         ws.on_progress(f'Reading {a.name}…')
         lines = a.text().split('\n')
     except FileGone as e:
-        raise ToolError(str(e))
+        raise ToolError(str(e), kind='not-found')
     # A file that ends in a newline does not have a last, empty line: counting
     # one would make this say a different number of lines from the note.
     if lines and lines[-1] == '':
@@ -248,8 +248,8 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
             if a.source:
                 # The pages and titles it names are the PDF's, from the web.
                 from .webtools import WARNING, fenced
-                raise ToolError(f'"{a.name}", from {a.source}: {WARNING}\n{fenced(f"{e}.")}')
-            raise ToolError(f'"{a.name}": {e}.')
+                raise ToolError(f'"{a.name}", from {a.source}: {WARNING}\n{fenced(f"{e}.")}', kind='unavailable')
+            raise ToolError(f'"{a.name}": {e}.', kind='unavailable')
         # A page or a section is shown whole unless asked otherwise: what was
         # asked for is all of it, and the result's budget cuts it if need be.
         start = max(start, first + 1) if start_line not in (None, '') else first + 1
@@ -345,7 +345,7 @@ def api(ws) -> Dict[str, Callable]:
     def _get(name: str):
         attached = getattr(ws, 'files', None)
         if not attached:
-            raise ValueError('Nothing is attached to this conversation.')
+            raise ValueRefusal('Nothing is attached to this conversation.', kind='not-found')
         try:
             return attached.get(name)
         except FileGone as e:
@@ -371,8 +371,8 @@ def api(ws) -> Dict[str, Callable]:
         except FileGone as e:
             raise ValueError(str(e))
         if table is None:
-            raise ValueError(f'"{a.name}" is not a table, so it has no rows. '
-                             f'file_text("{a.name}") gives its text.')
+            raise ValueRefusal(f'"{a.name}" is not a table, so it has no rows. '
+                               f'file_text("{a.name}") gives its text.', kind='invalid-argument')
         return table[1]
 
     def file_text(name: str) -> str:
@@ -510,8 +510,8 @@ def save_api(ws) -> Dict[str, Callable]:
             raise ValueError(why)
         size = len(text.encode('utf-8'))
         if size > MAX_FILE_BYTES:
-            raise ValueError(f'The file would be {size:,} bytes, over the {MAX_FILE_BYTES:,} a file may '
-                             'hold. Split it in two.')
+            raise ValueRefusal(f'The file would be {size:,} bytes, over the {MAX_FILE_BYTES:,} a file may '
+                               'hold. Split it in two.', kind='too-large')
         if ws.files is None:
             ws.files = Attachments([])
         a = keeper.save(ws.files, name, text)

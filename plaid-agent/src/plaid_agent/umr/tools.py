@@ -28,7 +28,7 @@ from plaid_client.workflows.umr.inventory import (ATTRIBUTE_RELATIONS, ATTRIBUTE
                                                   edge_only, is_known_relation, node_under_attribute_problem)
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, ValueRefusal, kind_of, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
 from .plan import (GRAPH_KINDS, KIND, attr_line, attrs_scope_held, attrs_scope_targets, graphs_of_op, holds,
@@ -108,7 +108,7 @@ class Workspace(BaseWorkspace):
             return s.index
         if all(s.number == s.index for s in doc.sentences):
             return None
-        raise ValueError(f's{n}: {numbering(doc)}')
+        raise ValueRefusal(f's{n}: {numbering(doc)}', kind='not-found')
 
     def sentence_shown(self, doc, sentence) -> int:
         return sentence.number
@@ -128,10 +128,10 @@ class Workspace(BaseWorkspace):
         try:
             thing = resolve(doc, ref)
         except ValueError as e:
-            raise ToolError(str(e)) from None
+            raise ToolError(str(e), kind=kind_of(e, 'not-found')) from None
         if not isinstance(thing, Sentence):
             raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on '
-                            f'the document.')
+                            f'the document.', kind='invalid-argument')
         return thing.id
 
     def make_corpus(self):
@@ -216,7 +216,7 @@ class Workspace(BaseWorkspace):
         why = next((p for p in problems if p), None)
         if why:
             var = op.get('var') or op.get('source_var')
-            raise ToolError((f'{var}: ' if var else '') + why)
+            raise ToolError((f'{var}: ' if var else '') + why, kind='invalid-argument')
 
     def _node_under_problem(self, op: Dict[str, Any], doc: Optional[UmrDoc],
                             replacing: Optional[int] = None) -> Optional[str]:
@@ -296,7 +296,7 @@ class Workspace(BaseWorkspace):
         if kind == 'create_triple':
             why = unknown_doc_relation_problem(op.get('group'), op.get('rel'))
             if why:
-                raise ToolError(why)
+                raise ToolError(why, kind='invalid-argument')
             return
         doc = self._docs.get(op.get('document_id'))
         if kind == 'create_edge':
@@ -321,7 +321,7 @@ class Workspace(BaseWorkspace):
             if why:
                 var = op.get('var') or op.get('source_var')
                 where = f'{var}: ' if var else ''
-                raise ToolError(where + why)
+                raise ToolError(where + why, kind='invalid-argument')
 
     def refuse_second_graph(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """A graph replacement beside another change to that sentence's graph.
@@ -347,12 +347,12 @@ class Workspace(BaseWorkspace):
             if graphs_of_op(prev) & graphs:
                 raise ToolError('This plan already replaces the graph of this sentence. Keep one '
                                 'of the two (discard_plan and stage the rest again), or plan them in separate '
-                                'turns.')
+                                'turns.', kind='conflict')
             if prev.get('kind') in GRAPH_KINDS and sentence_graph_key(prev) in graphs:
                 raise ToolError(f'This plan already changes {self._where(prev)}, and that change '
                                 f'was worked out against the graph this one replaces. Keep one of '
                                 f'the two (discard_plan and stage the rest again), or plan them in separate '
-                                f'turns.')
+                                f'turns.', kind='conflict')
 
     def _where(self, op: Dict[str, Any]) -> str:
         """A planned change's sentence, as the user would name it."""
@@ -427,10 +427,10 @@ def _sentence(ws: Workspace, doc: UmrDoc, sentence) -> Sentence:
     n = sentence_number(str(sentence).split('.')[0] if isinstance(sentence, str) else sentence,
                         'sentence')
     if n is None:
-        raise ToolError('Name a sentence, as a number or a reference like "s3".')
+        raise ToolError('Name a sentence, as a number or a reference like "s3".', kind='invalid-argument')
     s = doc.by_number(n)
     if s is None:
-        raise ToolError(f's{n}: {numbering(doc)}')
+        raise ToolError(f's{n}: {numbering(doc)}', kind='not-found')
     return s
 
 
@@ -438,7 +438,7 @@ def _node(doc: UmrDoc, sentence: Sentence, var: str) -> GNode:
     node = sentence.node(var)
     if node is None:
         known = ', '.join(n.var for n in sentence.nodes[:20]) or 'none'
-        raise ToolError(f'Sentence s{sentence.number} has no node "{var}". Its nodes: {known}')
+        raise ToolError(f'Sentence s{sentence.number} has no node "{var}". Its nodes: {known}', kind='not-found')
     return node
 
 
@@ -465,7 +465,8 @@ def _no_graph_planned(ws: Workspace, doc: UmrDoc, s: Sentence) -> None:
     if any(op.get('graph_of') == key for op in ws.ops):
         raise ToolError(f'This plan already replaces the graph of s{s.number} in {plain_quote(doc.name)}, and '
                         f'this change was worked out against the graph it replaces. Keep one of '
-                        f'the two (discard_plan and stage the rest again), or plan them in separate turns.')
+                        f'the two (discard_plan and stage the rest again), or plan them in separate turns.',
+                        kind='conflict')
 
 
 def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str = None,
@@ -474,17 +475,17 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
     s = _sentence(ws, doc, sentence)
     _no_graph_planned(ws, doc, s)
     if not (text or '').strip():
-        raise ToolError('Give text: the sentence graph in PENMAN, starting at its root node.')
+        raise ToolError('Give text: the sentence graph in PENMAN, starting at its root node.', kind='invalid-argument')
     diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true')
     if diff.errors:
         if 'after the topmost closing bracket' in diff.errors[0]:
             # Copied whole from a read of a sentence holding several graphs.
             raise ToolError('The text holds more than one graph. apply_penman takes the root\'s graph '
                             'alone, the first one read_document prints, and leaves the parts after it '
-                            'as they are: give that one only.')
-        raise ToolError('The graph could not be read. ' + diff.errors[0])
+                            'as they are: give that one only.', kind='invalid-argument')
+        raise ToolError('The graph could not be read. ' + diff.errors[0], kind='invalid-argument')
     if diff.refused:
-        raise ToolError(diff.refused)
+        raise ToolError(diff.refused, kind='conflict')
     # The order the text writes children in is not applied without reorder.
     # Said, so a user who asked for a new order is not told it was done.
     kept = ''
@@ -627,10 +628,10 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     role = _role_in_attribute_line(line or '', node.concept)
     if role:
         raise ToolError(role + ' Nothing was planned. A role goes through apply_penman: write the sentence\'s '
-                        'graph with the edge in it.')
+                        'graph with the edge in it.', kind='invalid-argument')
     attrs, problems = parse_attribute_line(line or '')
     if problems:
-        raise ToolError('The attribute line could not be read. ' + problems[0])
+        raise ToolError('The attribute line could not be read. ' + problems[0], kind='invalid-argument')
     placed = place_attributes(node, attrs)
     if [(a.get('rel'), a.get('value')) for a in node.attrs] == [(a['rel'], a['value']) for a in placed]:
         return f'Nothing to change: {node.var} already has those attributes.'
@@ -691,11 +692,11 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
     doc = ws.doc(document)
     concept = (concept or '').strip()
     if not concept:
-        raise ToolError('Give concept: which nodes to change, e.g. "say-01".')
+        raise ToolError('Give concept: which nodes to change, e.g. "say-01".', kind='invalid-argument')
     rel = (rel or '').strip()
     if not rel.startswith(':'):
         raise ToolError('Give rel: an attribute, which starts with a colon (:aspect, '
-                        ':refer-number, :polarity).')
+                        ':refer-number, :polarity).', kind='invalid-argument')
     value = (value or '').strip()
     op: Dict[str, Any] = {
         'kind': 'attrs_scope', 'document_id': doc.id, 'concept': concept, 'rel': rel,
@@ -774,7 +775,7 @@ def _end(ws: Workspace, doc: UmrDoc, name: str, side: str) -> Dict[str, Any]:
     name = (name or '').strip()
     if not name:
         raise ToolError(f'Name the {side} of the triple: a node variable, or one of the '
-                        f'constants ' + ', '.join(DOC_CONSTANTS) + '.')
+                        f'constants ' + ', '.join(DOC_CONSTANTS) + '.', kind='invalid-argument')
     node = doc.node_named(name)
     constant = name in DOC_CONSTANTS
     if node is not None:
@@ -785,7 +786,7 @@ def _end(ws: Workspace, doc: UmrDoc, name: str, side: str) -> Dict[str, Any]:
     if constant:
         return {'var': name, 'span_id': None, 'node': None, 'constant': True}
     raise ToolError(f'No node "{name}" in {plain_quote(doc.name)}, and it is not one of the constants '
-                    + ', '.join(DOC_CONSTANTS) + '.')
+                    + ', '.join(DOC_CONSTANTS) + '.', kind='not-found')
 
 
 def _later_end(a: Optional[GNode], b: Optional[GNode]) -> Optional[GNode]:
@@ -853,24 +854,24 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     rel = (rel or '').strip()
     if not rel.startswith(':'):
         raise ToolError('Give rel: a document-level relation, which starts with a colon '
-                        '(:same-entity, :before, :full-affirmative).')
+                        '(:same-entity, :before, :full-affirmative).', kind='invalid-argument')
     group = (group or '').strip()
     if group and group not in GROUPS:
-        raise ToolError(f'group must be one of {", ".join(GROUPS)}.')
+        raise ToolError(f'group must be one of {", ".join(GROUPS)}.', kind='invalid-argument')
     # Refused before either end is looked at, and with the group as the
     # model gave it: a relation in no group is not a "modal" one just because
     # group_of files the unknown there.
     why = unknown_doc_relation_problem(group or None, rel)
     if why:
-        raise ToolError(why)
+        raise ToolError(why, kind='invalid-argument')
     group = group or group_of(rel)
     source = _end(ws, doc, a, 'source')
     target = _end(ws, doc, b, 'target')
     if source['var'] == target['var']:
-        raise ToolError('A triple joins two different nodes.')
+        raise ToolError('A triple joins two different nodes.', kind='invalid-argument')
     why = _reversed_triple_problem(ws, doc, source, target, rel, group)
     if why:
-        raise ToolError(why)
+        raise ToolError(why, kind='invalid-argument')
     existing = source['node']
     if existing is not None and target['node'] is not None:
         for t in existing.doc_out:
@@ -905,7 +906,7 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     # the sentence.
     if source.get('constant') and target.get('constant'):
         if not doc.sentences:
-            raise ToolError(f'{plain_quote(doc.name)} has no sentences to write the triple in.')
+            raise ToolError(f'{plain_quote(doc.name)} has no sentences to write the triple in.', kind='not-found')
         s = _sentence(ws, doc, sentence) if sentence is not None else doc.sentences[0]
         op['record_id'] = s.record_token
         op['record_triples'] = list(s.record_triples)
@@ -941,12 +942,12 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
     source = _end(ws, doc, a, 'source')
     target = _end(ws, doc, b, 'target')
     if source['node'] is None or target['node'] is None:
-        raise ToolError('Both ends of the triple have to exist. document_graph lists what is there.')
+        raise ToolError('Both ends of the triple have to exist. document_graph lists what is there.', kind='not-found')
     found = next((t for t in source['node'].doc_out
                   if t.target == target['node'].id and (not rel or t.rel == rel)), None)
     if found is None:
         raise ToolError(f'No triple ({source["var"]} {rel or "…"} {target["var"]}) in '
-                        f'{plain_quote(doc.name)}. document_graph lists what is there.')
+                        f'{plain_quote(doc.name)}. document_graph lists what is there.', kind='not-found')
     op: Dict[str, Any] = {
         'kind': 'delete_triple', 'document_id': doc.id, 'relation_id': found.id,
         # Its ends, for the sentences it is pinned to (Workspace.op_sentences).

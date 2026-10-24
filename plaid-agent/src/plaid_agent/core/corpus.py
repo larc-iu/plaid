@@ -72,7 +72,7 @@ def rx(pattern: str, *, regex: bool = False, whole: bool = False,
         server = translate(pattern, literal=not regex, case_insensitive=not case_sensitive,
                            whole=whole).server
     except PatternError as e:
-        raise ToolError(f'That pattern cannot be used: {e}')
+        raise ToolError(f'That pattern cannot be used: {e}', kind='invalid-argument')
     return {'regex': server}
 
 
@@ -132,7 +132,7 @@ def query_refused(e: Exception) -> ToolError:
     """The engine's own complaint, for the model to read and correct."""
     msg = str(e)
     m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
-    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
+    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]), kind='invalid-argument')
 
 
 def _bound(clauses: List[Any]) -> List[str]:

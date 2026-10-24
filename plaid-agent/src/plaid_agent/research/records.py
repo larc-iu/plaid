@@ -51,29 +51,31 @@ EMPTY_REPLY = '(The model returned an empty reply.)'
 # (agent.NO_ANSWER): the plan was kept.
 NO_ANSWER = '(The model did not answer.)'
 
-# A tool's refusal, by what it says. The first that matches wins, and the
-# order matters: a query the server refused also says "rejected".
+# A tool's refusal, by what it says, for a step written before steps stored
+# their refusal's kind (``error_kind``, core.tools.REFUSAL_KINDS, 2026-10-24).
+# The classes are those kinds. The first that matches wins, and the order
+# matters: a query the server refused also says "rejected".
 ERROR_CLASSES: List[Tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for name, rx in (
-    ('query_rejected', r'^Query rejected'),
-    ('tool_fault', r'which is a fault in the tool'),
-    ('code_exception', r'^Traceback'),
-    ('bad_arguments', r'cannot be called with those arguments|has the wrong type|unexpected keyword|'
-                      r'not valid JSON|^Give |must be (a|an|one of|given)|is not a (number|whole number|list)'),
+    ('query-refused', r'^Query rejected'),
+    ('tool-fault', r'which is a fault in the tool'),
+    ('code-failed', r'^Traceback'),
+    ('invalid-argument', r'cannot be called with those arguments|has the wrong type|unexpected keyword|'
+                         r'not valid JSON|^Give |must be (a|an|one of|given)|is not a (number|whole number|list)'),
     # A reference at the wrong level: a word where a morpheme was wanted, a
     # sentence where a word was, a multi-word token where one of its words was.
-    ('wrong_level', r'\bis not an? (sentence|word|morpheme)\b|names a sentence or a multi-word token|'
-                    r'is (a|inside the) multi-word token|, not (sentences|single morphemes)\b|'
-                    r'is an? \w+ field, not an? \w+ field'),
+    ('invalid-argument', r'\bis not an? (sentence|word|morpheme)\b|names a sentence or a multi-word token|'
+                         r'is (a|inside the) multi-word token|, not (sentences|single morphemes)\b|'
+                         r'is an? \w+ field, not an? \w+ field'),
     # "s2 has 2 words spelled "x": s2.w1, s2.w4", which "has N words" below
     # would read as not found.
     ('ambiguous', r'names several|several \w+ match|more than one|has \d+ words spelled "[^"]*":'),
-    ('plan_limit', r'more than the [\d,]+ one plan may hold'),
+    ('too-large', r'more than the [\d,]+ one plan may hold'),
     ('unavailable', r'is connected to this project|not configured|not available|is offline'),
-    ('server_refused', r'could not be read'),
-    ('plan_conflict', r"this plan's (set_words|split_token) renumbers"),
+    ('unavailable', r'could not be read'),
+    ('conflict', r"this plan's (set_words|split_token) renumbers"),
     # A form beside a number that is not the one there: "s1.w2 is "a", not "mar"".
-    ('not_found', r'^No |has no |has \d+ words?\b|not found|does not exist|no such|is not in |\bis "[^"]*", not "'),
-    ('plan_conflict', r'^This plan |already|discard_plan first|cannot be planned|would (delete|replace|lose)'),
+    ('not-found', r'^No |has no |has \d+ words?\b|not found|does not exist|no such|is not in |\bis "[^"]*", not "'),
+    ('conflict', r'^This plan |already|discard_plan first|cannot be planned|would (delete|replace|lose)'),
 )]
 
 
@@ -131,7 +133,8 @@ def seconds_between(a: Optional[str], b: Optional[str]) -> Optional[float]:
 
 
 def error_class(text: Optional[str]) -> str:
-    """What kind of refusal a tool's ``Error: ...`` answer was."""
+    """What kind of refusal a tool's ``Error: ...`` answer was, read from its
+    words. Only for a step that does not store its kind (:func:`step_error`)."""
     if not isinstance(text, str):
         return 'unknown'
     body = text[len('Error:'):].strip() if text.startswith('Error:') else text.strip()
@@ -139,6 +142,22 @@ def error_class(text: Optional[str]) -> str:
         if rx.search(body):
             return name
     return 'other'
+
+
+def step_error(step: Dict[str, Any], text: Optional[str], kept: bool) -> Tuple[Optional[str], Optional[str]]:
+    """A failed step's refusal kind and where it was read from: ``step`` when
+    the step stores it (``error_kind``, written by the loop since
+    2026-10-24), ``text`` when it is read from the refusal's words, ``None``
+    when neither is there (the answer was pruned). A step that went through
+    has neither."""
+    if not step.get('failed'):
+        return None, None
+    stored = step.get('error_kind')
+    if isinstance(stored, str) and stored:
+        return stored, 'step'
+    if not kept:
+        return 'unknown', None
+    return error_class(text), 'text'
 
 
 def arg_names(args: Any) -> Optional[List[str]]:
@@ -374,9 +393,10 @@ class Conversations:
             # backfill (Luke, R8A-1), never from its text here.
             failed = bool(s.get('failed'))
             failed_n += failed
+            error, error_from = step_error(s, text, kept)
             row = {**base, 'item_index': index, 'turn': turn, 'turn_end': end, 'step': i, 'tool': s.get('name'),
                    'step_kind': s.get('kind'), 'failed': failed,
-                   'error_class': (error_class(text) if kept else 'unknown') if failed else None,
+                   'error_class': error, 'error_class_from': error_from,
                    'result_kept': kept, 'planned': s.get('planned') or 0,
                    'document_read': bool(s.get('document')), 'arg_names': arg_names(args),
                    'legacy_shape': legacy}

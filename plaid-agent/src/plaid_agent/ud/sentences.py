@@ -179,7 +179,7 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
     thing = resolve_in(ws, doc, ref)
     if not isinstance(thing, Word):
         raise ToolError(f'{ref} names a sentence or a multi-word token. Name the WORD the new '
-                        f'sentence should start at, like "s3.w5".')
+                        f'sentence should start at, like "s3.w5".', kind='invalid-argument')
     sentence = _sentence_of(doc, thing)
     # The sentence layer is a gap-free partition, so a sentence owns the
     # whitespace before its first word and `sentence.begin` is often one or
@@ -188,7 +188,7 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
     # plus a renumber of everything after it. Identity is what the question
     # actually asks.
     if thing.token is sentence.tokens[0]:
-        raise ToolError(_starts_already(doc, sentence, ref))
+        raise ToolError(_starts_already(doc, sentence, ref), kind='conflict')
     # Every word of a multi-word token shares that token's begin (the
     # full-width rule), so a cut "before w3" of the token w2-3 really falls
     # before w2. Planning it would renumber the document against a description
@@ -197,7 +197,7 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         first = thing.token.words[0]
         raise ToolError(f'{ref} is inside the multi-word token "{thing.token.surface}", and a '
                         f'sentence cannot begin inside one. The nearest place a sentence can '
-                        f'start is before "{first.form}" (w{first.index}).')
+                        f'start is before "{first.form}" (w{first.index}).', kind='invalid-argument')
 
     basic = [w.relation_id for w in _crossing_words(sentence, thing.token.begin)]
     extras = _crossing_extras(sentence, thing.token.begin)
@@ -281,23 +281,25 @@ def _merged_root_op(ws: Workspace, doc, before, sentence, root_head, root_deprel
                 f's{before.index} and s{sentence.index} each have a root ("{roots[0].form}" and '
                 f'"{roots[1].form}"), and a sentence has one. Say where one of them goes: root_head (a word of '
                 f'one sentence, e.g. s{before.index}.w{roots[0].index}) takes the other sentence\'s root as '
-                f'its dependent, with root_deprel.')
+                f'its dependent, with root_deprel.', kind='invalid-argument')
         return None
     if not all(roots):
-        raise ToolError('root_head and root_deprel are for two sentences that each have a root, and these do not.')
+        raise ToolError('root_head and root_deprel are for two sentences that each have a root, and these do not.',
+                        kind='invalid-argument')
     deprel = (root_deprel or '').strip()
     if not deprel or deprel == 'root':
-        raise ToolError('Give root_deprel: the relation the demoted root takes to root_head (not "root").')
+        raise ToolError('Give root_deprel: the relation the demoted root takes to root_head (not "root").',
+                        kind='invalid-argument')
     head = resolve(doc, str(root_head))
     if not isinstance(head, Word):
         raise ToolError(f'{root_head} is not a word. Name the word the other root attaches to, like '
-                        f'"s{before.index}.w1".')
+                        f'"s{before.index}.w1".', kind='invalid-argument')
     if head in before.words:
         dependent, head_sentence = roots[1], before
     elif head in sentence.words:
         dependent, head_sentence = roots[0], sentence
     else:
-        raise ToolError(f'{root_head} is in neither s{before.index} nor s{sentence.index}.')
+        raise ToolError(f'{root_head} is in neither s{before.index} nor s{sentence.index}.', kind='invalid-argument')
     lemma, head_lemma = dependent.fields.get('lemma'), head.fields.get('lemma')
     stale = [dependent.suppressor_id,
              doc.suppressor_over(head_lemma.id if head_lemma else None, lemma.id if lemma else None)]
@@ -324,7 +326,7 @@ def merge_op(ws: Workspace, doc, ref: str):
     sentence = _sentence_of(doc, resolve(doc, ref))
     if sentence.index == 1:
         raise ToolError('s1 has nothing before it to join. Name the SECOND of the two sentences, '
-                        'so s3 joins s2 and s3 into one.')
+                        'so s3 joins s2 and s3 into one.', kind='invalid-argument')
     before = doc.sentences[sentence.index - 2]
     op = {'kind': 'merge_sentences', 'document_id': doc.id, 'sentence_id': sentence.id,
           'previous_id': before.id, 'ref': ref, 'label': f'merge s{before.index} and s{sentence.index}'}

@@ -151,13 +151,14 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     the project or in one document. Case counts unless the model asks
     otherwise, as in igt (H12-RULES-1)."""
     if field not in REPLACE_FIELDS:
-        raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(REPLACE_FIELDS))
+        raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(REPLACE_FIELDS), kind='invalid-argument')
     if replacement is None:
         raise ToolError('Give replacement: the text that takes the place of what the pattern matches '
-                        '("" clears it).')
+                        '("" clears it).', kind='invalid-argument')
     replacement = unmark(replacement, 'replacement')
     if field == 'deprel' and not (replacement or '').strip():
-        raise ToolError('A dependency cannot have an empty label. del_relation removes a head outright.')
+        raise ToolError('A dependency cannot have an empty label. del_relation removes a head outright.',
+                        kind='invalid-argument')
     rep = replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
     spec = rx(pattern, regex=bool(regex), whole=bool(whole), case_sensitive=bool(case_sensitive))
     document_id = ws.resolve_document_id(document) if document else None
@@ -166,7 +167,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     rows = matches(c, field, spec, document_id, REPLACE_MAX)
     if len(rows) > REPLACE_MAX:
         raise ToolError(f'More than {REPLACE_MAX} {field} values match "{pattern}", more than one plan '
-                        f'may change. Narrow it (a document, a stricter pattern) and go in passes.')
+                        f'may change. Narrow it (a document, a stricter pattern) and go in passes.', kind='too-large')
     found = changes(rows, field, rep)
     if not found:
         return (f'Nothing to change: no {field} matches "{pattern}"' if not rows
@@ -175,7 +176,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     if field == FEATURES:
         _check_features(ws, c, found, document_id)
     elif field == 'deprel' and root_rule(found):
-        raise ToolError(root_rule(found))
+        raise ToolError(root_rule(found), kind='invalid-argument')
     if field != FEATURES:
         # A value-set rule refuses what it does not list, whatever the pattern
         # turned the value into. The change is staged as one scope, found
@@ -206,7 +207,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
                       found, names, lambda ch: _sample_row(ws, field, ch))}
     full = rules.too_many(KIND, ws.ops, len(found), docs)
     if full:
-        raise ToolError(full)
+        raise ToolError(full, kind='too-large')
     ws.add_op({**op, 'label': replace_label(ws, op, len(found), len(docs), accepted)})
     ws.replace_found[opkind.target_of(KIND, op)] = found
     # Counted by document, never by name: two documents may share one, and
@@ -287,10 +288,10 @@ def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],
         pair = normalize_feature(ch['new'])
         if not pair or '|' in ch['new']:
             raise ToolError(f'"{ch["old"]}" would become "{ch["new"]}", which is not one feature. '
-                            f'Each feature is written Feature=Value on its own.')
+                            f'Each feature is written Feature=Value on its own.', kind='invalid-argument')
         refusal = feature_refusal(pair[2])
         if refusal:
-            raise ToolError(f'"{ch["old"]}" would become "{ch["new"]}". {refusal}')
+            raise ToolError(f'"{ch["old"]}" would become "{ch["new"]}". {refusal}', kind='invalid-argument')
         _check_feature(ws, pair[0], pair[1])
         if pair[0] != feature_key(FEATURES, ch['old']):
             renamed[(ch['token_id'], pair[0])] += 1
@@ -304,7 +305,7 @@ def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],
         twice = [t for (t, k), n in renamed.items() if k == key and (n > 1 or t in holding)]
         if twice:
             raise ToolError(f'This would give {len(twice)} word(s) a second {key}. Narrow the '
-                            f'pattern, or change those words with set_feature.')
+                            f'pattern, or change those words with set_feature.', kind='conflict')
 
 
 # What an op that rewrites a whole document does, in the words the refusal
@@ -330,4 +331,5 @@ def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
         if kind in rewriting and kind not in SPLITS_KEEP_WORDS and docs_of_op(op) & reach:
             what = _REWRITES.get(kind, 'rewrites')
             raise ToolError(f'This plan already {what} a document this replacement reaches, and that '
-                            f'rewrites what the replacement would change. Apply one, then plan the other.')
+                            f'rewrites what the replacement would change. Apply one, then plan the other.',
+                            kind='conflict')

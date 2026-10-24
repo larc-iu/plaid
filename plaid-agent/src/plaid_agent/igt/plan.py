@@ -106,6 +106,7 @@ from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate,
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
 from .tagsets import SETTINGS_KINDS, verify_settings
 from .vocab import parent_of
+from ..core.tools import ValueRefusal
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
 # kind tagged with one of these, so the four tools that reason about "does
@@ -1235,8 +1236,8 @@ def refuse_two_links(ops: List[Dict[str, Any]]) -> None:
             continue
         for key in keys:
             if key in seen:
-                raise ValueError(f'{op.get("label") or op["kind"]} and {seen[key].get("label") or seen[key]["kind"]} '
-                                 'would write two lexicon links on one word or morpheme')
+                raise ValueRefusal(f'{op.get("label") or op["kind"]} and {seen[key].get("label") or seen[key]["kind"]} '
+                                   'would write two lexicon links on one word or morpheme', kind='conflict')
             seen[key] = op
 
 
@@ -1290,8 +1291,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     if reach:
         for op in ops:
             if op.get('kind') in RESHAPES and (not op.get('doc') or op['doc'] in reach):
-                raise ValueError('this plan holds a corpus-wide change and reshapes a document it reaches; '
-                                 'the two would meet for the first time in the batch')
+                raise ValueRefusal('this plan holds a corpus-wide change and reshapes a document it reaches; '
+                                   'the two would meet for the first time in the batch', kind='conflict')
     # A link to an entry the plan creates is written once that entry has an
     # id, in the executor's second pass, so one naming no entry of the plan
     # would fail there with the first batch already written.
@@ -1309,12 +1310,12 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             if not op.get('analysis_word_id'):
                 raise ValueError(f'op {i + 1} (link): missing token_id')
             if planned_morpheme(ops, op) is None:
-                raise ValueError(f'op {i + 1} (link): names morpheme {op.get("morpheme_index")} of an analysis '
-                                 'this plan does not hold')
+                raise ValueRefusal(f'op {i + 1} (link): names morpheme {op.get("morpheme_index")} of an analysis '
+                                   'this plan does not hold', kind='not-found')
         if kind in ('link', 'link_phrase') and not (op.get('item_id') or op.get('new_entry_key')):
             raise ValueError(f'op {i + 1} ({kind}): needs item_id or new_entry_key')
         if kind in ('link', 'link_phrase') and not op.get('item_id') and op.get('new_entry_key') not in new_keys:
-            raise ValueError(f'op {i + 1} ({kind}): links to an entry this plan does not create')
+            raise ValueRefusal(f'op {i + 1} ({kind}): links to an entry this plan does not create', kind='not-found')
         if kind == 'link_phrase' and (not isinstance(op['token_ids'], list) or len(op['token_ids']) < 2):
             raise ValueError(f'op {i + 1} (link_phrase): token_ids must list two or more words')
         if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
@@ -1324,7 +1325,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if kind == 'edit_text' and not (op['new'] or '').strip():
             raise ValueError(f'op {i + 1} (edit_text): the new text is empty')
         if spec.shape == ok.EXCLUSIVE and len(ops) > 1:
-            raise ValueError(f'op {i + 1} ({kind}): a {spec.noun[0]} must be the only op in its plan')
+            raise ValueRefusal(f'op {i + 1} ({kind}): a {spec.noun[0]} must be the only op in its plan',
+                               kind='conflict')
 
 
 def _bulk_gone(ops) -> set:
@@ -1372,7 +1374,8 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
                 rewritten.add(op['reset_first_id'])
     for op in ops:
         if op.get('kind') == 'merge_entries' and op['keep_id'] in removed:
-            raise ValueError(f'merge into {op["keep_id"]}: that entry is deleted or merged away by another op in this plan')
+            raise ValueRefusal(f'merge into {op["keep_id"]}: that entry is deleted or merged away by another op in this plan',
+                               kind='conflict')
     out: List[Dict[str, Any]] = []
     seen_delete = set()
     respell_at: Dict[tuple, int] = {}
@@ -1395,8 +1398,8 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # cover, and refusing the whole plan says so rather than applying most
         # of it.
         if certain:
-            raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
-                             'another change in this plan')
+            raise ValueRefusal(f'{op.get("label") or k}: what it names is deleted or merged away by '
+                               'another change in this plan', kind='conflict')
         # A text edit's word ids are a GUESS (the server diffs the text and
         # may keep the word), so the op is dropped rather than refused: it
         # is moot if the word goes, and the plan was already approved. A
@@ -1453,7 +1456,8 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             key = (op['text_id'], op['begin'], op['end'])
             for (t, b, e), idx in respell_at.items():
                 if t == op['text_id'] and (b, e) != (op['begin'], op['end']) and b < op['end'] and op['begin'] < e:
-                    raise ValueError(f'respellings overlap in one text ({b}-{e} and {op["begin"]}-{op["end"]})')
+                    raise ValueRefusal(f'respellings overlap in one text ({b}-{e} and {op["begin"]}-{op["end"]})',
+                                       kind='conflict')
             if key in respell_at:
                 out[respell_at[key]] = op  # last wins
                 continue
@@ -1839,7 +1843,8 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     body = ((tl or {}).get('text') or {}).get('body') or ''
     b, e = op['begin'], op['end']
     if body[b:e] != op['old']:
-        raise ValueError(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made')
+        raise ValueRefusal(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made',
+                           kind='conflict')
     new_body = body[:b] + new + body[e:]
     gaps = _region_gaps(op['old'], new, b)
     client.texts.edit(text_id, gaps_to_ops(gaps), None,

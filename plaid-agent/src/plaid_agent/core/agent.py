@@ -1281,12 +1281,14 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # (core.tools.Refusal), never by how the text begins: a read whose
             # output starts with "Error" went through.
             failed = False
+            error_kind = None
             try:
                 args = json.loads(raw)
                 if not isinstance(args, dict):
                     args = {}
             except json.JSONDecodeError as e:
-                args, result, failed = {}, refused(f'arguments were not valid JSON ({e})'), True
+                args, result, failed = {}, refused(f'arguments were not valid JSON ({e})', 'invalid-argument'), True
+                error_kind = result.kind
                 # Sent back as they came, they are the next request's: a
                 # server that reads a call's arguments (llama-server) refuses
                 # the whole conversation, every retry, and the turn is lost.
@@ -1313,8 +1315,9 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 ws.step_label = None
                 cuts_before = cuts()
                 try:
-                    result = refused(why) if why else kit.call_tool(ws, name, args)
+                    result = refused(why, 'invalid-argument') if why else kit.call_tool(ws, name, args)
                     failed = isinstance(result, Refusal)
+                    error_kind = result.kind if failed else None
                 finally:
                     saw, ws.reads, ws.announced = ws.reads, None, None
                     told, ws.step_label = getattr(ws, 'step_label', None), None
@@ -1358,7 +1361,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             traced = ({**args, 'documents': list(scoped)}
                       if scoped and isinstance(args, dict) and args.get('documents') is not None else args)
             ws.scoped_documents = None
-            trace.append(trace_step(kit.tracer, c['id'], name, traced, failed=failed, planned=planned, saved=saved,
+            trace.append(trace_step(kit.tracer, c['id'], name, traced, failed=failed, error_kind=error_kind,
+                                    planned=planned, saved=saved,
                                     saw=saw, round_id=rnd['id'] if keeper is not None else None,
                                     said=rnd.get('said') if first else None,
                                     thought=first and keeper is not None and bool(rnd.get('thinking')),

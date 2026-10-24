@@ -17,7 +17,7 @@ from plaid_client.provenance import PROVENANCE_KEYS
 
 from ..core.args import clamp_limit, read_int
 from ..core.limits import MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
-from ..core.tools import ToolError, document_page, documents_page, named_sentences, truncate
+from ..core.tools import ToolError, document_page, documents_page, kind_of, named_sentences, truncate
 from ..core.trace import ranges
 from ..core.bidi import plain_quote
 from ..core.workspace import name_matcher
@@ -45,7 +45,7 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         name = next((n for n in ws.project.document_metadata if n.lower() == metadata_field.lower()), None)
         if not name:
             raise ToolError(f'No document metadata field "{metadata_field}". Fields: '
-                            + (', '.join(ws.project.document_metadata) or '(none configured)'))
+                            + (', '.join(ws.project.document_metadata) or '(none configured)'), kind='not-found')
         metas = ws.corpus.document_metadata()
         want = (value or '').casefold()
         docs = [d for d in ws.documents() if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
@@ -95,13 +95,13 @@ def t_read_sentences(ws: Workspace, items=None, fields=None) -> str:
     document that does not fit, and every one after it, is listed at the end
     to be asked for again."""
     if not isinstance(items, list) or not items:
-        raise ToolError(ITEMS_SHAPE)
+        raise ToolError(ITEMS_SHAPE, kind='invalid-argument')
     if fields:
         read_view(ws.project, fields)  # refused before anything is read
     wanted: Dict[str, list] = {}  # document id -> the sentences named, in the order named
     for it in items:
         if not isinstance(it, dict) or not it.get('document') or not it.get('sentences'):
-            raise ToolError(ITEMS_SHAPE)
+            raise ToolError(ITEMS_SHAPE, kind='invalid-argument')
         named = it['sentences'] if isinstance(it['sentences'], list) else [it['sentences']]
         wanted.setdefault(ws.resolve_document_id(it['document']), []).extend(named)
     out: List[str] = []
@@ -172,13 +172,14 @@ def _field_or_where(ws: Workspace, name: str, kinds):
     except ValueError as e:
         if 'names several' in str(e):
             raise
-        raise ToolError(f'{e}. Or where = ' + ', '.join(WHERE_SAYS[k] for k in kinds) + '.') from None
+        raise ToolError(f'{e}. Or where = ' + ', '.join(WHERE_SAYS[k] for k in kinds) + '.',
+                        kind=kind_of(e, 'invalid-argument')) from None
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
              regex: bool = False, limit: Optional[int] = None, case_sensitive: bool = False) -> str:
     if not pattern:
-        raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
+        raise ToolError('Give a pattern (to list items LACKING a value, use worklist).', kind='invalid-argument')
     match = _matcher(pattern, bool(regex), bool(case_sensitive))
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     where_name = _where(ws, where, 'baseline', ('baseline', 'morpheme', 'lexicon'))
@@ -324,7 +325,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     distinct word patterns the hit occurs in. Built for morphotactic
     questions (what precedes/follows X, does X vary by context)."""
     if not pattern:
-        raise ToolError('Give a pattern.')
+        raise ToolError('Give a pattern.', kind='invalid-argument')
     limit = clamp_limit(limit, 60, 300)
     where = _where(ws, where, 'morpheme', ('baseline', 'morpheme'))
     where_l = where.lower()
@@ -332,7 +333,8 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     if where_l not in ('baseline', 'morpheme'):
         field = _field_or_where(ws, where, ('baseline', 'morpheme'))
         if field.scope == 'Sentence':
-            raise ToolError('concordance works on words and morphemes; use search for sentence fields')
+            raise ToolError('concordance works on words and morphemes; use search for sentence fields',
+                            kind='invalid-argument')
     from .queries import concordance_where, q_concordance_hits, q_concordance_tally, q_empty_hint, where_label
     with ws.corpus.within(document):
         hits, total, cut = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
@@ -410,9 +412,9 @@ def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[
         wanted.insert(0, str(form).strip())
     wanted = list(dict.fromkeys(wanted))
     if not wanted:
-        raise ToolError('Give a form, or forms (a list).')
+        raise ToolError('Give a form, or forms (a list).', kind='invalid-argument')
     if len(wanted) > MAX_FORMS_PER_CALL:
-        raise ToolError(f'At most {MAX_FORMS_PER_CALL} forms per call; split the list.')
+        raise ToolError(f'At most {MAX_FORMS_PER_CALL} forms per call; split the list.', kind='too-large')
     # The occurrences tallied, every form's together, for the step's label.
     found: List[int] = []
     value = str(value).strip() if value is not None and str(value).strip() else None

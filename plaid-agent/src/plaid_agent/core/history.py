@@ -22,7 +22,7 @@ from .args import clamp_limit
 from .bidi import plain_quote, qname  # noqa: F401 - plain_quote is read from here too
 from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, COMMENT_MAX_CHARS, READ_LIMITS
 from .plan import labelled
-from .tools import ToolError, server_refused, truncate
+from .tools import ToolError, kind_of_status, server_refused, truncate
 
 
 def recent_changes(ws, document: Optional[str] = None, limit: Optional[int] = None,
@@ -139,9 +139,9 @@ def plan_comment(ws, document: Optional[str], body: Optional[str], ref: Optional
     can still put the two in separate turns."""
     body = (body or '').strip()
     if not body:
-        raise ToolError('Give body: the text of the comment.')
+        raise ToolError('Give body: the text of the comment.', kind='invalid-argument')
     if len(body) > COMMENT_MAX_CHARS:
-        raise ToolError(f'A comment holds at most {COMMENT_MAX_CHARS} characters.')
+        raise ToolError(f'A comment holds at most {COMMENT_MAX_CHARS} characters.', kind='too-large')
     doc = ws.doc(document)
     short = body[:60] + ('…' if len(body) > 60 else '')
     ws.add_op({'kind': 'add_comment', 'body': body, 'document_id': doc.id,
@@ -160,9 +160,9 @@ def read_comments(ws, document: Optional[str], ref: Optional[str], field: Option
     """
     limit = clamp_limit(limit, *READ_LIMITS['comments'])
     if ref and not document:
-        raise ToolError('ref needs a document')
+        raise ToolError('ref needs a document', kind='invalid-argument')
     if field and not ref:
-        raise ToolError('field needs a ref: the thing whose value the comment is on')
+        raise ToolError('field needs a ref: the thing whose value the comment is on', kind='invalid-argument')
     ws.on_progress('Reading the comments…')
     doc = ws.doc(document) if document else None
     if doc is not None and ref:
@@ -300,7 +300,7 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
     as_of = (as_of or '').strip()
     if not AS_OF.match(as_of):
         raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z (recent_changes '
-                        'prints one per change as as_of=).')
+                        'prints one per change as as_of=).', kind='invalid-argument')
     doc = ws.doc(document)
     # The funnel asks the same question of the op this tool is about to stage;
     # asked here too, the model is told before the dry run costs a round trip.
@@ -312,8 +312,8 @@ def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
         summary = ws.client.documents.restore(doc.id, as_of, dry_run=True)
     except Exception as e:  # noqa: BLE001 - the server's reason is the model's answer
         if getattr(e, 'status', None) == 403:
-            raise ToolError('Restoring a document needs maintainer access to the project.')
-        raise ToolError(f'The restore was refused: {" ".join(str(e).split())[:400]}')
+            raise ToolError('Restoring a document needs maintainer access to the project.', kind='not-allowed')
+        raise ToolError(f'The restore was refused: {" ".join(str(e).split())[:400]}', kind=kind_of_status(e))
     summary = summary if isinstance(summary, dict) else {}
     total = summary.get('total') or 0
     kept = summary.get('name_kept') or None

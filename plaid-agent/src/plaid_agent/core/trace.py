@@ -317,14 +317,17 @@ def _the_named_document(s: Dict[str, Any], args: Dict[str, Any]) -> bool:
 
 
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
-               failed: bool = False, planned: int = 0, saved: Optional[List[str]] = None,
+               failed: bool = False, error_kind: Optional[str] = None, planned: int = 0,
+               saved: Optional[List[str]] = None,
                saw: Optional[List[Dict[str, Any]]] = None, round_id: Optional[str] = None,
                said: Optional[str] = None, thought: bool = False, nothing: bool = False,
                told: Optional[str] = None, again: bool = False) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
-    still shows it where it happened) but is left out of every count.
+    still shows it where it happened) but is left out of every count, and
+    ``error_kind`` is what kind of refusal it was
+    (``core.tools.REFUSAL_KINDS``), stored for the research dataset.
     ``planned`` is how much the call changed the plan's size (negative for a
     drop), so the summary counts the changes the card shows rather than the
     calls that asked for them. ``saved`` names the files the call saved for
@@ -355,6 +358,8 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
             'label': failed_label(label) if failed else nothing_label(label) if nothing and not again else label}
     if failed:
         item['failed'] = True
+        if error_kind:
+            item['error_kind'] = error_kind
     elif nothing:
         item['nothing'] = True
     elif kind == DOCUMENT and args.get('document'):

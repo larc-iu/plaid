@@ -51,7 +51,7 @@ def test_a_batch_that_refuses_half_way_stages_none_of_it():
     class Refuses(StagingWorkspace):
         def guard_op(self, op, replacing=None):
             if op.get('id') == 'c':
-                raise ToolError('not that one')
+                raise ToolError('not that one', kind='not-found')
 
     ws = Refuses(None, None)
     ws.add_op({'kind': 'set_value', 'id': 'a', 'label': 'first'})

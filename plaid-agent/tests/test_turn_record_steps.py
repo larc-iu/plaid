@@ -80,11 +80,14 @@ def test_a_failed_turn_carries_the_calls_it_made(monkeypatch):
         RuntimeError('provider down'),
     ]))
     with pytest.raises(RuntimeError) as e:
-        run_turn(ModelConfig(model='fake/m', stream=False), _kit({'kai': '3 words', 'nope': refused('No word nope.')}),
+        run_turn(ModelConfig(model='fake/m', stream=False),
+                 _kit({'kai': '3 words', 'nope': refused('No word nope.', 'not-found')}),
                  _ws(client), 'system', [{'role': 'user', 'content': 'hi'}])
     steps, partial = turn_trace(e.value)
     assert [s['id'] for s in steps] == ['c1', 'c2']
     assert steps[1]['failed'] is True and not steps[0].get('failed')
+    # The refusal's kind is stored on its step, for the research dataset.
+    assert steps[1]['error_kind'] == 'not-found' and 'error_kind' not in steps[0]
     assert steps[0]['said'] == 'Looking.' and 'said' not in steps[1]
     [rnd] = _rounds(client)
     assert steps[0]['round'] == steps[1]['round'] == rnd['id']
