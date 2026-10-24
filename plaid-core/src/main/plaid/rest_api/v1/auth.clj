@@ -223,15 +223,17 @@
   `jwt-data` is the claims of the credential the request came with: the
   token expires no later than that credential (`not-after` as in
   `issue-delegated-token!`), a scoped caller's scope and runner travel with
-  it so `wrap-read-jwt` narrows it the same way, and an API token's id
-  travels with it, so revoking that token closes the link too. Returns
+  it so `wrap-read-jwt` narrows it the same way, and the id of the API token
+  behind the credential (its own, or the one a delegated token was obtained
+  with) travels with it, so revoking that token closes the link too. Returns
   `{:token :exp}` (`exp` in unix seconds), or nil if the user is missing."
   [db secret-key user-id audience ttl-seconds claims jwt-data]
   (when-let [account (user/get-internal db user-id)]
     (let [now (quot (System/currentTimeMillis) 1000)
           not-after (:exp jwt-data)
           exp (cond-> (+ now ttl-seconds)
-                (number? not-after) (min (long not-after)))]
+                (number? not-after) (min (long not-after)))
+          api-token (or (:token/id jwt-data) (:delegated/api-token jwt-data))]
       {:exp exp
        :token (jwt/sign (cond-> (merge claims
                                        {:user/id (:user/id account)
@@ -246,7 +248,7 @@
                                         :link/nonce (str (random-uuid))})
                           (:scope/projects jwt-data) (assoc :scope/projects (:scope/projects jwt-data))
                           (:scope/runner jwt-data) (assoc :scope/runner (:scope/runner jwt-data))
-                          (:token/id jwt-data) (assoc :link/api-token (:token/id jwt-data)))
+                          api-token (assoc :link/api-token api-token))
                         secret-key)})))
 
 (defn issue-media-token!

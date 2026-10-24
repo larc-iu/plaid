@@ -241,6 +241,19 @@
                                           {:method :delete
                                            :path (str "/api/v1/users/admin@example.com/tokens/" (:id minted))}))))
             (is (= 401 (:status (get-anon url))))))
+        (testing "a link minted under a delegated token an API token obtained dies when that token is revoked"
+          ;; REV-ACL-2: the link took the delegated token's scope and exp but
+          ;; not the API token it came from, so it streamed on after the revoke.
+          (let [minted (:body (api-call admin-request {:method :post
+                                                       :path "/api/v1/users/admin@example.com/tokens"
+                                                       :body {:name "service script"}}))
+                handed (auth/issue-delegated-token! fix/db secret "admin@example.com" [pid] nil nil (:id minted))
+                url (-> (link! (as handed) did) :body :url)]
+            (is (= 200 (:status (get-anon url))))
+            (is (= 204 (:status (api-call admin-request
+                                          {:method :delete
+                                           :path (str "/api/v1/users/admin@example.com/tokens/" (:id minted))}))))
+            (is (= 401 (:status (get-anon url))))))
         (is (some? qid))))))
 
 (deftest two-links-minted-at-once-differ
