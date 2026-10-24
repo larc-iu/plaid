@@ -14,22 +14,34 @@ import { appTrees, repoRoot } from './apps.js';
 //  - the five keys listed by hand, which a sixth key would slip past
 //    (PROVENANCE_KEYS).
 //
+// The keys themselves are written only in plaid-client: an app names one as
+// PROV.key, PROV.sourceKey and the rest, so a key name in quotes is one of the
+// rules above restated (beta review REV-PROV-4).
+//
 // Tests are exempt, and so is anything under a src/test directory: they
-// state what the rules produce. Comments are exempt.
+// state what the rules produce. Comments are exempt, a trailing one too.
+
+const KEY_LITERAL = /['"`](prov|provSource|provConfirmed|provDetail|provProb)['"`]/;
 
 const PATTERNS = [
-  [/startsWith\(\s*['"]prov['"]\s*\)/, 'a prov prefix test: use PROVENANCE_KEYS'],
+  [KEY_LITERAL, 'a provenance key in quotes: use PROV and PROVENANCE_KEYS'],
+  [/startsWith\(\s*PROV\.key\s*\)|\/\^prov|['"`]\^prov/, 'a prov prefix test: use PROVENANCE_KEYS'],
   [
-    /\bprovProb\s*:\s*null|probKey\]\s*:\s*null/,
+    /(^|[{,])\s*provProb\s*:\s*(null|undefined)\b|probKey\]\s*:\s*(null|undefined)\b|\bdelete\s+[\w$.?[\]]*(\.provProb\b|\[\s*PROV\.probKey\s*\])|path\s*:\s*\[\s*PROV\.probKey\s*\]/,
     'a hand-written provProb drop: use writer.valueEditStamp',
   ],
-  [
-    /['"]provProb['"]\s*,|PROV\.confirmedKey,\s*PROV\.probKey/,
-    'a hand list of the keys: use PROVENANCE_KEYS',
-  ],
+  [/\bPROV\.\w*[kK]ey\s*,\s*PROV\.\w*[kK]ey\b/, 'a hand list of the keys: use PROVENANCE_KEYS'],
 ];
 
 const isComment = (line) => /^\s*(\/\/|\/?\*)/.test(line);
+
+// The line without a trailing comment. A `//` counts as one only after
+// whitespace, so the `//` of a URL in a string stays code.
+const codeOf = (line) => line.replace(/(^|\s)\/\/.*$/, '');
+
+// The rules a source line breaks, each as its reason.
+const broken = (line) =>
+  isComment(line) ? [] : PATTERNS.filter(([p]) => p.test(codeOf(line))).map(([, why]) => why);
 
 const sources = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -47,13 +59,44 @@ describe('the provenance rules have one home', () => {
         fs.readFileSync(file, 'utf8')
           .split('\n')
           .forEach((line, i) => {
-            if (isComment(line)) return;
-            for (const [pattern, why] of PATTERNS) {
-              if (pattern.test(line)) found.push(`${path.relative(repo, file)}:${i + 1}: ${why}`);
-            }
+            for (const why of broken(line))
+              found.push(`${path.relative(repo, file)}:${i + 1}: ${why}`);
           });
       }
     }
     expect(found).toEqual([]);
+  });
+
+  // The shapes the gate exists for, each written once in some app before.
+  it.each([
+    'const m = { provProb: null };',
+    "const m = { 'provProb': null };",
+    '  provProb: null,',
+    'const m = { ...s, [PROV.probKey]: undefined };',
+    "ops.push({ op: 'delete', path: ['provProb'] });",
+    'ops.push({ op: OP, path: [PROV.probKey] });',
+    'delete m.provProb;',
+    'delete m[PROV.probKey];',
+    "const own = keys.filter((k) => !k.startsWith('prov'));",
+    'const own = keys.filter((k) => !k.startsWith(PROV.key));',
+    'const own = keys.filter((k) => !/^prov/.test(k));',
+    "const own = keys.filter((k) => k.slice(0, 4) !== 'prov');",
+    "const KEYS = ['prov', 'provSource', 'provConfirmed', 'provDetail', 'provProb'];",
+    'const KEYS = [PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.detailKey];',
+  ])('flags %s', (line) => {
+    expect(broken(line)).not.toEqual([]);
+  });
+
+  it.each([
+    'const p = ok ? provProb : null;',
+    'const p = ok\n  ? provProb\n  : null;',
+    'save(m); // provProb: null was written here once',
+    '// { provProb: null }',
+    'const detail = metadata?.[PROV.detailKey];',
+    'const fragment = { ...stamp, [PROV.detailKey]: { ...stamp[PROV.detailKey], ...detail } };',
+    "const url = 'https://example.org/prov';",
+    "const label = 'provenance';",
+  ])('passes %s', (line) => {
+    for (const part of line.split('\n')) expect(broken(part)).toEqual([]);
   });
 });
