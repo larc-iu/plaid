@@ -1,10 +1,16 @@
 name: CI
 
-# The per-push check: Clojure formatting, every unit suite and a build of each
-# SPA, in parallel jobs, in about ten minutes. Every job calls `bb ci-fast`
-# (bb/pipeline.clj), so a developer runs the same thing with `bb ci-fast`.
-# The fidelity round trips, the e2e suites, `bb build` and the jar smoke test
-# stay in nightly.yml and release.yml.
+# The per-push check, on every push to master and every pull request:
+# Clojure formatting, the Clojure suite in four shards, every JavaScript
+# package's lint, tests and Vite build, and the Python suites (with every
+# Python tree compiled on 3.12 and on the 3.11 floor). Every job calls
+# `bb ci-fast` (bb/pipeline.clj), so a developer runs the same thing locally.
+#
+# What runs elsewhere:
+# - nightly.yml: `bb test` (the same suites in one job), the fidelity round
+#   trips (`bb fidelity`) and the Playwright suites on private cores (`bb e2e`).
+# - release.yml, on a tag: `bb test`, then `bb build` with the jar smoke test,
+#   then the publish. Neither the fidelity round trips nor e2e run there.
 
 on:
   push:
@@ -93,9 +99,13 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: '*/package-lock.json'
+      # 3.11 is the floor the packages declare, used only to compile every
+      # tree (PLAID_PYTHON_FLOOR). The last version listed, 3.12, is `python`.
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: |
+            3.11
+            3.12
           cache: pip
           cache-dependency-path: |
             plaid-agent/pyproject.toml
@@ -120,4 +130,7 @@ jobs:
           pip install -e './plaid-agent[dev]'
           pip install ancast
       - name: Run the Python suites
+        env:
+          PLAID_PYTHON: python
+          PLAID_PYTHON_FLOOR: python3.11
         run: bb ci-fast python

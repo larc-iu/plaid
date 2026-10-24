@@ -27,9 +27,11 @@
 // expectation needs to say what comes back where a format keeps only one.
 //
 // Ids INSIDE metadata are rewritten too, where the app defines them: an
-// entry's `parent`, every `type: "item"` field, and each `{document, token}`
-// example. Any other id-shaped value is left alone and will differ after an
-// import, which is the point.
+// entry's `parent`, every `type: "item"` field, each `{document, token}`
+// example, and the span layer each service default field names in the
+// project config (`<app>.serviceDefaults.<task>.fieldParams`). Any other
+// id-shaped value is left alone and will differ after an import, which is the
+// point.
 //
 // Left out, because no format is meant to carry them: document version and
 // timestamps, permissions (readers, writers, maintainers), comment ids. Comment
@@ -356,9 +358,30 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     }),
   );
 
+  // Each app's service defaults name their fields by span layer id.
+  const config = { ...(project.config || {}) };
+  for (const [ns, settings] of Object.entries(config)) {
+    const defaults = settings?.serviceDefaults;
+    if (!defaults || typeof defaults !== 'object') continue;
+    const rewritten = Object.fromEntries(
+      Object.entries(defaults).map(([task, d]) => [
+        task,
+        d?.fieldParams && typeof d.fieldParams === 'object'
+          ? {
+              ...d,
+              fieldParams: Object.fromEntries(
+                Object.entries(d.fieldParams).map(([k, id]) => [k, layerKeyById.get(id) ?? id]),
+              ),
+            }
+          : d,
+      ]),
+    );
+    config[ns] = { ...settings, serviceDefaults: rewritten };
+  }
+
   return {
     name: project.name,
-    config: project.config || {},
+    config,
     layers: sortByKey(layers, (l) => l.key),
     vocabularies: sortByKey(vocabularies, (v) => v.key),
     documents: sortByKey(documents, (d) => d.key),

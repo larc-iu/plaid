@@ -43,33 +43,32 @@
         bs (.digest md (fs/read-all-bytes f))]
     (apply str (map (fn [b] (format "%02x" (bit-and b 0xff))) bs))))
 
-;; Python comes from a mamba env — activate it (`mamba activate plaid-agent`) so
-;; `python` resolves to it before running, the way Node needs `nvm use`. It has
-;; to hold the plaid client, `build`, pytest, AND the assistant itself, since
-;; the test gate runs the assistant's suite: `base` carries the first three but
-;; not the assistant, so `plaid-agent` is the env for the whole pipeline.
-;; mamba/conda are shell functions, so the build can't activate the env itself.
+;; One Python interpreter for every step: PLAID_PYTHON, else
+;; PLAID_AGENT_PYTHON, else the `plaid-agent` env's python under the usual
+;; mamba roots. Never the first `python` on PATH: on larc that is an env whose
+;; editable installs point at another checkout, so a suite run with it tests
+;; that checkout's code. CI sets PLAID_PYTHON to the job's own python. The env
+;; has to hold the plaid client, `build`, pytest and the assistant itself.
 ;; Throws (not System/exit) so a caller's `finally` still restores files.
 (defn python-exe []
-  (cond (fs/which "python")  "python"
-        (fs/which "python3") "python3"
-        :else (throw (ex-info (str "no `python` on PATH — activate the mamba base env "
-                                   "(`mamba activate base`) first, or pass --skip-clients")
-                              {}))))
-
-;; The assistant package lives in its own mamba env (`plaid-agent`: Python 3.12,
-;; pydantic-monty), and is not importable from base. Anything that runs it
-;; takes this interpreter: PLAID_AGENT_PYTHON if set, else the env's python
-;; under the usual mamba roots, else whatever python-exe finds, which will
-;; fail at the first import with a message that names the package.
-(defn agent-python-exe []
-  (or (System/getenv "PLAID_AGENT_PYTHON")
+  (or (not-empty (System/getenv "PLAID_PYTHON"))
+      (not-empty (System/getenv "PLAID_AGENT_PYTHON"))
       (let [home (System/getProperty "user.home")]
-        (->> [".mambaforge" "mambaforge" ".miniforge3" "miniforge3" "micromamba" "miniconda3" "anaconda3"]
+        (->> [".miniforge3" "miniforge3" ".mambaforge" "mambaforge" "micromamba" "miniconda3" "anaconda3"]
              (map #(str home "/" % "/envs/plaid-agent/bin/python"))
              (filter fs/exists?)
              first))
-      (python-exe)))
+      (throw (ex-info (str "no plaid Python: set PLAID_PYTHON to the plaid-agent env's python "
+                           "(or pass --skip-clients to a build)")
+                      {}))))
+
+;; The packages under test are this checkout's, whatever the interpreter has
+;; installed: PYTHONPATH names their sources, resolved from the repo root bb
+;; runs in. Each suite's conftest fails when plaid_client or plaid_agent comes
+;; from anywhere else.
+(defn python-env []
+  {"PYTHONPATH" (str/join ":" [(str (fs/absolutize "plaid-client-py/src"))
+                               (str (fs/absolutize "plaid-agent/src"))])})
 
 ;; The SPA build (Vite) needs a recent Node; CI uses 24. Node 20 ships npm 10,
 ;; which cannot read the lockfiles npm 11 writes, and that is exactly how the
@@ -137,37 +136,53 @@
   (p/shell {:dir "plaid-client-js"} "npm" "ci")
   (p/shell {:dir "plaid-client-js"} "npm" "test"))
 
+;; The Python source trees, each compiled by the gate.
+(def ^:private python-trees
+  ["plaid-agent/src" "plaid-client-py/src" "plaid-igt/services" "plaid-ud/services" "plaid-umr/services"])
+
 ;; Run after the JavaScript packages are installed, deliberately: the
 ;; assistant's mirror tests run the apps' own domain modules through node, and
 ;; they need plaid-igt's and plaid-ud's node_modules.
 (defn- run-python-tests! []
-  (let [py (agent-python-exe)]
+  (let [py  (python-exe)
+        env (python-env)
+        run (fn [dir & args]
+              (apply p/shell {:dir dir :extra-env env} py args))]
     ;; Every Python file still parses, including a service no test imports.
+    ;; compileall says "Can't list" and exits 0 for a directory that is not
+    ;; there, so each one is checked first.
     (step "Compile every Python package")
-    (p/shell (python-exe) "-m" "compileall" "-q" "plaid-agent/plaid_agent" "plaid-client-py/src"
-             "plaid-igt/services" "plaid-ud/services" "plaid-umr/services")
+    (doseq [d python-trees]
+      (when-not (fs/directory? d) (fail (str d " is not a directory: correct python-trees"))))
+    (apply p/shell py "-m" "compileall" "-q" python-trees)
+    ;; The packages declare Python 3.11 as their floor, and 3.12 accepts code
+    ;; 3.11 refuses (a backslash inside an f-string expression). With
+    ;; PLAID_PYTHON_FLOOR naming a 3.11 interpreter (ci.yml sets one), every
+    ;; tree is compiled with it as well.
+    (when-let [floor (not-empty (System/getenv "PLAID_PYTHON_FLOOR"))]
+      (step (str "Compile every Python package with the floor interpreter (" floor ")"))
+      (apply p/shell floor "-m" "compileall" "-q" python-trees))
     (step "Run the Python test suite (plaid-agent)")
     ;; igt's corpus tools ask a real core's query engine, so the suite boots a
     ;; private one from plaid-core's source (its own port and database, stopped
     ;; when the suite ends: tests/private_core.py). PLAID_AGENT_REQUIRE_LIVE
     ;; makes a core that cannot start a failure here, where a skip would pass
     ;; the gate having run none of those tests.
-    (p/shell {:dir "plaid-agent" :extra-env {"PLAID_AGENT_REQUIRE_LIVE" "1"}} py "-m" "pytest" "-q")
+    (p/shell {:dir "plaid-agent" :extra-env (assoc env "PLAID_AGENT_REQUIRE_LIVE" "1")} py "-m" "pytest" "-q")
     (step "Run the Python test suite (plaid-igt services)")
-    ;; The bundled services are plain plaid-client code and run from base.
-    (p/shell {:dir "plaid-igt"} (python-exe) "-m" "pytest" "-q" "services/tests")
+    (run "plaid-igt" "-m" "pytest" "-q" "services/tests")
     (step "Run the Python test suite (plaid-ud services)")
-    ;; Same: the Stanza parser's handler test stands stanza itself in at import,
-    ;; so it needs no model, no download and no env of its own.
-    (p/shell {:dir "plaid-ud"} (python-exe) "-m" "pytest" "-q" "services/tests")
+    ;; The Stanza parser's handler test stands stanza itself in at import, so
+    ;; it needs no model, no download and no env of its own.
+    (run "plaid-ud" "-m" "pytest" "-q" "services/tests")
     (step "Run the Python test suite (plaid-umr services)")
-    ;; Same again: the drafting service's handler test stands the chat model in
-    ;; at `service.model`, so it needs no provider, no key and no litellm.
-    (p/shell {:dir "plaid-umr"} (python-exe) "-m" "pytest" "-q" "services/tests")
+    ;; The drafting service's handler test stands the chat model in at
+    ;; `service.model`, so it needs no provider, no key and no litellm.
+    (run "plaid-umr" "-m" "pytest" "-q" "services/tests")
     ;; The Python client's own suite: BaseService, cancellation, the idle
-    ;; deadline, batch bypass and the three workflows. It was never in the gate.
+    ;; deadline, batch bypass and the three workflows.
     (step "Run the Python test suite (plaid-client-py)")
-    (p/shell {:dir "plaid-client-py"} (python-exe) "-m" "pytest" "-q")))
+    (run "plaid-client-py" "-m" "pytest" "-q")))
 
 (defn run-tests! []
   (ensure-repo-root!)
@@ -217,7 +232,9 @@
    ["roundTrip.mjs" "every format reads back what it wrote, or its loss list says why not"]
    ["validate.mjs" "every export passes its own format's validator"]
    ["mirror.mjs" "the editor shows what the server keeps after each reshape, and asks about what it deletes"]
-   ["composedArchive.mjs" "an archive whose text keeps a mark apart for its own token imports, and round trips identical"]])
+   ["composedArchive.mjs" "an archive whose text keeps a mark apart for its own token imports, and round trips identical"]
+   ["resume.mjs" "an import stopped after the Nth write and resumed ends where a straight import ends"]
+   ["vocabTsv.mjs" "a vocabulary TSV export reads back through Bulk Add"]])
 
 (defn run-fidelity! []
   (ensure-repo-root!)
@@ -240,9 +257,9 @@
 ;; remember.
 (defn write-sample-prompts! []
   (ensure-repo-root!)
-  (let [py (agent-python-exe)]
+  (let [py (python-exe)]
     (step "Regenerate the assistant prompt snapshots")
-    (p/shell {:dir "plaid-agent"} py "tests/sample_prompt.py")))
+    (p/shell {:dir "plaid-agent" :extra-env (python-env)} py "tests/sample_prompt.py")))
 
 ;; Boot the jar unattended and assert /health reports the release version
 ;; (proves version.edn + the SPAs/services were bundled). Runs in a throwaway
@@ -280,11 +297,22 @@
           ;; Every bundled SPA must answer from the classpath. /health alone
           ;; passes with an app missing from resources/ or from
           ;; bundled-spa-roots, which is how an app ships invisibly broken.
+          ;; A page alone passes with a wrong Vite `base`, the app then
+          ;; blank, so each page's entry script and stylesheet are fetched too.
           (doseq [path (map (fn [[_ served]] (str "/" served "/")) spa-apps)]
             (let [r (p/sh ["curl" "-sf" (str base path)])]
               (when-not (and (zero? (:exit r)) (str/includes? (:out r) "<div id=\"root\""))
-                (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
-          (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
+                (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))
+              (doseq [[what pattern want] [["entry script" "<script[^>]*type=\"module\"[^>]*src=\"([^\"]+)\"" "text/javascript"]
+                                           ["stylesheet" "<link[^>]*rel=\"stylesheet\"[^>]*href=\"([^\"]+)\"" "text/css"]]]
+                (let [asset (second (re-find (re-pattern pattern) (:out r)))
+                      url   (when asset (str base (if (str/starts-with? asset "/") asset (str path asset))))
+                      a     (when url (p/sh ["curl" "-s" "-o" "/dev/null" "-w" "%{http_code} %{content_type}" url]))]
+                  (when-not (and a (str/starts-with? (:out a) (str "200 " want)))
+                    (throw (ex-info (str path " names no " what " the jar serves as " want
+                                         (when asset (str ": " asset " answered " (:out a))))
+                                    {:path path :asset asset})))))))
+          (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/, with their entry scripts and stylesheets")
           ;; The JavaScript client: the entry, its types, and every module the
           ;; entry reaches by relative import, each byte for byte the source
           ;; (the types, as the build generated them).

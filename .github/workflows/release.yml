@@ -36,10 +36,11 @@ permissions:
 
 jobs:
   # --------------------------------------------------------------------------
-  # Gate: every suite (`bb test`) — the Clojure core, all three SPAs, and the
-  # Python assistant and services. Expensive, so it only runs here (on tags)
-  # and in nightly.yml — never per-commit. A red suite aborts the whole
-  # release before anything is published.
+  # Gate: every suite (`bb test`): the Clojure core, every JavaScript package,
+  # and the Python assistant, client and services. ci.yml runs the same suites
+  # per push and nightly.yml every night. The fidelity round trips and the
+  # Playwright suites (`bb e2e`) run only in nightly.yml. A red suite aborts
+  # the whole release before anything is published.
   # --------------------------------------------------------------------------
   test:
     runs-on: ubuntu-24.04
@@ -82,6 +83,8 @@ jobs:
           # its tests run the real metric.
           pip install ancast
       - name: Run tests
+        env:
+          PLAID_PYTHON: python
         run: bb test
 
   # --------------------------------------------------------------------------
@@ -127,11 +130,14 @@ jobs:
 
       # Builds both SPAs, bundles them + services/manifest.edn + version.edn
       # into plaid-core resources, builds the uberjar, boots it and asserts
-      # /health reports the release version (+ that services were extracted),
+      # /health reports the release version, that each app's page, entry script
+      # and stylesheet are served, and that the services were extracted,
       # packs the npm tarball, builds the Python sdist+wheel, and stages all of
       # it into dist-artifacts/. The version comes from the tag; bb does the
       # PEP440 translation for the Python dist. (See bb/pipeline.clj.)
       - name: Build all release artifacts (`bb build`)
+        env:
+          PLAID_PYTHON: python
         run: bb build "${GITHUB_REF_NAME#v}"
 
       - uses: actions/upload-artifact@v7

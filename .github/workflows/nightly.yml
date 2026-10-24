@@ -1,17 +1,19 @@
 name: Nightly Tests
 
-# The Clojure suite is expensive, so it does NOT run per-commit. It runs here on
-# a schedule (and on the release path in release.yml). This catches master
-# drifting red between releases without paying the cost on every push.
+# Every night master moved: `bb test` (every unit suite in one job, as the
+# release gate runs it), the fidelity round trips (`bb fidelity`), and, in a
+# job of its own, the Playwright suites of igt, ud and umr, each on a private
+# core with a fresh database (`bb e2e`). ci.yml runs the unit suites per push.
+# The fidelity round trips and e2e run only here.
 #
 # Notification: GitHub emails the repository owner automatically when a
 # SCHEDULED workflow run fails, so no extra notify step is needed. Wire a Slack
 # / webhook step under `if: failure()` later if you want louder alerts.
 #
-# Cost guard: the cheap `check` job below gates the expensive suite on "did
+# Cost guard: the cheap `check` job below gates the expensive jobs on "did
 # master move since the last nightly?". Cron can't be made conditional, so we
-# still spin up a few-second runner nightly, but the ~3-minute Clojure suite
-# only runs when there's a fresh commit. A skipped suite reports the run as
+# still spin up a few-second runner nightly, but the suites only run when
+# there's a fresh commit. A skipped suite reports the run as
 # success (skipped jobs don't fail a run), so quiet nights stay green and
 # silent. `workflow_dispatch` always runs the suite regardless of commit age.
 # The window is intentionally ~26h (not 24h) to absorb GitHub's schedule jitter
@@ -97,6 +99,8 @@ jobs:
       # a private plaid-core from source (the Java and Clojure set up above)
       # for igt's corpus tools, and fails if it cannot.
       - name: Run tests
+        env:
+          PLAID_PYTHON: python
         run: bb test
       # The fidelity round trips: the kitchen sink built on a core of their
       # own (their own port and database, booted from source), exported and
@@ -126,7 +130,66 @@ jobs:
           pip install pycldf
       - name: Run the fidelity round trips
         env:
-          PLAID_PYTHON: python3
+          PLAID_PYTHON: python
           PLAID_VALIDATORS_REQUIRED: '1'
           PLAID_LATEX_REQUIRED: '1'
         run: bb fidelity
+
+  # The Playwright suites, each on a plaid-core booted from source with a
+  # fresh database and a Vite dev server of its own, one after another (about
+  # 25 minutes on larc). `bb e2e` never installs anything, so the apps and
+  # their browser go in first. The plaid-agent install lets the igt spec that
+  # approves a plan run the real assistant, which `bb e2e` starts with the
+  # pipeline's Python (PLAID_PYTHON).
+  e2e:
+    needs: check
+    timeout-minutes: 90
+    if: needs.check.outputs.recent == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+          bb: latest
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: '*/package-lock.json'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Cache Maven + gitlibs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.m2
+            ~/.gitlibs
+          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
+          restore-keys: ${{ runner.os }}-cljdeps-
+      - name: Install the apps and their browser
+        run: |
+          for d in plaid-ui plaid-igt plaid-ud plaid-umr; do (cd "$d" && npm ci); done
+          for d in plaid-igt plaid-ud plaid-umr; do (cd "$d" && npx playwright install --with-deps chromium); done
+      - name: Install the assistant
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./plaid-client-py
+          pip install -e './plaid-agent[dev]'
+      - name: Run the e2e suites
+        env:
+          PLAID_PYTHON: python
+          PLAID_E2E_DIR: ${{ runner.temp }}/e2e
+        run: bb e2e
+      # Each suite's core, Vite and Playwright logs and its failure output.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-runs
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
