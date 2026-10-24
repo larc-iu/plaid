@@ -31,6 +31,7 @@ import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
 import { precedentKey } from '../../domain/precedent.js';
+import { historicalEmptyNotice } from '../../domain/sentenceRows.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
@@ -543,7 +544,7 @@ export const AnnotationEditor = () => {
             <div className="flex flex-col items-center gap-3 py-10">
               <p className="text-center text-muted-foreground">
                 {isViewingHistorical
-                  ? 'This state has no tokens.'
+                  ? historicalEmptyNotice(layerInfo)
                   : 'No sentences. Parse, or tokenize in the Text Editor.'}
               </p>
               {!isViewingHistorical && !readOnly && (

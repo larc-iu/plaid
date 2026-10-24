@@ -229,3 +229,10 @@ export function buildSentenceRows(body, layerInfo) {
 
   return rows;
 }
+
+// What the Annotate tab says over a past state with no rows: a state from
+// before the UD set-up has tokens but no UD words layer to show them on.
+export const historicalEmptyNotice = (layerInfo) =>
+  layerInfo?.morphemeTokenLayer
+    ? 'This state has no tokens.'
+    : 'This state is from before the project was set up for UD.';
