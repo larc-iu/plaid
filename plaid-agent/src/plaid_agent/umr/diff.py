@@ -178,9 +178,15 @@ _KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
 
 def _kept_variables(doc: UmrDoc) -> set:
     """The variables the graphs kept as text still define: a sentence's own,
-    while it has no nodes (``keptVariables``)."""
-    return {m.group(1) for s in doc.sentences if isinstance(s.raw_graph, str) and not s.nodes
-            for m in _KEPT_VARIABLE.finditer(s.raw_graph)}
+    while it has no nodes, and that of every record waiting in a sentence
+    joined to the one before it (``keptVariables``)."""
+    out = set()
+    for r in doc.records:
+        raw = r.record.get('rawGraph')
+        if not isinstance(raw, str) or (r.own and doc.sentences[r.sentence - 1].nodes):
+            continue
+        out |= {m.group(1) for m in _KEPT_VARIABLE.finditer(raw)}
+    return out
 
 
 def _held_after(doc: UmrDoc, ids: set, renames: Dict[str, str]) -> Callable[[list], Optional[list]]:
@@ -228,10 +234,11 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
     after = _held_after(doc, ids, {renamed.var: renamed_to} if renamed is not None else {})
     triples: List[Dict[str, Any]] = []
     records: List[Dict[str, Any]] = []
-    for s in doc.sentences:
-        if not s.record_token:
-            continue
-        had = list(s.held)
+    # Every record, a joined sentence's other records too, as the app reads
+    # graph.records.
+    for r in doc.records:
+        s = doc.sentences[r.sentence - 1]
+        had = list(r.record['held']) if isinstance(r.record.get('held'), list) else []
         followed = after(had)
         held = had if followed is None else followed
         umr_set: Dict[str, Any] = {}
@@ -263,10 +270,11 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
         elif followed is not None:
             umr_set['held'] = held
         # The graph kept as text, mended: its text is no longer what is kept.
-        if s is sentence and fresh and not sentence.nodes and isinstance(sentence.raw_graph, str):
+        if (r.own and s is sentence and fresh and not sentence.nodes
+                and isinstance(sentence.raw_graph, str)):
             unset += ['rawGraph', 'rawAlignment']
         if umr_set or unset:
-            records.append({'kind': 'set_record', 'document_id': doc.id, 'record_id': s.record_token,
+            records.append({'kind': 'set_record', 'document_id': doc.id, 'record_id': r.id,
                             'ref': f's{s.number}', 'umr_set': umr_set, 'umr_unset': unset,
                             'label': (f's{s.number}: the graph kept as text is replaced'
                                       if 'rawGraph' in unset else

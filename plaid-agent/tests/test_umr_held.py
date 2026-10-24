@@ -89,3 +89,28 @@ def test_a_graph_without_held_relations_touches_no_record():
         '(s1b / bark-01 :ARG0 (s1g / dog :refer-number singular) :aspect performance)')})
     _apply(client, ws)
     assert not client.patches('tokens')
+
+
+def _joined():
+    """`_kept`, with sentence 2 joined to sentence 1 in another app: one
+    sentence token over both, and sentence 2's record, with its held list,
+    standing in it after sentence 1's own."""
+    doc = _kept()
+    for tk in doc['text_layers'][0]['token_layers']:
+        if tk['config'].get('plaid', {}).get('role') == 'sentence':
+            tk['tokens'] = [{'id': 'ms-1', 'begin': 0, 'end': 31}]
+    return doc
+
+
+def test_a_rename_takes_the_held_relations_of_a_joined_sentences_other_record_along():
+    # REV-R4-UDUMR, the Python half: the app's _heldResolved follows every
+    # record (graph.records), and the assistant followed only each sentence's
+    # own, so the second record's relation kept naming s1d.
+    client = umr_client(documents={'umr1': _joined()})
+    ws = umr_ws(client)
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': (
+        '(s1b / bark-01 :ARG0 (s1g / dog :refer-number singular) :aspect performance)')})
+    assert 'Planned' in out, out
+    _apply(client, ws)
+    assert _record_patches(client) == [[{'op': 'set', 'path': ['umr', 'held'], 'value': [
+        {'source': 's2t', 'rel': ':same-entity', 'target': 's1g', 'group': 'coref'}]}]]

@@ -313,6 +313,20 @@ class Sentence:
 
 
 @dataclass
+class Record:
+    """A record with the sentence it is read with (``records`` in
+    sentenceGraph.js): ``own`` for the sentence's first, its ``record_token``,
+    and not for one waiting in a sentence joined to the one before it
+    (``other_records``). ``record`` is the token's ``metadata.umr``."""
+    id: str
+    sentence: int
+    own: bool
+    begin: int
+    end: int
+    record: dict
+
+
+@dataclass
 class UmrDocument:
     id: str
     name: str
@@ -326,6 +340,9 @@ class UmrDocument:
     #: ``{gloss layer id: {first token id: value}}``, so a sentence's gloss
     #: lines resolve without a second read.
     gloss: Dict[str, Dict[str, str]] = dc_field(default_factory=dict)
+    #: Every record with the sentence it is read with, a joined sentence's
+    #: other records included, in sentence order.
+    records: List[Record] = dc_field(default_factory=list)
 
     @property
     def node_count(self) -> int:
@@ -810,10 +827,15 @@ def read_document(raw: dict, layers: UmrLayers,
         s.edges.sort(key=lambda e: e.order)
         s.roots = roots_of(s, nodes_by_id)
 
+    every_record = [Record(id=rid, sentence=s.index, own=k == 0, begin=records[rid]['begin'],
+                           end=records[rid]['end'], record=umr_metadata(records[rid]))
+                    for s in sentences
+                    for k, rid in enumerate(r for r in [s.record_token, *s.other_records] if r)]
     return UmrDocument(id=raw.get('id'), name=raw.get('name') or '', text_id=layers.text_id,
                        body=body, sentences=sentences, constants=constants,
                        nodes_by_id=nodes_by_id, metadata=raw.get('metadata') or {},
-                       version=raw.get('version'), gloss=dict(gloss or {}))
+                       version=raw.get('version'), gloss=dict(gloss or {}),
+                       records=every_record)
 
 
 # --- the stored graph as PENMAN -----------------------------------------------
