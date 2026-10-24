@@ -11,7 +11,7 @@
 // roles (beta-review-2026-10-24/scripts/backfill_sentence_roles.py) applies
 // the same rule.
 
-import { SENTENCE_ROLES } from './igtConfig.js';
+import { SENTENCE_ROLES, readSentenceRole } from './igtConfig.js';
 import { fieldBaseName } from './vocabFields.js';
 
 /** The roles in the order the field settings offer them, with their labels. */
@@ -54,3 +54,12 @@ export const withSentenceRoles = (fields) =>
     if (f?.scope !== 'Sentence') return f;
     return f.sentenceRole !== undefined ? f : { ...f, sentenceRole: proposeSentenceRole(f.name) };
   });
+
+/**
+ * The name of the free translation field among a document's sentence span
+ * layers: the first whose stored role is translation, else null. A sentence
+ * with no such field has no free translation.
+ */
+export const translationFieldOf = (sentenceLayers) =>
+  (sentenceLayers || []).find((l) => readSentenceRole(l.config) === SENTENCE_ROLES.TRANSLATION)
+    ?.name ?? null;

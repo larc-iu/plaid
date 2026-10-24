@@ -2,6 +2,7 @@ import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { PROV, PROV_STATES, readReview } from '@larc-iu/plaid-client';
 import { readOrthographies, readIgnoredTokens } from '@/domain/igtConfig';
+import { translationFieldOf } from '@/domain/sentenceRole';
 import { PRECEDENT_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { bracketPieces } from '@/domain/mwe';
 import { humanizeError } from '@/utils/feedback';
@@ -117,6 +118,7 @@ export const chrome = {
       wordFields,
       morphFields,
       sentFields,
+      translationField: translationFieldOf(info.spanLayers.sentence),
       hasMorphemes,
       ignoredCfg,
       guess,

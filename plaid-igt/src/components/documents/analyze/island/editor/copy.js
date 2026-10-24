@@ -39,6 +39,7 @@ export const copy = {
       morphFields: ctx.morphFields,
       wordFields: ctx.wordFields,
       sentFields: ctx.sentFields,
+      translationField: ctx.translationField,
     };
     const text = formatSentence(sentence, fields, format);
     const written = await this._writeClipboard(text);

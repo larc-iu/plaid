@@ -9,6 +9,7 @@
 
 import { cpSlice } from '@larc-iu/plaid-client';
 import { morphemeGlossReading } from '@/domain/tagsets';
+import { translationFieldOf } from '@/domain/sentenceRole';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
@@ -147,19 +148,19 @@ function keptHits(doc, domain, hitIds, keep) {
 }
 
 // Build sentence-context rows for one derived document: slice the sentence text
-// (code points), rebase the hit marks to be sentence-relative, and pull a
-// sentence-layer translation. Shared by project search + the vocab concordance.
+// (code points), rebase the hit marks to be sentence-relative, and pull the
+// translation from the field whose role is translation (none without one).
+// Shared by project search + the vocab concordance.
 // Sentence fields come from the doc's OWN layerInfo, so this works for documents
 // from any project (the vocab concordance spans projects).
 export function buildContextRows(doc, domain, hitIds) {
-  const sentFields = (doc.layerInfo.spanLayers?.sentence || []).map((l) => l.name);
+  const translationField = translationFieldOf(doc.layerInfo.spanLayers?.sentence);
   return locateHits(doc, domain, hitIds)
     .map((r) => {
       const s = r.sentence;
       const base = s.begin;
       const text = cpSlice(doc.body || '', s.begin, s.end);
-      const translation =
-        sentFields.map((f) => s.annotations?.[f]?.value ?? '').find((v) => v !== '') || '';
+      const translation = (translationField && s.annotations?.[translationField]?.value) || '';
       return {
         sentenceId: r.sentenceId,
         sentenceIndex: r.sentenceIndex,

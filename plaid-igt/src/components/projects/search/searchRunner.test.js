@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runHitsSearch } from './searchRunner.js';
+import { buildContextRows, runHitsSearch } from './searchRunner.js';
 import { failsInCell } from '../validate/locateFailing.js';
 import { GLOSS_DOMAIN, MIXED, hitsClient } from '../validate/cellReadingFixture.js';
 
@@ -54,5 +54,43 @@ describe('runHitsSearch', () => {
     expect(kept.remainingDocs).toBe(1);
     expect(kept.remainingHits).toBeNull();
     expect(kept.groups.every((g) => g.docHits === 2)).toBe(true);
+  });
+});
+
+describe('buildContextRows', () => {
+  const layer = (name, sentenceRole) => ({
+    id: `sl-${name}`,
+    name,
+    config: { igt: { scope: 'Sentence', ...(sentenceRole ? { sentenceRole } : {}) } },
+  });
+  const doc = (layers, annotations) => ({
+    body: 'perros',
+    layerInfo: { spanLayers: { word: [], morpheme: [], sentence: layers } },
+    sentences: [
+      {
+        id: 's-1',
+        begin: 0,
+        end: 6,
+        annotations: { Note: { id: 'n-1', value: 'recorded twice' }, ...annotations },
+        tokens: [],
+      },
+    ],
+  });
+  const domain = { kind: 'span', scope: 'sentence', field: 'Note' };
+  const rowOf = (d) => buildContextRows(d, domain, new Set(['n-1']))[0];
+
+  it('takes the translation from the field whose role is translation', () => {
+    const layers = [layer('Note', 'note'), layer('Lit'), layer('Free', 'translation')];
+    expect(rowOf(doc(layers, { Free: { id: 'f-1', value: 'dogs' } })).translation).toBe('dogs');
+  });
+
+  it('gives none when that field is empty, or no field holds the role', () => {
+    const lit = { Lit: { id: 'l-1', value: 'dogs they' } };
+    expect(
+      rowOf(doc([layer('Note', 'note'), layer('Lit'), layer('Free', 'translation')], lit)),
+    ).toMatchObject({ translation: '' });
+    expect(rowOf(doc([layer('Note', 'note'), layer('Lit')], lit))).toMatchObject({
+      translation: '',
+    });
   });
 });

@@ -7,6 +7,7 @@
 import { ROLES, applyMetadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
 import { lexiconFieldChoices, proposeLexiconField } from './lexiconField.js';
+import { proposeSentenceRole } from './sentenceRole.js';
 import { IgtEditor } from '@/components/documents/analyze/island/IgtEditor.js';
 
 let idCounter = 0;
@@ -49,7 +50,13 @@ export function buildRawDoc(opts = {}) {
   const sentSpanLayers = (opts.sentFields ?? ['Translation']).map((name, i) => ({
     id: `ssl-${i}`,
     name,
-    config: { igt: { scope: 'Sentence' } },
+    // The role its name proposes, as setup gives it.
+    config: {
+      igt: {
+        scope: 'Sentence',
+        ...(proposeSentenceRole(name) ? { sentenceRole: proposeSentenceRole(name) } : {}),
+      },
+    },
     spans: [],
   }));
 

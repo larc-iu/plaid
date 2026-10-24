@@ -5,7 +5,12 @@
 import { describe, expect, it } from 'vitest';
 import { formatExpex, formatGb4e, formatLeipzig, formatPlain } from './igtExport.js';
 
-const F = { morphFields: ['Gloss'], wordFields: [], sentFields: ['Translation'] };
+const F = {
+  morphFields: ['Gloss'],
+  wordFields: [],
+  sentFields: ['Translation'],
+  translationField: 'Translation',
+};
 const sentence = (words, translation = '') => ({
   annotations: translation ? { Translation: { value: translation } } : {},
   tokens: words.map(([form, gloss]) => ({

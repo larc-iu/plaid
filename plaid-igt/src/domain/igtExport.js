@@ -156,6 +156,11 @@ export function tiers(sentence, fields) {
   return lines;
 }
 
+// The free translation: the value of the field whose role is translation
+// (`fields.translationField`, translationFieldOf), '' when none holds it.
+const freeTranslation = (sentence, fields) =>
+  (fields.translationField && sentence.annotations?.[fields.translationField]?.value) || '';
+
 function translations(sentence, fields) {
   return fields.sentFields
     .map((f) => ({ label: f, value: sentence.annotations?.[f]?.value ?? '' }))
@@ -240,7 +245,7 @@ export function formatGb4e(sentence, fields) {
   const forms = lines[0].cells.map(texCell).join(' ');
   // gb4e's \gll takes exactly two aligned lines: forms + the first gloss tier.
   const gloss = texGlossCells(lines[1], lines[0].cells.length).join(' ');
-  const tr = translations(sentence, fields)[0]?.value ?? '';
+  const tr = freeTranslation(sentence, fields);
   return [
     '\\begin{exe}',
     '\\ex',
@@ -255,7 +260,7 @@ export function formatExpex(sentence, fields) {
   const lines = tiers(sentence, fields);
   const forms = lines[0].cells.map(texCell).join(' ');
   const gloss = texGlossCells(lines[1], lines[0].cells.length).join(' ');
-  const tr = translations(sentence, fields)[0]?.value ?? '';
+  const tr = freeTranslation(sentence, fields);
   return [
     '\\ex',
     '\\begingl',
@@ -281,7 +286,7 @@ const htmlEscape = (s) =>
 export function formatLeipzig(sentence, fields) {
   const nbsp = (s) => htmlEscape(s === '' ? '\u00a0' : s).replace(/ /g, '\u00a0');
   const lines = tiers(sentence, fields).map((l) => `  <p>${l.cells.map(nbsp).join(' ')}</p>`);
-  const tr = translations(sentence, fields)[0]?.value;
+  const tr = freeTranslation(sentence, fields);
   if (tr) lines.push(`  <p>‘${htmlEscape(tr)}’</p>`);
   return ['<div data-gloss>', ...lines, '</div>'].join('\n');
 }

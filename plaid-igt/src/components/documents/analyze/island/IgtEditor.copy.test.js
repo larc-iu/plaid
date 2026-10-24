@@ -96,3 +96,38 @@ describe('copying a sentence', () => {
     expect(notifyError).toHaveBeenCalled();
   });
 });
+
+describe('copy as gb4e', () => {
+  it('takes the free translation from the translation field, not the first filled one', async () => {
+    resetIds();
+    const raw = buildRawDoc({ sentFields: ['Note', 'Translation'] });
+    const sentenceLayer = raw.textLayers[0].tokenLayers[0];
+    sentenceLayer.spanLayers[0].spans = [{ id: 'sp-n', tokens: ['s-1'], value: 'said twice' }];
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    doc = makeIgtDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [], config: {}, maintainers: [], writers: [] },
+      client,
+      user: null,
+    });
+    ({ host, editor } = mountIsland(doc));
+    const writeText = acceptClipboard();
+
+    await editor._copySentence(doc.sentences[0], editor._lastCtx, 'gb4e');
+    expect(writeText.mock.calls[0][0]).toContain("\\glt `'");
+
+    sentenceLayer.spanLayers[1].spans = [{ id: 'sp-t', tokens: ['s-1'], value: 'the cat' }];
+    doc = makeIgtDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [], config: {}, maintainers: [], writers: [] },
+      client,
+      user: null,
+    });
+    editor.destroy();
+    host.remove();
+    ({ host, editor } = mountIsland(doc));
+    await editor._copySentence(doc.sentences[0], editor._lastCtx, 'gb4e');
+    expect(writeText.mock.calls[1][0]).toContain("\\glt `the cat'");
+  });
+});

@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { formatPlain, formatTsv, formatGb4e, formatExpex, formatLeipzig } from './igtExport.js';
 import { parseDelimited } from '../import/delimited.js';
 
-const FIELDS = { morphFields: ['Gloss'], wordFields: ['POS'], sentFields: ['Translation'] };
+const FIELDS = {
+  morphFields: ['Gloss'],
+  wordFields: ['POS'],
+  sentFields: ['Translation'],
+  translationField: 'Translation',
+};
 
 const span = (v) => ({ value: v });
 const SENT = {
@@ -244,7 +249,12 @@ describe('LaTeX gloss small caps', () => {
       ],
     })),
   });
-  const F = { morphFields: ['Gloss'], wordFields: [], sentFields: ['Translation'] };
+  const F = {
+    morphFields: ['Gloss'],
+    wordFields: [],
+    sentFields: ['Translation'],
+    translationField: 'Translation',
+  };
   const glossLine = (s) => formatGb4e(s, F).split('\n')[3].trim().replace(/\\\\$/, '');
 
   it('sets each grammatical part in lowercase small caps', () => {
@@ -358,5 +368,36 @@ describe('LaTeX cells stay one word each', () => {
 
   it('turns a line break inside a cell into one space', () => {
     expect(formatExpex(words(['a', 'look\n\nafter']), F)).toContain('\\glb {look after} //');
+  });
+});
+
+describe('the free translation line reads the field whose role is translation', () => {
+  // The Note field comes first and the Translation field is empty, so the
+  // first filled sentence field is not the translation.
+  const s = {
+    annotations: { Note: span('recorded twice'), 'Literal Translation': span('dogs they run') },
+    tokens: [{ content: 'perros', annotations: {}, morphemes: [] }],
+  };
+  const sentFields = ['Note', 'Literal Translation', 'Translation'];
+  const withRole = { morphFields: [], wordFields: [], sentFields, translationField: 'Translation' };
+  const noRole = { morphFields: [], wordFields: [], sentFields, translationField: null };
+
+  it('is empty when the translation field is, whatever the other fields hold', () => {
+    expect(formatGb4e(s, withRole)).toContain("\\glt `'");
+    expect(formatExpex(s, withRole)).toContain("\\glft {`'} //");
+    expect(formatLeipzig(s, withRole)).not.toContain('‘');
+  });
+
+  it('is empty when no field holds the role', () => {
+    expect(formatGb4e(s, noRole)).toContain("\\glt `'");
+    expect(formatExpex(s, noRole)).toContain("\\glft {`'} //");
+    expect(formatLeipzig(s, noRole)).not.toContain('‘');
+  });
+
+  it('carries the translation field when it is filled', () => {
+    const filled = { ...s, annotations: { ...s.annotations, Translation: span('The dogs run.') } };
+    expect(formatGb4e(filled, withRole)).toContain("\\glt `The dogs run.'");
+    expect(formatExpex(filled, withRole)).toContain("\\glft {`The dogs run.'} //");
+    expect(formatLeipzig(filled, withRole)).toContain('<p>‘The dogs run.’</p>');
   });
 });

@@ -342,6 +342,56 @@ describe('runExport', () => {
     expect(xml).not.toContain('ba do');
   });
 
+  it("gives a promoted example the translation of its sentence's translation field only", async () => {
+    // The Note field comes first, so the first filled sentence field is not
+    // the translation.
+    const field = (name, sentenceRole, value) => ({
+      name,
+      config: { igt: { scope: 'Sentence', ...(sentenceRole ? { sentenceRole } : {}) } },
+      spans: value ? [{ id: `sp-${name}`, tokens: ['d2-s'], value }] : [],
+    });
+    const withFields = (fields) => {
+      const d2 = rawDoc('d2', 'Other', 'ba do');
+      d2.textLayers[0].tokenLayers[1].spanLayers = fields;
+      return d2;
+    };
+    const exampleTranslation = async (fields) => {
+      const vocab = {
+        ...VOCAB,
+        items: [
+          {
+            id: 'i1',
+            form: 'perro',
+            metadata: { gloss: 'dog', examples: [{ document: 'd2', token: 'd2-w0' }] },
+          },
+        ],
+      };
+      const client = stubClient({
+        docs: [rawDoc('d1', 'Flex', 'hi yo'), withFields(fields)],
+        vocab,
+      });
+      const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+      const result = await runExport({
+        client,
+        project: PROJECT,
+        preset,
+        scope: { type: 'document', id: 'd1' },
+      });
+      const files = await unzipBlob(result.blob);
+      const dom = new DOMParser().parseFromString(
+        new TextDecoder().decode(files['Flex.lift']),
+        'text/xml',
+      );
+      return dom.querySelector('example translation text')?.textContent ?? null;
+    };
+    const note = field('Note', 'note', 'said twice');
+    expect(await exampleTranslation([note, field('Free', 'translation', 'the dog')])).toBe(
+      'the dog',
+    );
+    expect(await exampleTranslation([note, field('Free', 'translation', null)])).toBe(null);
+    expect(await exampleTranslation([note, field('Lit', null, 'dog the')])).toBe(null);
+  });
+
   it('warns and keeps going when an example document cannot be read', async () => {
     const docs = [rawDoc('d1', 'Flex', 'hi yo'), rawDoc('d2', 'Other', 'ba do')];
     const vocab = {
