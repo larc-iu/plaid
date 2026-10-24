@@ -29,6 +29,7 @@ from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.igt import precedence, read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 # A clitic, as plaid-client-py's glossing reads one (the one Python copy).
 from plaid_client.workflows.igt.glossing import is_clitic
+from plaid_client.workflows.igt.senses import morpheme_morph_type
 # Which tokens are left out of annotation is plaid_client's, the one Python copy
 # of igtConfig.js's rule. Re-exported for the modules that read it from here.
 from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
@@ -410,6 +411,8 @@ class Morpheme:
     id: str
     index: int
     form: str
+    #: The type the morpheme holds of its own (``metadata.morphType``). What
+    #: it goes by is :attr:`goes_by`.
     morph_type: Optional[str]
     metadata: dict
     fields: Dict[str, Span] = field(default_factory=dict)
@@ -418,6 +421,17 @@ class Morpheme:
     #: as the editor derives it (plaid-igt's virtualMorpheme.js), and made
     #: by the first write that names it.
     virtual: bool = False
+    #: The morph type the entry it is linked to goes by, when it goes by
+    #: one, filled in from the lexicon when the workspace hands the document
+    #: out (``Workspace.doc``). Not something the morpheme holds, so not part
+    #: of its fingerprint.
+    entry_type: Optional[str] = field(default=None, compare=False)
+
+    @property
+    def goes_by(self) -> Optional[str]:
+        """The morph type the morpheme goes by: its entry's, else its own. A
+        linked morpheme stores no copy of its entry's type (R2)."""
+        return morpheme_morph_type({'morphType': self.morph_type}, self.entry_type)
 
 
 # A word nobody has segmented has no morpheme token. The editor shows one all
@@ -889,7 +903,7 @@ MISSING = '_'
 
 
 def segmentation(w: Word) -> str:
-    return join_morphemes([(m.form or '?', m.morph_type) for m in w.morphemes])
+    return join_morphemes([(m.form or '?', m.goes_by) for m in w.morphemes])
 
 
 def morpheme_field_line(w: Word, name: str) -> Optional[str]:
@@ -898,7 +912,7 @@ def morpheme_field_line(w: Word, name: str) -> Optional[str]:
     items = []
     for m in w.morphemes:
         sp = m.fields.get(name)
-        items.append((_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING, m.morph_type))
+        items.append((_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING, m.goes_by))
     return join_morphemes(items)
 
 
@@ -914,9 +928,9 @@ def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = No
     parts = [f'w{w.index} {w.surface}']
     seg = segmentation(w)
     if analyzed(w) and (view is None or view.segmentation):
-        types = [m.morph_type for m in w.morphemes if m.morph_type]
+        types = [m.goes_by for m in w.morphemes if m.goes_by]
         seg += segmentation_mark(w)
-        parts.append(f'seg={seg}' + (f' types={",".join(m.morph_type or "?" for m in w.morphemes)}' if types else ''))
+        parts.append(f'seg={seg}' + (f' types={",".join(m.goes_by or "?" for m in w.morphemes)}' if types else ''))
     for f in project.fields_by_scope('Morpheme'):
         line = morpheme_field_line(w, f.name) if view is None or view.shows(f) else None
         if line is not None:

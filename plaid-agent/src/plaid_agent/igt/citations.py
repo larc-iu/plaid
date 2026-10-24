@@ -47,11 +47,11 @@ def _word_payload(w: Word, project, pieces: bool = False) -> Dict[str, Any]:
     """A word's cells, in the grid's row order (see :func:`tiers`). Morpheme
     rows are joined strings, as the grid shows them; ``pieces`` also sends
     them morpheme by morpheme, for a word whose morpheme is highlighted."""
-    joiners = [joiner_between(a.form, a.morph_type, b.form, b.morph_type)
+    joiners = [joiner_between(a.form, a.goes_by, b.form, b.goes_by)
                for a, b in zip(w.morphemes, w.morphemes[1:])]
 
     def joined(parts: List[str]) -> str:
-        return join_morphemes(list(zip(parts, [m.morph_type for m in w.morphemes])))
+        return join_morphemes(list(zip(parts, [m.goes_by for m in w.morphemes])))
 
     lines: List[Dict[str, Any]] = []
     for o in project.orthographies:

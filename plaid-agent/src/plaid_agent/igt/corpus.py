@@ -12,7 +12,10 @@ are in ``queries.py``.
 from collections import Counter
 from typing import Any, Dict, Iterable, List, Optional
 
+from plaid_client.workflows.igt.senses import morpheme_morph_type
+
 from ..core.bidi import plain_quote
+from ..core.java_regex import compile_local
 from ..core.corpus import Corpus as BaseCorpus
 from ..core.limits import ROW_LIMIT
 from .project import is_token_ignored
@@ -99,6 +102,55 @@ class Corpus(BaseCorpus):
         return ['or',
                 [self.morph(var, metadata={'form': spec})],
                 [self.morph(var, value=spec), ['not', self.has_form(var)]]]
+
+    # --- morph types -----------------------------------------------------------
+    # A morpheme linked to an entry that goes by a type goes by that one, and
+    # stores no copy of it (R2): the query sees only the type a morpheme holds
+    # of its own, so these read the entries' types from the lexicons.
+
+    def entry_types(self) -> Dict[str, str]:
+        """The morph type each entry of the project's lexicons goes by."""
+        out: Dict[str, str] = {}
+        for v in self.p.vocabs:
+            out.update(self.ws.entry_types(v))
+        return out
+
+    def typed_group(self, where: List[Any], group: List[str], var: str = '?m') -> List[list]:
+        """``group`` rows over the morphemes ``var`` of ``where``, each with the
+        morph type the morpheme goes by after the keys: ``[key..., type,
+        count]``, largest count first. Two reads, the linked morphemes and the
+        others, since the query has no left join. A morpheme linked to two
+        entries counts once for each."""
+        own = f'{var}.metadata.morphType'
+        types = self.entry_types() if self.p.vocabs else {}
+        tally: Counter = Counter()
+        if not types:
+            for *keys, t, k in self.group(where, group + [own]):
+                tally[(*keys, t or None)] += k
+        else:
+            for *keys, item, t, k in self.group(where + [['vocab-link', var, '?gtv']],
+                                                group + ['?gtv', own]):
+                tally[(*keys, morpheme_morph_type({'morphType': t}, types.get(item)))] += k
+            for *keys, t, k in self.group(where + [['not', ['vocab-link', var, '?gtu']]], group + [own]):
+                tally[(*keys, t or None)] += k
+        return [[*key, n] for key, n in sorted(tally.items(), key=lambda kv: -kv[1])]
+
+    def morph_type_clauses(self, var: str, spec: Dict[str, Any], pattern: str, regex: bool) -> List[list]:
+        """A morpheme ``var`` that goes by a morph type ``spec`` matches
+        (``rx(pattern, regex=regex, whole=not regex)``): one linked to an entry
+        whose type matches, or one whose entry goes by none, or that has none,
+        and whose own type matches."""
+        own = [self.morph(var, metadata={'morphType': spec})]
+        types = self.entry_types() if self.p.vocabs else {}
+        if not types:
+            return own
+        test = compile_local(pattern, literal=not regex, case_insensitive=True, whole=not regex)
+        hits = [i for i, t in types.items() if test.search(t)]
+        untyped = own + [['not', ['link', f'{var}n', {'item': list(types)}], ['link-token', f'{var}n', var]]]
+        if not hits:
+            return untyped
+        linked = [self.morph(var), ['link', f'{var}l', {'item': hits}], ['link-token', f'{var}l', var]]
+        return [['or', linked, untyped]]
 
     # --- conventions ----------------------------------------------------------
 

@@ -8,7 +8,7 @@ has no morpheme token, as after Tokenize."""
 
 from plaid_client.testing import as_fragment
 
-from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, fake_ws
+from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, document_raw, fake_ws, lexicon_raw
 
 from plaid_agent.igt.plan import execute_plan
 from plaid_agent.igt.toolkit import call_tool
@@ -120,37 +120,42 @@ def test_reads_and_counts_are_unchanged():
     assert '  w3 akuna\n' in out  # nothing after the surface, as for a word with a stored default morpheme
 
 
-# --- the morph-type cache a link writes (REV-FX3-AGENT-2) ----------------------
+# --- a link writes no morph type (R2, 2026-10-24) ------------------------------
 
-def test_a_link_writes_the_entrys_morph_type_with_it_as_the_editor_does():
-    """A morpheme linked to an entry goes by the entry's type, and its cached
-    morphType is written in the same batch. Left stale, the next person who
-    merely opened the document wrote it under their own name."""
+def test_a_link_writes_no_morph_type_on_the_morpheme():
+    """A morpheme linked to an entry goes by the entry's type and stores no
+    copy of it, so a link writes nothing on the morpheme, as the editor's."""
     w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-erg'})  # derived
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m2'], 'entry_id': 'vi-erg'})  # stored, enclitic
-    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-erg'})     # a word: no type
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-erg'})     # a word
+    assert not any('morph_type' in op for op in w.ops)
     _counts, c = _applied(w)
     _mid, meta = _made_morpheme(c)
-    assert meta == {'morphType': 'suffix', **STAMP}
-    assert [(tid, as_fragment(p)) for tid, p in c.patches('tokens')] == [('m-4b', {'morphType': 'suffix'})]
-
-
-def test_a_link_whose_entry_agrees_with_the_cache_or_has_no_type_writes_none():
-    w = fake_ws(FakeClient())
-    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-gam'})  # gam has no type
-    assert 'morph_type' not in w.ops[0]
-    _counts, c = _applied(w)
+    assert meta == STAMP
     assert not c.patches('tokens')
 
 
-def test_a_link_to_a_morpheme_of_a_planned_analysis_writes_its_type():
+def test_a_link_to_a_morpheme_of_a_planned_analysis_writes_no_type():
     w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [{'form': 'aku'}, {'form': 'na'}]})
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m2'], 'entry_id': 'vi-erg'})
     _counts, c = _applied(w)
-    made = [p['kwargs']['id'] for p in c.payloads('tokens.create')]
-    assert [(tid, as_fragment(p)) for tid, p in c.patches('tokens')] == [(made[1], {'morphType': 'suffix'})]
+    assert not c.patches('tokens')
+
+
+def test_a_read_shows_a_linked_morpheme_by_its_entrys_type():
+    """-di holds no type of its own, as a linked morpheme stores none, and its
+    entry goes by enclitic: the read joins it with = and names that type."""
+    raw = document_raw()
+    morphemes = raw['text_layers'][0]['token_layers'][2]['tokens']
+    next(m for m in morphemes if m['id'] == 'm-1b')['metadata'].pop('morphType')
+    lexicon = lexicon_raw()
+    next(it for it in lexicon['items'] if it['id'] == 'vi-erg')['metadata']['morphType'] = 'enclitic'
+    w = fake_ws(FakeClient(documents={'d1': raw}, lexicon=lexicon))
+    out = call_tool(w, 'read_document', {'document': 'd1'})
+    line = next(ln for ln in out.splitlines() if ln.strip().startswith('w1 '))
+    assert 'seg=Ali=di' in line and 'types=?,enclitic' in line, line
 
 
 # --- the card's accepted-work flag (REV-FX3-AGENT-3) ------------------------------

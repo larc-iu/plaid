@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 import pytest
-from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
+from fixtures import project_raw, document_raw, lexicon_raw, MORPH_LAYER, VOCAB
 from live import live_client, seed  # noqa: F401 - fixture
 
 from plaid_agent.igt.project import load_project, load_document
@@ -298,3 +298,28 @@ def test_sequence_search_reads_a_shared_name_as_either_field(live_client):
             assert 's1 [Ali-di] [gam] akuna' in out, out
     finally:
         s.delete()
+
+
+@pytest.fixture(scope='module')
+def bare(live_client):
+    """The project as R2 (2026-10-24) leaves it: -di, linked to the suffix
+    entry -di, holds no type of its own."""
+    raw = document_raw()
+    tokens = next(tl for tl in raw['text_layers'][0]['token_layers'] if tl['id'] == MORPH_LAYER)['tokens']
+    next(t for t in tokens if t['id'] == 'm-1b')['metadata'].pop('morphType')
+    s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: lexicon_raw()}, name='igt-agent test, bare')
+    s.label = 'bare'
+    yield s
+    s.delete()
+
+
+def test_a_linked_morpheme_is_read_by_its_entrys_type(proj, bare):
+    """A linked morpheme goes by its entry's type whether or not it holds a
+    copy: every read answers as it did when it held one."""
+    for tool, args in (('sequence_search', {'sequence': [{'type': 'suffix'}, {'form': 'gam'}]}),
+                       ('sequence_search', {'sequence': [{'type': '^suf', 'form': 'ali-di'}], 'regex': True}),
+                       ('analyses_of', {'form': 'di'}), ('analyses_of', {'form': 'Ali-di'}),
+                       ('read_document', {'document': 'Text 1'})):
+        want = fixture_ids(proj, call_tool(workspace(proj), tool, args))
+        assert fixture_ids(bare, call_tool(workspace(bare), tool, args)) == want, (tool, args)
+    assert 'Type: suffix (1)' in call_tool(workspace(bare), 'analyses_of', {'form': 'di'})

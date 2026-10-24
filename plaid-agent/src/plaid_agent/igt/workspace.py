@@ -61,6 +61,7 @@ from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morph
 from .lexview import LexView, _dict_hits, entry_line
 from .tagsets import SETTINGS_APART, SETTINGS_KINDS
 from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
+from plaid_client.workflows.igt.senses import entry_morph_types
 
 MAX_DOCS_PER_SEARCH = 1000
 
@@ -169,6 +170,8 @@ class Workspace(BaseWorkspace):
     def __init__(self, client, project: IgtProject, on_progress=None):
         super().__init__(client, project, on_progress)
         self._lexicons: Dict[str, List[dict]] = {}
+        # vocab id -> (the lexicon list read, entry_morph_types of it).
+        self._entry_types: Dict[str, tuple] = {}
         self._views: Dict[tuple, tuple] = {}
         # The metadata an entry will carry once the plan runs, so a second
         # structural tool in one turn reads the tree the first is building.
@@ -436,7 +439,29 @@ class Workspace(BaseWorkspace):
                                               entry.get('name') or '')
         doc = self._docs[did]
         doc.label = self.doc_label(did, quote=True)
+        self.give_entry_types(doc)
         return doc
+
+    def entry_types(self, vocab: dict) -> Dict[str, str]:
+        """The morph type each entry of lexicon ``vocab`` goes by, its own or
+        its headword's, for the entries that go by one, as stored."""
+        items = self.lexicon(vocab)
+        got = self._entry_types.get(vocab['id'])
+        if got is None or got[0] is not items:
+            got = self._entry_types[vocab['id']] = (items, entry_morph_types(items))
+        return got[1]
+
+    def give_entry_types(self, doc: IgtDoc) -> None:
+        """Tell each linked morpheme of ``doc`` the type its entry goes by
+        (``Morpheme.entry_type``): a linked morpheme stores no copy of it, and
+        what it goes by is read off the entry. A lexicon is read only when a
+        morpheme is linked to one of its entries."""
+        by_id = {v['id']: v for v in self.project.vocabs}
+        for s in doc.sentences:
+            for w in s.words:
+                for m in w.morphemes:
+                    v = by_id.get(m.link.vocab_id) if m.link else None
+                    m.entry_type = self.entry_types(v).get(m.link.item_id) if v else None
 
     def all_docs(self) -> List[IgtDoc]:
         docs = self.documents()
@@ -841,7 +866,6 @@ class Workspace(BaseWorkspace):
 
     def add_op(self, op: Dict[str, Any]) -> None:
         self.place_virtual(op)
-        self.place_morph_type(op)
         # When it was staged, among the named values and rules: a rule
         # rewrites a value named before it, never one named after it.
         from .bulk import SEQ, next_seq, sequenced
@@ -877,47 +901,6 @@ class Workspace(BaseWorkspace):
                 raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn')
             op['virtual_at'] = virtual_at(self.project, hit[1])
             return
-
-    def entry_morph_type(self, item_id: Optional[str], new_entry_key: Optional[str]) -> Optional[str]:
-        """The morph type an entry gives a morpheme linked to it: its own,
-        else its headword's (``morph_type_of``), for a stored entry or one the
-        plan creates."""
-        if item_id:
-            view = self.view_of_item(item_id, removed=True)
-            return morph_type_of(view.tree, item_id) if view else None
-        e = self.new_entries.get(new_entry_key) if new_entry_key else None
-        if not e:
-            return None
-        meta = e.get('metadata') or {}
-        own = meta.get('morphType')
-        if isinstance(own, str) and own:
-            return own
-        parent = meta.get(PARENT_KEY)
-        return self.entry_morph_type(parent, None) if parent and parent not in self.new_entries else (
-            self.entry_morph_type(None, parent) if parent else None)
-
-    def place_morph_type(self, op: Dict[str, Any]) -> None:
-        """Note on a link to a morpheme the type its entry gives it
-        (``morph_type``), when the morpheme's cached ``morphType`` does not
-        already say so, so the link writes the cache in its own batch, as the
-        editor's link paths do (``morphTypeCache`` in mutations/vocab.js).
-        Left stale, the next person to open the document would write it
-        under their own name. A word token takes no type."""
-        if op.get('kind') != 'link':
-            return
-        t = self.entry_morph_type(op.get('item_id'), op.get('new_entry_key'))
-        if op.get('analysis_word_id'):
-            planned = planned_morpheme(self.ops + [op], op)
-            have = (planned or {}).get('morph_type')
-        else:
-            hit = _found(self, op.get('token_id'))
-            if hit is None or hit[2] is None:
-                return
-            have = (hit[2].metadata or {}).get('morphType')
-        if t and (have or None) != t:
-            op['morph_type'] = t
-        else:
-            op.pop('morph_type', None)
 
     @staticmethod
     def moot_under(op: Dict[str, Any], rewritten: set) -> bool:

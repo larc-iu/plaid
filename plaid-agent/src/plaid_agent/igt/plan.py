@@ -95,7 +95,6 @@ from ..core import keep as _keep
 from ..core import opkind as ok
 from ..core import rules
 from ..core.bidi import qv
-from ..core.limits import ROW_LIMIT
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
 
@@ -106,7 +105,7 @@ from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate,
                          check_reach, confirm_note, ConfirmRows, expand_ops)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
 from .tagsets import SETTINGS_KINDS, verify_settings
-from .vocab import PARENT_KEY, build_sense_tree, morph_type_of, parent_of
+from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
 # kind tagged with one of these, so the four tools that reason about "does
@@ -178,8 +177,6 @@ class Context:
         # The morpheme made for each unsegmented word's derived one, by the
         # derived id, so every write naming it names the one token.
         self.materialized: Dict[str, str] = {}
-        # The morph type each analysed word's new chain gives each morpheme.
-        self.chain_types: Dict[str, List[Optional[str]]] = {}
 
     def defer(self, op, when: str = 'second') -> None:
         self.later.setdefault(when, []).append(op)
@@ -299,7 +296,6 @@ def _apply_set_analysis(ctx: Context, op) -> int:
                 b.add(lambda batch, i=made, fv=fv: batch.spans.create(
                     fv['layer_id'], [i], fv['value'], ctx.stamp(), id=b.new_id()))
     ctx.chains[op['word_id']] = slots
-    ctx.chain_types[op['word_id']] = [m.get('morph_type') for m in morphemes]
     return 1
 
 
@@ -347,16 +343,6 @@ def _link_planned_morpheme(ctx: Context, op) -> None:
     ctx.drop('vocab_links', op.get('existing_link_id'))
     ctx.b.add(lambda batch, e=entry, m=slots[k - 1]: batch.vocab_links.create(
         e, [m], ctx.stamp(), id=ctx.b.new_id()))
-    types = ctx.chain_types.get(op['analysis_word_id']) or []
-    if op.get('morph_type') and (types[k - 1] if k <= len(types) else None) != op['morph_type']:
-        _cache_morph_type(ctx, slots[k - 1], op['morph_type'])
-
-
-def _cache_morph_type(ctx: Context, morpheme_id: str, morph_type: str) -> None:
-    """The morpheme's cached type, written with the link that gives it, as
-    the app writes it, since nothing writes it later (``morph_type``, noted
-    at staging)."""
-    ctx.b.update('tokens', morpheme_id, metadata=metadata_ops({'morphType': morph_type}))
 
 
 def _apply_link(ctx: Context, op) -> int:
@@ -371,15 +357,10 @@ def _apply_link(ctx: Context, op) -> int:
             ctx.planned_links.append(op)
             ctx.defer(op)
         return 1
-    t = op.get('morph_type')
-    if is_virtual(op['token_id']) and op['token_id'] not in ctx.materialized:
-        # Made with the type, as the editor's _planLinkMany makes it.
-        return _link(ctx, op, [_token(ctx, op, op['token_id'], {'morphType': t} if t else None)])
-    token = _token(ctx, op, op['token_id'])
-    n = _link(ctx, op, [token])
-    if t:
-        _cache_morph_type(ctx, token, t)
-    return n
+    # A linked morpheme goes by its entry's type and stores no copy of it, so
+    # the link writes nothing on the morpheme. One an unsegmented word needs
+    # is made bare, as the editor's _planLinkMany makes it.
+    return _link(ctx, op, [_token(ctx, op, op['token_id'])])
 
 
 def _apply_link_phrase(ctx: Context, op) -> int:
@@ -1363,7 +1344,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
         normalize=normalize_ops, check=lambda o: check_entries(client, o, project),
         execute=lambda o, notes, stamps, ids, tracker: _execute(
             client, o, label=label, project=project, counts=Counter(), notes=notes, stamps=stamps, tracker=tracker,
-            ids=ids, requester=requester))
+            ids=ids))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]], requester: Optional[str] = None):
@@ -1427,7 +1408,7 @@ def _doc_name(ws, doc_id: str) -> str:
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None,
-             ids: Optional[Minter] = None, requester: Optional[str] = None) -> Dict[str, int]:
+             ids: Optional[Minter] = None) -> Dict[str, int]:
     # Tagset changes, always a plan of their own, are written by the app with
     # the user's session before it sends the approval (igt/tagsets.py): here
     # they are only read back.
@@ -1514,7 +1495,6 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
             b.finish(op)
-        sync_restored_caches(client, project, [op['document_id'] for op in ctx.restores])
 
         # Text edits after the batches (which carry pre-edit offsets).
         # Region edits first, highest region first: each is re-verified
@@ -1550,10 +1530,6 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             finally:
                 client.strict_mode_document_id = held
             b.finish(op)
-        # Last, once every write stands: the morph type cached on the
-        # morphemes whose entry the plan retyped, placed under another
-        # headword, or merged into another, as the app writes it.
-        sync_morph_type_caches(client, project, ops, requester)
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
@@ -1564,184 +1540,6 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     if notes:
         result['notes'] = notes
     return result
-
-
-# How many entries one query of their linked morphemes names, and how many
-# morphemes one bulk update rewrites (the app's CHUNK).
-CACHE_CHUNK = 500
-
-
-def _retyped_roots(ops: List[Dict[str, Any]]) -> List[str]:
-    """The entries whose type the plan may have changed, and so every entry
-    below each of them: a type set or cleared, a place under another headword
-    set or cleared, and an entry another was merged into (its links)."""
-    roots: List[str] = []
-    for op in ops:
-        kind = op.get('kind')
-        if kind == 'set_entry_field' and op.get('field') == 'morphType':
-            roots.append(op.get('item_id'))
-        elif kind == 'set_entry_metadata' and any(
-                k in (op.get('patch') or {}) for k in ('morphType', PARENT_KEY)):
-            roots.append(op.get('item_id'))
-        elif kind == 'merge_entries':
-            roots.append(op.get('keep_id'))
-    return [r for r in dict.fromkeys(roots) if r]
-
-
-def linked_morphemes_query(project_id: str, item_ids: List[str]) -> Dict[str, Any]:
-    """The morphemes of project ``project_id`` linked to ``item_ids``, each
-    with the entry and the type it caches (morphTypeCaches.js
-    ``linkedMorphemesQuery``)."""
-    return {'scope': {'project_ids': [project_id]},
-            'where': [['link', '?l', {'item': item_ids}],
-                      ['link-item', '?l', '?v'],
-                      ['link-token', '?l', '?t'],
-                      ['token', '?t', {'layer': '?tl'}],
-                      ['token-layer', '?tl', {}],
-                      ['=', '?tl.config.plaid.role', 'morpheme']],
-            'return': {'group': ['?t', '?v', '?t.metadata.morphType'], 'aggregates': [['count']]},
-            'limit': ROW_LIMIT}
-
-
-def _cache_project_ids(client, project, vocab_id: str, requester: Optional[str]) -> List[str]:
-    """The projects whose morphemes linked to entries of lexicon ``vocab_id``
-    a plan's change of their type is written on: the plan's own, and every
-    other project using that lexicon which ``requester`` can write (a
-    maintainer, a writer, or an administrator), as the app's
-    ``cacheProjectIds``. A project they only read keeps what it holds. A
-    delegated token, the deployed service's, may not list projects (403) and
-    reaches no other project to write, so it writes the plan's own."""
-    out = [project.id]
-    if requester is None:
-        return out
-    try:
-        listed = client.projects.list() or []
-    except PlaidAPIError as e:
-        if getattr(e, 'status', None) == 403:
-            return out
-        raise
-    admin = None
-    for p in listed:
-        pid = p.get('id')
-        if pid == project.id or not any(v.get('id') == vocab_id for v in p.get('vocabs') or []):
-            continue
-        if requester in (p.get('maintainers') or []) or requester in (p.get('writers') or []):
-            out.append(pid)
-            continue
-        if admin is None:
-            try:
-                admin = bool((client.users.get(requester) or {}).get('is_admin'))
-            except Exception:  # noqa: BLE001 - a failed read writes only where they are named
-                admin = False
-        if admin:
-            out.append(pid)
-    return out
-
-
-def _linked_morphemes(client, project_id: str, item_ids: List[str]) -> List[list]:
-    """``linked_morphemes_query``'s rows for ``item_ids``, asked in halves
-    when one answer cannot hold them all, as the app does."""
-    res = client.query(linked_morphemes_query(project_id, item_ids)) or {}
-    if res.get('truncated'):
-        if len(item_ids) == 1:
-            raise PlanError('Too many morphemes are linked to one entry to read.')
-        half = (len(item_ids) + 1) // 2
-        return (_linked_morphemes(client, project_id, item_ids[:half])
-                + _linked_morphemes(client, project_id, item_ids[half:]))
-    return list(res.get('results') or [])
-
-
-def sync_morph_type_caches(client, project, ops: List[Dict[str, Any]],
-                           requester: Optional[str] = None) -> int:
-    """Write on every morpheme linked to an entry the plan retyped
-    (``_retyped_roots`` and the entries below them) the type that entry goes
-    by now, its own or its headword's, where the morpheme caches another: in
-    the plan's project and in every other project using the lexicon that
-    ``requester`` can write (``_cache_project_ids``). The app writes the same
-    with every change of an entry's type (morphTypeCaches.js), and nothing
-    writes it later. An entry that goes by no type leaves its morphemes as
-    they are. Read after the plan's writes, so what the plan wrote is what is
-    read. Returns how many it wrote."""
-    roots = _retyped_roots(ops)
-    if not roots or project is None:
-        return 0
-    written = 0
-    for vocab in getattr(project, 'vocabs', None) or []:
-        if not vocab.get('id'):
-            continue
-        items = (client.vocab_layers.get(vocab['id'], include_items=True) or {}).get('items') or []
-        tree = build_sense_tree(items)
-        targets: Dict[str, str] = {}
-
-        def visit(item_id):
-            if item_id in targets or item_id not in tree.by_id:
-                return
-            t = morph_type_of(tree, item_id)
-            if isinstance(t, str) and t:
-                targets[item_id] = t
-            for child in tree.children_of.get(item_id) or []:
-                visit(child['id'])
-        for root in roots:
-            visit(root)
-        if not targets:
-            continue
-        ids = list(targets)
-        for project_id in _cache_project_ids(client, project, vocab['id'], requester):
-            plans = []
-            for i in range(0, len(ids), CACHE_CHUNK):
-                for morpheme_id, item_id, cached, *_ in _linked_morphemes(
-                        client, project_id, ids[i:i + CACHE_CHUNK]):
-                    t = targets.get(item_id)
-                    if t and cached != t:
-                        plans.append({'id': morpheme_id,
-                                      'metadata': [{'op': 'set', 'path': ['morphType'], 'value': t}]})
-            # The morphemes lie in any document of the project, so no one
-            # document's version is claimed for them. A bulk update takes the
-            # documents of one project.
-            held, client.strict_mode_document_id = client.strict_mode_document_id, None
-            try:
-                for i in range(0, len(plans), CACHE_CHUNK):
-                    client.tokens.bulk_update(plans[i:i + CACHE_CHUNK])
-            finally:
-                client.strict_mode_document_id = held
-            written += len(plans)
-    return written
-
-
-def sync_restored_caches(client, project, document_ids: List[str]) -> int:
-    """A restore brings a document's morphemes back with the type each
-    cached then, and the entry each is linked to may go by another type now.
-    Write on each linked morpheme of the restored documents the type its
-    entry goes by now where it caches another, as the app does after a
-    restore (``writeEntryTypes``). Returns how many it wrote."""
-    if not document_ids or project is None:
-        return 0
-    from .project import load_document
-    trees: Dict[str, Any] = {}
-    plans = []
-    for doc_id in dict.fromkeys(document_ids):
-        doc = load_document(client, project, doc_id)
-        for sentence in doc.sentences:
-            for word in sentence.words:
-                for m in word.morphemes:
-                    link = m.link
-                    if m.virtual or link is None or not link.item_id:
-                        continue
-                    if link.vocab_id not in trees:
-                        items = (client.vocab_layers.get(link.vocab_id, include_items=True) or {}).get('items') or []
-                        trees[link.vocab_id] = build_sense_tree(items)
-                    tree = trees[link.vocab_id]
-                    t = morph_type_of(tree, link.item_id) if link.item_id in tree.by_id else None
-                    if isinstance(t, str) and t and m.morph_type != t:
-                        plans.append({'id': m.id,
-                                      'metadata': [{'op': 'set', 'path': ['morphType'], 'value': t}]})
-    held, client.strict_mode_document_id = client.strict_mode_document_id, None
-    try:
-        for i in range(0, len(plans), CACHE_CHUNK):
-            client.tokens.bulk_update(plans[i:i + CACHE_CHUNK])
-    finally:
-        client.strict_mode_document_id = held
-    return len(plans)
 
 
 def _document_of_text(ops) -> Optional[str]:

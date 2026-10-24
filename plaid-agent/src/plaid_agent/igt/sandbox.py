@@ -120,7 +120,7 @@ def view(doc: IgtDoc) -> Dict[str, Any]:
             morphemes = []
             for m in w.morphemes:
                 morphemes.append({
-                    'ref': f'{word_ref(s, w)}.m{m.index}', 'form': m.form, 'type': m.morph_type,
+                    'ref': f'{word_ref(s, w)}.m{m.index}', 'form': m.form, 'type': m.goes_by,
                     'fields': {name: sp.value or '' for name, sp in m.fields.items()},
                     'link': m.link.form if m.link else None,
                     'link_id': m.link.item_id if m.link else None, 'review': _review(m.fields)})

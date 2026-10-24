@@ -943,8 +943,8 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
                 lines.append(line)
         if c.M:
             slots: Dict[int, Counter] = defaultdict(Counter)
-            for prec, mform, mvalue, mtype, k in c.group(word + c.in_word('?m', '?w'),
-                                                        ['?m.precedence', '?m.metadata.form', '?m.value', '?m.metadata.morphType']):
+            for prec, mform, mvalue, mtype, k in c.typed_group(word + c.in_word('?m', '?w'),
+                                                              ['?m.precedence', '?m.metadata.form', '?m.value']):
                 key = Corpus.morph_key(mform, mvalue) + (f' ({mtype})' if mtype else '')
                 slots[prec or 0][key] += k
             if slots:
@@ -991,7 +991,7 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
             words_t: Counter = Counter()
             types_t: Counter = Counter()
             slots_t: Counter = Counter()
-            for wv, mtype, prec, k in c.group(morph, ['?w.value', '?m.metadata.morphType', '?m.precedence']):
+            for wv, prec, mtype, k in c.typed_group(morph, ['?w.value', '?m.precedence']):
                 if wv:
                     words_t[wv.casefold()] += k
                 if mtype:
@@ -1219,7 +1219,7 @@ def word_condition(c: Corpus, cond: Dict[str, Any], wvar: str, tag: str, regex: 
         elif k == 'morpheme':
             extra += [c.morph_form_clauses(f'?m{tag}f', spec)] + c.in_word(f'?m{tag}f', wvar, f'{tag}f')
         elif k == 'type':
-            extra += [c.morph(f'?m{tag}t', metadata={'morphType': spec})] + c.in_word(f'?m{tag}t', wvar, f'{tag}t')
+            extra += c.morph_type_clauses(f'?m{tag}t', spec, str(pat), regex) + c.in_word(f'?m{tag}t', wvar, f'{tag}t')
         else:
             # A bare name a word field and a morpheme field share ("Gloss",
             # "POS") is either, as search reads it: the tool's own example
