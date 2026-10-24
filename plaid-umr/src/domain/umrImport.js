@@ -93,9 +93,13 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       'Gloss lines stored but not shown. Add "Lines an import stored" in UMR settings.',
     );
   }
-  // What an attach makes, for the rollback below: the anchors, whose
-  // deletion cascades to the spans and relations made on them.
+  // What an attach makes and changes, for the rollback below: the anchors,
+  // whose deletion cascades to the spans and relations made on them, the
+  // relations (a triple between two constants the document had hangs on no
+  // anchor of this run), and each record it rewrote with its value before.
   let createdTokenIds = [];
+  const createdRelationIds = [];
+  const rewrittenRecords = [];
 
   let documentId = existing ? existing.raw.id : null;
   try {
@@ -124,8 +128,8 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     // whole document's rows. Each request of nodes makes the anchors they
     // stand on, so no anchor is ever stored without its node, whatever cuts
     // the import off after it. A request refused part way is taken back by
-    // the catch, with the document, or on an existing one with the anchors
-    // and records this run put there.
+    // the catch, with the document, or on an existing one with the anchors,
+    // records and relations this run put there and the records it rewrote.
     const sentenceOps = existing
       ? []
       : plan.sentences.map((s) => ({
@@ -235,15 +239,21 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     const recordWrites = plan.sentences
       .map((s) => [had[s.index - 1]?.recordToken, s])
       .filter(([record]) => record);
-    await sendInChunks(recordWrites, (slice) =>
-      client.batched(async (b) => {
+    const recordTokens = new Map(
+      (existing?.info.nodeTokenLayer.tokens || []).map((t) => [t.id, t]),
+    );
+    await sendInChunks(recordWrites, (slice) => {
+      for (const [record] of slice) {
+        rewrittenRecords.push([record, recordTokens.get(record)?.metadata?.[UMR_NAMESPACE]]);
+      }
+      return client.batched(async (b) => {
         for (const [record, s] of slice) {
           b.tokens.patchMetadata(record, [
             { op: 'set', path: [UMR_NAMESPACE], value: recordOf(s) },
           ]);
         }
-      }),
-    );
+      });
+    });
     const spanIds = spanOps.map((op) => op.id);
     const createdIndex = new Map(toCreate.map((n, i) => [n.key, i]));
     const spanOf = (key) => {
@@ -253,6 +263,7 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
 
     // Edges and triples, on two layers, in requests of CHUNK rows.
     const edgeOps = plan.edges.map((e) => ({
+      id: pendingId(),
       relationLayerId: layerInfo.relationLayer.id,
       source: spanOf(e.source),
       target: spanOf(e.target),
@@ -268,9 +279,10 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       metadata: { [UMR_NAMESPACE]: t.meta },
     }));
     for (const ops of [edgeOps, tripleOps]) {
-      await sendInChunks(ops, (slice) =>
-        client.batched(async (b) => b.relations.bulkCreate(slice)),
-      );
+      await sendInChunks(ops, (slice) => {
+        if (existing) createdRelationIds.push(...slice.map((op) => op.id));
+        return client.batched(async (b) => b.relations.bulkCreate(slice));
+      });
     }
 
     return {
@@ -279,12 +291,25 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       attached: !!existing,
     };
   } catch (err) {
-    if (existing && createdTokenIds.length) {
-      // Take back what this run put on the document, so a retry is possible.
+    if (existing) {
+      // Take back what this run put on the document and put its records back,
+      // so a retry is possible. A bulk delete skips an id that is not there.
       try {
-        await client.tokens.bulkDelete(createdTokenIds);
+        if (createdRelationIds.length) await client.relations.bulkDelete(createdRelationIds);
+        if (createdTokenIds.length) await client.tokens.bulkDelete(createdTokenIds);
+        await sendInChunks(rewrittenRecords, (slice) =>
+          client.batched(async (b) => {
+            for (const [record, old] of slice) {
+              b.tokens.patchMetadata(record, [
+                old === undefined
+                  ? { op: 'delete', path: [UMR_NAMESPACE] }
+                  : { op: 'set', path: [UMR_NAMESPACE], value: old },
+              ]);
+            }
+          }),
+        );
       } catch (delErr) {
-        console.error('Failed to take back the anchors after an attach failure:', delErr);
+        console.error('Failed to take back the attach after its failure:', delErr);
       }
     }
     if (documentId && !existing) {

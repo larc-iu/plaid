@@ -342,6 +342,38 @@ describe('an attach onto a document with a triple between constants', () => {
   });
 });
 
+// REV-R4-UDUMR F5: an attach whose relations step fails takes back the
+// relations it may have made, a triple between two constants the document
+// already had among them (no anchor of this run holds it), and puts each
+// record it rewrote back as it was, so a retry finds the document as before.
+test('an attach that fails takes back its relations and restores the records', async () => {
+  const MODAL = '(s1s0 / sentence\n    :modal ((root :modal author)))';
+  const raw = rawFromPlan(planImport(parseUmrFile(file({ doc: MODAL })).sentences, []));
+  const before = new UmrDocument({ raw }).graph.records[0];
+  const oldRecord = structuredClone(before.record);
+  const text = file({
+    doc: '(s1s0 / sentence\n    :modal ((root :modal author)\n        (author :full-negative root)))',
+  });
+  const { client, calls } = recordingClient();
+  client.documents.get = async () => structuredClone(raw);
+  const bulkCreate = client.relations.bulkCreate;
+  client.relations.bulkCreate = async (ops) => {
+    await bulkCreate(ops);
+    throw new Error('lost answer');
+  };
+  await assert.rejects(
+    importUmrDocument(client, 'p', 'doc', text, getUmrLayerInfo(raw), { into: raw.id }),
+  );
+  const [made] = calls.filter((c) => c.name === 'relations.bulkCreate');
+  const madeIds = made.args[0].map((op) => op.id);
+  assert.ok(madeIds.length && madeIds.every(Boolean));
+  const [deleted] = calls.filter((c) => c.name === 'relations.bulkDelete');
+  assert.deepEqual(deleted?.args[0], madeIds);
+  const patches = calls.filter((c) => c.name === 'tokens.patchMetadata' && c.args[0] === before.id);
+  assert.equal(patches.length, 2);
+  assert.deepEqual(patches.at(-1).args[1], [{ op: 'set', path: ['umr'], value: oldRecord }]);
+});
+
 // Every anchor an import makes goes in the request that makes the node on
 // it, so no anchor is ever stored without its node, whatever cuts the import
 // off after it.

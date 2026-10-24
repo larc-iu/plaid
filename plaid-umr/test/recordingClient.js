@@ -77,6 +77,7 @@ export function recordingClient() {
         record('relations.patchMetadata', relId, ops);
       },
       delete: async (relId) => record('relations.delete', relId),
+      bulkDelete: async (ids) => record('relations.bulkDelete', ids),
     },
     tokenLayers: {
       setConfig: async (layerId, namespace, key, value, message, options) =>
