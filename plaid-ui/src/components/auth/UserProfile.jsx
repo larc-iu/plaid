@@ -413,6 +413,7 @@ export const UserProfile = ({ className, children }) => {
                 id="token-name"
                 value={newTokenName}
                 onChange={(e) => setNewTokenName(e.target.value)}
+                // service-ok: an example of a name a person types
                 placeholder="e.g. Stanza parser"
               />
             </div>

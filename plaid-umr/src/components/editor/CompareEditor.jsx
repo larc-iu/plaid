@@ -102,6 +102,7 @@ export const CompareEditor = () => {
         <div>
           <h3 className="text-xl font-semibold tracking-tight">Compare</h3>
           <p className="mt-1 text-sm text-muted-foreground">
+            {/* service-ok: AnCast names the score the report holds */}
             This document scored against another document of the same text, with AnCast.
           </p>
         </div>
