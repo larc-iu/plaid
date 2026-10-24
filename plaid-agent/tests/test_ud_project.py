@@ -186,3 +186,13 @@ def test_an_untokenized_document_says_so(project):
         tk['tokens'] = []
     out = render_document(parse_document(raw, project))
     assert 'has not been tokenized' in out
+
+
+def test_the_lemma_rule_names_its_model_and_version():
+    # R4-2-1: every machine write carries provDetail.model and version.
+    import re
+    from plaid_agent.ud.project import LEMMA_FROM_FORM
+    assert LEMMA_FROM_FORM['prov'] == 'inferred' and LEMMA_FROM_FORM['provSource'] == 'rule:lemma-from-form'
+    detail = LEMMA_FROM_FORM['provDetail']
+    assert detail['model'] == 'builtin:lemma-from-form'
+    assert re.fullmatch(r'\d+\.\d+\.\d+.*\+[0-9a-f]{8}', detail['version']), detail

@@ -32,7 +32,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
 from plaid_client.constraints import value_set_allows
-from plaid_client.provenance import stamp_inferred
 from plaid_client.workflows.messages import setup_incomplete
 
 from ..core.bidi import plain_quote, visible
@@ -42,6 +41,10 @@ from ..core.provenance import review_mark
 from ..core.args import sentence_number
 from ..core.refs import clip, read_ref, same_form
 from ..core.tools import ToolError
+# A lemma copied from its word's form is a rule's guess, stamped as the editor
+# stamps it, so a parse may replace it (re-exported: the plan and shape import
+# it from here).
+from .lemma_rule import LEMMA_FROM_FORM  # noqa: F401
 from ..core.tools import ValueRefusal
 
 UD = 'ud'
@@ -113,10 +116,6 @@ def feature_refusal(pair: str) -> Optional[str]:
     return 'A feature name and value cannot contain spaces.' if re.search(r'\s', pair) else None
 
 
-#: A lemma copied from its word's form is a rule's guess, not the approver's
-#: or the assistant's judgment, and the editor stamps it the same way, so a
-#: parse may replace it (plaid-ud's ConlluDocument LEMMA_FROM_FORM).
-LEMMA_FROM_FORM = stamp_inferred('rule:lemma-from-form')
 
 
 def _ud(cfg, key):
