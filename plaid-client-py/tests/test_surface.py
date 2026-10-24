@@ -1,7 +1,14 @@
 """Small surface points the two clients must share (PARITY 15)."""
 
+import json
 import os
+import re
+import shutil
+import subprocess
 import sys
+import types
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -167,3 +174,151 @@ def test_the_package_exports_what_the_js_index_exports():
     assert not plaid_client.is_machine(stamp_contributed('u'))
     assert not plaid_client.is_machine(None)
     assert not plaid_client.is_machine({'gloss': 'dog'})
+
+
+# --- the two clients' method lists (beta review A5-4) ---------------------------------
+#
+# requests.json holds the request shape of about a fifth of the methods. Nothing
+# held the lists themselves: a method added to one client alone passed
+# everything. This compares the JS client's surface (read by tests/js_surface.mjs)
+# with this one's, in Python's spelling, with every difference that is on purpose
+# below, each with its reason.
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_JS_INDEX = os.path.join(_HERE, '..', '..', 'plaid-client-js', 'src', 'index.js')
+
+#: A JS name whose Python twin is spelled otherwise, beyond the casing.
+RENAMED = {
+    'uuidv7': 'uuid7',
+    'buildDefaultValues': 'default_values',
+    'coerceParamValues': 'coerce',
+    'createCancelScope': 'CancelScope',
+    'writerPolicy': 'WriterPolicy',
+    'withOperation': 'operation',
+}
+
+#: In one client alone, by what each language is for. Keyed by the name as the
+#: client spells it (a bundle method as ``bundle.method``).
+JS_ONLY = {
+    **dict.fromkeys(['cpIndexOf', 'cpLength', 'cpSlice', 'cpSlicer', 'utf16ToCp'],
+                    'a JS string counts UTF-16 units, a Python str counts code points'),
+    'uuidv4': 'a browser helper',
+    'BACKUP_TIMEOUT_MS': 'Python keeps it in seconds as client.BACKUP_TIMEOUT_S',
+    'PROV': 'Python names each provenance key (PROV_KEY and the others)',
+    'PROV_STATES': 'Python names each state in plaid_client.provenance',
+    **dict.fromkeys(['REQUESTED_BY', 'requesterOf', 'makeRequester'],
+                    'Python reads a requester in plaid_client.workflows.requester, for services'),
+    **dict.fromkeys(['getParamSchema', 'getServiceSummary', 'filterServicesByTask', 'servesTask'],
+                    'an app reads what a service declares, Python declares it (build_extras)'),
+    **dict.fromkeys(['events.record', 'events.flush', 'events.setEnabled'],
+                    'the browser telemetry recorder'),
+}
+PY_ONLY = {
+    **dict.fromkeys(['BaseService', 'Param', 'build_extras', 'ServiceRegistrationError', 'StreamClosed'],
+                    'service scaffolding, which only Python services use'),
+    **dict.fromkeys(['PROV_KEY', 'PROV_SOURCE_KEY', 'PROV_CONFIRMED_KEY', 'PROV_PROB_KEY', 'PROV_DETAIL_KEY'],
+                    'JS groups the provenance keys in PROV'),
+    'PlaidAPIError': 'JS throws an Error carrying the same fields',
+    'close': 'closes the requests session, which the browser has none of',
+}
+
+
+def _py_name(js_name):
+    """A JS name in Python's spelling: constants and classes as they are,
+    camelCase in snake_case."""
+    if js_name in RENAMED:
+        return RENAMED[js_name]
+    if js_name[0].isupper():
+        return js_name
+    return re.sub(r'(?<=[a-z0-9])([A-Z])', r'_\1', js_name).lower()
+
+
+def surface_differences(js, py):
+    """Each difference between the two surfaces not on purpose, one line each.
+    Both are ``{'exports': [...], 'methods': [...], 'bundles': {name: [...]}}``,
+    each in its own language's spelling."""
+    out = []
+
+    def compare(where, js_names, py_names, prefix=''):
+        js_by_py = {_py_name(n): n for n in js_names}
+        for p, j in sorted(js_by_py.items()):
+            if p not in py_names and f'{prefix}{j}' not in JS_ONLY:
+                out.append(f'{where}: {j} is in plaid-client-js only')
+        for p in sorted(py_names):
+            if p not in js_by_py and f'{prefix}{p}' not in PY_ONLY:
+                out.append(f'{where}: {p} is in plaid-client-py only')
+
+    compare('root export', js['exports'], set(py['exports']))
+    compare('client method', js['methods'], set(py['methods']))
+    js_bundles = {_py_name(b): b for b in js['bundles']}
+    for b in sorted(set(js_bundles) | set(py['bundles'])):
+        if b not in py['bundles']:
+            out.append(f'bundle: {js_bundles[b]} is in plaid-client-js only')
+        elif b not in js_bundles:
+            out.append(f'bundle: {b} is in plaid-client-py only')
+        else:
+            compare(f'{b} method', js['bundles'][js_bundles[b]], set(py['bundles'][b]),
+                    prefix=f'{js_bundles[b]}.')
+    return out
+
+
+def _py_surface():
+    import plaid_client
+    from plaid_client.client import PlaidClient
+
+    client = PlaidClient('http://x', 't')
+    public = lambda obj: [n for n in dir(obj) if not n.startswith('_') and callable(getattr(obj, n))]
+    return {
+        'exports': [n for n in dir(plaid_client) if not n.startswith('_')
+                    and not isinstance(getattr(plaid_client, n), types.ModuleType)],
+        'methods': public(PlaidClient),
+        'bundles': {k: public(v) for k, v in vars(client).items()
+                    if not k.startswith('_') and type(v).__name__.endswith('Resource')},
+    }
+
+
+@pytest.fixture(scope='module')
+def js_surface():
+    exe = shutil.which('node')
+    if not exe:
+        pytest.skip('node is not here')
+    out = subprocess.run([exe, os.path.join(_HERE, 'js_surface.mjs'), _JS_INDEX], capture_output=True,
+                         text=True, timeout=60, check=True).stdout
+    return json.loads(out)
+
+
+def test_the_two_clients_have_the_same_methods(js_surface):
+    py = _py_surface()
+    assert len(js_surface['bundles']) >= 20 and len(py['bundles']) >= 20
+    problems = surface_differences(js_surface, py)
+    assert problems == [], (
+        'The two clients differ:\n  ' + '\n  '.join(problems) + '\nAdd the method to the other client '
+        '(memory plaid_client_parity.md). A difference that is on purpose goes in RENAMED, JS_ONLY or '
+        'PY_ONLY in plaid-client-py/tests/test_surface.py with its reason.')
+
+
+def test_every_exemption_is_still_needed(js_surface):
+    py = _py_surface()
+    js_names = set(js_surface['exports']) | set(js_surface['methods']) | {
+        f'{b}.{m}' for b, ms in js_surface['bundles'].items() for m in ms}
+    py_names = set(py['exports']) | set(py['methods'])
+    assert sorted(set(JS_ONLY) - js_names) == []
+    assert sorted(set(PY_ONLY) - py_names) == []
+    assert sorted(j for j, p in RENAMED.items() if j not in js_names or p not in py_names) == []
+
+
+def test_a_method_in_one_client_alone_is_named():
+    js = {'exports': ['MAX_BATCH_OPS', 'isMachine', 'cpLength', 'uuidv7', 'newHelper'],
+          'methods': ['batch', 'withOperation'],
+          'bundles': {'spanLayers': ['create', 'setConfig', 'bulkCreate'], 'events': ['listen', 'record'],
+                      'newThings': ['list']}}
+    py = {'exports': ['MAX_BATCH_OPS', 'is_machine', 'uuid7', 'BaseService', 'py_helper'],
+          'methods': ['batch', 'operation', 'close'],
+          'bundles': {'span_layers': ['create', 'set_config', 'delete'], 'events': ['listen']}}
+    assert surface_differences(js, py) == [
+        'root export: newHelper is in plaid-client-js only',
+        'root export: py_helper is in plaid-client-py only',
+        'bundle: newThings is in plaid-client-js only',
+        'span_layers method: bulkCreate is in plaid-client-js only',
+        'span_layers method: delete is in plaid-client-py only',
+    ]
