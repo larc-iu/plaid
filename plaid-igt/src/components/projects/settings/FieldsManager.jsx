@@ -708,7 +708,7 @@ export const FieldsManager = ({
                   <td className="border-t px-3 py-2 align-middle">
                     <Input
                       value={langDrafts[record.key] ?? record.lang ?? ''}
-                      aria-label={`Language of ${record.name}`}
+                      aria-label={`Language of ${record.scope} ${record.name}`}
                       list="field-language-tags"
                       placeholder="en"
                       className="h-8 w-24"
@@ -729,7 +729,7 @@ export const FieldsManager = ({
                       >
                         <SelectTrigger
                           className="h-8"
-                          aria-label={`Lexicon field of ${record.name}`}
+                          aria-label={`Lexicon field of ${record.scope} ${record.name}`}
                         >
                           <SelectValue />
                         </SelectTrigger>
@@ -755,7 +755,10 @@ export const FieldsManager = ({
                         value={record.sentenceRole ?? NO_ROLE}
                         onValueChange={(v) => handleSetSentenceRole(record.key, v)}
                       >
-                        <SelectTrigger className="h-8" aria-label={`Role of ${record.name}`}>
+                        <SelectTrigger
+                          className="h-8"
+                          aria-label={`Role of ${record.scope} ${record.name}`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -775,7 +778,10 @@ export const FieldsManager = ({
                         value={record.tagset ?? NO_TAGSET}
                         onValueChange={(v) => handleSetTagset(record.key, v)}
                       >
-                        <SelectTrigger className="h-8" aria-label={`Tagset of ${record.name}`}>
+                        <SelectTrigger
+                          className="h-8"
+                          aria-label={`Tagset of ${record.scope} ${record.name}`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -798,7 +804,8 @@ export const FieldsManager = ({
                   )}
                   <td className="w-px whitespace-nowrap border-t px-3 py-2 align-middle">
                     <RowControls
-                      name={record.name}
+                      // Two scopes may hold a field of one name.
+                      name={`${record.scope} ${record.name}`}
                       onUp={() => handleMoveField(record.key, 'up')}
                       onDown={() => handleMoveField(record.key, 'down')}
                       canUp={neighborInScope(record.key, 'up') !== -1}

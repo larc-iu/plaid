@@ -96,7 +96,7 @@ describe('Settings > Fields on a page opened before another maintainer saved', (
   it('changing a language writes that language and nothing else', async () => {
     const client = fakeClient();
     const { step, unmount } = await mount(client);
-    const box = document.querySelector('input[aria-label="Language of Gloss"]');
+    const box = document.querySelector('input[aria-label="Language of Word Gloss"]');
     await step(() => typeInto(box, 'fr'));
     await step(async () => {
       box.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
@@ -170,7 +170,7 @@ describe('Settings > Fields when the same value changed elsewhere', () => {
       />,
     );
     await view.step(async () => {});
-    const box = document.querySelector('input[aria-label="Language of Gloss"]');
+    const box = document.querySelector('input[aria-label="Language of Word Gloss"]');
     await view.step(() => typeInto(box, 'fr'));
     await view.step(async () => {
       box.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
@@ -202,7 +202,7 @@ describe('Settings > Fields when the same value changed elsewhere', () => {
       />,
     );
     await view.step(async () => {});
-    const box = document.querySelector('input[aria-label="Language of Gloss"]');
+    const box = document.querySelector('input[aria-label="Language of Word Gloss"]');
     await view.step(() => typeInto(box, 'fr'));
     await view.step(async () => {
       box.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));

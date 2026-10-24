@@ -31,7 +31,7 @@ describe('FieldsManager order', () => {
     const names = () =>
       all(r.container, 'tbody tr').map((tr) => tr.querySelectorAll('td')[1].textContent);
     expect(names()).toEqual(['Word Gloss', 'Gloss', 'POS', 'Translation', 'Note']);
-    const up = r.container.querySelector('[aria-label="Move POS up"]');
+    const up = r.container.querySelector('[aria-label="Move Morpheme POS up"]');
     expect(up.disabled).toBe(false);
     await r.step(() => up.click());
     expect(names()).toEqual(['Word Gloss', 'POS', 'Gloss', 'Translation', 'Note']);
