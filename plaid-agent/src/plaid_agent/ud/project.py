@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
 from plaid_client.constraints import value_set_allows
+from plaid_client.workflows.igt.derive import precedence
 from plaid_client.workflows.messages import setup_incomplete
 
 from ..core.bidi import plain_quote, visible
@@ -553,8 +554,10 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
     words_at: Dict[Tuple[int, int], List[dict]] = {}
     for w in word_layer.get('tokens') or []:
         words_at.setdefault((w['begin'], w['end']), []).append(w)
+    # A word that stores no precedence reads after every one that does, as
+    # core orders tokens (begin, precedence nulls last, end, id) (R4-1-2).
     for group in words_at.values():
-        group.sort(key=lambda w: (w.get('precedence') if w.get('precedence') is not None else 1, w['id']))
+        group.sort(key=lambda w: (precedence(w), w['id']))
 
     tokens = sorted(token_layer.get('tokens') or [], key=lambda t: (t['begin'], t['end']))
     by_lemma_span: Dict[str, Word] = {}

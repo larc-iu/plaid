@@ -196,3 +196,17 @@ def test_the_lemma_rule_names_its_model_and_version():
     detail = LEMMA_FROM_FORM['provDetail']
     assert detail['model'] == 'builtin:lemma-from-form'
     assert re.fullmatch(r'\d+\.\d+\.\d+.*\+[0-9a-f]{8}', detail['version']), detail
+
+
+def test_a_word_with_no_precedence_reads_after_the_stored_ones():
+    # R4-1-2: core orders a token's words with a null precedence last.
+    from ud_fixtures import PID, document_raw, ud_client
+    from plaid_agent.ud.project import load_project, parse_document
+    raw = document_raw()
+    for layer in raw['text_layers'][0]['token_layers']:
+        for t in layer['tokens']:
+            if t['id'] == 'uw-2a':
+                t.pop('precedence')
+    doc = parse_document(raw, load_project(ud_client(), PID))
+    [token] = [t for s in doc.sentences for t in s.tokens if len(t.words) == 2]
+    assert [w.id for w in token.words] == ['uw-2b', 'uw-2a']
