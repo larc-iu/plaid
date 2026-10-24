@@ -77,6 +77,30 @@ def test_the_published_status_value_cannot_be_removed():
     assert ws.ops[-1]['after']['values'] == []
 
 
+def test_the_status_field_is_never_pointed_at_a_tagset_without_published():
+    # HUNT-recent 4's assistant door: igt's writeTagsetPlan refuses it for
+    # assign_tagset as for set_tagset (f82d54cc5).
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    lex = ws.project.vocabs[0]
+    lex['fields'] = [*(lex.get('fields') or []),
+                     {'name': 'state', 'inline': False, 'tagset': 'Workflow', 'role': 'status'}]
+    lex['all_tagsets'] = {'Workflow': {'name': 'Workflow', 'mode': 'closed', 'delimiters': '',
+                                       'values': [{'value': 'draft'}, {'value': 'published'}]},
+                          'Other': {'name': 'Other', 'mode': 'closed', 'delimiters': '',
+                                    'values': [{'value': 'draft'}]},
+                          'Also': {'name': 'Also', 'mode': 'closed', 'delimiters': '',
+                                   'values': [{'value': 'published'}]}}
+    out = call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'state', 'tagset': 'Other',
+                                    'lexicon': lex['name']})
+    assert out.startswith('Error:') and 'published' in out and ws.ops == [], out
+    assert 'Planned' in call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'state', 'tagset': 'Also',
+                                                  'lexicon': lex['name']})
+    # No tagset at all stays allowed, as in the app.
+    ws.ops.clear()
+    assert 'Planned' in call_tool(ws, 'tagsets', {'action': 'assign', 'field': 'state', 'tagset': '',
+                                                  'lexicon': lex['name']})
+
+
 # --- applied ---------------------------------------------------------------------------
 
 def declare_igt_rules(s):

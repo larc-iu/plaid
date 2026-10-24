@@ -644,6 +644,16 @@ def _assign(ws, field: str, tagset: str, lexicon: Optional[str]) -> str:
         name = found
     if f['tagset'] == name:
         return f'{f["name"]} already ' + (f'uses {qv(name)}.' if name else 'has no tagset.')
+    # The Status field keeps its reserved published value: it is never held
+    # to a list without it (plaid-igt dropsPublishedStatus). No list at all
+    # stays allowed.
+    if name is not None and vocab is not None and f['kind'] == ENTRY_FIELD:
+        status = next(iter(fields_with_role(vocab.get('fields') or [], ROLE_STATUS)), None)
+        listed = {v['value'] if isinstance(v, dict) else v for v in (tagsets[name].get('values') or [])}
+        if status and status.get('name') == f['key'] and PUBLISHED_STATUS not in listed:
+            raise ToolError(f'{qv(name)} does not list {qv(PUBLISHED_STATUS)}, the reserved Status value, so the '
+                            f'Status field cannot use it. Add {qv(PUBLISHED_STATUS)} to it first. Nothing planned.',
+                            kind='not-allowed')
     stored = _stored_field_tagset(ws, owner, f)
     ws.add_op({'kind': 'assign_tagset', 'owner': owner, 'field_kind': f['kind'], 'key': f['key'],
                'before': stored, 'after': name,
