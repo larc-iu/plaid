@@ -20,6 +20,8 @@ import { diffGraphs } from './diff.js';
 import { bareLabel } from '../edgeLabel.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
+import { atVersion } from '../../../../plaid-ui/src/domain/atVersion.js';
+import { isUnknownOutcome } from '../../../../plaid-client-js/src/http.js';
 
 // Document GETs in flight at once. Measured on a 1172-document project: four
 // in flight load about three times faster than one at a time, and eight or
@@ -230,14 +232,15 @@ function mapPool(items, limit, fn) {
 }
 
 // Apply the selected rows, document by document, under one operation. Each
-// document is written in the client's strict mode, so every batch carries the
-// document version the preview loaded: a document someone changed since then
-// is refused by the server (409) before anything in it is touched. The run
+// document is written at the version the preview loaded (atVersion), not the
+// one the client learned since: a document someone changed since then is
+// refused by the server (409) before anything in it is touched. The run
 // stops at the first document that fails; the ones before it stay applied.
 // Returns { docsChanged, sentencesChanged, failed }, where `failed` is
 // { docId, docName, status, message, partial, unsure } or null. `partial` is
 // true when some of that document's writes landed and could not be taken back,
-// and `unsure` when a request's answer never came, so it may have landed.
+// and `unsure` when the outcome is unknown (no answer, or a 502 or 504 from a
+// proxy), so it may have landed.
 export async function applyRewrite(client, { rows, docs, label }, onProgress) {
   const byDoc = new Map();
   for (const r of rows) {
@@ -252,9 +255,11 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
     async () => {
       for (const [docId, docRows] of byDoc) {
         onProgress?.(`Applying to document ${done + 1} of ${byDoc.size}…`);
-        client.enterStrictMode(docId);
+        const doc = docs.get(docId);
         try {
-          await applyToDocument(client, docId, docs.get(docId), docRows);
+          await atVersion(client, docId, doc.raw?.version, () =>
+            applyToDocument(client, docId, doc, docRows),
+          );
         } catch (e) {
           out.failed = {
             docId,
@@ -265,8 +270,6 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
             unsure: Boolean(e?.unsure),
           };
           break;
-        } finally {
-          client.exitStrictMode();
         }
         done += 1;
         out.docsChanged += 1;
@@ -306,8 +309,8 @@ export function applySummary(out, reason) {
 // refusal leaves the document as it was. A batch past MAX_BATCH_OPS cannot be
 // one transaction and is sent as consecutive requests, with the document lock
 // held across them so no one else writes in between. A refusal that may leave
-// writes behind is thrown with `partial` set, and a request whose answer never
-// came (status 0) with `unsure`, since it may have landed.
+// writes behind is thrown with `partial` set, and a request whose outcome is
+// unknown (isUnknownOutcome) with `unsure`, since it may have landed.
 async function applyToDocument(client, docId, doc, rows) {
   const writer = doc.writer;
   const createStamp = writer.createStamp || undefined;
@@ -338,7 +341,7 @@ async function applyToDocument(client, docId, doc, rows) {
     try {
       await client.batched(queueChanges);
     } catch (e) {
-      if (e?.status === 0) e.unsure = true;
+      if (isUnknownOutcome(e)) e.unsure = true;
       throw e;
     }
     return;
@@ -352,7 +355,7 @@ async function applyToDocument(client, docId, doc, rows) {
       await client.batched(queueChanges);
     } catch (e) {
       e.partial = (e.committed ?? 0) > 0;
-      e.unsure = !e.partial && e.status === 0;
+      e.unsure = !e.partial && isUnknownOutcome(e);
       throw e;
     }
   });

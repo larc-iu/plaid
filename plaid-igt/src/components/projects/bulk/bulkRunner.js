@@ -20,6 +20,7 @@ import { dropPrecedent } from '@/domain/precedentCache';
 import { readVocabulary } from '@/domain/vocabCache';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
 import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
+import { atVersion } from '@ui/domain/atVersion.js';
 import { metadataOps, FORM_PROBS_KEY, VALUE_PROBS_KEY } from '@larc-iu/plaid-client';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
@@ -82,21 +83,6 @@ async function loadDocs(client, project, docEntries, vocabularies, onProgress, l
 
 // The version each document had when the preview read it: { [docId]: version }.
 const versionsOf = (docs) => Object.fromEntries(docs.map((d) => [d.id, d.raw?.version]));
-
-// Run `send` with every write it makes carrying `version` of document `docId`
-// (the client's strict mode), so the server refuses the whole write when the
-// document changed since that version was read. A document with no version
-// known is never written unchecked.
-async function atVersion(client, docId, version, send) {
-  if (version == null) throw new Error('The document was read with no version.');
-  client.documentVersions = { ...client.documentVersions, [docId]: version };
-  client.enterStrictMode(docId);
-  try {
-    return await send();
-  } finally {
-    client.exitStrictMode();
-  }
-}
 
 // One document's preview rows, sent at the version the preview read. A
 // document changed since then is refused whole: it is read again
@@ -641,11 +627,7 @@ export async function planMerge(client, vocabId, loserIds, survivorId = null) {
 // merge changes nothing. `refUpdates` is `[{id, metadata}]` where the
 // metadata is a list of metadata ops, as `metadataUpdates` builds it from
 // planMergeRefs' whole maps. Returns what the server did.
-export async function applyMerge(
-  client,
-  { refUpdates = [] },
-  { survivorId, loserIds, label },
-) {
+export async function applyMerge(client, { refUpdates = [] }, { survivorId, loserIds, label }) {
   let merged = null;
   await writeAcrossDocuments(client, label, 'merge', async () => {
     const results = await client.batched(async (b) => {

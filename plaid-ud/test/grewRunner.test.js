@@ -29,6 +29,9 @@ function stubClient(...raws) {
   const c = {
     calls: [],
     strict: [],
+    versions: {},
+    // The version each batch claimed, as strict mode sends it.
+    claimed: [],
     failOn: null,
     // Ops of every batch that went out, and a hook to refuse one (a 500).
     batches: [],
@@ -42,7 +45,11 @@ function stubClient(...raws) {
     },
     server: { limits: async () => c.serverLimits },
     documents: {
-      get: async (id) => structuredClone(raws.find((r) => r.id === id)),
+      // Read at the version the server holds (`c.versions`, 7 by default).
+      get: async (id) => ({
+        version: c.versions[id] ?? 7,
+        ...structuredClone(raws.find((r) => r.id === id)),
+      }),
       locked: async (id, fn) => {
         c.locks.push(['lock', id]);
         try {
@@ -69,7 +76,10 @@ function stubClient(...raws) {
         b.abort();
         throw e;
       }
-      if (c._strictDoc && c._strictDoc === c.failOn) {
+      if (c._strictDoc) c.claimed.push([c._strictDoc, c.documentVersions?.[c._strictDoc]]);
+      const stale =
+        c._strictDoc && c.documentVersions?.[c._strictDoc] !== (c.versions[c._strictDoc] ?? 7);
+      if (c._strictDoc && (c._strictDoc === c.failOn || stale)) {
         b.abort();
         throw Object.assign(new Error('document version mismatch'), { status: 409 });
       }
@@ -663,3 +673,39 @@ test("a contributor's rewrite stamps the suppressor it makes", async () => {
   for (const md of suppressors)
     assert.deepEqual(md, { suppress: true, prov: 'contributed', provSource: 'user:u1' });
 });
+
+// conc D8: a rewrite sends at the version its preview read. A response that
+// told the client of a newer version in between (a vocabulary rename names
+// every linking document) must not move what the rewrite claims, or it
+// writes over a change its preview never saw.
+test('apply: a document changed since the preview is refused, though the client learned the newer version', async () => {
+  const { client, project, layerInfo } = setup();
+  const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  client.versions['doc1-id'] = 8;
+  client.documentVersions = { 'doc1-id': 8 };
+  const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  assert.deepEqual(client.claimed, [['doc1-id', 7]]);
+  assert.equal(out.failed?.status, 409);
+  assert.equal(out.docsChanged, 0);
+  assert.equal(client.calls.length, 0);
+});
+
+// conc D1: a 502 or 504 is a proxy's answer for the server, which may have
+// stored the batch. The toast says the document may have changed.
+for (const status of [502, 504]) {
+  test(`apply: a batch answered ${status} may have changed the document`, async () => {
+    const { client, project, layerInfo } = setup();
+    const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+    const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+    client.batched = async () => {
+      throw Object.assign(new Error('Bad gateway'), { status });
+    };
+    const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+    assert.equal(out.failed.unsure, true);
+    assert.match(
+      applySummary(out, () => 'The server did not answer.'),
+      /may have changed/,
+    );
+  });
+}
