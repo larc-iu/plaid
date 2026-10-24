@@ -1025,3 +1025,46 @@ describe('the empty pane', () => {
     await maintainer.unmount();
   });
 });
+
+describe('opening the vocabulary', () => {
+  const REF_FIELDS = [
+    { name: 'gloss', type: 'text' },
+    { name: 'see', type: 'item' },
+  ];
+  // "uno" names an entry that is gone, as a sense and in its See field.
+  const dangling = () => [
+    { id: 'a', form: 'uno', metadata: { see: 'gone', parent: 'gone-too', senseOrder: 1 } },
+    { id: 'b', form: 'dos' },
+  ];
+
+  it('writes nothing, even where an entry names one that is gone', async () => {
+    const { client, calls } = stub(dangling());
+    const view = await mount(client, '/vocabularies/v1?item=a', new WriteQueue(), REF_FIELDS);
+    await view.step(async () => {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls).toEqual([]);
+    expect(feedback.notifyWarning).not.toHaveBeenCalled();
+    // The form reads the entry as an entry with nothing in See, and is
+    // not changed by reading it so.
+    expect(document.body.textContent).not.toContain('(missing entry)');
+    expect(button('Save').disabled).toBe(true);
+    await view.unmount();
+  });
+
+  it('stores what it read with the next save of the entry', async () => {
+    const { client, calls } = stub(dangling());
+    const view = await mount(client, '/vocabularies/v1?item=a', new WriteQueue(), REF_FIELDS);
+    await view.step(() => setValue(glossInput(), 'one'));
+    await view.step(async () => {
+      button('Save').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    const updates = calls.filter(([kind]) => kind === 'bulkUpdate');
+    expect(updates).toHaveLength(1);
+    const ops = updates[0][1][0].metadata;
+    const paths = ops.map((o) => `${o.op} ${o.path.join('.')}`).sort();
+    expect(paths).toEqual(['delete parent', 'delete see', 'delete senseOrder', 'set gloss']);
+    await view.unmount();
+  });
+});

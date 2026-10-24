@@ -220,8 +220,9 @@ export const withExampleRemoved = (metadata, index) => {
  * The tree over a vocabulary's items. `items` in creation order (as the
  * server returns them), which is what unnumbered siblings fall back to.
  *
- * A parent that is not in `items` counts as none: the item is a root. (The
- * validator clears such references; until it runs, the tree still stands.)
+ * A parent that is not in `items` counts as none: the item is a root. Nothing
+ * clears such a reference on reading it. The entry form reads it as none
+ * (validateVocabRefs), and its next save stores that.
  *
  * @returns {{
  *   byId: Map<string, object>,
@@ -246,7 +247,7 @@ export const buildSenseTree = (items) => {
     if (ok) childrenOf.get(p).push(it);
   }
   // Cycles: a parent chain that never reaches a root. Every item on such a
-  // chain is treated as a root (the validator clears their parents).
+  // chain is treated as a root.
   const rootOf = new Map();
   const depthOf = new Map();
   const resolve = (id) => {
@@ -614,11 +615,13 @@ export const referencesTo = (items, fields, id) => {
 // ---- integrity ---------------------------------------------------------------
 
 /**
- * Every reference that points nowhere, or in a circle: `[{id, metadata}]`
- * patches that clear them, and one finding per cleared item. An item whose
- * parent is gone becomes an entry; a reference to a missing entry is dropped
- * from its field. Only items actually changed are returned, so an empty
- * result means the vocabulary is sound.
+ * Every reference that points nowhere, or in a circle, read as none:
+ * `[{id, metadata}]`, each item's metadata as the entry form reads it, and one
+ * finding per such item. An item whose parent is gone reads as an entry, and a
+ * reference to a missing entry is left out of its field. Only items that read
+ * otherwise than they are stored are returned, so an empty result means the
+ * vocabulary is sound. Reading writes nothing: the form's next save of an item
+ * stores what it read.
  */
 export const validateVocabRefs = (items, fields) => {
   const list = items || [];

@@ -301,6 +301,23 @@ export const VocabularyItems = ({
     const id = settledId(selectedId);
     return items.find((i) => i.id === id) || null;
   }, [items, selectedId, isNew]);
+  // Each entry's metadata as the form reads it: a reference to an entry that
+  // is gone, a parent that is gone or loops back, and a stray sense order
+  // read as none (validateVocabRefs). Reading writes nothing. The next save
+  // of the entry stores what the form showed, since it sends what changed
+  // from the entry as stored.
+  const readMetadata = useMemo(
+    () => new Map(validateVocabRefs(items, fields).patches.map((p) => [p.id, p.metadata])),
+    [items, fields],
+  );
+  const selectedAsRead = useMemo(
+    () =>
+      selectedItem && {
+        ...selectedItem,
+        metadata: readMetadata.get(selectedItem.id) ?? selectedItem.metadata,
+      },
+    [selectedItem, readMetadata],
+  );
   // --- the assistant docked beside the entry list ---------------------------
   // The vocabulary is the standing scope, the way a document is on Analyze. An
   // entry reaches the chat only through Ask, as a chip that clears when sent.
@@ -441,7 +458,6 @@ export const VocabularyItems = ({
       setItems(fetched);
       setError('');
       fetchUsageCounts(); // not awaited
-      repairRefs(fetched); // not awaited
       return fetched;
     } catch (err) {
       if (inTurn) throw err;
@@ -613,44 +629,6 @@ export const VocabularyItems = ({
   // A refused new entry's draft, held until the form it goes back to opens.
   const refusedNewRef = useRef(null);
 
-  // A reference that points at an entry no longer here (deleted through the
-  // API, or by another app) is cleared on the first load by someone who can
-  // write, under one operation. Once per mount: after a repair there is
-  // nothing left to repair.
-  const repairedRef = useRef(false);
-  const repairRefs = (fetched) => {
-    if (!canManage || repairedRef.current) return;
-    repairedRef.current = true;
-    const { patches, findings } = validateVocabRefs(fetched, fields);
-    if (!patches.length) return;
-    const before = metadataNow(fetched);
-    // An entry the repair touches is re-seeded from the repaired metadata.
-    // Left alone the form still holds the cleared value and a Save writes it
-    // back.
-    if (patches.some((p) => p.id === draftRef.current.seedKey)) {
-      dispatch({ type: 'draft/unseed' });
-    }
-    foldPatches(patches);
-    if (findings.length) {
-      console.group('Vocabulary references repaired');
-      for (const f of findings) console.info(f.form, f.id, f.reasons.join('; '));
-      console.groupEnd();
-      // Not always a deleted entry: a field changed to Entry holds text that
-      // names no entry either, and this is what clears it.
-      notifyWarning(
-        `${countOf(findings.length, 'entry')} held a value that names no entry. Those values were cleared.`,
-        'Entries repaired',
-      );
-    }
-    // A vocabulary that has lost a pile of entries has as many writes as it
-    // has references to them, so they go out in bulk.
-    sendInTurn(
-      'Repair entry references',
-      () => bulkRepoint(patches, before),
-      'Failed to repair entry references',
-    );
-  };
-
   useEffect(() => {
     if (vocabularyId && vocabularyId !== 'new') {
       fetchItems();
@@ -701,9 +679,9 @@ export const VocabularyItems = ({
       type: 'draft/seed',
       seedKey,
       form: item.form,
-      fields: editableMetadata(item.metadata),
+      fields: editableMetadata(readMetadata.get(item.id) ?? item.metadata),
     });
-  }, [selectedId, newParent, items, tree, draft.seedKey, pastTime, loading]);
+  }, [selectedId, newParent, items, tree, readMetadata, draft.seedKey, pastTime, loading]);
 
   // A row of the roleset band whose name is not an ARG or repeats another
   // (RolesetBand's onProblem). The draft's fields keep that argument as it was
@@ -712,7 +690,7 @@ export const VocabularyItems = ({
   const [argProblem, setArgProblem] = useState(null);
   const dirty =
     !!argProblem ||
-    (isNew ? isDirty(draft, null) : selectedItem ? isDirty(draft, selectedItem) : false);
+    (isNew ? isDirty(draft, null) : selectedAsRead ? isDirty(draft, selectedAsRead) : false);
   // What leaving would lose. A new sense still holding only its headword's
   // form can be saved, but leaving it loses nothing.
   const typed = isNew ? !!argProblem || hasTyped(draft, null) : dirty;
@@ -730,13 +708,13 @@ export const VocabularyItems = ({
     fields,
     draft.fields,
     (f) => draftTagsetFor(f.name),
-    isNew ? {} : editableMetadata(selectedItem?.metadata),
+    isNew ? {} : editableMetadata(selectedAsRead?.metadata),
   );
   // The roleset likewise: one an older entry or an import left behind does not
   // lock the entry, least of all where the band that could mend it is hidden.
   const draftRoleset = readRoleset(draft.fields);
   const rolesetRefused =
-    draftRoleset !== (isNew ? '' : readRoleset(editableMetadata(selectedItem?.metadata)))
+    draftRoleset !== (isNew ? '' : readRoleset(editableMetadata(selectedAsRead?.metadata)))
       ? rolesetProblem(draftRoleset)
       : null;
   const saveAllowed = tagsetsAllow && !rolesetRefused && !argProblem;
@@ -750,7 +728,7 @@ export const VocabularyItems = ({
       dispatch({
         type: 'draft/reset',
         form: selectedItem.form,
-        fields: editableMetadata(selectedItem.metadata),
+        fields: editableMetadata(selectedAsRead.metadata),
       });
     }
   };
@@ -825,9 +803,10 @@ export const VocabularyItems = ({
     // The structure the form does not edit (sense place, examples, import
     // identity) is carried over from the entry as it is NOW, so a renumber
     // or an example added while the form was open is not written back over
-    // by this save.
+    // by this save. Read as the form reads it, so a parent that is gone is
+    // stored as none.
     const metadata = {
-      ...(isNew ? {} : reservedMetadata(selectedItem?.metadata)),
+      ...(isNew ? {} : reservedMetadata(selectedAsRead?.metadata)),
       ...cleanMeta(draft.fields),
     };
     const form = draft.form.trim();

@@ -113,7 +113,7 @@ describe('deleting an entry other entries point at', () => {
         />
       </MemoryRouter>,
     );
-    // The load, its usage query and the load-time reference repair.
+    // The load and its usage query.
     await view.step(async () => {});
     await view.step(async () => {});
     calls.bulkUpdate.length = 0;
