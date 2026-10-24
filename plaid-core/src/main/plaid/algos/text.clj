@@ -2364,7 +2364,8 @@
   gets one new token of that layer as long as it, which is cut from no
   token and so names none under `:token/from`: it takes no metadata
   (HUNT-igt R4: a morpheme nobody proposed read as machine work) and,
-  under `:token/precedence`, the precedence of the first of them. Only on a layer that
+  under `:token/precedence`, the precedence of the first of them, nulls
+  last, else 1 where none stores one. Only on a layer that
   deals its tokens out (`dealt?`, the words of a multi-word token) do those
   as long as the word go one to each part, in order of precedence, when
   there are as many of them as parts (`can't`, `ca` + `n't`, typed as
@@ -2410,6 +2411,10 @@
                                                  :id id}])))))))
                      placed)
         live? (fn [t] (and (not (::gone t)) (was (:token/id t)) (not (part? t)) (not (word? t))))
+        ;; by stored precedence, nulls last, then id, as the split route
+        ;; orders them (`plaid.sql.token/split-straddlers!`)
+        prec #(:token/precedence (was (:token/id %)))
+        by-precedence #(sort-by (juxt (comp nil? prec) (fn [t] (or (prec t) 0)) (comp str :token/id)) %)
         ;; the tokens under a split word as long as it, by word and layer
         under (group-by (fn [t] (let [{ob :token/begin oe :token/end} (was (:token/id t))]
                                   [[ob oe] (:token/layer t)]))
@@ -2423,7 +2428,7 @@
                                (let [pieces (:pieces (splits w))]
                                  (when (and (dealt? l) (= (count ts) (count pieces)))
                                    (map vector
-                                        (map :token/id (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts))
+                                        (map :token/id (by-precedence ts))
                                         pieces)))))
                      under)
         ;; the split word a token stood strictly inside, by its old extent
@@ -2459,9 +2464,10 @@
                                               (keep (fn [[[w2 l] ts]]
                                                       (when (and (= w2 w) (not (shared (:token/id (first ts)))))
                                                         ;; cut from nothing, so bare (HUNT-igt R4),
-                                                        ;; first among the tokens it stands for
+                                                        ;; first among the tokens it stands for,
+                                                        ;; else 1 where none stores one
                                                         {:token/layer l :token/begin (first p) :token/end (second p)
-                                                         :token/precedence (:token/precedence (was (:token/id (first (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts)))))}))
+                                                         :token/precedence (or (prec (first (by-precedence ts))) 1)}))
                                                     under)))
                                        ;; the pieces of the tokens under it
                                        ;; reaching over a cut, on this part

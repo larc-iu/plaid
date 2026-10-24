@@ -904,6 +904,25 @@
       (testing "the word the part was cut from keeps everything"
         (is (= prov (metadata-of (words 2))))))))
 
+(deftest a-typed-space-numbers-the-new-part-s-token-under-a-word-storing-none
+  ;; REV-R4-TOKENS T4: a word whose morpheme stores no precedence gave the
+  ;; new part a morpheme storing none. It takes the first stored one's,
+  ;; nulls last as the split route reads them, else 1.
+  (let [{:keys [text morphemes layers]} (setup "a walk cat" :split true)]
+    (is (nil? (-> (get-token admin-request (morphemes 2)) :body :token/precedence)))
+    (let [res (edit-text text {:edits [(ins 8 " ")] :base (-> (get-text admin-request text) :body :text/digest)})
+          m (first (filter #(= (str (:morphemes layers)) (str (:layer %))) (-> res :body :reshape :tokens)))]
+      (assert-ok res)
+      (is (some? m))
+      (is (= 1 (-> (get-token admin-request (:id m)) :body :token/precedence))))
+    (testing "beside a stored one, the stored one's"
+      (assert-created (create-token admin-request (:morphemes layers) text 2 6 2))
+      (let [res (edit-text text {:edits [(ins 4 " ")] :base (-> (get-text admin-request text) :body :text/digest)})
+            m (first (filter #(= (str (:morphemes layers)) (str (:layer %))) (-> res :body :reshape :tokens)))]
+        (assert-ok res)
+        (is (= "a wa lk c at" (-> (get-text admin-request text) :body :text/body)))
+        (is (= 2 (-> (get-token admin-request (:id m)) :body :token/precedence)))))))
+
 (deftest a-token-under-a-split-word-reaching-over-the-cut-honours-preserve-on-split
   ;; The piece of a morpheme that reaches over the cut, made on the other
   ;; part, is cut from that morpheme and takes its keys.
