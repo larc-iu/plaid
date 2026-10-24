@@ -12,6 +12,7 @@
 
 import { cpSlice, cpLength, utf16ToCp } from '@larc-iu/plaid-client';
 import {
+  isTokenIgnored,
   isUnicodePunctuation,
   isWordSpace,
   shouldTokenizeCharacter,
@@ -71,7 +72,9 @@ export function findUntokenizedRanges(text, existingTokens = []) {
 }
 
 /**
- * Tokenize text within specified ranges, respecting ignored tokens configuration
+ * Tokenize text within specified ranges, respecting ignored tokens configuration.
+ * A token the rule excludes (isTokenIgnored) is no word, as in core's
+ * Tokenize: it stays in the gap like a break character.
  * @param {string} text - Full text content
  * @param {Object} config - Ignored tokens configuration
  * @param {Array} untokenizedRanges - Ranges to tokenize
@@ -96,7 +99,7 @@ export function tokenizeText(text, config, untokenizedRanges) {
         if (i > currentStart) {
           const tokenText = cps.slice(currentStart, i).join('');
           const trimmed = tokenText.trim();
-          if (trimmed.length > 0) {
+          if (trimmed.length > 0 && !isTokenIgnored(trimmed, config)) {
             // Find the actual start and end positions of the trimmed text
             const leadingSpaces = tokenText.length - tokenText.trimStart().length;
             const trailingSpaces = tokenText.length - tokenText.trimEnd().length;
@@ -134,7 +137,7 @@ export function tokenizeText(text, config, untokenizedRanges) {
     if (currentStart < range.end) {
       const tokenText = cps.slice(currentStart, range.end).join('');
       const trimmed = tokenText.trim();
-      if (trimmed.length > 0) {
+      if (trimmed.length > 0 && !isTokenIgnored(trimmed, config)) {
         // Find the actual start and end positions of the trimmed text
         const leadingSpaces = tokenText.length - tokenText.trimStart().length;
         const trailingSpaces = tokenText.length - tokenText.trimEnd().length;

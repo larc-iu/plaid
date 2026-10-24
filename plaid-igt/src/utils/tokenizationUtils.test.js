@@ -41,6 +41,20 @@ describe('tokenizeText punctuation handling', () => {
     ]);
   });
 
+  // HUNT-recent 17: core's Tokenize leaves out a word the ignored-token rule
+  // excludes, and this button stored it.
+  it('makes no word of a token the ignored-token rule excludes, as core does', () => {
+    expect(tokenize('a → b', punctCfg)).toEqual([
+      { text: 'a', begin: 0, end: 1 },
+      { text: 'b', begin: 4, end: 5 },
+    ]);
+    const cfg = { type: 'blacklist', blacklist: ['...'] };
+    expect(tokenize('a ... b', cfg)).toEqual([
+      { text: 'a', begin: 0, end: 1 },
+      { text: 'b', begin: 6, end: 7 },
+    ]);
+  });
+
   it('blacklist mode skips blacklisted break chars too', () => {
     const cfg = { type: 'blacklist', blacklist: ['|'] };
     expect(tokenize('a|b', cfg)).toEqual([
