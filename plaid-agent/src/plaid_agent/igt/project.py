@@ -405,12 +405,6 @@ def mwe_ref(link: 'Link', sentence_index: int) -> str:
     return '+'.join(f's{si}.w{wi}' for si, wi in link.members) or '?'
 
 
-def mwe_form(doc: 'IgtDoc', link: 'Link') -> str:
-    """A multi-word expression's linked form: its members' surfaces in text
-    order, spaced, which is what its entry's form is compared against."""
-    return ' '.join(doc.sentences[si - 1].words[wi - 1].surface for si, wi in link.members)
-
-
 @dataclass
 class Morpheme:
     id: str
@@ -438,13 +432,6 @@ def virtual_morpheme_id(word_id: str) -> str:
 
 def is_virtual(token_id) -> bool:
     return isinstance(token_id, str) and token_id.startswith(VIRTUAL_PREFIX)
-
-
-def stored_morphemes(w: 'Word') -> List['Morpheme']:
-    """A word's stored morphemes, without the derived one of a word nobody
-    has segmented. What counts and searches morphemes reads, as the query
-    engine, which sees only what is stored, does."""
-    return [m for m in w.morphemes if not m.virtual]
 
 
 def analyzed(w: 'Word') -> bool:
