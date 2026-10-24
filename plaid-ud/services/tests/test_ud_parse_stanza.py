@@ -243,8 +243,10 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     assert by_value['det'][0] == by_value['nsubj'][1]   # the noun heads the det
 
     assert service.client.operations == ['Stanza UD parse (en)']
-    # The first ask is the load before the document is held.
-    assert service.pipeline_provider.asked == [('en', False), ('en', False)]
+    # The first ask is the load before the document is held: the
+    # pretokenized pipeline, which most parses use. A from-scratch parse
+    # builds its own under the lock.
+    assert service.pipeline_provider.asked == [('en', True), ('en', False)]
     assert service.pipeline_provider.inputs == [BODY]
 
 
@@ -308,7 +310,7 @@ def test_an_already_tokenized_document_keeps_its_substrate():
     [result] = helper.results
     assert result['mode'] == 'preserve'
     assert result['parsed_sentences'] == 1 and result['skipped_sentences'] == 0
-    assert service.pipeline_provider.asked == [('en', False), ('en', True)]
+    assert service.pipeline_provider.asked == [('en', True), ('en', True)]
     assert service.pipeline_provider.inputs == [[['the', 'dog', 'barks']]]
 
     # The syntactic words and the substrate stay.
@@ -556,6 +558,28 @@ def test_the_language_loads_before_the_document_is_held():
 
     assert helper.errors == []
     assert held_at_first_ask == [False]
+
+
+def test_a_document_with_words_builds_no_pipeline_under_the_lock_and_one_per_language(monkeypatch):
+    # REV-W3F F2: the pre-lock load built the full pipeline, and a document
+    # with words, the usual case, then built the pretokenized one under the
+    # lock and kept both.
+    doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)],
+                    morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)])
+    service = _service(documents=[doc])
+    calls = service.client.calls
+    built = []
+
+    def pipeline(language, processors=None, tokenize_pretokenized=False):
+        built.append((language, tokenize_pretokenized,
+                      any(c[0] == 'lock' for c in calls)))
+        return lambda value: _Parsed([ROWS] * len(value), [0] * len(value))
+    monkeypatch.setattr(ud.stanza, 'Pipeline', pipeline)
+    service.pipeline_provider = ud.PipelineProvider()
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    assert built == [('en', True, False)]
 
 
 def test_a_misaligned_pretokenized_parse_aborts_rather_than_guessing():
@@ -898,7 +922,7 @@ def test_a_sentence_with_no_words_is_tokenized_and_parsed_with_its_words():
     assert result['mode'] == 'preserve' and result['parsed_sentences'] == 2
     # The words come from a pipeline that only finds words, the parse from
     # the pretokenized one.
-    assert provider.asked == [('en', False), ('en', False, 'words'), ('en', True)]
+    assert provider.asked == [('en', True), ('en', False, 'words'), ('en', True)]
     assert 'the dog barks' in provider.inputs
     [batch] = service.client.batches
     words = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL')

@@ -1154,10 +1154,11 @@ class StanzaParserService(BaseService):
 
     def setup(self, args):
         # Pipelines are built lazily per requested language and cached; preload
-        # the default so the common case is warm at startup.
+        # the default so the common case is warm at startup. The pretokenized
+        # one, which each request loads first (process_request).
         print("Loading Stanza pipeline (en)…")
         self.pipeline_provider = PipelineProvider(processors='tokenize,pos,lemma,depparse')
-        self.pipeline_provider.get('en')
+        self.pipeline_provider.get('en', pretokenized=True)
 
     def process_request(self, request_data, response_helper):
         # `BaseService.handle_service_request` already wraps this in a
@@ -1182,9 +1183,13 @@ class StanzaParserService(BaseService):
         # rather than clobber their work.
         response_helper.progress(2, "Starting…")
         # The language's models load (and on first use download) before the
-        # document is held, so nobody waits on the document meanwhile.
+        # document is held, so nobody waits on the document meanwhile. The
+        # pretokenized pipeline is the one a document with words parses
+        # with, the usual case, and it needs the same models a from-scratch
+        # parse does. Which one the run needs is known only from the document,
+        # read under the lock, so a from-scratch parse builds its own there.
         with progress_heartbeat(response_helper, 2, "Loading the parser…"):
-            self.pipeline_provider.get(language)
+            self.pipeline_provider.get(language, pretokenized=True)
         # Group every write this parse makes into ONE labeled audit-log entry (each
         # op keeps its own description underneath).
         # `parse_document` reports the rest of the way and is a cancellation
