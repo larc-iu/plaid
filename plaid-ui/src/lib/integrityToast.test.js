@@ -51,6 +51,10 @@ describe('reportIntegrityFindings', () => {
     expect(title).toBe('Data integrity issue detected');
     // The finding is a developer's sentence: the toast says one generic line.
     expect(options.description).toBe(INTEGRITY_DESCRIPTION);
+    // It states the fact, and no app repairs a document on open (R3).
+    expect(INTEGRITY_DESCRIPTION).toBe(
+      'This document has problems. Copy the details for a bug report.',
+    );
     expect(options.duration).toBe(Infinity);
   });
 

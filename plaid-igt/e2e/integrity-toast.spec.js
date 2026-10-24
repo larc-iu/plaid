@@ -2,8 +2,8 @@ import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
-// TEST_PLAN C12-03: an un-healable integrity finding (inverted alignment
-// timing) surfaces as ONE sticky toast with a "Copy details" action on the
+// TEST_PLAN C12-03: an integrity finding (inverted alignment timing)
+// surfaces as ONE sticky toast with a "Copy details" action on the
 // document, and that toast leaves with the document instead of following the
 // user to other pages.
 test('integrity toast shows on the document and leaves with it', async ({ page }) => {
@@ -33,9 +33,7 @@ test('integrity toast shows on the document and leaves with it', async ({ page }
     await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
     const toast = page.getByText('Data integrity issue detected');
     await expect(toast).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page.getByText('This document has problems that could not be repaired.', { exact: false }),
-    ).toBeVisible();
+    await expect(page.getByText('This document has problems.', { exact: false })).toBeVisible();
     expect(logged.some((line) => /end time \(1\) before start time \(3\)/.test(line))).toBe(true);
     await expect(page.getByRole('button', { name: 'Copy details' })).toBeVisible();
 

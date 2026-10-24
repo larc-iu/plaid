@@ -6,17 +6,17 @@ import { appName } from './uiConfig.js';
 //
 // Full detail to the console, grouped, plus ONE consolidated toast with a Copy
 // details action that drops the lot onto the clipboard for a bug report.
-// Findings are what the app could NOT repair, which is exactly why they are
-// worth interrupting for. Repairs that SUCCEEDED say nothing.
+// Findings are what the document's checks find wrong in it as stored
+// (DocumentModel validateOnOpen), which nothing on open writes away.
 //
 // One toast id, so a document that reloads under a failing check replaces its
-// own notice rather than stacking them. It never expires: an unrepaired
-// document is a standing fact, not an event.
+// own notice rather than stacking them. It never expires: a document with
+// problems is a standing fact, not an event.
 
 const TOAST_ID = 'plaid-integrity-findings';
 
 export const INTEGRITY_DESCRIPTION =
-  'This document has problems that could not be repaired. Copy the details for a bug report.';
+  'This document has problems. Copy the details for a bug report.';
 
 /**
  * The findings as one line each, machine-pasteable into a bug report.
@@ -41,8 +41,8 @@ export const reportIntegrityFindings = (findings, { documentId } = {}) => {
   console.groupEnd();
 
   // The findings themselves are written for a developer ("3 orphan
-  // morpheme(s) remain after auto-repair"), so the toast says one generic line
-  // and the findings go to the console and to Copy details.
+  // morpheme(s)"), so the toast says one generic line and the findings go to
+  // the console and to Copy details.
   const errors = findings.filter((f) => f.severity === 'error');
   const detail = formatFindingsForClipboard(findings, { documentId });
 
