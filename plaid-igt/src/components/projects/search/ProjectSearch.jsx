@@ -99,6 +99,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           : await runHitsSearch(client, project, layerInfo, domain, queryText.trim(), matchType);
       setResult(r);
     } catch (err) {
+      // The box and the URL now say this query, so the last one's hits go.
+      setResult(null);
       if (!(err instanceof PatternError)) console.error('Search failed:', err);
       // The server's 400 reads ":value has an invalid regex: Unclosed group
       // near index 1 (" — keep only the engine's own explanation.
