@@ -27,6 +27,9 @@ const affixes = await import(
   pathToFileURL(resolve(DOMAIN, "affixMarkers.js")).href
 );
 const zero = await import(pathToFileURL(resolve(DOMAIN, "zeroMorph.js")).href);
+const morphemes = await import(
+  pathToFileURL(resolve(UI, "domain/morphemes.js")).href
+);
 const igtExport = await import(
   pathToFileURL(resolve(DOMAIN, "igtExport.js")).href
 );
@@ -94,5 +97,8 @@ process.stdout.write(
     zero: cases.forms.map((f) => zero.isZeroMorph(f)),
     names: cases.namers.map(([t, f]) => affixes.canNameWord(t, f)),
     lines: cases.lines.map(readLine),
+    goesBy: cases.goesBy.map(([metadata, entryType]) =>
+      morphemes.morphemeMorphType(metadata, entryType),
+    ),
   }),
 );

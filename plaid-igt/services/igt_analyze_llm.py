@@ -51,7 +51,7 @@ from plaid_client.service import locked_for_writes, machine_detail, requester_me
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
-from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
+from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of, morpheme_morph_type
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
     ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
@@ -267,9 +267,21 @@ def _joiner(morph_type):
     return '=' if 'clitic' in t else '-'
 
 
-def render_sentence(sentence, gloss_layer_id) -> Optional[str]:
+def _entry_type(w, m, entry_types):
+    """The type of an entry morpheme `m` is linked to, when it goes by one."""
+    for link in (w.get('morph_links') or {}).get(m['id'], []):
+        v = link.get('vocab_item')
+        t = (entry_types or {}).get(v.get('id') if isinstance(v, dict) else v)
+        if t:
+            return t
+    return None
+
+
+def render_sentence(sentence, gloss_layer_id, entry_types=None) -> Optional[str]:
     """A derived sentence as one interleaved line, or None when any word lacks
-    a gloss (an example must be complete to teach anything)."""
+    a gloss (an example must be complete to teach anything). `entry_types`
+    maps an entry id to the morph type it goes by: a linked morpheme goes by
+    its entry's and stores no copy of it."""
     items = []
     for w in sentence['words']:
         pieces = []
@@ -280,7 +292,7 @@ def render_sentence(sentence, gloss_layer_id) -> Optional[str]:
                 return None
             meta = m.get('metadata') or {}
             seg = meta.get('form') or w['surface']
-            pieces.append((gloss, seg, meta.get('morphType')))
+            pieces.append((gloss, seg, morpheme_morph_type(meta, _entry_type(w, m, entry_types))))
         if not pieces:
             return None
         s = ''
@@ -294,9 +306,11 @@ def render_sentence(sentence, gloss_layer_id) -> Optional[str]:
 
 
 def load_examples(client, project_id, layers, gloss_field, translation_field,
-                  exclude_doc_id, max_docs=MAX_EXAMPLE_DOCS, on_progress=None) -> List[dict]:
+                  exclude_doc_id, max_docs=MAX_EXAMPLE_DOCS, on_progress=None,
+                  entry_types=None) -> List[dict]:
     """Fully person-analyzed (or verified) sentences from other documents of
-    the project: [{text, translation, line, words}]."""
+    the project: [{text, translation, line, words}]. `entry_types` is as
+    render_sentence takes it."""
     pool = []
     docs = [d for d in (client.projects.list_documents(project_id) or []) if d['id'] != exclude_doc_id]
     for n, d in enumerate(docs[:max_docs]):
@@ -312,7 +326,7 @@ def load_examples(client, project_id, layers, gloss_field, translation_field,
         for s in sentences:
             if not s['words'] or any(word_state(w) != 'protected' for w in s['words']):
                 continue
-            line = render_sentence(s, gloss_layer_id)
+            line = render_sentence(s, gloss_layer_id, entry_types)
             if not line:
                 continue
             pool.append({'text': ' '.join(w['surface'] for w in s['words']),
@@ -470,6 +484,7 @@ class LLMAnalyzeService(BaseService):
         pool = load_examples(
             self.client, project_id, layers, gloss_field, translation_field,
             exclude_doc_id=document_id,
+            entry_types={e['id']: e['type'] for e in lexicon if e['type']},
             on_progress=lambda n, total: response_helper.progress(
                 8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
         ) if n_examples else []

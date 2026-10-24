@@ -434,6 +434,22 @@ def test_a_segmented_word_is_named_by_its_stem_never_an_affix_or_a_zero_morph():
     assert [concept for concept, _ in _segmented_run(_segmented())] == ['hii', 'bul', 'eek']
 
 
+def test_a_linked_morpheme_goes_by_its_entrys_type():
+    # R2 (2026-10-24): a morpheme linked to a typed entry stores no type of
+    # its own, and goes by the entry's. Here the prefix's gloss reads as a
+    # word and the stem's does not: only the entries' types keep the prefix
+    # from naming the word.
+    morphemes = [('m1', 0, 'ka', None, 'house', 'e-ka'), ('m2', 0, 'ri', None, '3SG', 'e-ri')]
+    vocab = {'id': 'v1', 'name': 'Lexicon', 'items': [
+        {'id': 'e-ka', 'form': 'ka', 'metadata': {'morphType': 'prefix'}},
+        {'id': 'e-ri', 'form': 'ri', 'metadata': {'morphType': 'stem'}}]}
+    document = _segmented(morphemes=morphemes, body='kari\n', words=[(0, 4)])
+    assert [concept for concept, _ in _segmented_run(document, vocab)] == ['ri']
+    untyped = {**vocab, 'items': [{**it, 'metadata': {}} for it in vocab['items']]}
+    document = _segmented(morphemes=morphemes, body='kari\n', words=[(0, 4)])
+    assert [concept for concept, _ in _segmented_run(document, untyped)] == ['ka']
+
+
 def test_untyped_morphemes_name_the_word_by_the_first_lexical_gloss():
     # No morph types: the stem is the morpheme whose gloss is lexical, so
     # neither 3.POS, CAUS nor the zero morph's `obj:3` names the word.

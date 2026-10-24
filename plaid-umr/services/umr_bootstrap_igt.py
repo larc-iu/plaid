@@ -72,6 +72,7 @@ Requirements (on top of plaid-client): none.
 """
 
 import argparse
+import dataclasses
 import json
 import re
 from typing import Any, Dict, List, Optional
@@ -82,7 +83,8 @@ from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params
                                         next_variable, run_label, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  can_name_word, gloss_morphemes, line_flags)
-from plaid_client.workflows.igt.senses import build_sense_tree
+from plaid_client.workflows.igt.senses import (build_sense_tree, entry_morph_types,
+                                               morpheme_morph_type)
 from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
@@ -381,6 +383,24 @@ def headwords_of(vocabularies) -> Dict[str, str]:
     return out
 
 
+def entry_types_of(vocabularies) -> Dict[str, str]:
+    """The morph type each entry goes by, its own or its headword's, by entry
+    id, for the entries that go by one (``entry_morph_types``)."""
+    out: Dict[str, str] = {}
+    for vocab in vocabularies or []:
+        out.update(entry_morph_types([it for it in vocab.get('items') or [] if it.get('id')]))
+    return out
+
+
+def going_by(morpheme, links, entry_types):
+    """``morpheme`` with the morph type it goes by: its entry's when it is
+    linked to one that goes by a type, else its own. A linked morpheme stores
+    no copy of its entry's type, so the graph reads only its own."""
+    entry = next((entry_types[e] for e in links.get(morpheme.id, []) if e in entry_types), None)
+    t = morpheme_morph_type({'morphType': morpheme.morph_type}, entry)
+    return morpheme if t == morpheme.morph_type else dataclasses.replace(morpheme, morph_type=t)
+
+
 def links_by_token(layers) -> Dict[str, List[str]]:
     """Entry ids by the word or morpheme token linked to them."""
     out: Dict[str, List[str]] = {}
@@ -395,10 +415,13 @@ def links_by_token(layers) -> Dict[str, List[str]]:
     return out
 
 
-def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken, listed=None):
+def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken, listed=None,
+                  entry_types=None):
     """One sentence's skeleton as writes: ``(pieces, nodes, edges)``, the shape
     `write_graphs` takes. Edges are always []. `listed` is `listed_forms` of
-    the headwords, made once per run by a caller planning many sentences."""
+    the headwords, made once per run by a caller planning many sentences.
+    `entry_types` is `entry_types_of` the vocabularies, the type a linked
+    morpheme goes by."""
     if listed is None:
         listed = listed_forms(headwords)
     pieces = []
@@ -407,7 +430,7 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
     for word in sentence.words:
         if not _LETTER.search(word.text) and not re.search(r'\d', word.text):
             continue
-        morphemes = sentence.morphemes_of(word)
+        morphemes = [going_by(m, links, entry_types or {}) for m in sentence.morphemes_of(word)]
         # Every gloss of the word with the morpheme it glosses (None for the
         # word), in the order of `gloss_layers`, which is the order a concept
         # is looked for. On each gloss line the glosses that could name the
@@ -509,6 +532,7 @@ class UmrBootstrapService(BaseService):
         # fails fails the run: skeletons named from the wrong gloss lines cost
         # more to clean up than a second request.
         headwords: Dict[str, str] = {}
+        entry_types: Dict[str, str] = {}
         project = None
         if run.project_id:
             run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
@@ -516,6 +540,7 @@ class UmrBootstrapService(BaseService):
             vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
                             for v in (project.get('vocabs') or []) if v.get('id')]
             headwords = headwords_of(vocabularies)
+            entry_types = entry_types_of(vocabularies)
         links = links_by_token(run.layers)
         listed = listed_forms(headwords)
         glosses = lexical_gloss_layers(project, run.layers)
@@ -532,7 +557,7 @@ class UmrBootstrapService(BaseService):
         for sentence in run.targets:
             pieces, nodes, edges = plan_sentence(sentence, glosses, run.document.gloss,
                                                  links, headwords, self.abbreviations, run.taken,
-                                                 listed)
+                                                 listed, entry_types)
             if not nodes:
                 failures.append({'sentence': sentence.number, 'reason': no_node})
                 continue

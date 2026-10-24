@@ -134,8 +134,11 @@ class Morpheme:
     begin: int
     end: int
     text: str
-    #: IGT's ``metadata.morphType``, the FLEx morph-type name ("stem",
-    #: "prefix", "enclitic"), or None where the morpheme has none.
+    #: The token's own ``metadata.morphType``, the FLEx morph-type name
+    #: ("stem", "prefix", "enclitic"), or None where it holds none. A morpheme
+    #: linked to an entry that goes by a type goes by that one, and stores no
+    #: copy of it: a reader with the lexicon resolves it
+    #: (``plaid_client.workflows.igt.senses.morpheme_morph_type``).
     morph_type: Optional[str] = None
 
 

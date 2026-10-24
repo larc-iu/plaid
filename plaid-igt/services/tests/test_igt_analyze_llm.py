@@ -124,6 +124,16 @@ def test_render_sentence_writes_the_interleaved_line_or_nothing():
     assert llm.render_sentence(sentence([w, {'surface': 'kedi', 'morphs': [m4], 'morph_spans': {'m4': s4}}]), 'G') is None
 
 
+def test_render_sentence_joins_a_linked_morpheme_by_its_entrys_type():
+    # A linked morpheme stores no copy of its entry's type (R2, 2026-10-24).
+    m1, s1 = morph('m1', 'ev', 'house')
+    m2, s2 = morph('m2', 'da', 'TOP', 'suffix')
+    w = {'surface': 'evda', 'morphs': [m1, m2], 'morph_spans': {'m1': s1, 'm2': s2},
+         'morph_links': {'m2': [{'vocab_item': {'id': 'e-da'}, 'metadata': {}}]}}
+    assert llm.render_sentence(sentence([w]), 'G') == 'house(ev)-TOP(da)'
+    assert llm.render_sentence(sentence([w]), 'G', {'e-da': 'enclitic'}) == 'house(ev)=TOP(da)'
+
+
 def test_build_user_prompt_layout():
     p = llm.build_user_prompt('Turkish', 'English', ['evlerden'], 'from the houses',
                               [entry('ler', 'PL', 5, 'suffix')],

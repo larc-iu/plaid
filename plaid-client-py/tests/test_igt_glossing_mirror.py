@@ -19,6 +19,7 @@ import subprocess
 import pytest
 
 from plaid_client.workflows.igt import glossing
+from plaid_client.workflows.igt.senses import morpheme_morph_type
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, 'igt_glossing_mirror.mjs')
@@ -68,6 +69,15 @@ LINES = [
     [['go.3SG.pfv', 'stem', 'ik'], ['ipfv.PL', 'enclitic', 'ma']],
 ]
 
+#: A morpheme's own metadata and its linked entry's type: the type it goes by
+#: is the entry's when the entry has one, else its own (plaid-ui's
+#: morphemeMorphType, senses.morpheme_morph_type).
+GOES_BY = [
+    [{}, None], [{'morphType': 'suffix'}, None], [{'morphType': 'suffix'}, 'stem'],
+    [{}, 'enclitic'], [{'morphType': ''}, None], [{'morphType': ''}, ''], [None, None],
+    [{'morphType': 'suffix'}, ''], [{'morphType': 3}, None], [{'morphType': 'stem'}, 3],
+]
+
 
 @pytest.fixture(scope='module')
 def js(tmp_path_factory):
@@ -78,7 +88,7 @@ def js(tmp_path_factory):
     cases.write_text(json.dumps({
         'values': VALUES, 'scanned': [v for v in VALUES if not any(c.isspace() for c in v)],
         'units': UNITS, 'parts': PARTS, 'morphTypes': MORPH_TYPES, 'forms': FORMS,
-        'namers': NAMERS, 'lines': LINES,
+        'namers': NAMERS, 'lines': LINES, 'goesBy': GOES_BY,
     }), encoding='utf-8')
     out = subprocess.run([exe, SCRIPT, str(cases)], capture_output=True, text=True, timeout=60,
                          check=True).stdout
@@ -105,6 +115,10 @@ def test_a_tagset_check_reads_a_value_as_the_skeleton_does(js):
     spaceless = [v for v in VALUES if not any(c.isspace() for c in v)]
     assert [[f for m in glossing.lexical_flags(glossing.gloss_morphemes(v)) for f in m]
             for v in spaceless] == js['scanned']
+
+
+def test_a_morpheme_goes_by_the_type_the_app_reads(js):
+    assert [morpheme_morph_type(m, t) for m, t in GOES_BY] == js['goesBy']
 
 
 def test_bound_types_and_the_zero_morph_are_the_apps(js):

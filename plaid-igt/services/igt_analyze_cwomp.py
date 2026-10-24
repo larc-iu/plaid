@@ -83,6 +83,7 @@ from plaid_client.workflows.igt import (
     read_skip_word_ids,
 )
 from plaid_client.workflows.igt.glossing import is_clitic
+from plaid_client.workflows.igt.senses import entry_morph_types, morpheme_morph_type
 
 CWOMP_COMMIT = 'f095281'
 DEFAULT_HOME = Path.home() / '.cache' / 'plaid' / 'cwomp'
@@ -188,11 +189,35 @@ def _gloss_of(w, m, gloss_layer_id):
     return None
 
 
-def trusted_analysis(w, gloss_layer_id) -> Optional[List[Tuple[str, str]]]:
+def project_entry_types(client, project) -> Dict[str, str]:
+    """The morph type each entry of the project's vocabularies goes by, its
+    own or its headword's, for the entries that go by one."""
+    out: Dict[str, str] = {}
+    for v in project.get('vocabs') or []:
+        items = (client.vocab_layers.get(v['id'], include_items=True) or {}).get('items') or []
+        out.update(entry_morph_types(items))
+    return out
+
+
+def morph_type_of(w, m, entry_types=None) -> Optional[str]:
+    """The morph type morpheme `m` goes by: the type of an entry it is
+    linked to that goes by one, else its own. A linked morpheme stores no
+    copy of its entry's type."""
+    entry_type = None
+    for link in w['morph_links'].get(m['id'], []):
+        v = link.get('vocab_item')
+        entry_type = (entry_types or {}).get(v.get('id') if isinstance(v, dict) else v)
+        if entry_type:
+            break
+    return morpheme_morph_type(m.get('metadata'), entry_type)
+
+
+def trusted_analysis(w, gloss_layer_id, entry_types=None) -> Optional[List[Tuple[str, str]]]:
     """A word's morphemes as lexicon entries [(form, gloss)] when a person made
     or verified every piece of its analysis and every morpheme has a gloss,
     else None. A word nobody segmented counts when its one morpheme has a
-    person's gloss: the word is then its own form."""
+    person's gloss: the word is then its own form. `entry_types` is
+    `project_entry_types`, for the type a linked morpheme goes by."""
     out = []
     for m in w['morphs']:
         meta = m.get('metadata') or {}
@@ -202,7 +227,8 @@ def trusted_analysis(w, gloss_layer_id) -> Optional[List[Tuple[str, str]]]:
         if sp is None or prov_state(sp.get('metadata')) not in (HUMAN, VERIFIED):
             return None
         form = meta.get('form') or w['surface']
-        out.append((encode_form(form, meta.get('morphType')), encode_piece(sp['value'].strip())))
+        out.append((encode_form(form, morph_type_of(w, m, entry_types)),
+                    encode_piece(sp['value'].strip())))
     return out or None
 
 
@@ -230,13 +256,15 @@ class Confirmed:
     people always linked it to one item, that item is the link to propose:
     the entry already names the sense, which a link by form alone cannot."""
 
-    def __init__(self, own_source=None):
+    def __init__(self, own_source=None, entry_types=None):
         self.own_source = own_source
+        #: project_entry_types, for the type a linked morpheme goes by.
+        self.entry_types = entry_types or {}
         self.entries = set()
         self.links: Dict[Tuple[str, str], Counter] = {}
 
     def add_word(self, w, gloss_layer_id) -> None:
-        a = trusted_analysis(w, gloss_layer_id)
+        a = trusted_analysis(w, gloss_layer_id, self.entry_types)
         if not a:
             return
         self.entries.update(a)
@@ -246,7 +274,7 @@ class Confirmed:
                 self.links.setdefault(entry, Counter())[item] += 1
 
     def merged(self, other: 'Confirmed') -> 'Confirmed':
-        out = Confirmed(self.own_source)
+        out = Confirmed(self.own_source, self.entry_types)
         out.entries = self.entries | other.entries
         for src in (self.links, other.links):
             for entry, c in src.items():
@@ -269,13 +297,13 @@ class Confirmed:
         return next(iter(c)) if c and len(c) == 1 else None
 
 
-def sentence_record(s, gloss_layer_id) -> Optional[dict]:
+def sentence_record(s, gloss_layer_id, entry_types=None) -> Optional[dict]:
     """A sentence as CWoMP training data, when every word is trusted."""
     if not s['words']:
         return None
     words, segs, glosses = [], [], []
     for w in s['words']:
-        a = trusted_analysis(w, gloss_layer_id)
+        a = trusted_analysis(w, gloss_layer_id, entry_types)
         if a is None:
             return None
         words.append(encode_piece(w['surface']))
@@ -295,7 +323,8 @@ def read_project(client, project_id, gloss_field, translation_field, log=print, 
     the service's provSource, whose links Confirmed leaves out."""
     project = client.projects.get(project_id)
     layers = igt_layers(project)
-    records, confirmed = [], Confirmed(own_source)
+    entry_types = project_entry_types(client, project)
+    records, confirmed = [], Confirmed(own_source, entry_types)
     docs = client.projects.list_documents(project_id) or []
     for n, d in enumerate(docs):
         log(f'Reading document {n + 1} of {len(docs)}: {d.get("name") or d["id"]}')
@@ -305,7 +334,7 @@ def read_project(client, project_id, gloss_field, translation_field, log=print, 
         for s in sentences:
             for w in s['words']:
                 confirmed.add_word(w, gloss_layer_id)
-            r = sentence_record(s, gloss_layer_id)
+            r = sentence_record(s, gloss_layer_id, entry_types)
             if r:
                 records.append(r)
     return records, confirmed
@@ -809,7 +838,7 @@ class CwompService(BaseService):
         translation_missing = (translation_field if translation_field
                                and not field_layer_id(doc, sent_layer_id, translation_field) else None)
         # This document's own confirmed morphemes count at once.
-        own = Confirmed(service_source(self.service_id))
+        own = Confirmed(service_source(self.service_id), project_confirmed.entry_types)
         for s in sentences:
             for w in s['words']:
                 own.add_word(w, gloss_layer_id)

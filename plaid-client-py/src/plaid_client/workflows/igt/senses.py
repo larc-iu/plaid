@@ -160,3 +160,29 @@ def morph_type_of(tree: SenseTree, item_id: str):
             return t
         cur = tree.parent_of.get(cur)
     return None
+
+
+def entry_morph_types(items: List[dict]) -> Dict[str, str]:
+    """Every item of one vocabulary that goes by a morph type, by id, with
+    that type (:func:`morph_type_of`). Mirrors vocabLookup's
+    ``entryMorphTypesOf``, less the items that go by none."""
+    tree = build_sense_tree(items or [])
+    out: Dict[str, str] = {}
+    for it in items or []:
+        t = morph_type_of(tree, it.get('id')) if it.get('id') in tree.by_id else None
+        if t:
+            out[it['id']] = t
+    return out
+
+
+def morpheme_morph_type(metadata: Optional[dict], entry_type: Optional[str] = None) -> Optional[str]:
+    """The morph type a morpheme goes by: its linked entry's (``entry_type``,
+    what :func:`morph_type_of` answers for that entry, None when the morpheme
+    is linked to none or the entry goes by none), else its own
+    ``metadata.morphType``. A linked morpheme stores no copy of its entry's
+    type, so every reader asks this. Mirrors plaid-ui's
+    ``morphemeMorphType``."""
+    if isinstance(entry_type, str) and entry_type != '':
+        return entry_type
+    own = (metadata or {}).get('morphType')
+    return own if isinstance(own, str) and own != '' else None
