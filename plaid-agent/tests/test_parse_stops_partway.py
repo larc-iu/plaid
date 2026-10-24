@@ -14,7 +14,7 @@ of card rows ("0 of 1 changes" for a folded row of 600).
 import pytest
 
 import test_stale_by_sentence as sbs
-from test_lost_answers import _plan_operation, _stored
+from test_lost_answers import _stored
 
 from plaid_agent.core.conversation import ConversationStore, partial_note
 
@@ -68,13 +68,10 @@ def test_a_parse_that_stops_partway_is_partly_applied_in_the_parsers_words(monke
     assert item['status'] == 'partial'
     assert item['outcome'] == 'Written in part: 230 of 300 sentences.'
     assert item['in_part'] == [230, 300, 'sentences']
-    # History names it as partly applied, not as the whole plan. Only the
-    # parser wrote under the operation, and a client relabels on its own only
-    # an operation it wrote under (the fake models that too), so the relabel
-    # is sent here.
-    label = f'Assistant, partly applied: part of {svc.summarize(plan["ops"])}'
-    assert client.operation_labels[_plan_operation(client)] != label
-    assert [m for _, m in relabels] == [label]
+    # The parse is the parser's own run (R30), so nothing is written under
+    # the plan's operation and there is no History row of the plan's to
+    # relabel.
+    assert relabels == []
     [note] = _notes(client, spec)
     assert '230 of 300 sentences were parsed' in note
     assert '1 of 1 changes were written in part.' in note
@@ -86,11 +83,6 @@ def test_a_parse_that_stops_partway_without_a_count_says_the_row_was_written_in_
     client = spec['client']()
     plan = _parse_plan(monkeypatch, client, spec)
     _parser(monkeypatch, client, writes=True, error=RuntimeError('Stanza parser: HTTP 500 boom.'))
-
-    class Groups:
-        def update(self, group_id, message):
-            pass
-    client.operation_groups = Groups()
     helper = sbs._approve(spec, client, plan)
     [done] = helper.done
     assert done['message'].startswith('Partly applied: 1 of 1 changes written in part. '), done['message']

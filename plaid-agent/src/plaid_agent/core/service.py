@@ -1833,11 +1833,6 @@ class BaseAssistantService(BaseService):
                     if e.wrote:
                         partly_label = self.partial_label(ops, e.written or [], summary)
                         operation.set_message(partly_label)
-                        if e.partly and not e.applied and not e.unknown:
-                            # Only another service wrote under the operation
-                            # (a parse), which the client does not count as a
-                            # write of its own, so it would skip the relabel.
-                            _relabel(client, operation.id, partly_label)
                     raise
         except ScopeMoved as e:
             # A corpus-wide change found again reaches documents the plan was
@@ -2211,16 +2206,6 @@ def _documents_named(client, documents: list, ids: List[str]) -> str:
     if rest:
         shown.append(f'{rest} more')
     return 'documents ' + (shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1])
-
-
-def _relabel(client, group_id: str, label: str) -> None:
-    """Relabel an operation the client itself wrote nothing under. A group
-    nothing was written under does not exist (404), and has nothing to say."""
-    try:
-        client.operation_groups.update(group_id, label)
-    except PlaidAPIError as e:
-        if e.status != 404:
-            raise
 
 
 #: A run again whose request differs from the one its first run sent under
