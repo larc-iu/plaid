@@ -443,12 +443,16 @@
            ;; the first one, the parts of a split word, the new words of
            ;; \"Tokenize new text\"), then the
            ;; partitioning-mode gap-fill on the surviving tokens.
-           (doseq [{:token/keys [id layer begin end from]} heads]
+           (doseq [{:token/keys [id layer begin end from] :as t} heads]
+             ;; A part of a word a typed space split, or a token cut under
+             ;; it, takes the precedence of the token it was cut from and
+             ;; what its layer's preserveOnSplit names, as a split's new half
+             ;; does. A token made as long as a new part names its precedence.
              (crud/insert! tx :tokens {:id id :text_id eid :token_layer_id layer
-                                       :document_id (:document_id pre) :begin begin :end_ end})
-             ;; A part of a word a typed space split, or a token made under
-             ;; it, takes what its layer's preserveOnSplit names from the
-             ;; token it was cut from, as a split's new half does.
+                                       :document_id (:document_id pre) :begin begin :end_ end
+                                       :precedence (if (contains? t :token/precedence)
+                                                     (:token/precedence t)
+                                                     (some->> from (psc/fetch-by-id tx :tokens) :precedence))})
              (when from
                (token/inherit-preserved! tx id from layer)))
            (compensate-partition-layers! tx (into survivors heads) new-text-length)
@@ -556,11 +560,12 @@
         get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))
         contains-key? (fn [m k] (or (contains? m k) (contains? m (keyword k))))]
     ;; a token the save made (a sentence over a line typed before the first
-    ;; one, a part of a split word) comes with its layer, text and
-    ;; metadata (what preserveOnSplit gave it), for a read to take it in
+    ;; one, a part of a split word) comes with its layer, text, precedence
+    ;; and metadata (what preserveOnSplit gave it), for a read to take it in
     {:tokens (live "tokens" (fn [id p] (cond-> {:id id :begin (get* p "begin") :end (get* p "end_")}
                                          (::inserted p)
                                          (assoc :layer (get* p "token_layer_id") :text (get* p "text_id")
+                                                :precedence (get* p "precedence")
                                                 :metadata (metadata/get-metadata db "token" id)))))
      ;; with the value, which a layer rule's remedy may have rewritten
      :spans (live "spans" (fn [id p] (when (or (some? (get* p "tokens")) (contains-key? p "value"))

@@ -874,10 +874,16 @@
   ;; tokens under them, as bare rows, though the token split keeps what the
   ;; layer's `preserveOnSplit` names. A machine-parsed word split this way
   ;; left a part with no `prov`, which reads as a person's own work.
+  ;; HUNT-igt R4: a token as long as the new part, made under it on each
+  ;; layer the word had one as long as it on, is cut from nothing, so it
+  ;; takes no keys (a morpheme nobody proposed, whose provDetail named
+  ;; another form, read as machine work) and takes the precedence of the
+  ;; token it stands beside, never none.
   (let [{:keys [text words morphemes others layers]} (setup "a walk cat" :split true :other :child)
         prov {"prov" "inferred" "provSource" "service:probe" "form" "cat"}]
     (declare-preserved! (:words layers) ["prov" "provSource"])
     (declare-preserved! (:morphemes layers) ["prov"])
+    (assert-ok (update-token admin-request (morphemes 2) :precedence 1))
     (doseq [t [(words 2) (morphemes 2) (others 2)]] (put-metadata! t prov))
     (let [res (edit-text text {:edits [(ins 8 " ")] :base (-> (get-text admin-request text) :body :text/digest)})
           made (filter :layer (-> res :body :reshape :tokens))
@@ -887,8 +893,10 @@
       (is (= 3 (count made)) (pr-str made))
       (testing "the new part of the word takes the keys its layer names, and only those"
         (is (= {"prov" "inferred" "provSource" "service:probe"} (by-layer (str (:words layers))))))
-      (testing "a new token under it takes its own layer's keys from the token it was cut from"
-        (is (= {"prov" "inferred"} (by-layer (str (:morphemes layers))))))
+      (testing "a new token under it as long as it is bare, with the precedence of the one beside it"
+        (let [m (first (filter #(= (str (:morphemes layers)) (str (:layer %))) made))]
+          (is (empty? (by-layer (str (:morphemes layers)))))
+          (is (= 1 (-> (get-token admin-request (:id m)) :body :token/precedence)))))
       (testing "a layer that declares nothing gets a bare token"
         (let [other-layer (str (-> (get-token admin-request (others 2)) :body :token/layer))]
           (is (contains? by-layer other-layer))

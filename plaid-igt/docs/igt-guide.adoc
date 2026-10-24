@@ -133,7 +133,8 @@ You can edit the baseline later too, and the sentences, words, and annotations a
 A word you change keeps its analysis, and a word is deleted with its annotations only when all its text is.
 New text becomes words of its own, and text typed at either end of a sentence joins that sentence.
 A new line typed after a sentence joins that sentence, and one typed before the first sentence becomes a sentence of its own. To make a new line a sentence, **Ctrl/Cmd+click** its first word on the Tokenize tab.
-In most projects, typing or deleting a space does not split or merge words. Do that on the Tokenize tab.
+A space typed inside a word splits it in two. The part holding more of the word keeps its analysis, and the other part is a new word with none.
+Deleting a space does not merge words. Do that on the Tokenize tab.
 **Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it.
 
 When someone else saved the baseline while you were editing it, **Save changes** puts your changes onto their text.

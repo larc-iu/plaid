@@ -2351,8 +2351,8 @@
   `::gone` marking the deleted) with each word (`word?`) that the edit typed
   whitespace inside split there, and `made`, the new tokens the split
   makes (Luke, 2026-10-02: ud splits a word a space is typed in), each
-  naming under `:token/from` the token it was cut from, whose
-  `preserveOnSplit` keys the save gives it. A word is
+  cut from a token naming it under `:token/from`, whose
+  `preserveOnSplit` keys and precedence the save gives it. A word is
   cut only at the runs of whitespace holding typed whitespace, never at
   spaces it had. It stays on the part holding the most of its old letters
   (the first on a tie), with what hangs off it, and each other part holding
@@ -2361,7 +2361,10 @@
 
   The tokens under the word (`child?`) are placed by where they stand
   (2026-10-06). One as long as the word stays with it, and each new part
-  gets one new token of that layer as long as it. Only on a layer that
+  gets one new token of that layer as long as it, which is cut from no
+  token and so names none under `:token/from`: it takes no metadata
+  (HUNT-igt R4: a morpheme nobody proposed read as machine work) and,
+  under `:token/precedence`, the precedence of the first of them. Only on a layer that
   deals its tokens out (`dealt?`, the words of a multi-word token) do those
   as long as the word go one to each part, in order of precedence, when
   there are as many of them as parts (`can't`, `ca` + `n't`, typed as
@@ -2455,8 +2458,10 @@
                                                :token/from id}
                                               (keep (fn [[[w2 l] ts]]
                                                       (when (and (= w2 w) (not (shared (:token/id (first ts)))))
+                                                        ;; cut from nothing, so bare (HUNT-igt R4),
+                                                        ;; first among the tokens it stands for
                                                         {:token/layer l :token/begin (first p) :token/end (second p)
-                                                         :token/from (:token/id (first (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts)))}))
+                                                         :token/precedence (:token/precedence (was (:token/id (first (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts)))))}))
                                                     under)))
                                        ;; the pieces of the tokens under it
                                        ;; reaching over a cut, on this part

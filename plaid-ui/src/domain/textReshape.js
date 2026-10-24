@@ -107,9 +107,10 @@ export function applyReshape(raw, textId, answer) {
         ? { ...token, begin: extent.begin, end: extent.end }
         : token;
     });
-    // A token the edit made (the core names its layer, text and metadata): a
-    // sentence over a line typed before the first one, or a part of a word a
-    // typed space split, with what its layer's preserveOnSplit kept.
+    // A token the edit made (the core names its layer, text, precedence and
+    // metadata): a sentence over a line typed before the first one, or a part
+    // of a word a typed space split, with what its layer's preserveOnSplit
+    // kept.
     const have = new Set((layer.tokens ?? []).map((t) => t.id));
     const made = (reshape.tokens ?? []).filter(
       (t) => t.layer === layer.id && !have.has(t.id) && !deleted.tokens.has(t.id),
@@ -122,6 +123,7 @@ export function applyReshape(raw, textId, answer) {
           text: t.text,
           begin: t.begin,
           end: t.end,
+          ...(t.precedence != null ? { precedence: t.precedence } : {}),
           metadata: t.metadata,
         })),
       ];
