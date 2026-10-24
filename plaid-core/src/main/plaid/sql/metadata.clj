@@ -138,13 +138,15 @@
 
 (defn get-metadata
   "Return a `{key-string value}` map for the (entity-type, entity-id)
-  pair. Empty map if no rows exist."
+  pair. Empty map if no rows exist. Read in key order, so a map small enough
+  to keep its order (eight keys or fewer) comes out the same on every read."
   [db entity-type entity-id]
   (let [rows (psc/q db {:select [:key :value]
                         :from [:entity_metadata]
                         :where [:and
                                 [:= :entity_type entity-type]
-                                [:= :entity_id entity-id]]})]
+                                [:= :entity_id entity-id]]
+                        :order-by [:key]})]
     (into {} (map (fn [{:keys [key value]}]
                     [key (decode-value value)]))
           rows)))
@@ -152,7 +154,8 @@
 (defn metadata-of
   "`{entity-id-string {key-string value}}` for the `entity-type` entities
   `ids`, read in chunks, the many-entity form of `get-metadata`. An entity
-  with no metadata is absent."
+  with no metadata is absent. Each entity's keys are read in key order, as in
+  `get-metadata`."
   [db entity-type ids]
   (reduce (fn [m {:keys [entity_id key value]}]
             (assoc-in m [(str entity_id) key] (decode-value value)))
@@ -163,7 +166,8 @@
                                      :from [:entity_metadata]
                                      :where [:and
                                              [:= :entity_type entity-type]
-                                             [:in :entity_id (vec chunk)]]})))
+                                             [:in :entity_id (vec chunk)]]
+                                     :order-by [:entity_id :key]})))
                 (partition-all psc/bulk-chunk-size (distinct (map str ids))))))
 
 (defn with-metadata-of

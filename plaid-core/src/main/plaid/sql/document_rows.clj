@@ -70,7 +70,8 @@
   (try (json/read-str s) (catch Exception _ s)))
 
 (defn- metadata-index
-  "`{entity-id {key value}}` for the entities of one type."
+  "`{entity-id {key value}}` for the entities of one type, each entity's keys
+  read in key order (`plaid.sql.metadata/get-metadata`)."
   [db etype ids]
   (reduce (fn [m r]
             (update m (:entity_id r) (fnil assoc {}) (:key r) (decode-metadata-value (:value r))))
@@ -81,7 +82,8 @@
                                      :from [:entity_metadata]
                                      :where [:and
                                              [:= :entity_type etype]
-                                             [:in :entity_id (vec chunk)]]})))
+                                             [:in :entity_id (vec chunk)]]
+                                     :order-by [:entity_id :key]})))
                 (partition-all chunk-size (distinct (seq ids))))))
 
 (defn with-metadata
