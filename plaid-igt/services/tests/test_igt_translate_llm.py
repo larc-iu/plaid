@@ -44,20 +44,10 @@ def test_build_user_prompt_layout():
     assert 'Preceding' not in bare and 'Glosses' not in bare and bare.endswith('Text: kedi\nTranslation:')
 
 
-def test_sentence_state_and_translation_spans():
+def test_sentence_state():
     machine = {'prov': 'inferred', 'provSource': 'service:x'}
     assert tr.sentence_state(None) == 'empty'
     assert tr.sentence_state({'value': '', 'metadata': machine}) == 'empty'
     assert tr.sentence_state({'value': 'x', 'metadata': machine}) == 'machine'
     assert tr.sentence_state({'value': 'x', 'metadata': {**machine, 'provConfirmed': True}}) == 'protected'
     assert tr.sentence_state({'value': 'x', 'metadata': None}) == 'protected'
-    doc = {'text_layers': [{'token_layers': [
-        {'id': 'sentL', 'span_layers': [
-            {'id': 'notes', 'name': 'Note', 'spans': []},
-            {'id': 'trL', 'name': 'Translation', 'config': {'igt': {'scope': 'Sentence'}},
-             'spans': [{'id': 'sp1', 'tokens': ['s1'], 'value': 'hi'}]}]},
-        {'id': 'wordL', 'span_layers': [{'id': 'wt', 'name': 'Translation', 'spans': []}]},
-    ]}]}
-    layer, by_sentence = tr.translation_spans(doc, 'sentL', 'Translation')
-    assert layer == 'trL' and by_sentence == {'s1': {'id': 'sp1', 'tokens': ['s1'], 'value': 'hi'}}
-    assert tr.translation_spans(doc, 'sentL', 'Nope') == (None, {})

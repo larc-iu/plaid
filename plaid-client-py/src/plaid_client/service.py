@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError, short_error
-from plaid_client.service_schema import build_extras
+from plaid_client.service_schema import build_extras, coerce
 # requester_message and UNKNOWN_FAILURE live in services.py, beside the code
 # that puts a message on the wire: `serve`'s own fallback needs them too and
 # this module imports that one, not the other way round. Re-exported here
@@ -355,7 +355,10 @@ class BaseService(ABC):
 
         Args:
             request_data: The request payload. Read declared parameters under the
-                same key you put in the schema, plus ``requester_id``, the user
+                same key you put in the schema: each is there, coerced to its
+                declared type, default, min and max as the app's dialog
+                coerces it (:meth:`coerce_parameters`), so a service restates
+                no default. Plus ``requester_id``, the user
                 who asked. For a delegating service it also
                 carries ``requester_client``, a ``PlaidClient`` authenticated as
                 the user who submitted the request, and ``delegated_projects``,
@@ -367,6 +370,24 @@ class BaseService(ABC):
                 work; a write under way should finish); ``.request_id``.
         """
         raise NotImplementedError
+
+    def coerce_parameters(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """The declared parameters' values in ``request_data``, coerced
+        against the schema (:func:`~plaid_client.service_schema.coerce`, the
+        twin of the app's ``coerceParamValues``): one left out takes its
+        default, a number is clamped, an enum value not offered is the
+        default. A string left blank whose declaration has a default takes
+        the default, as a number left blank does. The rest of the request
+        (document and layer ids) is not a parameter and is not touched, and a
+        required value left out is the service's to refuse, in its own words."""
+        params = self.extras.get('parameters') or []
+        values, _errors = coerce(params, request_data)
+        for param in params:
+            key = param.get('key')
+            if (param.get('type') == 'string' and param.get('default')
+                    and isinstance(values.get(key), str) and not values[key].strip()):
+                values[key] = param['default']
+        return values
 
     #: Secrets to keep out of anything a requester is shown (a provider API
     #: key, say). Set in :meth:`setup`; see :func:`requester_message`.
@@ -479,6 +500,8 @@ class BaseService(ABC):
                 message = requester_of(self.client, request_data).label(message)
             op_client.begin_operation(message, group_id=group['id'],
                                       kind=group.get('kind'), ref=group.get('ref'))
+        if isinstance(request_data, dict):
+            request_data.update(self.coerce_parameters(request_data))
         try:
             self.process_request(request_data, response_helper)
         except ServiceCancelled:

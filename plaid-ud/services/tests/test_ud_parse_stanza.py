@@ -165,6 +165,18 @@ def _ops(client, kind, layer_key, layer_id):
 
 # --- the happy path ----------------------------------------------------------
 
+def test_the_stamp_and_the_operation_name_the_id_the_service_runs_under():
+    """R2-SVC-9: the provenance source is the service's own id, as its
+    operation's ref is, so a second instance under another id stamps its own."""
+    service = _service()
+    service.service_id = 'stanza-parser-2'
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    assert service.client.operation_tags == [{'kind': 'service-run', 'ref': 'service:stanza-parser-2'}]
+    spans = [op for payload in service.client.payloads('spans.bulk_create') for op in payload]
+    assert spans and {op['metadata']['provSource'] for op in spans} == {'service:stanza-parser-2'}
+
+
 def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     service = _service()
     helper = servicetest.run(service, REQUEST)

@@ -1491,3 +1491,33 @@ def test_a_stream_the_server_ends_says_so():
         assert isinstance(conn.error, sse_module.StreamClosed)
     finally:
         sse_module.requests.get = original
+
+
+def test_a_request_reaches_the_service_coerced_against_its_parameters():
+    """R2-SVC-2: process_request reads each declared parameter as the app's
+    dialog coerces it (service_schema.coerce): a value left out is the
+    default, 0 is a number and kept, a number is clamped, a blank string with
+    a default is the default, an enum value not offered is the default. The
+    rest of the request passes through as it came."""
+    seen = {}
+
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            seen.update(request_data)
+            response_helper.complete('ok')
+
+    svc = MyService('t:params', 'Params', 'x', tasks=[TASKS.ANALYZE], parameters=[
+        Param.number('examples', 'Examples', default=8, min=0),
+        Param.number('context', 'Context', default=2, min=0, max=5),
+        Param.string('metalanguage', 'Metalanguage', default='English'),
+        Param.string('note', 'Note'),
+        Param.enum('scope', 'Scope', ['doc', 'snt'], default='doc'),
+        Param.boolean('overwrite', 'Overwrite'),
+    ])
+    svc.client = object()
+    helper = _Helper()
+    svc.handle_service_request({'document_id': 'd1', 'examples': 0, 'context': '9',
+                                'metalanguage': ' ', 'scope': 'all'}, helper).join(5)
+    assert helper.errors == []
+    assert seen == {'document_id': 'd1', 'examples': 0, 'context': 5, 'metalanguage': 'English',
+                    'note': '', 'scope': 'doc', 'overwrite': False}

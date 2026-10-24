@@ -182,8 +182,8 @@ class WhisperASRService(BaseService):
         alignment_token_layer_id = request_data.get('alignment_token_layer_id')
         sentence_token_layer_id = request_data.get('sentence_token_layer_id')
         # User-controlled arguments (declared in the service's parameter schema).
-        model_size = request_data.get('model_size') or None
-        language = request_data.get('language') or None
+        model_size = request_data['model_size'] or None
+        language = request_data['language'] or None
         requester = requester_of(self.client, request_data)
         
         # Validate required parameters

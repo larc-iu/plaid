@@ -5,34 +5,9 @@ from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 from plaid_client.provenance import PROVENANCE_KEYS
 from plaid_client.service import (batch_body_budget, locked_for_writes, machine_detail,
-                                  partly_written, progress_heartbeat, requester_message,
-                                  service_version)
+                                  partly_written, progress_heartbeat, requester_message)
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import Requester, requester_of
-
-
-#: This file's version, stamped as provDetail.version (the service's own
-#: ``self.version``, read here because the parse runs outside the service).
-VERSION = service_version(__file__)
-
-
-def prov_fragment(language, requester=Requester()):
-    """Provenance fragment merged into every syntactic word, span and
-    relation this service creates (never sentence or word tokens, which are
-    substrate): marks it machine-made + unverified until a
-    human edits or confirms it, and records the producing model, this file's
-    version and the language in provDetail. (Stanza's pipeline output carries
-    no per-prediction probabilities, so there is no provProb; a producer that has real
-    probabilities would add `prob=` here and put its top-k distribution in
-    each annotation's own ``provDetail.valueProbs``, which ud's selectors
-    rank and its editor reads a person's value against.) See the manual,
-    "Provenance". The detail also names who
-    asked for the run (``requester``, see plaid_client.workflows.requester)."""
-    return stamp_inferred(
-        service_source('stanza-parser'),
-        detail=requester.detail(machine_detail(VERSION, model=f'stanza=={stanza.__version__}',
-                                               language=language)),
-    )
 
 
 # Stanza ships UD models for many languages; offer a common subset. (value, label)
@@ -811,8 +786,8 @@ def sentence_words(tokenizer, body, begin, end):
     return words
 
 
-def parse_document(pipeline_provider, client, document_id, language='en', overwrite=False,
-                   helper=None, requester=Requester()):
+def parse_document(pipeline_provider, client, document_id, *, stamp, language='en', overwrite=False,
+                   helper=None):
     """Parse a document with Stanza and write UD annotations into Plaid.
 
     Two modes, chosen by what already exists:
@@ -833,13 +808,14 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
       exactly one syntactic word (annotators can still split by hand).
 
     Provenance write contract: every syntactic word, span and relation created
-    here is stamped machine-made (prov_fragment). Sentence and word tokens are
+    here carries ``stamp``, the service's machine stamp
+    (:meth:`StanzaParserService.prov_fragment`). Sentence and word tokens are
     substrate and are not stamped. A re-parse replaces machine-made UNVERIFIED material but
     never human-made/verified work: substrate-preserving mode skips sentences
     that carry any (unless `overwrite`); a from-scratch re-tokenize refuses
     outright if such annotations would be lost (unless `overwrite`). Returns a
     summary dict {mode, parsed_sentences, skipped_sentences}."""
-    frag = prov_fragment(language, requester)
+    frag = stamp
     progress = ParseProgress(helper)
 
     def log(msg):
@@ -1192,6 +1168,26 @@ class StanzaParserService(BaseService):
         )
         self.pipeline_provider = None
 
+    def prov_fragment(self, language, requester=Requester()):
+        """Provenance fragment merged into every syntactic word, span and
+        relation this service creates (never sentence or word tokens, which
+        are substrate): marks it machine-made + unverified until a human
+        edits or confirms it, and records the producing model, the service's
+        version and the language in provDetail. The source is this service's
+        own id, the one its operation's ``ref`` names. (Stanza's pipeline
+        output carries no per-prediction probabilities, so there is no
+        provProb; a producer that has real probabilities would add `prob=`
+        here and put its top-k distribution in each annotation's own
+        ``provDetail.valueProbs``, which ud's selectors rank and its editor
+        reads a person's value against.) See the manual, "Provenance". The
+        detail also names who asked for the run (``requester``, see
+        plaid_client.workflows.requester)."""
+        return stamp_inferred(
+            service_source(self.service_id),
+            detail=requester.detail(machine_detail(self.version, model=f'stanza=={stanza.__version__}',
+                                                   language=language)),
+        )
+
     def setup(self, args):
         # Pipelines are built lazily per requested language and cached; preload
         # the default so the common case is warm at startup.
@@ -1210,8 +1206,8 @@ class StanzaParserService(BaseService):
         document_id = request_data.get('document_id')
         # User-controlled arguments (declared in the parameter schema above; the
         # client delivers request keys to Python as snake_case).
-        language = request_data.get('language', 'en')
-        overwrite = bool(request_data.get('overwrite', False))
+        language = request_data['language']
+        overwrite = request_data['overwrite']
         requester = requester_of(self.client, request_data)
 
         # The parse deletes + recreates tokens / spans / relations, so a human
@@ -1230,8 +1226,9 @@ class StanzaParserService(BaseService):
                                    kind='service-run', ref=service_source(self.service_id)):
             with locked_for_writes(self.client, document_id):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
+                                         stamp=self.prov_fragment(language, requester),
                                          language=language, overwrite=overwrite,
-                                         helper=response_helper, requester=requester)
+                                         helper=response_helper)
 
         # parse_document returns a summary dict; author the user-facing notice
         # here (the service owns ALL the wording — the editor only maps `level`

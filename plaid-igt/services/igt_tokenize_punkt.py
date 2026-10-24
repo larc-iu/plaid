@@ -122,8 +122,8 @@ class NLTKTokenizerService(BaseService):
         primary_token_layer_id = request_data.get('primary_token_layer_id')
         sentence_layer_id = request_data.get('sentence_layer_id')
         # User-controlled arguments (declared in the service's parameter schema).
-        language = request_data.get('language', 'english')
-        overwrite = bool(request_data.get('overwrite', False))
+        language = request_data['language']
+        overwrite = request_data['overwrite']
         requester = requester_of(self.client, request_data)
         
         # Validate required parameters

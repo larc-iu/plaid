@@ -794,12 +794,12 @@ class CwompService(BaseService):
         # The fields come from the request, never from a name: the dialog fills
         # the gloss field from its stored Lexicon field, and one left out is an
         # error. The translation is context, read only when one is named.
-        gloss_field = (request_data.get('gloss_field') or '').strip()
+        gloss_field = request_data['gloss_field'].strip()
         if not gloss_field:
             response_helper.error('Choose the gloss field.')
             return
-        translation_field = (request_data.get('translation_field') or '').strip() or None
-        overwrite = bool(request_data.get('overwrite', False))
+        translation_field = request_data['translation_field'].strip() or None
+        overwrite = request_data['overwrite']
 
         response_helper.progress(2, 'Loading the model…')
         model = self.model_for(project_id)

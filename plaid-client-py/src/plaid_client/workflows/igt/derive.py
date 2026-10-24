@@ -88,10 +88,18 @@ def _spans_by_token(token_layer):
     return out
 
 
+class NoGlossField(ValueError):
+    """The gloss field a request names is not a morpheme-scope field of the
+    document. A ValueError, so it reaches the requester as written; its own
+    class, so a service that reads glosses only as context can go on without
+    them by catching it, never by reading the message."""
+
+
 def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
            gloss_field, translation_field=None, orthography=''):
     """-> (sentences, gloss_layer_id). Each sentence: {id, translation,
-    words:[{token, surface, text, morphs:[token], spans:[...], links:[...],
+    translation_span (the span of the sentence-scope ``translation_field``,
+    or None), words:[{token, surface, text, morphs:[token], spans:[...], links:[...],
     morph_spans:{mid:[...]}, morph_links:{mid:[...]}}]}. A word nobody has
     segmented has one morpheme, its virtual one (:func:`virtual_morpheme`).
 
@@ -100,7 +108,8 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     translation service offers that). An analyzer sends ``surface``, never an
     orthography: the morphemes it writes are in the baseline. Ignored
     tokens (punctuation) are left out. Raises ValueError with a user-facing
-    message when a layer or the gloss field is missing; ``gloss_field=None``
+    message when a layer or the gloss field is missing (:class:`NoGlossField`
+    for the gloss field); ``gloss_field=None``
     asks for no gloss layer (the second item is then None)."""
     tl, word_layer = _find_layer(doc['text_layers'], word_layer_id)
     if not word_layer:
@@ -113,14 +122,14 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
         raise setup_incomplete(f'sentence token layer {sentence_layer_id} not found in document')
     gloss_layer = _span_layer(morph_layer, gloss_field, 'Morpheme') if gloss_field else None
     if gloss_field and not gloss_layer:
-        raise ValueError(f'No morpheme-scope field named "{gloss_field}". Set the Gloss field parameter '
+        raise NoGlossField(f'No morpheme-scope field named "{gloss_field}". Set the Gloss field parameter '
                          f'to one of: {", ".join(sl["name"] for sl in morph_layer.get("span_layers", [])) or "(none)"}')
-    trans_layer = _span_layer(sent_layer, translation_field) if translation_field else None
+    trans_layer = _span_layer(sent_layer, translation_field, 'Sentence') if translation_field else None
     translations = {}
     if trans_layer:
         for sp in trans_layer.get('spans', []):
             for tid in sp.get('tokens') or []:
-                translations[tid] = sp.get('value') or ''
+                translations[tid] = sp
 
     body = (tl.get('text') or {}).get('body') or ''
     text_id = (tl.get('text') or {}).get('id')
@@ -164,7 +173,9 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
                 'morph_spans': {m['id']: morph_spans.get(m['id'], []) for m in ms},
                 'morph_links': {m['id']: morph_links.get(m['id'], []) for m in ms},
             })
-        sentences.append({'id': s['id'], 'translation': translations.get(s['id'], ''), 'words': ws})
+        span = translations.get(s['id'])
+        sentences.append({'id': s['id'], 'translation': (span or {}).get('value') or '',
+                          'translation_span': span, 'words': ws})
     return sentences, (gloss_layer['id'] if gloss_layer else None)
 
 

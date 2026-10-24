@@ -404,7 +404,7 @@ class LLMAnalyzeService(BaseService):
                             description='The morpheme-scope field that receives the glosses.'),
                 Param.field('translation_field', 'Translation field', 'Sentence', role='translation',
                             description='The sentence-scope field holding the free translation.'),
-                Param.number('examples', 'Examples per sentence', default=DEFAULT_EXAMPLES,
+                Param.number('examples', 'Examples per sentence', default=DEFAULT_EXAMPLES, min=0,
                              description='How many of the most similar analyzed sentences to show the model.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
                               description='Also replace copied analyses and ones a person made or verified.'),
@@ -433,24 +433,21 @@ class LLMAnalyzeService(BaseService):
             if not val:
                 response_helper.error(f'Missing required parameter: {key}')
                 return
-        language = (request_data.get('language') or '').strip()
+        language = request_data['language'].strip()
         if not language:
             response_helper.error('Missing required option: Language')
             return
-        metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
+        metalanguage = request_data['metalanguage'].strip()
         # The fields come from the request, never from a name: the dialog fills
         # the gloss field from its stored Lexicon field, and one left out is an
         # error. The translation is context, read only when one is named.
-        gloss_field = (request_data.get('gloss_field') or '').strip()
+        gloss_field = request_data['gloss_field'].strip()
         if not gloss_field:
             response_helper.error('Choose the gloss field.')
             return
-        translation_field = (request_data.get('translation_field') or '').strip() or None
-        overwrite = bool(request_data.get('overwrite', False))
-        try:
-            n_examples = max(0, int(request_data.get('examples') or DEFAULT_EXAMPLES))
-        except (TypeError, ValueError):
-            n_examples = DEFAULT_EXAMPLES
+        translation_field = request_data['translation_field'].strip() or None
+        overwrite = request_data['overwrite']
+        n_examples = int(request_data['examples'])
 
         response_helper.progress(2, 'Fetching document…')
         doc = self.client.documents.get(document_id, include_body=True)

@@ -633,12 +633,8 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
     if not document_id:
         response_helper.error('Missing required parameter: documentId')
         return None
-    scope = (request_data.get('scope') or 'document').strip()
-    overwrite = bool(request_data.get('overwrite', False))
-    try:
-        wanted = int(request_data.get('sentence') or 1)
-    except (TypeError, ValueError):
-        wanted = 1
+    # The parameters as BaseService coerced them against draft_params().
+    scope, overwrite, wanted = request_data['scope'], request_data['overwrite'], int(request_data['sentence'])
 
     progress = DraftProgress(response_helper)
     progress.report(DraftProgress.READ, 0.0, 'Reading the document…')

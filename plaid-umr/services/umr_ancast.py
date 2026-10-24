@@ -834,7 +834,7 @@ class UmrAncastService(BaseService):
             response_helper.error('Missing required parameter: documentId')
             return
         project_id = request_data.get('project_id')
-        scope = 'snt' if (request_data.get('scope') or 'doc').strip() == 'snt' else 'doc'
+        scope = request_data['scope']
         requester = requester_of(self.client, request_data)
 
         progress = ScoreProgress(response_helper)

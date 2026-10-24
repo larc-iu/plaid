@@ -37,7 +37,7 @@ from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.provenance import stamp_inferred, prov_state, MACHINE
-from plaid_client.workflows.igt import derive
+from plaid_client.workflows.igt import NoGlossField, derive, field_layer_id
 
 DEFAULT_SERVICE_ID = 'llm-translator'
 DEFAULT_CONTEXT = 2
@@ -129,27 +129,6 @@ def build_user_prompt(language, metalanguage, words, glosses, context) -> str:
 
 # --- the translation field and its write contract ------------------------------
 
-def translation_spans(doc, sentence_layer_id, translation_field):
-    """-> (span layer id or None, {sentence token id: span}) for the
-    sentence-scope field named `translation_field`."""
-    for tl in doc.get('text_layers', []):
-        for tk in tl.get('token_layers', []):
-            if tk['id'] != sentence_layer_id:
-                continue
-            for sl in tk.get('span_layers', []):
-                if sl['name'] != translation_field:
-                    continue
-                scope = ((sl.get('config') or {}).get('igt') or {}).get('scope')
-                if scope not in (None, 'Sentence'):
-                    continue
-                by_sentence = {}
-                for sp in sl.get('spans', []):
-                    for tid in sp.get('tokens') or []:
-                        by_sentence[tid] = sp
-                return sl['id'], by_sentence
-    return None, {}
-
-
 def sentence_state(span) -> str:
     """'empty' | 'machine' | 'protected' for a sentence's translation span."""
     if not span or (span.get('value') or '') == '':
@@ -181,7 +160,7 @@ class LLMTranslateService(BaseService):
                               description="Show the model the sentence's morpheme glosses."),
                 Param.field('gloss_field', 'Gloss field', 'Morpheme', role='gloss',
                             description='The morpheme-scope field holding the glosses.'),
-                Param.number('context', 'Context sentences', default=DEFAULT_CONTEXT,
+                Param.number('context', 'Context sentences', default=DEFAULT_CONTEXT, min=0,
                              description='How many preceding sentences to show the model.'),
                 Param.boolean('overwrite', 'Overwrite human-edited translations', default=False,
                               description='Also replace translations a person wrote or verified.'),
@@ -208,26 +187,23 @@ class LLMTranslateService(BaseService):
             if not val:
                 response_helper.error(f'Missing required parameter: {key}')
                 return
-        language = (request_data.get('language') or '').strip()
+        language = request_data['language'].strip()
         if not language:
             response_helper.error('Missing required option: Language')
             return
-        metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
-        orthography = (request_data.get('orthography') or '').strip()
+        metalanguage = request_data['metalanguage'].strip()
+        orthography = request_data['orthography'].strip()
         # The fields come from the request, never from a name: the translation
         # field is the one written, and one left out is an error. The gloss
         # field is context, read only when one is named.
-        translation_field = (request_data.get('translation_field') or '').strip()
+        translation_field = request_data['translation_field'].strip()
         if not translation_field:
             response_helper.error('Choose the translation field.')
             return
-        use_glosses = bool(request_data.get('use_glosses', True))
-        gloss_field = (request_data.get('gloss_field') or '').strip() or None
-        overwrite = bool(request_data.get('overwrite', False))
-        try:
-            n_context = max(0, int(request_data.get('context') or 0))
-        except (TypeError, ValueError):
-            n_context = DEFAULT_CONTEXT
+        use_glosses = request_data['use_glosses']
+        gloss_field = request_data['gloss_field'].strip() or None
+        overwrite = request_data['overwrite']
+        n_context = int(request_data['context'])
 
         response_helper.progress(3, 'Fetching document…')
         doc = self.client.documents.get(document_id, include_body=True)
@@ -241,9 +217,7 @@ class LLMTranslateService(BaseService):
             try:
                 sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field if use_glosses else None,
                                                    translation_field=translation_field, orthography=orthography)
-            except ValueError as e:
-                if not use_glosses or 'morpheme-scope field' not in str(e):
-                    raise
+            except NoGlossField:
                 # No such gloss field: translate from the words alone.
                 gloss_missing = gloss_field
                 sentences, _ = derive(doc, *layers, gloss_field=None,
@@ -251,7 +225,8 @@ class LLMTranslateService(BaseService):
         except ValueError as e:
             response_helper.error(str(e))
             return
-        tr_layer_id, existing = translation_spans(doc, sent_layer_id, translation_field)
+        # The field derive read the translations from, by the same rule.
+        tr_layer_id = field_layer_id(doc, sent_layer_id, translation_field, 'Sentence')
         if not tr_layer_id:
             response_helper.error(f'No sentence-scope field named "{translation_field}". Set the Translation '
                                   'field parameter to one of the project\'s sentence fields.')
@@ -264,7 +239,7 @@ class LLMTranslateService(BaseService):
             if not s['words']:
                 skipped['empty'] += 1
                 continue
-            span = existing.get(s['id'])
+            span = s['translation_span']
             st = sentence_state(span)
             if st == 'protected' and not overwrite:
                 skipped['protected'] += 1

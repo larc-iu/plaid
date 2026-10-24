@@ -601,6 +601,8 @@ client.messages.serve(project_id, service_info, handle_request, extras)
 `parameters`:: The arguments a user may set for each request. Each has a `key`, a `label` and a `type` (`string`, `number`, `boolean`, `enum`, `multiselect`, or `field`, one of the project's annotation fields), with an optional `default`.
 
 A parameter's value reaches the service under exactly the `key` it declared.
+A Python `BaseService` receives every declared parameter coerced against the schema, as the apps' request forms coerce it.
+A parameter left out takes its default, a number is held to its `min` and `max`, an `enum` value not offered is the default, and a `string` left blank takes its default when it has one.
 Most services write to the project and the client reloads, but `detect-speech` writes nothing: it returns time regions as `segments`, which the app offers as proposals.
 In JavaScript, `filterServicesByTask` picks the services for a slot, and `getParamSchema` and `buildDefaultValues` help build the form.
 
