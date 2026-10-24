@@ -12,8 +12,13 @@ import { buildSentenceRows } from '../src/domain/sentenceRows.js';
 const cpSlice = (s, b, e) => [...s].slice(b, e).join('');
 const containsToken = (parent, child) =>
   parent.begin <= child.begin && child.end <= parent.end && child.begin < parent.end;
+// plaid-core's order: a precedence storing none last, then id.
 const byPosition = (a, b) =>
-  a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
+  a.begin - b.begin ||
+  a.end - b.end ||
+  (a.precedence == null) - (b.precedence == null) ||
+  (a.precedence ?? 0) - (b.precedence ?? 0) ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 const spanIndex = (layer) => {
   const index = new Map();
   (layer?.spans || []).forEach((span) => {

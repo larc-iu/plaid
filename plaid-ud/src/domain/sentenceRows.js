@@ -8,8 +8,14 @@ import { formOf } from './newUdWord.js';
 // here and not on ConlluDocument: it reads no instance state and writes none.
 // The document caches what it returns against `_dataVersion` (see `sentences`).
 
-const byPosition = (a, b) =>
-  a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
+// Begin, end, then precedence with none last and id, so the words of one
+// token read in the order plaid-core and the ud assistant give them (R4-1-2).
+export const byPosition = (a, b) =>
+  a.begin - b.begin ||
+  a.end - b.end ||
+  (a.precedence == null) - (b.precedence == null) ||
+  (a.precedence ?? 0) - (b.precedence ?? 0) ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 const buildSpanIndex = (layer) => {
   const index = new Map();

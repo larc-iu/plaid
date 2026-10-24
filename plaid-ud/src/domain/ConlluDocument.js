@@ -44,6 +44,7 @@ import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
 import {
   buildSentenceRows,
+  byPosition,
   isVirtualWordId,
   sentenceHoldsWords,
   standInTokenId,
@@ -844,7 +845,7 @@ export class ConlluDocument extends DocumentModel {
 
     const existing = morphemeTokens.filter((m) => containsToken(word, m));
     if (existing.length === cleanForms.length) {
-      const ordered = [...existing].sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
+      const ordered = [...existing].sort(byPosition);
       return this._respellWords(word, ordered, cleanForms, wordSubstring, wordFormOps, label);
     }
     const removedMorphIds = new Set(existing.map((m) => m.id));

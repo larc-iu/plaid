@@ -7,7 +7,7 @@ import { Switch } from '@ui/components/ui/switch';
 import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { utf16ToCp } from '@larc-iu/plaid-client';
-import { tokensWithin } from '../../domain/sentenceRows.js';
+import { byPosition, tokensWithin } from '../../domain/sentenceRows.js';
 import { notifyError, notifyInfo } from '../../utils/feedback.jsx';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
@@ -65,8 +65,6 @@ export const TokenVisualizer = ({
   const focusAddedWord = useRef(false);
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
-  const sortPos = (a, b) =>
-    a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
 
   // One code-point spread of each text, for every slice of it below.
   // `cpSlice` spreads the whole text per call, once per token, which froze a
@@ -77,7 +75,7 @@ export const TokenVisualizer = ({
   const textLength = textCps.length;
 
   // Words per token (server positions), and which tokens begin a sentence.
-  const sortedMorphemes = useMemo(() => [...morphemeTokens].sort(sortPos), [morphemeTokens]);
+  const sortedMorphemes = useMemo(() => [...morphemeTokens].sort(byPosition), [morphemeTokens]);
   const morphemesByWord = useMemo(
     () => new Map(wordTokens.map((w) => [w.id, tokensWithin(sortedMorphemes, w)])),
     [wordTokens, sortedMorphemes],
