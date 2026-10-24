@@ -86,6 +86,32 @@ def test_a_call_with_arguments_the_tool_does_not_take_is_an_invalid_argument():
     assert refused('No word.', 'not-found').kind == 'not-found'
 
 
+def test_an_argument_of_the_wrong_json_type_is_an_invalid_argument(capsys):
+    # HUNT-recent 20: a list where the schema says string failed inside the
+    # tool (.strip() on a list) and read as a fault of the tool.
+    schema = {'type': 'object', 'properties': {'form': {'type': 'string'}, 'n': {'type': 'integer'}}}
+
+    def tool(ws, form=None, n=None):
+        return form.strip()
+
+    out = run_tool(_Ws(), 'read_thing', tool, {'form': ['a', 'b']}, schema=schema)
+    assert isinstance(out, Refusal) and out.kind == 'invalid-argument', out
+    assert 'form' in str(out) and 'string' in str(out) and 'list' in str(out), out
+    # A bug with every argument of its declared type is still the tool's.
+    out = run_tool(_Ws(), 'read_thing', lambda ws, form=None: form.nope, {'form': 'a'}, schema=schema)
+    assert out.kind == 'tool-fault'
+    # So is a type the tool takes anyway: the type is only read once it failed.
+    assert run_tool(_Ws(), 'read_thing', lambda ws, n=None: str(int(n) + 1), {'n': '2'}, schema=schema) == '3'
+
+
+def test_every_app_hands_run_tool_the_schema_it_declared():
+    from plaid_agent.core.tools import Refusal as R
+    from plaid_agent.igt.toolkit import call_tool
+    from fixtures import FakeClient, fake_ws
+    out = call_tool(fake_ws(FakeClient()), 'add_comment', {'document': 'Text 1', 'ref': 's1', 'body': 5})
+    assert isinstance(out, R) and out.kind == 'invalid-argument', out
+
+
 class _HttpError(Exception):
     def __init__(self, status):
         super().__init__(f'HTTP {status}')

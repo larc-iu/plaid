@@ -98,6 +98,7 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
     # A tool that plans a change says so in the first word of its description,
     # and that is what makes it one: no second list to keep in step.
     write = frozenset(t['function']['name'] for t in tools if t['function']['description'].startswith('PLAN:'))
+    schemas = {t['function']['name']: t['function'].get('parameters') for t in tools}
 
     def tools_for(ws) -> List[Dict[str, Any]]:
         """The tools a turn on this workspace may call."""
@@ -118,6 +119,6 @@ def build(tools: List[Dict[str, Any]], impl: Dict[str, Callable], *, manual: str
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.
         after = (lambda out: out + ws.superseded_note()) if name in write else None
-        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after)
+        return run_tool(ws, name, f, rewrite(f, args) if rewrite else args, after=after, schema=schemas.get(name))
 
     return Kit(tools, write, tools_for, call_tool)

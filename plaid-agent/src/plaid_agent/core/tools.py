@@ -136,8 +136,32 @@ def server_refused(what: str, e: Exception) -> ToolError:
     return ToolError(f'{what} could not be read' + (f': {reason}' if reason else '.'), kind=kind_of_status(e))
 
 
+# A JSON type a schema names, as the Python a call's arguments decode to.
+_JSON_TYPES = {'string': (str,), 'integer': (int,), 'number': (int, float), 'boolean': (bool,),
+               'array': (list,), 'object': (dict,)}
+_JSON_NAMES = {str: 'a string', int: 'a number', float: 'a number', bool: 'true or false', list: 'a list',
+               dict: 'an object'}
+
+
+def mistyped(args: Optional[Dict[str, Any]], schema: Optional[Dict[str, Any]]) -> Optional[str]:
+    """The first argument whose JSON type is not the one ``schema`` declares,
+    said for the model, or None. Asked only once a tool has failed: a tool
+    that takes "2" for a number goes on taking it."""
+    props = (schema or {}).get('properties') or {}
+    for key, value in (args or {}).items():
+        declared = (props.get(key) or {}).get('type')
+        if value is None or not isinstance(declared, str) or declared not in _JSON_TYPES:
+            continue
+        ok = isinstance(value, _JSON_TYPES[declared]) and not (isinstance(value, bool) and declared != 'boolean')
+        if not ok:
+            want = {'string': 'a string', 'integer': 'a whole number', 'number': 'a number',
+                    'boolean': 'true or false', 'array': 'a list', 'object': 'an object'}[declared]
+            return f'{key} takes {want}, not {_JSON_NAMES.get(type(value), "that")}.'
+    return None
+
+
 def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
-             after: Optional[Callable[[str], str]] = None) -> str:
+             after: Optional[Callable[[str], str]] = None, schema: Optional[Dict[str, Any]] = None) -> str:
     """Run one tool and answer with text, whatever happens.
 
     Every failure reaches the model as a sentence in the tools' own
@@ -147,7 +171,9 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
     problem), and an unexpected failure is answered by saying so, with the
     traceback going to the operator's log where it is of use.
 
-    ``after`` is what the app appends to a successful answer.
+    ``after`` is what the app appends to a successful answer. ``schema`` is
+    the tool's declared parameters: a failure on an argument of another JSON
+    type than it declares is the request's, not the tool's.
     """
     ws.forget_clipping()
     try:
@@ -162,6 +188,9 @@ def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
     except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
         return refused_for(e)
     except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
+        wrong = mistyped(args, schema)
+        if wrong:
+            return refused(f'{name}: {wrong}', 'invalid-argument')
         traceback.print_exc()
         return refused(f'{name} failed, which is a fault in the tool rather than in the request. '
                        'Tell the user, and try another way of asking rather than the same call again.',
