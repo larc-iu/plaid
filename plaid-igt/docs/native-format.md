@@ -101,13 +101,16 @@ the upload's media type is validated from its filename.
   "comments": [{ "id": "…", "anchor": { "type": "vocab-item", "id": "…" }, … }] }
 ```
 
-- `fields` is the normalized, ordered field inventory (`form` is never a field — it
-  is the item's own headword). A field's `tagset` names one of the vocabulary's own
-  tagsets and is absent when none governs it; `lang` (a FLEx custom field's writing
-  system) is likewise present only when set. A field that refers to entries is
-  `type: "item"` (its values are ids of other entries in the SAME vocabulary),
-  `many: true` (a list of them rather than one) and `scope: "entry"` (shown on a
-  headword, not on its senses), each written only when set. `role` (`gloss`,
+- `fields` is the field list as the vocabulary stores it (`config.igt.fields`), in
+  its order, and `null` when the vocabulary lists none. The built-in fields the
+  editor shows whether listed or not (morphType, gloss) are not added, so an
+  import writes back exactly the list that was there, or none. A field's `tagset`
+  names one of the vocabulary's own tagsets and is absent when none governs it;
+  `lang` (a FLEx custom field's writing system) is likewise present only when set.
+  A field that refers to entries is `type: "item"` (its values are ids of other
+  entries in the SAME vocabulary), `many: true` (a list of them rather than one),
+  and `scope` is `"entry"` (shown on a headword, not on its senses) or `"sense"`,
+  each written only when stored. `role` (`gloss`,
   `definition`, `pos` or `status`) says what the field's values are, and is always
   written, `null` for none. On import a field whose record lacks the key is given
   the role its name proposes, since the import makes the field.
@@ -422,7 +425,8 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    key with `setConfig`. A layer whose parent cannot be resolved is skipped with a
    warning, and so is everything nested in it.
 2. Per vocabulary: write `fields` (with each `tagset`/`lang`, `type`/`many`/
-   `scope` and `role`) and `tagsets`, then create items **in array order**, mapping old item
+   `scope` and `role`) and `tagsets`, or for `fields: null` remove the field list
+   and tagsets setup seeded, then create items **in array order**, mapping old item
    ids to new. Item
    metadata is written as it stands here, ids and all, and corrected in step 4.
    The importer stamps each created item's metadata with `nativeImportId` (the

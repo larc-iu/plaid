@@ -595,8 +595,6 @@ describe('importVocabulary', () => {
         'igt',
         'fields',
         {
-          morphType: { inline: false },
-          gloss: { inline: true },
           pos: { inline: true, tagset: 'POS' },
           Plural: { inline: false, lang: 'ru' },
         },
@@ -608,6 +606,26 @@ describe('importVocabulary', () => {
     expect(order.lastIndexOf('vocabLayers.setConfig')).toBeLessThan(
       order.indexOf('vocabItems.bulkCreate'),
     );
+  });
+
+  it('leaves a vocabulary the archive lists no fields for with no field list and no tagsets', async () => {
+    const client = stubClient();
+    const get = client.vocabLayers.get;
+    // What setup seeds on a vocabulary it makes.
+    client.vocabLayers.get = async (id, items) => ({
+      ...(await get(id, items)),
+      config: { igt: { fields: { gloss: { inline: true } }, tagsets: { Status: {} } } },
+    });
+    await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: serializeVocabularyNative({ ...VOCAB, config: {} }),
+    });
+    expect(callsOf(client, 'vocabLayers.setConfig')).toEqual([]);
+    expect(callsOf(client, 'vocabLayers.deleteConfig').map((c) => c.slice(1))).toEqual([
+      ['newvocab', 'igt', 'fields'],
+      ['newvocab', 'igt', 'tagsets'],
+    ]);
   });
 
   it("writes each field's role, and proposes one for a field an older archive records without the key", async () => {
@@ -623,7 +641,6 @@ describe('importVocabulary', () => {
     data.fields.push({ name: 'Part of speech', inline: false }, { name: 'status', inline: false });
     await importVocabulary({ client, vocabId: 'newvocab', vocabData: data });
     expect(callsOf(client, 'vocabLayers.setConfig')[0][4]).toEqual({
-      morphType: { inline: false },
       gloss: { inline: true },
       Meaning: { inline: false, role: 'gloss' },
       Stage: { inline: false },

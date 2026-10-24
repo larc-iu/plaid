@@ -32,22 +32,6 @@ export default {
   },
   steps: [
     {
-      keys: ['vocab.linked'],
-      // A vocabulary listing no fields comes back listing the built-in two.
-      apply(expected) {
-        for (const v of expected.vocabularies || []) {
-          if (v.config?.igt?.fields) continue;
-          v.config = {
-            ...v.config,
-            igt: {
-              ...v.config?.igt,
-              fields: { gloss: { inline: true }, morphType: { inline: false } },
-            },
-          };
-        }
-      },
-    },
-    {
       keys: ['vocab.foreignConfig'],
       // The source still holds its dictionary address, so the copy has none.
       apply(expected) {

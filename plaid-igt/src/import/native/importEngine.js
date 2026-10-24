@@ -236,15 +236,21 @@ export async function importVocabulary({
           inline: !!f.inline,
           ...(f.tagset ? { tagset: f.tagset } : {}),
           ...(f.lang ? { lang: f.lang } : {}),
-          ...(f.type === 'item' ? { type: 'item' } : {}),
-          ...(f.type === 'item' && f.many ? { many: true } : {}),
-          ...(f.scope === 'entry' ? { scope: 'entry' } : {}),
+          ...(f.type != null ? { type: f.type } : {}),
+          ...(f.many != null ? { many: f.many } : {}),
+          ...(f.scope != null ? { scope: f.scope } : {}),
           ...(entryRoleOf(f) ? { role: entryRoleOf(f) } : {}),
         },
       ]),
     );
     await writeVocabConfig(vocab, IGT_NAMESPACE, 'fields', fields, () =>
       client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fields),
+    );
+  } else if (vocabData.fields === null) {
+    // The archived vocabulary listed no fields, so the one setup made lists
+    // none either.
+    await writeVocabConfig(vocab, IGT_NAMESPACE, 'fields', undefined, () =>
+      client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'fields'),
     );
   }
   // The tagsets go in whole, like the fields: setup seeds a Status list for
@@ -254,7 +260,7 @@ export async function importVocabulary({
     await writeVocabConfig(vocab, IGT_NAMESPACE, 'tagsets', vocabData.tagsets, () =>
       client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets),
     );
-  } else if (vocabData.fields?.length) {
+  } else if (vocabData.fields?.length || vocabData.fields === null) {
     await writeVocabConfig(vocab, IGT_NAMESPACE, 'tagsets', undefined, () =>
       client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'tagsets'),
     );

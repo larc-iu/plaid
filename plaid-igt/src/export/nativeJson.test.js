@@ -319,7 +319,7 @@ describe('serializeVocabularyNative', () => {
   // Item order is the server's, which IS creation order. It must NOT be
   // re-sorted by id: within one bulk write every id shares a UUIDv7
   // millisecond and the rest is random, so an id sort shuffles the batch.
-  it('keeps the given item order and normalizes fields', () => {
+  it('keeps the given item order and the field list as stored', () => {
     const out = serializeVocabularyNative({
       id: 'v1',
       name: 'Lex',
@@ -329,8 +329,8 @@ describe('serializeVocabularyNative', () => {
         { id: 'a', form: 'alpha', metadata: {} },
       ],
     });
+    // In the stored order, and no built-in field the list leaves out.
     expect(out.fields).toEqual([
-      { name: 'morphType', inline: false, role: null }, // immutable core fields pinned first
       { name: 'gloss', inline: true, role: null },
       { name: 'custom', inline: false, role: null },
     ]);
@@ -355,12 +355,21 @@ describe('serializeVocabularyNative', () => {
       items: [],
     });
     expect(out.fields).toEqual([
-      { name: 'morphType', inline: false, role: null },
-      { name: 'gloss', inline: true, role: null },
       { name: 'pos', inline: true, tagset: 'POS', role: null },
       { name: 'Plural', inline: false, lang: 'ru', role: null },
     ]);
     expect(out.tagsets).toEqual(tagsets);
+  });
+
+  it('writes a stored scope of sense, and no list for a vocabulary that stores none', () => {
+    const out = serializeVocabularyNative({
+      id: 'v1',
+      name: 'Lex',
+      config: { igt: { fields: { Source: { inline: false, scope: 'sense' } } } },
+      items: [],
+    });
+    expect(out.fields).toEqual([{ name: 'Source', inline: false, scope: 'sense', role: null }]);
+    expect(serializeVocabularyNative({ id: 'v2', name: 'Bare', items: [] }).fields).toBeNull();
   });
 });
 

@@ -101,10 +101,7 @@ export default {
     'layers.fieldEmpty': carried,
 
     // Vocabularies: their schema
-    'vocab.linked': {
-      carried: 'changed',
-      how: 'Comes back as it was, except that a vocabulary whose settings list no fields at all comes back listing the two built-in ones, gloss as { inline: true } and morphType as { inline: false }, and no tagsets. The archive writes the fields an entry shows (normalizeVocabFields), and those two are shown whether listed or not, so nothing on screen changes.',
-    },
+    'vocab.linked': carried,
     'vocab.second': carried,
     'vocab.customField': carried,
     'vocab.fieldNotInline': carried,

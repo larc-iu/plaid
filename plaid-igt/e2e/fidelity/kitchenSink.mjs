@@ -281,7 +281,7 @@ async function configureLexicon(client, vocabId) {
     Plural: { inline: false },
     Number: { inline: false },
     'gloss (fr)': { inline: true, lang: 'fr' },
-    Source: { inline: false, lang: 'en' },
+    Source: { inline: false, lang: 'en', scope: 'sense' },
     Register: { inline: false, tagset: 'Register' },
     etymology: { inline: false, scope: 'entry' },
     variantOf: { inline: false, type: 'item' },
@@ -906,6 +906,12 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   const lexiconId = project.vocabs.find((v) => v.name === `${mainName} Lexicon`).id;
   const affixId = project.vocabs.find((v) => v.name === `${mainName} Affixes`).id;
   await configureLexicon(client, lexiconId);
+  // A field list that leaves out morphType and lists gloss after a field of
+  // its own, as a vocabulary another app or an older screen wrote it.
+  await client.vocabLayers.setConfig(affixId, IGT_NAMESPACE, 'fields', {
+    Allomorphs: { inline: false },
+    gloss: { inline: true },
+  });
   // A vocabulary made outside the wizard, through the API, so it lists none of
   // the fields setup seeds. Its entries still hold values in the built-in ones.
   const bare = await client.vocabLayers.create(`${mainName} Borrowings`);

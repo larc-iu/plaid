@@ -422,7 +422,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 /** The marker a reference to an entity becomes (see the header). */
-export const marker = (...parts) => `«${JSON.stringify(parts)}»`;
+const marker = (...parts) => `«${JSON.stringify(parts)}»`;
 
 /** `value` with every UUID `named` knows, in any string at any depth, replaced. */
 function markIn(value, named) {

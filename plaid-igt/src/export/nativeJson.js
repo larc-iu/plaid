@@ -42,7 +42,6 @@ import {
 import { ROLES } from '@larc-iu/plaid-client';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 import { readTagsetName } from '../domain/tagsets.js';
-import { normalizeVocabFields } from '../domain/vocabFields.js';
 import {
   UNCARRIED_PLAID_KEYS,
   configWithout,
@@ -350,25 +349,32 @@ function describeOtherLayers(textLayer) {
  * each export/import cycle permuted the whole vocabulary.
  */
 export function serializeVocabularyNative(vocab, { comments = [], onWarning = null } = {}) {
-  // A field's `tagset` names one of the vocabulary's own tagsets (below) and
-  // `lang` is a FLEx custom field's writing system; both are carried only
-  // when set, so a plain field stays `{name, inline}`.
-  // `type`, `many` and `scope` say a field is an Entry field or a
-  // headword-only one, written only when set, like the others. `role` is
-  // always written, null for none: an import gives a field whose record lacks
-  // the key (an archive older than roles) the role its name proposes.
-  const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(
-    ({ name, inline, tagset, lang, type, many, scope, role }) => ({
-      name,
-      inline,
-      ...(tagset ? { tagset } : {}),
-      ...(lang ? { lang } : {}),
-      ...(type === 'item' ? { type } : {}),
-      ...(type === 'item' && many ? { many: true } : {}),
-      ...(scope === 'entry' ? { scope } : {}),
-      role: role ?? null,
-    }),
-  );
+  // The field list as the vocabulary stores it, in its order, `null` when it
+  // lists none: the built-in fields the editor shows whether listed or not
+  // are not added, so an import writes back what was there. A field's
+  // `tagset` names one of the vocabulary's own tagsets (below) and `lang` is a
+  // FLEx custom field's writing system. `type`, `many` and `scope` say a field
+  // is an Entry field or a headword-only one. Each is written only when
+  // stored, so a plain field stays `{name, inline}`. `role` is always written,
+  // null for none: an import gives a field whose record lacks the key (an
+  // archive older than roles) the role its name proposes.
+  const stored = readVocabFields(vocab?.config);
+  const fields =
+    stored && typeof stored === 'object'
+      ? Object.entries(stored).map(([name, cfg]) => {
+          const f = cfg && typeof cfg === 'object' ? cfg : {};
+          return {
+            name,
+            inline: !!f.inline,
+            ...(f.tagset != null ? { tagset: f.tagset } : {}),
+            ...(f.lang != null ? { lang: f.lang } : {}),
+            ...(f.type != null ? { type: f.type } : {}),
+            ...(f.many != null ? { many: f.many } : {}),
+            ...(f.scope != null ? { scope: f.scope } : {}),
+            role: f.role ?? null,
+          };
+        })
+      : null;
   // `nativeImportId` is bookkeeping this app stamps on an entry it created from
   // an archive: it dedupes a resumed import and points back at the source.
   // It is not the project's data, and carrying it out again made the archive
