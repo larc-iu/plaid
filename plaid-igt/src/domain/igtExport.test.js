@@ -338,7 +338,9 @@ describe('LaTeX small caps read a word by its morphemes', () => {
       {
         content: 'w',
         annotations: {},
+        // As the derived view hands them out: the type the morpheme goes by.
         morphemes: ms.map(([form, morphType, gloss]) => ({
+          morphType,
           metadata: { form, morphType },
           annotations: { Gloss: span(gloss) },
         })),

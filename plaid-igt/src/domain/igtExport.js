@@ -54,7 +54,7 @@ export const joinMorphemeTexts = (morphemes, texts) =>
     ? joinMorphemes(
         texts.map((t, i) => ({
           text: t,
-          morphType: morphemes[i]?.morphType ?? morphemes[i]?.metadata?.morphType,
+          morphType: morphemes[i]?.morphType,
         })),
       )
     : '';
@@ -65,9 +65,7 @@ export const joinMorphemeTexts = (morphemes, texts) =>
 // LaTeX small caps read the joined gloss (texGloss).
 export function wordCells(token, { morphFields, wordFields, orthographies = [] }) {
   const morphemes = token.morphemes || [];
-  const bound = morphemes.map(
-    (m) => !canNameWord(m.morphType ?? m.metadata?.morphType, morphFormOf(m)),
-  );
+  const bound = morphemes.map((m) => !canNameWord(m.morphType, morphFormOf(m)));
   const segmented = morphemes.length
     ? joinMorphemeTexts(
         morphemes,
