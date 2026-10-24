@@ -22,10 +22,11 @@ OWNER = REPO / 'plaid-client-py/src/plaid_client/provenance.py'
 _KEY = r"""['"](?:prov|provSource|provConfirmed|provDetail|provProb)['"]"""
 _CONST = r'\bPROV_(?:SOURCE_|CONFIRMED_|DETAIL_|PROB_)?KEY\b'
 FORBIDDEN = [
-    (re.compile(r"""startswith\(\s*(?:['"]prov['"]|PROV_KEY\b)|\[\s*:\s*4\s*\]\s*[!=]=\s*['"]prov['"]|['"]\^prov"""),
+    (re.compile(r"""(?:startswith\(|\.find\()\s*(?:['"]prov['"]|PROV_KEY\b)|\[\s*:\s*4\s*\]\s*[!=]=\s*['"]prov['"]|['"]\^prov"""),
      'a prov prefix test: use PROVENANCE_KEYS'),
     (re.compile(r"""['"]provProb['"]\s*:\s*None|PROV_PROB_KEY\s*:\s*None"""
-                r"""|\.pop\(\s*(?:['"]provProb['"]|PROV_PROB_KEY\b)|\bdel\s+\w[\w.]*\[\s*(?:['"]provProb['"]|PROV_PROB_KEY\b)"""),
+                r"""|\.pop\(\s*(?:['"]provProb['"]|PROV_PROB_KEY\b)|\bdel\s+\w[\w.]*\[\s*(?:['"]provProb['"]|PROV_PROB_KEY\b)"""
+                r"""|\[\s*(?:['"]provProb['"]|PROV_PROB_KEY)\s*\]\s*=(?!=)|\bprovProb\s*=\s*None"""),
      "a hand-written provProb drop: use WriterPolicy.value_edit_stamp"),
     (re.compile(_KEY + r'\s*,\s*' + _KEY + '|' + _CONST + r'\s*,\s*' + _CONST),
      'a hand list of the keys: use PROVENANCE_KEYS'),
@@ -48,6 +49,11 @@ PLANTED = [
     "KEYS = ['prov', 'provSource', 'provConfirmed']",
     "KEYS = {'prov', 'provSource'}",
     'KEYS = (PROV_KEY, PROV_SOURCE_KEY, PROV_CONFIRMED_KEY, PROV_DETAIL_KEY)',
+    'md[PROV_PROB_KEY] = None',
+    "md['provProb'] = None",
+    'md = dict(md, provProb=None)',
+    "own = [k for k in md if k.find('prov') == 0]",
+    'own = [k for k in md if k.find(PROV_KEY) != 0]',
 ]
 CLEAN = [
     "unconfirmed = ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]",
@@ -55,6 +61,7 @@ CLEAN = [
     "p = prob if ok else None  # {'provProb': None} was written here once",
     "label = 'provenance'",
     'from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_PROB_KEY, stamp_inferred',
+    "same = md['provProb'] == p",
     "return [{'prov': 'contributed', **({'provSource': f'user:{user}'} if user else {})}]",
 ]
 

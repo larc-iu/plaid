@@ -25,9 +25,17 @@ const KEY_LITERAL = /['"`](prov|provSource|provConfirmed|provDetail|provProb)['"
 
 const PATTERNS = [
   [KEY_LITERAL, 'a provenance key in quotes: use PROV and PROVENANCE_KEYS'],
-  [/startsWith\(\s*PROV\.key\s*\)|\/\^prov|['"`]\^prov/, 'a prov prefix test: use PROVENANCE_KEYS'],
+  [
+    /(startsWith|indexOf)\(\s*PROV\.key\s*\)|\/\^prov|['"`]\^prov/,
+    'a prov prefix test: use PROVENANCE_KEYS',
+  ],
   [
     /(^|[{,])\s*provProb\s*:\s*(null|undefined)\b|probKey\]\s*:\s*(null|undefined)\b|\bdelete\s+[\w$.?[\]]*(\.provProb\b|\[\s*PROV\.probKey\s*\])|path\s*:\s*\[\s*PROV\.probKey\s*\]/,
+    'a hand-written provProb drop: use writer.valueEditStamp',
+  ],
+  // The same drop as an assignment, and as a destructure that keeps the rest.
+  [
+    /\[\s*PROV\.probKey\s*\]\s*=(?!=)|\.provProb\s*=(?!=)|\{[^}]*(\bprovProb\b|\[\s*PROV\.probKey\s*\])[^}]*\.\.\.[\w$]+\s*\}\s*=(?!=)/,
     'a hand-written provProb drop: use writer.valueEditStamp',
   ],
   [/\bPROV\.\w*[kK]ey\s*,\s*PROV\.\w*[kK]ey\b/, 'a hand list of the keys: use PROVENANCE_KEYS'],
@@ -83,6 +91,12 @@ describe('the provenance rules have one home', () => {
     "const own = keys.filter((k) => k.slice(0, 4) !== 'prov');",
     "const KEYS = ['prov', 'provSource', 'provConfirmed', 'provDetail', 'provProb'];",
     'const KEYS = [PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.detailKey];',
+    'm[PROV.probKey] = null;',
+    'm.provProb = null;',
+    'm.provProb = undefined;',
+    'const { provProb, ...rest } = m;',
+    'const { [PROV.probKey]: _drop, ...rest } = m;',
+    'const own = keys.filter((k) => k.indexOf(PROV.key) !== 0);',
   ])('flags %s', (line) => {
     expect(broken(line)).not.toEqual([]);
   });
@@ -96,6 +110,8 @@ describe('the provenance rules have one home', () => {
     'const fragment = { ...stamp, [PROV.detailKey]: { ...stamp[PROV.detailKey], ...detail } };',
     "const url = 'https://example.org/prov';",
     "const label = 'provenance';",
+    'const same = m.provProb === p;',
+    'const { provProb } = m;',
   ])('passes %s', (line) => {
     for (const part of line.split('\n')) expect(broken(part)).toEqual([]);
   });
