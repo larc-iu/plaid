@@ -35,7 +35,7 @@ import {
 import { sameName } from '@ui/lib/nameKey.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
-import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
+import { DEFAULT_IGNORED_TOKENS, SENTENCE_ROLES, isTokenIgnored } from '../../domain/igtConfig.js';
 import { isLangTag, withLangSuffix } from '../../domain/fieldNames.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
@@ -474,11 +474,20 @@ export function buildCldfDocuments(dataset, options = {}) {
   // to be in the project's meta language, and a FLEx export sends a field
   // that records none under the one tag it uses for glosses.
   const translationLangs = new Map();
+  // What each sentence field bound to a CLDF term holds: Translated_Text a
+  // translation, Comment a note. Read into the schema below as the field's
+  // role. A custom column's field gets the one its name proposes, at setup.
+  const sentenceRoles = new Map();
+  if (o.commentField) sentenceRoles.set(o.commentField, SENTENCE_ROLES.NOTE);
   const translationFieldFor = (metaLanguageId) => {
-    if (!metaLanguageId || metaLanguageIds.size <= 1) return o.translationField;
+    if (!metaLanguageId || metaLanguageIds.size <= 1) {
+      sentenceRoles.set(o.translationField, SENTENCE_ROLES.TRANSLATION);
+      return o.translationField;
+    }
     const tag = languageTag(metaLanguageId);
     const name = withLangSuffix(o.translationField, tag ?? languageLabel(metaLanguageId));
     if (tag) translationLangs.set(name, tag);
+    sentenceRoles.set(name, SENTENCE_ROLES.TRANSLATION);
     return name;
   };
 
@@ -894,7 +903,15 @@ export function buildCldfDocuments(dataset, options = {}) {
   const fieldSet = new Map();
   const addField = (name, scope) => {
     const lang = scope === 'Sentence' ? translationLangs.get(name) : null;
-    if (name) fieldSet.set(`${scope}:${name}`, { name, scope, ...(lang ? { lang } : {}) });
+    const sentenceRole = scope === 'Sentence' ? sentenceRoles.get(name) : undefined;
+    if (name) {
+      fieldSet.set(`${scope}:${name}`, {
+        name,
+        scope,
+        ...(lang ? { lang } : {}),
+        ...(sentenceRole ? { sentenceRole } : {}),
+      });
+    }
   };
   for (const d of documents) {
     for (const s of d.sentences)

@@ -30,9 +30,11 @@
  * A `field` parameter names one of the project's annotation fields at its
  * `scope`. A UI that knows the project offers those fields to choose from; to
  * everything here, and to a UI that does not, it is a string. Its optional
- * `role` names a lexicon role ("gloss"): a UI that knows the project fills
- * the parameter with the one field at `scope` whose stored Lexicon field holds
- * that role. A field is never chosen by its name.
+ * `role` names a lexicon role ("gloss") or, at Sentence scope, a sentence
+ * field's role ("translation", "literalTranslation", "note"): a UI that knows
+ * the project fills the parameter with the one field at `scope` whose stored
+ * Lexicon field holds that role, or whose stored role it is. A field is never
+ * chosen by its name.
  *
  * A parameter's `key` is a string VALUE, so it passes over the wire verbatim;
  * the UI sends `{ [param.key]: value }` in the request data. Declare each `key`
@@ -120,8 +122,9 @@ export const TASKS = Object.freeze({
  * @property {"Sentence" | "Word" | "Morpheme"} [scope] `field` only: the
  *   scope of the project's annotation fields the value names one of. A
  *   `field` value is a string everywhere else.
- * @property {string} [role] `field` only: the lexicon role whose paired field
- *   fills the parameter when nothing else does.
+ * @property {string} [role] `field` only: the lexicon role whose paired field,
+ *   or the sentence role whose field, fills the parameter when nothing else
+ *   does.
  */
 
 /**

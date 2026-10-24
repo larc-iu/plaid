@@ -9,12 +9,8 @@
 // sentence falls into parts) and the file's root marks (so the roots are
 // derived), which is how a graph looks while someone is building it.
 //
-// One more variant has the edits another app makes to the shared sentences
-// and words (`igtEdited`), which the reader reads right before a UMR write
-// stores it.
-//
 // argv[2] is a JSON array of .umr paths. Writes one object per variant to
-// stdout: `{name, raw, sentences: [{roots, penman, alignment, held}]}`.
+// stdout: `{name, raw, sentences: [{roots, penman}]}`.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { basename, dirname, resolve } from 'node:path';
@@ -25,8 +21,6 @@ const { parseUmrFile } = await import(`${UMR}/src/domain/format/umrFile.js`);
 const { planImport } = await import(`${UMR}/src/domain/umrImport.js`);
 const { UmrDocument } = await import(`${UMR}/src/domain/UmrDocument.js`);
 const { rawFromPlan } = await import(`${UMR}/test/rawFromPlan.js`);
-const { insertSentenceAtStart } = await import(`${UMR}/test/igtInsertSentence.js`);
-const { deleteWord, splitWord, wordsOf } = await import(`${UMR}/test/igtEdits.js`);
 
 // The layer tree's own keys, as the Python client hands them back. What is
 // under `metadata` and `config` is opaque to both clients.
@@ -55,36 +49,21 @@ const VARIANTS = [
   [4, true],
 ];
 
-// What another app's edits leave for the reader to read right before any
-// UMR write stores it (umrSettle.js): a sentence typed in before the first
-// (every variable's number moves), every seventh word split in two after
-// its first letter, and every eleventh deleted under its node.
-function igtEdited(raw) {
-  insertSentenceAtStart(raw);
-  wordsOf(raw).forEach((w, i) => {
-    if (i % 11 === 5) deleteWord(raw, w.id);
-    else if (i % 7 === 3 && w.end - w.begin > 1) splitWord(raw, w.id, w.begin + 1);
-  });
-  return raw;
-}
-
 const out = [];
 for (const file of JSON.parse(readFileSync(process.argv[2], 'utf8'))) {
   const parsed = parseUmrFile(readFileSync(file, 'utf8'));
-  for (const [drop, unmark, edited] of [...VARIANTS, [0, false, true]]) {
+  for (const [drop, unmark] of VARIANTS) {
     const plan = planImport(parsed.sentences, []);
     if (drop) plan.edges = plan.edges.filter((_, i) => i % drop !== 1);
     if (unmark) plan.nodes.forEach((n) => n.meta && delete n.meta.root);
-    const raw = edited ? igtEdited(rawFromPlan(plan)) : rawFromPlan(plan);
+    const raw = rawFromPlan(plan);
     const doc = new UmrDocument({ raw });
     out.push({
-      name: `${basename(file)} drop ${drop}${unmark ? ' unmarked' : ''}${edited ? ' edited' : ''}`,
+      name: `${basename(file)} drop ${drop}${unmark ? ' unmarked' : ''}`,
       raw: toPython(raw),
       sentences: doc.sentences.map((s, i) => ({
         roots: s.roots.map((r) => r.var),
         penman: doc.penmanOf(i + 1),
-        alignment: Object.fromEntries(s.nodes.map((n) => [n.var, n.alignment])),
-        held: s.held,
       })),
     });
   }

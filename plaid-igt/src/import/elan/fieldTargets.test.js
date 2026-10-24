@@ -175,6 +175,23 @@ describe('createFields', () => {
     ]);
   });
 
+  it('gives a sentence field the role its name proposes, or the one it states', async () => {
+    const client = fakeClient();
+    const [translation, free, note] = await createFields(client, PROJECT, [
+      { name: 'Translation (nl)', scope: 'Sentence' },
+      { name: 'Libre', scope: 'Sentence', sentenceRole: 'translation' },
+      { name: 'Note', scope: 'Sentence', sentenceRole: null },
+    ]);
+    const roles = client.calls
+      .filter((c) => c.kind === 'setConfig' && c.key === 'sentenceRole')
+      .map((c) => [c.id, c.value]);
+    expect(roles).toEqual([
+      [translation.id, 'translation'],
+      [free.id, 'translation'],
+    ]);
+    expect(note.sentenceRole).toBeNull();
+  });
+
   it('refuses rather than guessing when the scope has no layer', async () => {
     const client = fakeClient();
     await expect(
@@ -243,5 +260,29 @@ describe('fieldRolesOf', () => {
     expect(fieldRolesOf({ ...project, vocabs: [] })).toEqual({
       Morpheme: { Gloss: 'gloss', POS: 'pos' },
     });
+  });
+
+  it("gives a sentence field its stored role, never its name's", async () => {
+    const { fieldRolesOf } = await import('./fieldTargets.js');
+    const span = (name, sentenceRole) => ({
+      id: name,
+      name,
+      config: { igt: { scope: 'Sentence', ...(sentenceRole ? { sentenceRole } : {}) } },
+    });
+    const project = {
+      vocabs: [],
+      textLayers: [
+        {
+          config: { plaid: { role: 'baseline' } },
+          tokenLayers: [
+            {
+              config: { plaid: { role: 'sentence' } },
+              spanLayers: [span('Libre', 'translation'), span('Translation'), span('Obs', 'note')],
+            },
+          ],
+        },
+      ],
+    };
+    expect(fieldRolesOf(project)).toEqual({ Sentence: { Libre: 'translation', Obs: 'note' } });
   });
 });

@@ -94,6 +94,8 @@ const manifestFields = (manifest) => {
       // key, from an archive made before Lexicon fields, is proposed one from
       // the name by setup, since the import makes the field.
       lexiconField: f.lexiconField,
+      // A sentence field's role, the same way.
+      ...(scope === 'Sentence' ? { sentenceRole: f.sentenceRole } : {}),
     })),
   );
 };

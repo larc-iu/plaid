@@ -40,6 +40,12 @@ import {
   writeDocumentLayers,
 } from '../project.js';
 import { mediaUploadFailure } from '../mediaUpload.js';
+import {
+  SENTENCE_ROLES,
+  findBaselineTextLayer,
+  readScope,
+  readSentenceRole,
+} from '../../domain/igtConfig.js';
 
 export { ImportCancelled };
 
@@ -248,13 +254,21 @@ async function runElanImportImpl({
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
   // What the tier names declare: the transcription tier's writing system and,
-  // for glosses and translations, the Translation field's when the tiers are in
-  // one language (so it is named plain "Translation"), else the first sentence
-  // field that declares one.
+  // for glosses and translations, the language of the sentence field whose
+  // stored role is the translation when the tiers name its language, else of
+  // the first sentence field they name one for.
   const sentFields = build.schema.fields.filter((f) => f.scope === 'Sentence' && f.lang);
+  const roleOf = new Map();
+  for (const tl of findBaselineTextLayer(project?.textLayers || [])?.tokenLayers || []) {
+    for (const sl of tl.spanLayers || []) {
+      if (readScope(sl.config) === 'Sentence') roleOf.set(sl.name, readSentenceRole(sl.config));
+    }
+  }
+  const metaField =
+    sentFields.find((f) => roleOf.get(f.name) === SENTENCE_ROLES.TRANSLATION) ?? sentFields[0];
   await recordProjectLanguages(client, project, {
     object: build.schema.baselineLang ?? null,
-    meta: (sentFields.find((f) => f.name === 'Translation') ?? sentFields[0])?.lang ?? null,
+    meta: metaField?.lang ?? null,
   });
   // Warnings are reported as they happen, not only in the tally at the end: a
   // long import is exactly when the user wants to see a problem while there is

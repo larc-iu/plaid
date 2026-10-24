@@ -168,7 +168,7 @@ export default {
     },
     'layers.fieldSentence': {
       carried: 'changed',
-      how: 'A sentence field comes back only when at least one sentence has a non-empty value in it. The field bound to Translated_Text comes back named Translation and the one bound to Comment named Note, whatever they were called. Every other sentence field comes back under its own name, except that one wanting a name a bound field already took keeps its column name instead (Sentence_Translation). Its config comes back as { scope }, plus lang as layers.fieldLang says.',
+      how: 'A sentence field comes back only when at least one sentence has a non-empty value in it. The field bound to Translated_Text comes back named Translation and the one bound to Comment named Note, whatever they were called. Every other sentence field comes back under its own name, except that one wanting a name a bound field already took keeps its column name instead (Sentence_Translation). Its config comes back as { scope }, plus lang as layers.fieldLang says and sentenceRole as layers.fieldSentenceRole says.',
     },
     'layers.fieldWord': {
       carried: 'changed',
@@ -202,6 +202,13 @@ export default {
       ruling: PARITY_RULING,
       wart: true,
       why: 'No column records which entry field a field pairs with. The import gives each word and morpheme field the Lexicon field its name proposes among a new vocabulary’s fields, and a field whose name proposes none gets none.',
+    },
+    'layers.fieldSentenceRole': {
+      carried: false,
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
+      why: 'Only the binding to a CLDF term says what a sentence field holds. The import gives the field bound to Translated_Text the translation role and the one bound to Comment the note role, and every other sentence field the role its name proposes, or none.',
     },
     'layers.fieldTagset': {
       carried: false,

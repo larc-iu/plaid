@@ -67,6 +67,27 @@ export const LEXICON_FIELD_KEY = 'lexiconField';
  */
 export const readLexiconField = (config) => readIgt(config, LEXICON_FIELD_KEY) ?? null;
 
+/** Where a sentence field keeps its role (domain/sentenceRole.js). */
+export const SENTENCE_ROLE_KEY = 'sentenceRole';
+
+/** What a sentence field can hold: its free translation, literal translation or a note. */
+export const SENTENCE_ROLES = Object.freeze({
+  TRANSLATION: 'translation',
+  LITERAL_TRANSLATION: 'literalTranslation',
+  NOTE: 'note',
+});
+const SENTENCE_ROLE_VALUES = new Set(Object.values(SENTENCE_ROLES));
+
+/**
+ * A sentence field's role (SENTENCE_ROLES), or null for none. What the
+ * exporters, the service defaults and the importers read to know which
+ * sentence field is the translation, never the field's name.
+ */
+export const readSentenceRole = (config) => {
+  const role = readIgt(config, SENTENCE_ROLE_KEY);
+  return SENTENCE_ROLE_VALUES.has(role) ? role : null;
+};
+
 /** A word token layer's non-baseline orthographies: [{name}], or null. */
 export const readOrthographies = (config) => readIgt(config, 'orthographies') ?? null;
 

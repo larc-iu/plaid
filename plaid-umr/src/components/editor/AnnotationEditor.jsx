@@ -57,12 +57,12 @@ export const AnnotationEditor = () => {
 
   useDocumentTitle('Annotate', doc?.name, project?.name);
 
-  // The open's gate, which writes nothing (what another app's edit left is
-  // read right and stored by the next UMR write, umrSettle.js), and enters
-  // strict mode. Strict mode OCC-guards annotation edits, as in plaid-ud:
-  // every write carries the document's version, so an edit made over another
-  // person's newer one is refused with a 409 and the page resyncs, where it
-  // silently overwrote theirs (or minted a variable they had just taken).
+  // The initial repair, and the gate the body holds behind a spinner while it
+  // runs. Strict mode OCC-guards annotation edits, as in plaid-ud: every write
+  // carries the document's version, so an edit made over another person's
+  // newer one is refused with a 409 and the page resyncs, where it silently
+  // overwrote theirs (or minted a variable they had just taken). It is entered
+  // BEFORE the repair, whose writes then carry the version it was planned from.
   const reconciling = useReconcileOnOpen({
     doc,
     asOf,
@@ -72,7 +72,7 @@ export const AnnotationEditor = () => {
   // The project's vocabularies, which the entry check compares a node picked
   // from an entry with: a warning on the node, its sentence's badge and the
   // Validation tab when the entry now reads another concept. Read once per
-  // document (a write reads it too, to forget a deleted entry), and handed
+  // document (reconcile reads it too, to forget a deleted entry), and handed
   // to a past state shown in its place, since what the vocabulary says now
   // is the lexicon.
   useEffect(() => {

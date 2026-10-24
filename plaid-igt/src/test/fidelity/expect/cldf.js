@@ -15,6 +15,7 @@
 // behavior under test, so `bindings` asks the preset code for it.
 
 import { defaultCldfOptions } from '../../../export/cldf.js';
+import { entryRolesByKey } from '../../../domain/lexiconField.js';
 import { escapeJsRegex } from '../../../../../plaid-ui/src/lib/jsRegex.js';
 import {
   baselineOf,
@@ -61,11 +62,21 @@ function bindings(source) {
       .filter((l) => l.key.startsWith(`span:${role}/`) && scopes.includes(l.config?.igt?.scope))
       .sort((a, b) => a.position - b.position)
       .map((l) => l.name);
+  // Each field's stored role, as exportLayers.js reads it off the project.
+  const entryRoles = entryRolesByKey(vocabs(source));
+  const fieldRoles = {};
+  for (const l of spanLayers(source)) {
+    const scope = l.config?.igt?.scope;
+    const role =
+      scope === 'Sentence' ? l.config?.igt?.sentenceRole : entryRoles[l.config?.igt?.lexiconField];
+    if (scope && role) fieldRoles[`${scope}:${l.name}`] = role;
+  }
   const o = defaultCldfOptions({
     sentFields: names('sentence', ['Sentence']),
     wordFields: names('word', ['Word', 'Token']),
     morphFields: names('morpheme', ['Morpheme']),
     orthographies: [],
+    fieldRoles,
   });
   return {
     translation: o.translationField,

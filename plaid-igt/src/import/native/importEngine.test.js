@@ -368,9 +368,12 @@ const itemPatches = (client) =>
 describe('deriveSetupData', () => {
   it('maps the archive schema onto the setup wizard input', () => {
     const { manifest } = buildArchive();
-    // An archive made before fields recorded a Lexicon field.
+    // An archive made before fields recorded a Lexicon field or a role.
     for (const rows of Object.values(manifest.schema.fields)) {
-      for (const row of rows) delete row.lexiconField;
+      for (const row of rows) {
+        delete row.lexiconField;
+        delete row.sentenceRole;
+      }
     }
     const setup = deriveSetupData(manifest, 'Reimported');
     expect(setup.basicInfo).toEqual({ projectName: 'Reimported' });
@@ -395,7 +398,10 @@ describe('deriveSetupData', () => {
         ...manifest.schema,
         fields: {
           ...manifest.schema.fields,
-          sentence: [{ name: 'Translation', lang: 'pmy' }],
+          sentence: [
+            { name: 'Translation', lang: 'pmy', sentenceRole: null },
+            { name: 'Libre', sentenceRole: 'translation' },
+          ],
           morpheme: [
             { name: 'Glosa', lexiconField: 'gloss' },
             { name: 'Gloss', lexiconField: null },
@@ -408,6 +414,16 @@ describe('deriveSetupData', () => {
       scope: 'Sentence',
       lang: 'pmy',
       lexiconField: null,
+      sentenceRole: null,
+      isCustom: true,
+    });
+    // And a sentence field's role, a recorded none staying none.
+    expect(deriveSetupData(labelled, 'x').fields.fields).toContainEqual({
+      name: 'Libre',
+      scope: 'Sentence',
+      lang: null,
+      lexiconField: null,
+      sentenceRole: 'translation',
       isCustom: true,
     });
     // And so does its Lexicon field.

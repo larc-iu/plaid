@@ -22,7 +22,9 @@ import {
   readFieldLang,
   readLanguages,
   readLexiconField,
+  readSentenceRole,
   LEXICON_FIELD_KEY,
+  SENTENCE_ROLE_KEY,
 } from '@/domain/igtConfig';
 import { lexiconFieldChoices } from '@/domain/lexiconField';
 import { notSetUp } from '@ui/domain/setupGuard.js';
@@ -78,6 +80,7 @@ const extractFields = (project) => {
     tagset: readTagsetName(spanLayer.config),
     lang: readFieldLang(spanLayer.config),
     lexiconField: readLexiconField(spanLayer.config),
+    sentenceRole: readSentenceRole(spanLayer.config),
   }));
   if (fields.length === 0 && !ignoredTokensConfig) return null;
 
@@ -286,7 +289,7 @@ export const FieldsSettings = ({
       layerIds.delete(key);
     }
 
-    // Each field's tagset reference, language and Lexicon field, for the
+    // Each field's tagset reference, language, Lexicon field and role, for the
     // fields whose value the user changed here. A field stores the tagset's NAME, never a copy of
     // the list, so pointing two fields at one tagset is what makes them share
     // it. The language is the record the exporters read.
@@ -335,6 +338,16 @@ export const FieldsSettings = ({
         next
           ? b.spanLayers.setConfig(id, IGT_NAMESPACE, LEXICON_FIELD_KEY, next, undefined, options)
           : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, LEXICON_FIELD_KEY, undefined, options),
+    );
+    sync(
+      change.sentenceRole,
+      SENTENCE_ROLE_KEY,
+      readSentenceRole,
+      (f) => (f.scope === 'Sentence' && f.sentenceRole) || null,
+      (id, next, options) =>
+        next
+          ? b.spanLayers.setConfig(id, IGT_NAMESPACE, SENTENCE_ROLE_KEY, next, undefined, options)
+          : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, SENTENCE_ROLE_KEY, undefined, options),
     );
 
     // The rules of each field whose tagset this save sets, a new field's

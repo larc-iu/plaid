@@ -17,7 +17,6 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { isRecordToken, toUmrSentences } from '../src/domain/sentenceGraph.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { storeAll } from './settle.js';
 import { recordingClient } from './recordingClient.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
 
@@ -127,15 +126,15 @@ test('an excerpt: a sentence added after one with no graph and annotated keeps n
     toUmrSentences(doc.graph).map((s) => s.snt),
     [2, 3, 4],
   );
-  const result = await storeAll(doc);
-  assert.equal(result, null);
+  const result = await doc._reconcile();
+  assert.deepEqual(result, { findings: [] });
   assert.deepEqual(calls, []);
 });
 
 test('a sentence added after one with no graph, then one typed in before both, moves no stored lines', async () => {
   // Imported snt1 to snt3, "Veli uyudu ." (snt2) with no graph. "Ayşe koştu
-  // ." was added after it and annotated at position 3 (s3), and a write
-  // stored the old snt3's names as s4. Then "Yeni ." was added after the first
+  // ." was added after it and annotated at position 3 (s3), and the open
+  // renumbered the old snt3 to s4. Then "Yeni ." was added after the first
   // sentence, so "Veli uyudu ." is at 3 and "Ayşe koştu ." at 4.
   const raw = fromText(
     [
@@ -157,7 +156,7 @@ test('a sentence added after one with no graph, then one typed in before both, m
     ['Ayşe koştu .', null],
     ['Can yüzdü .', 3],
   ]);
-  const result = await storeAll(doc);
+  const result = await doc._reconcile();
   assert.equal(result.recordsMoved, 0);
   assert.equal(result.renumbered, 4);
   assert.deepEqual(
@@ -197,12 +196,12 @@ test('two sentences typed in before the first, with no open between, still move 
     ['Ali geldi .', 1],
     ['Ali geldi .', 2],
   ]);
-  const result = await storeAll(doc);
+  const result = await doc._reconcile();
   assert.equal(result.recordsMoved, 1);
   applyPatches(raw, calls);
   const again = open(raw);
   assert.deepEqual(records(again.doc), records(doc));
-  assert.equal(await storeAll(again.doc), null);
+  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
 });
 
 test('a document whose stored numbers skip one keeps a triple between constants on its sentence', async () => {
@@ -217,7 +216,7 @@ test('a document whose stored numbers skip one keeps a triple between constants 
     doc.graph.sentences.map((s) => s.triples.length),
     [0, 0, 0, 1],
   );
-  const result = await storeAll(doc);
+  const result = await doc._reconcile();
   assert.equal(result.renumbered, 4);
   applyPatches(raw, calls);
   const again = open(raw);
@@ -228,5 +227,5 @@ test('a document whose stored numbers skip one keeps a triple between constants 
   const [before, last] = again.doc.toUmr().split('# :: snt4');
   assert.doesNotMatch(before, /root :modal author/);
   assert.match(last, /root :modal author/);
-  assert.equal(await storeAll(again.doc), null);
+  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
 });

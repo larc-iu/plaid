@@ -15,6 +15,9 @@ export const fieldChange = ({ fields, ignoredTokens, previous }) => {
     lexiconField: fields.filter(
       (f) => !was(f) || (was(f).lexiconField || null) !== (f.lexiconField || null),
     ),
+    sentenceRole: fields.filter(
+      (f) => !was(f) || (was(f).sentenceRole || null) !== (f.sentenceRole || null),
+    ),
     ignoredTokens:
       JSON.stringify(storedIgnoredTokens(previous.ignoredTokens)) !==
       JSON.stringify(storedIgnoredTokens(ignoredTokens)),

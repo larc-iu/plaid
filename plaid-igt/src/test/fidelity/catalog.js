@@ -341,6 +341,13 @@ export const FEATURES = [
     detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.lexiconField),
   },
   {
+    key: 'layers.fieldSentenceRole',
+    what: 'a sentence field that records what it holds (its role: translation, literal translation, note)',
+    // Setup's Translation, Literal Translation and Note fields hold those.
+    bare: true,
+    detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.sentenceRole),
+  },
+  {
     key: 'layers.fieldTagset',
     what: 'an annotation field governed by a tagset',
     detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.tagset),

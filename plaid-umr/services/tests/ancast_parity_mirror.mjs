@@ -4,8 +4,8 @@
 // what that writer makes, so it must be the file the Export tab gives.
 //
 // Each sample gives these cases, each changed as the app or IGT changes it
-// with nothing the reader reads right stored yet by a UMR write, which is
-// how a service reads it:
+// and not yet healed by opening it in the app, which is how a service reads
+// it:
 //   imported   the file as the app's import lays it down (a graph the parser
 //              cannot read is kept as text, with the relations held on it)
 //   fragment   one leaf edge deleted in the first sentence with an edge, so

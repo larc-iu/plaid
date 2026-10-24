@@ -17,41 +17,19 @@ import { rawFromPlan } from './rawFromPlan.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'umr');
 
-const graphShape = (graph, as = (v) => v) => {
+const graphShape = (graph) => {
   if (!graph?.root) return null;
   const nodes = {};
   graph.nodes.forEach((node, v) => {
-    nodes[as(v)] = {
+    nodes[v] = {
       concept: node.concept,
       // Not `inline`: a file may expand a re-entrant node at a later mention
       // than its first (a forward reference, which the official validator
       // rejects), and the export always expands at the first.
-      children: node.children.map((c) => [
-        c.rel,
-        c.kind,
-        c.kind === 'node' ? as(c.value) : c.value,
-      ]),
+      children: node.children.map((c) => [c.rel, c.kind, c.value]),
     };
   });
-  return { root: as(graph.root), nodes };
-};
-
-// The names the reader gives a file's variables whose sentence number is not
-// their sentence's (sentenceGraph.js renumberMoves), as the export writes
-// them: by sentence, and over the document where only one node was so named.
-const readNames = (doc) => {
-  const bySentence = new Map();
-  const everywhere = new Map();
-  doc.graph.nodesById.forEach((n) => {
-    if (!n.storedVar || n.storedVar === n.var) return;
-    if (!bySentence.has(n.sentence)) bySentence.set(n.sentence, new Map());
-    bySentence.get(n.sentence).set(n.storedVar, n.var);
-    everywhere.set(n.storedVar, everywhere.has(n.storedVar) ? null : n.var);
-  });
-  return {
-    in: (index) => (v) => bySentence.get(index)?.get(v) ?? v,
-    any: (v) => everywhere.get(v) || v,
-  };
+  return { root: graph.root, nodes };
 };
 
 const tripleSet = (dg) =>
@@ -68,7 +46,6 @@ for (const file of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
     const plan = planImport(original.sentences, []);
     const doc = new UmrDocument({ raw: rawFromPlan(plan) });
     const again = parseUmrFile(doc.toUmr());
-    const named = readNames(doc);
     // A graph the parser could not read is kept as text, so its errors come
     // back as they went in. Any other sentence must be clean.
     const readable = (s) => s.graph && !s.graph.errors.length;
@@ -88,21 +65,20 @@ for (const file of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
         return;
       }
       assert.deepEqual(a.words, o.words, `sentence ${i + 1} words`);
-      const as = named.in(i + 1);
-      assert.deepEqual(graphShape(a.graph), graphShape(o.graph, as), `sentence ${i + 1} graph`);
+      assert.deepEqual(graphShape(a.graph), graphShape(o.graph), `sentence ${i + 1} graph`);
       // A file may omit its alignment block (the release data does); the
       // export then lists every node as unaligned, which is what the spec
       // requires and what omission meant.
-      const alignments = (s, rename = (v) => v) =>
-        Object.fromEntries([...s.alignment].map(([v, r]) => [rename(v), JSON.stringify(r)]));
-      const oAlign = alignments(o, as);
+      const alignments = (s) =>
+        Object.fromEntries([...s.alignment].map(([v, r]) => [v, JSON.stringify(r)]));
+      const oAlign = alignments(o);
       const aAlign = alignments(a);
       Object.keys(aAlign).forEach((v) => {
         if (!(v in oAlign)) assert.equal(aAlign[v], '[]', `sentence ${i + 1} ${v} unaligned`);
       });
       Object.keys(oAlign).forEach((v) => {
         // An alignment for a variable the graph never defines is dropped.
-        if (![...o.graph.nodes.keys()].some((k) => as(k) === v)) return;
+        if (!o.graph.nodes.has(v)) return;
         assert.equal(aAlign[v], oAlign[v], `sentence ${i + 1} ${v} alignment`);
       });
     });
@@ -124,21 +100,13 @@ for (const file of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
     });
     const setOf = (sentences) =>
       [...new Set(sentences.flatMap((s) => tripleSet(s.docGraph)))].sort();
-    const known = setOf(original.sentences)
-      .filter((t) =>
-        t
-          .split(' ')
-          .slice(1)
-          .filter((x) => !x.startsWith(':'))
-          .every((x) => defined.has(x)),
-      )
-      .map((t) =>
-        t
-          .split(' ')
-          .map((x, k) => (k === 0 || x.startsWith(':') ? x : named.any(x)))
-          .join(' '),
-      )
-      .sort();
+    const known = setOf(original.sentences).filter((t) =>
+      t
+        .split(' ')
+        .slice(1)
+        .filter((x) => !x.startsWith(':'))
+        .every((x) => defined.has(x)),
+    );
     assert.deepEqual(setOf(again.sentences), known, 'document graph');
   });
 }

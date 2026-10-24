@@ -4,9 +4,9 @@ import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 // Mirrors the substrate conventions: roles under config.plaid.role, scope
 // under config.igt.scope, orthographies under config.igt.orthographies.
 const role = (r) => ({ plaid: { role: r } });
-const scoped = (name, scope, lang) => ({
+const scoped = (name, scope, lang, more = {}) => ({
   name,
-  config: { igt: { scope, ...(lang ? { lang } : {}) } },
+  config: { igt: { scope, ...(lang ? { lang } : {}), ...more } },
 });
 
 const PROJECT = {
@@ -20,14 +20,17 @@ const PROJECT = {
             igt: { orthographies: [{ name: 'IPA' }, { name: 'Translit' }] },
           },
           spanLayers: [
-            scoped('POS', 'Word'),
+            scoped('POS', 'Word', null, { lexiconField: 'pos' }),
             scoped('Legacy', 'Word'),
             scoped('Stray', 'Morpheme'),
           ],
         },
         {
           config: role('sentence'),
-          spanLayers: [scoped('Translation', 'Sentence', 'pmy')],
+          spanLayers: [
+            scoped('Translation', 'Sentence', 'pmy', { sentenceRole: 'translation' }),
+            scoped('Note', 'Sentence', null, { sentenceRole: 'bogus' }),
+          ],
         },
         {
           config: role('morpheme'),
@@ -44,11 +47,14 @@ describe('discoverExportLayers', () => {
       orthographies: ['IPA', 'Translit'],
       wordFields: ['POS', 'Legacy'],
       morphFields: ['Gloss'],
-      sentFields: ['Translation'],
+      sentFields: ['Translation', 'Note'],
       hasMorphemes: true,
       documentMetadata: [],
       // Only the field that records one, keyed by scope and name.
       fieldLangs: { 'Sentence:Translation': 'pmy' },
+      // The same for the stored roles: a sentence field's own, a word or
+      // morpheme field's Lexicon field's. Not the names.
+      fieldRoles: { 'Word:POS': 'pos', 'Sentence:Translation': 'translation' },
     });
   });
 
@@ -61,6 +67,7 @@ describe('discoverExportLayers', () => {
       hasMorphemes: false,
       documentMetadata: [],
       fieldLangs: {},
+      fieldRoles: {},
     });
   });
 });

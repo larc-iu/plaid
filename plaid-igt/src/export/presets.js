@@ -5,7 +5,8 @@
 
 import { statusOf } from '@ui/lib/errors.js';
 import { uuidv4 } from '@larc-iu/plaid-client';
-import { IGT_NAMESPACE } from '../domain/igtConfig.js';
+import { IGT_NAMESPACE, SENTENCE_ROLES } from '../domain/igtConfig.js';
+import { ENTRY_ROLES } from '../domain/vocabFields.js';
 import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
 import { defaultLatexOptions } from './latexBook.js';
@@ -89,25 +90,33 @@ const tagify = (name) =>
     .replace(/[^a-z0-9-]+/g, '')
     .slice(0, 30);
 
-// Pre-fill the flextext field→item-type mapping from field names — the exact
-// inverse of the FLEx importer's naming (Translation / Literal Translation /
-// Note, Gloss, POS). Unmapped fields are omitted from the output.
+// Pre-fill the flextext field→item-type mapping from the fields' stored roles
+// (`layers.fieldRoles`, see exportLayers.js), the exact inverse of the FLEx
+// importer's: a sentence field holding the translation is gls, the literal
+// translation lit, and any other sentence field a note. A word or morpheme
+// field whose Lexicon field holds the gloss role is gls, the part-of-speech
+// role pos (msa on a morpheme). Never a field's name. Unmapped fields are
+// omitted from the output.
 export function defaultFieldMap(layers) {
+  const roles = layers.fieldRoles || {};
   const sentence = {};
   for (const f of layers.sentFields) {
-    if (/literal/i.test(f)) sentence[f] = 'lit';
-    else if (/translation|gls|gloss/i.test(f)) sentence[f] = 'gls';
+    const role = roles[`Sentence:${f}`];
+    if (role === SENTENCE_ROLES.LITERAL_TRANSLATION) sentence[f] = 'lit';
+    else if (role === SENTENCE_ROLES.TRANSLATION) sentence[f] = 'gls';
     else sentence[f] = 'note';
   }
   const word = {};
   for (const f of layers.wordFields) {
-    if (/gloss/i.test(f)) word[f] = 'gls';
-    else if (/pos|category/i.test(f)) word[f] = 'pos';
+    const role = roles[`Word:${f}`];
+    if (role === ENTRY_ROLES.GLOSS) word[f] = 'gls';
+    else if (role === ENTRY_ROLES.POS) word[f] = 'pos';
   }
   const morpheme = {};
   for (const f of layers.morphFields) {
-    if (/gloss/i.test(f)) morpheme[f] = 'gls';
-    else if (/pos|category|msa/i.test(f)) morpheme[f] = 'msa';
+    const role = roles[`Morpheme:${f}`];
+    if (role === ENTRY_ROLES.GLOSS) morpheme[f] = 'gls';
+    else if (role === ENTRY_ROLES.POS) morpheme[f] = 'msa';
   }
   return { sentence, word, morpheme };
 }

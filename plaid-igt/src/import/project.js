@@ -39,13 +39,16 @@ import { lexiconFieldChoices, withLexiconFields } from '../domain/lexiconField.j
  * `executeProjectSetup` reads.
  *
  * - `orthographies` are names; Baseline is added here and is always first.
- * - `fields` are `{name, scope, lang, lexiconField?}`. `lang` is the language
+ * - `fields` are `{name, scope, lang, lexiconField?, sentenceRole?}`. `lang` is the language
  *   the field's VALUES are in, recorded on the span layer. A format that calls
  *   it a writing system (FLEx) translates at its own call: `lang` is the word
  *   everything outside that importer uses. `lexiconField` is the entry field
  *   the field pairs with (domain/lexiconField.js), null for none. A field that
  *   leaves it out gets the one its name proposes among `entryFields` (as
  *   lexiconFieldChoices gives them), by default a new vocabulary's fields.
+ *   A sentence field's `sentenceRole` is its role (domain/sentenceRole.js),
+ *   null for none. One that leaves it out gets the one its name proposes when
+ *   setup makes it.
  * - `ignoredTokens` is the wizard-shaped rule (see igtConfig). Left out, a
  *   project gets the default rule; passed `null`, setup writes none, which is
  *   what an archive that names no rule wants — the project keeps whatever it
@@ -79,6 +82,7 @@ export function setupDataFor({
         scope: f.scope,
         lang: f.lang ?? null,
         lexiconField: f.lexiconField,
+        ...(f.scope === 'Sentence' ? { sentenceRole: f.sentenceRole } : {}),
         isCustom: true,
       })),
       ignoredTokens: ignoredTokens ?? undefined,

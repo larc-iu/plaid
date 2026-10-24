@@ -394,8 +394,8 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
 
   // `home` is the sentence an UNALIGNED node belongs to, by number: its
   // anchor is a point, so it records its sentence's token once that exists
-  // (sentenceGraph.js). `words` are the words an aligned node records
-  // (`wordSplitCuts`), as positions among all the sentences' words in text
+  // (see umrReconcile.js). `words` are the words an aligned node records
+  // (planWordSplits), as positions among all the sentences' words in text
   // order, which is the order the import makes them in.
   const addNode = (
     key,

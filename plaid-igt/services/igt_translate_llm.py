@@ -175,7 +175,7 @@ class LLMTranslateService(BaseService):
                              description='The language to translate into.'),
                 Param.string('orthography', 'Orthography', default='', placeholder='baseline',
                              description='Name of a word orthography to send instead of the baseline text.'),
-                Param.field('translation_field', 'Translation field', 'Sentence',
+                Param.field('translation_field', 'Translation field', 'Sentence', role='translation',
                             required=True, description='The sentence-scope field that receives the drafts.'),
                 Param.boolean('use_glosses', 'Use glosses', default=True,
                               description="Show the model the sentence's morpheme glosses."),

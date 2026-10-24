@@ -16,9 +16,11 @@ import {
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
 import { lexiconFieldChoices, proposeLexiconField } from '@/domain/lexiconField';
+import { SENTENCE_ROLE_CHOICES, proposeSentenceRole } from '@/domain/sentenceRole';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import {
   IGNORED_TOKEN_MODES,
+  SENTENCE_ROLES,
   defaultIgnoredTokensSetup,
   storedIgnoredTokens,
 } from '@/domain/igtConfig';
@@ -40,6 +42,7 @@ import { TYPE } from '@ui/lib/typeScale.js';
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
 const NO_LEXICON_FIELD = '__none__';
+const NO_ROLE = '__none__';
 
 // Default annotation fields: the set a FieldWorks import produces (see
 // import/flex/importEngine.js deriveImportConfig). Keep in sync with the
@@ -53,9 +56,19 @@ const DEFAULT_FIELDS = [
   { name: 'POS', scope: 'Word', isCustom: false, lexiconField: 'pos' },
   { name: 'Gloss', scope: 'Morpheme', isCustom: false, lexiconField: 'gloss' },
   { name: 'POS', scope: 'Morpheme', isCustom: false, lexiconField: 'pos' },
-  { name: 'Translation', scope: 'Sentence', isCustom: false },
-  { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
-  { name: 'Note', scope: 'Sentence', isCustom: false },
+  {
+    name: 'Translation',
+    scope: 'Sentence',
+    isCustom: false,
+    sentenceRole: SENTENCE_ROLES.TRANSLATION,
+  },
+  {
+    name: 'Literal Translation',
+    scope: 'Sentence',
+    isCustom: false,
+    sentenceRole: SENTENCE_ROLES.LITERAL_TRANSLATION,
+  },
+  { name: 'Note', scope: 'Sentence', isCustom: false, sentenceRole: SENTENCE_ROLES.NOTE },
 ];
 
 // The letter-like exceptions are single CHARACTERS (see domain/igtConfig.js),
@@ -114,6 +127,7 @@ const fieldsKey = (list) =>
       f.tagset ?? null,
       f.lang ?? null,
       f.lexiconField ?? null,
+      f.sentenceRole ?? null,
     ]),
   );
 
@@ -350,8 +364,9 @@ export const FieldsManager = ({
       return;
     }
 
-    // A name like "Gloss (nl)" proposes its language, and a name like "Gloss"
-    // its Lexicon field, once. The record is what counts.
+    // A name like "Gloss (nl)" proposes its language, a name like "Gloss"
+    // its Lexicon field, and a name like "Translation" a sentence field's
+    // role, once. The record is what counts.
     const lang = fieldNameLang(trimmedName);
     const newField = {
       name: trimmedName,
@@ -363,6 +378,7 @@ export const FieldsManager = ({
         { name: trimmedName, scope: newFieldScope, lang },
         lexiconChoices,
       ),
+      ...(newFieldScope === 'Sentence' ? { sentenceRole: proposeSentenceRole(trimmedName) } : {}),
     };
 
     const updatedFields = [...fields, newField];
@@ -415,6 +431,13 @@ export const FieldsManager = ({
   const handleSetLexiconField = async (key, choice) => {
     const lexiconField = choice === NO_LEXICON_FIELD ? null : choice;
     const updated = fields.map((f) => (fieldKey(f) === key ? { ...f, lexiconField } : f));
+    await saveChanges(updated, ignoredTokens);
+  };
+
+  // What a sentence field holds (or nothing).
+  const handleSetSentenceRole = async (key, choice) => {
+    const sentenceRole = choice === NO_ROLE ? null : choice;
+    const updated = fields.map((f) => (fieldKey(f) === key ? { ...f, sentenceRole } : f));
     await saveChanges(updated, ignoredTokens);
   };
 
@@ -651,6 +674,9 @@ export const FieldsManager = ({
                 <th className="w-[18%] px-3 py-2 text-left font-medium">
                   <span title="The entry field that holds this field's value.">Lexicon field</span>
                 </th>
+                <th className="w-[16%] px-3 py-2 text-left font-medium">
+                  <span title="What a sentence field holds, for exports and services.">Role</span>
+                </th>
                 {tagsetNames.length > 0 && (
                   <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
                 )}
@@ -719,6 +745,26 @@ export const FieldsManager = ({
                               {humanizeFieldName(record.lexiconField)} (missing)
                             </SelectItem>
                           )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </td>
+                  <td className="border-t px-3 py-2 align-middle">
+                    {record.scope === 'Sentence' && (
+                      <Select
+                        value={record.sentenceRole ?? NO_ROLE}
+                        onValueChange={(v) => handleSetSentenceRole(record.key, v)}
+                      >
+                        <SelectTrigger className="h-8" aria-label={`Role of ${record.name}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_ROLE}>None</SelectItem>
+                          {SENTENCE_ROLE_CHOICES.map((c) => (
+                            <SelectItem key={c.role} value={c.role}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}

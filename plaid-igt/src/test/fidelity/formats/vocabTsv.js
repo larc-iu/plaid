@@ -80,6 +80,7 @@ export default {
     'layers.fieldOrder': NOT_A_VOCABULARY,
     'layers.fieldLang': NOT_A_VOCABULARY,
     'layers.fieldLexiconField': NOT_A_VOCABULARY,
+    'layers.fieldSentenceRole': NOT_A_VOCABULARY,
     'layers.fieldTagset': NOT_A_VOCABULARY,
     'layers.splitOnSpace': NOT_A_VOCABULARY,
     'layers.foreignTokenLayer': foreign('A token layer another app uses.'),

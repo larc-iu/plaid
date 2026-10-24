@@ -1,18 +1,15 @@
-// What the next UMR write stores of what the reader shows beyond the
-// unaligned nodes' anchors (the owner's rulings of 2026-09-28, moved off the
-// open by R3, 2026-10-24), on a document as the storage model holds it: a
-// node whose word IGT deleted, and variables whose sentence number moved.
-// The open writes nothing, the reader reads the answer already, the first
-// write to the sentence stores it unstamped, and nothing is left to store
-// after it.
+// What reconcile on open puts right beyond the unaligned nodes' anchors
+// (the owner's rulings of 2026-09-28), on a document as the storage model
+// holds it: a node whose word IGT deleted, and variables whose sentence
+// number moved. Each is one audited repair, unstamped, and a second pass
+// finds nothing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { renumberMoves } from '../src/domain/sentenceGraph.js';
-import { planSettle } from '../src/domain/umrSettle.js';
+import { planRenumber } from '../src/domain/umrReconcile.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
 
@@ -117,42 +114,45 @@ function replay(raw, calls) {
   return next;
 }
 
-// The open, which writes nothing, then a write to sentence `index` (a
-// concept changed on its first node), and the document as the server holds
-// it after, which has nothing left to store.
-async function storedByAWrite(loaded, index) {
+async function twice(loaded) {
   const { doc, calls, raw } = loaded;
-  await doc.reconcileOnOpen();
-  assert.deepEqual(
-    calls.filter((c) => c.name !== 'operation'),
-    [],
-    'the open writes nothing',
-  );
-  const node = doc.sentence(index).nodes[0];
-  assert.ok(await doc.setConcept(node.id, `${node.concept}-x`));
-  const after = new UmrDocument({ raw: replay(raw, calls) });
-  assert.equal(planSettle(after.graph, null), null, 'nothing is left to store');
-  return { after, written: node };
+  const result = await doc._reconcile();
+  const label = doc.describeReconcile(result);
+  const { client, calls: again } = recordingClient();
+  const after = new UmrDocument({ raw: replay(raw, calls), client });
+  after._reload = async () => {};
+  assert.deepEqual(await after._reconcile(), { findings: [] }, 'a second pass finds nothing');
+  assert.equal(again.length, 0);
+  return { result, label, after };
 }
 
-test('a node whose word was deleted is stored as an ordinary unaligned node by the next write', async () => {
-  const loaded = load((raw, L) => {
-    // IGT deletes the word token "yemek": the text stays.
-    const at = raw.textLayers[0].text.body.indexOf('yemek');
-    L.words.tokens = L.words.tokens.filter((t) => t.begin !== at);
-  });
+// The client's tokens.update is not in the recording client: record it.
+const withUpdate = (loaded) => {
+  loaded.doc._client.tokens.update = async (...args) =>
+    loaded.calls.push({ name: 'tokens.update', args });
+  return loaded;
+};
+
+test('a node whose word was deleted becomes an ordinary unaligned node, named in History', async () => {
+  const loaded = withUpdate(
+    load((raw, L) => {
+      // IGT deletes the word token "yemek": the text stays.
+      const at = raw.textLayers[0].text.body.indexOf('yemek');
+      L.words.tokens = L.words.tokens.filter((t) => t.begin !== at);
+    }),
+  );
   const { doc, calls } = loaded;
   const node = byVar(doc, 's2y2');
-  // Read as unaligned already, so the canvas and the export agree before any
-  // write (and in a past state, which stores nothing).
+  // Read as unaligned already, so the canvas and the export agree before the
+  // repair (and in a past state, which does not repair).
   assert.equal(node.aligned, false);
   assert.deepEqual(node.alignment, []);
   const sentence = doc.sentence(2);
-  const { after } = await storedByAWrite(loaded, 2);
+  const { result, label, after } = await twice(loaded);
+  assert.deepEqual(result.unanchored, ['s2y2']);
+  assert.equal(label, 'Repaired: 1 node lost its word (s2y2)');
   assert.deepEqual(
-    calls
-      .filter((c) => c.name === 'spans.patchMetadata' && c.args[0] === node.id)
-      .map((c) => c.args),
+    calls.filter((c) => c.name === 'spans.patchMetadata').map((c) => c.args),
     // It records its sentence, and the words it recorded go.
     [
       [
@@ -171,12 +171,6 @@ test('a node whose word was deleted is stored as an ordinary unaligned node by t
     calls.filter((c) => c.name === 'tokens.update').map((c) => c.args),
     [],
   );
-  // Stored inside the write's operation, before the write's own change, with
-  // no stamp of its own.
-  const op = calls.findIndex((c) => c.name === 'operation' && c.args[0].startsWith('Change '));
-  const stored = calls.findIndex((c) => c.name === 'spans.patchMetadata' && c.args[0] === node.id);
-  const own = calls.findIndex((c) => c.name === 'spans.update');
-  assert.ok(op >= 0 && op < stored && stored < own);
   // Now it records its sentence, so a word typed back under it does not
   // align it again.
   const healed = byVar(after, 's2y2');
@@ -196,74 +190,68 @@ test('an open leaves a node-layer token with no node on it alone', async () => {
   const { doc, calls } = load((raw, L) => {
     L.nodes.tokens.push({ id: 'bare', begin: 0, end: 10 });
   });
-  await doc.reconcileOnOpen();
-  assert.equal(calls.filter((c) => c.name !== 'operation').length, 0);
+  assert.deepEqual(await doc._reconcile(), { findings: [] });
+  assert.equal(calls.length, 0);
 });
 
-const deleteFirstSentence = (raw, L, also = () => true) => {
-  // IGT deleted the first sentence: its token, its words and, by the
-  // cascade, the nodes over them. What was sentence 2 is sentence 1.
-  const first = L.sentences.tokens[0];
-  L.sentences.tokens = L.sentences.tokens.slice(1);
-  L.words.tokens = L.words.tokens.filter((t) => t.begin >= first.end && also(t));
-  const gone = new Set(L.nodes.tokens.filter((t) => t.end <= first.end).map((t) => t.id));
-  L.nodes.tokens = L.nodes.tokens.filter((t) => !gone.has(t.id));
-  const concepts = L.nodes.spanLayers[0];
-  const dead = new Set(
-    concepts.spans.filter((s) => s.tokens.every((t) => gone.has(t))).map((s) => s.id),
-  );
-  concepts.spans = concepts.spans.filter((s) => !dead.has(s.id));
-  concepts.relationLayers.forEach((rl) => {
-    rl.relations = rl.relations.filter((r) => !dead.has(r.source) && !dead.has(r.target));
-  });
-};
-
-test('variables are read by their sentence number when a sentence before them went, and the next write stores them', async () => {
+test('variables renumbered when a sentence before them went, as one repair', async () => {
   const loaded = load((raw, L) => {
     madeInPlaid(L);
-    deleteFirstSentence(raw, L);
+    // IGT deleted the first sentence: its token, its words and, by the
+    // cascade, the nodes over them. What was sentence 2 is sentence 1.
+    const first = L.sentences.tokens[0];
+    L.sentences.tokens = L.sentences.tokens.slice(1);
+    L.words.tokens = L.words.tokens.filter((t) => t.begin >= first.end);
+    const gone = new Set(L.nodes.tokens.filter((t) => t.end <= first.end).map((t) => t.id));
+    L.nodes.tokens = L.nodes.tokens.filter((t) => !gone.has(t.id));
+    const concepts = L.nodes.spanLayers[0];
+    const dead = new Set(
+      concepts.spans.filter((s) => s.tokens.every((t) => gone.has(t))).map((s) => s.id),
+    );
+    concepts.spans = concepts.spans.filter((s) => !dead.has(s.id));
+    concepts.relationLayers.forEach((rl) => {
+      rl.relations = rl.relations.filter((r) => !dead.has(r.source) && !dead.has(r.target));
+    });
   });
   const { doc } = loaded;
-  const names = (d) =>
-    d
+  assert.deepEqual(
+    doc
       .sentence(1)
-      .nodes.map((n) => [n.var, n.storedVar])
-      .sort();
-  assert.deepEqual(names(doc), [
-    ['s1e', 's2e'],
-    ['s1m', 's2m'],
-    ['s1y', 's2y'],
-    ['s1y2', 's2y2'],
-  ]);
-  // A new node takes a free name beside them, and none a node still stores.
-  assert.equal(doc.variableProblem(byVar(doc, 's1e').id, 's1e2'), null);
-  const { after } = await storedByAWrite(loaded, 1);
-  assert.deepEqual(names(after), [
-    ['s1e', 's1e'],
-    ['s1m', 's1m'],
-    ['s1y', 's1y'],
-    ['s1y2', 's1y2'],
-  ]);
+      .nodes.map((n) => n.var)
+      .sort(),
+    ['s2e', 's2m', 's2y', 's2y2'],
+  );
+  const { result, label, after } = await twice(loaded);
+  assert.equal(result.renumbered, 4);
+  assert.equal(label, 'Repaired: renumbered 4 variables to match the sentences');
+  assert.deepEqual(
+    after
+      .sentence(1)
+      .nodes.map((n) => n.var)
+      .sort(),
+    ['s1e', 's1m', 's1y', 's1y2'],
+  );
+  // A new node takes the next free name beside them.
+  assert.equal(after.variableProblem(byVar(after, 's1e').id, 's1e2'), null);
 });
 
 test('a renumbered name already taken takes a counter, and constants are left alone', () => {
   const node = (id, v, sentence, constant = false) => [id, { id, var: v, sentence, constant }];
-  const nodesById = new Map([
-    node('a', 's2x', 1),
-    node('b', 's1x', 1),
-    node('c', 's3y2', 2),
-    node('d', 'author', null, true),
-    node('e', 'x1', 1),
-    node('f', 's2x2', 1),
+  const graph = {
+    nodesById: new Map([
+      node('a', 's2x', 1),
+      node('b', 's1x', 1),
+      node('c', 's3y2', 2),
+      node('d', 'author', null, true),
+      node('e', 'x1', 1),
+      node('f', 's2x2', 1),
+    ]),
+  };
+  assert.deepEqual(planRenumber(graph), [
+    { nodeId: 'a', from: 's2x', to: 's1x2' },
+    { nodeId: 'f', from: 's2x2', to: 's1x3' },
+    { nodeId: 'c', from: 's3y2', to: 's2y2' },
   ]);
-  assert.deepEqual(
-    renumberMoves([], nodesById).map(({ node: n, from, to }) => ({ nodeId: n.id, from, to })),
-    [
-      { nodeId: 'a', from: 's2x', to: 's1x2' },
-      { nodeId: 'f', from: 's2x2', to: 's1x3' },
-      { nodeId: 'c', from: 's3y2', to: 's2y2' },
-    ],
-  );
 });
 
 test('an add that failed leaves no anchor to take back, in one request of its own operation', async () => {
@@ -304,16 +292,30 @@ test('an add that failed leaves no anchor to take back, in one request of its ow
   assert.deepEqual(ops, ['Add :ARG2 person under ye-01']);
 });
 
-test('a node that lost its word in a sentence that moved is stored under its new variable', async () => {
-  const loaded = load((raw, L) => {
-    madeInPlaid(L);
-    // Sentence 1 goes (as in the renumber test) and "yemek" loses its word.
-    const at = raw.textLayers[0].text.body.indexOf('yemek');
-    deleteFirstSentence(raw, L, (t) => t.begin !== at);
-  });
-  const { after } = await storedByAWrite(loaded, 1);
-  const node = byVar(after, 's1y2');
-  assert.equal(node.storedVar, 's1y2');
-  assert.equal(node.metadata.umr.sentence, after.sentence(1).tokenId);
-  assert.equal(node.aligned, false);
+test('a node that lost its word in a sentence that moved is named by its new variable', async () => {
+  const loaded = withUpdate(
+    load((raw, L) => {
+      madeInPlaid(L);
+      // Sentence 1 goes (as in the renumber test) and "yemek" loses its word.
+      const first = L.sentences.tokens[0];
+      L.sentences.tokens = L.sentences.tokens.slice(1);
+      const at = raw.textLayers[0].text.body.indexOf('yemek');
+      L.words.tokens = L.words.tokens.filter((t) => t.begin >= first.end && t.begin !== at);
+      const gone = new Set(L.nodes.tokens.filter((t) => t.end <= first.end).map((t) => t.id));
+      L.nodes.tokens = L.nodes.tokens.filter((t) => !gone.has(t.id));
+      const concepts = L.nodes.spanLayers[0];
+      const dead = new Set(
+        concepts.spans.filter((s) => s.tokens.every((t) => gone.has(t))).map((s) => s.id),
+      );
+      concepts.spans = concepts.spans.filter((s) => !dead.has(s.id));
+      concepts.relationLayers.forEach((rl) => {
+        rl.relations = rl.relations.filter((r) => !dead.has(r.source) && !dead.has(r.target));
+      });
+    }),
+  );
+  const { label } = await twice(loaded);
+  assert.equal(
+    label,
+    'Repaired: 1 node lost its word (s1y2), renumbered 4 variables to match the sentences',
+  );
 });

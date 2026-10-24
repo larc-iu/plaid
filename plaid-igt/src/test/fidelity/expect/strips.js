@@ -183,6 +183,9 @@ export const STRIPS = {
   'layers.fieldLexiconField': (s) => {
     for (const l of s.layers) if (l.key.startsWith('span:')) delete l.config?.igt?.lexiconField;
   },
+  'layers.fieldSentenceRole': (s) => {
+    for (const l of s.layers) if (l.key.startsWith('span:')) delete l.config?.igt?.sentenceRole;
+  },
   'layers.fieldTagset': (s) => {
     for (const l of s.layers) if (l.key.startsWith('span:')) delete l.config?.igt?.tagset;
   },

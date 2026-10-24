@@ -18,14 +18,26 @@ const IGNORED = { ignoredTokens: { type: 'blacklist', blacklist: ['uh'] } };
 const wordLayer = (extra = {}) => ({
   id: 'wordL',
   config: { plaid: { ...role('word').plaid, ...IGNORED } },
-  spanLayers: [{ id: 'glossL', name: 'Gloss', config: { igt: { scope: 'Word' } }, ...extra.gloss }],
+  spanLayers: [
+    {
+      id: 'glossL',
+      name: 'Gloss',
+      config: { igt: { scope: 'Word', lexiconField: 'gloss' } },
+      ...extra.gloss,
+    },
+  ],
   ...extra.layer,
 });
 const morphLayer = (extra = {}) => ({
   id: 'morphL',
   config: role('morpheme'),
   spanLayers: [
-    { id: 'mglossL', name: 'Gloss', config: { igt: { scope: 'Morpheme' } }, ...extra.gloss },
+    {
+      id: 'mglossL',
+      name: 'Gloss',
+      config: { igt: { scope: 'Morpheme', lexiconField: 'gloss' } },
+      ...extra.gloss,
+    },
   ],
   ...extra.layer,
 });

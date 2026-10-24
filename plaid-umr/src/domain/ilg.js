@@ -56,15 +56,15 @@ const looksLike = (name, re) => re.test(String(name || ''));
 /**
  * A mapping proposed from the project's layers: the morpheme layer as
  * Morphemes, a morpheme-scoped field named like a gloss as Morpheme Gloss,
- * a word-scoped one as Word Gloss, a sentence-scoped translation as Sentence
- * Gloss, and whatever an import stored after those. For setting the lines up,
- * never for reading them (resolveIlg).
+ * a word-scoped one as Word Gloss, the sentence field whose stored role is
+ * the translation as Sentence Gloss, and whatever an import stored after
+ * those. For setting the lines up, never for reading them (resolveIlg).
  */
 export function proposeIlg(layerInfo) {
   const out = [];
   if (layerInfo?.morphemeTokenLayer)
     out.push({ header: 'morphemes', lang: null, source: 'morphemes' });
-  (layerInfo?.glossLayers || []).forEach(({ layer, scope, lang }) => {
+  (layerInfo?.glossLayers || []).forEach(({ layer, scope, lang, sentenceRole }) => {
     const name = layer.name;
     let header = null;
     if (scope === 'morpheme') {
@@ -74,7 +74,7 @@ export function proposeIlg(layerInfo) {
       if (looksLike(name, /gloss|meaning/i)) header = 'word-gloss';
       else if (looksLike(name, /pos|part|tag|class/i)) header = 'pos';
     } else if (scope === 'sentence') {
-      if (looksLike(name, /trans|gloss|free|meaning/i)) header = 'sentence-gloss';
+      if (sentenceRole === 'translation') header = 'sentence-gloss';
     }
     if (!header) return;
     const h = headerOf(header);

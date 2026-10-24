@@ -429,7 +429,7 @@ describe('buildProjectFile', () => {
     expect(out.schema).toEqual({
       orthographies: [{ name: 'Translit' }],
       fields: {
-        sentence: [{ name: 'Translation', lexiconField: null }],
+        sentence: [{ name: 'Translation', lexiconField: null, sentenceRole: null }],
         word: [
           { name: 'POS', lexiconField: null },
           { name: 'Phrase', lexiconField: null },
@@ -537,7 +537,9 @@ describe('buildProjectFile', () => {
       { name: 'Gloss', tagset: 'Leipzig', lexiconField: null },
     ]);
     // A field with no tagset stays a bare name.
-    expect(out.schema.fields.sentence).toEqual([{ name: 'Translation', lexiconField: null }]);
+    expect(out.schema.fields.sentence).toEqual([
+      { name: 'Translation', lexiconField: null, sentenceRole: null },
+    ]);
   });
 
   it("carries each field's recorded language, on the field", () => {
@@ -552,8 +554,23 @@ describe('buildProjectFile', () => {
     translation.config.igt.lang = 'pmy';
     const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
     expect(out.schema.fields.sentence).toEqual([
-      { name: 'Translation', lang: 'pmy', lexiconField: null },
+      { name: 'Translation', lang: 'pmy', lexiconField: null, sentenceRole: null },
     ]);
+  });
+
+  it("carries a sentence field's role, on the field, null for none", () => {
+    const project = buildProject();
+    const translation = project.textLayers
+      .flatMap((tl) => tl.tokenLayers || [])
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.name === 'Translation');
+    translation.config.igt.sentenceRole = 'translation';
+    const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
+    expect(out.schema.fields.sentence).toEqual([
+      { name: 'Translation', lexiconField: null, sentenceRole: 'translation' },
+    ]);
+    // A word or morpheme field has no role to carry.
+    expect(out.schema.fields.word.every((f) => !('sentenceRole' in f))).toBe(true);
   });
 
   it('passes through null autoAnalysis without baking defaults', () => {

@@ -69,12 +69,14 @@ export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon'
     // several has each translation named after its language, and the build
     // says which. Recorded, so the FLEx export tags them without anyone
     // typing the code. A custom column's language is not known.
+    // A field bound to Translated_Text or Comment says what it holds.
     fields: build.schema.fields.map((f) => ({
       name: f.name,
       scope: f.scope,
       lang:
         f.lang ??
         (META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null),
+      ...(f.sentenceRole ? { sentenceRole: f.sentenceRole } : {}),
     })),
     // A dataset says nothing about which words to skip, so the project gets
     // the rule every new project starts with, the one the build assumed.

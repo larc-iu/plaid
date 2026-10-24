@@ -36,6 +36,7 @@ import {
 import {
   IGT_NAMESPACE,
   LEXICON_FIELD_KEY,
+  SENTENCE_ROLE_KEY,
   readImportState,
   readInitialized,
   findBaselineTextLayer,
@@ -57,6 +58,8 @@ import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 import { importRepairs } from '../../../domain/importFinish.js';
 import { proposeServiceFieldDefaults } from '../../../domain/serviceFieldDefaults.js';
+import { entryRolesByKey } from '../../../domain/lexiconField.js';
+import { withSentenceRoles } from '../../../domain/sentenceRole.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
 // so it is also what identifies one this setup made before it was tagged.
@@ -313,7 +316,9 @@ async function executeProjectSetupImpl({
     const fieldIndexOf = new Map();
 
     if (setupData.fields?.fields?.length > 0) {
-      for (const field of setupData.fields.fields) {
+      // A sentence field that states no role gets the one its name proposes,
+      // here, where it is made.
+      for (const field of withSentenceRoles(setupData.fields.fields)) {
         try {
           const parentLayerId =
             field.scope === 'Sentence'
@@ -342,9 +347,17 @@ async function executeProjectSetupImpl({
                 field.lexiconField,
               );
             }
+            if (field.scope === 'Sentence' && field.sentenceRole) {
+              await client.spanLayers.setConfig(
+                existing.id,
+                IGT_NAMESPACE,
+                SENTENCE_ROLE_KEY,
+                field.sentenceRole,
+              );
+            }
           } else {
-            // Made in one batch with its scope, language, Lexicon field and
-            // rules.
+            // Made in one batch with its scope, language, Lexicon field, role
+            // and rules.
             let id;
             await client.batched((b) => {
               id = queueNewField(b, parentLayerId, field, existingProject?.config);
@@ -354,7 +367,13 @@ async function executeProjectSetupImpl({
           }
           fieldIndexOf.set(spanLayer.id, fieldIndexOf.size);
           createdSpanLayers.push(spanLayer);
-          madeFields.push({ name: field.name, scope: field.scope, id: spanLayer.id });
+          madeFields.push({
+            name: field.name,
+            scope: field.scope,
+            id: spanLayer.id,
+            lexiconField: field.lexiconField ?? null,
+            sentenceRole: field.sentenceRole ?? null,
+          });
         } catch (fieldError) {
           console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
           failures.push(
@@ -406,7 +425,10 @@ async function executeProjectSetupImpl({
     setupData.serviceFieldDefaults !== false &&
     existingProject?.config?.[IGT_NAMESPACE]?.serviceDefaults === undefined
   ) {
-    const proposed = proposeServiceFieldDefaults(madeFields);
+    const proposed = proposeServiceFieldDefaults(
+      madeFields,
+      entryRolesByKey(existingProject?.vocabs),
+    );
     if (Object.keys(proposed).length) {
       await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, 'serviceDefaults', proposed);
     }

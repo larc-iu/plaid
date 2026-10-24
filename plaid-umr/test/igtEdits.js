@@ -1,7 +1,7 @@
 // What another app's edits to the shared sentences and words do to a UMR
-// document, as core does them, over a raw document in memory, and what UMR's
-// next write to each sentence stores of what the reader shows (umrSettle.js),
-// against a client writing into that same raw document. For tests of what UMR's data survives. Not a test file
+// document, as core does them, over a raw document in memory, and an open in
+// UMR that runs the real reconcile against a client writing into that same
+// raw document. For tests of what UMR's data survives. Not a test file
 // itself, so the runner does not pick it up.
 //
 // Core, as modelled (plaid-core sql/token.clj and constraints/layer.clj):
@@ -21,7 +21,6 @@
 //     it and moves every token after it
 import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { planSettle, queueSettle } from '../src/domain/umrSettle.js';
 
 const tokenLayers = (raw) => raw.textLayers[0].tokenLayers;
 const byRole = (raw, r) => tokenLayers(raw).find((l) => l.config?.plaid?.role === r);
@@ -267,7 +266,7 @@ export function deleteText(raw, from, to) {
   sameAncestor(raw);
 }
 
-// A client that writes what UMR sends into `raw`, as core would.
+// A client that writes what reconcile sends into `raw`, as core would.
 function memoryClient(raw) {
   const all = () => tokenLayers(raw).flatMap((l) => l.tokens);
   const spans = () => tokenLayers(raw).flatMap((l) => (l.spanLayers || []).flatMap((s) => s.spans));
@@ -301,9 +300,6 @@ function memoryClient(raw) {
     },
     spans: {
       patchMetadata: async (id, ops) => patch(spans(), id, ops),
-      update: async (id, value) => {
-        spans().find((s) => s.id === id).value = value;
-      },
       setTokens: async (id, tokens) => {
         spans().find((s) => s.id === id).tokens = [...tokens];
       },
@@ -339,32 +335,20 @@ function memoryClient(raw) {
 }
 
 /**
- * What the next UMR write to each sentence stores (umrSettle.js), landing in
- * `raw`: the reader's answer for every sentence, as a write to that sentence
- * sends it before its own requests. Resolves to the plan, or null when there
- * was nothing to store. `lexicon` is the vocabularies' (readEntryLexicon's).
+ * Open the document in UMR: the real reconcile, its writes landing in `raw`.
+ * Resolves to its tally.
  */
-export async function writeInUmr(raw, { lexicon = null } = {}) {
-  const doc = new UmrDocument({ raw: structuredClone(raw), client: memoryClient(raw), lexicon });
-  const plan = planSettle(doc.graph, null, { lexicon });
-  if (plan) await doc._client.batched((b) => queueSettle(b, plan));
-  return plan;
+export async function openInUmr(raw) {
+  const doc = new UmrDocument({ raw: structuredClone(raw), client: memoryClient(raw) });
+  doc._reload = async () => doc._swapRaw(structuredClone(raw));
+  const result = await doc._reconcile();
+  if (result.error) throw result.error;
+  return result;
 }
 
-/** Whether every sentence's next UMR write stores nothing more. */
-export const nothingToStore = async (raw, options) => {
-  const before = JSON.stringify(raw);
-  await writeInUmr(raw, options);
-  return JSON.stringify(raw) === before;
-};
-
-/** Whether opening the document in UMR (the real open) writes nothing. */
+/** Whether an open writes nothing. */
 export const openWritesNothing = async (raw) => {
   const before = JSON.stringify(raw);
-  const doc = new UmrDocument({ raw: structuredClone(raw), client: memoryClient(raw) });
-  await doc.reconcileOnOpen();
+  await openInUmr(raw);
   return JSON.stringify(raw) === before;
 };
-
-/** A client writing into `raw` as core would, for a document of the tests. */
-export const clientOver = (raw) => memoryClient(raw);

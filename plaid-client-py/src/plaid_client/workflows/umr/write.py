@@ -44,8 +44,7 @@ def anchor_pieces(ranges, words, sentence_extent) -> List[Tuple[int, int]]:
 
     That is how a node aligned to no word is stored: what says it is unaligned is
     its sentence record, not the anchor, and an anchor over the sentence survives
-    an edit to the text around it (``unalignedStretch`` in plaid-umr's
-    ``src/domain/sentenceGraph.js``).
+    an edit to the text around it (``src/domain/umrReconcile.js``).
     """
     pieces: List[Tuple[int, int]] = []
     for begin, end in ranges or []:

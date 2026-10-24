@@ -37,6 +37,7 @@ const layerInfo = () => ({
       layer: { id: 't1', name: 'Translation', spans: [{ tokens: ['s1'], value: 'Dogs bark.' }] },
       scope: 'sentence',
       lang: 'en',
+      sentenceRole: 'translation',
     },
   ],
 });
@@ -69,6 +70,29 @@ test('a mapping is proposed from what the layers are named and scoped', () => {
       ['morpheme-gloss', 'en', 'layer:g1'],
       ['sentence-gloss', 'en', 'layer:t1'],
       [null, null, 'stored'],
+    ],
+  );
+});
+
+// The sentence line is the field IGT stored as the translation, whatever it
+// and the other sentence fields are called.
+test('the Sentence Gloss line is the sentence field whose role is the translation', () => {
+  const info = {
+    glossLayers: [
+      { layer: { id: 'n1', name: 'Translation' }, scope: 'sentence', lang: 'en' },
+      {
+        layer: { id: 'f1', name: 'Libre' },
+        scope: 'sentence',
+        lang: 'es',
+        sentenceRole: 'translation',
+      },
+    ],
+  };
+  assert.deepEqual(
+    proposeIlg(info).map((e) => [e.header, e.source]),
+    [
+      ['sentence-gloss', 'layer:f1'],
+      [null, 'stored'],
     ],
   );
 });

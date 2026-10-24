@@ -94,6 +94,9 @@ class Field:
     #: The lexicon entry field the field pairs with (``igt.lexiconField`` on
     #: its layer), or None.
     lexicon_field: Optional[str] = None
+    #: What a sentence field holds (``igt.sentenceRole`` on its layer:
+    #: 'translation', 'literalTranslation' or 'note'), or None.
+    sentence_role: Optional[str] = None
 
 
 def _unique_field_names(entries):
@@ -217,9 +220,13 @@ class IgtProject:
         holds the gloss role (the role a lexicon declares for that entry
         field, none when declared without one, else for a key no lexicon
         declares the one a new lexicon's core field holds), else the
-        scope's first field. Never read from a field's name. The overview
-        names the choice so a caller can pass field= instead."""
+        scope's first field. At sentence scope it is the first field whose
+        stored role is the translation, else the first. Never read from a
+        field's name. The overview names the choice so a caller can pass
+        field= instead."""
         fs = self.fields_by_scope(scope)
+        if scope == 'Sentence':
+            return next((f for f in fs if f.sentence_role == 'translation'), None) or (fs[0] if fs else None)
         roles = {f['name']: f['role'] for f in CORE_VOCAB_FIELDS if f.get('role')}
         # A key a lexicon declares holds the role it declares, none included: a
         # cleared role is no role. The core role holds only for a key none declares.
@@ -322,10 +329,14 @@ def load_project(client, project_id: str) -> IgtProject:
     joins = {sl['id']: join_with(sl) for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
     lexicon_fields = {sl['id']: _igt(sl.get('config'), 'lexiconField')
                       for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
+    sentence_roles = {sl['id']: _igt(sl.get('config'), 'sentenceRole')
+                      for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
     for f in fields.values():
         f.join_with = joins.get(f.layer_id, f.join_with)
         lf = lexicon_fields.get(f.layer_id)
         f.lexicon_field = lf if isinstance(lf, str) and lf else None
+        sr = sentence_roles.get(f.layer_id)
+        f.sentence_role = sr if f.scope == 'Sentence' and isinstance(sr, str) and sr else None
     metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
     metadata_tagsets, metadata_tagset_names = {}, {}
     for m in metadata:

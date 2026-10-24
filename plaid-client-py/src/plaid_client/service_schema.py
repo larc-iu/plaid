@@ -101,10 +101,12 @@ class Param:
         project offers its fields at that scope to choose from, and any other
         treats the parameter as a string. The value arrives as a string.
 
-        ``role`` names a lexicon role (``'gloss'``, ``'definition'``, ``'pos'``):
-        a UI that knows the project fills the parameter with the one field at
-        ``scope`` whose stored Lexicon field holds that role, when no other
-        value is given. A field is never chosen by its name, so a ``default``
+        ``role`` names a lexicon role (``'gloss'``, ``'definition'``, ``'pos'``)
+        or, at ``'Sentence'`` scope, a sentence field's role
+        (``'translation'``, ``'literalTranslation'``, ``'note'``): a UI that
+        knows the project fills the parameter with the one field at ``scope``
+        whose stored Lexicon field holds that role, or whose stored role it
+        is, when no other value is given. A field is never chosen by its name, so a ``default``
         here is only ever an explicit choice the service makes."""
         p = {'key': key, 'label': label, 'type': 'field', 'scope': scope,
              'default': default, 'required': required}

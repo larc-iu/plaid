@@ -17,13 +17,17 @@ import {
   readDocumentMetadata,
   readOrthographies,
 } from '../domain/igtConfig.js';
+import { fieldRolesOf } from '../import/elan/fieldTargets.js';
 
 /**
  * @returns {{ orthographies: string[], wordFields: string[],
  *             morphFields: string[], sentFields: string[], hasMorphemes: boolean,
- *             fieldLangs: Object<string, string> }}
+ *             fieldLangs: Object<string, string>,
+ *             fieldRoles: Object<string, string> }}
  *   fieldLangs is keyed "<scope>:<name>", since one name can be a field at
- *   more than one scope ("Gloss" on words and on morphemes).
+ *   more than one scope ("Gloss" on words and on morphemes). So is
+ *   fieldRoles, each field's stored role (fieldRolesOf): a sentence field's
+ *   own, a word or morpheme field's the entry role its Lexicon field holds.
  */
 export function discoverExportLayers(project) {
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
@@ -48,8 +52,14 @@ export function discoverExportLayers(project) {
     }
   }
 
+  const fieldRoles = {};
+  for (const [scope, byName] of Object.entries(fieldRolesOf(project))) {
+    for (const [name, role] of Object.entries(byName)) fieldRoles[`${scope}:${name}`] = role;
+  }
+
   return {
     fieldLangs,
+    fieldRoles,
     orthographies: (readOrthographies(wordLayer?.config) || [])
       .map((o) => o?.name)
       .filter((n) => typeof n === 'string' && n !== ''),

@@ -254,6 +254,13 @@ export default {
       wart: true,
       why: 'A tier records no lexicon field. The import gives each word and morpheme field the Lexicon field its name proposes among a new vocabulary’s fields, and a field whose name proposes none gets none.',
     },
+    'layers.fieldSentenceRole': {
+      carried: false,
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
+      why: 'A tier records no role. The import gives each sentence field the role its name proposes, and a field whose name proposes none gets none.',
+    },
     'layers.fieldTagset': {
       carried: false,
       kind: 'ruled',

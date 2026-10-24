@@ -500,6 +500,7 @@ const CONFIG_KEYS = {
   ),
   'spanLayers igt.tagset': covers('layers.fieldTagset'),
   'spanLayers igt.lexiconField': covers('layers.fieldLexiconField'),
+  'spanLayers igt.sentenceRole': covers('layers.fieldSentenceRole'),
   'vocabLayers igt.fields': covers(
     'vocab.customField',
     'vocab.fieldNotInline',
@@ -529,6 +530,7 @@ const IDENTIFIERS = {
   IMPORT_KEY: 'import',
   TOKENIZE_NEW_TEXT_KEY: 'tokenizeNewText',
   LEXICON_FIELD_KEY: 'lexiconField',
+  SENTENCE_ROLE_KEY: 'sentenceRole',
 };
 
 // Call sites that write back whatever an archive holds, key by key, rather

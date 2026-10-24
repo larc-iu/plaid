@@ -805,7 +805,8 @@ describe('round trip through the exporter', () => {
     const { schema } = reimport();
     expect(schema.fields).toEqual(
       expect.arrayContaining([
-        { name: 'Translation', scope: 'Sentence' },
+        // Translated_Text says what its field holds.
+        { name: 'Translation', scope: 'Sentence', sentenceRole: 'translation' },
         { name: 'Gloss', scope: 'Morpheme' },
         { name: 'POS', scope: 'Word' },
       ]),
@@ -1072,8 +1073,8 @@ describe('a dataset translated into several meta languages', () => {
       'Translation (rus)': 'По-русски.',
     });
     expect(b.schema.fields.filter((f) => f.scope === 'Sentence')).toEqual([
-      { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng' },
-      { name: 'Translation (rus)', scope: 'Sentence', lang: 'rus' },
+      { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng', sentenceRole: 'translation' },
+      { name: 'Translation (rus)', scope: 'Sentence', lang: 'rus', sentenceRole: 'translation' },
     ]);
     expect(b.languages.meta.iso639P3).toBe('eng');
   });
@@ -1081,8 +1082,8 @@ describe('a dataset translated into several meta languages', () => {
   it('keeps the name of a language with no code, and records none', () => {
     const b = build('russ1263', 'ddo,Tsez,ddo\r\neng,English,eng\r\nruss1263,Russian,\r\n');
     expect(b.schema.fields.filter((f) => f.scope === 'Sentence')).toEqual([
-      { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng' },
-      { name: 'Translation (Russian)', scope: 'Sentence' },
+      { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng', sentenceRole: 'translation' },
+      { name: 'Translation (Russian)', scope: 'Sentence', sentenceRole: 'translation' },
     ]);
   });
 });

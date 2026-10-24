@@ -66,6 +66,24 @@ def test_the_default_gloss_field_reads_the_gloss_role_and_a_cleared_role_is_none
     assert default(None) == 'Gloss'
 
 
+def test_the_default_sentence_field_is_the_one_stored_as_the_translation():
+    from plaid_agent.igt.project import Field, IgtProject
+    fields = {
+        'Translation': Field(name='Translation', layer_id='t', scope='Sentence', base_name='Translation'),
+        'Libre': Field(name='Libre', layer_id='l', scope='Sentence', base_name='Libre',
+                       sentence_role='translation'),
+    }
+
+    def default(fs):
+        return IgtProject(id='p', name='p', text_layer_id='t', sentence_layer_id='s', word_layer_id='w',
+                          morpheme_layer_id='m', fields=fs, orthographies=[], ignored_cfg=None,
+                          vocabs=[], document_metadata=[]).gloss_field('Sentence').name
+    assert default(fields) == 'Libre'
+    # With no field holding the role, the scope's first, never one read by its name.
+    assert default({**fields, 'Libre': Field(name='Libre', layer_id='l', scope='Sentence',
+                                              base_name='Libre')}) == 'Translation'
+
+
 def test_tools_follow_the_configured_shape():
     w = ws()
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'document': 'Odd text'})

@@ -16,6 +16,11 @@ const LAYERS = {
   morphFields: ['Gloss'],
   sentFields: ['Translation', 'Note'],
   hasMorphemes: true,
+  fieldRoles: {
+    'Morpheme:Gloss': 'gloss',
+    'Sentence:Translation': 'translation',
+    'Sentence:Note': 'note',
+  },
 };
 
 const LANGUAGES = {
@@ -733,7 +738,7 @@ describe('buildCldfDataset — metadata descriptor', () => {
 });
 
 describe('defaultCldfOptions', () => {
-  it('binds gloss, translation and comment by name and keeps the rest as extras', () => {
+  it('binds gloss, translation and comment by their stored roles and keeps the rest as extras', () => {
     const o = defaultCldfOptions(LAYERS);
     expect(o).toMatchObject({
       glossField: 'Gloss',
@@ -751,7 +756,12 @@ describe('defaultCldfOptions', () => {
   });
 
   it('falls back to a word-scoped gloss when the project has no morpheme layer', () => {
-    const o = defaultCldfOptions({ ...LAYERS, morphFields: [], wordFields: ['Gloss', 'POS'] });
+    const o = defaultCldfOptions({
+      ...LAYERS,
+      morphFields: [],
+      wordFields: ['Gloss', 'POS'],
+      fieldRoles: { ...LAYERS.fieldRoles, 'Word:Gloss': 'gloss' },
+    });
     expect(o).toMatchObject({ glossField: 'Gloss', glossScope: 'word' });
     expect(o.extras.word).toEqual(['POS']);
   });
@@ -760,10 +770,22 @@ describe('defaultCldfOptions', () => {
     // What the setup wizard actually builds: the same field name at two scopes.
     // A flat name set treated the word Gloss as already bound and dropped it
     // from extras.word too, so 668 values left the export in silence.
-    const o = defaultCldfOptions({ ...LAYERS, wordFields: ['Gloss', 'POS'] });
+    const o = defaultCldfOptions({
+      ...LAYERS,
+      wordFields: ['Gloss', 'POS'],
+      fieldRoles: { ...LAYERS.fieldRoles, 'Word:Gloss': 'gloss' },
+    });
     expect(o).toMatchObject({ glossField: 'Gloss', glossScope: 'morpheme' });
     expect(o.extras.word).toEqual(['Gloss', 'POS']);
     expect(o.extras.morpheme).toEqual([]);
+  });
+
+  it('never binds a field by its name', () => {
+    const o = defaultCldfOptions({
+      ...LAYERS,
+      fieldRoles: { 'Morpheme:Gloss': 'pos', 'Sentence:Note': 'translation' },
+    });
+    expect(o).toMatchObject({ glossField: null, translationField: 'Note', commentField: null });
   });
 
   it('survives a project with no annotation layers at all', () => {

@@ -37,7 +37,7 @@ import {
   exampleRefs,
 } from '../domain/vocabDictionary.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
-import { readVocabFields } from '../domain/igtConfig.js';
+import { SENTENCE_ROLES, readVocabFields } from '../domain/igtConfig.js';
 import {
   ENTRY_ROLES,
   FIELD_TYPES,
@@ -263,21 +263,23 @@ const resolveOptions = (options) => ({
 });
 
 /**
- * Heuristic defaults, the same naming conventions the .flextext preset reads:
- * a morpheme field named like a gloss becomes Gloss, a sentence field named
- * like a translation becomes Translated_Text, one named like a note becomes
- * Comment. Everything else rides along as a custom column, which is the
- * choice that loses nothing until the user narrows it.
+ * Defaults from the fields' stored roles (`layers.fieldRoles`, see
+ * exportLayers.js): the morpheme field whose Lexicon field holds the gloss
+ * role becomes Gloss (else a word field that does), the sentence field whose
+ * role is the translation becomes Translated_Text, and the one whose role is a
+ * note becomes Comment. Never a field's name. Everything else rides along as a
+ * custom column, which is the choice that loses nothing until the user
+ * narrows it.
  */
 export function defaultCldfOptions(layers) {
-  const pick = (names, re) => (names || []).find((n) => re.test(n)) ?? null;
-  const glossField =
-    pick(layers?.morphFields, /gloss/i) ??
-    (layers?.morphFields?.length ? layers.morphFields[0] : null);
+  const roles = layers?.fieldRoles || {};
+  const pick = (names, scope, role) =>
+    (names || []).find((n) => roles[`${scope}:${n}`] === role) ?? null;
+  const glossField = pick(layers?.morphFields, 'Morpheme', ENTRY_ROLES.GLOSS);
   const glossScope = glossField ? 'morpheme' : 'word';
-  const wordGloss = glossField ? null : pick(layers?.wordFields, /gloss/i);
-  const translationField = pick(layers?.sentFields, /translat|free|gls/i);
-  const commentField = pick(layers?.sentFields, /note|comment/i);
+  const wordGloss = glossField ? null : pick(layers?.wordFields, 'Word', ENTRY_ROLES.GLOSS);
+  const translationField = pick(layers?.sentFields, 'Sentence', SENTENCE_ROLES.TRANSLATION);
+  const commentField = pick(layers?.sentFields, 'Sentence', SENTENCE_ROLES.NOTE);
   // A field is identified by (scope, name), never by name alone. The setup
   // wizard gives a project a word `Gloss` AND a morpheme `Gloss` by default, so
   // a flat name set excluded the word one as "already bound" when only the

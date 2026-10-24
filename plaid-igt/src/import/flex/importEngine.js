@@ -22,7 +22,7 @@ import {
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
-import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
+import { IGT_NAMESPACE, SENTENCE_ROLES, readVocabFields } from '../../domain/igtConfig.js';
 import { withLangSuffix } from '../../domain/fieldNames.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
@@ -193,9 +193,17 @@ export function deriveImportConfig(ir, build, opts = {}) {
       : kind === 'wordPos' || kind === 'morphPos'
         ? 'pos'
         : null;
+  // Each sentence field's role is the FLEx item it holds.
+  const sentenceRoleOf = ({ kind }) =>
+    ({
+      freeTranslation: SENTENCE_ROLES.TRANSLATION,
+      literalTranslation: SENTENCE_ROLES.LITERAL_TRANSLATION,
+      note: SENTENCE_ROLES.NOTE,
+    })[kind] ?? null;
   const fields = perWs.map(({ base, ...f }) => ({
     ...(base ? { ...f, name: languages.size > 1 ? withLangSuffix(base, f.ws) : base } : f),
     lexiconField: lexiconFieldOf(f),
+    ...(f.scope === 'Sentence' ? { sentenceRole: sentenceRoleOf(f) } : {}),
   }));
 
   // Alternate text titles (e.g. the English names of vernacular-titled texts)

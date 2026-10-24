@@ -105,6 +105,7 @@ export default {
     },
     'layers.fieldLang': PROJECT_CONFIG,
     'layers.fieldLexiconField': PROJECT_CONFIG,
+    'layers.fieldSentenceRole': PROJECT_CONFIG,
     'layers.fieldTagset': PROJECT_CONFIG,
     'layers.splitOnSpace': PROJECT_CONFIG,
     'layers.foreignTokenLayer': foreign(

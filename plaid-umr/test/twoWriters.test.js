@@ -244,10 +244,9 @@ test('a node deleted while another person linked to it from another sentence is 
   assert.ok(stored(core).node(target.id), 'the node is still there');
 });
 
-test("another person's write that only fits records of other sentences does not refuse an edit", async () => {
+test("another person's open that only fits records of other sentences does not refuse an edit", async () => {
   const { core, a, b } = await start();
-  // Another page writes one record's metadata, as what a write stores beside
-  // its own change would.
+  // Another page writes one record's metadata, as an open's repair would.
   const other = core.client('c');
   const record = b.doc.layerInfo.nodeTokenLayer.tokens.find(
     (t) =>

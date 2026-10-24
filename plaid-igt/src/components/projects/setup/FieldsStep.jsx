@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Badge } from '@ui/components/ui/badge';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
-import { defaultIgnoredTokensSetup } from '@/domain/igtConfig';
+import { SENTENCE_ROLES, defaultIgnoredTokensSetup } from '@/domain/igtConfig';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 
 export const FieldsStep = ({ data, onDataChange }) => {
@@ -22,9 +22,19 @@ export const FieldsStep = ({ data, onDataChange }) => {
         { name: 'POS', scope: 'Word', isCustom: false, lexiconField: 'pos' },
         { name: 'Gloss', scope: 'Morpheme', isCustom: false, lexiconField: 'gloss' },
         { name: 'POS', scope: 'Morpheme', isCustom: false, lexiconField: 'pos' },
-        { name: 'Translation', scope: 'Sentence', isCustom: false },
-        { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
-        { name: 'Note', scope: 'Sentence', isCustom: false },
+        {
+          name: 'Translation',
+          scope: 'Sentence',
+          isCustom: false,
+          sentenceRole: SENTENCE_ROLES.TRANSLATION,
+        },
+        {
+          name: 'Literal Translation',
+          scope: 'Sentence',
+          isCustom: false,
+          sentenceRole: SENTENCE_ROLES.LITERAL_TRANSLATION,
+        },
+        { name: 'Note', scope: 'Sentence', isCustom: false, sentenceRole: SENTENCE_ROLES.NOTE },
       ],
       ignoredTokens: defaultIgnoredTokensSetup(),
     });

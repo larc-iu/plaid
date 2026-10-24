@@ -378,6 +378,16 @@ describe('deriveImportConfig', () => {
       'Sentence:Translation (en)=null',
       'Sentence:Note (en)=null',
     ]);
+    // Each sentence field's role is the FLEx item it holds.
+    expect(
+      config.fields.filter((f) => f.scope === 'Sentence').map((f) => [f.name, f.sentenceRole]),
+    ).toEqual([
+      ['Translation (en)', 'translation'],
+      ['Note (en)', 'note'],
+    ]);
+    expect(
+      config.fields.filter((f) => f.scope !== 'Sentence').some((f) => 'sentenceRole' in f),
+    ).toBe(false);
     expect(config.orthographies).toEqual([{ ws: TRANS_WS, name: TRANS_WS }]);
     expect(config.baselineWs).toBe(BASE_WS);
     // The Info tab, in its own order: the text's own four fields whether or

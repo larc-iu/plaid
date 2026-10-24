@@ -1882,7 +1882,7 @@ describe('SentenceBlock taking a changed entry value', () => {
 });
 
 // A sentence whose words are gone (IGT's "Clear tokens") keeps its graph, and
-// a write stores nothing of it until the text is tokenized again. Its nodes are
+// reconcile leaves it alone until the text is tokenized again. Its nodes are
 // all unaligned then, and they still have to be drawn and reached: the block
 // waited for word columns that would never come, and hid every node.
 describe('SentenceBlock with no words', () => {

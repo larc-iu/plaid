@@ -722,7 +722,7 @@ class CwompService(BaseService):
             parameters=[
                 Param.field('gloss_field', 'Gloss field', 'Morpheme', role='gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
-                Param.field('translation_field', 'Translation field', 'Sentence',
+                Param.field('translation_field', 'Translation field', 'Sentence', role='translation',
                             description='The sentence-scope field holding the free translation.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
                               description='Also replace copied analyses and ones a person made or verified.'),

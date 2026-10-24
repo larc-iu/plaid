@@ -62,8 +62,10 @@ const findFlagged = (layers, flag) => (layers || []).find((l) => hasFlag(l, flag
 
 // Another app's annotation layers on the substrate, which the gloss lines
 // can read: IGT's fields say their scope (`config.igt.scope`, Word,
-// Morpheme or Sentence) and writing system (`config.igt.lang`); a layer that
-// says nothing takes the scope of the token layer it hangs off.
+// Morpheme or Sentence), writing system (`config.igt.lang`) and, for a
+// sentence field, what it holds (`config.igt.sentenceRole`, 'translation' for
+// the free translation); a layer that says nothing takes the scope of the
+// token layer it hangs off.
 const glossLayersOf = (sentenceLayer, wordLayer, morphemeLayer) => {
   const out = [];
   const take = (tokenLayer, scope) => {
@@ -71,7 +73,12 @@ const glossLayersOf = (sentenceLayer, wordLayer, morphemeLayer) => {
       if (layer.config?.[UMR_NAMESPACE]) return;
       const igt = layer.config?.igt || {};
       const declared = String(igt.scope || '').toLowerCase();
-      out.push({ layer, scope: declared || scope, lang: igt.lang || null });
+      out.push({
+        layer,
+        scope: declared || scope,
+        lang: igt.lang || null,
+        sentenceRole: igt.sentenceRole || null,
+      });
     });
   };
   take(sentenceLayer, 'sentence');

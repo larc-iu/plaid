@@ -37,6 +37,7 @@ import {
   readVocabFields,
   readFieldLang,
   readLexiconField,
+  readSentenceRole,
 } from '../domain/igtConfig.js';
 import { ROLES } from '@larc-iu/plaid-client';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
@@ -136,6 +137,10 @@ export function buildProjectFile({
   const lexiconFieldOf = new Map(
     allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readLexiconField(sl.config)]),
   );
+  // And a sentence field's role.
+  const sentenceRoleOf = new Map(
+    allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readSentenceRole(sl.config)]),
+  );
   const fieldRow = (scope) => (name) => {
     const tagset = tagsetOf.get(`${scope}:${name}`);
     const lang = langOf.get(`${scope}:${name}`);
@@ -147,6 +152,10 @@ export function buildProjectFile({
       // Always written, null for none: an import proposes one for a record
       // without the key (an archive older than the setting).
       lexiconField: lexiconField ?? null,
+      // The same for a sentence field's role.
+      ...(scope === 'Sentence'
+        ? { sentenceRole: sentenceRoleOf.get(`${scope}:${name}`) ?? null }
+        : {}),
     };
   };
   // Project config this app owns, stored verbatim: defaults are the app's

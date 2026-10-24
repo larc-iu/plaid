@@ -635,7 +635,8 @@ describe('setup writes the default fields for igt services', () => {
     ...SETUP_DATA,
     fields: {
       fields: [
-        { name: 'Gloss', scope: 'Morpheme', isCustom: true },
+        { name: 'Glosa', scope: 'Morpheme', isCustom: true, lexiconField: 'gloss' },
+        // No role stated: its name proposes one, as setup makes it.
         { name: 'Translation', scope: 'Sentence', isCustom: true },
       ],
     },
@@ -644,7 +645,7 @@ describe('setup writes the default fields for igt services', () => {
   const defaultsWritten = (calls) =>
     calls.config.filter((c) => c.kind === 'project' && c.key === 'serviceDefaults');
 
-  it('proposes them from the fields it makes, once', async () => {
+  it('proposes them from the roles of the fields it makes, once', async () => {
     const { client, calls } = stub({ id: 'p1', config: {}, textLayers: [], vocabs: [] });
     const result = await executeProjectSetup({
       client,
@@ -690,5 +691,40 @@ describe('setup writes the default fields for igt services', () => {
       onProgress: () => {},
     });
     expect(defaultsWritten(calls)).toEqual([]);
+  });
+});
+
+describe("setup writes a sentence field's role", () => {
+  it('writes the stated role, else the one the name proposes, and none on a word field', async () => {
+    const { client, calls } = stub({ id: 'p1', config: {}, textLayers: [], vocabs: [] });
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: true,
+      setupData: {
+        ...SETUP_DATA,
+        fields: {
+          fields: [
+            { name: 'Translation', scope: 'Sentence', isCustom: true },
+            { name: 'Libre', scope: 'Sentence', isCustom: true, sentenceRole: 'translation' },
+            { name: 'Note', scope: 'Sentence', isCustom: true, sentenceRole: null },
+            { name: 'Remarks', scope: 'Sentence', isCustom: true },
+            { name: 'Translation', scope: 'Word', isCustom: true },
+          ],
+        },
+        vocabulary: { vocabularies: [] },
+      },
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual([]);
+    const scopeOf = new Map(
+      calls.config.filter((c) => c.kind === 'span' && c.key === 'scope').map((c) => [c.id, c]),
+    );
+    const roles = calls.config
+      .filter((c) => c.kind === 'span' && c.key === 'sentenceRole')
+      .map((c) => [scopeOf.get(c.id)?.value, c.value]);
+    expect(roles).toEqual([
+      ['Sentence', 'translation'],
+      ['Sentence', 'translation'],
+    ]);
   });
 });

@@ -3,14 +3,15 @@
 // no field this project has: a value remembered from another project or from
 // before a rename. A field is never chosen by its name, so such a value, and a
 // parameter with no value at all, is replaced before anyone runs anything by
-// the one field at its scope whose stored Lexicon field holds the parameter's
-// `role`. Failing that it is left blank for a person to choose, and a required
+// the one field at its scope whose stored role is the parameter's `role` (a
+// word or morpheme field's Lexicon field's, a sentence field's own). Failing that it is left blank for a person to choose, and a required
 // one says so.
 //
 //   fields:     {scope: [field name]}, from the app, which knows its project.
 //               A scope the app does not list is left alone.
-//   fieldRoles: {scope: {field name: role}}, the role each field's stored
-//               Lexicon field holds, where it holds one.
+//   fieldRoles: {scope: {field name: role}}, each field's stored role where
+//               it has one: the role its Lexicon field holds, or a sentence
+//               field's own.
 
 const paired = (names, roles, role) => {
   if (!role) return '';

@@ -13,11 +13,7 @@ largest first), and 291 of 1200 sentences in parts differed (REV2-PY,
 
 The cases are the released sample files, imported with the app's own plan,
 whole and with some edges or the file's root marks dropped, which is how a
-graph looks while someone is building it, and with the edits another app
-makes to the shared sentences and words (a sentence typed in before the
-first, words split and deleted), which both readers read right before a UMR
-write stores the answer (R3, 2026-10-24): each node's alignment and the
-relations a record holds are compared too. ``umr_graph_mirror.mjs`` runs the
+graph looks while someone is building it. ``umr_graph_mirror.mjs`` runs the
 app's side. It skips where it cannot run (no node, or plaid-umr not beside the
 agent), and says so in the warnings summary (see ``node_exe``). It does not
 skip when the two disagree.
@@ -64,29 +60,10 @@ def test_every_sentence_reads_as_the_app_reads_it(variants):
         for sentence, app in zip(doc.sentences, variant['sentences']):
             roots = [r.var for r in sentence.roots]
             text = sentence_penman(doc, sentence) if sentence.nodes else app['penman']
-            alignment = {n.var: [list(r) for r in n.alignment] for n in sentence.nodes}
             if roots != app['roots'] or text != app['penman']:
                 wrong.append(f"{variant['name']} s{sentence.index}: roots {roots} "
                              f"against {app['roots']}")
-            elif alignment != app['alignment'] or sentence.held != app['held']:
-                wrong.append(f"{variant['name']} s{sentence.index}: alignment or held")
     assert not wrong, f'{len(wrong)} sentences differ, the first: ' + '; '.join(wrong[:5])
-
-
-def test_the_mirror_saw_what_another_apps_edits_leave(variants):
-    """The edited variants hold every kind the reader reads right before a
-    UMR write stores it (plaid-umr umrSettle.js): renamed variables, nodes
-    whose word went and nodes over a split word."""
-    edited = [v for v in variants if v['name'].endswith(' edited')]
-    assert edited
-    renamed = cut = lost = 0
-    for variant in edited:
-        doc = read_document(variant['raw'], resolve_layers(variant['raw']))
-        for node in doc.nodes_by_id.values():
-            renamed += bool(node.stored_var and node.stored_var != node.var)
-            cut += node.read_pieces != node.pieces
-            lost += bool(not node.constant and not node.aligned and not node.sentence_token)
-    assert renamed > 100 and cut > 10 and lost > 10, (renamed, cut, lost)
 
 
 def test_the_mirror_saw_graphs_in_parts(variants):

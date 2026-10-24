@@ -1,8 +1,7 @@
 // A node's concept picked from a vocabulary entry, after the entry changed
 // in IGT (the owner's ruling of 2026-09-28): the node is warned about, on
 // the canvas and in Validation, and takes the entry's new value only when a
-// person asks. An entry that is gone is forgotten by the next write to its
-// sentence.
+// person asks. An entry that is gone is forgotten on open.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
@@ -11,7 +10,6 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument, readEntryLexicon } from '../src/domain/UmrDocument.js';
 import { validateProject } from '../src/domain/validationQueries.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { storeAll } from './settle.js';
 import { recordingClient } from './recordingClient.js';
 
 const TEXT = `################################################################################
@@ -160,13 +158,11 @@ test('taking the new value everywhere changes every node picked from the entry',
   assert.equal(await doc.takeEntryValue(byVar(doc, 's2v').id), false);
 });
 
-test('a write forgets an entry that is gone from the vocabulary it was picked from', async () => {
+test('reconcile forgets an entry that is gone from the vocabulary it was picked from', async () => {
   const gone = load({ s1v: 'deleted', s1k: 'kitap' });
-  await gone.doc.loadLexicon();
-  const result = await storeAll(gone.doc);
+  const result = await gone.doc._reconcile();
   assert.equal(result.unlinked, 1);
-  // Only the entry: what a write stores beside its own change vouches for
-  // nothing, so no stamp rides along.
+  // Only the entry: a repair vouches for nothing, so no stamp rides along.
   const patches = gone.calls.filter((c) => c.name === 'spans.patchMetadata');
   assert.deepEqual(
     patches.map((c) => c.args),
@@ -180,12 +176,15 @@ test('a write forgets an entry that is gone from the vocabulary it was picked fr
       ],
     ],
   );
+  assert.equal(
+    gone.doc.describeReconcile(result),
+    'Repaired: unlinked 1 node from a deleted vocabulary entry',
+  );
 
   // A vocabulary that could not be read may hold the entry.
   const unread = load({ s1v: 'deleted@v2' }, { failing: ['v2'] });
-  await unread.doc.loadLexicon();
-  const again = await storeAll(unread.doc);
-  assert.equal(again, null);
+  const again = await unread.doc._reconcile();
+  assert.deepEqual(again, { findings: [] });
   assert.equal(unread.calls.length, 0);
 });
 
@@ -193,15 +192,13 @@ test('a vocabulary unlinked from the project keeps the entries its nodes were pi
   // v9 is not the project's any more: a maintainer unlinked it, and may link
   // it again. Its entries are not in the lexicon, and are not deleted.
   const unlinked = load({ s1v: 'fish@v9', s2v: 'fish@v9' });
-  await unlinked.doc.loadLexicon();
-  assert.equal(await storeAll(unlinked.doc), null);
+  assert.deepEqual(await unlinked.doc._reconcile(), { findings: [] });
   assert.equal(unlinked.calls.length, 0);
   assert.equal(byVar(unlinked.doc, 's1v').metadata.umr.entry, 'fish');
   // Nor is an entry forgotten whose node does not say which vocabulary it is
   // in: a deleted entry and one this person cannot read look the same.
   const unsaid = load({ s1v: 'deleted@' });
-  await unsaid.doc.loadLexicon();
-  assert.equal(await storeAll(unsaid.doc), null);
+  assert.deepEqual(await unsaid.doc._reconcile(), { findings: [] });
   assert.equal(unsaid.calls.length, 0);
 });
 

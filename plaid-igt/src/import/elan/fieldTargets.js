@@ -18,13 +18,17 @@ import {
   readOrthographies,
   readLexiconField,
   readScope,
-  readVocabFields,
+  readSentenceRole,
   IGT_NAMESPACE,
 } from '../../domain/igtConfig.js';
-import { CORE_VOCAB_FIELDS, normalizeVocabFields } from '../../domain/vocabFields.js';
 import { parseFieldName } from '../../domain/fieldNames.js';
 import { queueNewField } from '../../domain/igtConstraints.js';
-import { lexiconFieldChoices, withLexiconFields } from '../../domain/lexiconField.js';
+import {
+  entryRolesByKey,
+  lexiconFieldChoices,
+  withLexiconFields,
+} from '../../domain/lexiconField.js';
+import { withSentenceRoles } from '../../domain/sentenceRole.js';
 
 /** The annotation scopes a span layer can carry, in the order they are shown. */
 const SCOPES = ['Sentence', 'Word', 'Morpheme'];
@@ -64,31 +68,20 @@ export const fieldNamesOf = (project) =>
   );
 
 /**
- * The role each field's stored Lexicon field holds, by scope and name,
- * `{scope: {name: role}}`: what fills a service's `field` parameter that names
- * a role. The role is the one the project's vocabularies declare for that
- * entry field (none when declared without one), else, for a key no vocabulary
- * declares, the one a new vocabulary's core field of that key holds.
+ * Each field's role, by scope and name, `{scope: {name: role}}`: what fills a
+ * service's `field` parameter that names a role. A word or morpheme field's is
+ * the entry role its stored Lexicon field holds (entryRolesByKey), a sentence
+ * field's its stored role (readSentenceRole).
  */
 export const fieldRolesOf = (project) => {
-  const roleOfKey = {};
-  for (const f of CORE_VOCAB_FIELDS) if (f.role) roleOfKey[f.name] = f.role;
-  // A key a vocabulary declares holds the role it declares, none included: a
-  // cleared role is no role. The first vocabulary to declare a key decides.
-  const declared = {};
-  for (const v of project?.vocabs || []) {
-    const raw = readVocabFields(v?.config) || {};
-    for (const f of normalizeVocabFields(raw)) {
-      if (f.name in raw && !(f.name in declared)) declared[f.name] = f.role;
-    }
-  }
-  Object.assign(roleOfKey, declared);
+  const roleOfKey = entryRolesByKey(project?.vocabs);
   const out = {};
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
   for (const tl of textLayer?.tokenLayers || []) {
     for (const sl of tl.spanLayers || []) {
       const scope = readScope(sl.config);
-      const role = roleOfKey[readLexiconField(sl.config)];
+      const role =
+        scope === 'Sentence' ? readSentenceRole(sl.config) : roleOfKey[readLexiconField(sl.config)];
       if (scope && role) (out[scope] ??= {})[sl.name] = role;
     }
   }
@@ -155,8 +148,12 @@ export async function createFields(client, project, fields, onProgress = null) {
     Morpheme: findMorphemeTokenLayer(tokenLayers)?.id,
   };
   // A field's name proposes its Lexicon field among the project's
-  // vocabularies' fields, as Settings proposes one for a field it adds.
-  const planned = withLexiconFields(fields, lexiconFieldChoices(project?.vocabs)).map((field) => {
+  // vocabularies' fields, and a sentence field's its role, as Settings
+  // proposes them for a field it adds.
+  const proposed = withSentenceRoles(
+    withLexiconFields(fields, lexiconFieldChoices(project?.vocabs)),
+  );
+  const planned = proposed.map((field) => {
     const parentLayerId = parentFor[field.scope];
     if (!parentLayerId) {
       throw new Error(`This project has no ${field.scope.toLowerCase()} layer to add a field to.`);

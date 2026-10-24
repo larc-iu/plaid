@@ -486,7 +486,7 @@ Everything it produces shows in violet until you accept or discard it (see <<_pr
 4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. Needs the project to have a vocabulary.
 
 A service step is unavailable when no service for it is online.
-An analysis service writes its glosses into the morpheme field whose lexicon field is the entry's gloss, and a translation service into the translation field chosen in the dialog.
+An analysis service writes its glosses into the morpheme field whose lexicon field is the entry's gloss, and a translation service into the sentence field whose role is the translation, or the field chosen in the dialog.
 With no such field the dialog asks for one.
 
 A run over a long document takes minutes.
@@ -570,6 +570,9 @@ An import fills it in, and a field named with a tag in parentheses, such as `Glo
 A word or morpheme field also records its **lexicon field**, the entry field that holds the same kind of value, such as Gloss for a gloss field.
 Guesses from a linked entry and the list of senses under **Alt+↓** read it, and a field with no lexicon field takes nothing from the lexicon.
 A new field named like an entry field, such as `Gloss` or `POS`, is given that entry field, and an import fills it in.
+A sentence field records its **role**: the translation, the literal translation, a note, or none.
+Exports read it to know which field is the free translation, and services take the sentence field whose role is the translation as their translation field.
+A new sentence field named `Translation`, `Literal Translation` or `Note` is given that role, and an import fills it in.
 
 **Tokenize new text**, on by default, splits the text added on the Baseline and Media tabs, and by the assistant, into words.
 
@@ -894,6 +897,7 @@ An export holds everything its preset names, or it fails, and the export panel s
 A FLEx preset also carries the writing-system tags FieldWorks will see, for the baseline text, each alternate orthography, and glosses and translations.
 Use the codes your FieldWorks project already uses, or FLEx will offer to add a new writing system when you import.
 Each field goes out under its own language where the project knows it, and the box beside each field overrides it.
+A new FLEx or CLDF preset sends the sentence field whose role is the translation as the free translation, and a CLDF preset sends the one whose role is a note as the comment and the morpheme field whose lexicon field is the entry's gloss as the gloss.
 
 [[_latex_book]]
 === LaTeX book

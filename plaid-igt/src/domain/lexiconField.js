@@ -80,6 +80,29 @@ export function proposeLexiconField(field, choices) {
   return hit?.key ?? null;
 }
 /**
+ * The entry role each entry field key holds, `{key: role}`: the role the
+ * given vocabularies (each `{ config }`) declare for it (none when declared
+ * without one, the first vocabulary to declare a key deciding), else, for a
+ * key none of them declares, the one a new vocabulary's core field of that
+ * key holds. What a field's Lexicon field means: a field whose Lexicon field
+ * is `gloss` holds glosses.
+ */
+export const entryRolesByKey = (vocabs) => {
+  const out = {};
+  for (const f of CORE_VOCAB_FIELDS) if (f.role) out[f.name] = f.role;
+  const declared = {};
+  for (const v of vocabs || []) {
+    const raw = readVocabFields(v?.config) || {};
+    for (const f of normalizeVocabFields(raw)) {
+      if (f.name in raw && !(f.name in declared)) declared[f.name] = f.role ?? null;
+    }
+  }
+  Object.assign(out, declared);
+  for (const k of Object.keys(out)) if (!out[k]) delete out[k];
+  return out;
+};
+
+/**
  * Each field with its Lexicon field: the one it states (`lexiconField`, null
  * meaning none), else the one its name proposes. What every maker of fields
  * runs once, before the fields exist.

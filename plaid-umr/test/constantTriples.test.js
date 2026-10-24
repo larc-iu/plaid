@@ -2,7 +2,7 @@
 // records of the sentences whose blocks write it list it. The canvas puts it
 // there as it makes it, in the request that makes it, so it never stands on
 // a sentence number that another app's edit before it would make wrong, and
-// a write has nothing to move.
+// an open has nothing to move.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
@@ -10,7 +10,6 @@ import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { storeAll } from './settle.js';
 import { recordingClient } from './recordingClient.js';
 import { isRecordToken } from '../src/domain/sentenceGraph.js';
 
@@ -126,7 +125,7 @@ test('a triple between constants is listed in its sentence record in the request
   const after = new UmrDocument({ raw: replay(raw, calls), client: recordingClient().client });
   after._reload = async () => {};
   assert.deepEqual(blocksOf(after, tripleId), [2]);
-  assert.equal(await storeAll(after), null);
+  assert.deepEqual(await after._reconcile(), { findings: [] });
 });
 
 test('a second triple in the same block keeps the first in the record', async () => {
@@ -166,7 +165,7 @@ test('a sentence with no record gets one over the sentence, in the same request'
   const after = new UmrDocument({ raw: replay(raw, calls), client: recordingClient().client });
   after._reload = async () => {};
   assert.deepEqual(blocksOf(after, tripleId), [3]);
-  assert.equal(await storeAll(after), null);
+  assert.deepEqual(await after._reconcile(), { findings: [] });
 });
 
 test('a triple with a node at one end is listed in no record', async () => {

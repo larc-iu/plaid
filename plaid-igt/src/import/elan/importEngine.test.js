@@ -512,6 +512,33 @@ describe('runElanImport', () => {
     expect(call[4].meta.iso639P3).toBe('pmy');
   });
 
+  // The meta language is the translation's, and the translation is the field
+  // the project stored as one, not the one named Translation.
+  it('takes the meta language from the field whose stored role is the translation', async () => {
+    const client = stubClient();
+    const libre = {
+      id: 'sl-Libre',
+      name: 'Libre',
+      config: { igt: { scope: 'Sentence', sentenceRole: 'translation' } },
+    };
+    const project = structuredClone(PROJECT);
+    project.textLayers[0].tokenLayers[1].spanLayers.push(libre);
+    client.projects.get = async () => project;
+    const build = {
+      ...BUILD,
+      schema: {
+        ...BUILD.schema,
+        fields: [
+          { name: 'Translation', scope: 'Sentence', lang: 'nld' },
+          { name: 'Libre', scope: 'Sentence', lang: 'spa' },
+        ],
+      },
+    };
+    await runElanImport({ client, projectId: 'p1', build });
+    const call = client.calls.find(([m]) => m === 'projects.setConfig');
+    expect(call[4].meta.iso639P3).toBe('spa');
+  });
+
   it('records nothing when the tier names declare nothing', async () => {
     const client = stubClient();
     await runElanImport({ client, projectId: 'p1', build: BUILD });

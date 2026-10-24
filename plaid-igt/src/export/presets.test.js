@@ -15,10 +15,20 @@ const LAYERS = {
   morphFields: ['Gloss', 'Category', 'Etymology'],
   sentFields: ['Translation', 'Literal Translation', 'Note', 'Speaker'],
   hasMorphemes: true,
+  // Each field's stored role, as exportLayers.js reads them.
+  fieldRoles: {
+    'Word:Word Gloss': 'gloss',
+    'Word:POS': 'pos',
+    'Morpheme:Gloss': 'gloss',
+    'Morpheme:Category': 'pos',
+    'Sentence:Translation': 'translation',
+    'Sentence:Literal Translation': 'literalTranslation',
+    'Sentence:Note': 'note',
+  },
 };
 
 describe('defaultFieldMap', () => {
-  it('inverts the FLEx import naming heuristically', () => {
+  it('inverts the FLEx import by the fields stored roles', () => {
     expect(defaultFieldMap(LAYERS)).toEqual({
       sentence: {
         Translation: 'gls',
@@ -28,6 +38,21 @@ describe('defaultFieldMap', () => {
       },
       word: { 'Word Gloss': 'gls', POS: 'pos' },
       morpheme: { Gloss: 'gls', Category: 'msa' }, // Etymology unmapped → omitted
+    });
+  });
+
+  it('never reads a name', () => {
+    expect(
+      defaultFieldMap({ ...LAYERS, fieldRoles: { 'Sentence:Speaker': 'translation' } }),
+    ).toEqual({
+      sentence: {
+        Translation: 'note',
+        'Literal Translation': 'note',
+        Note: 'note',
+        Speaker: 'gls',
+      },
+      word: {},
+      morpheme: {},
     });
   });
 });

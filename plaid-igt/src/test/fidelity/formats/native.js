@@ -91,6 +91,7 @@ export default {
     'layers.fieldOrder': carried,
     'layers.fieldLang': carried,
     'layers.fieldLexiconField': carried,
+    'layers.fieldSentenceRole': carried,
     'layers.fieldTagset': carried,
     // Other apps' layers, their config verbatim (otherLayers in project.json).
     'layers.splitOnSpace': carried,
