@@ -43,9 +43,13 @@ describe('useCellEngine', () => {
     expect(again.engine().conflictOf('a')).toMatchObject({ typed: 'mine', stored: 'theirs' });
     expect(again.engine().unsentOf('b')).toMatchObject({ typed: 'new' });
     expect(hasUnsavedDraft()).toBeTruthy();
+    // Closing the browser tab asks, with no grid drawn.
+    await again.unmount();
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
 
     // The document closes.
-    await again.unmount();
     releaseCellEngines(doc);
     expect(engine.conflictOf('a')).toBe(null);
     expect(engine.unsentOf('b')).toBe(null);

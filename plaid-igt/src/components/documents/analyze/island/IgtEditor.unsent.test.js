@@ -134,6 +134,26 @@ describe('the island asks before the tab closes', () => {
     window.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
   });
+
+  it('after the island is gone, while the document is open', async () => {
+    const { doc, client } = mount();
+    const b = cell('ma:m-2:Gloss');
+    const { c } = await refuseFirst(doc, client, async () => {
+      focus(b);
+      type(b, 'BBB');
+    });
+    type(c, c.dataset.orig ?? '');
+    // Analyze to Comments: the island goes, the document stays open.
+    editor.destroy();
+    editor = null;
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    releaseCellEngines(doc);
+    const after = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(after);
+    expect(after.defaultPrevented).toBe(false);
+  });
 });
 
 describe('an in-app way out asks', () => {

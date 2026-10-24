@@ -445,11 +445,11 @@ export class IgtEditor {
   }
 
   // A focused cell whose value differs from what it was focused with (typed
-  // but not yet committed by blur or Enter), or any value put back after it
-  // was not saved, drawn or not (the cell engine). A save still on its way is
-  // useSavingGuard's question, which DocumentDetail asks for the document.
+  // but not yet committed by blur or Enter). A value put back after it was
+  // not saved is the cell engine's question (it registers each one with
+  // useUnsavedDraft, so it asks with no island drawn), and a save still on
+  // its way is useSavingGuard's, which DocumentDetail asks for the document.
   _hasUnsavedWork() {
-    if (this._cells.hasUnsent) return true;
     const el = document.activeElement;
     if (!el || !this.container.contains(el) || !el.classList?.contains('igt-field')) return false;
     return (el.value ?? '') !== (el.dataset.orig ?? '');
