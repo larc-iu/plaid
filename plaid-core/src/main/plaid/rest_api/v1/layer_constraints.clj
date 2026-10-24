@@ -2,6 +2,7 @@
   "The layer constraint routes under a token, span or relation layer, and the
   middleware that puts a constraint refusal's violations on the answer."
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.constraints.layer :as lc]
             [plaid.sql.layer-constraints :as slc]
@@ -138,7 +139,9 @@
                                (let [result (slc/repair-constraints db kind (id-of request) constraints user-id
                                                                     :document document)]
                                  (if (:success result)
-                                   {:status 200 :body (:extra result)}
+                                   (prm/assoc-document-versions-in-header
+                                    {:status 200 :body (:extra result)} db
+                                    (map (comp parse-uuid :document) (:repaired (:extra result))))
                                    (failure result))))))}}]
      ["/:namespace"
       {:conflicting true

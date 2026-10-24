@@ -3,6 +3,7 @@
   validates, the refusal of a list the stored data breaks, the
   compare-and-set, check and repair, and constraints on every read."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [clojure.data.json :as json]
             [plaid.rest-api.v1.auth :as auth]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
@@ -185,6 +186,19 @@
         (is (= 1 (count (psc/q db {:select [:id] :from :operations
                                    :where [:and [:= :op_type "layer/repair-constraints"] [:= :document_id doc]]}))))))
     (assert-status 200 (put admin-request "span" lemma "igt" {:constraints [{:type "single-span"}]}))))
+
+(deftest a-repair-names-the-documents-it-bumped
+  (let [{:keys [lemma tokens doc]} (setup!)
+        [a] tokens
+        _ (create-span admin-request lemma [a] "w")
+        version (fn [] (:version (psc/fetch-by-id db :documents doc)))
+        before (version)
+        r (call user1-request :post (str "/api/v1/span-layers/" lemma "/constraints/repair")
+                {:constraints [{:type "single-span"}] :document doc})
+        header (some-> (get-in r [:headers "X-Document-Versions"]) json/read-str)]
+    (assert-status 200 r)
+    (is (< before (version)) "the repair bumped the document")
+    (is (= {doc (version)} header) "the header names the repaired document at its new version")))
 
 (deftest the-routes-are-batchable
   (let [{:keys [lemma deps]} (setup!)
