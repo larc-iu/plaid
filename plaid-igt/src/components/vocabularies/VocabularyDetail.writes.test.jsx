@@ -409,6 +409,27 @@ describe('the vocabulary schema written from a stale page', () => {
     await view.unmount();
   });
 
+  it("keeps the Status tagset's stored order when another tagset is added (HUNT-igt R1)", async () => {
+    const { server, client } = casServer();
+    server.config.igt.tagsets.Status = {
+      mode: 'closed',
+      ordered: true,
+      values: [{ value: 'draft' }, { value: 'reviewed' }, { value: 'published' }],
+    };
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    const next = {
+      ...tagsetsManager.props.tagsets,
+      moods: { mode: 'suggest', delimiters: '', values: [] },
+    };
+    await view.step(async () => {
+      await tagsetsManager.props.onSaveChanges(next);
+      await settle(5);
+    });
+    expect(server.config.igt.tagsets.Status.ordered).toBe(true);
+    expect(Object.keys(server.config.igt.tagsets).sort()).toEqual(['Status', 'cases', 'moods']);
+    await view.unmount();
+  });
+
   it('writes neither the rename nor the repoint when the fields changed since the page read them', async () => {
     const { server, client } = casServer();
     server.config.igt.fields.gloss.tagset = 'cases';

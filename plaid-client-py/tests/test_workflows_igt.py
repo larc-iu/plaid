@@ -282,6 +282,9 @@ def test_tagsets_are_read_the_way_the_editor_reads_them():
     assert leipzig['values'][0]['description'] == 'plural'
     assert ts['Odd'] == {'name': 'Odd', 'delimiters': '', 'mode': 'suggest', 'values': []}
     assert normalize_tagset(None)['mode'] == 'suggest'
+    # A stored order is kept through a save, as the app keeps it.
+    assert normalize_tagset({'ordered': True})['ordered'] is True
+    assert 'ordered' not in normalize_tagset({'ordered': 'yes'})
 
 
 def test_tagset_for_and_governed_fields_resolve_by_name_and_ignore_dangling_references():

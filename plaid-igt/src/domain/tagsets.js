@@ -124,7 +124,8 @@ export const glossReadingOf = (morphType, form = null) =>
 // --- reading config --------------------------------------------------------
 
 /**
- * Normalize one raw tagset into { delimiters, closed, values }. Value records
+ * Normalize one raw tagset into { delimiters, mode, values }, plus
+ * `ordered: true` when it is stored so. Value records
  * keep every key they carry (the free-form ones are the point) but must have a
  * non-empty string `value`; the first record wins a duplicate.
  */
@@ -143,6 +144,10 @@ export const normalizeTagset = (raw) => {
     delimiters: stripSpace(str(raw?.delimiters)),
     mode: TAGSET_MODES.includes(raw?.mode) ? raw.mode : MODES.SUGGEST,
     values,
+    // Values listed in the stored order rather than sorted (the Status
+    // tagset's draft, reviewed, published, sortedValues), kept through every
+    // save that writes the normalized shape.
+    ...(raw?.ordered === true ? { ordered: true } : {}),
   };
 };
 

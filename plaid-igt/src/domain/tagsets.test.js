@@ -53,6 +53,12 @@ describe('normalizeTagset', () => {
     expect(normalizeTagset(undefined)).toEqual(empty);
   });
 
+  it('keeps a stored order, and only a true one (HUNT-igt R1)', () => {
+    expect(normalizeTagset({ ordered: true, values: [{ value: 'b' }] }).ordered).toBe(true);
+    expect(normalizeTagset({ ordered: 'yes' })).not.toHaveProperty('ordered');
+    expect(normalizeTagset({})).not.toHaveProperty('ordered');
+  });
+
   it('keeps free-form keys on a value record', () => {
     const t = normalizeTagset({ values: [{ value: 'NOM', wals: '28A', description: 'nom' }] });
     expect(t.values[0]).toEqual({ value: 'NOM', wals: '28A', description: 'nom' });

@@ -44,7 +44,8 @@ def _igt(cfg, key):
 
 
 def normalize_tagset(raw, name: Optional[str] = None) -> dict:
-    """One tagset as ``{name, delimiters, mode, values}``. Whitespace is never
+    """One tagset as ``{name, delimiters, mode, values}``, plus ``ordered:
+    True`` when it is stored so. Whitespace is never
     a delimiter, an unknown mode reads as ``suggest``, and a value record must
     carry a non-empty string ``value`` (the first record wins a duplicate).
     Every other key a record carries is kept, ``description`` being the one
@@ -66,6 +67,9 @@ def normalize_tagset(raw, name: Optional[str] = None) -> dict:
         'delimiters': ''.join(_str(raw.get('delimiters')).split()),
         'mode': mode if mode in MODES else SUGGEST,
         'values': values,
+        # Values listed in the stored order rather than sorted (the Status
+        # tagset's draft, reviewed, published), kept through every save.
+        **({'ordered': True} if raw.get('ordered') is True else {}),
     }
 
 
