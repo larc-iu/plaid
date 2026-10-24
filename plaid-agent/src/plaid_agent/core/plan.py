@@ -417,8 +417,9 @@ def unpack_found(packed: Dict[str, Any], known: Iterable[Any] = ()) -> List[Dict
             if j:
                 o[k] = json.loads(table[j - 1])
     if len(out) != packed.get('n') or fp_digest(out) != packed.get('fp'):
-        raise ValueError('what the first run of this plan found does not read back. Ask the assistant to plan '
-                         'it again')
+        from .tools import ValueRefusal
+        raise ValueRefusal('what the first run of this plan found does not read back. Ask the assistant to plan '
+                           'it again', kind='conflict')
     return out
 
 
@@ -946,13 +947,14 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
                             len(ops), unknown, written(), members()) from e
-        # A refusal the assistant wrote (a ValueError, a ToolError) is told
-        # as written. A bug of its own reaches the user, after batches may
-        # have committed, as one plain sentence: the counts beside it are what
-        # they act on. The exception, with its class and traceback, is for the
-        # operator's log.
-        from .tools import ToolError
-        authored = isinstance(e, (ValueError, ToolError)) and str(e).strip()
+        # A refusal the assistant wrote (a ToolError, a ValueRefusal) is told
+        # as written. Anything else, a bare ValueError Python raised among
+        # them, is a bug of its own: it reaches the user, after batches may
+        # have committed, as one plain sentence, the counts beside it being
+        # what they act on, and the exception with its class and traceback
+        # goes to the operator's log.
+        from .tools import ToolError, ValueRefusal
+        authored = isinstance(e, (ValueRefusal, ToolError)) and str(e).strip()
         if not authored:
             logger.exception('A plan stopped on an error of the assistant\'s own')
         raise PlanError(str(e).strip() if authored else 'The assistant stopped on an error.',

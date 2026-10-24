@@ -740,7 +740,7 @@ def _resolve_bulk_scope(res: Resolution, op):
         for o in found:
             res.ws.refuse_off_list(o)
     except ToolError as e:
-        raise ValueError(str(e)) from e
+        raise ValueRefusal(str(e), kind=e.kind) from e
     res.found.append(found)
     return found
 

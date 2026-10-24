@@ -548,6 +548,35 @@ def test_plan_error_reports_how_much_was_applied():
     assert str(ei.value) == 'The assistant stopped on an error.'
 
 
+def test_a_valueerror_python_raised_is_a_bug_logged_and_not_shown(caplog):
+    """Only a ToolError or a ValueRefusal is told as written. A ValueError
+    Python raises (int('x')) is the assistant's bug (REV-R4-AGENT F4)."""
+    import logging
+    from plaid_agent.igt.plan import PlanError
+    from plaid_agent.core.tools import ValueRefusal
+    import pytest
+    for raised, told, logged in ((ValueError("invalid literal for int() with base 10: 'x'"),
+                                  'The assistant stopped on an error.', True),
+                                 (ValueRefusal('An entry moved.', kind='conflict'), 'An entry moved.', False)):
+        c = FakeClient()
+        real = c.batch
+
+        def failing(real=real, raised=raised):
+            batch = real()
+
+            def submit():
+                raise raised
+            batch.submit = submit
+            return batch
+        c.batch = failing
+        caplog.clear()
+        ops = [{'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T1', 'span_id': None, 'value': 'v', 'label': ''}]
+        with caplog.at_level(logging.ERROR), pytest.raises(PlanError) as ei:
+            execute_plan(c, ops, source='s', label='l')
+        assert str(ei.value) == told
+        assert any(r.exc_info for r in caplog.records) == logged
+
+
 def test_a_failure_after_the_first_batch_says_what_stood():
     """Five raises in the executor sit after a batch has already committed,
     and every one of them reported nothing written: the user was told the plan
@@ -562,7 +591,8 @@ def test_a_failure_after_the_first_batch_says_what_stood():
             'end': 5, 'old': 'Ali-di', 'new': 'Ali', 'word_ids': [], 'morpheme_ids': [], 'label': ''}]
     with pytest.raises(PlanError) as ei:
         execute_plan(c, ops, source='s', label='l', project=None)
-    assert 'edit_text needs the project' in str(ei.value)
+    # A missing project is the caller's bug, so it is for the log.
+    assert str(ei.value) == 'The assistant stopped on an error.'
     assert ei.value.applied == 1, 'the span that was written is reported'
     assert ei.value.total == 2
 

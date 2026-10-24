@@ -141,8 +141,10 @@ def test_a_bug_in_the_assistant_reaches_the_user_without_its_class(caplog):
     assert 'KeyError' in caplog.text
 
     # A refusal the assistant wrote is told as written, without its class.
+    from plaid_agent.core.tools import ValueRefusal
+
     def refuse(tracker):
-        raise ValueError('the text no longer reads "x" at 0-1')
+        raise ValueRefusal('the text no longer reads "x" at 0-1', kind='conflict')
 
     with pytest.raises(core_plan.PlanError) as caught:
         core_plan.applying([{'kind': 'x'}], refuse)

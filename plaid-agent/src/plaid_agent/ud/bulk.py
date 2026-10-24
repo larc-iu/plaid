@@ -22,6 +22,7 @@ from ..core.provenance import unmark
 from ..core.history import doc_label
 from ..core.project import word_ref
 from ..core.plan import MANY, by_document
+from ..core.tools import ValueRefusal
 from ..core.replace import replacer
 from .corpus import Corpus, rx
 from .grew import escape_regex
@@ -115,12 +116,12 @@ def resolve_replace(client, project: UdProject, op: Dict[str, Any]) -> List[Dict
     field = op['field']
     rows = matches(c, field, spec, op.get('document_id'), REPLACE_MAX)
     if len(rows) > REPLACE_MAX:
-        raise ValueError(f'the replacement now matches more than {REPLACE_MAX} values')
+        raise ValueRefusal(f'the replacement now matches more than {REPLACE_MAX} values', kind='too-large')
     found = changes(rows, field, rep)
     if field == 'deprel':
         refusal = root_rule(found)
         if refusal:
-            raise ValueError(refusal)
+            raise ValueRefusal(refusal, kind='conflict')
     return replace_ops(found, field)
 
 
