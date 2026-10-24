@@ -361,6 +361,7 @@ export class UmrDocument extends DocumentModel {
       });
       const graph = keepUnchangedSentences(this._lastGraph, built);
       this._lastGraph = graph;
+      this._lastGraphRaw = this._raw;
       return graph;
     });
   }
@@ -521,7 +522,11 @@ export class UmrDocument extends DocumentModel {
     if (!this._patches?.length || !this._patchBase || this._asOf) return null;
     const edit = editScopes(this._patchBase, this._raw);
     if (!edit) return null;
-    const graph = buildDocumentGraph(getUmrLayerInfo(this._patchBase));
+    // The graph the screen read before the edit, when it read one.
+    const graph =
+      this._lastGraphRaw === this._patchBase
+        ? this._lastGraph
+        : buildDocumentGraph(getUmrLayerInfo(this._patchBase));
     const indexes = new Set(
       graph.sentences
         .filter((s) => edit.scopes.has(`s:${settledId(s.tokenId)}`))
