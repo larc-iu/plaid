@@ -282,7 +282,7 @@ export class UmrDocument extends DocumentModel {
     if (this._refused(conceptProblem(concept), under)) return Promise.resolve(false);
     const label = 'Failed to change the concept';
     if (!this._canWrite(label)) return Promise.resolve(false);
-    const writes = targets.map((n) => [n.id, this._editStampOps(n.metadata)]);
+    const writes = targets.map((n) => [n.id, this._valueEditStampOps(n.metadata)]);
     this._applyRawPatch((next, infoNext) => {
       const spans = this._layers(infoNext).spans;
       writes.forEach(([id, ops]) => {
@@ -343,6 +343,13 @@ export class UmrDocument extends DocumentModel {
   // to the row it shows, so the two cannot disagree.
   _editStampOps(metadata) {
     return metadataOps(this.writer.editStamp(metadata));
+  }
+
+  // The same for an edit of the VALUE (a concept, a role, a relation): when
+  // it `changes`, the producer's provProb, which was the probability of the
+  // value replaced, goes too (the writer's valueEditStamp).
+  _valueEditStampOps(metadata, changes = true) {
+    return metadataOps(this.writer.valueEditStamp(metadata, { changes }));
   }
 
   get layerInfo() {
@@ -1067,7 +1074,7 @@ export class UmrDocument extends DocumentModel {
     // the document's version bumps once.
     const ops = [
       ...(entryChanges ? umrOps(entryRecord(entry, this._lexicon)) : []),
-      ...this._editStampOps(node.metadata),
+      ...this._valueEditStampOps(node.metadata, node.concept !== concept),
     ];
     this._applyRawPatch((next, infoNext) => {
       const span = this._layers(infoNext).spans.find((s) => s.id === node.id);
@@ -1486,7 +1493,7 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to change the relation';
     if (!this._canWrite(label)) return false;
     // Relabelling a drafted edge settles it, as re-typing a cell does in ud.
-    const stampOps = this._editStampOps(edge.metadata);
+    const stampOps = this._valueEditStampOps(edge.metadata);
     this._applyRawPatch((next, infoNext) => {
       const rel = this._layers(infoNext).relations.find((r) => r.id === edge.id);
       if (!rel) return;
@@ -2203,7 +2210,7 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to change the document-level relation';
     if (!this._canWrite(label)) return false;
     const raw = this._layers(this.layerInfo).triples.find((x) => x.id === t.id);
-    const stampOps = this._editStampOps(raw?.metadata);
+    const stampOps = this._valueEditStampOps(raw?.metadata);
     this._applyRawPatch((next, infoNext) => {
       const r = this._layers(infoNext).triples.find((x) => x.id === t.id);
       if (!r) return;
@@ -2620,6 +2627,8 @@ export class UmrDocument extends DocumentModel {
     // two patches of one node (an old root's attributes and its root mark)
     // cannot undo each other.
     const umrPatchFor = (spanId, changes) => [...umrOps(changes), ...editSpan(spanId)];
+    const valueSpan = (spanId) =>
+      this._valueEditStampOps(L.spans.find((x) => x.id === spanId)?.metadata);
     const gone = new Set(plan.delete);
 
     // Every change to what is already there, as the metadata ops, value
@@ -2656,7 +2665,7 @@ export class UmrDocument extends DocumentModel {
       spanValues.push([
         c.nodeId,
         c.concept,
-        [...(had ? umrOps(entryRecord(null)) : []), ...editSpan(c.nodeId)],
+        [...(had ? umrOps(entryRecord(null)) : []), ...valueSpan(c.nodeId)],
       ]);
     }
     // A renumber moves a child's place and nothing else, so it carries no

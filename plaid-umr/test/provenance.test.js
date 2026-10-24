@@ -484,3 +484,32 @@ test('discarding writes nothing at a past state', async () => {
   assert.equal(past.sentence(1).nodes.length, nodes);
   assert.equal(errors.length, 1);
 });
+
+// provProb is the probability of the value an entity holds: a concept or a
+// role a person changes drops the producer's, and the rest of what the
+// producer recorded stays, as in igt and ud.
+test("a changed concept or role drops the producer's provProb", async () => {
+  const { doc } = load({
+    machine: true,
+    edit: (raw) => {
+      const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+      const concepts = nodes.spanLayers[0];
+      concepts.spans.forEach((s) => {
+        s.metadata = { ...s.metadata, provProb: 0.9, provDetail: { value: s.value } };
+      });
+      concepts.relationLayers.forEach((layer) =>
+        (layer.relations || []).forEach((r) => {
+          r.metadata = { ...r.metadata, provProb: 0.8 };
+        }),
+      );
+    },
+  });
+  const node = byVar(doc, 's1c');
+  assert.equal(await doc.setConcept(node.id, 'nation'), true);
+  assert.equal(doc.node(node.id).metadata.provProb, undefined);
+  assert.ok(doc.node(node.id).metadata.provDetail);
+  const edge = [...byVar(doc, 's1l').out].sort((a, b) => a.order - b.order)[1];
+  assert.equal(edge.metadata.provProb, 0.8);
+  assert.equal(await doc.setRole(edge.id, ':manner'), true);
+  assert.equal(doc.edge(edge.id).metadata.provProb, undefined);
+});
