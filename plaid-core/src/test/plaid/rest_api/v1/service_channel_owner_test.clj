@@ -209,3 +209,32 @@
     (is (= 403 (:status (:resp (open! delegated pid "svc")))))
     (is (= 200 (:status (:resp (open! fix/user2-token pid "svc"))))
         "the id was still free")))
+
+(defn- services-list [token pid]
+  (let [resp (fix/rest-handler ((as token) :get (str "/api/v1/projects/" pid "/services")))
+        body (:body resp)]
+    (if (string? body) (read-string body) (read-string (slurp body)))))
+
+(deftest deactivating-an-account-releases-its-service-ids
+  ;; HUNT-recent 5: an account's ids outlived it, so nobody else could run a
+  ;; service under them, and no screen offered the release.
+  (events/reset-state!)
+  (let [pid (h/create-test-project admin-request "Claims D")
+        gone "leaving@example.com"
+        _ (api-call admin-request {:method :post :path "/api/v1/users"
+                                   :body {:email gone :password "a-long-password" :is-admin false}})
+        _ (writer! pid gone)
+        _ (writer! pid "user2@example.com")
+        token (:token (:body (api-call admin-request {:method :post
+                                                      :path (str "/api/v1/users/" gone "/tokens")
+                                                      :body {:name "svc"}})))
+        opened (open! token pid "svc")]
+    (is (= 200 (:status (:resp opened))))
+    (reset! (:closed opened) true)
+    (events/unregister-service-channel! pid "svc" (events/get-service-channel pid "svc"))
+    (testing "the listing names the account holding an id"
+      (is (= gone (:claimed-by (first (services-list fix/admin-token pid))))))
+    (api-call admin-request {:method :delete :path (str "/api/v1/users/" gone)})
+    (testing "after the deactivation the id is free"
+      (is (nil? (:claimed-by (first (services-list fix/admin-token pid)))))
+      (is (= 200 (:status (:resp (open! fix/user2-token pid "svc"))))))))

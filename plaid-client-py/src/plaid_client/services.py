@@ -168,7 +168,8 @@ def discover_services(client, project_id):
     ``runner_name`` (the runner's display name), ``run_by_you``, and
     ``serves_you``, whether it would take the caller's requests on this
     project. A delegating service serves members other than its runner only
-    where the runner is a maintainer or an admin.
+    where the runner is a maintainer or an admin. Every entry whose id an
+    account holds names it in ``claimed_by`` (see :func:`release_service`).
     """
     return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
 
@@ -189,8 +190,9 @@ def release_service(client, project_id, service_id):
     """Release a service id from the account that first registered it on the
     project. A service id belongs to that account, and the server refuses any
     other account's registration (403) until an admin releases it. The next
-    account to register it then claims it. Admin-only; 409 while the service
-    is connected, 404 when no account holds it. The JS twin is
+    account to register it then claims it. Deactivating the account releases
+    every id it holds. Admin-only; 409 while the service is connected, 404
+    when no account holds it. The JS twin is
     ``releaseService``."""
     # out_of_band: the registry is not project data (see the note at the top
     # of http.py).

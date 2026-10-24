@@ -136,12 +136,13 @@ export function serviceErrorMessage(error, serviceName = '', secrets = []) {
  * it, as the caller sees it: `runnerName` (the runner's display name),
  * `runByYou`, and `servesYou`, whether it would take the caller's requests on
  * this project. A delegating service serves members other than its runner
- * only where the runner is a maintainer or an admin. Goes over the wire even
- * while a batch is open on the client.
+ * only where the runner is a maintainer or an admin. Every entry whose id an
+ * account holds names it in `claimedBy` (see `releaseService`). Goes over the
+ * wire even while a batch is open on the client.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
- * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt, runnerName, runByYou, servesYou}]
+ * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt, runnerName, runByYou, servesYou, claimedBy}]
  */
 export function discoverServices(client, projectId) {
   return client._request('GET', `/api/v1/projects/${projectId}/services`);
@@ -169,8 +170,9 @@ export function discardService(client, projectId, serviceId) {
  * Release a service id from the account that first registered it on the
  * project. A service id belongs to that account, and the server refuses any
  * other account's registration (403) until an admin releases it. The next
- * account to register it then claims it. Admin-only; 409 while the service is
- * connected, 404 when no account holds it.
+ * account to register it then claims it. Deactivating the account releases
+ * every id it holds. Admin-only; 409 while the service is connected, 404 when
+ * no account holds it.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID

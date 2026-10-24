@@ -10,7 +10,8 @@
 
   Beside them, `service_claims` holds who each service id on a project
   belongs to: the account that first opened a channel for it (ruling R10).
-  Forgetting a seen row leaves the claim, only an admin's release drops it."
+  Forgetting a seen row leaves the claim. An admin's release drops it, and so
+  does deactivating the account that holds it."
   (:require [clojure.data.json :as json]
             [plaid.sql.common :as psc]))
 
@@ -105,3 +106,20 @@
                     :where [:and
                             [:= :project_id project-id]
                             [:= :service_id service-id]]}))
+
+(defn release-all-of!
+  "Drop every claim `user-id` holds, on every project: a deactivated account
+  runs no service, and its ids are free for the next account to register.
+  Unaudited, as the claims are."
+  [db user-id]
+  (psc/execute! db {:delete-from :service_claims
+                    :where [:= :user_id user-id]}))
+
+(defn claims
+  "Who holds each claimed service id on the project, as {service-id user-id}."
+  [db project-id]
+  (into {}
+        (map (juxt :service_id :user_id))
+        (psc/q db {:select [:service_id :user_id]
+                   :from :service_claims
+                   :where [:= :project_id project-id]})))

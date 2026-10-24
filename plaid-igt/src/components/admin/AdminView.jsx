@@ -98,7 +98,7 @@ export const AdminView = () => {
           <AdminVocabularies client={client} />
         </TabsContent>
         <TabsContent value="services">
-          <AdminServices client={client} />
+          <AdminServices client={client} currentUser={user} />
         </TabsContent>
         <TabsContent value="assistant">
           <AdminAssistant client={client} />

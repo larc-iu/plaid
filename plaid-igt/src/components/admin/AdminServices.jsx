@@ -48,7 +48,7 @@ const groupByService = (registrations) => {
   });
 };
 
-export const AdminServices = ({ client }) => {
+export const AdminServices = ({ client, currentUser }) => {
   const confirm = useConfirm();
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +94,28 @@ export const AdminServices = ({ client }) => {
       await load();
     } catch (err) {
       notifyError(humanizeError(err), 'Failed to forget the registration');
+    }
+  };
+
+  // R10: a service id belongs to the account that first connected it, and
+  // nobody else can run a service under it until an admin releases it.
+  const heldByOther = (entry) =>
+    !entry.online && !!entry.claimedBy && entry.claimedBy !== currentUser?.id;
+
+  const releaseOne = async (entry) => {
+    const ok = await confirm({
+      title: 'Release this service id?',
+      description: `${entry.serviceId} on ${entry.project.name} belongs to ${entry.claimedBy}. The next account to connect it holds it.`,
+      confirmLabel: 'Release',
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await client.messages.releaseService(entry.project.id, entry.serviceId);
+      notifySuccess('Service id released');
+      await load();
+    } catch (err) {
+      notifyError(humanizeError(err), 'Failed to release the service id');
     }
   };
 
@@ -231,7 +253,15 @@ export const AdminServices = ({ client }) => {
                 <td className="py-1 pr-3 text-muted-foreground" title={fullTimestamp(e.lastSeenAt)}>
                   {e.online ? 'Now' : e.lastSeenAt ? timeAgo(e.lastSeenAt) : ''}
                 </td>
+                <td className="py-1 pr-3 text-muted-foreground">
+                  {e.claimedBy ? `Held by ${e.claimedBy}` : ''}
+                </td>
                 <td className="py-1 text-right">
+                  {heldByOther(e) && (
+                    <Button size="sm" variant="ghost" onClick={() => releaseOne(e)}>
+                      Release
+                    </Button>
+                  )}
                   {!e.online && (
                     <Button size="sm" variant="ghost" onClick={() => discardOne(e)}>
                       Forget

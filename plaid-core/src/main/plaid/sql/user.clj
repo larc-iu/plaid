@@ -9,7 +9,8 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
-            [plaid.sql.pagination :as pagination])
+            [plaid.sql.pagination :as pagination]
+            [plaid.sql.service-registry :as service-registry])
   (:refer-clojure :exclude [get merge])
   (:import [java.sql SQLException]))
 
@@ -532,7 +533,9 @@
       (belt and braces alongside the JWT-validation check),
     - strips project memberships + vocab maintainerships (audited
       synthetic rows, same as the old delete),
-    - revokes all the user's API tokens (audited).
+    - revokes all the user's API tokens (audited),
+    - releases every service id the user claimed (unaudited, as claims
+      are), so another account can run a service under it.
   The email address stays reserved. Reversible via `reactivate` (which does
   NOT restore memberships or tokens)."
   [db eid acting-user-id]
@@ -576,6 +579,7 @@
                        (audit-and-cascade-vocab-maintainerships! tx eid)
                        (let [ts (:ts psaw/*op*)]
                          (revoke-all-api-tokens! tx eid ts)
+                         (service-registry/release-all-of! tx eid)
                          (crud/update-by-id! tx :users eid
                                              {:deactivated_at ts
                                               :password_changes (inc (or (:password_changes existing) 0))}))

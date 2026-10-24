@@ -835,7 +835,8 @@
      :get {:summary (str "List the services seen on a project: currently connected ones "
                          "(online true) plus previously-seen offline ones with a last-seen time. A connected one "
                          "names its runner (runner-name, run-by-you) and says whether it would take "
-                         "the caller's requests (serves-you).")
+                         "the caller's requests (serves-you). Each names the account its id belongs "
+                         "to (claimed-by), absent when no account holds it.")
            :middleware [[pra/wrap-reader-required get-project-id]]
            :handler (fn [{{{:keys [id]} :path} :parameters db :db :as req}]
                       (let [live (map #(with-runner req db id %) (events/list-live-services id))
@@ -856,9 +857,16 @@
                                          live)
                                     (->> seen
                                          (remove #(live-ids (:service-id %)))
-                                         (map #(assoc % :online false))))]
+                                         (map #(assoc % :online false))))
+                            claimed (service-registry/claims db id)]
                         {:status 200
-                         :body (vec (sort-by :service-id merged))}))}}]
+                         :body (->> merged
+                                    (map (fn [{:keys [service-id] :as entry}]
+                                           (if-let [holder (get claimed service-id)]
+                                             (assoc entry :claimed-by holder)
+                                             entry)))
+                                    (sort-by :service-id)
+                                    vec)}))}}]
 
    ;; Registry hygiene: forget a previously-seen (offline) service.
    ["/services/:service-id"
