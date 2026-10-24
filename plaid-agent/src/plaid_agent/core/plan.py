@@ -840,7 +840,7 @@ def outcome_unknown(error) -> bool:
     if not isinstance(error, PlaidAPIError):
         return False
     if error.status in (502, 504):
-        return is_unknown_outcome(error) and str(error.method or '').upper() not in ('GET', 'HEAD')
+        return is_unknown_outcome(error) and str(error.method or '').upper() != 'GET'
     return not error.status and requester_message(error) == UNKNOWN_OUTCOME
 
 
@@ -946,12 +946,16 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
                             len(ops), unknown, written(), members()) from e
-        # A bug of the assistant's own reaches the user, after batches may
+        # A refusal the assistant wrote (a ValueError, a ToolError) is told
+        # as written. A bug of its own reaches the user, after batches may
         # have committed, as one plain sentence: the counts beside it are what
         # they act on. The exception, with its class and traceback, is for the
         # operator's log.
-        logger.exception('A plan stopped on an error of the assistant\'s own')
-        raise PlanError('The assistant stopped on an error.',
+        from .tools import ToolError
+        authored = isinstance(e, (ValueError, ToolError)) and str(e).strip()
+        if not authored:
+            logger.exception('A plan stopped on an error of the assistant\'s own')
+        raise PlanError(str(e).strip() if authored else 'The assistant stopped on an error.',
                         applied if applied is not None else tracker.applied, len(ops), unknown,
                         written(), members()) from e
 

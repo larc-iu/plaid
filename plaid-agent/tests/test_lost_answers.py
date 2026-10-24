@@ -140,6 +140,14 @@ def test_a_bug_in_the_assistant_reaches_the_user_without_its_class(caplog):
     assert str(caught.value) == 'The assistant stopped on an error.'
     assert 'KeyError' in caplog.text
 
+    # A refusal the assistant wrote is told as written, without its class.
+    def refuse(tracker):
+        raise ValueError('the text no longer reads "x" at 0-1')
+
+    with pytest.raises(core_plan.PlanError) as caught:
+        core_plan.applying([{'kind': 'x'}], refuse)
+    assert str(caught.value) == 'the text no longer reads "x" at 0-1'
+
 
 def test_a_client_error_reaches_the_user_without_its_class_or_address():
     def run(tracker):
