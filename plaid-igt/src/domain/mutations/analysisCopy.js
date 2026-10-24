@@ -79,7 +79,17 @@ const findVocabHome = (vocabularies, vocabItemId) => {
 // and the surviving first morpheme's are collected (a double delete fails the
 // batch). An unanalyzed word's morpheme is derived, with nothing stored to
 // strip and an id the server has never seen, which sent refused the batch.
-const stripOf = (token) => {
+// `stored(id)` is the precedence a morpheme stores, null for none: derive
+// numbers one storing none after the rest, so the derived number cannot tell
+// whether a write is needed.
+const storedPrecedences = (info) => {
+  const byId = new Map(
+    (info.morphemeTokenLayer?.tokens || []).map((m) => [m.id, m.precedence ?? null]),
+  );
+  return (id) => byId.get(id) ?? null;
+};
+
+const stripOf = (token, stored) => {
   const strip = { links: [], spans: [], morphs: [], patches: [], renumber: [], size: 0 };
   const collectAttached = (t) => {
     if (t.vocabItem?.linkId) strip.links.push(t.vocabItem.linkId);
@@ -101,7 +111,7 @@ const stripOf = (token) => {
     strip.patches.push({ id: m.id, metadata: RESET_MORPHEME_OPS });
     // The apply path numbers created morphemes from 2, so the survivor must
     // sit at 1.
-    if ((m.precedence ?? 1) !== 1) strip.renumber.push(m.id);
+    if (stored(m.id) !== 1) strip.renumber.push(m.id);
   });
   strip.size =
     strip.links.length +
@@ -219,8 +229,9 @@ export const analysisCopyMutations = {
     const chunks = [];
     let cur = [];
     let curSize = 0;
+    const stored = storedPrecedences(this.layerInfo);
     for (const t of targets) {
-      const size = stripOf(t.token).size + opsForWord(t);
+      const size = stripOf(t.token, stored).size + opsForWord(t);
       if (cur.length && curSize + size > ANALYSIS_BATCH_BUDGET) {
         chunks.push(cur);
         cur = [];
@@ -234,10 +245,11 @@ export const analysisCopyMutations = {
     return (await this._queueWrite('Failed to re-analyze words', async () => {
       for (const chunk of chunks) {
         // Planned on the document as it stands now, after the chunks before.
+        const storedNow = storedPrecedences(this.layerInfo);
         const strips = chunk
           .map(({ wordTokenId }) => this.tokenLookup.get(wordTokenId))
           .filter(Boolean)
-          .map(stripOf);
+          .map((token) => stripOf(token, storedNow));
         this._showStrip(strips);
         // The words are now unanalyzed single-morpheme words, and take the
         // target as a copy would. No provenance stamp: human work.
@@ -340,12 +352,19 @@ export const analysisCopyMutations = {
       { stamp },
     );
     const createdFirst = new Map(firstCreates.map((c) => [c.id, c]));
+    const stored = storedPrecedences(info);
     const words = [];
     todo.forEach((p, i) => {
       const m0Id = firstIds[i];
       if (carries[i] && !m0Id) return;
       const { token, analysis } = p;
-      const word = { m0Id, create: createdFirst.get(m0Id) || null, patch: null, extra: [] };
+      const word = {
+        m0Id,
+        create: createdFirst.get(m0Id) || null,
+        patch: null,
+        extra: [],
+        renumber: false,
+      };
       word.links = [];
       word.spans = [];
       const linkTo = (tokenId, vocabItemId, into) => {
@@ -382,6 +401,9 @@ export const analysisCopyMutations = {
         linkTo(m0Id, s0.vocabItemId, word);
         spansOn(m0Id, s0.fields, morphLayersByName, word);
       }
+      // A stored first morpheme storing no precedence reads after the slots
+      // made from 2 (R4-1-2), so it takes slot 1 in the same batch.
+      word.renumber = slots.length > 1 && !word.create && stored(m0Id) == null;
       // Remaining slots: new morphemes, with their own links and fields.
       slots.slice(1).forEach((slot, j) => {
         const m = {
@@ -404,7 +426,7 @@ export const analysisCopyMutations = {
       // Word-level link + fields.
       linkTo(token.id, analysis.word?.vocabItemId, word);
       spansOn(token.id, analysis.word?.fields, wordLayersByName, word);
-      word.ops = opsForWord(p);
+      word.ops = opsForWord(p) + (word.renumber ? 1 : 0);
       words.push(word);
     });
     return { words };
@@ -416,9 +438,10 @@ export const analysisCopyMutations = {
       this._showMorphemes(info, words.map((w) => w.create).filter(Boolean));
       const layer = info.morphemeTokenLayer;
       words.forEach((w) => {
-        if (w.patch) {
+        if (w.patch || w.renumber) {
           const m = (layer.tokens || []).find((x) => x.id === w.m0Id);
-          if (m) m.metadata = mergeMetadata(m.metadata, w.patch);
+          if (m && w.patch) m.metadata = mergeMetadata(m.metadata, w.patch);
+          if (m && w.renumber) m.precedence = 1;
         }
         w.extra.forEach((m) =>
           layer.tokens.push({
@@ -572,6 +595,10 @@ export const analysisCopyMutations = {
           patches.map((w) => ({ id: settledId(w.m0Id), metadata: metadataOps(w.patch) })),
         );
       }
+      // Precedence is a column the bulk update does not carry.
+      chunk
+        .filter((w) => w.renumber)
+        .forEach((w) => b.tokens.update(settledId(w.m0Id), undefined, undefined, 1));
       if (links.length) {
         b.vocabLinks.bulkCreate(
           links.map((l) => ({
@@ -654,11 +681,11 @@ export const analysisCopyMutations = {
       collectAttached(m);
       if (this.reviewable(m.metadata)) resetFirst = m.id;
     });
+    // From what each stores: one storing none reads in place but is numbered.
+    const stored = storedPrecedences(this.layerInfo);
     const renumber = survivors
       .map((m, i) => ({ id: m.id, precedence: i + 1 }))
-      .filter(
-        ({ id, precedence }) => (morphs.find((m) => m.id === id)?.precedence ?? 1) !== precedence,
-      );
+      .filter(({ id, precedence }) => !isVirtualMorphemeId(id) && stored(id) !== precedence);
 
     if (!linkIds.length && !spanIds.length && !morphIds.length && !resetFirst) return true;
     const label = 'Failed to discard word analysis';

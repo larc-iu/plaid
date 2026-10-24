@@ -220,9 +220,23 @@ export const morphemeMutations = {
     const siblings = resolved.virtual
       ? [target]
       : sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
-    const currentPrecedence =
-      target.precedence ?? siblings.findIndex((m) => m.id === target.id) + 1;
+    const targetIdx = siblings.findIndex((m) => m.id === target.id);
+    const currentPrecedence = target.precedence ?? targetIdx + 1;
     const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
+    // A target storing no precedence reads after every one that stores one
+    // (R4-1-2), and so does any morpheme after it. The pieces made here are
+    // numbered, so the target and the ones after it are numbered in the same
+    // batch, or the first piece would read last.
+    const slots = new Map(
+      target.precedence == null && !resolved.virtual
+        ? siblings
+            .slice(targetIdx)
+            .map((m, j) => [
+              m.id,
+              j === 0 ? currentPrecedence : currentPrecedence + restForms.length + j,
+            ])
+        : [],
+    );
     const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
     // A type the target goes by, its entry's included, is never overwritten.
     const goesBy = resolved.virtual ? null : this._morphemeGoesBy(target);
@@ -262,6 +276,10 @@ export const morphemeMutations = {
         const t = layer.tokens.find((m) => m.id === target.id);
         if (t) t.metadata = mergeMetadata(t.metadata, firstMeta);
         layer.tokens.forEach((m) => {
+          if (slots.has(m.id)) {
+            m.precedence = slots.get(m.id);
+            return;
+          }
           if (
             m.begin === target.begin &&
             m.end === target.end &&
@@ -304,6 +322,9 @@ export const morphemeMutations = {
             (m.precedence ?? 0) + restForms.length,
           );
         });
+        slots.forEach((precedence, id) => {
+          b.tokens.update(settledId(id), undefined, undefined, precedence);
+        });
         rest.forEach((r) => {
           b.tokens.create(
             morphemeLayer.id,
@@ -317,9 +338,9 @@ export const morphemeMutations = {
           );
         });
       });
-      // The target's patch or create, the shifts, then the creates.
+      // The target's patch or create, the shifts, the slots, then the creates.
       if (resolved.virtual) ids.set(target.id, createdId(results[0]));
-      const offset = 1 + shifted.length;
+      const offset = 1 + shifted.length + slots.size;
       rest.forEach((r, i) => ids.set(r.id, createdId(results[offset + i])));
       this._settle(ids);
     });
