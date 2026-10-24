@@ -899,9 +899,8 @@
 (defn- dealt-layer?
   "Whether token layer `layer-id` has role `syntactic-word`
   (`config.plaid.role`): the words of a multi-word token, which a split
-  deals out instead of cutting (see `split-straddlers!`). This is the one
-  place core gives a role a meaning besides naming a layer, the same
-  reading a typed space takes (`plaid.algos.text/layer-roles`, `:dealt`)."
+  deals out instead of cutting (see `split-straddlers!`). A typed space
+  reads the role the same way (`plaid.algos.text/layer-roles`, `:dealt`)."
   [db layer-id]
   (= "syntactic-word"
      (some-> (psc/q1 db {:select [:config] :from [:token_layers] :where [:= :id layer-id]})
@@ -919,10 +918,11 @@
   of a multi-word token, `del` = `de` + `el`) are never cut, since cutting
   each would put all of them on both halves. Two are dealt one to each
   piece, the first in canonical order (precedence, nulls last, then id) to
-  the left, each keeping its row. Any other number stay together on the
-  side `side` keeps, and the other piece gets one new token, cut from the
-  first of them. Both follow a typed space (`plaid.algos.text`,
-  `split-spaced-words`)."
+  the left, each keeping its row. Any other number, one included, stay
+  together on the side `side` keeps, and the other piece gets one new
+  token with the first one's precedence, cut from no token, so it inherits
+  no `preserveOnSplit` key: no producer proposed that word. Both follow a
+  typed space (`plaid.algos.text`, `split-spaced-words`)."
   [tx straddlers position & [side]]
   (let [rows (into [] (keep #(psc/fetch-by-id tx :tokens (:token/id %))) straddlers)
         dealt? (memoize #(dealt-layer? tx %))
@@ -930,15 +930,23 @@
         groups (->> rows
                     (group-by (juxt :token_layer_id :begin :end_))
                     vals
-                    (filter #(and (< 1 (count %)) (dealt? (:token_layer_id (first %)))))
+                    (filter #(dealt? (:token_layer_id (first %))))
                     (map canonical))
         grouped (into #{} (comp cat (map :id)) groups)
         shrink! (fn [{:keys [id]} to] (crud/update-by-id! tx :tokens id (if (= to :right) {:begin position} {:end_ position})))]
     (doseq [[t & more :as ts] groups]
       (if (= 2 (count ts))
         (do (shrink! t :left) (shrink! (first more) :right))
-        (do (split-one! tx t position nil side)
-            (doseq [m more] (shrink! m (if (= side :right) :right :left))))))
+        (let [right? (= side :right)
+              {:keys [text_id token_layer_id document_id begin end_ precedence]} t]
+          (doseq [m ts] (shrink! m (if right? :right :left)))
+          (crud/insert! tx :tokens {:id (psc/new-uuid)
+                                    :text_id text_id
+                                    :token_layer_id token_layer_id
+                                    :document_id document_id
+                                    :begin (if right? begin position)
+                                    :end_ (if right? position end_)
+                                    :precedence precedence}))))
     (doseq [t-row rows
             :when (not (grouped (:id t-row)))]
       (split-one! tx t-row position nil side))))

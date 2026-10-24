@@ -288,6 +288,49 @@
       (is (every? #(= [8 9] (extent %)) sols))
       (is (= [[0 2] [2 3] [4 5] [5 7] [8 9] [8 9] [8 9] [9 11]] (layer-tokens doc sw))))))
 
+;; REV-R4-TOKENS T3: the new syntactic word a split makes on the other piece
+;; is cut from no word, as a typed space makes it, so it inherits no
+;; preserveOnSplit key and claims no producer.
+(deftest a-split-s-new-syntactic-word-is-bare
+  (let [{:keys [doc text-id sentence word text-layer]} (setup-hierarchy "mar sol")
+        sw (-> (create-token-layer-opts admin-request text-layer "Syntactic words"
+                                        {:overlap-mode "any" :parent-token-layer-id word}) :body :id)
+        config! (fn [k v] (assert-status 204 (api-call admin-request {:method :put
+                                                                      :path (str "/api/v1/token-layers/" sw "/config/plaid/" k)
+                                                                      :body v})))
+        _ (config! "role" "syntactic-word")
+        _ (config! "preserveOnSplit" ["prov" "provSource"])
+        _ (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 7]])))
+        [mar sol] (-> (bulk-create-tokens admin-request (toks word text-id [[0 3] [4 7]])) :body :ids)
+        machine {"prov" "inferred" "provSource" "service:parser"}
+        stamp! (fn [id] (assert-status 200 (api-call admin-request {:method :put
+                                                                    :path (str "/api/v1/tokens/" id "/metadata")
+                                                                    :body machine})))
+        mar-w (-> (create-token admin-request sw text-id 0 3 1) :body :id)
+        sols (mapv #(-> (create-token admin-request sw text-id 4 7 %) :body :id) [2 1 3])
+        _ (run! stamp! (cons mar-w sols))
+        tokens (fn [] (->> (api-call admin-request {:method :get :path (str "/api/v1/documents/" doc "?include-body=true")})
+                           :body :document/text-layers
+                           (mapcat :text-layer/token-layers)
+                           (filter #(= sw (:token-layer/id %)))
+                           first :token-layer/tokens))
+        made (fn [olds] (remove (comp (set olds) :token/id) (tokens)))]
+    (testing "a lone word's other piece is bare, at its precedence"
+      (assert-created (split-token admin-request mar 1))
+      (let [[t & more] (made (cons mar-w sols))]
+        (is (empty? more))
+        (is (= [1 3 1] [(:token/begin t) (:token/end t) (:token/precedence t)]))
+        (is (empty? (:metadata t)))))
+    (testing "three words stay together, the other piece gets one bare word at the first one's precedence"
+      (let [olds (map :token/id (tokens))]
+        (assert-created (split-token admin-request sol 5))
+        (let [[t & more] (made olds)]
+          (is (empty? more))
+          (is (= [5 7 1] [(:token/begin t) (:token/end t) (:token/precedence t)]))
+          (is (empty? (:metadata t))))
+        (is (= machine (-> (get-token admin-request (first sols)) :body :metadata))
+            "the kept words keep theirs")))))
+
 (deftest parent-without-children-can-be-deleted
   (let [{:keys [text-id sentence word]} (setup-hierarchy "dogs run")]
     (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 8]])))
