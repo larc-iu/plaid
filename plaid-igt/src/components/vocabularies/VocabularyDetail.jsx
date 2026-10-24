@@ -44,6 +44,10 @@ import {
   refIds,
   statusTagset,
   statusFieldSeed,
+  statusTagsetName,
+  dropsPublishedStatus,
+  PUBLISHED_STATUS,
+  RESERVED_STATUS_MESSAGE,
   STATUS_TAGSET,
 } from '@/domain/vocabDictionary';
 import { sendFieldPrune, sendKeyed } from './vocabSends.js';
@@ -747,12 +751,24 @@ export const VocabularyDetail = () => {
   // a refusal for tagsets changed elsewhere says so. A refused save throws,
   // which is how TagsetsManager learns to roll back.
   const handleSaveTagsets = async (next, meta) => {
-    setDraftTagsets(next);
     const renamed = meta?.renamed;
     const repointed =
       renamed && fields.some((f) => f.tagset === renamed.from)
         ? fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f))
         : null;
+    // The published Status value is reserved: no save renames or removes it.
+    if (
+      dropsPublishedStatus({
+        fieldsBefore: fields,
+        fieldsAfter: repointed ?? fields,
+        tagsetsBefore: tagsets,
+        tagsetsAfter: next,
+      })
+    ) {
+      notifyError(RESERVED_STATUS_MESSAGE, 'Reserved value');
+      throw new Error(RESERVED_STATUS_MESSAGE);
+    }
+    setDraftTagsets(next);
     if (repointed) setFields(repointed);
     const saved = await sendKeyed(
       writes.schema,
@@ -1284,6 +1300,12 @@ export const VocabularyDetail = () => {
                       <TagsetsManager
                         tagsets={tagsets}
                         usage={tagsetUsage}
+                        reservedValues={
+                          statusTagsetName(fields)
+                            ? { [statusTagsetName(fields)]: [PUBLISHED_STATUS] }
+                            : {}
+                        }
+                        reservedMessage={RESERVED_STATUS_MESSAGE}
                         onSaveChanges={handleSaveTagsets}
                         onLoadAttested={handleLoadAttested}
                         emptyHint="No tagsets yet. Add one, then assign it to a field above."

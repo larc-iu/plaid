@@ -395,7 +395,7 @@ A new vocabulary starts with a few built in:
 * **Gloss**: the entry's gloss, offered as a guess in each field whose lexicon field is Gloss.
 * **POS**: the entry's part of speech.
 * **Definition**: a fuller definition or note.
-* **Status**: how far along the entry is, held to a closed list (draft, reviewed, published).
+* **Status**: how far along the entry is, held to a closed list (draft, reviewed, published). The value published is reserved: neither the tagset editor nor Replace renames or removes it.
 
 You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
 A field marked **inline** also shows on each entry's row in the link popover.

@@ -585,4 +585,39 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     expect(pl.value).toBe('PL');
     await unmount();
   });
+
+  it('keeps a reserved value from being renamed or removed, and says so', async () => {
+    vi.clearAllMocks();
+    const onSaveChanges = vi.fn();
+    const status = {
+      Leipzig: {
+        delimiters: '',
+        mode: 'closed',
+        values: [{ value: 'draft' }, { value: 'published' }],
+      },
+    };
+    const { container, step, unmount } = await mountWith({
+      tagsets: status,
+      onSaveChanges,
+      reservedValues: { Leipzig: ['published'] },
+      reservedMessage: 'Reserved, so no',
+    });
+    await expandFirst(container, step);
+    const published = rowInputs(container).find((i) => i.value === 'published');
+    expect(published.readOnly).toBe(true);
+    const removes = all(container, 'tbody tr td:nth-child(4) button');
+    expect(removes.map((b) => [b.disabled, b.title])).toEqual([
+      [false, 'Remove value'],
+      [true, 'Reserved, so no'],
+    ]);
+    // A rename that reaches the row anyway is refused out loud, and nothing saved.
+    await step(async () => blurWith(published, 'publicado'));
+    expect(onSaveChanges).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith('Reserved, so no', 'Reserved value');
+    expect(published.value).toBe('published');
+    // The other value is the user's to rename.
+    await step(async () => blurWith(rowInputs(container)[0], 'borrador'));
+    expect(savedValues(onSaveChanges)).toEqual(['borrador', 'published']);
+    await unmount();
+  });
 });

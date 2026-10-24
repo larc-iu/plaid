@@ -165,3 +165,36 @@ describe('the vocabulary field settings, Role', () => {
     await view.unmount();
   });
 });
+
+describe('the vocabulary tagsets, the published Status value', () => {
+  it('is reserved in the tagset editor, and a save that drops it writes nothing', async () => {
+    const { server, client } = serverOf({ state: { tagset: 'Workflow', role: 'status' } });
+    const workflow = {
+      delimiters: '',
+      mode: 'closed',
+      values: [{ value: 'draft' }, { value: 'published' }],
+    };
+    server.config.igt.tagsets = { Workflow: workflow };
+    const writes = [];
+    client.batched = async (fn) => {
+      fn({
+        vocabLayers: {
+          setConfig: (...a) => writes.push(a),
+          deleteConfig: (...a) => writes.push(a),
+        },
+      });
+      return [];
+    };
+    const view = await mount(client);
+    expect(tagsetsManager.props.reservedValues).toEqual({ Workflow: ['published'] });
+    await expect(
+      view.step(() =>
+        tagsetsManager.props.onSaveChanges({
+          Workflow: { ...workflow, values: [{ value: 'draft' }, { value: 'publicado' }] },
+        }),
+      ),
+    ).rejects.toThrow(/reserved Status value/);
+    expect(writes).toEqual([]);
+    await view.unmount();
+  });
+});

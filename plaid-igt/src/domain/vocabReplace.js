@@ -14,10 +14,20 @@ import { entryTagsetFor, isValueAllowed, tagsetEnforces } from './tagsets.js';
  * never written. An entry's value is read as its morph type gives
  * (entryTagsetFor): `morphTypeOf(id)` is the one each entry goes by, its own
  * when not given.
+ *
+ * `reserved` ({value, keep}) is a value the field may not lose under another
+ * spelling: a row that turns it into anything but one of `keep`, or nothing,
+ * is `invalid` too ('reserved'). The Status field's published value is one.
  */
 export function planVocabReplace(
   items,
-  { field, apply, tagset = null, morphTypeOf = (id, it) => it?.metadata?.morphType },
+  {
+    field,
+    apply,
+    tagset = null,
+    morphTypeOf = (id, it) => it?.metadata?.morphType,
+    reserved = null,
+  },
 ) {
   const enforcing = tagsetEnforces(tagset);
   const rows = [];
@@ -27,6 +37,13 @@ export function planVocabReplace(
     if (next == null) continue;
     let invalid = null;
     if (field === 'form' && next.trim() === '') invalid = 'empty';
+    else if (
+      reserved &&
+      old === reserved.value &&
+      next.trim() !== '' &&
+      !(reserved.keep || []).includes(next)
+    )
+      invalid = 'reserved';
     else if (
       enforcing &&
       !isValueAllowed(next, entryTagsetFor(() => tagset, morphTypeOf(it.id, it), it.form)(field))

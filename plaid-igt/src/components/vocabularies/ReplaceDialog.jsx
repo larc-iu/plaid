@@ -29,6 +29,7 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
+import { PUBLISHED_STATUS, STATUS_VALUES, statusFieldKey } from '@/domain/vocabDictionary';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 import { CHUNK } from '@/domain/bulk';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
@@ -111,16 +112,23 @@ export const ReplaceDialog = ({
   const asked = filling ? repl !== '' : find !== '';
   const target = targets.find((t) => t.name === field) ?? targets[0];
   const tagset = tagsetFor(target.name);
+  // The Status field's published value cannot be renamed here either: it may
+  // become another Status value, or nothing, but no new spelling of itself.
+  const reserved = useMemo(() => {
+    if (target.name !== statusFieldKey(fields)) return null;
+    const listed = (tagset?.values || []).map((v) => v?.value).filter(Boolean);
+    return { value: PUBLISHED_STATUS, keep: listed.length ? listed : STATUS_VALUES };
+  }, [target.name, fields, tagset]);
   const { apply, error } = useMemo(
     () => buildReplacer(find, matchType, repl),
     [find, matchType, repl],
   );
   const rows = useMemo(
     () =>
-      planVocabReplace(items, { field: target.name, apply, tagset, morphTypeOf }).sort((a, b) =>
-        a.form.localeCompare(b.form),
+      planVocabReplace(items, { field: target.name, apply, tagset, morphTypeOf, reserved }).sort(
+        (a, b) => a.form.localeCompare(b.form),
       ),
-    [items, target, apply, tagset, morphTypeOf],
+    [items, target, apply, tagset, morphTypeOf, reserved],
   );
   // A new plan is a new selection: everything writable, nothing flagged.
   useEffect(() => {
@@ -132,6 +140,7 @@ export const ReplaceDialog = ({
   const flagged = rows.filter((r) => r.invalid);
   const outsideTagset = flagged.filter((r) => r.invalid === 'tagset').length;
   const emptied = flagged.filter((r) => r.invalid === 'empty').length;
+  const renamesReserved = flagged.filter((r) => r.invalid === 'reserved').length;
 
   const toggle = (id, on) =>
     setSelected((prev) => {
@@ -325,6 +334,12 @@ export const ReplaceDialog = ({
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {countOf(outsideTagset, 'value')} would fall outside the{' '}
               <strong>{target?.tagset ?? 'field'}</strong> tagset and cannot be written.
+            </p>
+          )}
+          {renamesReserved > 0 && (
+            <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {countOf(renamesReserved, 'value')} would rename “{PUBLISHED_STATUS}”, a reserved
+              Status value, and cannot be written.
             </p>
           )}
           {emptied > 0 && (

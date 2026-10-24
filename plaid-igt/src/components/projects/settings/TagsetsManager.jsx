@@ -90,6 +90,10 @@ export const TagsetsManager = ({
   seedLabel = 'Add values used in this project',
   valuesNoun = 'annotations',
   enforceNote = 'Closed lists apply to what you type and to the assistant. Values brought in by imports or services are not checked. The Validation tab lists them.',
+  // {tagset name: [value]}: values that may not be renamed or removed, and
+  // what a refusal says (a vocabulary's published Status value).
+  reservedValues = {},
+  reservedMessage = 'This value is reserved and cannot be renamed or removed',
 }) => {
   const [draft, setDraft] = useState(tagsets);
   // The tagsets as the page last read them. A read that brings something new
@@ -264,8 +268,21 @@ export const TagsetsManager = ({
     setPasteOpen(false);
   };
 
+  const isReserved = (name, value) => (reservedValues[name] || []).includes(value);
+  const refuseReserved = () => {
+    notifyError(reservedMessage, 'Reserved value');
+    return false;
+  };
+
   // Returns false when the change is refused, so the row can reset its input.
   const patchValue = (name, index, changes) => {
+    if (
+      changes.value !== undefined &&
+      changes.value !== draft[name].values[index]?.value &&
+      isReserved(name, draft[name].values[index]?.value)
+    ) {
+      return refuseReserved();
+    }
     // A renamed value must stay unique: the duplicate would be dropped on the
     // next read (normalizeTagset keeps the first), taking its description
     // with it.
@@ -288,7 +305,9 @@ export const TagsetsManager = ({
   };
 
   const removeValue = (name, index) =>
-    patch(name, { values: draft[name].values.filter((_, i) => i !== index) });
+    isReserved(name, draft[name].values[index]?.value)
+      ? refuseReserved()
+      : patch(name, { values: draft[name].values.filter((_, i) => i !== index) });
 
   const names = Object.keys(draft);
 
@@ -542,6 +561,8 @@ export const TagsetsManager = ({
                                         key={key}
                                         rec={rec}
                                         extras={extras}
+                                        reserved={isReserved(name, rec.value)}
+                                        reservedMessage={reservedMessage}
                                         expanded={expandedValue === key}
                                         onToggle={() =>
                                           setExpandedValue(expandedValue === key ? null : key)
@@ -712,7 +733,17 @@ export const TagsetsManager = ({
 // One value row. The description is edited inline because almost every tagset
 // has one; anything else the project hangs off the tag lives behind the
 // expander, preserved verbatim.
-const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemove }) => {
+const ValueRow = ({
+  rec,
+  extras,
+  reserved = false,
+  reservedMessage,
+  expanded,
+  onToggle,
+  onPatch,
+  onReplace,
+  onRemove,
+}) => {
   const [newKey, setNewKey] = useState('');
   const [newVal, setNewVal] = useState('');
 
@@ -748,6 +779,9 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
           <Input
             className="h-7 font-mono"
             defaultValue={rec.value}
+            readOnly={reserved}
+            title={reserved ? reservedMessage : undefined}
+            aria-label={`Value ${rec.value}`}
             onBlur={(e) => {
               const v = e.currentTarget.value.trim();
               if (v && v !== rec.value && onPatch({ value: v }) !== false) return;
@@ -771,7 +805,8 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
             variant="ghost"
             className="h-6 w-6 text-muted-foreground hover:text-destructive"
             onClick={onRemove}
-            title="Remove value"
+            disabled={reserved}
+            title={reserved ? reservedMessage : 'Remove value'}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

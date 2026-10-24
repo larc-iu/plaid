@@ -65,6 +65,50 @@ export const statusFieldKey = (fields) => {
 };
 
 /**
+ * The Status value that marks an entry published. Reserved, like the built-in
+ * entry keys: a tagset editor and a replace may not rename it or take it out
+ * of the list the Status field is held to.
+ */
+export const PUBLISHED_STATUS = 'published';
+
+/** What a refused rename or removal of the published value says. */
+export const RESERVED_STATUS_MESSAGE = `“${PUBLISHED_STATUS}” is a reserved Status value and cannot be renamed or removed`;
+
+/**
+ * The name of the tagset a vocabulary's Status field is held to, or null.
+ * Takes the raw `igt.fields` map or a normalized field list.
+ */
+export const statusTagsetName = (fields) => {
+  const key = statusFieldKey(fields);
+  if (!key) return null;
+  const spec = Array.isArray(fields) ? fields.find((f) => f?.name === key) : fields?.[key];
+  return typeof spec?.tagset === 'string' && spec.tagset ? spec.tagset : null;
+};
+
+const listsPublished = (tagset) =>
+  (tagset?.values || []).some((v) => (typeof v === 'string' ? v : v?.value) === PUBLISHED_STATUS);
+
+/**
+ * Whether a change of a vocabulary's tagsets renames or removes the reserved
+ * published value: the Status field's tagset listed it before (`fieldsBefore`
+ * and `tagsetsBefore`) and, still there after (`fieldsAfter`, a renamed
+ * tagset's repointed fields, and `tagsetsAfter`), lists it no longer. A tagset
+ * deleted whole is not a rename: the field is then held to no list.
+ */
+export const dropsPublishedStatus = ({
+  fieldsBefore,
+  fieldsAfter,
+  tagsetsBefore,
+  tagsetsAfter,
+}) => {
+  const before = statusTagsetName(fieldsBefore);
+  const after = statusTagsetName(fieldsAfter ?? fieldsBefore);
+  if (!before || !listsPublished(tagsetsBefore?.[before])) return false;
+  const now = after ? tagsetsAfter?.[after] : null;
+  return !!now && !listsPublished(now);
+};
+
+/**
  * A vocabulary's config with a Status field and its tagset, whole and ready
  * to write: what it was given, plus the field and the list wherever either is
  * missing. Both halves always come back, so a caller never asks which changed

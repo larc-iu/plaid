@@ -56,6 +56,27 @@ def test_edits_build_on_what_the_plan_already_holds():
         t_tagsets(ws, 'edit', tagset='Parts', changes={'delete': True})
 
 
+def test_the_published_status_value_cannot_be_removed():
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    lex = ws.project.vocabs[0]
+    lex['fields'] = [*(lex.get('fields') or []),
+                     {'name': 'state', 'inline': False, 'tagset': 'Workflow', 'role': 'status'}]
+    lex['all_tagsets'] = {'Workflow': {'name': 'Workflow', 'mode': 'closed', 'delimiters': '',
+                                       'values': [{'value': 'draft'}, {'value': 'published'}]}}
+    with pytest.raises(ToolError) as e:
+        from plaid_agent.igt.tagsets import t_tagsets
+        t_tagsets(ws, 'edit', tagset='Workflow', lexicon=lex['name'], changes={'remove': ['published']})
+    assert 'reserved Status value' in str(e.value) and ws.ops == []
+    # Any other value goes, and so does published from a tagset no Status field is held to.
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Workflow', 'lexicon': lex['name'],
+                              'changes': {'remove': ['draft']}})
+    assert [v['value'] for v in ws.ops[-1]['after']['values']] == ['published']
+    lex['fields'][-1] = {**lex['fields'][-1], 'role': None}
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Workflow', 'lexicon': lex['name'],
+                              'changes': {'remove': ['published']}})
+    assert ws.ops[-1]['after']['values'] == []
+
+
 # --- applied ---------------------------------------------------------------------------
 
 def declare_igt_rules(s):

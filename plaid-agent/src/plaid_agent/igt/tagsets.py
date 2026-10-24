@@ -25,6 +25,7 @@ from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_const
 
 from ..core.bidi import qv
 from ..core.tools import ToolError
+from .vocab import ROLE_STATUS, fields_with_role
 
 PROJECT = 'project'
 SPAN, METADATA, ENTRY_FIELD = 'span', 'metadata', 'entry_field'
@@ -548,7 +549,10 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
             notes.append(f'The tagset has no delimiters, so values such as {qv(joined[0])} are listed whole. '
                          'To list their tags, set delimiters (e.g. ".:") in the same call.')
     removed = []
+    reserved = _reserved_values(vocab, {was, key})
     for v in _values(changes.get('remove'), 'remove'):
+        if v['value'] in reserved:
+            raise ToolError(f'{qv(v["value"])} is a reserved Status value and cannot be removed. Nothing planned.')
         if v['value'] in by_value:
             values.remove(by_value.pop(v['value']))
             removed.append(v['value'])
@@ -582,6 +586,21 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     after = normalize_tagset(t, target)
     label = (f'New tagset {qv(target)}' if new else f'Tagset {qv(key)}') + (': ' + ', '.join(said) if said else '')
     return _stage_tagset(ws, owner, was, target, stored, after, label, notes)
+
+
+# The Status value that marks an entry published, which the app reserves like
+# the built-in entry keys (plaid-igt vocabDictionary.js PUBLISHED_STATUS).
+PUBLISHED_STATUS = 'published'
+
+
+def _reserved_values(vocab: Optional[dict], names) -> set:
+    """The values a lexicon's tagset named one of ``names`` may not lose: the
+    published value, when the tagset is the one its Status field (by role) is
+    held to."""
+    if vocab is None:
+        return set()
+    status = next(iter(fields_with_role(vocab.get('fields') or [], ROLE_STATUS)), None)
+    return {PUBLISHED_STATUS} if status and status.get('tagset') in names else set()
 
 
 def _few(values: List[str], n: int = 8) -> str:

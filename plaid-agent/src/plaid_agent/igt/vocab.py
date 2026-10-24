@@ -12,12 +12,14 @@ a few pieces nothing here calls yet, so the two can be read side by side and
 checked against each other. Keep it that way: a mirror that is missing is a
 divergence waiting to happen, not dead weight.
 
-Six of vocabDictionary.js's exports have no counterpart here on purpose,
+Several of vocabDictionary.js's exports have no counterpart here on purpose,
 because each belongs to a gesture the app has and the agent does not:
 ``statusFieldSeed``, ``statusTagset`` and ``declaresStatusField`` seed a
 vocabulary as it is created (the last is the rule plaid-dict asks too),
 ``splitEntryLevel`` is Add headword, ``groupRankedByHeadword`` is the link
-popover's list, and ``exampleKey`` keys a rendering cache. Most of
+popover's list, and ``exampleKey`` keys a rendering cache. ``statusTagsetName``
+and ``dropsPublishedStatus`` guard the tagset editor's save of the reserved
+published value, which the tagsets tool checks in its own words. Most of
 vocabFields.js is the entry FORM (labels, controls, grouping) and is absent for
 the same reason, as is ``newVocabField``, which shapes one row of the Settings
 field table between adding a field and the reload that reads it back, and

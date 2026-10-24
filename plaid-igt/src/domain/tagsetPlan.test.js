@@ -330,6 +330,57 @@ describe('a plan of tagset changes, written with the approver’s session', () =
   });
 });
 
+describe('a lexicon’s published Status value', () => {
+  const STATUS = {
+    delimiters: '',
+    mode: 'closed',
+    values: [{ value: 'draft' }, { value: 'published' }],
+  };
+  const vocab = {
+    id: 'v1',
+    config: {
+      igt: {
+        tagsets: { Status: STATUS },
+        fields: { status: { inline: false, tagset: 'Status', role: 'status' } },
+      },
+    },
+  };
+  const op = (after, extra = {}) => ({
+    kind: 'set_tagset',
+    owner: 'v1',
+    was: 'Status',
+    name: 'Status',
+    before: STATUS,
+    after,
+    ...extra,
+  });
+
+  it('is never renamed or removed by a plan, which writes nothing', async () => {
+    for (const values of [[{ value: 'draft' }], [{ value: 'draft' }, { value: 'publicado' }]]) {
+      const c = fakeClient(projectWith(), vocab);
+      await expect(
+        writeTagsetPlan(c, 'proj-1', { ops: [op({ ...STATUS, values })] }),
+      ).rejects.toThrow(/“published” is a reserved Status value.*Nothing was written/);
+      expect(c.batches).toBe(0);
+    }
+    // Under a renamed tagset too.
+    const c = fakeClient(projectWith(), vocab);
+    await expect(
+      writeTagsetPlan(c, 'proj-1', {
+        ops: [op({ ...STATUS, values: [{ value: 'draft' }] }, { name: 'Workflow' })],
+      }),
+    ).rejects.toThrow(/reserved Status value/);
+  });
+
+  it('leaves every other change alone, a tagset deleted whole included', async () => {
+    const added = { ...STATUS, values: [...STATUS.values, { value: 'reviewed' }] };
+    let c = fakeClient(projectWith(), vocab);
+    expect(await writeTagsetPlan(c, 'proj-1', { ops: [op(added)] })).toBe(true);
+    c = fakeClient(projectWith(), vocab);
+    expect(await writeTagsetPlan(c, 'proj-1', { ops: [op(null)] })).toBe(true);
+  });
+});
+
 describe('the approver’s write of a plan of tagset changes in the audit log', () => {
   const closed = { ...LEIPZIG, mode: 'closed' };
   const operation = {

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeVocabFields } from './vocabFields.js';
 import {
+  dropsPublishedStatus,
+  statusTagsetName,
   buildSenseTree,
   buildItemNumbers,
   arrangeAsTree,
@@ -88,6 +90,37 @@ describe('statusFieldKey', () => {
   it('never takes a field for the status by its name', () => {
     expect(statusFieldKey({ status: {}, Status: { inline: true } })).toBeNull();
     expect(statusFieldKey([{ name: 'status', role: null }])).toBeNull();
+  });
+});
+
+describe('the published Status value', () => {
+  const STATUS = { values: [{ value: 'draft' }, { value: 'published' }] };
+  const fields = { state: { tagset: 'Status', role: 'status' }, gloss: { tagset: 'Leipzig' } };
+
+  it('is held by the tagset of the field with the Status role', () => {
+    expect(statusTagsetName(fields)).toBe('Status');
+    expect(statusTagsetName(normalizeVocabFields(fields))).toBe('Status');
+    expect(statusTagsetName({ state: { role: 'status' } })).toBeNull();
+    expect(statusTagsetName({ status: { tagset: 'Status' } })).toBeNull();
+  });
+
+  it('may not be renamed or removed, and anything else may change', () => {
+    const drops = (after, fieldsAfter = fields) =>
+      dropsPublishedStatus({
+        fieldsBefore: fields,
+        fieldsAfter,
+        tagsetsBefore: { Status: STATUS },
+        tagsetsAfter: after,
+      });
+    expect(drops({ Status: { values: [{ value: 'draft' }] } })).toBe(true);
+    expect(drops({ Status: { values: [{ value: 'draft' }, { value: 'publicado' }] } })).toBe(true);
+    // Renamed with its field repointed: the new name must still list it.
+    const repointed = { ...fields, state: { ...fields.state, tagset: 'Workflow' } };
+    expect(drops({ Workflow: { values: [{ value: 'draft' }] } }, repointed)).toBe(true);
+    expect(drops({ Workflow: STATUS }, repointed)).toBe(false);
+    expect(drops({ Status: { values: [...STATUS.values, { value: 'reviewed' }] } })).toBe(false);
+    // Deleted whole: the field is held to no list, and published still reads.
+    expect(drops({})).toBe(false);
   });
 });
 

@@ -168,3 +168,35 @@ describe('planVocabReplace, filling a blank', () => {
     ).toEqual([]);
   });
 });
+
+describe('planVocabReplace, a reserved value', () => {
+  const entries = [
+    { id: 'p', form: 'a', metadata: { status: 'published' } },
+    { id: 'q', form: 'b', metadata: { status: 'draft' } },
+  ];
+  const reserved = { value: 'published', keep: ['draft', 'reviewed', 'published'] };
+
+  it('is never written under a new spelling, and may become another kept value or nothing', () => {
+    const rename = buildReplacer('published', 'exact', 'publicado').apply;
+    expect(
+      planVocabReplace(entries, { field: 'status', apply: rename, reserved }).map((r) => r.invalid),
+    ).toEqual(['reserved']);
+    const unpublish = buildReplacer('published', 'exact', 'draft').apply;
+    expect(
+      planVocabReplace(entries, { field: 'status', apply: unpublish, reserved }).map(
+        (r) => r.invalid,
+      ),
+    ).toEqual([null]);
+    const clear = buildReplacer('published', 'exact', '').apply;
+    expect(
+      planVocabReplace(entries, { field: 'status', apply: clear, reserved }).map((r) => r.invalid),
+    ).toEqual([null]);
+    // Another value may take any spelling.
+    const redraft = buildReplacer('draft', 'exact', 'borrador').apply;
+    expect(
+      planVocabReplace(entries, { field: 'status', apply: redraft, reserved }).map(
+        (r) => r.invalid,
+      ),
+    ).toEqual([null]);
+  });
+});
