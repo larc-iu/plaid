@@ -1004,7 +1004,8 @@ class BaseAssistantService(BaseService):
         try:
             refusal = self.may_approve(ctx.client, ctx.store.project_id, ctx.store.user_id, ops)
         except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
-            refusal = f'Nothing was written. Who may approve it could not be read: {" ".join(str(e).split())[:200]}'
+            refusal = ('Nothing was written. Who may approve it could not be read: '
+                       f'{requester_message(e, secrets=self.REQUEST_SECRETS)}')
         if refusal:
             ctx.helper.error(refusal)
             return
@@ -1656,8 +1657,8 @@ class BaseAssistantService(BaseService):
                 contributor = store.user_id if self._reviewed(client, store.project_id, store.user_id) else None
             except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
                 settled()
-                response_helper.error(f'Nothing was written. The project\'s review settings could not be '
-                                      f'read: {" ".join(str(e).split())[:200]}')
+                response_helper.error('Nothing was written. The project\'s review settings could not be '
+                                      f'read: {requester_message(e, secrets=self.REQUEST_SECRETS)}')
                 return
             stamp_mode = ('contributed' if contributor else 'human' if approve.get('as_human')
                           else 'verified')

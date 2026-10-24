@@ -13,12 +13,10 @@ import pytest
 SRC = pathlib.Path(__file__).resolve().parent.parent / 'src' / 'plaid_agent'
 
 # Where a Python class name may still be written into a message, with the
-# reason. `core/plan.py` raises a PlanError that reaches the USER after batches
-# have already committed, and an exception carrying no message of its own would
-# leave them a sentence with a blank in it. `core/service.py` names the class
-# of an app's service subclass in a NotImplementedError, which nobody but the
-# person writing that subclass ever sees.
-TYPE_NAME_ALLOWED = {'core/plan.py', 'core/service.py'}
+# reason. `core/service.py` names the class of an app's service subclass in a
+# NotImplementedError, which nobody but the person writing that subclass ever
+# sees.
+TYPE_NAME_ALLOWED = {'core/service.py'}
 
 
 def _sources():

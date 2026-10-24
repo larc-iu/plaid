@@ -84,6 +84,63 @@ def test_a_refused_connection_still_says_nothing_was_written():
     assert not core_plan.outcome_unknown(_lost('GET', '/api/v1/documents/d1'))
 
 
+def test_a_proxy_502_or_504_on_a_write_is_an_unknown_outcome():
+    # R4-3-4: a proxy answering for the server is no answer, as the client's
+    # is_unknown_outcome counts it. A read answered so wrote nothing.
+    for status in (502, 504):
+        write = PlaidAPIError(f'HTTP {status} Bad Gateway', status=status,
+                              url='http://h:8085/api/v1/batch', method='POST')
+        assert core_plan.outcome_unknown(write)
+        read = PlaidAPIError(f'HTTP {status} Bad Gateway', status=status,
+                             url='http://h:8085/api/v1/documents/d1', method='GET')
+        assert not core_plan.outcome_unknown(read)
+    refused = PlaidAPIError('HTTP 500 boom', status=500, url='http://h:8085/api/v1/batch', method='POST')
+    assert not core_plan.outcome_unknown(refused)
+
+
+@pytest.mark.parametrize('where', ['may_approve', '_reviewed'])
+def test_an_approval_whose_settings_cannot_be_read_tells_the_requester_one_scrubbed_line(spec, monkeypatch, where):
+    # R4-3-6: the two refusals before a plan's first write sent str(e), which
+    # for a network failure is urllib3's retry chain naming the core's host.
+    import requests
+    client = spec['client']()
+    plan, _store = sbs._plan(spec, client)
+    svc = spec['service']()
+
+    def unreachable(*a, **k):
+        raise PlaidAPIError("Network error: HTTPConnectionPool(host='core.internal', port=8085): Max retries "
+                            'exceeded at http://core.internal:8085/api/v1/projects/p1', status=0,
+                            url='http://core.internal:8085/api/v1/projects/p1', method='GET',
+                            original_error=requests.exceptions.ConnectionError('reset'))
+
+    monkeypatch.setattr(type(svc), where, staticmethod(unreachable) if where == '_reviewed' else unreachable)
+    if where == '_reviewed':
+        helper = sbs._approve({**spec, 'service': lambda: svc}, client, plan)
+    else:
+        # Asked by a page before it writes a plan of its own.
+        svc.cfg = sbs.ModelConfig(model='fake/model')
+        svc.service_id = f'{spec["app"]}:assist:fake'
+        helper = Helper(request_id='r9')
+        svc.process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
+                             'delegated_projects': [spec['pid']], 'conversation_id': 'c1', 'op': 'approve',
+                             'plan_id': plan['id'], 'preflight': True}, helper)
+    [error] = helper.errors
+    text = error if isinstance(error, str) else str(error)
+    assert text.startswith('Nothing was written.'), text
+    assert 'core.internal' not in text and '8085' not in text and 'HTTPConnectionPool' not in text, text
+
+
+def test_a_bug_in_the_assistant_reaches_the_user_without_its_class(caplog):
+    # R4-3-6: the user reads one sentence, the operator's log has the class.
+    def run(tracker):
+        raise KeyError('x')
+
+    with caplog.at_level('ERROR'), pytest.raises(core_plan.PlanError) as caught:
+        core_plan.applying([{'kind': 'x'}], run)
+    assert str(caught.value) == 'The assistant stopped on an error.'
+    assert 'KeyError' in caplog.text
+
+
 def test_a_client_error_reaches_the_user_without_its_class_or_address():
     def run(tracker):
         raise PlaidAPIError('HTTP 400 Span value is required at http://h:8085/api/v1/spans',

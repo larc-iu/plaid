@@ -27,7 +27,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 # created_id is plaid_client's reader of a create response, kept here for a plan that reads one.
 from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops, uuid7  # noqa: F401
 from plaid_client.client import MAX_BATCH_OPS
-from plaid_client.http import minted_taken
+from plaid_client.http import is_unknown_outcome, minted_taken
 from plaid_client.ids import drawn_uuid7
 from plaid_client.service import locked_for_writes
 
@@ -835,9 +835,13 @@ def nothing_landed(client, item: Dict[str, Any]) -> bool:
 
 def outcome_unknown(error) -> bool:
     """Whether ``error`` is a write whose answer never came back (a reset, a
-    timeout), so it may have been saved. A refused connection sent nothing."""
-    return (isinstance(error, PlaidAPIError) and not error.status
-            and requester_message(error) == UNKNOWN_OUTCOME)
+    timeout, a proxy's 502 or 504), so it may have been saved. A refused
+    connection sent nothing, and a read wrote nothing."""
+    if not isinstance(error, PlaidAPIError):
+        return False
+    if error.status in (502, 504):
+        return is_unknown_outcome(error) and str(error.method or '').upper() not in ('GET', 'HEAD')
+    return not error.status and requester_message(error) == UNKNOWN_OUTCOME
 
 
 class PlanError(Exception):
@@ -942,13 +946,12 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
                             len(ops), unknown, written(), members()) from e
-        # The one message in the package that keeps a Python class name. This
-        # one reaches the USER, after batches have already committed, and an
-        # exception carrying no message of its own would otherwise leave them
-        # a sentence with a blank in it. The counts beside it are what they
-        # act on; the class name is for the operator reading the same line in
-        # the log.
-        raise PlanError(f'{type(e).__name__}: {e}',
+        # A bug of the assistant's own reaches the user, after batches may
+        # have committed, as one plain sentence: the counts beside it are what
+        # they act on. The exception, with its class and traceback, is for the
+        # operator's log.
+        logger.exception('A plan stopped on an error of the assistant\'s own')
+        raise PlanError('The assistant stopped on an error.',
                         applied if applied is not None else tracker.applied, len(ops), unknown,
                         written(), members()) from e
 
