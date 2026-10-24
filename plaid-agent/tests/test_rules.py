@@ -250,9 +250,9 @@ def test_an_expansion_keeps_only_what_the_run_writes_and_a_run_again_writes_the_
     from plaid_agent.core import opkind as ok
     from plaid_agent.core.plan import expanding
     found = {'r1': [_span(f't{i}', 'A', 'B') for i in range(6)], 'r2': [_span(f't{i}', 'B', 'C') for i in range(3)]}
-    reg = ok.registry([ok.OpKind('scope', ('change', 'changes'), resolve=lambda ctx, op: list(found[op['tool']]),
+    reg = ok.registry([ok.OpKind('scope', ('change', 'changes'), replaces=None, resolve=lambda ctx, op: list(found[op['tool']]),
                                  shape=ok.SCOPE, stage=ok.RESOLVED),
-                       ok.OpKind('set_span', ('value', 'values'))])
+                       ok.OpKind('set_span', ('value', 'values'), replaces=None)])
     ops = [{'kind': 'scope', 'tool': 'r1', 'matched': [], '_row': 0}, {'kind': 'set_span', 'token_id': 't5', '_row': 1},
            {'kind': 'scope', 'tool': 'r2', 'matched': [], '_row': 2}]
 

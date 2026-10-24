@@ -20,7 +20,7 @@ and the relations go in the next.
 
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..core import guidelines as _guidelines
 from ..core import keep as _keep
@@ -535,17 +535,64 @@ def _replace_takes(op, doc_id, sentence, w, field, span) -> bool:
 
 # --- the registry -------------------------------------------------------------------
 
+# The workspace a kind's ``replaces`` reads, named for the annotations only:
+# it imports this module.
+if TYPE_CHECKING:
+    from .tools import Workspace
+
+
+# --- whose work a change replaces -----------------------------------------------
+#
+# What each kind rewrites or removes, for the card's "replace accepted work"
+# line (core/work.py). A value's provenance sits on its span and a dependency's
+# on its relation, which a parsed word holds as ``relation_metadata``.
+
+def _words_by_id(ws: 'Workspace', ids) -> List[Any]:
+    wanted = set(ids or [])
+    return [w for doc in ws._docs.values() for s in doc.sentences for w in s.words if w.id in wanted]
+
+
+def _words_work(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    """A token's words, when it is cut again: their values, and every arc
+    hanging off them (``relation_ids``), the ones they head as well as their
+    own heads, since the delete of their lemma spans takes both."""
+    return [x for w in _words_by_id(ws, op.get('existing_word_ids'))
+            for x in [sp.id for _f, sp in w.all_spans()] + [w.relation_id]] + list(op.get('relation_ids') or [])
+
+
+def _replaces_set_span(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('span_id')]
+
+
+def _replaces_set_head(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('relation_id')]
+
+
+def _replaces_del_relation(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('relation_id')]
+
+
+def _replaces_set_deprel(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('relation_id')]
+
+
+# The relations a cut leaves spanning two sentences go with it.
+def _replaces_split_sentence(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return list(op.get('relation_ids') or [])
+
+
 KIND = ok.registry([
     # The project's annotation manual. Shared with the other app: a
     # guideline has the same shape whatever the project annotates.
     *_guidelines.kinds(OpKind),
-    OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
+    OpKind('set_span', _FIELD_VALUE, replaces=_replaces_set_span,
+           required=('layer_id', 'token_id'), apply=_apply_set_span,
            target=_span_entity, token_keys=('token_id',),
            extra={'entity': _span_entity, 'anchors': _virtual_anchors},
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
            compact_each=('token_id', 'span_id', 'ref', 'virtual_at'), compact_label=_set_span_label,
            summary=_set_span_summary),
-    OpKind('set_head', _DEPENDENCY, stage=IDS, apply=_apply_set_head,
+    OpKind('set_head', _DEPENDENCY, replaces=_replaces_set_head, stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id', 'head_id'),
@@ -557,7 +604,8 @@ KIND = ok.registry([
                          'head_lemma_span_id', 'relation_id', 'suppressor_ids', 'ref', 'virtual_at',
                          'head_virtual_at'),
            compact_label=_set_head_label),
-    OpKind('del_relation', _REMOVED_DEP, stage=UNHEAD, apply=_apply_del_relation,
+    OpKind('del_relation', _REMOVED_DEP, replaces=_replaces_del_relation,
+           stage=UNHEAD, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id',), extra={'entity': _relation_entity},
            deletes=lambda op: [op['relation_id']] + list(op.get('suppressor_ids') or []),
@@ -569,14 +617,16 @@ KIND = ok.registry([
     # `token_id` is the word the value sits on, which a confirmation does not
     # need to apply itself: it is there so a plan that deletes the word can be
     # seen to delete the value, which is named nowhere else.
-    OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
+    OpKind('confirm', ('confirmation', 'confirmations'), replaces=None, apply=_apply_confirm,
            token_keys=('span_id', 'relation_id', 'token_id'),
            compact_each=('span_id', 'relation_id', 'token_id', 'ref', 'contributed'),
            compact_label=_confirm_label),
-    OpKind('run_parse', ('parsed document', 'parsed documents'), stage=PARSE, apply=_apply_run_parse,
+    OpKind('run_parse', ('parsed document', 'parsed documents'), replaces=None,
+           stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
            shape=DOCUMENT_SHAPE, summary=_run_parse_summary),
-    OpKind('set_words', ('reshaped token', 'reshaped tokens'), apply=_apply_set_words, shape=WORD_SHAPE,
+    OpKind('set_words', ('reshaped token', 'reshaped tokens'), replaces=_words_work,
+           apply=_apply_set_words, shape=WORD_SHAPE,
            required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),
            deletes_tokens=lambda op: list(op.get('existing_word_ids') or []),
            deletes=lambda op: list(op.get('relation_ids') or []),
@@ -587,12 +637,15 @@ KIND = ok.registry([
     # parts with what is on them, so it names the words only for the guard
     # against a second reshape of the same token. A second split of the same
     # token restates every cut, so it replaces the first (UD.md, 2026-10-16).
-    OpKind('split_token', ('split token', 'split tokens'), apply=_apply_split_token, shape=WORD_SHAPE,
+    # A split moves the words with everything on them, and replaces nothing.
+    OpKind('split_token', ('split token', 'split tokens'), replaces=None,
+           apply=_apply_split_token, shape=WORD_SHAPE,
            # A token with no UD word yet has no `word_ids` to move.
            required=('token_id', 'text_id', 'pieces', 'word_layer_id'),
            target=lambda op: ('split_token', op.get('token_id')),
            extra={'anchors': lambda op: [(None, op.get('token_id'))]}),
-    OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
+    OpKind('split_sentence', ('sentence split', 'sentence splits'), replaces=_replaces_split_sentence,
+           apply=_apply_split_sentence,
            required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
            deletes=lambda op: (list(op.get('relation_ids') or [])
                                + list(op.get('suppressor_ids') or [])),
@@ -600,37 +653,44 @@ KIND = ok.registry([
            # The cut moves with its sentence (core.fingerprint, `token_at`).
            extra={'anchors': lambda op: [('char_pos', op.get('sentence_id')),
                                          ('token_at', op.get('sentence_id'))]}),
-    OpKind('merge_sentences', ('sentence merge', 'sentence merges'), apply=_apply_merge_sentences,
+    # A join only widens a sentence, so it takes no relation.
+    OpKind('merge_sentences', ('sentence merge', 'sentence merges'), replaces=None,
+           apply=_apply_merge_sentences,
            required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE),
     # A second restore of the SAME document replaces the first, the way every
     # other corrected instruction does: the plan still holds one restore, and
     # a model that named the wrong as_of can say so without the user having to
     # discard the plan. IGT declares the same.
-    OpKind('restore_document', ('restored document', 'restored documents'), apply=apply_restore_document,
+    OpKind('restore_document', ('restored document', 'restored documents'), replaces=None,
+           apply=apply_restore_document,
            required=('document_id', 'as_of'), shape=ok.EXCLUSIVE,
            target=lambda op: ('restore', op.get('document_id'))),
     # A scope names a document and fields, or a field and a pattern, and is
     # resolved to spans at approval, so the executor never sees one.
-    OpKind('confirm_scope', ('confirmation', 'confirmations'), stage=ok.RESOLVED, shape=ok.SCOPE,
+    # Resolved when approved, from the documents as they are then, and a
+    # restore puts back what was there: none of them names what it replaces
+    # now. A parse is a service run with its own overwrite rule.
+    OpKind('confirm_scope', ('confirmation', 'confirmations'), replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('document_id', 'fields'), resolve=_resolve_confirm_scope,
            target=lambda op: ('scope', 'confirm_scope', op.get('document_id'))),
     # `clears` says a scope throws values away without being able to name
     # which until it is resolved, so two scopes over one document cannot share
     # a plan when either of them does.
-    OpKind('discard_scope', ('discarded prediction', 'discarded predictions'), stage=ok.RESOLVED,
+    OpKind('discard_scope', ('discarded prediction', 'discarded predictions'), replaces=None, stage=ok.RESOLVED,
            shape=ok.SCOPE, required=('document_id', 'fields'), summary=_discard_scope_summary,
            resolve=_resolve_discard_scope,
            target=lambda op: ('scope', 'discard_scope', op.get('document_id')),
            extra={'clears': lambda op: True, 'takes': _discard_takes}),
-    OpKind('replace_scope', _FIELD_VALUE, stage=ok.RESOLVED, shape=ok.SCOPE,
+    OpKind('replace_scope', _FIELD_VALUE, replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('field', 'pattern'), summary=_replace_scope_summary,
            resolve=_resolve_replace_scope,
            target=lambda op: ('replace', op.get('field'), op.get('pattern'),
                               op.get('replacement'), op.get('document_id')),
            extra={'clears': lambda op: not (op.get('replacement') or ''), 'takes': _replace_takes}),
-    OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel,
+    OpKind('set_deprel', _RELABELED, replaces=_replaces_set_deprel,
+           required=('relation_id', 'deprel'), apply=_apply_set_deprel,
            extra={'entity': _relation_entity}),
-    OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
+    OpKind('add_comment', ('comment', 'comments'), replaces=None, required=('entity_type', 'entity_id', 'body'),
            apply=apply_add_comment, token_keys=('entity_id',)),
     # A value kept out of a discard or a replacement (core.keep): a span
     # by its span entity, a head by ('head', word) with its relation as the

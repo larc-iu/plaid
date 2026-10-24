@@ -88,7 +88,7 @@ Each also carries a human ``label`` for the approval UI.
 """
 
 from collections import Counter
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..core import guidelines as _guidelines
 from ..core import keep as _keep
@@ -699,25 +699,159 @@ def _bulk_scope_summary(op, n):
     return [(KIND[k].noun if k in KIND else (k, k), int(v)) for k, v in (op.get('counts') or {}).items()]
 
 
+# The workspace a kind's ``replaces`` reads, named for the annotations only:
+# it imports this module.
+if TYPE_CHECKING:
+    from .project import Morpheme
+    from .workspace import Workspace
+
+
+# --- whose work a change replaces -----------------------------------------------
+#
+# What each kind rewrites or removes, for the card's "replace accepted work"
+# line (core/work.py). A value's provenance sits on its span, a link's on the
+# link, a segmentation's on its morpheme tokens. A word token is the text's
+# own division, not anybody's analysis, so it never counts by itself.
+
+def _found(ws: 'Workspace', entity_id: str):
+    """(sentence, word, morpheme) for an id in a document this turn read."""
+    for doc in ws._docs.values():
+        hit = doc.find(entity_id)
+        if hit:
+            return hit
+    return None
+
+
+def _analysis(morphemes) -> List[str]:
+    """The ids of a word's analysis: each morpheme's values and link, and the
+    morphemes themselves where there is a segmentation (more than one). A
+    word's single morpheme is the word itself until someone segments it."""
+    morphemes = [m for m in morphemes if m is not None]
+    out = [sp.id for m in morphemes for sp in m.fields.values()]
+    out += [m.link.id for m in morphemes if m.link]
+    if len(morphemes) > 1:
+        out += [m.id for m in morphemes]
+    return out
+
+
+def _morphemes(ws: 'Workspace', ids) -> List['Morpheme']:
+    """The stored morphemes among ``ids``: a derived one holds no work."""
+    return [hit[2] for hit in (_found(ws, i) for i in ids or [])
+            if hit and hit[2] is not None and not hit[2].virtual]
+
+
+def _word_and_analysis(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    """A word that goes, with its values, its link and its analysis."""
+    hit = _found(ws, op.get('word_id'))
+    w = hit[1] if hit else None
+    out = list(op.get('link_ids') or [])
+    if w is not None:
+        out += [sp.id for sp in w.fields.values()] + ([w.link.id] if w.link else [])
+        out += _analysis(w.morphemes)
+    return out
+
+
+def _replaced_orthography(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    """An orthography value is kept on the word token. Replacing one a word
+    already has, with something else, replaces what someone wrote there."""
+    hit = _found(ws, op.get('word_id'))
+    w = hit[1] if hit else None
+    if w is not None:
+        metadata = w.metadata
+    else:
+        # A word a query returned, in a document the turn never loaded.
+        _found_it, metadata = ws.metadata_of(op.get('word_id'))
+    old = (metadata or {}).get(op.get('key'))
+    return [op.get('word_id')] if old and old != (op.get('value') or '') else []
+
+
+def _replaced_analysis(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    existing = [m.get('id') for m in op.get('existing') or []]
+    found = _morphemes(ws, existing)
+    out = _analysis(found)
+    # Morphemes a query returned from a document the turn never loaded: a
+    # segmentation is theirs where there is more than one, as above.
+    known = {m.id for m in found}
+    if len(existing) > 1:
+        out += [i for i in existing if i and i not in known]
+    return out + [sid for m in op.get('existing') or [] for sid in m.get('span_ids') or []]
+
+
+def _replaces_set_span(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('span_id')]
+
+
+def _replaces_discard_analysis(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return (list(op.get('span_ids') or []) + list(op.get('link_ids') or [])
+            + _analysis(_morphemes(ws, op.get('morpheme_ids'))))
+
+
+# An unsegmented word's derived morpheme is stored nowhere and holds no
+# one's work: its empty metadata is not a person's.
+def _replaces_set_morpheme_form(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [i for i in [op.get('morpheme_id')] if not is_virtual(i)]
+
+
+def _replaces_set_morph_type(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [i for i in [op.get('morpheme_id')] if not is_virtual(i)]
+
+
+def _replaces_link(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('existing_link_id')]
+
+
+def _replaces_link_phrase(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('existing_link_id')]
+
+
+def _replaces_unlink(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('link_id')]
+
+
+def _replaces_split_word(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return _analysis(_morphemes(ws, op.get('morpheme_ids')))
+
+
+def _replaces_merge_words(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return (_analysis(_morphemes(ws, op.get('morpheme_ids')))
+            + [sid for sp in op.get('spans') or [] for sid in sp.get('delete_ids') or []]
+            + list((op.get('links') or {}).get('delete_ids') or [])
+            + list(op.get('mwe_ids') or []))
+
+
+def _replaces_merge_sentences(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return ([sid for sp in op.get('spans') or []
+            for sid in sp.get('delete_ids') or []])
+
+
+# Deleting an entry takes every link to it, and a link is a person's
+# judgment that this word is that entry. A merge keeps each link, moved.
+def _replaces_delete_entry(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return list(op.get('links') or [])
+
+
 KIND = ok.registry([
     # The project's annotation manual. Shared with the other app: a
     # guideline has the same shape whatever the project annotates.
     *_guidelines.kinds(OpKind),
-    OpKind('set_span', ('field value', 'field values'), required=('layer_id', 'token_id'),
+    OpKind('set_span', ('field value', 'field values'), replaces=_replaces_set_span,
+           required=('layer_id', 'token_id'),
            apply=_apply_set_span, target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id',), deletes=_set_span_deletes,
            compact_each=('token_id', 'span_id', 'value', 'doc', 'virtual_at'), extra={'anchors': _anchors}),
-    OpKind('set_analysis', ('analysis', 'analyses'),
+    OpKind('set_analysis', ('analysis', 'analyses'), replaces=_replaced_analysis,
            required=('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
            apply=_apply_set_analysis, target=lambda op: ('analysis', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=ANALYSIS,
            deletes=_set_analysis_deletes, deletes_tokens=_set_analysis_deletes_tokens,
            extra={'anchors': _anchors}),
-    OpKind('set_orthography', ('orthography value', 'orthography values'), required=('word_id', 'key'),
+    OpKind('set_orthography', ('orthography value', 'orthography values'), replaces=_replaced_orthography,
+           required=('word_id', 'key'),
            apply=_apply_set_orthography, target=lambda op: ('orth', op.get('word_id'), op.get('key')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',),
            compact_each=('word_id', 'value', 'doc')),
-    OpKind('respell', ('respelling', 'respellings'), required=('text_id', 'begin', 'end', 'value'),
+    OpKind('respell', ('respelling', 'respellings'), replaces=None,
+           required=('text_id', 'begin', 'end', 'value'),
            apply=_apply_respell, shape=TEXT_SHAPE,
            target=lambda op: ('respell', op.get('text_id'), op.get('begin'), op.get('end')),
            compact_each=('text_id', 'begin', 'end', 'value', 'doc')),
@@ -726,7 +860,7 @@ KIND = ok.registry([
     # The first morpheme of a word analysed before is the stored one the
     # analysis keeps, so a link to it by place and a link to it by id are one
     # target, and the later replaces the earlier.
-    OpKind('link', ('lexicon link', 'lexicon links'),
+    OpKind('link', ('lexicon link', 'lexicon links'), replaces=_replaces_link,
            apply=_apply_link, target=lambda op: ('link', op.get('token_id') or op.get('reuses_morpheme_id') or (
                'planned', op.get('analysis_word_id'), op.get('morpheme_index'))),
            # The entry as well as the word: a link to an entry the plan removes
@@ -734,61 +868,74 @@ KIND = ok.registry([
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id', 'analysis_word_id', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')],
            extra={'names_entry': ('item_id',), 'anchors': _anchors}),
-    OpKind('unlink', ('unlink', 'unlinks'), required=('link_id',), apply=_apply_unlink,
+    OpKind('unlink', ('unlink', 'unlinks'), replaces=_replaces_unlink,
+           required=('link_id',), apply=_apply_unlink,
            # A multi-word expression's link is its own target: unlinking it
            # never displaces a member word's own link.
            target=lambda op: (('mwe_link', op.get('link_id')) if op.get('token_ids')
                               else ('link', op.get('token_id_hint'))),
            at=('token_id_hint', 'token_ids'), at_kind=TOKEN, deletes=lambda op: [op['link_id']]),
-    OpKind('link_phrase', ('multi-word expression', 'multi-word expressions'), required=('token_ids',),
+    OpKind('link_phrase', ('multi-word expression', 'multi-word expressions'), replaces=_replaces_link_phrase,
+           required=('token_ids',),
            apply=_apply_link_phrase, target=lambda op: ('mwe', tuple(op.get('token_ids') or [])),
            at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')], extra={'names_entry': ('item_id',)}),
-    OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), required=('vocab_id', 'form', 'key'),
+    # The lexicon: an entry is not a document's annotation.
+    OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), replaces=None,
+           required=('vocab_id', 'form', 'key'),
            apply=_apply_create_entry, writes=_create_entry_writes, extra={'hangs_off': _create_entry_writes}),
-    OpKind('set_entry_field', ('entry field', 'entry fields'), required=('item_id', 'field'),
+    OpKind('set_entry_field', ('entry field', 'entry fields'), replaces=None, required=('item_id', 'field'),
            apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('entry_field', op.get('item_id'), op.get('field')),
            extra={'names_entry': ('item_id',)}),
-    OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'),
+    OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'), replaces=None,
            required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
            token_keys=('item_id',), extra={'names_entry': ('item_id',), 'hangs_off': _sense_moved_under},
            # Keyed by the keys it writes, so renumbering a sense and promoting
            # an example on one entry are two changes rather than one replacing
            # the other.
            target=lambda op: ('entry_meta', op.get('item_id'), tuple(sorted((op.get('patch') or {}).keys())))),
-    OpKind('set_doc_metadata', ('document metadata value', 'document metadata values'),
+    OpKind('set_doc_metadata', ('document metadata value', 'document metadata values'), replaces=None,
            required=('document_id', 'field'), apply=_apply_set_doc_metadata,
            target=lambda op: ('doc_meta', op.get('document_id'), op.get('field'))),
-    OpKind('create_document', ('new document', 'new documents'), required=('name', 'text'),
+    OpKind('create_document', ('new document', 'new documents'), replaces=None, required=('name', 'text'),
            apply=_apply_create_document, target=lambda op: ('create_document', op.get('name'))),
-    OpKind('merge_entries', ('merged entry', 'merged entries'), required=('keep_id', 'remove_id'),
+    OpKind('merge_entries', ('merged entry', 'merged entries'), replaces=None,
+           required=('keep_id', 'remove_id'),
            apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
            deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []],
            extra={'removes_entry': ('remove_id',), 'names_entry': ('keep_id', 'remove_id')}),
-    OpKind('delete_entry', ('deleted entry', 'deleted entries'), required=('item_id',),
+    OpKind('delete_entry', ('deleted entry', 'deleted entries'), replaces=_replaces_delete_entry,
+           required=('item_id',),
            apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('delete_entry', op.get('item_id')),
            deletes=lambda op: [op['item_id']] + list(op.get('links') or []),
            extra={'removes_entry': ('item_id',), 'names_entry': ('item_id',)}),
-    OpKind('rename_entry', ('renamed entry', 'renamed entries'), required=('item_id', 'form'),
+    OpKind('rename_entry', ('renamed entry', 'renamed entries'), replaces=None, required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
            compact_each=('item_id', 'form'), extra={'names_entry': ('item_id',)}),
     # Settings: the app writes them on approval and the executor reads them
     # back (`_execute`), so no pass of the executor applies one.
-    OpKind('set_tagset', ('tagset change', 'tagset changes'), required=('owner', 'was', 'name'), stage=APP,
+    # Settings, not annotation: nobody's work is in a tagset's list.
+    OpKind('set_tagset', ('tagset change', 'tagset changes'), replaces=None,
+           required=('owner', 'was', 'name'), stage=APP,
            target=lambda op: ('tagset', op.get('owner'), op.get('was'))),
-    OpKind('assign_tagset', ("field's tagset", "fields' tagsets"), required=('owner', 'field_kind', 'key'), stage=APP,
+    OpKind('assign_tagset', ("field's tagset", "fields' tagsets"), replaces=None,
+           required=('owner', 'field_kind', 'key'), stage=APP,
            target=lambda op: ('tagset_field', op.get('owner'), op.get('field_kind'), op.get('key'))),
-    OpKind('rename_document', ('renamed document', 'renamed documents'), required=('document_id', 'name'),
+    OpKind('rename_document', ('renamed document', 'renamed documents'), replaces=None,
+           required=('document_id', 'name'),
            apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id'))),
     # A confirmation the model NAMED (refs) is a write to what it names, and a
     # change deleting any of it is refused in both orders like every other
     # named write. One over a scope names nothing of its own, so it keeps no
     # token keys: it is resolved when the plan is applied, leaving out what the
     # plan deletes, and the applied message says how many it left out.
-    OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm, writes=_confirm_writes,
+    # Confirming takes nothing away, a comment adds, and a new document or a
+    # new sentence boundary replaces nothing anyone annotated.
+    OpKind('confirm', ('confirmation', 'confirmations'), replaces=None,
+           apply=_apply_confirm, writes=_confirm_writes,
            # The exact material it confirms. Confirming the same thing twice
            # in a turn (the model retrying, two tools reaching the same
            # document) used to stage two ops, and the reply counted both, so
@@ -797,38 +944,45 @@ KIND = ok.registry([
            # lists and both stand.
            target=lambda op: ('confirm', op.get('doc'), tuple(op.get('span_ids') or []),
                               tuple(op.get('token_ids') or []), tuple(op.get('link_ids') or []))),
-    OpKind('discard_analysis', ('discarded analysis', 'discarded analyses'), required=('word_id',),
+    OpKind('discard_analysis', ('discarded analysis', 'discarded analyses'), replaces=_replaces_discard_analysis,
+           required=('word_id',),
            apply=_apply_discard_analysis, target=lambda op: ('analysis', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=ANALYSIS,
            deletes=_discard_analysis_deletes, deletes_tokens=lambda op: list(op.get('morpheme_ids') or [])),
-    OpKind('set_morpheme_form', ('morpheme form', 'morpheme forms'), required=('morpheme_id', 'form'),
+    OpKind('set_morpheme_form', ('morpheme form', 'morpheme forms'), replaces=_replaces_set_morpheme_form,
+           required=('morpheme_id', 'form'),
            apply=_apply_set_morpheme_form, target=lambda op: ('morph_form', op.get('morpheme_id')),
            at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',),
            compact_each=('morpheme_id', 'form', 'doc', 'virtual_at'), extra={'anchors': _anchors}),
-    OpKind('set_morph_type', ('morpheme type', 'morpheme types'), required=('morpheme_id',),
+    OpKind('set_morph_type', ('morpheme type', 'morpheme types'), replaces=_replaces_set_morph_type,
+           required=('morpheme_id',),
            apply=_apply_set_morph_type, target=lambda op: ('morph_type', op.get('morpheme_id')),
            at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',), extra={'anchors': _anchors}),
-    OpKind('split_word', ('split word', 'split words'), required=('word_id', 'position'),
+    OpKind('split_word', ('split word', 'split words'), replaces=_replaces_split_word,
+           required=('word_id', 'position'),
            apply=_apply_split_word, target=lambda op: ('word_shape', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=WORD_SHAPE,
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []),
            extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id',), 'anchors': _anchors}),
-    OpKind('merge_words', ('word merge', 'word merges'), required=('word_id', 'other_ids'),
+    OpKind('merge_words', ('word merge', 'word merges'), replaces=_replaces_merge_words,
+           required=('word_id', 'other_ids'),
            apply=_apply_merge_words, target=lambda op: ('word_shape', op.get('word_id')),
            shape=WORD_SHAPE, deletes=_merge_deletes,
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []) + list(op.get('other_ids') or []),
            extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id', 'other_ids'), 'merge': True}),
-    OpKind('delete_word', ('deleted word', 'deleted words'), required=('word_id',),
+    OpKind('delete_word', ('deleted word', 'deleted words'), replaces=_word_and_analysis, required=('word_id',),
            apply=_apply_delete_word, target=lambda op: ('word_shape', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, shape=WORD_SHAPE,
            deletes=lambda op: list(op.get('link_ids') or []),
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []) + [op['word_id']],
            extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id',)}),
-    OpKind('split_sentence', ('split sentence', 'split sentences'), required=('sentence_id', 'position'),
+    OpKind('split_sentence', ('split sentence', 'split sentences'), replaces=None,
+           required=('sentence_id', 'position'),
            apply=_apply_split_sentence, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, token_keys=('sentence_id',), shape=SENTENCE_SHAPE,
            extra={'reshapes': ('sentence_id',), 'anchors': _anchors}),
-    OpKind('merge_sentences', ('sentence merge', 'sentence merges'), required=('sentence_id', 'other_id'),
+    OpKind('merge_sentences', ('sentence merge', 'sentence merges'), replaces=_replaces_merge_sentences,
+           required=('sentence_id', 'other_id'),
            apply=_apply_merge_sentences, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, shape=SENTENCE_SHAPE, deletes=_merge_deletes,
            deletes_tokens=lambda op: [op['other_id']],
@@ -837,7 +991,9 @@ KIND = ok.registry([
     # a word the edit names may survive with its analysis intact. Every guard
     # treats the ids as gone, but a change naming one is dropped when the plan
     # is applied rather than refused as it is built.
-    OpKind('edit_text', ('text edit', 'text edits'), required=('document_id', 'begin', 'end', 'new'),
+    # The text itself and prose: the card's Rewrite line says so already.
+    OpKind('edit_text', ('text edit', 'text edits'), replaces=None,
+           required=('document_id', 'begin', 'end', 'new'),
            apply=_apply_edit_text, at=('sentence_id',), at_kind=TOKEN, shape=TEXT_SHAPE,
            target=lambda op: ('edit_text', op.get('text_id'), op.get('begin'), op.get('end')),
            deletes_tokens=lambda op: list(op.get('word_ids') or []) + list(op.get('morpheme_ids') or []),
@@ -845,14 +1001,18 @@ KIND = ok.registry([
            # split or a merge of one is dropped at approval rather than refused
            # here (see `certain`).
            certain=False, extra={'reshapes': ('sentence_id',)}),
-    OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
+    OpKind('add_comment', ('comment', 'comments'), replaces=None, required=('entity_type', 'entity_id', 'body'),
            apply=apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
-    OpKind('restore_document', ('document restore', 'document restores'), required=('document_id', 'as_of'),
+    OpKind('restore_document', ('document restore', 'document restores'), replaces=None,
+           required=('document_id', 'as_of'),
            apply=apply_restore_document, shape=ok.EXCLUSIVE,
            target=lambda op: ('restore', op.get('document_id'))),
     # Resolved to the ops it stands for at approval, so the executor never
     # sees one. The summary counts what it stands for.
-    OpKind('bulk_scope', ('corpus-wide change', 'corpus-wide changes'), required=('tool', 'args', 'counts'),
+    # Resolved when approved, from the documents as they are then, and a
+    # restore puts back what was there: neither names what it replaces now.
+    OpKind('bulk_scope', ('corpus-wide change', 'corpus-wide changes'), replaces=None,
+           required=('tool', 'args', 'counts'),
            stage=ok.RESOLVED, shape=ok.SCOPE, resolve=_resolve_bulk_scope,
            summary=_bulk_scope_summary, target=rules.target),
     # A value kept out of a rule of the plan (core.keep): placed on the card

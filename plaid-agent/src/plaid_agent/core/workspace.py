@@ -136,12 +136,6 @@ class BaseWorkspace:
     # (``fingerprint.ADDRESSING_KEYS``). Anything else carrying an id that no
     # sentence holds pins the change to the whole document.
     NOT_CONTENT_KEYS: tuple = ()
-    # Which existing things a change of each kind rewrites or removes, so the
-    # card can say when they are a person's work (core/work.py): kind ->
-    # ``fn(ws, op) -> ids``, or None for a kind that replaces nothing a person
-    # could have made. Every kind the app declares is named here, which a test
-    # holds each app to, so a new kind has to answer.
-    REPLACES: Dict[str, Any] = {}
     # The app's sentence in the note on an attached file saying which file
     # goes in through which of its own screens (``filetools.note``).
     FILE_ROUTES = ''
@@ -631,12 +625,13 @@ class BaseWorkspace:
     def replaces_work(self, op: Dict[str, Any]) -> int:
         """How many things a person made or accepted a planned change rewrites
         or removes, as a count of changes: 1 or 0 for a change of one thing,
-        by the app's ``REPLACES`` answer for its kind, and for a corpus-wide
+        by its kind's ``replaces`` (``core.opkind``), and for a corpus-wide
         change the count it was staged with (``work.COUNTED``), since what it
         replaces is found again only when it is approved."""
         if work.COUNTED in op:
             return int(op.get(work.COUNTED) or 0)
-        fn = self.REPLACES.get(op.get('kind'))
+        kind = self.KIND.get(op.get('kind'))
+        fn = kind.replaces if kind is not None else None
         if fn is None:
             return 0
         for entity_id in fn(self, op) or ():

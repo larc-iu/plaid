@@ -289,7 +289,7 @@ def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
     # A second kind that owns its whole plan joins the rule by DECLARING itself,
     # and the rule holds both ways round: nothing joins a plan that has one, and
     # one does not join a plan that has anything.
-    wipe = ok.OpKind('wipe', ('wipe', 'wipes'), apply=lambda ctx, op: 1, shape=ok.EXCLUSIVE)
+    wipe = ok.OpKind('wipe', ('wipe', 'wipes'), replaces=None, apply=lambda ctx, op: 1, shape=ok.EXCLUSIVE)
     w = fake_ws(FakeClient())
     monkeypatch.setattr(type(w), 'KIND', dict(plan.KIND, wipe=wipe))
     w.ops.append({'kind': 'wipe', 'label': 'a wipe'})
@@ -327,7 +327,7 @@ def test_a_kind_staged_for_a_pass_igt_does_not_run_refuses(monkeypatch):
     from plaid_agent.core.plan import Stamps
     from plaid_agent.igt import plan
     from collections import Counter
-    monkeypatch.setitem(plan.KIND, 'orphan', OpKind('orphan', ('orphan', 'orphans'), stage='later',
+    monkeypatch.setitem(plan.KIND, 'orphan', OpKind('orphan', ('orphan', 'orphans'), replaces=None, stage='later',
                                                     apply=lambda ctx, op: 1))
     c = FakeClient()
     with pytest.raises(ValueError, match='no pass of the executor'):
@@ -342,7 +342,7 @@ def test_a_kind_staged_for_a_pass_ud_does_not_run_refuses(monkeypatch):
     from plaid_agent.core.plan import Stamps
     from plaid_agent.ud import plan
     from collections import Counter
-    monkeypatch.setitem(plan.KIND, 'orphan', OpKind('orphan', ('orphan', 'orphans'), stage='later',
+    monkeypatch.setitem(plan.KIND, 'orphan', OpKind('orphan', ('orphan', 'orphans'), replaces=None, stage='later',
                                                     apply=lambda ctx, op: 1))
     c = FakeClient()
     with pytest.raises(ValueError, match='no pass of the executor'):

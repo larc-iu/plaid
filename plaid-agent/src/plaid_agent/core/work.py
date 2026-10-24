@@ -9,9 +9,10 @@ count (ruled 2026-09-28 as never folded, revised by Luke 2026-10-08).
 "A person's work" is the provenance convention's protected material: made by a
 person (no provenance), by a contributor, or verified by anyone. Only
 unconfirmed machine output is free to replace. Each app answers which existing
-things a change of each kind rewrites or removes (its ``REPLACES`` table,
-kind -> ``fn(ws, op) -> ids``), and this module reads their provenance off the
-documents the turn loaded.
+things a change of each kind rewrites or removes (each kind's ``replaces``,
+``fn(ws, op) -> ids``, which ``core.opkind.registry`` makes every kind
+declare), and this module reads their provenance off the documents the turn
+loaded.
 """
 
 import dataclasses

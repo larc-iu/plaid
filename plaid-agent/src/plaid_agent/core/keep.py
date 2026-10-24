@@ -67,9 +67,10 @@ def _apply(ctx, op) -> int:
 
 def kind(OpKind, **declared):
     """The keep kind for an app's registry. ``declared`` is what the app
-    adds (where its card places the row, its ``entity`` hook)."""
+    adds (where its card places the row, its ``entity`` hook). A value kept
+    as it is replaces nothing."""
     return OpKind(KEEP, NOUN, required=('kept',), apply=_apply, target=target,
-                  summary=lambda op, n: [], **declared)
+                  summary=lambda op, n: [], replaces=None, **declared)
 
 
 def op(kept: Iterable[Any], label: str, entity_key: Optional[Iterable[Any]] = None,

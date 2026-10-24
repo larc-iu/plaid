@@ -72,6 +72,10 @@ MEMBER = '_member'
 EXPANDING = 'plan_expansion'
 
 
+# The default of a field every kind must declare, even as None.
+UNSAID = object()
+
+
 @dataclass(frozen=True)
 class OpKind:
     """What an app knows about one kind of planned operation.
@@ -129,6 +133,12 @@ class OpKind:
                   than taking the registry's.
     ``summary``   ``(op, n) -> [(noun, count)]`` where one operation counts as
                   something other than ``n`` of its own noun.
+    ``replaces``  ``(ws, op) -> ids``: the existing things it rewrites or
+                  removes, so the card can say when they are a person's work
+                  (``core.work``), or ``None`` for a kind that replaces nothing
+                  a person could have made. Every kind declares it, ``None``
+                  included: :func:`registry` refuses one left unsaid, so a new
+                  kind answers when it is declared.
     """
 
     name: str
@@ -150,6 +160,7 @@ class OpKind:
     compact_label: Optional[Callable[[Dict[str, Any], List[Dict[str, Any]]], str]] = None
     summary: Optional[Callable[[Dict[str, Any], int], Sequence[Tuple[Tuple[str, str], int]]]] = None
     extra: Mapping[str, Any] = _field(default_factory=dict)
+    replaces: Optional[Callable[[Any, Dict[str, Any]], Iterable[str]]] = UNSAID
 
 
 class UnknownKind(ValueError):
@@ -184,6 +195,10 @@ def registry(kinds: Iterable[OpKind]) -> Dict[str, OpKind]:
             raise ValueError(f'op kind {k.name!r} resolves into other operations, so it is a {SCOPE!r}')
         if k.shape == SCOPE and not k.resolve:
             raise ValueError(f'op kind {k.name!r} is a {SCOPE!r} with nothing to resolve it')
+        if k.replaces is UNSAID:
+            raise ValueError(f'op kind {k.name!r} does not say what it replaces: give it replaces=, a '
+                             f'function of (ws, op) to the ids it rewrites or removes, or None for nothing '
+                             f'a person could have made')
         if k.resolve and k.apply:
             raise ValueError(f'op kind {k.name!r} is resolved away before the executor runs, so it '
                              f'cannot also be applied')

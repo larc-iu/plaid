@@ -663,7 +663,6 @@ def _dropped(before: List[Dict[str, Any]], after: List[Dict[str, Any]]) -> str:
             f'with {"it" if len(gone) == 1 else "them"} in it.')
 
 
-
 def _role_in_attribute_line(line: str, concept: Optional[str]) -> Optional[str]:
     """Why a set_attributes line points at a node rather than giving values,
     or None. The local model wrote ":actor s1a" there several times a run, and
@@ -963,52 +962,7 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
            )
 
 
-# --- whose work a change replaces -----------------------------------------------
-#
-# What each kind rewrites or removes, for the card's "replace accepted work"
-# line (core/work.py). A node's provenance sits on its concept span, an edge's
-# and a triple's on the relation.
-
-def _node_of(ws: Workspace, op: Dict[str, Any]) -> Optional[GNode]:
-    doc = ws._docs.get(op.get('document_id'))
-    return doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
-
-
-def _replaced_attrs(ws: Workspace, op: Dict[str, Any]) -> List[str]:
-    """A node's attributes are its work only where a value it held goes or
-    changes: adding one beside them replaces nothing."""
-    node = _node_of(ws, op)
-    if node is None:
-        return []
-    kept = {(a.get('rel'), str(a.get('value'))) for a in op.get('attrs') or []}
-    lost = [a for a in node.attrs if (a.get('rel'), str(a.get('value'))) not in kept]
-    return [node.id] if lost else []
-
-
-_NONE = None
-REPLACES = {
-    'set_concept': lambda ws, op: [op.get('span_id')],
-    # A new name over the one a person gave the node.
-    'rename_node': lambda ws, op: [op.get('span_id')],
-    'unset_root': lambda ws, op: [op.get('span_id')],
-    'delete_node': lambda ws, op: [op.get('span_id')] + list(op.get('relation_ids') or []),
-    'set_attrs': _replaced_attrs,
-    'delete_edge': lambda ws, op: [op.get('relation_id')],
-    'set_edge_order': lambda ws, op: [op.get('relation_id')],
-    'delete_triple': lambda ws, op: [op.get('relation_id')],
-    # Counted when it is staged, change by change (``work.COUNTED``).
-    'attrs_scope': _NONE,
-    # A root mark put on a node takes nothing: the node that loses it is the
-    # plan's unset_root.
-    'set_root': _NONE,
-    'create_node': _NONE, 'create_edge': _NONE, 'create_triple': _NONE,
-    # Prose: the card's Rewrite line says so already.
-    'add_guideline': _NONE, 'revise_guideline': _NONE, 'rewrite_guideline': _NONE,
-}
-Workspace.REPLACES = REPLACES
-
-
-__all__ = ['PLAN_NOTE', 'REPLACES', 'Workspace',
+__all__ = ['PLAN_NOTE', 'Workspace',
            't_add_triple', 't_apply_penman', 't_delete_triple', 't_document_graph',
            't_project_overview', 't_set_attribute_for_concept',
            't_set_attributes']

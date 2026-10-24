@@ -32,7 +32,7 @@ def test_a_new_shape_kind_joins_the_one_shape_op_per_item_rule():
     from plaid_agent.igt import plan as igt_plan
     from plaid_agent.igt.plan import KIND, WORD_SHAPE
     extra = dict(KIND['merge_words'].extra)
-    fused = OpKind('fuse_words', ('fusion', 'fusions'), apply=lambda ctx, op: 1,
+    fused = OpKind('fuse_words', ('fusion', 'fusions'), replaces=None, apply=lambda ctx, op: 1,
                    shape=WORD_SHAPE, extra={**extra, 'reshapes': ('word_id', 'other_ids'),
                                             'merge': True})
     reg = dict(KIND, fuse_words=fused)
@@ -131,7 +131,7 @@ def test_ud_supersession_uses_the_registry_target_everywhere():
     a fourth declaring a target was deduped while staging and not at approval,
     and the plan wrote twice to one thing."""
     from plaid_agent.ud import plan as ud_plan
-    retag = OpKind('retag', ('tag', 'tags'), apply=lambda ctx, op: 1,
+    retag = OpKind('retag', ('tag', 'tags'), replaces=None, apply=lambda ctx, op: 1,
                    target=lambda op: ('tag', op.get('word_id')))
     saved = ud_plan.KIND
     try:
@@ -202,7 +202,7 @@ def test_a_new_scope_kind_is_resolved_by_a_loop_that_names_none(app):
     mod = __import__(f'plaid_agent.{app}.plan', fromlist=['KIND'])
     stands_for = {'kind': 'set_span', 'layer_id': 'L', 'token_id': 't-1', 'value': 'x',
                   'label': 'one value'}
-    sweep = OpKind('sweep_all', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE,
+    sweep = OpKind('sweep_all', ('sweep', 'sweeps'), replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
                    resolve=lambda res, op: [stands_for])
     client, project = _scope_fixture(app)
     saved = mod.KIND
@@ -249,7 +249,7 @@ def test_a_change_made_by_name_beats_a_scope_by_the_kind_s_own_declaration():
     assert declared == {'set_span', 'set_head', 'del_relation', 'set_deprel', 'keep'}
 
     # A new kind writing the same relation is seen as writing it.
-    relabel = OpKind('relabel', ('relabel', 'relabels'), apply=lambda ctx, op: 1,
+    relabel = OpKind('relabel', ('relabel', 'relabels'), replaces=None, apply=lambda ctx, op: 1,
                      extra={'entity': KIND['set_deprel'].extra['entity']})
     saved = ud_plan.KIND
     try:

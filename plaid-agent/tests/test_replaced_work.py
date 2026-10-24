@@ -51,12 +51,19 @@ def _stamped(raw, entity_id, stamp):
 @pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 def test_every_kind_says_what_it_replaces(app):
     """A kind added later has to answer too: leaving it out would show its
-    changes as replacing nothing, whatever they replace."""
+    changes as replacing nothing, whatever they replace. The answer is on the
+    kind itself (beta review B4-3), so the registry holds every app to it."""
     from importlib import import_module
+    from plaid_agent.core import opkind as ok
     kinds = import_module(f'plaid_agent.{app}.plan').KIND
-    module = {'igt': 'workspace', 'ud': 'tools', 'umr': 'tools'}[app]
-    ws_cls = import_module(f'plaid_agent.{app}.{module}').Workspace
-    assert set(ws_cls.REPLACES) == set(kinds)
+    assert [n for n, k in kinds.items() if k.replaces is ok.UNSAID] == []
+
+
+def test_a_kind_that_does_not_say_what_it_replaces_is_refused_at_import():
+    from plaid_agent.core import opkind as ok
+    with pytest.raises(ValueError, match="op kind 'set_gloss' does not say what it replaces"):
+        ok.registry([ok.OpKind('set_gloss', ('gloss', 'glosses'))])
+    assert ok.registry([ok.OpKind('set_gloss', ('gloss', 'glosses'), replaces=None)])['set_gloss'].replaces is None
 
 
 def test_a_flagged_change_is_never_folded_into_a_group(monkeypatch):

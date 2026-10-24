@@ -54,8 +54,6 @@ SPLITS_KEEP_WORDS = frozenset({'split_token'})
 _DOC_CACHE = docload.DocCache()
 
 
-
-
 # --- the workspace ------------------------------------------------------------
 
 class Workspace(BaseWorkspace):
@@ -335,52 +333,6 @@ class Workspace(BaseWorkspace):
                 'ops': ops,
                 'changes': changes,
                 'documents': self.touched_documents()}
-
-
-# --- whose work a change replaces -----------------------------------------------
-#
-# What each kind rewrites or removes, for the card's "replace accepted work"
-# line (core/work.py). A value's provenance sits on its span and a dependency's
-# on its relation, which a parsed word holds as ``relation_metadata``.
-
-def _words_by_id(ws: 'Workspace', ids) -> List[Any]:
-    wanted = set(ids or [])
-    return [w for doc in ws._docs.values() for s in doc.sentences for w in s.words if w.id in wanted]
-
-
-def _words_work(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
-    """A token's words, when it is cut again: their values, and every arc
-    hanging off them (``relation_ids``), the ones they head as well as their
-    own heads, since the delete of their lemma spans takes both."""
-    return [x for w in _words_by_id(ws, op.get('existing_word_ids'))
-            for x in [sp.id for _f, sp in w.all_spans()] + [w.relation_id]] + list(op.get('relation_ids') or [])
-
-
-_NONE = None
-REPLACES = {
-    'set_span': lambda ws, op: [op.get('span_id')],
-    'set_head': lambda ws, op: [op.get('relation_id')],
-    'del_relation': lambda ws, op: [op.get('relation_id')],
-    'set_deprel': lambda ws, op: [op.get('relation_id')],
-    'set_words': _words_work,
-    # A split moves the words with everything on them, and replaces nothing.
-    'split_token': _NONE,
-    # The relations a cut leaves spanning two sentences go with it.
-    'split_sentence': lambda ws, op: list(op.get('relation_ids') or []),
-    # A join only widens a sentence, so it takes no relation.
-    'merge_sentences': _NONE,
-    'confirm': _NONE, 'add_comment': _NONE,
-    # A value kept as it is (core.keep) replaces nothing.
-    'keep': _NONE,
-    # Resolved when approved, from the documents as they are then, and a
-    # restore puts back what was there: none of them names what it replaces
-    # now. A parse is a service run with its own overwrite rule.
-    'confirm_scope': _NONE, 'discard_scope': _NONE, 'replace_scope': _NONE,
-    'restore_document': _NONE, 'run_parse': _NONE,
-    # Prose: the card's Rewrite line says so already.
-    'add_guideline': _NONE, 'revise_guideline': _NONE, 'rewrite_guideline': _NONE,
-}
-Workspace.REPLACES = REPLACES
 
 
 def op_target(op: Dict[str, Any]):

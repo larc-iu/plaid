@@ -15,7 +15,7 @@ several, and a write in a later one names the same id.
 import re
 from collections import Counter
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from plaid_client import metadata_ops
 
@@ -392,6 +392,64 @@ _CONCEPT = ('concept', 'concepts')
 _ATTRS = ('attribute set', 'attribute sets')
 _ROOT = ('root', 'roots')
 
+# The workspace a kind's ``replaces`` reads, named for the annotations only:
+# it imports this module.
+if TYPE_CHECKING:
+    from .project import GNode
+    from .tools import Workspace
+
+
+# --- whose work a change replaces -----------------------------------------------
+#
+# What each kind rewrites or removes, for the card's "replace accepted work"
+# line (core/work.py). A node's provenance sits on its concept span, an edge's
+# and a triple's on the relation.
+
+def _node_of(ws: 'Workspace', op: Dict[str, Any]) -> Optional['GNode']:
+    doc = ws._docs.get(op.get('document_id'))
+    return doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
+
+
+def _replaced_attrs(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    """A node's attributes are its work only where a value it held goes or
+    changes: adding one beside them replaces nothing."""
+    node = _node_of(ws, op)
+    if node is None:
+        return []
+    kept = {(a.get('rel'), str(a.get('value'))) for a in op.get('attrs') or []}
+    lost = [a for a in node.attrs if (a.get('rel'), str(a.get('value'))) not in kept]
+    return [node.id] if lost else []
+
+
+def _replaces_set_concept(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('span_id')]
+
+
+# A new name over the one a person gave the node.
+def _replaces_rename_node(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('span_id')]
+
+
+def _replaces_unset_root(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('span_id')]
+
+
+def _replaces_delete_node(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('span_id')] + list(op.get('relation_ids') or [])
+
+
+def _replaces_delete_edge(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('relation_id')]
+
+
+def _replaces_set_edge_order(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('relation_id')]
+
+
+def _replaces_delete_triple(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    return [op.get('relation_id')]
+
+
 KIND = ok.registry([
     # The project's annotation manual. Shared with the other apps: a guideline
     # has the same shape whatever the project annotates.
@@ -401,7 +459,8 @@ KIND = ok.registry([
     # and every document-level triple on the node). All of it is declared, so
     # a plan that also touches one of those relations is refused as it is
     # built instead of failing the batch the user approved.
-    OpKind('delete_node', ('removed node', 'removed nodes'), required=('token_ids',),
+    OpKind('delete_node', ('removed node', 'removed nodes'), replaces=_replaces_delete_node,
+           required=('token_ids',),
            apply=_apply_delete_node,
            target=lambda op: ('node', op.get('span_id')),
            deletes=lambda op: [op.get('span_id')] + list(op.get('relation_ids') or []),
@@ -413,7 +472,8 @@ KIND = ok.registry([
     # takes its whole batch with it, so a plan holding this and a node delete
     # that cascades the same relation is refused in either order (the pair
     # staged happily before, and one of the two orders failed at approval).
-    OpKind('delete_edge', ('removed relation', 'removed relations'), required=('relation_id',),
+    OpKind('delete_edge', ('removed relation', 'removed relations'), replaces=_replaces_delete_edge,
+           required=('relation_id',),
            apply=_apply_delete_relation,
            target=lambda op: ('edge-gone', op.get('relation_id')),
            token_keys=('relation_id',),
@@ -421,37 +481,43 @@ KIND = ok.registry([
            compact_each=('relation_id', 'source', 'target', 'ref', 'label'),
            compact_label=_kind_label('remove', ('relation', 'relations'), drop='remove ')),
     OpKind('delete_triple', ('removed document-level relation',
-                             'removed document-level relations'),
+                             'removed document-level relations'), replaces=_replaces_delete_triple,
            required=('relation_id',), apply=_apply_delete_relation,
            target=lambda op: ('triple-gone', op.get('relation_id')),
            token_keys=('relation_id',),
            deletes=lambda op: [op['relation_id']]),
-    OpKind('set_concept', _CONCEPT, required=('span_id',), apply=_apply_set_concept,
+    OpKind('set_concept', _CONCEPT, replaces=_replaces_set_concept,
+           required=('span_id',), apply=_apply_set_concept,
            target=lambda op: ('concept', op.get('span_id')), token_keys=('span_id',),
            compact_each=('span_id', 'var', 'concept', 'ref', 'label'),
            compact_label=_kind_label('change', ('concept', 'concepts'))),
-    OpKind('set_attrs', _ATTRS, required=('span_id',), apply=_apply_span_meta,
+    OpKind('set_attrs', _ATTRS, replaces=_replaced_attrs, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),
            compact_each=('span_id', 'var', 'attrs', 'attr_line', 'umr_set', 'ref', 'label'),
            compact_label=_kind_label('set attributes on', ('node', 'nodes'))),
     # A variable typed over in a graph text and read as a rename: the new name
     # written on the node itself, as Text mode writes it, so the node keeps its
     # anchor, its edges and its document-level relations.
-    OpKind('rename_node', ('renamed node', 'renamed nodes'), required=('span_id', 'var'),
+    OpKind('rename_node', ('renamed node', 'renamed nodes'), replaces=_replaces_rename_node,
+           required=('span_id', 'var'),
            apply=_apply_span_meta,
            target=lambda op: ('var', op.get('span_id')), token_keys=('span_id',),
            compact_each=('span_id', 'var', 'from_var', 'umr_set', 'ref', 'label'),
            compact_label=_kind_label('rename', _NODE, drop='rename ')),
-    OpKind('set_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
+    # A root mark put on a node takes nothing: the node that loses it is the
+    # plan's unset_root.
+    OpKind('set_root', _ROOT, replaces=None, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('root-on', op.get('span_id')), token_keys=('span_id',)),
-    OpKind('unset_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
+    OpKind('unset_root', _ROOT, replaces=_replaces_unset_root, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('root-off', op.get('span_id')), token_keys=('span_id',)),
-    OpKind('set_edge_order', ('relation order', 'relation orders'), required=('relation_id',),
+    OpKind('set_edge_order', ('relation order', 'relation orders'), replaces=_replaces_set_edge_order,
+           required=('relation_id',),
            apply=_apply_set_edge_order, target=lambda op: ('order', op.get('relation_id')),
            token_keys=('relation_id',),
            compact_each=('relation_id', 'order', 'ref', 'label'),
            compact_label=_kind_label('reorder', ('relation', 'relations'))),
-    OpKind('create_node', _NODE, required=('var', 'node_layer_id', 'concept_layer_id', 'text_id'),
+    OpKind('create_node', _NODE, replaces=None,
+           required=('var', 'node_layer_id', 'concept_layer_id', 'text_id'),
            apply=_apply_create_node,
            target=lambda op: ('new-node', op.get('document_id'), op.get('var')),
            compact_each=('var', 'concept', 'attrs', 'begin', 'end', 'root', 'ref', 'label'),
@@ -459,7 +525,7 @@ KIND = ok.registry([
            # A node of a sentence stands over the whole of it, wherever an
            # edit before it has moved it since (core.fingerprint).
            extra={'anchors': _node_anchors}),
-    OpKind('create_edge', _EDGE, stage=LINKS, required=('relation_layer_id', 'role'),
+    OpKind('create_edge', _EDGE, replaces=None, stage=LINKS, required=('relation_layer_id', 'role'),
            apply=_apply_create_edge,
            target=lambda op: ('new-edge', op.get('document_id'), op.get('source_var'),
                               op.get('role'), op.get('target_var')),
@@ -467,7 +533,7 @@ KIND = ok.registry([
            compact_each=('source_var', 'target_var', 'role', 'order', 'source_span_id',
                          'target_span_id', 'ref', 'label'),
            compact_label=_kind_label('add', ('relation', 'relations'))),
-    OpKind('create_triple', _TRIPLE, stage=LINKS,
+    OpKind('create_triple', _TRIPLE, replaces=None, stage=LINKS,
            required=('document_graph_layer_id', 'rel', 'group'), apply=_apply_create_triple,
            target=lambda op: ('new-triple', op.get('document_id'), op.get('source_var'),
                               op.get('rel'), op.get('target_var')),
@@ -479,7 +545,8 @@ KIND = ok.registry([
     # stored as the predicate the model gave and resolved to one `set_attrs`
     # per node at approval, so the card carries one row rather than two
     # hundred and the values written are the ones in the document NOW.
-    OpKind('attrs_scope', _ATTRS, stage=ok.RESOLVED, shape=ok.SCOPE,
+    # Counted when it is staged, change by change (``work.COUNTED``).
+    OpKind('attrs_scope', _ATTRS, replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('document_id', 'concept', 'rel'), resolve=_resolve_attrs_scope,
            summary=_attrs_scope_summary,
            target=lambda op: ('attrs_scope', op.get('document_id'), op.get('concept'),

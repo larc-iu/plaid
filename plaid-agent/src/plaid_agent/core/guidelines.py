@@ -537,10 +537,12 @@ def kinds(OpKind):
     """The two op kinds, for an app to put in its own registry.
 
     Taking ``OpKind`` as an argument rather than importing it keeps this module
-    free of the plan machinery, which imports from here."""
+    free of the plan machinery, which imports from here. None replaces what
+    the card counts as a person's work: a guideline is prose, and the card's
+    Rewrite line says so already."""
     return [
         OpKind('add_guideline', ('guideline', 'guidelines'),
-               required=('title', 'body'), apply=_apply_add,
+               required=('title', 'body'), apply=_apply_add, replaces=None,
                # Two drafts of the same title in one turn: the second is what
                # the model meant, the way a second edit of one field is.
                target=lambda op: ('guideline-new', (op.get('title') or '').casefold())),
@@ -549,9 +551,9 @@ def kinds(OpKind):
         # card, because approving one means agreeing to lose wording somebody
         # wrote and cannot see from the row.
         OpKind('revise_guideline', ('guideline', 'guidelines'),
-               required=('guideline_id',), apply=_apply_revise,
+               required=('guideline_id',), apply=_apply_revise, replaces=None,
                target=lambda op: ('guideline', op.get('guideline_id'))),
         OpKind('rewrite_guideline', ('guideline', 'guidelines'),
-               required=('guideline_id',), apply=_apply_revise, shape=PROSE,
+               required=('guideline_id',), apply=_apply_revise, shape=PROSE, replaces=None,
                target=lambda op: ('guideline', op.get('guideline_id'))),
     ]

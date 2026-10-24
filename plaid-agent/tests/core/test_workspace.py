@@ -11,7 +11,7 @@ class AppWorkspace(BaseWorkspace):
     """An app whose value-on-a-token kind is called something else, which is
     the whole point: core holds no app's vocabulary."""
 
-    KIND = ok.registry([ok.OpKind('put_value', ('value', 'values'), apply=lambda ctx, op: 1,
+    KIND = ok.registry([ok.OpKind('put_value', ('value', 'values'), replaces=None, apply=lambda ctx, op: 1,
                                   target=lambda op: ('value', op.get('layer_id'), op.get('token_id')))])
     SPAN_KIND = 'put_value'
 
@@ -35,9 +35,9 @@ class StagingWorkspace(BaseWorkspace):
     """Two kinds: one that writes to a token, one that deletes it."""
 
     KIND = ok.registry([
-        ok.OpKind('set_value', ('value', 'values'), apply=lambda ctx, op: 1,
+        ok.OpKind('set_value', ('value', 'values'), replaces=None, apply=lambda ctx, op: 1,
                   token_keys=('id',), target=lambda op: ('value', op.get('id'))),
-        ok.OpKind('drop_it', ('removal', 'removals'), apply=lambda ctx, op: 1,
+        ok.OpKind('drop_it', ('removal', 'removals'), replaces=None, apply=lambda ctx, op: 1,
                   target=lambda op: ('value', op.get('id')),
                   deletes_tokens=lambda op: [op['id']]),
     ])

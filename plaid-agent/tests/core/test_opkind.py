@@ -7,16 +7,16 @@ from plaid_agent.core import opkind as ok
 
 def _reg():
     return ok.registry([
-        ok.OpKind('set_value', ('value', 'values'), required=('id',),
+        ok.OpKind('set_value', ('value', 'values'), replaces=None, required=('id',),
                   apply=lambda ctx, op: ctx.append(op) or 1,
                   target=lambda op: ('value', op.get('id')),
                   at=('id',), token_keys=('id',),
                   compact_each=('id', 'value')),
-        ok.OpKind('drop_it', ('removal', 'removals'), required=('id',),
+        ok.OpKind('drop_it', ('removal', 'removals'), replaces=None, required=('id',),
                   apply=lambda ctx, op: 1,
                   deletes_tokens=lambda op: [op['id']],
                   shape='reshape'),
-        ok.OpKind('scope_it', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE,
+        ok.OpKind('scope_it', ('sweep', 'sweeps'), replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
                   resolve=lambda ctx, op: [{'kind': 'set_value', 'id': i, 'value': op['value']}
                                            for i in op['ids']]),
     ])
@@ -24,7 +24,7 @@ def _reg():
 
 def test_a_name_declared_twice_is_refused_at_import():
     with pytest.raises(ValueError, match='declared twice'):
-        ok.registry([ok.OpKind('x', ('a', 'b')), ok.OpKind('x', ('c', 'd'))])
+        ok.registry([ok.OpKind('x', ('a', 'b'), replaces=None), ok.OpKind('x', ('c', 'd'), replaces=None)])
 
 
 def test_every_table_is_the_registry_read_a_different_way():
@@ -42,11 +42,11 @@ def test_a_scope_and_its_resolver_are_two_halves_of_one_declaration():
     executor after the user approved it; resolving without the tag, every
     guard built on the tag lets it into a plan it cannot share."""
     with pytest.raises(ValueError, match='nothing to resolve it'):
-        ok.registry([ok.OpKind('x', ('a', 'b'), stage=ok.RESOLVED, shape=ok.SCOPE)])
+        ok.registry([ok.OpKind('x', ('a', 'b'), replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE)])
     with pytest.raises(ValueError, match="so it is a 'scope'"):
-        ok.registry([ok.OpKind('x', ('a', 'b'), resolve=lambda ctx, op: [])])
+        ok.registry([ok.OpKind('x', ('a', 'b'), replaces=None, resolve=lambda ctx, op: [])])
     with pytest.raises(ValueError, match='cannot also be applied'):
-        ok.registry([ok.OpKind('x', ('a', 'b'), shape=ok.SCOPE, resolve=lambda ctx, op: [],
+        ok.registry([ok.OpKind('x', ('a', 'b'), replaces=None, shape=ok.SCOPE, resolve=lambda ctx, op: [],
                                apply=lambda ctx, op: 1)])
 
 
@@ -67,7 +67,7 @@ def test_a_scope_is_replaced_in_place_by_what_it_stands_for():
 
 
 def test_a_kind_that_folds_without_a_line_for_the_group_is_refused():
-    reg = ok.registry([ok.OpKind('x', ('a', 'b'), compact_each=('id',))])
+    reg = ok.registry([ok.OpKind('x', ('a', 'b'), replaces=None, compact_each=('id',))])
     with pytest.raises(ValueError, match='no line'):
         ok.compact_spec(reg)
 
@@ -85,9 +85,9 @@ def test_a_plan_refuses_before_a_pass_runs_what_no_pass_would_apply():
     """The three ways an op reaches the executor and is written as nothing at
     all, under an operation label saying it was applied."""
     reg = ok.registry([
-        ok.OpKind('now', ('change', 'changes'), apply=lambda ctx, op: 1),
-        ok.OpKind('later', ('change', 'changes'), stage='second', apply=lambda ctx, op: 1),
-        ok.OpKind('never', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE,
+        ok.OpKind('now', ('change', 'changes'), replaces=None, apply=lambda ctx, op: 1),
+        ok.OpKind('later', ('change', 'changes'), replaces=None, stage='second', apply=lambda ctx, op: 1),
+        ok.OpKind('never', ('sweep', 'sweeps'), replaces=None, stage=ok.RESOLVED, shape=ok.SCOPE,
                   resolve=lambda ctx, op: []),
     ])
     stages = (ok.BATCH, 'second')
@@ -129,7 +129,7 @@ def test_the_summary_counts_by_the_noun_the_user_reads():
 
 
 def test_a_kind_may_count_as_something_other_than_its_own_noun():
-    reg = ok.registry([ok.OpKind('set_value', ('value', 'values'),
+    reg = ok.registry([ok.OpKind('set_value', ('value', 'values'), replaces=None,
                                  summary=lambda op, n: [(('cleared value', 'cleared values'), n)]
                                  if not op.get('value') else [(('value', 'values'), n)])])
     assert ok.summarize(reg, [{'kind': 'set_value'}]) == '1 cleared value'
@@ -148,7 +148,7 @@ def test_a_noun_that_collides_with_what_rides_beside_the_counts_is_refused():
     would be overwritten by that list, and found by whoever added the kind
     rather than by the code."""
     with pytest.raises(ValueError, match='dropped changes'):
-        ok.registry([ok.OpKind('set_note', ('note', 'notes'))])
+        ok.registry([ok.OpKind('set_note', ('note', 'notes'), replaces=None)])
 
 
 def _doom_reg(calls):
@@ -156,9 +156,9 @@ def _doom_reg(calls):
         calls.append(op)
         return op.get('gone') or ()
     return ok.registry([
-        ok.OpKind('set_value', ('value', 'values'), token_keys=('id',)),
-        ok.OpKind('drop_it', ('removal', 'removals'), token_keys=('id',), deletes=deletes),
-        ok.OpKind('guess_drop', ('guess', 'guesses'), token_keys=('id',),
+        ok.OpKind('set_value', ('value', 'values'), replaces=None, token_keys=('id',)),
+        ok.OpKind('drop_it', ('removal', 'removals'), replaces=None, token_keys=('id',), deletes=deletes),
+        ok.OpKind('guess_drop', ('guess', 'guesses'), replaces=None, token_keys=('id',),
                   deletes_tokens=lambda op: op.get('gone') or (), certain=False),
     ])
 
