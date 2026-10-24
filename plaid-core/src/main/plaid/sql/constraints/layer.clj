@@ -1319,12 +1319,15 @@
   :metadata}`, keep's first and then in the join's order, and `joined`, the
   value it now holds. A person's value in the join (anything but an
   unverified machine value) makes it that person's: the first such input's
-  keys. Unverified machine values alone keep the first input's keys. Either
-  way provProb, the producer's probability for the value it gave, goes when
-  `joined` is not that value (the R5 rule)."
+  keys. Unverified machine values alone keep the first one's keys, so a blank
+  kept span gives its empty stamp to no machine value. Either way provProb,
+  the producer's probability for the value it gave, goes when `joined` is not
+  that value (the R5 rule)."
   [inputs joined]
   (let [held (filter #(and (string? (:value %)) (not (js-blank? (:value %)))) inputs)
-        from (or (first (remove (comp machine-unverified? :metadata) held)) (first inputs))
+        from (or (first (remove (comp machine-unverified? :metadata) held))
+                 (first held)
+                 (first inputs))
         prov (select-keys (:metadata from) provenance-keys)]
     (cond-> prov (not= joined (:value from)) (dissoc "provProb"))))
 

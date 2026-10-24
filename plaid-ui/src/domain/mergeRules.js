@@ -35,12 +35,13 @@ export const valueSetsAllow = (layer, value) =>
  * in the join's order, and `joined` the value it now holds. A person's value
  * in the join (anything but an unverified machine value) makes it that
  * person's, the first such input's provenance keys. Unverified machine values
- * alone keep the kept one's. Either way the producer's probability goes when
+ * alone keep the first one's, so a blank kept span gives its empty stamp to
+ * no machine value. Either way the producer's probability goes when
  * the value held is not the one it weighed. The kept span's other keys stay.
  */
 const joinedMetadata = (inputs, joined) => {
   const held = inputs.filter((s) => typeof s.value === 'string' && s.value.trim() !== '');
-  const from = held.find((s) => !isMachine(s.metadata)) ?? inputs[0];
+  const from = held.find((s) => !isMachine(s.metadata)) ?? held[0] ?? inputs[0];
   const keepProb = joined === from.value;
   const out = { ...(inputs[0].metadata || {}) };
   for (const k of PROVENANCE_KEYS) {

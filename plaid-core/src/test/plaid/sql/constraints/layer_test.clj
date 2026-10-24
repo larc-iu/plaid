@@ -584,7 +584,16 @@
         (stamp! (span "sat") (assoc machine "provProb" 0.9))
         (merge! s "cat" "sat")
         (is (= "cat | sat" (span-value (span "cat"))))
-        (is (= (dissoc machine "provProb") (span-metadata (span "cat"))))))))
+        (is (= (dissoc machine "provProb") (span-metadata (span "cat"))))))
+    (testing "a blank kept span and a machine value: the machine's, as it gave it"
+      ;; REV-R4-TOKENS T2: the blank span's empty stamp read as a person's.
+      (let [{:keys [lemma span] :as s} (setup!)]
+        (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span"}]))
+        (assert-status 200 (call :patch (str "/api/v1/spans/" (span "cat")) {:value ""}))
+        (stamp! (span "sat") machine)
+        (merge! s "cat" "sat")
+        (is (= "sat" (span-value (span "cat"))))
+        (is (= machine (span-metadata (span "cat"))))))))
 
 (deftest single-span-join-respects-a-value-set
   (let [{:keys [lemma tok] :as s} (setup!)]

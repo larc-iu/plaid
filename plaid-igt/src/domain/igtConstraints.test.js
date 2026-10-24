@@ -220,6 +220,14 @@ describe('the screen after a word merge', () => {
     // Machine and machine stay machine, with no provProb for the joined value.
     const { provProb: _p, ...rest } = machine(0.4);
     expect(join(machine(0.4), machine(0.9)).metadata).toEqual(rest);
+    // A blank kept span and a machine value: the machine's, as it gave it
+    // (REV-R4-TOKENS T2), not the blank span's empty stamp.
+    const blank = info([
+      { id: 'b', tokens: ['w-1'], value: '', metadata: {} },
+      { id: 'c', tokens: ['w-1'], value: 'y', metadata: machine(0.4) },
+    ]);
+    applyMergeRules(blank, {}, 'w-1', new Map([['c', 4]]), own);
+    expect(blank.spanLayers.word[0].spans[0]).toMatchObject({ value: 'y', metadata: machine(0.4) });
   });
 
   it('keeps the smallest id when the survivor had none, and a value its closed tagset refuses stays unjoined', () => {
