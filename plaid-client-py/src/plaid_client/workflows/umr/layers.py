@@ -140,7 +140,7 @@ def gloss_layers_of(sentence_layer, word_layer, morpheme_layer) -> List[GlossLay
             declared = str(igt.get('scope') or '').lower()
             out.append(GlossLayer(
                 id=layer['id'], name=layer.get('name') or '',
-                scope='word' if declared == 'token' else (declared or default_scope),
+                scope=declared or default_scope,
                 lang=igt.get('lang') or None, layer=layer))
     return out
 

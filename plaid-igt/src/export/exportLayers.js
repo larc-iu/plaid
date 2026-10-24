@@ -44,7 +44,7 @@ export function discoverExportLayers(project) {
     for (const sl of tl.spanLayers || []) {
       const scope = readScope(sl.config);
       const lang = readFieldLang(sl.config);
-      if (scope && lang) fieldLangs[`${scope === 'Token' ? 'Word' : scope}:${sl.name}`] = lang;
+      if (scope && lang) fieldLangs[`${scope}:${sl.name}`] = lang;
     }
   }
 
@@ -53,7 +53,7 @@ export function discoverExportLayers(project) {
     orthographies: (readOrthographies(wordLayer?.config) || [])
       .map((o) => o?.name)
       .filter((n) => typeof n === 'string' && n !== ''),
-    wordFields: names(wordLayer, ['Word', 'Token']),
+    wordFields: names(wordLayer, ['Word']),
     morphFields: names(morphemeLayer, ['Morpheme']),
     sentFields: names(sentenceLayer, ['Sentence']),
     hasMorphemes: !!morphemeLayer,

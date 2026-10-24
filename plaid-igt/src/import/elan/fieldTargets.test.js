@@ -33,7 +33,7 @@ const PROJECT = {
           config: { ...role('word'), igt: { orthographies: [{ name: 'IPA' }] } },
           spanLayers: [
             { id: 'f3', name: 'Gloss', config: scoped('Word') },
-            { id: 'f4', name: 'POS', config: scoped('Token') }, // the older spelling
+            { id: 'f4', name: 'POS', config: scoped('Word') },
           ],
         },
         { id: 'morph', config: role('morpheme'), spanLayers: [] },
@@ -44,7 +44,7 @@ const PROJECT = {
 };
 
 describe('existingFields', () => {
-  it('collects the project’s fields by scope, counting Token as Word', () => {
+  it('collects the project’s fields by scope', () => {
     expect(existingFields(PROJECT)).toEqual({
       Sentence: [
         { name: 'Translation', id: 'f1' },

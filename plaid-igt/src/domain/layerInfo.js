@@ -32,8 +32,7 @@ export function getIgtLayerInfo(raw) {
 
   const spanLayers = { word: [], morpheme: [], sentence: [] };
   (primaryTokenLayer?.spanLayers || []).forEach((sl) => {
-    const scope = readScope(sl.config);
-    if (scope === 'Token' || scope === 'Word') spanLayers.word.push(sl);
+    if (readScope(sl.config) === 'Word') spanLayers.word.push(sl);
   });
   (morphemeTokenLayer?.spanLayers || []).forEach((sl) => {
     if (readScope(sl.config) === 'Morpheme') spanLayers.morpheme.push(sl);

@@ -71,8 +71,7 @@ const glossLayersOf = (sentenceLayer, wordLayer, morphemeLayer) => {
       if (layer.config?.[UMR_NAMESPACE]) return;
       const igt = layer.config?.igt || {};
       const declared = String(igt.scope || '').toLowerCase();
-      const s = declared === 'token' ? 'word' : declared || scope;
-      out.push({ layer, scope: s, lang: igt.lang || null });
+      out.push({ layer, scope: declared || scope, lang: igt.lang || null });
     });
   };
   take(sentenceLayer, 'sentence');

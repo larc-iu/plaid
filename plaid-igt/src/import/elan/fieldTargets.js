@@ -39,10 +39,7 @@ export function existingFields(project) {
   for (const tl of textLayer?.tokenLayers || []) {
     for (const sl of tl.spanLayers || []) {
       const scope = readScope(sl.config);
-      // 'Token' is the older spelling of the word scope, and the export layer
-      // discovery already treats the two alike.
-      const key = scope === 'Token' ? 'Word' : scope;
-      if (out[key]) out[key].push({ name: sl.name, id: sl.id });
+      if (out[scope]) out[scope].push({ name: sl.name, id: sl.id });
     }
   }
   return out;

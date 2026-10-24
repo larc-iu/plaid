@@ -21,7 +21,7 @@ const PROJECT = {
           },
           spanLayers: [
             scoped('POS', 'Word'),
-            scoped('Legacy', 'Token'),
+            scoped('Legacy', 'Word'),
             scoped('Stray', 'Morpheme'),
           ],
         },
