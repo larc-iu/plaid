@@ -600,8 +600,11 @@
      (let [token-ids (get-token-ids tx eid)]
        (when (seq token-ids)
          (token/multi-delete! tx token-ids))
-       (metadata/delete-metadata! tx "text" eid)
+       ;; The row first (recording a lazily imported text whole, with its
+       ;; metadata), then its metadata, swept unaudited like every other
+       ;; parent's (plaid.sql.metadata's parent-owned :delete contract).
        (crud/delete-by-id! tx :texts eid)
+       (crud/delete-entity-metadata! tx "text" [eid])
        eid))))
 
 ;; ============================================================

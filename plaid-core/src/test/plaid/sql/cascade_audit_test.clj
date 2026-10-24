@@ -204,3 +204,29 @@
       (is (empty? (psc/q db {:select [:*] :from [:entity_metadata]
                              :where [:and [:= :entity_type "document"]
                                      [:= :entity_id (str doc)]]}))))))
+
+(deftest text-delete-writes-no-metadata-row
+  (testing "deleting a text that has metadata writes its :delete row and no
+            :update row clearing the metadata, and the metadata rows are gone"
+    (let [proj (create-test-project admin-request "TextDeleteMetaProj")
+          doc  (create-test-document admin-request proj "TextDeleteMetaDoc")
+          tl   (-> (create-text-layer admin-request proj "TDMTL") :body :id)
+          text (-> (create-text admin-request tl doc "hello") :body :id)
+          _    (is (= 200 (:status (api-call admin-request {:method :put
+                                                            :path (str "/api/v1/texts/" text "/metadata")
+                                                            :body {"genre" "story"}}))))
+          _    (is (= 204 (:status (api-call admin-request {:method :delete
+                                                            :path (str "/api/v1/texts/" text)}))))
+          op   (psc/q1 db {:select [:*] :from [:operations]
+                           :where [:= :op_type "text/delete"]
+                           :order-by [[:ts :desc]] :limit 1})
+          text-writes (psc/q db {:select [:change_type] :from [:audit_writes]
+                                 :where [:and
+                                         [:= :op_id (:id op)]
+                                         [:= :target_table "texts"]
+                                         [:= :target_id (str text)]]
+                                 :order-by [:seq]})]
+      (is (= ["delete"] (mapv :change_type text-writes)))
+      (is (empty? (psc/q db {:select [:*] :from [:entity_metadata]
+                             :where [:and [:= :entity_type "text"]
+                                     [:= :entity_id (str text)]]}))))))
