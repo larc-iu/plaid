@@ -12,8 +12,9 @@
 // document read. Nothing in here goes through `client.withOperation`.
 
 import { clipText } from '../lib/text.js';
-import { isIdTaken, isUnknownOutcome } from '../lib/errors.js';
+import { isIdTaken, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import { isPendingId, newId, recordSettled } from './pendingIds.js';
+import { WriteQueue } from './WriteQueue.js';
 
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
 // order so a locally-inserted comment and a re-fetched page agree.
@@ -106,8 +107,14 @@ export class CommentStore {
     this._loaded = false;
     this._error = '';
     this._version = 0;
-    // Posts, edits and deletes on their way to the server.
-    this._writing = 0;
+    // Posts, edits and deletes on their way to the server, one at a time in
+    // the order they were made, as every other optimistic write is sent. A
+    // send whose answer was lost goes again until it is answered, while a
+    // screen shows this store (`_resend`).
+    this._writes = new WriteQueue({
+      onSavingChange: () => this._emit(),
+      onOfflineChange: () => this._emit(),
+    });
     this._bodyMax = COMMENT_BODY_MAX_FALLBACK;
     this._listeners = new Set();
 
@@ -168,19 +175,41 @@ export class CommentStore {
   /** True while a post, edit or delete is on its way. With `subscribe`, the
    * shape `useSavingGuard` watches, so closing the tab asks first. */
   get isSaving() {
-    return this._writing > 0;
+    return this._writes.isSaving;
   }
 
-  // Run one write, counted in `isSaving`. Emits when it starts and ends.
-  async _write(fn) {
-    this._writing += 1;
-    this._emit();
-    try {
-      return await fn();
-    } finally {
-      this._writing -= 1;
-      this._emit();
-    }
+  /** True while a write waits for the server to answer again. */
+  get isOffline() {
+    return this._writes.isOffline;
+  }
+
+  // Queue one write. `send` is the request, `landed(answer)` what becomes of
+  // the store when it lands and `refused(err)` when it is refused. Resolves
+  // to what either returns.
+  //
+  // No answer came, even after the client's own resends: the write stays on
+  // screen as sending and goes again, after a back-off or at once when the
+  // browser says it is back online, for as long as a screen shows this store.
+  // A post names its comment's id, so one that had landed is answered
+  // `id-taken`. An edit sends the same body again, and a delete that had
+  // landed is answered 404. With no screen showing the store, nothing waits:
+  // the write is refused (H10, left on purpose).
+  _queue(send, landed, refused) {
+    let outcome;
+    return this._writes
+      .push(
+        async () => {
+          outcome = landed(await send());
+        },
+        {
+          shown: false,
+          resendWhenBack: (err) => isUnknownOutcome(err) && this._listeners.size > 0,
+          refused: async (err) => {
+            outcome = await refused(err);
+          },
+        },
+      )
+      .then(() => outcome);
   }
 
   /** How many comments the document has in total. O(1) — the tab badge reads
@@ -387,10 +416,10 @@ export class CommentStore {
   post(entityType, entityId, body, anchorLabel = null) {
     const text = String(body ?? '').trim();
     if (!text) return Promise.resolve(null);
-    return this._write(() => this._post(entityType, entityId, text, anchorLabel));
+    return this._post(entityType, entityId, text, anchorLabel);
   }
 
-  async _post(entityType, entityId, text, anchorLabel) {
+  _post(entityType, entityId, text, anchorLabel) {
     // The server's ceiling is 200 code points. A UTF-16 slice could cut an
     // emoji in half, and the server refuses the lone surrogate that leaves.
     const caption = clipText(String(anchorLabel ?? '').trim(), 200).trim() || null;
@@ -415,57 +444,37 @@ export class CommentStore {
     this._insert(optimistic);
     this._emit();
 
-    const send = () =>
-      this._client.comments.create(
-        entityType,
-        entityId,
-        text,
-        caption ? { anchorLabel: caption, id } : { id },
-      );
-    let err;
-    for (let attempt = 0; ; attempt += 1) {
+    // A post sent again after its answer was lost and answered `id-taken`:
+    // that post landed, and it is the comment.
+    const send = async () => {
       try {
-        return this._posted(said, id, await send());
-      } catch (e) {
-        err = e;
+        return await this._client.comments.create(
+          entityType,
+          entityId,
+          text,
+          caption ? { anchorLabel: caption, id } : { id },
+        );
+      } catch (err) {
+        if (isUnknownOutcome(err)) this._unconfirmed.set(said, id);
+        if (!isIdTaken(err)) throw err;
+        try {
+          return await this._client.comments.get(id);
+        } catch (readErr) {
+          console.error('Could not read a comment that was posted already:', readErr);
+          throw err;
+        }
       }
-      // No answer came even after the client's own resends. The comment stays
-      // on screen as sending, and the same post goes again under the same id
-      // once the server can be reached (the `online` event, or a back-off), as
-      // every other write does, for as long as a screen shows this store. A
-      // post that had landed is then answered `id-taken`.
-      if (!isUnknownOutcome(err)) break;
-      this._unconfirmed.set(said, id);
-      if (!(await this._whenReachable(attempt))) break;
-    }
-    this._forget(id);
-    // The same words posted before under this id, whose answer was lost: that
-    // post landed, and it is the comment.
-    if (isIdTaken(err)) {
-      try {
-        return this._posted(said, id, await this._client.comments.get(id));
-      } catch (readErr) {
-        console.error('Could not read a comment that was posted already:', readErr);
-      }
-    }
-    this._fail('Failed to post comment', err);
-    this._emit();
-    return null;
-  }
-
-  // Waits for the `online` event or the back-off of try `attempt`, whichever
-  // comes first. False when no screen shows this store any more.
-  async _whenReachable(attempt) {
-    await new Promise((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        globalThis.removeEventListener?.('online', done);
-        resolve();
-      };
-      const timer = setTimeout(done, Math.min(2000 * 2 ** attempt, 30000));
-      globalThis.addEventListener?.('online', done);
-    });
-    return this._listeners.size > 0;
+    };
+    return this._queue(
+      send,
+      (created) => this._posted(said, id, created),
+      (err) => {
+        this._forget(id);
+        this._fail('Failed to post comment', err);
+        this._emit();
+        return null;
+      },
+    );
   }
 
   // The server's row for a post, in place of the one shown while it went.
@@ -515,47 +524,48 @@ export class CommentStore {
     const text = String(body ?? '').trim();
     if (!existing || !text) return false;
     if (text === existing.body) return true;
-    return this._write(() => this._edit(existing, commentId, text));
-  }
-
-  async _edit(existing, commentId, text) {
     const before = { ...existing };
     Object.assign(existing, { body: text, edited: true });
     this._emit();
-
-    try {
-      const updated = await this._client.comments.update(commentId, text);
-      Object.assign(existing, updated);
-      this._emit();
-      return true;
-    } catch (err) {
-      Object.assign(existing, before);
-      this._fail('Failed to edit comment', err);
-      this._emit();
-      return false;
-    }
+    return this._queue(
+      () => this._client.comments.update(commentId, text),
+      (updated) => {
+        Object.assign(existing, updated);
+        this._emit();
+        return true;
+      },
+      (err) => {
+        Object.assign(existing, before);
+        this._fail('Failed to edit comment', err);
+        this._emit();
+        return false;
+      },
+    );
   }
 
   /** Delete a comment. The author may delete their own, a maintainer any. */
   async remove(commentId) {
     const removed = this._forget(commentId);
     if (!removed) return false;
-    return this._write(() => this._remove(commentId, removed));
-  }
-
-  async _remove(commentId, removed) {
-    try {
-      await this._client.comments.delete(commentId);
-      return true;
-    } catch (err) {
-      // Put it back where it was rather than dropping the user's words on a
-      // transient failure.
-      this._insert(removed);
-      this._byEntity.get(removed.entityId)?.sort(byCreated);
-      this._fail('Failed to delete comment', err);
-      this._emit();
-      return false;
-    }
+    this._emit();
+    // A 404 is a comment already gone: a delete sent again after its answer
+    // was lost, or one someone else made first.
+    const send = () =>
+      this._client.comments.delete(commentId).catch((err) => {
+        if (statusOf(err) !== 404) throw err;
+      });
+    return this._queue(
+      send,
+      () => true,
+      (err) => {
+        // Put it back where it was rather than dropping the user's words.
+        this._insert(removed);
+        this._byEntity.get(removed.entityId)?.sort(byCreated);
+        this._fail('Failed to delete comment', err);
+        this._emit();
+        return false;
+      },
+    );
   }
 
   // ============================================================
@@ -648,7 +658,7 @@ export class CommentStore {
         ? await this._client.comments.listInVocab(this._vocabId)
         : await this._client.comments.list(this._projectId, { documentId: this._documentId });
       const pending = [...this._byId.values()].filter(isPending);
-      if (this._writing > pending.length) return;
+      if (this._writes.queued > pending.length) return;
       this._index([...all, ...pending]);
       this._emit();
       this._authorsPromise = this._resolveAuthors();

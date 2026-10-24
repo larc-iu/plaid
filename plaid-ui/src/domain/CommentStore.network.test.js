@@ -202,6 +202,88 @@ describe('a post whose answer was lost', () => {
   });
 });
 
+// A3-3: an edit or a delete whose answer was lost was rolled back and
+// toasted after the client's own resends, though it may have landed. They go
+// again until answered, as a post does, and in the order they were made.
+describe('an edit or a delete whose answer was lost', () => {
+  const withComment = async () => {
+    const client = fakeClient();
+    client.state.rows.push(row({ id: 'c1', body: 'before' }));
+    client.comments.update = vi.fn(async (id, body) => {
+      const r = client.state.rows.find((x) => x.id === id);
+      if (!r) throw Object.assign(new Error('HTTP 404'), { status: 404 });
+      Object.assign(r, { body, edited: true });
+      return { ...r };
+    });
+    client.comments.delete = vi.fn(async (id) => {
+      const i = client.state.rows.findIndex((x) => x.id === id);
+      if (i < 0) throw Object.assign(new Error('HTTP 404'), { status: 404 });
+      client.state.rows.splice(i, 1);
+    });
+    const { store, errors } = open(client);
+    store.subscribe(() => {});
+    await store.load();
+    return { client, store, errors };
+  };
+  // The first send lands and its answer is lost.
+  const loseFirstAnswer = (fn) => {
+    let first = true;
+    return vi.fn(async (...args) => {
+      const answer = await fn(...args);
+      if (!first) return answer;
+      first = false;
+      throw lost(0)();
+    });
+  };
+
+  it('an edit is sent again, and not rolled back', async () => {
+    vi.useFakeTimers();
+    const { client, store, errors } = await withComment();
+    client.comments.update = loseFirstAnswer(client.comments.update);
+    const editing = store.edit('c1', 'after');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.threadFor('t1')[0].body).toBe('after');
+    expect(store.isSaving).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await editing).toBe(true);
+    expect(client.comments.update).toHaveBeenCalledTimes(2);
+    expect(store.threadFor('t1')[0].body).toBe('after');
+    expect(errors).toEqual([]);
+    expect(store.isSaving).toBe(false);
+  });
+
+  it('a delete is sent again, and a 404 then is the delete landed', async () => {
+    vi.useFakeTimers();
+    const { client, store, errors } = await withComment();
+    client.comments.delete = loseFirstAnswer(client.comments.delete);
+    const removing = store.remove('c1');
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await removing).toBe(true);
+    expect(client.comments.delete).toHaveBeenCalledTimes(2);
+    expect(store.threadFor('t1')).toEqual([]);
+    expect(client.state.rows).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  it('a write waits for the one before it', async () => {
+    const { client, store } = await withComment();
+    let release;
+    const update = client.comments.update;
+    client.comments.update = vi.fn(async (...args) => {
+      await new Promise((r) => (release = r));
+      return update(...args);
+    });
+    const editing = store.edit('c1', 'after');
+    const removing = store.remove('c1');
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(client.comments.delete).not.toHaveBeenCalled();
+    release();
+    expect(await editing).toBe(true);
+    expect(await removing).toBe(true);
+    expect(client.comments.delete).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('opening the live stream', () => {
   it('reads in what was said while no stream was open', async () => {
     const client = fakeClient();

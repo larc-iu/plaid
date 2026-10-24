@@ -211,6 +211,8 @@ describe('CommentStore writes', () => {
       false,
     );
 
+    // The send goes out in its turn, a moment later.
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'));
     resolve();
     await posting;
 
@@ -303,6 +305,7 @@ describe('CommentStore writes', () => {
     );
     const posted = store.post('token', 't1', 'hello');
     expect(store.isSaving).toBe(true);
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
     release();
     expect(await posted).toBeNull();
     expect(store.isSaving).toBe(false);
