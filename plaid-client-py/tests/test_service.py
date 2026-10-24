@@ -1457,6 +1457,9 @@ def test_a_registration_that_ended_itself_is_served_again_once_access_returns(ca
     out = capsys.readouterr().out
     assert 'Stopped serving project One (p1): HTTP 403.' in out
     assert 'lacks write access' not in out
+    # A reason that ends a sentence of its own gets no second full stop.
+    svc._on_channel_status('stopped', 'p1', 'HTTP 403: An admin can release it.')
+    assert capsys.readouterr().out.strip().endswith('An admin can release it.')
     assert svc._registrations_by_project == {}
 
     state['fail'] = False

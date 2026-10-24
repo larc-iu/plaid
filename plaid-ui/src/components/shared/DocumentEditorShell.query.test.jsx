@@ -126,7 +126,6 @@ const app = (over = {}) => ({
     past: ['baseline', 'analyze', 'details'],
     query: {
       fallback: 'baseline',
-      aliases: { metadata: 'details' },
       landing: (doc) => (doc.sentences.some((s) => s.tokens.length) ? 'analyze' : null),
     },
   },
@@ -198,13 +197,6 @@ describe('a document whose tab is in the query', () => {
     await view.step(() => seen.goToTab('analyze'));
     await view.step(() => seen.goToTab('baseline'));
     expect(seen.search).toBe('?tab=baseline');
-    await view.unmount();
-  });
-
-  it('opens a tab by an old name, and says the new one', async () => {
-    await mount(['/p/p1/d/d1?tab=metadata']);
-    expect(body()).toBe('details');
-    expect(seen.search).toBe('?tab=details');
     await view.unmount();
   });
 

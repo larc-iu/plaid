@@ -74,7 +74,7 @@ import { cn } from '../../lib/utils.js';
 //   the document at a past state (the others edit it or hang live threads on
 //   it, so while a history entry is open they say they are not shown).
 //   `long` are those that slow down with the document's length. `query`,
-//   when set, keeps the tab in `?tab=`: `{ fallback, aliases, landing(doc) }`,
+//   when set, keeps the tab in `?tab=`: `{ fallback, landing(doc) }`,
 //   where `landing` names the tab a document opens on when the address names
 //   none (or nothing, to stay on the fallback). Every tab writes itself there,
 //   the fallback included, since a bare address means "no tab chosen".
@@ -148,7 +148,7 @@ const DocumentEditor = ({ app, documentClient }) => {
   const [queryTab, setQueryTab, queryHref] = useTabParam(
     tabValues,
     query?.fallback ?? tabValues[0],
-    { writeFallback: true, aliases: query?.aliases, ready: !!query },
+    { writeFallback: true, ready: !!query },
   );
   const tab = query ? queryTab : tabOf(pathname);
   const base = app.documentPath(projectId, documentId);

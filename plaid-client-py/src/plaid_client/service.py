@@ -553,8 +553,9 @@ class BaseService(ABC):
                           f"{len(self._registrations_by_project)} project(s) again.")
             elif event == 'stopped':
                 self._disconnected_projects.discard(project_id)
+                reason = str(detail).removesuffix('.')
                 print(f"  Stopped serving project {self._project_label(project_id)}: "
-                      f"{detail}.")
+                      f"{reason}.")
 
     def register_service(self, project_id: str):
         """Open the inbound request channel on one project (which registers the

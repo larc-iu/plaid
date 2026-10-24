@@ -71,25 +71,31 @@
                             [:= :project_id project-id]
                             [:= :service_id service-id]]}))
 
-(defn claim!
-  "Claim `service-id` on the project for `user-id` unless an account holds it
-  already, and answer the account that holds it now: `user-id` when the claim
-  was taken or was theirs, another account's id otherwise. One statement, so
-  two first registrations racing each other cannot both win. Unaudited, as
-  the seen rows are."
-  [db project-id service-id user-id]
-  (psc/execute! db {:insert-into :service_claims
-                    :values [{:project_id project-id
-                              :service_id service-id
-                              :user_id user-id
-                              :claimed_at (psc/now-iso)}]
-                    :on-conflict [:project_id :service_id]
-                    :do-nothing []})
+(defn- claim-holder [db project-id service-id]
   (:user_id (psc/q1 db {:select [:user_id]
                         :from :service_claims
                         :where [:and
                                 [:= :project_id project-id]
                                 [:= :service_id service-id]]})))
+
+(defn claim!
+  "Claim `service-id` on the project for `user-id` unless an account holds it
+  already, and answer the account that holds it now: `user-id` when the claim
+  was taken or was theirs, another account's id otherwise. A held claim is
+  only read, since every channel open claims and an INSERT takes SQLite's
+  write lock even when it inserts nothing. A missing one is inserted with ON
+  CONFLICT DO NOTHING and read again, so two first registrations racing each
+  other cannot both win. Unaudited, as the seen rows are."
+  [db project-id service-id user-id]
+  (or (claim-holder db project-id service-id)
+      (do (psc/execute! db {:insert-into :service_claims
+                            :values [{:project_id project-id
+                                      :service_id service-id
+                                      :user_id user-id
+                                      :claimed_at (psc/now-iso)}]
+                            :on-conflict [:project_id :service_id]
+                            :do-nothing []})
+          (claim-holder db project-id service-id))))
 
 (defn release!
   "Drop the claim on `service-id`, so the next account to open a channel for

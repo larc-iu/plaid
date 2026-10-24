@@ -15,6 +15,7 @@
                      with-test-users with-clean-db api-call
                      admin-request user2-request]]
             [plaid.server.events :as events]
+            [plaid.sql.common :as psc]
             [plaid.sql.service-registry :as service-registry]
             [org.httpkit.server :as http-kit]))
 
@@ -177,6 +178,19 @@
       (is (= 1 (service-registry/delete-seen! fix/db pid "svc")))
       (is (= 0 (service-registry/delete-seen! fix/db pid "svc")))
       (is (empty? (service-registry/list-seen fix/db pid))))))
+
+(deftest a-held-claim-is-read-without-a-write
+  ;; Every channel open claims, so a claim already held must not take
+  ;; SQLite's write lock: only a missing claim is inserted.
+  (let [pid (create-project!)]
+    (is (= "admin@example.com" (service-registry/claim! fix/db pid "svc" "admin@example.com")))
+    (let [writes (atom 0)
+          execute! psc/execute!]
+      (with-redefs [psc/execute! (fn [& args] (swap! writes inc) (apply execute! args))]
+        (is (= "admin@example.com" (service-registry/claim! fix/db pid "svc" "admin@example.com")))
+        (is (= "admin@example.com" (service-registry/claim! fix/db pid "svc" "user2@example.com"))
+            "another account is answered the holder"))
+      (is (= 0 @writes)))))
 
 (deftest merged-discovery
   (events/reset-state!)
