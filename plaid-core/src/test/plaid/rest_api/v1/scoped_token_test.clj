@@ -271,3 +271,59 @@
     (testing "the user's own session still relabels both"
       (is (= 200 (:status (relabel admin-request mine))))
       (is (= 200 (:status (relabel admin-request by-session)))))))
+
+(defn- words-layer!
+  "A token layer in project `pid` with one text and one token over \"hello\"."
+  [pid]
+  (let [doc (h/create-test-document admin-request pid "words")
+        tl (id (h/create-text-layer admin-request pid "TL"))
+        tkl (id (h/create-token-layer admin-request tl "Words"))
+        text (id (h/create-text admin-request tl doc "hello"))]
+    (fix/assert-created (h/create-token admin-request tkl text 0 5))
+    tkl))
+
+(deftest token-counts-reach-only-layers-in-scope
+  ;; C1-3: the route borrowed the query's check, which let a body that does not
+  ;; parse as a query through, and passed one naming an in-scope project, while
+  ;; the counts read every project the user can read.
+  (let [{:keys [p q]} (world!)
+        layer-p (words-layer! p)
+        layer-q (words-layer! q)
+        token (scoped "user2@example.com" p)
+        counts (fn [body] (call token :post "/api/v1/query/token-counts" body))]
+    (testing "a layer of a project outside the scope is refused"
+      (doseq [body [{:layers [(str layer-q)] :value {:regex "h"}}
+                    {:layers [(str layer-q)] :value {:regex "h"} :find 1}
+                    {:layers [(str layer-q)] :value {:regex "h"} :scope {:project-ids [(str p)]}}
+                    {:layers [(str layer-p) (str layer-q)] :value {:regex "h"}}
+                    {:layers [(str (random-uuid))] :value {:regex "h"}}
+                    {:value {:regex "h"}}
+                    "not a map"]]
+        (testing (pr-str body)
+          (is (= 403 (:status (counts body)))))))
+    (testing "a layer in scope is counted"
+      (let [resp (counts {:layers [(str layer-p)] :value {:regex "h"}})]
+        (is (= 200 (:status resp)))
+        (is (= [1] (mapv #(nth % 2) (-> resp :body :results))))))
+    (testing "the user's own session still counts both"
+      (is (= 2 (count (-> (call fix/user2-request :post "/api/v1/query/token-counts"
+                                {:layers [(str layer-p) (str layer-q)] :value {:regex "h"}})
+                          :body :results)))))))
+
+(deftest the-query-check-refuses-a-body-that-does-not-parse
+  ;; A body the parser refuses used to pass the check "for the route to answer
+  ;; as it answers anyone", so any route that borrowed the check was open to
+  ;; such a body. It is refused at the check now, with the parser's 400.
+  (let [p (random-uuid)
+        scope {:user-id "u" :projects #{(str p)} :passed (volatile! false)}
+        check (fn [body] (auth/query-token-scope {:parameters {:body body}} scope))]
+    (doseq [body [{:find 1 :scope {:project-ids [(str p)]}}
+                  {:layers ["x"] :value {:regex "h"}}
+                  "not a map"
+                  nil]]
+      (testing (pr-str body)
+        (let [resp (check body)]
+          (is (some? resp))
+          (is (#{400 403} (:status resp))))))
+    (testing "a query that parses and names its projects passes"
+      (is (nil? (check {:find ["?d"] :where [["document" "?d" {}]] :scope {:project-ids [(str p)]}}))))))

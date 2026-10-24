@@ -576,13 +576,37 @@
   projects (`:scope {:project-ids [...]}`) and every one of them must be in
   scope. The query then reads only those, since the executor intersects the
   named projects with what the user can read. A body that does not parse is
-  let through, for the route to answer as it answers anyone."
+  refused here, with the parser's 400 when it gives one, so the check never
+  lets through a body it could not read (C1-3)."
   [request scope]
   (let [parsed (try (ast/parse (-> request :parameters :body))
-                    (catch Exception _ ::unparsed))]
-    (when-not (or (= parsed ::unparsed)
-                  (let [ids (-> parsed :scope :project-ids)]
-                    (and (seq ids) (every? #(in-scope? scope %) ids))))
+                    (catch clojure.lang.ExceptionInfo e
+                      (if (= 400 (:code (ex-data e)))
+                        {::refusal {:status 400 :body {:error (ex-message e)}}}
+                        {::refusal scope-refusal}))
+                    (catch Throwable _ {::refusal scope-refusal}))]
+    (or (::refusal parsed)
+        (let [ids (-> parsed :scope :project-ids)]
+          (when-not (and (seq ids) (every? #(in-scope? scope %) ids))
+            scope-refusal)))))
+
+(defn token-counts-token-scope
+  "`:plaid/token-scope` for `/query/token-counts`: every layer the body's
+  `layers` names must be a token layer of a project in scope. The counts
+  read every project the user can read, so the token's scope is checked
+  here, on the layers themselves (C1-3)."
+  [request scope]
+  (let [layers (let [body (-> request :parameters :body)]
+                 (when (map? body) (:layers body)))
+        ids (when (and (sequential? layers) (every? string? layers))
+              (set (map str/lower-case layers)))
+        projects (when (seq ids)
+                   (into {} (map (juxt (comp str/lower-case str :id) :project_id))
+                         (psc/q (:db request) {:select [:id :project_id]
+                                               :from [:token_layers]
+                                               :where [:in :id (vec ids)]})))]
+    (when-not (and (some? ids)
+                   (every? #(in-scope? scope (get projects %)) ids))
       scope-refusal)))
 
 (defn user-data-token-scope

@@ -10,6 +10,7 @@
   invariant failure, a SQL/DB error) is logged server-side and returned as a
   generic 500 so internal SQL/exception text never leaks to the caller."
   (:require [taoensso.timbre :as log]
+            [plaid.rest-api.v1.auth :as pra]
             [plaid.sql.query.exec :as qe]
             [plaid.sql.token-counts :as token-counts]))
 
@@ -43,7 +44,11 @@
                            (log/error e "Query failed for user" user-id)
                            {:status 500 :body {:error "Internal query error"}})))}}]
    ["/query/token-counts"
-    {:post {:summary (str "Count, per document, the tokens of each given token layer whose surface matches a regex "
+    ;; Its own scope check, in place of the query's that the group above
+    ;; gives: the body is no query, and the counts read every project the
+    ;; user can read, so a scoped token is checked on the layers it names.
+    {:plaid/token-scope pra/token-counts-token-scope
+     :post {:summary (str "Count, per document, the tokens of each given token layer whose surface matches a regex "
                           "(`value`: {regex, flags?}), as a query's :value regex on a token decides. "
                           "Body {layers: [ids], value: {regex}}. Returns {results: [[layerId, documentId, count]]}, "
                           "a document with tokens of the layer and no match counting 0. Layers you cannot read are left out. "
