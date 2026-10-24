@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
-import { cpSlice } from '@larc-iu/plaid-client';
+import { TASKS, cpSlice } from '@larc-iu/plaid-client';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
@@ -15,6 +15,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { TOKEN_ROLE_WORDS } from '@/domain/restoreSummary.js';
+import { transcribeNotice } from './media/transcribeNotice.js';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
@@ -69,6 +70,8 @@ const landing = (doc) => {
 };
 
 const IGT_SHELL = {
+  // A Transcribe rejoined after a reload words its counts as the Media tab does.
+  runNotices: { [TASKS.TRANSCRIBE]: transcribeNotice },
   // The user rides along for the provenance convention: a person whose work
   // the project reviews (plaid.review) is a contributor, whose edits are
   // stamped as such (IgtDocument.contributorId).

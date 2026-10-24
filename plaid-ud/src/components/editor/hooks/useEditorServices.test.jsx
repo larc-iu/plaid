@@ -216,7 +216,8 @@ describe('a parse run that finishes', () => {
     // Not just written first: written with the id of the very request that
     // then went out, which is what a reloaded page rejoins.
     expect(recordAtSend.requestId).toBe(sent[0].requestId);
-    expect(recordAtSend).toMatchObject({ projectId: PROJECT_ID, label: 'Parse' });
+    // With its task, by which a reloaded page words the result's counts.
+    expect(recordAtSend).toMatchObject({ projectId: PROJECT_ID, label: 'Parse', task: 'parse' });
     expect(readRecord()).toBe(null);
     await view.unmount();
   });
@@ -246,7 +247,7 @@ describe('a parse run that finishes', () => {
       {
         kind: 'warning',
         title: 'Nothing to parse',
-        message: 'The parser reported no changes to this document.',
+        message: 'The document has no sentences to parse.',
       },
     ]);
     await view.unmount();

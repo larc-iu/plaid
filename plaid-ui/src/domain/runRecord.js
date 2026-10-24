@@ -49,12 +49,17 @@ export function __resetUnloadingForTests() {
 
 // `multiStep` marks a run the browser was orchestrating (Auto-analyze), where
 // rejoining reaches the step that was in flight and NOT the steps after it.
-export function writeRunRecord(documentId, { requestId, projectId, label, multiStep = false }) {
+// `task` is the run's task (TASKS), by which a rejoined run finds the app's
+// words for its result's counts (useResumedRun).
+export function writeRunRecord(
+  documentId,
+  { requestId, projectId, label, task = null, multiStep = false },
+) {
   if (!documentId || !requestId) return;
   try {
     localStorage.setItem(
       key(documentId),
-      JSON.stringify({ requestId, projectId, label, multiStep, startedAt: Date.now() }),
+      JSON.stringify({ requestId, projectId, label, task, multiStep, startedAt: Date.now() }),
     );
   } catch {
     /* a blocked store only costs the resume */

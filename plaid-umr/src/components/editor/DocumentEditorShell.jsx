@@ -3,6 +3,9 @@ import { UMR_ASSISTANT } from '../assistant/adapter.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
 import { useUmrServices } from './hooks/useUmrServices.js';
 import { TOKEN_ROLE_WORDS, UMR_LAYER_WORDS } from '../../domain/restoreSummary.js';
+import { COMPARE_SPOT, DRAFT_SPOT } from '../../utils/serviceDefaults.js';
+import { draftNotice } from '../../domain/draftNotice.js';
+import { compareNotice } from '../../domain/compareNotice.js';
 
 // Parent route of a document's tabs: plaid-ui's shell, with what is UMR's. The
 // one integration spot, Draft, is the shell's one services instance, so a run
@@ -12,6 +15,8 @@ const UMR_SHELL = {
   loadDocument: async ({ client, projectId, documentId, project, user }) =>
     UmrDocument.load({ client, documentId, projectId, project: await project, user }),
   useServices: useUmrServices,
+  // A Draft or Compare rejoined after a reload words its counts as the spot does.
+  runNotices: { [DRAFT_SPOT.key]: draftNotice, [COMPARE_SPOT.key]: compareNotice },
   assistantApp: UMR_ASSISTANT.app,
   documentPath: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
   // The order is every app's: the work tabs, then Comments, Export, Details.

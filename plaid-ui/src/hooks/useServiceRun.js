@@ -94,7 +94,8 @@ export const useServiceRun = ({
             ...copy,
             // Written down before the request is submitted, so a reload in that
             // window can still find the run.
-            onRequestId: (requestId) => writeRunRecord(doc.id, { requestId, projectId, label }),
+            onRequestId: (requestId) =>
+              writeRunRecord(doc.id, { requestId, projectId, label, task }),
           },
         );
         // Re-reading a large document is seconds of work, so it is named rather
@@ -134,6 +135,7 @@ export const useServiceRun = ({
       timeout,
       args,
       copy,
+      task,
     ],
   );
 

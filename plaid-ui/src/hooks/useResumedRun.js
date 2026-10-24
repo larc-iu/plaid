@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { notifySuccess, notifyWarning, notifyInfo } from '../lib/notify.js';
+import { showRunNotice } from '../lib/runNotice.js';
 import { clearRunRecord, readRunRecord } from '../domain/runRecord.js';
 import { reloadAfterRun } from '../lib/runReload.js';
 import { useServiceRequest } from './useServiceRequest.js';
@@ -14,7 +15,12 @@ import { useServiceRequest } from './useServiceRequest.js';
 //
 // Runs once per opened document. A record that names a request the server no
 // longer knows (404: expired, or finished and collected) is simply forgotten.
-export function useResumedRun(client, doc, acquireWriteLock) {
+//
+// `notices` maps a task (the run record's `task`) to the app's notice
+// function for it, the one the page that started the run passed as `notice`:
+// it words the result's counts, so a rejoined run says what the run would
+// have said on the page that started it (R18).
+export function useResumedRun(client, doc, acquireWriteLock, notices = {}) {
   const { attachToRequest, cancelRequest, progressPercent, progressMessage } =
     useServiceRequest(client);
   const documentId = doc?.id ?? null;
@@ -59,20 +65,14 @@ export function useResumedRun(client, doc, acquireWriteLock) {
             `${record.label} was interrupted. The step that was running finished. The ones after it did not.`,
             record.label,
           );
-        } else if (result?.notice) {
-          // The service's own words, as the page that started the run would
-          // have shown them (useServiceRequest's `succeed`): a run that failed
-          // every item still comes back a success, and only its notice says
-          // so. A sticky one names what failed and stays until dismissed.
-          const { level, title, message, sticky } = result.notice;
-          const say = level === 'success' ? notifySuccess : notifyWarning;
-          say(
-            message || `${record.label} finished.`,
-            title || record.label,
-            ...(sticky === true ? [{ duration: Infinity }] : []),
-          );
         } else {
-          notifySuccess(`${record.label} finished.`, record.label);
+          // The app's words for the counts, as the page that started the run
+          // would have shown them (useServiceRequest's `succeed`): a run that
+          // failed every item still comes back a success, and only the counts
+          // say so. A task the app words nothing for is said to have finished.
+          const notice = record.task ? notices?.[record.task]?.(result) : null;
+          if (notice) showRunNotice(notice);
+          else notifySuccess(`${record.label} finished.`, record.label);
         }
       } catch (error) {
         if (error?.status === 404) {

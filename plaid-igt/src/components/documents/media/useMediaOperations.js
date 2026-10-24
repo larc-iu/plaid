@@ -889,6 +889,7 @@ export const useMediaOperations = () => {
                   requestId,
                   projectId: project.id,
                   label: 'Transcribe',
+                  task: TASKS.TRANSCRIBE,
                 }),
               timeout: TRANSCRIBE_TIMEOUT_MS,
               // The operation opened above, for this run.

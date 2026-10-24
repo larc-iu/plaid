@@ -91,6 +91,9 @@ import { cn } from '../../lib/utils.js';
 //   sentence, and `sentenceHint(sentence, doc)` what the sentence says, where
 //   it has no `text` of its own.
 // - `wordCount(doc)`, optional: the length the long-document notice weighs.
+// - `runNotices`, optional: `{[task]: (result) => notice}`, the app's words
+//   for a run's counts by its task, for a run rejoined after a reload. The
+//   same functions the app's run spots pass as `notice`.
 //
 // `client`, optional, is the one the document is read and written through
 // where the app keeps one per document. The session's otherwise.
@@ -208,7 +211,7 @@ const DocumentEditor = ({ app, documentClient }) => {
   const writeLock = useWriteLock();
   // A run this page did not finish, picked back up: the service kept working
   // while the tab was away, and the result is still waiting.
-  useResumedRun(client, doc, writeLock.acquire);
+  useResumedRun(client, doc, writeLock.acquire, app.runNotices);
 
   // The app's service runs. One instance for the whole shell, so a run started
   // on one tab keeps its lock, its banner and its progress on another.

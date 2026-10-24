@@ -53,15 +53,23 @@ describe('useResumedRun', () => {
     expect(acquire.mock.calls[0][1].startedAt).toBe(startedAt);
   });
 
-  // A run that finished while the page was away says what the service said,
-  // as the run started on this page would: a draft that failed every sentence
-  // must not be announced as finished.
-  const rejoin = async (result) => {
-    writeRunRecord('d1', { requestId: 'r1', projectId: 'p1', label: 'Draft' });
+  // A run that finished while the page was away says what the page that
+  // started it would have said: the app's words for the counts, by the run's
+  // task (R18). A draft that failed every sentence must not be announced as
+  // finished.
+  const drafted = (result) =>
+    result.drafted
+      ? { level: 'success', title: `Drafted ${result.drafted}`, message: '' }
+      : { level: 'warning', title: 'Nothing drafted', message: 'Sentence 1 failed.', sticky: true };
+  const rejoin = async (
+    result,
+    { task = 'draft-graph', notices = { 'draft-graph': drafted } } = {},
+  ) => {
+    writeRunRecord('d1', { requestId: 'r1', projectId: 'p1', label: 'Draft', task });
     attach = () => Promise.resolve(result);
     const lock = { setStatus: vi.fn(), release: vi.fn() };
     const Probe = () => {
-      useResumedRun({}, { id: 'd1', _reload: async () => {} }, () => lock);
+      useResumedRun({}, { id: 'd1', _reload: async () => {} }, () => lock, notices);
       return null;
     };
     const view = await renderComponent(<Probe />);
@@ -70,38 +78,36 @@ describe('useResumedRun', () => {
     expect(lock.release).toHaveBeenCalled();
   };
 
-  it("shows the service's own warning, sticky, in place of the finish", async () => {
-    await rejoin({
-      notice: {
-        level: 'warning',
-        title: 'Nothing drafted',
-        message: 'Sentence 1: the model did not answer.',
-        sticky: true,
-      },
-    });
+  it("words the counts as the task's notice does, a warning sticky", async () => {
+    await rejoin({ drafted: 0, sentencesFailed: [{ sentence: 1, reason: 'x' }] });
     expect(notify.notifySuccess).not.toHaveBeenCalled();
-    expect(notify.notifyWarning).toHaveBeenCalledWith(
-      'Sentence 1: the model did not answer.',
-      'Nothing drafted',
-      { duration: Infinity },
-    );
-  });
-
-  it("shows the service's own success words", async () => {
-    await rejoin({
-      notice: { level: 'success', title: 'Drafted', message: 'Drafted 3 sentences.' },
+    expect(notify.notifyWarning).toHaveBeenCalledWith('Sentence 1 failed.', 'Nothing drafted', {
+      duration: Infinity,
     });
-    expect(notify.notifyWarning).not.toHaveBeenCalled();
-    expect(notify.notifySuccess).toHaveBeenCalledWith('Drafted 3 sentences.', 'Drafted');
   });
 
-  it('says the run finished when the service gave no notice', async () => {
-    await rejoin({});
+  it("words a success as the task's notice does", async () => {
+    await rejoin({ drafted: 3 });
+    expect(notify.notifyWarning).not.toHaveBeenCalled();
+    expect(notify.notifySuccess).toHaveBeenCalledWith(undefined, 'Drafted 3');
+  });
+
+  it('never shows a notice text the result carries', async () => {
+    await rejoin(
+      { notice: { level: 'success', title: 'Drafted', message: 'Drafted 3 sentences.' } },
+      { notices: {} },
+    );
+    expect(notify.notifySuccess).toHaveBeenCalledWith('Draft finished.', 'Draft');
+    expect(notify.notifySuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the run finished for a task the app words nothing for', async () => {
+    await rejoin({ tokensCreated: 4 }, { task: 'tokenize' });
     expect(notify.notifySuccess).toHaveBeenCalledWith('Draft finished.', 'Draft');
   });
 
-  it('says a stopped run stopped, whatever its notice', async () => {
-    await rejoin({ stopped: true, notice: { level: 'warning', message: 'x' } });
+  it('says a stopped run stopped, whatever its counts', async () => {
+    await rejoin({ stopped: true, drafted: 0 });
     expect(notify.notifyInfo).toHaveBeenCalled();
     expect(notify.notifyWarning).not.toHaveBeenCalled();
   });

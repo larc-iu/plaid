@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '../lib/notify.js';
 import { humanizeError } from '../lib/errors.js';
+import { showRunNotice } from '../lib/runNotice.js';
 import { uuidv4 } from '../../../plaid-client-js/src/ids.js';
 
 // One service request, from discovery to result, with the progress contract
@@ -95,9 +96,7 @@ export const useServiceRequest = (client) => {
     // A `sticky` notice stays until dismissed: one that names what failed is
     // the only record of it once the toast is gone.
     const notice = copy.notice?.(result);
-    const sticky = notice?.sticky ? [{ duration: Infinity }] : [];
-    if (notice?.level === 'warning') notifyWarning(notice.message, notice.title, ...sticky);
-    else if (notice) notifySuccess(notice.message, notice.title, ...sticky);
+    if (notice) showRunNotice(notice);
     else notifySuccess(copy.successMessage, copy.successTitle);
   }, []);
 

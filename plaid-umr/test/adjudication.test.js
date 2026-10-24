@@ -181,19 +181,47 @@ test('each side marks what has no counterpart and what differs in concept', () =
 });
 
 test('the notice says the scores and the other document, or warns', () => {
-  assert.deepEqual(compareNotice({ scores: report.scores, against: report.against }), {
-    level: 'success',
-    title: 'Compared with Copy',
-    message: 'Sentence graphs 83%, comprehensive 70%.',
+  assert.deepEqual(
+    compareNotice({
+      scores: report.scores,
+      against: report.against,
+      sentencesScored: 2,
+      sentencesSkipped: 0,
+    }),
+    {
+      level: 'success',
+      title: 'Compared with Copy',
+      message: 'Sentence graphs 83%, comprehensive 70%. Scored 2 sentences.',
+    },
+  );
+  assert.equal(
+    compareNotice({ scores: report.scores, sentencesScored: 1, sentencesSkipped: 1 }).message,
+    'Sentence graphs 83%, comprehensive 70%. Scored 1 sentence. Could not read 1 sentence.',
+  );
+  // Only what was scored is named.
+  assert.equal(
+    compareNotice({ scores: { sentence: 0.5, comprehensive: null }, sentencesScored: 1 }).message,
+    'Sentence graphs 50%. Scored 1 sentence.',
+  );
+  assert.deepEqual(compareNotice({ scores: {}, sentencesScored: 0, sentencesSkipped: 3 }), {
+    level: 'warning',
+    title: 'Nothing scored',
+    message: 'Could not read a graph in any of the 3 sentences.',
   });
   assert.equal(compareNotice({}).level, 'warning');
+  // A notice text a result carries is not shown: the words are the app's.
   assert.equal(
     compareNotice({ notice: { level: 'success', title: 'T', message: 'M' } }).title,
-    'T',
+    'Nothing scored',
   );
   // Two documents that differ never read as 100%, in the notice as on the tab.
   assert.match(
     compareNotice({ scores: { sentence: 0.9986, comprehensive: 1 } }).message,
     /^Sentence graphs 99\.9%, comprehensive 100%/,
+  );
+  // A half rounds up, as the tab prints it.
+  assert.match(
+    compareNotice({ scores: { sentence: 0.825, comprehensive: 0.125 } }).message,
+    /^Sentence graphs 83%, comprehensive 13%/,
   );
 });
