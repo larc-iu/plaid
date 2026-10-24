@@ -275,3 +275,60 @@ test('Accept and Discard leave a stand-in out rather than refusing', async () =>
   assert.deepEqual(calls, []);
   assert.deepEqual(errors, []);
 });
+
+// REV-W2B-OPENS L1: a stand-in id held past a reload that brought in another
+// tab's word for the same token names that word, and makes no second one.
+test("a stand-in held past a reload that brought another tab's word names that word", async () => {
+  const { client, sent } = recording();
+  const { doc, errors } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  const full = rawDocFromConllu(INPUT, 'd1');
+  const words = full.textLayers[0].tokenLayers.find(
+    (l) => l.config?.plaid?.role === 'syntactic-word',
+  );
+  const theirs = words.tokens[1].id;
+  doc._swapRaw(full);
+  assert.equal(await doc.updateAnnotation(virtual, 'xpos', 'NN'), true);
+  assert.deepEqual(errors, []);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(
+    sent[0].map((o) => o.op),
+    ['spans.create'],
+  );
+  assert.deepEqual(sent[0][0].args[1], [theirs]);
+  assert.equal(doc.layerInfo.morphemeTokenLayer.tokens.length, 3);
+});
+
+test('a stand-in held past a reload that split its token into several words is refused', async () => {
+  const { client, sent } = recording();
+  const { doc, errors } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  const split = structuredClone(doc._raw);
+  const word = doc.layerInfo.wordTokenLayer.tokens[1];
+  const layer = split.textLayers[0].tokenLayers.find(
+    (l) => l.config?.plaid?.role === 'syntactic-word',
+  );
+  layer.tokens.push(
+    { id: 'theirs-a', begin: word.begin, end: word.begin + 1, precedence: 0 },
+    { id: 'theirs-b', begin: word.begin + 1, end: word.end, precedence: 0 },
+  );
+  doc._swapRaw(split);
+  assert.equal(await doc.updateAnnotation(virtual, 'xpos', 'NN'), false);
+  assert.deepEqual(sent, []);
+  assert.equal(errors.length, 1);
+  assert.equal(layer.tokens.length, doc.layerInfo.morphemeTokenLayer.tokens.length);
+});
+
+// REV-W2B-OPENS L2: a stand-in holds no lemma, so clearing it writes nothing,
+// as the assistant's plan does (plaid-agent ud/plan.py `_apply_set_span`).
+test('clearing the lemma of a stand-in writes nothing and leaves the stand-in', async () => {
+  const { client, sent } = recording();
+  const { doc } = writer(bare(['dog']), client);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  assert.equal(await doc.updateAnnotation(virtual, 'lemma', ''), true);
+  assert.equal(await doc.updateAnnotation(virtual, 'lemma', null), true);
+  await settleQueue();
+  assert.deepEqual(sent, []);
+  assert.equal(doc.sentences[0].tokens[1].virtual, true);
+  assert.equal(doc.layerInfo.morphemeTokenLayer.tokens.length, 2);
+});

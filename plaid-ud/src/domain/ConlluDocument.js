@@ -1314,6 +1314,9 @@ export class ConlluDocument extends DocumentModel {
       (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
     );
     const cleared = value === null || value === undefined || value === '';
+    // A stand-in holds no value, so clearing one on it writes nothing, and
+    // the word made for it is taken back.
+    if (cleared && made?.words.some((w) => w.id === tokenId)) return true;
     if (cleared && field !== 'lemma') {
       // Clearing a UPOS/XPOS/Form cell DELETES the span (like removing a
       // feature) rather than leaving a null-valued span behind — which would
@@ -1492,7 +1495,8 @@ export class ConlluDocument extends DocumentModel {
   // The write sends the made rows first in its own batch (`_queueNewWords`).
 
   // `ids` with every stand-in among them made, and what was made (null for
-  // nothing): `{ words, lemmas, queued }`.
+  // nothing): `{ words, lemmas, queued }`. A `refusal` when a stand-in's token
+  // holds several UD words now, which makes nothing.
   _makeWords(ids) {
     const info = this.layerInfo;
     const { morphemeTokenLayer, wordTokenLayer, lemmaLayer, textLayer } = info;
@@ -1500,6 +1504,7 @@ export class ConlluDocument extends DocumentModel {
     const words = [];
     const lemmas = [];
     const madeFor = new Map();
+    let split = false;
     const resolved = ids.map((id) => {
       if (!isVirtualWordId(id)) return id;
       // Made by an earlier write, while the screen still held the stand-in.
@@ -1508,6 +1513,15 @@ export class ConlluDocument extends DocumentModel {
       if (madeFor.has(id)) return madeFor.get(id);
       const token = (wordTokenLayer?.tokens || []).find((t) => t.id === standInTokenId(id));
       if (!token || !morphemeTokenLayer?.id || !textLayer?.text?.id) return id;
+      // A reload since the screen took the stand-in may have brought the
+      // token's UD word from another tab: it names that word, and a token
+      // split into several since names none of them.
+      const now = (morphemeTokenLayer.tokens || []).filter((t) => containsToken(token, t));
+      if (now.length === 1) return now[0].id;
+      if (now.length > 1) {
+        split = true;
+        return id;
+      }
       const form = cpSlice(this.body, token.begin, token.end);
       const { word, lemma } = newUdWord(
         { begin: token.begin, end: token.end, precedence: 0 },
@@ -1519,6 +1533,7 @@ export class ConlluDocument extends DocumentModel {
       madeFor.set(id, word.id);
       return word.id;
     });
+    if (split) return { ids: resolved, made: null, refusal: WORD_SPLIT_SINCE };
     if (!words.length) return { ids: resolved, made: null };
     recordSettled(madeFor);
     this._applyRawPatch((next, infoNext) => {
@@ -2259,6 +2274,7 @@ const UD_WRITES = [
   'confirmTokens',
   'discardTokens',
 ];
+const WORD_SPLIT_SINCE = 'This word is now split into several words.';
 const SKIPS_STAND_INS = new Set(['confirmTokens', 'discardTokens']);
 // The arguments that name a word, by write.
 const MAKES_WORDS = {
@@ -2294,10 +2310,11 @@ for (const name of UD_WRITES) {
     }
     const at = MAKES_WORDS[name];
     // A past state or a deleted document makes nothing: the write refuses.
-    const { ids, made } =
+    const { ids, made, refusal } =
       at && !this._asOf && !this._deleted
         ? this._makeWords(at.map((i) => args[i]))
         : { ids: null, made: null };
+    if (refusal) return this.refuse(refusal);
     if (ids) at.forEach((i, k) => (args[i] = ids[k]));
     if (args.some(namesStandIn)) {
       if (made) this._unmakeWords(made);
