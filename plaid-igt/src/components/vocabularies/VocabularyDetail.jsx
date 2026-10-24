@@ -587,10 +587,22 @@ export const VocabularyDetail = () => {
   // like a project field, so the list is stored once.
   const handleSetTagset = async (fieldName, choice) => {
     const tagset = choice === NO_TAGSET ? null : choice;
-    await saveFields(
-      fields.map((f) => (f.name === fieldName ? { ...f, tagset } : f)),
-      { statesTagsets: true },
-    );
+    const next = fields.map((f) => (f.name === fieldName ? { ...f, tagset } : f));
+    if (refusesStatus(next)) return;
+    await saveFields(next, { statesTagsets: true });
+  };
+
+  // The published Status value is reserved: the Status field is never held
+  // to a tagset that does not list it, by a tagset chosen or a role moved.
+  const refusesStatus = (next) => {
+    const refused = dropsPublishedStatus({
+      fieldsBefore: fields,
+      fieldsAfter: next,
+      tagsetsBefore: tagsets,
+      tagsetsAfter: tagsets,
+    });
+    if (refused) notifyError(RESERVED_STATUS_MESSAGE, 'Reserved value');
+    return refused;
   };
 
   // What a field holds. A reference field has no tagset (its values are
@@ -741,7 +753,9 @@ export const VocabularyDetail = () => {
   // for the dictionary, the exports and the assistant. NO_ROLE clears it.
   const handleSetRole = async (fieldName, value) => {
     const role = value === NO_ROLE ? null : value;
-    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, role } : f)));
+    const next = fields.map((f) => (f.name === fieldName ? { ...f, role } : f));
+    if (refusesStatus(next)) return;
+    await saveFields(next);
   };
 
   // Fields reference a tagset by name, so a rename repoints every field that

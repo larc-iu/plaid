@@ -89,11 +89,14 @@ const listsPublished = (tagset) =>
   (tagset?.values || []).some((v) => (typeof v === 'string' ? v : v?.value) === PUBLISHED_STATUS);
 
 /**
- * Whether a change of a vocabulary's tagsets renames or removes the reserved
- * published value: the Status field's tagset listed it before (`fieldsBefore`
- * and `tagsetsBefore`) and, still there after (`fieldsAfter`, a renamed
- * tagset's repointed fields, and `tagsetsAfter`), lists it no longer. A tagset
- * deleted whole is not a rename: the field is then held to no list.
+ * Whether a change of a vocabulary's fields or tagsets takes the reserved
+ * published value from its Status field. The field is held after the change
+ * (`fieldsAfter`, a renamed tagset's repointed fields, and `tagsetsAfter`) to
+ * a list without it, and either that is another tagset than the one it was
+ * held to (`fieldsBefore` and `tagsetsBefore`), pointed at in the Fields table
+ * or by a plan, or its own list listed it and lists it no longer, renamed or
+ * edited. A tagset deleted whole is not a rename, and a field pointed at none
+ * is held to no list: published still reads in both.
  */
 export const dropsPublishedStatus = ({
   fieldsBefore,
@@ -103,9 +106,11 @@ export const dropsPublishedStatus = ({
 }) => {
   const before = statusTagsetName(fieldsBefore);
   const after = statusTagsetName(fieldsAfter ?? fieldsBefore);
-  if (!before || !listsPublished(tagsetsBefore?.[before])) return false;
   const now = after ? tagsetsAfter?.[after] : null;
-  return !!now && !listsPublished(now);
+  if (!now || listsPublished(now)) return false;
+  // Pointed at a list that was already there, so not its own list renamed.
+  if (after !== before && tagsetsBefore?.[after]) return true;
+  return !!before && listsPublished(tagsetsBefore?.[before]);
 };
 
 /**

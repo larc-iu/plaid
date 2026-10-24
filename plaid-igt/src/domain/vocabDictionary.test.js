@@ -122,6 +122,22 @@ describe('the published Status value', () => {
     // Deleted whole: the field is held to no list, and published still reads.
     expect(drops({})).toBe(false);
   });
+
+  it('may not be pointed at another tagset without it (HUNT-recent 4)', () => {
+    const closed = { mode: 'closed', values: [{ value: 'draft' }] };
+    const pointed = (from, to, tagsets) =>
+      dropsPublishedStatus({
+        fieldsBefore: { ...fields, state: { ...fields.state, tagset: from } },
+        fieldsAfter: { ...fields, state: { ...fields.state, tagset: to } },
+        tagsetsBefore: tagsets,
+        tagsetsAfter: tagsets,
+      });
+    expect(pointed('Status', 'Other', { Status: STATUS, Other: closed })).toBe(true);
+    // From no list, which is how the two-step door would go.
+    expect(pointed(undefined, 'Other', { Status: STATUS, Other: closed })).toBe(true);
+    expect(pointed('Status', 'Other', { Status: STATUS, Other: STATUS })).toBe(false);
+    expect(pointed('Status', undefined, { Status: STATUS, Other: closed })).toBe(false);
+  });
 });
 
 describe('statusFieldSeed', () => {

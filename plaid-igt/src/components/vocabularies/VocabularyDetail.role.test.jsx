@@ -68,6 +68,7 @@ const auth = vi.hoisted(() => ({
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 const { VocabularyDetail } = await import('./VocabularyDetail.jsx');
+const { notifyError } = await import('@/utils/feedback');
 
 const serverOf = (fields) => {
   const server = { id: 'A', name: 'Lexicon', maintainers: ['u'], config: { igt: { fields } } };
@@ -167,6 +168,27 @@ describe('the vocabulary field settings, Role', () => {
 });
 
 describe('the vocabulary tagsets, the published Status value', () => {
+  it('is never taken from the Status field by a tagset chosen in the Fields table (HUNT-recent 4)', async () => {
+    const { server, client } = serverOf({ state: { tagset: 'Workflow', role: 'status' } });
+    server.config.igt.tagsets = {
+      Workflow: { delimiters: '', mode: 'closed', values: [{ value: 'published' }] },
+      Other: { delimiters: '', mode: 'closed', values: [{ value: 'draft' }] },
+    };
+    const view = await mount(client);
+    const select = document.querySelector('[data-trigger="tagset-state"]').closest('select');
+    await view.step(async () => {
+      select.value = 'Other';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle(5);
+    });
+    expect(server.config.igt.fields.state.tagset).toBe('Workflow');
+    expect(notifyError).toHaveBeenCalledWith(
+      expect.stringMatching(/reserved Status value/),
+      'Reserved value',
+    );
+    await view.unmount();
+  });
+
   it('is reserved in the tagset editor, and a save that drops it writes nothing', async () => {
     const { server, client } = serverOf({ state: { tagset: 'Workflow', role: 'status' } });
     const workflow = {

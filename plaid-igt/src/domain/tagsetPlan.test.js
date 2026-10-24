@@ -379,6 +379,29 @@ describe('a lexicon’s published Status value', () => {
     c = fakeClient(projectWith(), vocab);
     expect(await writeTagsetPlan(c, 'proj-1', { ops: [op(null)] })).toBe(true);
   });
+
+  it('never has the Status field pointed at a tagset without it (HUNT-recent 4)', async () => {
+    const other = { delimiters: '', mode: 'closed', values: [{ value: 'draft' }] };
+    const withOther = {
+      ...vocab,
+      config: { igt: { ...vocab.config.igt, tagsets: { Status: STATUS, Other: other } } },
+    };
+    const assign = (after) => ({
+      kind: 'assign_tagset',
+      owner: 'v1',
+      fieldKind: 'entry_field',
+      key: 'status',
+      before: 'Status',
+      after,
+    });
+    let c = fakeClient(projectWith(), withOther);
+    await expect(writeTagsetPlan(c, 'proj-1', { ops: [assign('Other')] })).rejects.toThrow(
+      /reserved Status value.*Nothing was written/,
+    );
+    expect(c.batches).toBe(0);
+    c = fakeClient(projectWith(), withOther);
+    expect(await writeTagsetPlan(c, 'proj-1', { ops: [assign(null)] })).toBe(true);
+  });
 });
 
 describe('the approver’s write of a plan of tagset changes in the audit log', () => {

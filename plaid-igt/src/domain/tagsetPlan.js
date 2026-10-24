@@ -319,26 +319,35 @@ export const writeTagsetPlan = async (
   }
   if (states.every((s) => s === 'after')) return false;
   // A lexicon's published Status value is reserved: a plan may not rename or
-  // remove it, as the tagset settings may not.
-  for (const op of ops) {
-    if (op.kind !== 'set_tagset' || op.owner === PROJECT) continue;
-    const live = lives.get(op.owner);
+  // remove it, or point the Status field at a tagset without it, as the
+  // tagset settings may not. Read over each lexicon's ops together, as the
+  // settings will read once they are written.
+  for (const owner of owners) {
+    if (owner === PROJECT) continue;
+    const live = lives.get(owner);
     const fieldsBefore = live.entryFields || {};
-    const fieldsAfter = Object.fromEntries(
-      Object.entries(fieldsBefore).map(([key, spec]) => [
-        key,
-        spec?.tagset === op.was ? { ...spec, tagset: op.name } : spec,
-      ]),
-    );
     const tagsetsBefore = igtOf(live.config).tagsets || {};
-    if (
-      dropsPublishedStatus({
-        fieldsBefore,
-        fieldsAfter,
-        tagsetsBefore,
-        tagsetsAfter: { [op.name]: op.after ?? undefined },
-      })
-    ) {
+    let fieldsAfter = { ...fieldsBefore };
+    const tagsetsAfter = { ...tagsetsBefore };
+    for (const op of ops) {
+      if (op.owner !== owner) continue;
+      if (op.kind === 'set_tagset') {
+        if (op.was && op.was !== op.name) {
+          delete tagsetsAfter[op.was];
+          fieldsAfter = Object.fromEntries(
+            Object.entries(fieldsAfter).map(([key, spec]) => [
+              key,
+              spec?.tagset === op.was ? { ...spec, tagset: op.name } : spec,
+            ]),
+          );
+        }
+        if (op.after == null) delete tagsetsAfter[op.name];
+        else tagsetsAfter[op.name] = op.after;
+      } else if (fieldKind(op) === 'entry_field') {
+        fieldsAfter[op.key] = { ...(fieldsAfter[op.key] || {}), tagset: op.after ?? null };
+      }
+    }
+    if (dropsPublishedStatus({ fieldsBefore, fieldsAfter, tagsetsBefore, tagsetsAfter })) {
       throw new Error(`${RESERVED_STATUS_MESSAGE}. Nothing was written.`);
     }
   }
