@@ -48,13 +48,13 @@ export const readRosters = ({ pipeline, middleware, siblingApps, appOwners }) =>
     ),
     'appOwners.js': sorted(all(/\{\s*tag: '([\w-]+)'/g, appOwners)),
     'bb/pipeline.clj compileall': sorted(
-      all(/"plaid-([\w-]+)\/services"/g, /"compileall"[^\n]*\n[^\n]*/.exec(pipeline)?.[0] ?? ''),
+      all(
+        /"plaid-([\w-]+)\/services"/g,
+        /\(def \^:private python-trees\s*(\[[^\]]*\])\)/.exec(pipeline)?.[1] ?? '',
+      ),
     ),
     'bb/pipeline.clj services pytest': sorted(
-      all(
-        /\{:dir "plaid-([\w-]+)"\} \(python-exe\) "-m" "pytest" "-q" "services\/tests"/g,
-        pipeline,
-      ),
+      all(/\(run "plaid-([\w-]+)" "-m" "pytest" "-q" "services\/tests"\)/g, pipeline),
     ),
     'bb/pipeline.clj services bundle': sorted(
       all(/\(fs\/glob "plaid-([\w-]+)\/services" "\*\.py"\)/g, pipeline),
