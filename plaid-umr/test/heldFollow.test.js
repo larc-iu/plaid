@@ -129,3 +129,54 @@ test('the open leaves a held name that a node keeping its own still has', async 
     's4x :subset-of s2p',
   ]);
 });
+
+// A relation naming a node no node has or stores and no kept graph defines
+// names nothing, and the open drops it before a renumber can give its name
+// to another node (REV-FIX7 L1, L2).
+test('the open drops a held relation naming a node an edge deleted, before a renumber takes the name', async () => {
+  const { doc } = open(rawOf());
+  const edge = byVar(doc, 's2g').out.find((e) => e.target === byVar(doc, 's2p').id);
+  assert.equal(await doc.deleteEdge(edge.id), 1);
+  await doc.whenSaved();
+  const raw = structuredClone(doc.raw);
+  mergeSentence(raw, 2);
+  const after = open(raw);
+  const result = await after.doc._reconcile();
+  assert.ok(result.renumbered > 0);
+  assert.deepEqual(heldPatches(after.calls), [
+    {
+      op: 'set',
+      path: ['umr', 'held'],
+      value: [{ source: 's4x', rel: ':same-entity', target: 's2p', group: 'coref' }],
+    },
+  ]);
+});
+
+test('the open drops a held relation naming a node another writer deleted, and keeps one naming a constant', async () => {
+  // An API writer (the assistant's delete_node) deletes sentence 2's person
+  // and leaves the held relation naming it.
+  const raw = rawOf();
+  const { concepts, relations } = layersOf(raw);
+  const gone = concepts.spans.find((s) => s.metadata?.umr?.var === 's2p').id;
+  concepts.spans = concepts.spans.filter((s) => s.id !== gone);
+  relations.relations = relations.relations.filter((r) => r.source !== gone && r.target !== gone);
+  const record = layersOf(raw).nodes.tokens.find((t) => t.metadata?.umr?.held?.length);
+  const constant = {
+    source: 's4g',
+    rel: ':before',
+    target: 'document-creation-time',
+    group: 'temporal',
+  };
+  record.metadata.umr.held.push(constant);
+  mergeSentence(raw, 2);
+  const after = open(raw);
+  const result = await after.doc._reconcile();
+  assert.ok(result.renumbered > 0);
+  assert.deepEqual(heldPatches(after.calls), [
+    {
+      op: 'set',
+      path: ['umr', 'held'],
+      value: [{ source: 's4x', rel: ':same-entity', target: 's2p', group: 'coref' }, constant],
+    },
+  ]);
+});

@@ -66,6 +66,9 @@ def test_every_sentence_reads_as_the_app_reads_it(variants):
             elif [n.var for n in sentence.nodes] != app['order']:
                 wrong.append(f"{variant['name']} s{sentence.index}: node order "
                              f"{[n.var for n in sentence.nodes]} against {app['order']}")
+            elif sentence.held != app['held']:
+                wrong.append(f"{variant['name']} s{sentence.index}: held {sentence.held} "
+                             f"against {app['held']}")
     assert not wrong, f'{len(wrong)} sentences differ, the first: ' + '; '.join(wrong[:5])
 
 
@@ -73,9 +76,11 @@ def test_the_mirror_read_the_names_both_readers_must_agree_on(variants):
     """The small documents of names (``NAMES`` in umr_graph_mirror.mjs) read
     as the app reads them in the test above. Pinned here: a name two nodes of
     one sentence store is read apart, and names differing only in case go in
-    code-point order (REV-W2B-OPENS M1, L6)."""
+    code-point order (REV-W2B-OPENS M1, L6). After the open's repair, a held
+    relation naming a deleted node is gone, and the one naming a renumbered
+    node names the node that now has the name (REV-FIX7 L1, L2)."""
     names = {v['name']: v for v in variants if v['name'].startswith('names: ')}
-    assert len(names) == 2
+    assert len(names) == 3
 
     def read(name):
         return read_document(names[name]['raw'], resolve_layers(names[name]['raw']))
@@ -84,6 +89,10 @@ def test_the_mirror_read_the_names_both_readers_must_agree_on(variants):
     assert sorted(n.var for n in twice.sentences[1].nodes) == ['s2p', 's2p2']
     case = read('names: names differing in case')
     assert [n.var for n in case.sentences[0].nodes][:2] == ['s1B', 's1a']
+    held = read('names: held relations after a deleted node and a renumber')
+    kept = held.sentences[-1]
+    assert [(h['source'], h['rel'], h['target']) for h in kept.held] == [('s4x', ':same-entity', 's2p')]
+    assert [n.concept for n in held.sentences[1].nodes if n.var == 's2p'] == ['person']
 
 
 def test_the_mirror_saw_graphs_in_parts(variants):

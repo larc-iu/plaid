@@ -9,8 +9,10 @@
 // sentence falls into parts) and the file's root marks (so the roots are
 // derived), which is how a graph looks while someone is building it.
 //
-// And two small documents of names the readers must agree on (`NAMES`): two
-// nodes of one sentence storing one name, and names that differ only in case.
+// And three small documents of names the readers must agree on (`NAMES`): two
+// nodes of one sentence storing one name, names that differ only in case, and
+// the held relations of a graph kept as text after the open's repair dropped
+// one naming a deleted node and renumbered another node to its name.
 //
 // argv[2] is a JSON array of .umr paths. Writes one object per variant to
 // stdout: `{name, raw, sentences: [{roots, penman, order}]}`.
@@ -24,7 +26,7 @@ const { parseUmrFile } = await import(`${UMR}/src/domain/format/umrFile.js`);
 const { planImport } = await import(`${UMR}/src/domain/umrImport.js`);
 const { UmrDocument } = await import(`${UMR}/src/domain/UmrDocument.js`);
 const { rawFromPlan } = await import(`${UMR}/test/rawFromPlan.js`);
-const { layersOf } = await import(`${UMR}/test/igtEdits.js`);
+const { layersOf, mergeSentence, openInUmr } = await import(`${UMR}/test/igtEdits.js`);
 
 // The layer tree's own keys, as the Python client hands them back. What is
 // under `metadata` and `config` is opaque to both clients.
@@ -54,7 +56,7 @@ const VARIANTS = [
 ];
 
 const SEP = '#'.repeat(80);
-const block = (n, words, graph, alignment) => `${SEP}
+const block = (n, words, graph, alignment, doc = `(s${n}s0 / sentence)`) => `${SEP}
 # :: snt${n}
 Index: ${words.map((_, i) => i + 1).join(' ')}
 Words: ${words.join(' ')}
@@ -66,7 +68,7 @@ ${graph}
 ${alignment}
 
 # document level annotation:
-(s${n}s0 / sentence)
+${doc}
 `;
 const person = (n, w, v) =>
   block(n, [w, 'gitti', '.'], `(s${n}g / git-01\n    :ARG1 (${v} / person))`, `s${n}g: 2-2\n${v}: 1-1`);
@@ -93,6 +95,35 @@ const NAMES = [
     ],
     () => {},
   ],
+  // Sentence 3's graph does not parse, so it is kept as text and its block's
+  // relations are held by name. An API writer deletes s2p, IGT joins
+  // sentence 2 to 1, and the open renumbers sentence 2's person to s2p and
+  // drops the relation naming the deleted one (REV-FIX7 L1, L2).
+  [
+    'held relations after a deleted node and a renumber',
+    [
+      person(1, 'Ali', 's1p'),
+      person(2, 'Ayse', 's2p'),
+      person(3, 'Can', 's3p'),
+      block(
+        4,
+        ['O', 'uyudu', '.'],
+        '(s4g / uyu-01\n    :ARG1 (s4x / "person)',
+        's4g: 2-2',
+        '(s4s0 / sentence\n    :coref ((s4x :same-entity s3p)\n        (s4x :subset-of s2p)))',
+      ),
+    ],
+    async (raw) => {
+      const { concepts, relations } = layersOf(raw);
+      const gone = spanOf(raw, 's2p').id;
+      concepts.spans = concepts.spans.filter((x) => x.id !== gone);
+      relations.relations = relations.relations.filter(
+        (r) => r.source !== gone && r.target !== gone,
+      );
+      mergeSentence(raw, 2);
+      await openInUmr(raw);
+    },
+  ],
 ];
 
 const sentencesOf = (doc) =>
@@ -100,12 +131,13 @@ const sentencesOf = (doc) =>
     roots: s.roots.map((r) => r.var),
     penman: doc.penmanOf(i + 1),
     order: s.nodes.map((n) => n.var),
+    held: s.held,
   }));
 
 const out = [];
 for (const [name, blocks, edit] of NAMES) {
   const raw = rawFromPlan(planImport(parseUmrFile(blocks.join('\n')).sentences, []));
-  edit(raw);
+  await edit(raw);
   out.push({ name: `names: ${name}`, raw: toPython(raw), sentences: sentencesOf(new UmrDocument({ raw })) });
 }
 for (const file of JSON.parse(readFileSync(process.argv[2], 'utf8'))) {

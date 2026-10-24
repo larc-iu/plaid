@@ -632,14 +632,21 @@ export class UmrDocument extends DocumentModel {
   // changes, a record waiting in a joined sentence included. A name two
   // renumbered nodes share is left as it is, and so is a name a node that
   // keeps its own still has, or a graph kept as text defines (`kept`), since
-  // the relation may name that one (REV-W2B-OPENS M2).
+  // the relation may name that one (REV-W2B-OPENS M2). A relation naming
+  // what no node has or stores, no kept graph defines and no constant is,
+  // names a node that is gone (an edge's subtree, the API's delete), and is
+  // dropped before a renumber can give its name to another node (REV-FIX7
+  // L1, L2).
   _heldRenamed(renumber, kept = new Set()) {
     const moving = new Set(renumber.map((r) => r.nodeId));
     const stays = new Set(kept);
+    const known = new Set([...kept, ...DOC_CONSTANTS]);
     this.graph.nodesById.forEach((n) => {
-      if (moving.has(n.id)) return;
-      if (n.var) stays.add(n.var);
-      if (n.storedVar) stays.add(n.storedVar);
+      [n.var, n.storedVar].forEach((v) => {
+        if (!v) return;
+        known.add(v);
+        if (!moving.has(n.id)) stays.add(v);
+      });
     });
     const to = new Map();
     renumber.forEach((r) =>
@@ -650,14 +657,13 @@ export class UmrDocument extends DocumentModel {
     (this.graph.records || []).forEach(({ id, record }) => {
       const had = Array.isArray(record.held) ? record.held : [];
       if (!had.length) return;
-      const held = had.map((h) => ({
-        ...h,
-        source: rename(h.source),
-        target: rename(h.target),
-      }));
-      if (held.some((h, i) => h.source !== had[i].source || h.target !== had[i].target)) {
-        out.push([id, held]);
-      }
+      const held = had
+        .filter((h) => known.has(h.source) && known.has(h.target))
+        .map((h) => ({ ...h, source: rename(h.source), target: rename(h.target) }));
+      const changed =
+        held.length !== had.length ||
+        held.some((h, i) => h.source !== had[i].source || h.target !== had[i].target);
+      if (changed) out.push([id, held]);
     });
     return out;
   }
