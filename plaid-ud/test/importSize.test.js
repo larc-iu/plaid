@@ -42,6 +42,8 @@ const cappedClient = (cap) => {
   };
   let deleted = false;
   const client = {
+    // The import is one operation (conlluImport.js).
+    withOperation: (_label, fn) => fn(() => {}),
     sizes,
     deleted: () => deleted,
     documents: {

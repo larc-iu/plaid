@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
+import { withOps } from './helpers/stubClient.js';
 
 const INPUT = [
   '# text = Dogs bark',
@@ -23,7 +24,7 @@ function serverClient({ loseFirst = false } = {}) {
   const made = new Map();
   const creates = [];
   let lose = loseFirst;
-  return {
+  return withOps({
     made,
     creates,
     documents: {
@@ -59,7 +60,7 @@ function serverClient({ loseFirst = false } = {}) {
       });
       return queued.map(({ kind, ops }) => ({ body: { ids: ops.map((_, i) => `${kind}-${i}`) } }));
     },
-  };
+  });
 }
 
 const info = getUdLayerInfo(rawDocFromConllu(INPUT, 'm'));
@@ -70,6 +71,16 @@ test('the document is created under a minted UUIDv7', async () => {
   assert.equal(client.creates.length, 1);
   assert.match(client.creates[0], UUID7);
   assert.equal(out.documentId, client.creates[0]);
+});
+
+// Every caller's import is one operation of kind import, labelled with the
+// document, not only the import page's (R2-IO-11).
+test('the import labels its own operation', async () => {
+  const client = serverClient();
+  await ConlluDocument.importFromConllu(client, 'p1', 'm', INPUT, info);
+  assert.deepEqual(client.operations, [
+    { message: 'Import CoNLL-U document "m"', kind: 'import', ref: 'format:conllu' },
+  ]);
 });
 
 test('an import made again after a lost create answer goes on into the same document', async () => {

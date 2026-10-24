@@ -11,6 +11,8 @@ function recordingClient() {
   let n = 0;
   const calls = { texts: [], tokens: [], spans: [] };
   return {
+    // The import is one operation (conlluImport.js).
+    withOperation: (_label, fn) => fn(() => {}),
     calls,
     documents: { create: async () => ({ id: 'doc-1' }), delete: async () => {} },
     batched: async (fn) => {

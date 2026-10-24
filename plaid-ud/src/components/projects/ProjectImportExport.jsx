@@ -58,15 +58,15 @@ const prepareImport = async ({ client, project, projectId }) => {
       const name = chunk.id || (chunks.length > 1 ? `${base} (${c + 1})` : base);
       const key = [projectId, base, c, name, file?.size ?? '', file?.lastModified ?? ''].join('\n');
       try {
-        // One audit-log operation per imported document (text, tokens and
-        // annotations), labeled with the document name, of kind import.
-        const { documentId, importWarnings } = await client.withOperation(
-          `Import CoNLL-U document "${name}"`,
-          () =>
-            ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo, {
-              mint: mintOf(key),
-            }),
-          { kind: 'import', ref: 'format:conllu' },
+        // One audit-log operation per imported document, which the import
+        // labels itself (conlluImport.js).
+        const { documentId, importWarnings } = await ConlluDocument.importFromConllu(
+          client,
+          projectId,
+          name,
+          chunk.text,
+          layerInfo,
+          { mint: mintOf(key) },
         );
         mints.delete(key);
         push({

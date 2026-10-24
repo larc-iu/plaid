@@ -19,6 +19,8 @@ function recordingClient() {
   let n = 0;
   const relations = [];
   return {
+    // The import is one operation (conlluImport.js).
+    withOperation: (_label, fn) => fn(() => {}),
     relations,
     documents: {
       create: async () => ({ id: 'doc-1' }),
@@ -154,6 +156,8 @@ test('an import refused as too large says so in the words of an import', async (
 
   const deleted = [];
   const client = {
+    // The import is one operation (conlluImport.js).
+    withOperation: (_label, fn) => fn(() => {}),
     ...recordingClient(),
     batched: async () => {
       throw tooLarge();

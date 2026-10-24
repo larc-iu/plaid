@@ -81,14 +81,25 @@ export function offListWarnings(parsedData, layerInfo) {
 // `{ current }`) keeps across imports of the same file, so an import made
 // again after a create whose answer was lost names the same id and goes on
 // into the document the first made, never a second (createOnce.js).
-export async function importConlluDocument(
+//
+// The whole import is one operation of kind import, labelled with the
+// document's name, whoever calls it: the import page, the e2e helpers, a
+// service or the assistant.
+export const importConlluDocument = (
   client,
   projectId,
   name,
   conlluText,
   precomputedLayerInfo = null,
   options = {},
-) {
+) =>
+  client.withOperation(
+    `Import CoNLL-U document "${name}"`,
+    () => importDocument(client, projectId, name, conlluText, precomputedLayerInfo, options),
+    { kind: 'import', ref: 'format:conllu' },
+  );
+
+async function importDocument(client, projectId, name, conlluText, precomputedLayerInfo, options) {
   if (!name || !name.trim()) throw new Error('Document name is required');
   if (!conlluText || !conlluText.trim()) throw new Error('No content to import');
 
