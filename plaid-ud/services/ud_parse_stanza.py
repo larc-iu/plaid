@@ -88,6 +88,32 @@ class PipelineProvider:
             self._cache[key] = pipe
         return pipe
 
+    def warm(self, language):
+        """Load, and on first use download, what a run in ``language`` may
+        need, before the document is held. The pretokenized pipeline parses a
+        document with words, the usual case. Stanza adds ``mwt`` only to a
+        pipeline that tokenizes, so for a language with multi-word tokens the
+        words-only pipeline loads too, and a from-scratch parse under the lock
+        then finds every model on disk."""
+        self.get(language, pretokenized=True)
+        if language_has_mwt(language):
+            self.get(language, words_only=True)
+
+
+def language_has_mwt(language):
+    """Whether Stanza has a multi-word-token model for ``language``, read from
+    the resources file a pipeline build leaves on disk. False when there is no
+    such file to read: the from-scratch parse then fetches what it needs."""
+    from stanza.resources.common import DEFAULT_MODEL_DIR, load_resources_json
+    try:
+        resources = load_resources_json(DEFAULT_MODEL_DIR)
+    except (OSError, ValueError):
+        return False
+    entry = resources.get(language.strip().lower()) or {}
+    if 'alias' in entry:
+        entry = resources.get(entry['alias']) or {}
+    return 'mwt' in entry
+
 
 def span_layer_by_ud_config(layers, key):
     """The span layer carrying this `ud` flag, or None. By flag only, never by
@@ -1183,13 +1209,12 @@ class StanzaParserService(BaseService):
         # rather than clobber their work.
         response_helper.progress(2, "Starting…")
         # The language's models load (and on first use download) before the
-        # document is held, so nobody waits on the document meanwhile. The
-        # pretokenized pipeline is the one a document with words parses
-        # with, the usual case, and it needs the same models a from-scratch
-        # parse does. Which one the run needs is known only from the document,
-        # read under the lock, so a from-scratch parse builds its own there.
+        # document is held, so nobody waits on the document meanwhile. Which
+        # pipeline the run needs is known only from the document, read under
+        # the lock, so a from-scratch parse builds its own there, from models
+        # already on disk (PipelineProvider.warm).
         with progress_heartbeat(response_helper, 2, "Loading the parser…"):
-            self.pipeline_provider.get(language, pretokenized=True)
+            self.pipeline_provider.warm(language)
         # Group every write this parse makes into ONE labeled audit-log entry (each
         # op keeps its own description underneath).
         # `parse_document` reports the rest of the way and is a cancellation

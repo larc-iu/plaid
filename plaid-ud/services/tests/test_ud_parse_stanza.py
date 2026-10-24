@@ -97,6 +97,9 @@ class _PipelineProvider:
 
         return pipeline
 
+    def warm(self, language):
+        self.get(language, pretokenized=True)
+
 
 def _layer(layer_id, name, role=None, **extra):
     layer = {'id': layer_id, 'name': name, 'tokens': [], **extra}
@@ -575,11 +578,59 @@ def test_a_document_with_words_builds_no_pipeline_under_the_lock_and_one_per_lan
                       any(c[0] == 'lock' for c in calls)))
         return lambda value: _Parsed([ROWS] * len(value), [0] * len(value))
     monkeypatch.setattr(ud.stanza, 'Pipeline', pipeline)
+    monkeypatch.setattr(ud, 'language_has_mwt', lambda language: False)
     service.pipeline_provider = ud.PipelineProvider()
     helper = servicetest.run(service, REQUEST)
 
     assert helper.errors == []
     assert built == [('en', True, False)]
+
+
+def _building_pipelines(monkeypatch, service, has_mwt):
+    """Stanza's Pipeline replaced by one that records what was built, whether it
+    could fetch the multi-word-token model (Stanza adds `mwt` only to a pipeline
+    that tokenizes) and whether the document was held then."""
+    calls = service.client.calls
+    built = []
+
+    def pipeline(language, processors=None, tokenize_pretokenized=False):
+        built.append((processors, tokenize_pretokenized, any(c[0] == 'lock' for c in calls)))
+        if processors == 'tokenize,mwt':
+            return lambda value: _Parsed([ROWS], [0])
+        return lambda value: _Parsed([ROWS] * (len(value) if isinstance(value, list) else 1),
+                                     [0] * (len(value) if isinstance(value, list) else 1))
+    monkeypatch.setattr(ud.stanza, 'Pipeline', pipeline)
+    monkeypatch.setattr(ud, 'language_has_mwt', lambda language: has_mwt)
+    service.pipeline_provider = ud.PipelineProvider()
+    return built
+
+
+def test_a_language_with_multi_word_tokens_fetches_that_model_before_the_document_is_held(
+        monkeypatch):
+    # REV-R4-CORE F2: the pretokenized pipeline leaves `mwt` out, so a first
+    # from-scratch parse in French downloaded it under the lock.
+    service = _service(documents=[_document(sentences=[(0, 13)])])
+    built = _building_pipelines(monkeypatch, service, has_mwt=True)
+    helper = servicetest.run(service, {**REQUEST, 'language': 'fr'})
+
+    assert helper.errors == []
+    assert built[:2] == [('tokenize,pos,lemma,depparse', True, False), ('tokenize,mwt', False, False)]
+    # Every model a build under the lock loads was fetched before it: a build
+    # that tokenizes fetches `mwt` as well.
+    def models(builds):
+        return {m for procs, pretokenized, _ in builds
+                for m in procs.split(',') + ([] if pretokenized else ['mwt'])}
+    assert any(held for *_, held in built)
+    assert models(b for b in built if b[2]) <= models(b for b in built if not b[2])
+
+
+def test_a_language_without_multi_word_tokens_builds_only_the_pretokenized_pipeline_first(
+        monkeypatch):
+    service = _service(documents=[_document(sentences=[(0, 13)])])
+    built = _building_pipelines(monkeypatch, service, has_mwt=False)
+    servicetest.run(service, REQUEST)
+
+    assert [b for b in built if not b[2]] == [('tokenize,pos,lemma,depparse', True, False)]
 
 
 def test_a_misaligned_pretokenized_parse_aborts_rather_than_guessing():
