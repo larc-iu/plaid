@@ -52,7 +52,10 @@ describe.skipIf(missing)('lezgi.flextext', () => {
     expect(build.stats).toMatchObject({
       documents: 14,
       sentences: 874,
-      words: 8052,
+      // 31 lone "-" words FLEx keeps as words stay text, as the tokenizer
+      // leaves them.
+      words: 8021,
+      punctuationWords: 31,
       unalignedWords: 0,
       warnings: 0,
     });

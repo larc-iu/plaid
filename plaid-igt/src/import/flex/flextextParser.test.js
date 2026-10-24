@@ -356,6 +356,21 @@ describe('parseFlextextFiles', () => {
   });
 });
 
+describe('a word of punctuation only', () => {
+  it('stays text, and an analysis it carried is said to be lost', () => {
+    const xml = TEXT.replace(
+      '<item type="txt" lang="xx">Kici</item>',
+      '<item type="txt" lang="xx">-</item>',
+    );
+    const [doc] = buildDocuments(parseFlextextFiles([{ name: 'dash.flextext', xml }])).documents;
+    expect(doc.words.some((w) => w.forms.xx === '-')).toBe(false);
+    expect(doc.body.startsWith('-')).toBe(true);
+    expect(doc.warnings).toContain(
+      '1 analyzed word of punctuation only stays plain text, without its analysis.',
+    );
+  });
+});
+
 describe('a .flextext Plaid wrote, read back', () => {
   const xml = buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS);
   const ir = parseFlextextFiles([{ name: 'out.flextext', xml }]);

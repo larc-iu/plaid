@@ -46,7 +46,9 @@ describe.skipIf(!haveFixture(LEZGI))('buildDocuments — Lezgi sample', () => {
   });
 
   it('aligns every word to the surface with no warnings', () => {
-    expect(result.stats.words).toBe(10594);
+    // Words of punctuation only FLEx keeps as words stay text.
+    expect(result.stats.words).toBe(10557);
+    expect(result.stats.punctuationWords).toBe(37);
     expect(result.stats.unalignedWords).toBe(0);
     expect(result.stats.warnings).toBe(0);
   });

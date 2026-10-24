@@ -12,6 +12,8 @@
 // partitioning): each paragraph's last sentence absorbs the trailing newline.
 
 import { pickEn } from './fwdataParser.js';
+import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { matchesAt, makeCpIndexer, composeOnEdges, cutsAWord } from '../align.js';
 
@@ -61,6 +63,10 @@ function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) 
   }
   return { words, warnings };
 }
+
+// A gloss or category as the IR holds it: a string, or one per writing system.
+const hasValue = (v) =>
+  v != null && (typeof v === 'object' ? Object.values(v).some(hasValue) : String(v) !== '');
 
 const nfd = (s) => (s == null ? s : String(s).normalize('NFD'));
 
@@ -116,11 +122,15 @@ function spelledParagraph(para, baselineWs) {
  */
 export function buildDocuments(ir, opts = {}) {
   const baselineWs = opts.baselineWs ?? ir.writingSystems.vernacular[0];
+  // The rule the project the import makes starts with.
+  const ignored = opts.ignoredTokens ?? DEFAULT_IGNORED_TOKENS;
   const orthographyWss = ir.writingSystems.vernacular.filter(
     (ws) => ws !== baselineWs && ir.wsUsage.wordForms.includes(ws),
   );
 
   const documents = [];
+  // Words of punctuation only, left as text (below).
+  let punctuationWords = 0;
   for (const text of ir.texts) {
     const warnings = [];
     const parts = [];
@@ -168,6 +178,7 @@ export function buildDocuments(ir, opts = {}) {
     const toCp = makeCpIndexer(body);
 
     const words = [];
+    let leftAsText = 0;
     for (const s of sentences) {
       if (!s.seg) continue;
       const r = alignSegment(
@@ -178,8 +189,24 @@ export function buildDocuments(ir, opts = {}) {
         baselineWs,
         spellOf.get(s.seg),
       );
-      words.push(...r.words);
+      // A word the new project's punctuation rule leaves as text (FLEx
+      // stores a lone "-" as a word when its writing system does not call it
+      // punctuation) stays text, as core's tokenizer and the grid leave it.
+      // Said only of one that carried an analysis, which is then lost.
+      for (const w of r.words) {
+        if (!isTokenIgnored(body.slice(w.beginU16, w.endU16), ignored)) {
+          words.push(w);
+          continue;
+        }
+        punctuationWords += 1;
+        if (w.morphemes?.length || hasValue(w.gloss) || hasValue(w.pos)) leftAsText += 1;
+      }
       warnings.push(...r.warnings);
+    }
+    if (leftAsText) {
+      warnings.push(
+        `${countOf(leftAsText, 'analyzed word')} of punctuation only ${leftAsText === 1 ? 'stays' : 'stay'} plain text, without ${leftAsText === 1 ? 'its' : 'their'} analysis.`,
+      );
     }
 
     // The recording the text's sentences point to (FLEx can list a video and
@@ -274,7 +301,9 @@ export function buildDocuments(ir, opts = {}) {
     documents: documents.length,
     sentences: documents.reduce((n, d) => n + d.sentences.length, 0),
     words: documents.reduce((n, d) => n + d.words.length, 0),
-    unalignedWords: totalAnalyses - documents.reduce((n, d) => n + d.words.length, 0),
+    unalignedWords:
+      totalAnalyses - punctuationWords - documents.reduce((n, d) => n + d.words.length, 0),
+    punctuationWords,
     morphemes: documents.reduce(
       (n, d) => n + d.words.reduce((m, w) => m + (w.morphemes?.length ?? 0), 0),
       0,
