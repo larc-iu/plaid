@@ -23,6 +23,7 @@ const ALLOWED = [
       'plaid-igt/src/domain/affixMarkers.js',
       'plaid-igt/src/domain/layerInfo.js',
       'plaid-igt/src/domain/IgtDocument.js',
+      'plaid-igt/src/domain/documentVocabularies.js',
       'plaid-igt/src/components/vocabularies/FormLabel.jsx',
       'plaid-igt/src/components/projects/search/searchRunner.js',
     ],

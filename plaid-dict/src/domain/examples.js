@@ -18,6 +18,7 @@
 
 import { cpSlice } from '@larc-iu/plaid-client';
 import { IgtDocument } from '@igt/domain/IgtDocument.js';
+import { documentVocabularies } from '@igt/domain/documentVocabularies.js';
 import { locateHits } from '@igt/components/projects/search/searchRunner.js';
 import { exampleKey } from '@igt/domain/vocabDictionary.js';
 
@@ -27,7 +28,13 @@ const loadDocument = (client, documentId) => {
   if (!documents.has(documentId)) {
     const pending = (async () => {
       const raw = await client.documents.get(documentId, true);
-      return new IgtDocument({ raw, vocabularies: {}, client });
+      // With the vocabularies its links name, so a linked morpheme goes by
+      // its entry's type and joins as the texts join it.
+      return new IgtDocument({
+        raw,
+        vocabularies: await documentVocabularies(client, raw),
+        client,
+      });
     })();
     // A failed read must not be remembered as the answer: a document may be
     // unreadable now and readable on the next page.

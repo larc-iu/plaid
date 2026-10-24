@@ -10,6 +10,7 @@
 // embedded layer tree, so no per-project fetch is needed.
 
 import { IgtDocument } from '@/domain/IgtDocument';
+import { documentVocabularies } from '@/domain/documentVocabularies';
 import { buildContextRows } from '@/components/projects/search/searchRunner.js';
 
 const HIT_LIMIT = 1000;
@@ -75,7 +76,11 @@ export async function loadConcordanceGroups(client, hits, docEntries) {
   return Promise.all(
     docEntries.map(async ([docId, count]) => {
       const [raw, hitIds] = await Promise.all([client.documents.get(docId, true), idsFor(docId)]);
-      const doc = new IgtDocument({ raw, vocabularies: {}, client });
+      const doc = new IgtDocument({
+        raw,
+        vocabularies: await documentVocabularies(client, raw),
+        client,
+      });
       return {
         docId,
         projectId: doc.raw?.project,

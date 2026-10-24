@@ -173,9 +173,11 @@ describe('runExport', () => {
     const entries = await unzipBlob(result.blob);
     expect(Object.keys(entries).sort()).toEqual(['documents/Alpha (2).txt', 'documents/Alpha.txt']);
     expect(new TextDecoder().decode(entries['documents/Alpha.txt'])).toContain('hi  yo');
-    // Sequential fetch order, after a single listDocuments.
+    // Sequential fetch order, after a single listDocuments and the lexicon
+    // every format reads its morph types from.
     expect(client.calls).toEqual([
       ['listDocuments', 'p1'],
+      ['vocabLayers.get', 'v1'],
       ['documents.get', 'd1'],
       ['documents.get', 'd2'],
     ]);
@@ -193,7 +195,10 @@ describe('runExport', () => {
     });
     expect(result.filename).toBe('Solo Doc.txt');
     expect(await result.blob.text()).toContain('Solo Doc');
-    expect(client.calls).toEqual([['documents.get', 'd1']]);
+    expect(client.calls).toEqual([
+      ['vocabLayers.get', 'v1'],
+      ['documents.get', 'd1'],
+    ]);
   });
 
   it('names a one-document selection after that document at every format', async () => {
@@ -455,14 +460,40 @@ describe('runExport', () => {
     ]);
   });
 
-  it('reads no vocabulary at all when neither the lexicon nor cf is wanted', async () => {
-    const docs = [rawDoc('d1', 'Flex', 'hi yo')];
-    const client = stubClient({ docs });
-    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+  it("gives a linked morpheme its entry's type with neither the lexicon nor cf wanted (HUNT-recent 1)", async () => {
+    const doc = rawDoc('d1', 'Flex', 'perro');
+    doc.textLayers[0].tokenLayers.push({
+      config: role('morpheme'),
+      tokens: [{ id: 'm1', begin: 0, end: 5, metadata: { form: 'perro' } }],
+      spanLayers: [],
+      vocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          vocabLinks: [{ id: 'l1', tokens: ['m1'], vocabItem: { id: 'i1', form: 'perro' } }],
+        },
+      ],
+    });
+    const vocab = {
+      ...VOCAB,
+      items: [{ id: 'i1', form: 'perro', metadata: { gloss: 'dog', morphType: 'enclitic' } }],
+    };
+    const project = JSON.parse(JSON.stringify(PROJECT));
+    project.textLayers[0].tokenLayers.push({ config: role('morpheme'), spanLayers: [] });
+    const client = stubClient({ docs: [doc], vocab });
+    const preset = newPreset('flextext', discoverExportLayers(project), 'f');
     preset.options.lexicon = false;
     preset.options.citationForms = false;
-    await runExport({ client, project: PROJECT, preset, scope: { type: 'document', id: 'd1' } });
-    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toEqual([]);
+    const result = await runExport({
+      client,
+      project,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
+    const xml = await result.blob.text();
+    const dom = new DOMParser().parseFromString(xml, 'text/xml');
+    expect(dom.querySelector('morph').getAttribute('type')).toBe('enclitic');
+    expect(dom.querySelector('morph item[type="txt"]').textContent).toBe('=perro');
   });
 
   // Reported by a user: changing a preset, then exporting one document from
@@ -698,7 +729,10 @@ describe('runExport', () => {
       scope: { type: 'document', id: 'd1' },
       asOf: '2026-01-01T00:00:00Z',
     });
-    expect(client.calls).toEqual([['documents.get', 'd1', '2026-01-01T00:00:00Z']]);
+    expect(client.calls).toEqual([
+      ['vocabLayers.get', 'v1', '2026-01-01T00:00:00Z'],
+      ['documents.get', 'd1', '2026-01-01T00:00:00Z'],
+    ]);
   });
 });
 
@@ -1324,7 +1358,7 @@ describe('runExport — CLDF', () => {
     expect(Object.keys(entries).some((p) => p.endsWith('.tsv'))).toBe(false);
   });
 
-  it('skips the vocabulary fetch when the dictionary option is off', async () => {
+  it('writes no dictionary when the option is off', async () => {
     const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
     const result = await runExport({
       client,
@@ -1332,7 +1366,6 @@ describe('runExport — CLDF', () => {
       preset: cldfPreset({ dictionary: false }),
       scope: { type: 'project' },
     });
-    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toHaveLength(0);
     expect(Object.keys(await unzipBlob(result.blob))).not.toContain('entries.csv');
   });
 
@@ -1584,7 +1617,7 @@ describe('runExport: LaTeX book', () => {
     expect(texts).not.toContain('PlaidHomonym');
   });
 
-  it('reads no vocabulary and links nothing when the chapter is off', async () => {
+  it('links nothing when the chapter is off', async () => {
     const client = stubClient({ docs: [linkedDoc('d2', 'Beta')], vocab: LINKED_VOCAB });
     const result = await runExport({
       client,
@@ -1595,7 +1628,6 @@ describe('runExport: LaTeX book', () => {
     const entries = await unzipBlob(result.blob);
     expect(entries['vocabulary.tex']).toBeUndefined();
     expect(text(entries, 'main.tex')).not.toContain('\\include{vocabulary}');
-    expect(client.calls.some((c) => c[0] === 'vocabLayers.get')).toBe(false);
     expect(text(entries, 'texts/001-beta.tex')).toContain('\\gla \\PlaidWord{perro} ');
   });
 

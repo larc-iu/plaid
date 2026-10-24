@@ -354,25 +354,16 @@ export async function runExport({
   // CLDF turns the vocabularies into EntryTable/SenseTable, so it needs them
   // loaded whenever its dictionary option is on.
   const wantCldfDictionary = isCldf && preset.options?.dictionary !== false;
-  // A FLEx export reads the cf and hn of every morph off the lexicon ENTRY it
-  // links to, so it needs the items loaded even when it is not writing the
-  // .lift. Without them the document GET's embedded items stand in, and those
-  // carry no metadata at all: cf fell back to the citation form, undecorated,
-  // which is exactly the match FLEx cannot make.
-  const wantEntries = isFlex && preset.options?.citationForms !== false;
   // A LaTeX book reads the vocabularies for its vocabulary chapter, which
   // the words and morphemes of its texts link to.
   const latexVocab = isLatex ? latexVocabulary(preset.options, project.vocabs) : null;
   const wantVocabChapter = !!latexVocab?.include && latexVocab.vocabularies.some((v) => v.on);
+  // Every format reads them: a linked morpheme goes by its entry's morph type
+  // (R2), which sets its joiner, its small caps and its FLEx type, and a FLEx
+  // export reads each morph's cf and hn off its entry. The document GET's
+  // embedded items carry no metadata.
   let vocabs = [];
-  if (
-    wantVocabTsvs ||
-    isNative ||
-    wantCldfDictionary ||
-    wantLexicon ||
-    wantEntries ||
-    wantVocabChapter
-  ) {
+  {
     // A historical export carries the vocabularies as they were at the same
     // time as the documents.
     // The loader goes on past a vocabulary it cannot read, so each of its
@@ -622,7 +613,7 @@ export async function runExport({
     const { value: raw, error: readError } = (await exampleReads.next()).value;
     try {
       if (readError) throw readError;
-      const igtDoc = new IgtDocument({ raw, vocabularies: {}, client });
+      const igtDoc = new IgtDocument({ raw, vocabularies: rebaseVocabLinks(vocabsById), client });
       harvestExampleSentences(igtDoc, docId, exampleTokensByDoc.get(docId), exampleTexts);
     } catch (err) {
       const label = await docLabel(docId);
