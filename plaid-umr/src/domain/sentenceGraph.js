@@ -138,7 +138,7 @@ function recordFields(holder, sentence, slice) {
 
 // `s<number><rest>`: a variable's sentence number, then a letter and
 // whatever follows.
-export const NUMBERED_VARIABLE = /^s([0-9]+)(\p{L}.*)$/u;
+const NUMBERED_VARIABLE = /^s([0-9]+)(\p{L}.*)$/u;
 
 /**
  * The one sentence number the variables of a sentence's nodes carry, or null
@@ -179,7 +179,7 @@ export function fileNumbersItsSentences(parsedSentences) {
  * the stored numbers. Every other document is numbered by position, a stored
  * number included, once IGT has added or removed a sentence.
  */
-export function numberedByFile(sentences) {
+function numberedByFile(sentences) {
   if ((sentences || []).some((s) => s.fileNumbered)) return true;
   const first = (sentences || []).find((s) => s.snt != null);
   return !!first && String(first.snt) !== '1';
@@ -1100,7 +1100,7 @@ export const KEPT_VARIABLE = /\(\s*([^\s/()"]+)\s*\//g;
  * the one before it, which a split gives its sentence back. A renumbered
  * node must not take one of them.
  */
-export function keptVariables(graph) {
+function keptVariables(graph) {
   const names = new Set();
   const bySentence = graph.sentences || [];
   (graph.records || []).forEach(({ sentence, own, record }) => {
@@ -1256,7 +1256,7 @@ export function unalignedStretch(pieces, home) {
  *
  * @returns {{ pieceId: string, begin: number, end: number }[]}
  */
-export function wordSplitCuts(node, sentence) {
+function wordSplitCuts(node, sentence) {
   if (node.constant || !node.aligned || !sentence) return [];
   const recorded = new Set(umrMeta(node).words || []);
   if (!recorded.size) return [];
@@ -1290,7 +1290,7 @@ export function wordSplitCuts(node, sentence) {
 
 // A node's pieces as the reader reads them: each cut to the half of a split
 // word it stands on (`cuts`, wordSplitCuts).
-export function readPieces(node) {
+function readPieces(node) {
   if (!node.cuts?.length) return node.pieces;
   const at = new Map(node.cuts.map((c) => [c.pieceId, c]));
   return node.pieces.map((p) => (at.has(p.id) ? { ...p, ...at.get(p.id), id: p.id } : p));
@@ -1348,7 +1348,7 @@ export function renumberMoves(sentences, nodesById, reserved = new Set()) {
  * (renumberMoves): old name to new. A name two moved nodes share is left as
  * it is.
  */
-export function heldRenames(moves) {
+function heldRenames(moves) {
   const to = new Map();
   moves.forEach((r) => to.set(r.from, to.has(r.from) && to.get(r.from) !== r.to ? null : r.to));
   return new Map([...to].filter(([, v]) => v));

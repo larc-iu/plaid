@@ -413,6 +413,8 @@ test('the letter table is what tools/letterClasses.mjs writes, and the cut reads
   assert.equal(isLetterMarkOrNumber(''), false);
   const { readFileSync } = await import('node:fs');
   const source = readFileSync(new URL('../src/domain/sentenceGraph.js', import.meta.url), 'utf8');
-  const body = source.slice(source.indexOf('export function wordSplitCuts'));
+  const at = source.indexOf('\nfunction wordSplitCuts(');
+  assert.ok(at >= 0, 'wordSplitCuts is found');
+  const body = source.slice(at + 1);
   assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /\\p\{/);
 });
