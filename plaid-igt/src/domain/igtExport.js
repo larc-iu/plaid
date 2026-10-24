@@ -298,7 +298,9 @@ const htmlEscape = (s) =>
 // for the free translation. leipzig.js splits a line into words with
 // /{(.*?)}|([^\s]+)/g, so a blank cell is `{}` and a cell holding whitespace
 // is braced whole, as in gb4e and ExPex. A non-breaking space will not do:
-// \s matches it.
+// \s matches it. leipzig.js 0.8.0 has no escape for a brace, so a cell
+// holding one still breaks the alignment ("{x" and "y}" side by side read as
+// one word, a cell "{y}" loses its braces). Left so (REV-R4-IGT E2).
 export function formatLeipzig(sentence, fields) {
   const cell = (s) => (s === '' || /\s/.test(s) ? `{${htmlEscape(s)}}` : htmlEscape(s));
   const lines = tiers(sentence, fields).map((l) => `  <p>${l.cells.map(cell).join(' ')}</p>`);
