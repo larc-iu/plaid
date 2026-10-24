@@ -76,3 +76,25 @@ def test_merge_metadata_is_apply_metadata_ops_over_metadata_ops():
 def test_merge_metadata_refuses_a_key_the_server_refuses(key):
     with pytest.raises(ValueError, match='Invalid metadata key'):
         merge_metadata({}, {key: 1})
+
+
+def test_no_service_app_or_assistant_replaces_an_entitys_whole_metadata():
+    """R4-3-5: a metadata write is a patch of path ops naming only what
+    changes. A PUT (set_metadata, setMetadata) drops every key it does not
+    name, a comment anchor's or another app's, so outside the clients, the
+    tests and two importers' fresh documents nothing sends one."""
+    import pathlib
+    import re
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    sources = [*repo.glob('plaid-*/services/*.py'), *repo.glob('plaid-*/src/**/*.js'),
+               *repo.glob('plaid-*/src/**/*.jsx'), *repo.glob('plaid-*/src/**/*.py')]
+    sources = [p for p in sources
+               if not {'plaid-client-js', 'plaid-client-py', 'plaid-core', 'node_modules'} & set(p.parts)
+               and not re.search(r'(\.test\.|\.spec\.|^test_)', p.name)]
+    assert len(sources) > 100
+    put = re.compile(r'\.(set_metadata|setMetadata)\(')
+    found = [str(p.relative_to(repo)) for p in sources if put.search(p.read_text())]
+    # Two importers write the metadata of a document they have just made,
+    # which holds nothing to drop.
+    fresh = ['plaid-igt/src/import/project.js', 'plaid-igt/src/import/native/importEngine.js']
+    assert sorted(set(found) - set(fresh)) == [], 'patch metadata with path ops (metadata_ops, patch_metadata, bulk_update)'

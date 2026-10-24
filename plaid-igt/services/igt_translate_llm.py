@@ -36,12 +36,13 @@ from plaid_client.service import held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
-from plaid_client.provenance import stamp_inferred, prov_state, MACHINE
+from plaid_client.metadata_ops import metadata_ops
+from plaid_client.provenance import PROVENANCE_KEYS, stamp_inferred, prov_state, MACHINE
 from plaid_client.workflows.igt import NoGlossField, derive, field_layer_id
 
 DEFAULT_SERVICE_ID = 'llm-translator'
 DEFAULT_CONTEXT = 2
-WRITE_CHUNK = 400  # ops per atomic batch (the server caps a batch at 1000)
+WRITE_CHUNK = 400  # sentences per atomic batch, one bulk update and one bulk create
 
 SUMMARY = """\
 **LLM translation** drafts a free translation for every sentence of the
@@ -334,16 +335,29 @@ class LLMTranslateService(BaseService):
             with response_helper.critical():
                 with self.client.operation(requester.label(f'LLM translation ({len(plans)} sentences)'),
                                            kind='service-run', ref=service_source(self.service_id)):
-                    for start in range(0, len(plans), WRITE_CHUNK // 2):
+                    # Per chunk, one bulk update of the translations already
+                    # there and one bulk create of the new ones, in one batch.
+                    # A replaced span's metadata is patched: the provenance
+                    # keys become the new stamp's, and every other key on it
+                    # (a comment anchor, another app's) stays.
+                    for start in range(0, len(plans), WRITE_CHUNK):
+                        updates, creates = [], []
+                        for s, span, text in plans[start:start + WRITE_CHUNK]:
+                            stamp = stamp_inferred(source, detail={**base_detail, 'value': text})
+                            if span:
+                                stored = span.get('metadata') or {}
+                                gone = {k: None for k in PROVENANCE_KEYS if k in stored}
+                                updates.append({'id': span['id'], 'value': text,
+                                                'metadata': metadata_ops({**gone, **stamp})})
+                            else:
+                                creates.append({'span_layer_id': tr_layer_id, 'tokens': [s['id']],
+                                                'value': text, 'metadata': stamp})
                         with self.client.batched() as b:
-                            for s, span, text in plans[start:start + WRITE_CHUNK // 2]:
-                                stamp = stamp_inferred(source, detail={**base_detail, 'value': text})
-                                if span:
-                                    b.spans.update(span['id'], text)
-                                    b.spans.set_metadata(span['id'], stamp)
-                                    replaced += 1
-                                else:
-                                    b.spans.create(tr_layer_id, [s['id']], text, stamp)
+                            if updates:
+                                b.spans.bulk_update(updates)
+                            if creates:
+                                b.spans.bulk_create(creates)
+                        replaced += len(updates)
 
             run.result = translation_result(document_id, len(sentences), skipped,
                                             written=len(plans), replaced=replaced, failed=failed,

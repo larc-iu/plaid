@@ -68,3 +68,45 @@ def test_the_translator_reads_each_sentences_translation_span_from_derive():
     assert [s['translation_span'] and s['translation_span']['id'] for s in sentences] == [
         None, 'sp1', None, None, None]
     assert sentences[1]['translation'] == 'the water'
+
+
+def test_a_translation_is_replaced_by_path_ops_in_one_bulk_update_and_new_ones_in_one_bulk_create():
+    """R4-3-5: the translator replaced a stored translation's whole metadata
+    with a PUT, one sentence at a time, dropping any other key on the span. It
+    now patches the provenance keys only, in one bulk update, and creates the
+    new ones in one bulk create."""
+    from test_igt_model_down import _document
+    doc = _document()
+    trl = doc['text_layers'][0]['token_layers'][0]['span_layers'][0]
+    trl['spans'] = [
+        {'id': 'sp1', 'tokens': ['s1'], 'value': 'old guess',
+         'metadata': {'prov': 'inferred', 'provSource': 'service:x', 'provProb': 0.4,
+                      'other': {'kept': True}}},
+        {'id': 'sp2', 'tokens': ['s2'], 'value': 'a person wrote this',
+         'metadata': {'prov': 'inferred', 'provSource': 'service:x', 'provConfirmed': True,
+                      'note': 'kept'}},
+    ]
+    service = _service(translate, 'LLMTranslateService', ['The house.'] * 5)
+    service.client = servicetest.FakeClient([doc], project={'id': 'p1', 'config': {}, 'vocabs': []})
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['sentences_written'] == 5 and result['sentences_replaced'] == 2
+
+    kinds = service.client.kinds
+    assert 'spans.set_metadata' not in kinds
+    assert 'spans.update' not in kinds and 'spans.create' not in kinds
+    [updates] = service.client.payloads('spans.bulk_update')
+    by_id = {u['id']: u for u in updates}
+    assert set(by_id) == {'sp1', 'sp2'}
+    assert all(u['value'] == 'The house.' for u in updates)
+    after = {i: servicetest.as_fragment(u['metadata']) for i, u in by_id.items()}
+    for frag in after.values():
+        assert frag['prov'] == 'inferred'
+        assert frag['provSource'].startswith('service:') and 'provDetail' in frag
+    # Only provenance keys are named, and a key the new stamp lacks goes.
+    assert after['sp1']['provProb'] is None and 'other' not in after['sp1']
+    assert after['sp2']['provConfirmed'] is None and 'note' not in after['sp2']
+    [creates] = service.client.payloads('spans.bulk_create')
+    assert sorted(c['tokens'][0] for c in creates) == ['s3', 's4', 's5']
+    assert all(c['span_layer_id'] == 'trL' and c['value'] == 'The house.' for c in creates)
