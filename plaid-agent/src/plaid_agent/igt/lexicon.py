@@ -22,7 +22,7 @@ from .vocab import (PARENT_KEY, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCOPE_SENSE
                     descendants_of, field_by_name, homograph_group, homograph_of,
                     is_reserved_field_name, next_sense_order, parent_of, plan_homograph_order,
                     plan_sense_set_number, ref_ids, vocab_field_summary, with_example_added,
-                    with_example_removed, with_parent, with_ref_ids)
+                    with_example_removed, with_parent, with_ref_ids, stored_entry_form)
 from .workspace import Workspace, _hits_in, _meta_of, _words_of
 
 
@@ -51,6 +51,10 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
         metadata = _entry_field_write(ws, v, f, val, metadata, None)
     if morph:
         metadata['morphType'] = morph_type(morph)
+    # Stored without markers, the type from them where they name one (R27).
+    form, typed = stored_entry_form(form, metadata.get('morphType'))
+    if typed:
+        metadata['morphType'] = typed
     if parent is not None:
         # The tree is the lexicon as the SERVER has it, so the senses this plan
         # has already added to the same entry are counted here as well: without

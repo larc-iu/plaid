@@ -48,7 +48,7 @@ wire's key recasing):
   create_document {name, text, metadata}   (needs the project: text layer, token layers, ignored config)
   merge_entries   {keep_id, remove_id, links: [{link_id, token_id}]}
   delete_entry    {item_id, links: [link_id]}
-  rename_entry    {item_id, form}
+  rename_entry    {item_id, form, morph_type?}   (morph_type where the new form's markers named another type)
   rename_document {document_id, name}
   set_morpheme_form {morpheme_id, form, restamp?}   (a respelling carried into a morpheme's own form, with no restamp, as in
                    Bulk Edit, or with restamp true a direct correction of one morpheme, stamped as every rewrite is)
@@ -459,6 +459,10 @@ def _apply_delete_entry(ctx: Context, op) -> int:
 
 def _apply_rename_entry(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.vocab_items.update(o['item_id'], o['form']))
+    # A new headword whose markers named another type takes it (R27).
+    if op.get('morph_type'):
+        ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(
+            o['item_id'], [{'op': 'set', 'path': ['morphType'], 'value': o['morph_type']}]))
     return 1
 
 

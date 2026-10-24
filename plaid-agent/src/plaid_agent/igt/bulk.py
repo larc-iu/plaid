@@ -6,7 +6,7 @@ is applied only after approval."""
 
 import copy
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.igt import precedence
 from plaid_client.workflows.igt.senses import morpheme_morph_type
@@ -26,7 +26,7 @@ from .tools import (parse_analysis, analysis_op, no_scope_reaches, refuse_shape_
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
-from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
+from .vocab import morph_type_of, plan_delete_refs, plan_merge_refs, ref_ids, stored_entry_form
 
 
 def _bulk_note(ws: Workspace, ops: List[Dict[str, Any]], what: str) -> str:
@@ -1703,6 +1703,18 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} freed or cleared.' if refs else '')
 
 
+def _renamed_form(new: str, current: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+    """A new headword as an entry stores it (R27): without markers, and the
+    ``morph_type`` the rename also writes where the markers name another type
+    than the entry has."""
+    form, typed = stored_entry_form(new, current)
+    return form, ({'morph_type': typed} if typed and typed != current else {})
+
+
+def _typed_label(typed: Dict[str, Any]) -> str:
+    return f' ({typed["morph_type"]})' if typed else ''
+
+
 def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = None,
                    lexicon: Optional[str] = None, entry_id: Optional[str] = None,
                    entry_gloss: Optional[str] = None) -> str:
@@ -1711,11 +1723,12 @@ def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = Non
     if not new_form:
         raise ToolError('new_form must not be empty', kind='invalid-argument')
     it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renamed')
-    if it.get('form') == new_form:
-        return ws.planned_note(0)
     view = ws.view_of_item(it['id'])
-    ws.add_op({'kind': 'rename_entry', 'item_id': it['id'], 'form': new_form,
-               'label': f'Rename entry {_name(view, it)} → {qv(new_form)}'})
+    new_form, typed = _renamed_form(new_form, morph_type_of(view.tree, it['id']))
+    if it.get('form') == new_form and not typed:
+        return ws.planned_note(0)
+    ws.add_op({'kind': 'rename_entry', 'item_id': it['id'], 'form': new_form, **typed,
+               'label': f'Rename entry {_name(view, it)} → {qv(new_form)}{_typed_label(typed)}'})
     return ws.planned_note(1)
 
 

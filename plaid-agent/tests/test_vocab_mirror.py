@@ -247,6 +247,7 @@ PORT_ONLY = {
     'field_by_name': 'a lookup the app does inline',
     'vocab_field_summary': 'the field schema in prose, for a tool result',
     'with_parent': 'module-private in the app, public here for with_parent_set',
+    'stored_entry_form': "the client's entry_form (R27) as a pair, which the app's writers call directly",
 }
 
 

@@ -52,6 +52,17 @@ from plaid_client.workflows.igt.senses import (  # noqa: F401
     parent_of, sense_order_of,
 )
 
+from plaid_client.workflows.igt.entry_forms import entry_form
+
+
+def stored_entry_form(form: str, morph_type: Optional[str]) -> Tuple[str, Optional[str]]:
+    """The form and morph type an entry stores, from a form and type given
+    (R27): its markers dropped, and the type they name when they name one
+    (the client's one rule, ``entry_form``)."""
+    out = entry_form(morph_type, form)
+    return out['form'], out['morphType']
+
+
 # The order of an entry among the entries that share its form. A FLEx import
 # writes FLEx's homograph number here. Reordering in the app rewrites it 1..n.
 HOMOGRAPH_KEY = 'homograph'
