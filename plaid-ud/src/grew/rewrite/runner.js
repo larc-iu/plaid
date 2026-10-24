@@ -27,10 +27,12 @@ import { makeValidators } from '../../utils/udVocabMode.js';
 const LOAD_CONCURRENCY = 4;
 
 // Document ids with at least one server-side match for any rule, busiest
-// first, or null when some rule has to be matched everywhere.
+// first, or null when some rule has to be matched everywhere. Without the
+// server's limits (an /info that failed) a rule is sent as it is, and a query
+// the server refuses (400) is matched everywhere too.
 async function findDocs(client, grs, layerInfo, projectId) {
   const counts = new Map();
-  const limits = await client.server.limits();
+  const limits = await client.server.limits().catch(() => undefined);
   for (const rule of grs.rules) {
     let compiled;
     try {
@@ -45,11 +47,17 @@ async function findDocs(client, grs, layerInfo, projectId) {
     // it gives is short of the ones whose only match is one of those. Read
     // them all.
     if (compiled.partialDocs) return null;
-    const r = await client.query({
-      where: [...compiled.query.where, ['token', '?S', { doc: { var: '?d' } }]],
-      return: { group: ['?d'], aggregates: [['count']] },
-      scope: { projectIds: [projectId] },
-    });
+    let r;
+    try {
+      r = await client.query({
+        where: [...compiled.query.where, ['token', '?S', { doc: { var: '?d' } }]],
+        return: { group: ['?d'], aggregates: [['count']] },
+        scope: { projectIds: [projectId] },
+      });
+    } catch (e) {
+      if (e?.status === 400) return null;
+      throw e;
+    }
     for (const [docId, n] of r?.results || []) {
       counts.set(String(docId), (counts.get(String(docId)) || 0) + n);
     }

@@ -136,6 +136,21 @@ test("a rule past the server's branch limit is matched in every document, never 
   assert.ok(plan.rows.length > 0);
 });
 
+test('without the server limits, a rule the server refuses is matched in every document', async () => {
+  const { client, project, layerInfo } = setup();
+  client.server.limits = async () => {
+    throw Object.assign(new Error('HTTP 502'), { status: 502 });
+  };
+  client.query = async () => {
+    client.queries += 1;
+    throw Object.assign(new Error('Query rejected: too many branches'), { status: 400 });
+  };
+  const grs = parseGrs('pattern { X [upos=DET]|[upos=NOUN] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs }, () => {});
+  assert.equal(client.queries, 1);
+  assert.ok(plan.rows.length > 0);
+});
+
 test('plan: one row per rewritten sentence, with change lines and counts', async () => {
   const { client, project, layerInfo } = setup();
   const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
