@@ -693,6 +693,30 @@ describe('after a refusal', () => {
     );
   });
 
+  // A touch tap moves focus after touchend, in a later task than its
+  // pointerdown, just after the mousedown the browser sends for it
+  // (REV-R4-IGT E1).
+  it('a tap on another cell keeps that tap too', async () => {
+    const doc = mount();
+    const morphId = glossCell().dataset.cellKey.split(':')[1];
+    await doc.updateMorphemeSpan(morphId, 'Gloss', 'PL', null);
+    await flush();
+    const second = host.querySelectorAll('input[data-cell-key^="ma:"]')[1];
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan');
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'ABL');
+    second.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 5));
+    second.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    second.focus();
+    await flush();
+    await flush();
+    expect(document.activeElement).toBe(second);
+    expect(cell.value).toBe('PL');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('leaving again with the same refused text is refused again, not silently dropped', async () => {
     const doc = mount();
     const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
