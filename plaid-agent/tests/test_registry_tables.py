@@ -257,3 +257,43 @@ def test_a_change_made_by_name_beats_a_scope_by_the_kind_s_own_declaration():
         assert ud_plan.entity_of({'kind': 'relabel', 'relation_id': 'r1'}) == ('relation', 'r1')
     finally:
         ud_plan.KIND = saved
+
+
+# ---- Every app: no hand-kept list of kinds ------------------------------------
+
+#: Lists of kinds typed out on purpose, each a set of tools' own choice the
+#: registry holds no tag for: the values a corpus rule writes (VALUE_KINDS),
+#: those a named change is read off (NAMED_KINDS), and what one apply_penman
+#: call stages (GRAPH_KINDS).
+HAND_KEPT = {('igt/bulk.py', 'VALUE_KINDS'), ('igt/bulk.py', 'NAMED_KINDS'), ('umr/plan.py', 'GRAPH_KINDS')}
+#: Lists of other kinds whose names happen to meet an op kind's: the query
+#: language's entities ("link").
+NOT_OP_KINDS = {('core/query.py', 'ENTITY_KINDS')}
+
+
+def test_no_list_of_op_kinds_is_typed_out_but_the_allowed_ones():
+    """A module-level ``*_KINDS`` holding op kind names written as strings is
+    a list the next kind silently misses (R4-6-1). It is read off the
+    registry (``ok.shaped``, ``located_at``), or it is on HAND_KEPT."""
+    import ast
+    from plaid_agent.igt.plan import KIND as IGT
+    from plaid_agent.ud.plan import KIND as UD
+    from plaid_agent.umr.plan import KIND as UMR
+    kinds = set(IGT) | set(UD) | set(UMR)
+    root = pathlib.Path(__file__).resolve().parent.parent / 'src' / 'plaid_agent'
+    found = set()
+    for path in sorted(root.rglob('*.py')):
+        rel = path.relative_to(root).as_posix()
+        for node in ast.parse(path.read_text(encoding='utf-8')).body:
+            target = node.targets[0] if isinstance(node, ast.Assign) and len(node.targets) == 1 else \
+                node.target if isinstance(node, ast.AnnAssign) else None
+            if not isinstance(target, ast.Name) or not target.id.endswith('_KINDS') or node.value is None:
+                continue
+            names = {c.value for c in ast.walk(node.value)
+                     if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+            if names & kinds and (rel, target.id) not in NOT_OP_KINDS:
+                found.add((rel, target.id))
+    assert found - HAND_KEPT == set(), 'typed-out kind lists, read them off the registry: ' \
+        f'{sorted(found - HAND_KEPT)}'
+    # Each allowed one is still there, so a list that went leaves the allowlist too.
+    assert HAND_KEPT <= found, sorted(HAND_KEPT - found)
