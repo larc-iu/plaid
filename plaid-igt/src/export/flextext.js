@@ -216,7 +216,7 @@ function morphemesStatus(morphemes, options) {
 }
 
 function morphXml(indent, m, options, lex) {
-  const morphType = m?.morphType ?? m?.metadata?.morphType;
+  const morphType = m?.morphType ?? null;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
   // Decorated, because that is what FLEx writes in its own export and what its

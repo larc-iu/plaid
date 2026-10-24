@@ -180,8 +180,10 @@ const nameAllocator = () => {
 const morphText = (morphemes, i, withMarkers) => {
   const form = morphFormOf(morphemes[i]);
   if (!withMarkers || i === 0) return form;
-  const typeOf = (m) => m?.morphType ?? m?.metadata?.morphType;
-  const piece = (j) => ({ text: morphFormOf(morphemes[j]), morphType: typeOf(morphemes[j]) });
+  const piece = (j) => ({
+    text: morphFormOf(morphemes[j]),
+    morphType: morphemes[j]?.morphType ?? null,
+  });
   return joinerBetween(piece(i - 1), piece(i)) + form;
 };
 

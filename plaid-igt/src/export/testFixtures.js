@@ -35,6 +35,9 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
           end: 5,
           content: 'perro',
           metadata: { form: 'perro', morphType: 'stem' },
+          // The derived type (plaid-ui morphemeMorphType): the entry's, else
+          // the token's own known type.
+          morphType: 'stem',
           annotations: { Gloss: span('dog') },
           vocabItem: { id: 'v1', form: 'perro', metadata: {} },
         },
@@ -44,6 +47,7 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
           end: 6,
           content: 's',
           metadata: { form: 's', morphType: 'enclitic' },
+          morphType: 'enclitic',
           annotations: { Gloss: span('PL') },
           vocabItem: null,
         },

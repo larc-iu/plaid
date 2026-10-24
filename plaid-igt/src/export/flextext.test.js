@@ -237,8 +237,14 @@ describe('buildFlextextDocument', () => {
 
   it('omits the morph type attribute for unknown morph types', () => {
     const doc = makeFixtureDoc();
-    doc.sortedSentences[0].tokens[0].morphemes[0].metadata.morphType = 'martian';
-    doc.sortedSentences[0].pieces[0].morphemes[0].metadata.morphType = 'martian';
+    // A type the derived view does not know reads as none there.
+    for (const m of [
+      doc.sortedSentences[0].tokens[0].morphemes[0],
+      doc.sortedSentences[0].pieces[0].morphemes[0],
+    ]) {
+      m.metadata.morphType = 'martian';
+      m.morphType = null;
+    }
     const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
     expect(dom.querySelector('morph').hasAttribute('type')).toBe(false);
   });

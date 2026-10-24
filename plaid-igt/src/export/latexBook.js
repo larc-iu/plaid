@@ -346,7 +346,7 @@ const linkedMorphemes = (text, morphemes, entries) => {
   const forms = morphemes.map((m) => texLine(morphFormOf(m)));
   const piece = (i) => ({
     text: forms[i],
-    morphType: morphemes[i].morphType ?? morphemes[i].metadata?.morphType,
+    morphType: morphemes[i].morphType ?? null,
   });
   const joints = forms.map((_, i) => (i === 0 ? '' : joinerBetween(piece(i - 1), piece(i))));
   if (forms.map((f, i) => joints[i] + f).join('') !== text) return null;
