@@ -92,3 +92,31 @@ test('a lost answer after a re-mint rolls back the id the create was last sent',
   assert.equal(seen.created.length, 2);
   assert.deepEqual(seen.deleted, [seen.created[1]]);
 });
+
+// HUNT-recent 12: a create whose answer was lost made the project, and the
+// rollback deleted it. The next press names the same id, which core answers
+// 409 id-taken with deleted true (while the delete is still running too, since
+// 82f18f5c8), and setup goes on under a fresh id rather than failing.
+test('the press after a rolled-back lost create makes the project under a fresh id', async () => {
+  const mint = { current: null };
+  const first = fakeClient(() => {
+    throw lost();
+  });
+  await assert.rejects(createUdProject(first.client, 'New', mint), /Failed to fetch/);
+  assert.deepEqual(first.seen.deleted, first.seen.created);
+
+  const second = fakeClient((id) => {
+    if (id === first.seen.created[0]) {
+      throw Object.assign(idTaken(), { responseData: { error: 'id-taken', deleted: true } });
+    }
+    return { id };
+  });
+  const made = await createUdProject(second.client, 'New', mint);
+  const [again, fresh] = second.seen.created;
+  assert.equal(again, first.seen.created[0]);
+  assert.match(fresh, UUIDV7);
+  assert.notEqual(fresh, again);
+  assert.equal(made.id, fresh);
+  assert.deepEqual(second.seen.batchedUnder, [fresh]);
+  assert.deepEqual(second.seen.deleted, []);
+});
