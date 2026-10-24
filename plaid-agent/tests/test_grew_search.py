@@ -253,3 +253,37 @@ def test_ud_query_points_structure_and_the_search_tab_at_grew_search(treebank):
     igt = next(t['function']['description'] for t in IGT_TOOLS if t['function']['name'] == 'query')
     assert 'grew_search' not in igt
     assert "is grew_search's, not this language's" in call_tool(treebank, 'query_help', {})
+
+
+# --- core's query limits, read from GET /info, never copied ---------------------
+
+def _alternatives(n):
+    return 'pattern { ' + '; '.join(f'N{i} [upos=NOUN]|[upos=VERB]' for i in range(n)) + ' }'
+
+
+def test_the_branch_limit_is_the_one_core_publishes():
+    limits = {'query_branches': 128}
+    parse_and_compile(_alternatives(7), LAYERS, limits=limits)  # 128 branches
+    with pytest.raises(GrewUnsupportedError, match=r'\(256 > 128\)') as e:
+        parse_and_compile(_alternatives(8), LAYERS, limits=limits)
+    assert e.value.feature == 'branch-explosion'
+    with pytest.raises(GrewUnsupportedError):
+        parse_and_compile(_alternatives(3), LAYERS, limits={'query_branches': 4})
+    # Without them the query is sent, and core refuses it.
+    parse_and_compile(_alternatives(8), LAYERS)
+
+
+def test_the_nesting_limit_is_the_one_core_publishes():
+    src = 'pattern { X [upos=VERB] | [upos=ADJ] }'
+    parse_and_compile(src, LAYERS, limits={'query_clause_depth': 1})
+    with pytest.raises(GrewUnsupportedError) as e:
+        parse_and_compile(src, LAYERS, limits={'query_clause_depth': 0})
+    assert e.value.feature == 'nesting-too-deep'
+    parse_and_compile(src, LAYERS)
+
+
+def test_the_tool_reads_the_limits_from_the_server(fake_ws):
+    from types import SimpleNamespace
+    fake_ws.client.server = SimpleNamespace(limits=lambda: {'query_branches': 1})
+    with pytest.raises(ToolError, match=r'too many alternatives \(2 > 1\)'):
+        t_grew_search(fake_ws, 'pattern { X [upos=NOUN]|[upos=VERB] }')

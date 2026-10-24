@@ -12,6 +12,7 @@ const client = vi.hoisted(() => ({
     listDocuments: async () => [{ id: 'd1', name: 'Doc' }],
   },
   query: (...args) => query.fn(...args),
+  server: { limits: async () => ({}) },
 }));
 // The shared useAuth, which the app's AuthContext re-exports and plaid-ui's
 // useProject reads.

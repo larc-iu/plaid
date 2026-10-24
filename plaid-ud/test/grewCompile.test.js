@@ -319,3 +319,37 @@ test('a column feature is present only when its span carries a value', () => {
   const one = clauses(exact.query.where, 'span').filter((c) => c[2].layer === 'LEMMA');
   assert.deepEqual(one[0][2].value, 'dog');
 });
+
+// Core's query limits, read from GET /info (`client.server.limits()`), never
+// copied here: with them the compiler refuses in its own words before sending,
+// without them it sends and core's refusal speaks.
+const alternatives = (n) =>
+  `pattern { ${Array.from({ length: n }, (_, i) => `N${i} [upos=NOUN]|[upos=VERB]`).join('; ')} }`;
+const refusal = (src, opts) => {
+  try {
+    compile(src, opts);
+  } catch (e) {
+    return e;
+  }
+  return null;
+};
+
+test('the branch limit is the one core publishes', () => {
+  const limits = { queryBranches: 128 };
+  assert.equal(refusal(alternatives(7), { limits }), null); // 128 branches
+  const e = refusal(alternatives(8), { limits }); // 256
+  assert.equal(e?.feature, 'branch-explosion');
+  assert.match(e.message, /256 > 128/);
+  assert.equal(
+    refusal(alternatives(3), { limits: { queryBranches: 4 } })?.feature,
+    'branch-explosion',
+  );
+  assert.equal(refusal(alternatives(8)), null);
+});
+
+test('the nesting limit is the one core publishes', () => {
+  const src = 'pattern { X [upos=VERB] | [upos=ADJ] }';
+  assert.equal(refusal(src, { limits: { queryClauseDepth: 1 } }), null);
+  assert.equal(refusal(src, { limits: { queryClauseDepth: 0 } })?.feature, 'nesting-too-deep');
+  assert.equal(refusal(src), null);
+});

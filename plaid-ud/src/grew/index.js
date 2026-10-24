@@ -1,7 +1,11 @@
 // Public entry point for the Grew → Plaid-QL pipeline.
 //
-//   parseAndCompile(text, layerInfo, { projectId, limit })
+//   parseAndCompile(text, layerInfo, { projectId, limit, limits })
 //     -> { query, warnings, impossible }
+//
+// `limits` is the server's GET /info limits (`client.server.limits()`): the
+// compiler refuses a query past `queryBranches` or `queryClauseDepth` in its
+// own words. Without it the query is sent and the server refuses it.
 //
 // `query` is ready to hand to `client.query()`. `warnings` are non-fatal notes
 // to surface to the user (e.g. a MISC constraint, which imports never store).

@@ -30,10 +30,11 @@ const LOAD_CONCURRENCY = 4;
 // first, or null when some rule has to be matched everywhere.
 async function findDocs(client, grs, layerInfo, projectId) {
   const counts = new Map();
+  const limits = await client.server.limits();
   for (const rule of grs.rules) {
     let compiled;
     try {
-      compiled = compileGrew(rule, layerInfo, { projectId });
+      compiled = compileGrew(rule, layerInfo, { projectId, limits });
     } catch (e) {
       if (e instanceof GrewUnsupportedError) return null;
       throw e;

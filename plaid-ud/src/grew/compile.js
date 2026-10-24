@@ -40,8 +40,6 @@ const ANY_VALUE = { regex: '.' };
 // value list for the search (the rule then visits every document).
 const MAX_LEXICON_VALUES = 500;
 const MAX_LINEAR_DISTANCE = 50;
-const MAX_BRANCHES = 128;
-const MAX_DEPTH = 64;
 
 const mentionsLexicon = (v) =>
   !!v && (v.type === 'lexref' || (v.type === 'disj' && v.items.some(mentionsLexicon)));
@@ -161,10 +159,13 @@ class Compiler {
       }
     }
 
-    if (this.branches > MAX_BRANCHES) {
+    // Core's limits come in `opts.limits` (GET /info, `client.server.limits()`).
+    // Without them the query is sent and core refuses it.
+    const maxBranches = this.opts.limits?.queryBranches;
+    if (maxBranches != null && this.branches > maxBranches) {
       throw new GrewUnsupportedError(
         'branch-explosion',
-        `This query expands to too many alternatives (${this.branches} > ${MAX_BRANCHES}). ` +
+        `This query expands to too many alternatives (${this.branches} > ${maxBranches}). ` +
           `Prefer value lists (a|b) over disjoint feature structures, or split the query.`,
       );
     }
@@ -1163,10 +1164,11 @@ class Compiler {
   }
 
   checkDepth(depth) {
-    if (depth > MAX_DEPTH) {
+    const maxDepth = this.opts.limits?.queryClauseDepth;
+    if (maxDepth != null && depth > maxDepth) {
       throw new GrewUnsupportedError(
         'nesting-too-deep',
-        `Query nesting exceeds ${MAX_DEPTH} levels.`,
+        `Query nesting exceeds ${maxDepth} levels.`,
       );
     }
   }

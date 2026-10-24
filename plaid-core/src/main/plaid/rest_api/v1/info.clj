@@ -10,6 +10,8 @@
   Unauthenticated on purpose. These are the shape of the API, not secrets, and
   a client needs them before it has a session to ask with."
   (:require [plaid.rest-api.v1.batch :as batch]
+            [plaid.query.ast :as query-ast]
+            [plaid.query.desugar :as query-desugar]
             [plaid.sql.comment :as comment]
             [plaid.sql.metadata :as metadata]
             [plaid.server.config :refer [config]]
@@ -49,6 +51,11 @@
          ;; The shortest password any account may be given, so a form can
          ;; say so before the person types it twice.
          :password-min-length    user/min-password-length
+         ;; The most branches a query's :or and :seq may expand to, and the
+         ;; deepest its clauses may nest. A query compiler (the Grew search)
+         ;; refuses past these in its own words before sending.
+         :query-branches         query-desugar/query-branch-cap
+         :query-clause-depth     query-ast/max-clause-depth
          ;; The window a document lock is held for. A client reads the
          ;; `expires-at` on the acquire response first, since that names the
          ;; moment; this is what it plans with before it has one, and what it

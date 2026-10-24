@@ -262,6 +262,8 @@ import {
  * Server limits, as reported by /api/v1/info. An unset limit is absent.
  * `passwordMinLength` is the shortest password the server accepts on any
  * path, `lockExpirationMs` how long a document lock is held before it lapses.
+ * `queryBranches` is the most branches a query's `or` and `seq` may expand
+ * to, `queryClauseDepth` the deepest its clauses may nest.
  * @typedef {object} ServerLimits
  * @property {number} [mediaFileBytes]
  * @property {number} [jsonBodyBytes]
@@ -276,6 +278,8 @@ import {
  * @property {number} [commentBodyLength]
  * @property {number} [passwordMinLength]
  * @property {number} [lockExpirationMs]
+ * @property {number} [queryBranches]
+ * @property {number} [queryClauseDepth]
  */
 
 /**

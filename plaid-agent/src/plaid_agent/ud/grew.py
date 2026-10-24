@@ -40,8 +40,6 @@ COLUMN_FEATS = {'upos': 'upos', 'xpos': 'xpos', 'lemma': 'lemma'}
 # any span carrying a value, and no span carrying null.
 ANY_VALUE = {'regex': '.'}
 MAX_LINEAR_DISTANCE = 50
-MAX_BRANCHES = 128
-MAX_DEPTH = 64
 DEFAULT_LIMIT = 200
 
 
@@ -225,9 +223,14 @@ def _with_value(value: Any, **rest) -> Dict[str, Any]:
 
 
 class _Compiler:
-    def __init__(self, layers: GrewLayers, limit: Optional[int]):
+    def __init__(self, layers: GrewLayers, limit: Optional[int],
+                 limits: Optional[Dict[str, Any]] = None):
         self.li = layers
         self.limit = limit
+        # Core's limits as GET /info publishes them (``client.server.limits()``).
+        # Without them the query is sent and core refuses it.
+        self.max_branches = (limits or {}).get('query_branches')
+        self.max_depth = (limits or {}).get('query_clause_depth')
         self.where: List[Any] = []
         self.find: List[str] = ['?S']
         self.warnings: List[str] = []
@@ -288,10 +291,10 @@ class _Compiler:
             for b in range(a + 1, len(inj)):
                 self.where.append(['!=', f'?n_{inj[a]}', f'?n_{inj[b]}'])
 
-        if self.branches > MAX_BRANCHES:
+        if self.max_branches is not None and self.branches > self.max_branches:
             raise GrewUnsupportedError(
                 'branch-explosion',
-                f'This query expands to too many alternatives ({self.branches} > {MAX_BRANCHES}). '
+                f'This query expands to too many alternatives ({self.branches} > {self.max_branches}). '
                 'Prefer value lists (a|b) over disjoint feature structures, or split the query.')
 
         query = {'find': self.find, 'where': self.where, 'return': 'entities',
@@ -927,8 +930,8 @@ class _Compiler:
         return None
 
     def check_depth(self, depth: int) -> None:
-        if depth > MAX_DEPTH:
-            raise GrewUnsupportedError('nesting-too-deep', f'Query nesting exceeds {MAX_DEPTH} levels.')
+        if self.max_depth is not None and depth > self.max_depth:
+            raise GrewUnsupportedError('nesting-too-deep', f'Query nesting exceeds {self.max_depth} levels.')
 
 
 def _interleavings(a1: str, a2: str, b1: str, b2: str) -> List[Any]:
@@ -941,12 +944,17 @@ def _interleavings(a1: str, a2: str, b1: str, b2: str) -> List[Any]:
             chain(b2, a1, b1, a2), chain(b2, a2, b1, a1)]
 
 
-def compile_grew(ast: Dict[str, Any], layers: GrewLayers, limit: Optional[int] = None) -> Compiled:
-    return _Compiler(layers, limit).compile(ast)
+def compile_grew(ast: Dict[str, Any], layers: GrewLayers, limit: Optional[int] = None,
+                 limits: Optional[Dict[str, Any]] = None) -> Compiled:
+    return _Compiler(layers, limit, limits).compile(ast)
 
 
-def parse_and_compile(text: str, layers: GrewLayers, limit: Optional[int] = None) -> Compiled:
+def parse_and_compile(text: str, layers: GrewLayers, limit: Optional[int] = None,
+                      limits: Optional[Dict[str, Any]] = None) -> Compiled:
     """A Grew request as one Plaid query. Raises :class:`GrewParseError` for
     text that is not Grew and :class:`GrewUnsupportedError` for Grew this
-    cannot express, with the Search tab's messages."""
-    return compile_grew(parse(text), layers, limit)
+    cannot express, with the Search tab's messages. ``limits`` is the
+    server's GET /info limits: past ``query_branches`` or
+    ``query_clause_depth`` the pattern is refused here, in Grew's words.
+    Without them the query is sent and the server refuses it."""
+    return compile_grew(parse(text), layers, limit, limits)

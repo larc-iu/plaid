@@ -19,9 +19,10 @@
 ;; ---------------------------------------------------------------------------
 
 (def ^:private bounded-rep-max 16)
-(def ^:private query-branch-cap
+(def query-branch-cap
   "Max conjunctive branches a query may expand to (the cartesian product of every
-  :or group count and :seq quantifier-combo count). UNIONed downstream."
+  :or group count and :seq quantifier-combo count). UNIONed downstream.
+  Published in GET /info as `query-branches`."
   128)
 
 (defn- seq-clause? [c] (= :seq (first c)))

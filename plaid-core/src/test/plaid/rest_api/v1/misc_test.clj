@@ -4,6 +4,7 @@
                                     with-mount-states with-rest-handler admin-request
                                     assert-ok
                                     with-admin with-clean-db]]
+            [plaid.query.ast :as ast]
             [plaid.server.config :as config]
             [plaid.server.locks :as locks]
             [plaid.sql.comment :as comment]
@@ -46,6 +47,26 @@
       (is (= guideline/max-title-length (:guideline-title-length limits)))
       (is (= guideline/max-body-length (:guideline-body-length limits)))
       (is (= comment/max-body-length (:comment-body-length limits)))))
+
+  (testing "the query limits are the ones the query engine enforces"
+    ;; The Grew compilers read these instead of copying them.
+    (let [limits (-> (get-info) :body :limits)
+          ors (fn [n] {"find" ["?s"]
+                       "where" [(into ["or"] (for [i (range n)]
+                                               [["span" "?s" {"layer" "pos" "value" (str "V" i)}]]))]})
+          nested (fn [n] {"find" ["?s"]
+                          "where" [["span" "?s" {"layer" "pos"}]
+                                   (nth (iterate (fn [c] ["not" c]) ["span" "?s" {"layer" "pos" "value" "X"}]) n)]})
+          refused? (fn [raw] (try (ast/expand raw) false
+                                  (catch clojure.lang.ExceptionInfo _ true)))
+          branches (:query-branches limits)
+          depth (:query-clause-depth limits)]
+      (is (pos-int? branches))
+      (is (pos-int? depth))
+      (is (not (refused? (ors branches))))
+      (is (refused? (ors (inc branches))))
+      (is (not (refused? (nested depth))))
+      (is (refused? (nested (inc depth))))))
 
   (testing "the password minimum is the one every password write enforces"
     (is (= 8 user/min-password-length))

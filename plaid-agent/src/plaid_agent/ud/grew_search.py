@@ -106,13 +106,23 @@ def _binding(row: Dict[str, Any], doc: UdDoc, enhanced: Optional[str]) -> str:
     return ' '.join(parts)
 
 
+def _query_limits(client) -> Optional[Dict[str, Any]]:
+    """The server's GET /info limits, or None when it does not answer: the
+    query then goes out and the server refuses what is past them."""
+    try:
+        return client.server.limits()
+    except Exception:  # noqa: BLE001 - an unreachable server just has no figure
+        return None
+
+
 def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limit: int = None) -> str:
     """Sentences matching a Grew pattern, with the matched words marked."""
     if not isinstance(pattern, str) or not pattern.strip():
         raise ToolError('Give a Grew pattern, e.g. pattern { V [upos=VERB]; V -[nsubj]-> S }.', kind='invalid-argument')
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     try:
-        compiled = parse_and_compile(pattern, layers_of(ws.project), limit=FETCH)
+        compiled = parse_and_compile(pattern, layers_of(ws.project), limit=FETCH,
+                                     limits=_query_limits(ws.client))
     except GrewParseError as e:
         raise ToolError(_parse_error(e), kind='query-refused')
     except GrewUnsupportedError as e:

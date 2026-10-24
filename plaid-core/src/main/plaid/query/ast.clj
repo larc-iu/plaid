@@ -171,7 +171,10 @@
 ;; which, being an `Error` not an `Exception`, would escape the endpoint's
 ;; ExceptionInfo/Exception handlers and surface as an uncaught 500. Capping at
 ;; parse time bounds the depth of every downstream walk too.
-(def ^:private max-clause-depth 64)
+(def max-clause-depth
+  "Deepest clause nesting a query may have. Published in GET /info as
+  `query-clause-depth`."
+  64)
 
 (defn- normalize-seq-element
   ([elem] (normalize-seq-element elem 0))

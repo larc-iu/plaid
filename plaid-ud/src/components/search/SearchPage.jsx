@@ -105,7 +105,11 @@ export const SearchPage = () => {
       impossible,
       nodes,
       edges,
-    } = parseAndCompile(queryText, layerInfo, { projectId, limit: RESULT_LIMIT });
+    } = parseAndCompile(queryText, layerInfo, {
+      projectId,
+      limit: RESULT_LIMIT,
+      limits: await getClient().server.limits(),
+    });
     setWarnings(warns || []);
     setPatternParts({ nodes, edges });
     setCounts(null);
@@ -135,6 +139,7 @@ export const SearchPage = () => {
         const { query, impossible } = parseAndCompile(queryText, layerInfo, {
           projectId,
           countBy: spec,
+          limits: await getClient().server.limits(),
         });
         if (impossible) {
           setCounts([]);

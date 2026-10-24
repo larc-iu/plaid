@@ -34,7 +34,13 @@ function stubClient(...raws) {
     batches: [],
     refuse: null,
     locks: [],
-    query: async () => ({ results: raws.map((r) => [r.id, 1]) }),
+    queries: 0,
+    serverLimits: {},
+    query: async () => {
+      c.queries += 1;
+      return { results: raws.map((r) => [r.id, 1]) };
+    },
+    server: { limits: async () => c.serverLimits },
     documents: {
       get: async (id) => structuredClone(raws.find((r) => r.id === id)),
       locked: async (id, fn) => {
@@ -120,6 +126,15 @@ const setup = ({ provProb } = {}) => {
   };
   return { raw, client, project, layerInfo: getUdLayerInfo(raw) };
 };
+
+test("a rule past the server's branch limit is matched in every document, never sent", async () => {
+  const { client, project, layerInfo } = setup();
+  client.serverLimits = { queryBranches: 1 };
+  const grs = parseGrs('pattern { X [upos=DET]|[upos=NOUN] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs }, () => {});
+  assert.equal(client.queries, 0);
+  assert.ok(plan.rows.length > 0);
+});
 
 test('plan: one row per rewritten sentence, with change lines and counts', async () => {
   const { client, project, layerInfo } = setup();
