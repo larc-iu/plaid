@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { InlineEditor } from './InlineEditor.jsx';
+import { keys } from '../../../lib/keymap.js';
 
 const options = [
   { group: 'Senses', items: [{ value: 'lunch-01', label: 'lunch-01 ARG1 food' }] },
@@ -329,6 +330,48 @@ describe('InlineEditor', () => {
     expect(document.activeElement).toBe(input);
     await r.unmount();
     button.remove();
+  });
+
+  // Delete the edge is a row of the keymap (node.delete), read there: both its
+  // defaults work in the box, and a chord the person bound in their place is
+  // the one that does (R2-RULES-8).
+  it('deletes on the keymap chord for node.delete, rebound or not', async () => {
+    const chord = (input, key, mods = {}) =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }),
+      );
+    const mount = async (onDelete) => {
+      const r = await renderComponent(
+        <InlineEditor
+          x={0}
+          y={0}
+          value="ARG0"
+          options={options}
+          onCommit={() => {}}
+          onCancel={() => {}}
+          onDelete={onDelete}
+        />,
+      );
+      return { r, input: r.container.querySelector('input') };
+    };
+    const byDelete = vi.fn();
+    const first = await mount(byDelete);
+    await first.r.step(() => chord(first.input, 'Delete', { shiftKey: true }));
+    expect(byDelete).toHaveBeenCalledTimes(1);
+    await first.r.unmount();
+
+    keys.setOverrides({ 'node.delete': ['Alt+D'] });
+    try {
+      const rebound = vi.fn();
+      const second = await mount(rebound);
+      await second.r.step(() => chord(second.input, 'Backspace', { shiftKey: true }));
+      expect(rebound).not.toHaveBeenCalled();
+      await second.r.step(() => chord(second.input, 'd', { altKey: true, code: 'KeyD' }));
+      expect(rebound).toHaveBeenCalledTimes(1);
+      await second.r.unmount();
+    } finally {
+      keys.setOverrides({});
+    }
   });
 
   it('cancels on Escape', async () => {

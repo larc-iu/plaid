@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { textIncludes } from '@ui/domain/collation.js';
 import { foldAlif } from '../../../domain/lexicon.js';
+import { keys } from '../../../lib/keymap.js';
 
 // A small editor floating over the canvas at a point of the graph: a
 // Combobox seeded with options, a free value allowed unless `strict`.
@@ -181,7 +182,7 @@ export function InlineEditor({
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* What Shift+Backspace does, for a mouse: the only way to delete a
+      {/* What the keymap's node.delete chord does, for a mouse: the only way to delete a
           re-entrant edge or a document-level relation, neither of which the
           node's own menu can name. The pointer-down is swallowed so the
           input never blurs, because a blur COMMITS. */}
@@ -241,7 +242,7 @@ export function InlineEditor({
           } else if (e.key === 'Escape') {
             e.preventDefault();
             once(onCancel);
-          } else if (e.key === 'Backspace' && e.shiftKey && pristine && onDelete) {
+          } else if (pristine && onDelete && keys.is('node.delete', e)) {
             // While the label is as it opened: once typed in, Shift is a
             // shifted character's, not a chord's.
             e.preventDefault();
