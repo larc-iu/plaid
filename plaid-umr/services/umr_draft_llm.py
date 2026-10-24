@@ -223,7 +223,7 @@ def plan_sentence(graph, alignment, sentence, taken):
         # A node aligned to no word records its sentence, as the app does: the
         # record is what says so, and the anchor covers the whole sentence, so
         # an edit to the text around it resizes the anchor rather than taking
-        # the node with it (plaid-umr src/domain/sentenceGraph.js unalignedStretch).
+        # the node with it (plaid-umr src/domain/umrReconcile.js).
         if list(extents) == [unaligned_extent]:
             meta['sentence'] = sentence.id
         index_of_var[var] = len(nodes)

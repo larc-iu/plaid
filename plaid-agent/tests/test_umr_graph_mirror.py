@@ -13,11 +13,7 @@ largest first), and 291 of 1200 sentences in parts differed (REV2-PY,
 
 The cases are the released sample files, imported with the app's own plan,
 whole and with some edges or the file's root marks dropped, which is how a
-graph looks while someone is building it, and with the edits another app
-makes to the shared sentences and words (a sentence typed in before the
-first, words split and deleted), which both readers read right before a UMR
-write stores the answer (R3, 2026-10-24): each node's alignment and the
-relations a record holds are compared too. ``umr_graph_mirror.mjs`` runs the
+graph looks while someone is building it. ``umr_graph_mirror.mjs`` runs the
 app's side. It skips where it cannot run (no node, or plaid-umr not beside the
 agent), and says so in the warnings summary (see ``node_exe``). It does not
 skip when the two disagree.
@@ -64,12 +60,9 @@ def test_every_sentence_reads_as_the_app_reads_it(variants):
         for sentence, app in zip(doc.sentences, variant['sentences']):
             roots = [r.var for r in sentence.roots]
             text = sentence_penman(doc, sentence) if sentence.nodes else app['penman']
-            alignment = {n.var: [list(r) for r in n.alignment] for n in sentence.nodes}
             if roots != app['roots'] or text != app['penman']:
                 wrong.append(f"{variant['name']} s{sentence.index}: roots {roots} "
                              f"against {app['roots']}")
-            elif alignment != app['alignment'] or sentence.held != app['held']:
-                wrong.append(f"{variant['name']} s{sentence.index}: alignment or held")
             elif [n.var for n in sentence.nodes] != app['order']:
                 wrong.append(f"{variant['name']} s{sentence.index}: node order "
                              f"{[n.var for n in sentence.nodes]} against {app['order']}")
@@ -78,44 +71,19 @@ def test_every_sentence_reads_as_the_app_reads_it(variants):
 
 def test_the_mirror_read_the_names_both_readers_must_agree_on(variants):
     """The small documents of names (``NAMES`` in umr_graph_mirror.mjs) read
-    as the app reads them in the test above. Pinned here: held relations
-    follow their nodes across a merge, a held name a node that keeps it still
-    stores is left alone, a name two nodes of one sentence store is read
-    apart, and names differing only in case go in code-point order
-    (REV-W2B-OPENS M2, L6)."""
+    as the app reads them in the test above. Pinned here: a name two nodes of
+    one sentence store is read apart, and names differing only in case go in
+    code-point order (REV-W2B-OPENS M1, L6)."""
     names = {v['name']: v for v in variants if v['name'].startswith('names: ')}
-    assert len(names) == 4
+    assert len(names) == 2
 
     def read(name):
         return read_document(names[name]['raw'], resolve_layers(names[name]['raw']))
 
-    merged = read('names: held across a merge')
-    by_stored = {n.stored_var: n for n in merged.nodes_by_id.values()}
-    held = {(h['rel'], h['target']) for h in merged.sentences[2].held}
-    assert held == {(':same-entity', by_stored['s3p'].var), (':subset-of', by_stored['s2p'].var),
-                    (':same-entity', by_stored['s1p'].var)}
-    kept = read('names: a moved name another node keeps')
-    assert sorted(h['target'] for h in kept.sentences[2].held) == ['s2p', 's3p']
     twice = read('names: one name twice in a sentence')
     assert sorted(n.var for n in twice.sentences[1].nodes) == ['s2p', 's2p2']
     case = read('names: names differing in case')
     assert [n.var for n in case.sentences[0].nodes][:2] == ['s1B', 's1a']
-
-
-def test_the_mirror_saw_what_another_apps_edits_leave(variants):
-    """The edited variants hold every kind the reader reads right before a
-    UMR write stores it (plaid-umr umrSettle.js): renamed variables, nodes
-    whose word went and nodes over a split word."""
-    edited = [v for v in variants if v['name'].endswith(' edited')]
-    assert edited
-    renamed = cut = lost = 0
-    for variant in edited:
-        doc = read_document(variant['raw'], resolve_layers(variant['raw']))
-        for node in doc.nodes_by_id.values():
-            renamed += bool(node.stored_var and node.stored_var != node.var)
-            cut += node.read_pieces != node.pieces
-            lost += bool(not node.constant and not node.aligned and not node.sentence_token)
-    assert renamed > 100 and cut > 10 and lost > 10, (renamed, cut, lost)
 
 
 def test_the_mirror_saw_graphs_in_parts(variants):

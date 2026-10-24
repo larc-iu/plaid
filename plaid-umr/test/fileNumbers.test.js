@@ -13,6 +13,7 @@ import { nodeOptions } from '../src/components/editor/annotation/pickers.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
 import { validateProject } from '../src/domain/validationQueries.js';
+import { planRenumber } from '../src/domain/umrReconcile.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
 
 const SEP = '#'.repeat(80);
@@ -180,7 +181,7 @@ test('an excerpt with a sentence typed in before it exports and reads back the s
     second.graph.sentences.map((s) => s.number),
     [1, 5, 6],
   );
-  assert.ok([...second.graph.nodesById.values()].every((n) => n.storedVar === n.var));
+  assert.deepEqual(planRenumber(second.graph), []);
   assert.equal(second.toUmr(), out);
 });
 
@@ -194,5 +195,5 @@ test('a file numbered 1, 2, 3 is not marked, and one with a gap is', () => {
     doc.graph.sentences.map((s) => s.number),
     [1, 3],
   );
-  assert.ok([...doc.graph.nodesById.values()].every((n) => n.storedVar === n.var));
+  assert.deepEqual(planRenumber(doc.graph), []);
 });

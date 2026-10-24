@@ -284,7 +284,7 @@ with c.operation("Import ELAN corpus", kind="import", ref="format:elan"):
 |none
 
 |`repair`
-|Layer rules an app sets up by itself, with any repair of the stored data they need first (see <<layer-constraints>>). It is never counted as anyone's edit.
+|Layer rules an app sets up by itself, with any repair of the stored data they need first (see <<layer-constraints>>), and the UMR app's repair when a document opens (see <<Reconciliation Across Apps>>). It is never counted as anyone's edit.
 |none
 
 |`review`
@@ -1674,17 +1674,22 @@ The discipline that resolves this is easy to state, and in the interest of smoot
 
 **Opening a document writes nothing. An app reads what another app left as its own model says it should be, and the first real edit there stores that reading.**
 
-The Plaid apps work this way.
+The IGT and UD apps work this way.
 A word made in the IGT app has no UD word under it, so the UD app shows it as the one UD word over that word, and the first value, lemma or arc a person gives it makes that word in the same batch as the edit.
-A UMR node whose word another app split is read on the half that holds its letters, and the next UMR edit in that sentence stores that reading before its own change.
 An invariant the app cannot read its way past is reported to the person, who decides what to do.
 
 Writing nothing on open keeps a reader's visit out of the audit log, lets several people open a document at once without their pages racing to repair it, and leaves the stored data as the other app wrote it until someone edits it.
 A reader that computes the answer also stays right when the document changes on screen, for instance in response to a real-time update delivered through <<Real-time Messaging>>.
 
-The one exception is setting a project up for an app.
+There are two exceptions.
+The first is setting a project up for an app.
 When a person sets a project made in another app up for UD, the set-up makes the UD word of every word that has none, in the batch that makes UD's layers, since Grew search, Rewrite and the project's word counts read stored words.
 A word another app adds after that is read as a stand-in until it is edited.
+
+The second is the UMR app.
+When a person who can edit a document opens it in the UMR app, the app repairs what another app's edits left of its graphs before the document can be edited, in one operation of kind `repair`.
+A node whose word another app split is put on the half that holds its letters, a variable whose sentence number no longer matches its sentence is renumbered, and a node left outside every sentence is removed.
+History names what the repair changed.
 
 [[layer-constraints]]
 == Layer Constraints

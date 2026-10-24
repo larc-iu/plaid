@@ -1,8 +1,7 @@
 // A node's concept picked from a vocabulary entry, after the entry changed
 // in IGT (the owner's ruling of 2026-09-28): the node is warned about, on
 // the canvas and in Validation, and takes the entry's new value only when a
-// person asks. An entry that is gone is forgotten by the next write to its
-// sentence.
+// person asks. An entry that is gone is forgotten on open.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
@@ -11,7 +10,6 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument, readEntryLexicon } from '../src/domain/UmrDocument.js';
 import { validateProject } from '../src/domain/validationQueries.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { storeAll } from './settle.js';
 import { recordingClient } from './recordingClient.js';
 
 const TEXT = `################################################################################
@@ -160,33 +158,29 @@ test('taking the new value everywhere changes every node picked from the entry',
   assert.equal(await doc.takeEntryValue(byVar(doc, 's2v').id), false);
 });
 
-// REV-W2B-OPENS M3: the lexicon a tab read may be older than a node's link,
-// so a write never deletes one. A link to an entry that is gone reads as
-// none, and stays stored.
-test('a write keeps the link to an entry gone from the vocabulary, which reads as none', async () => {
+// REV-W2B-OPENS M3: the vocabularies a page read may be older than a node's
+// link, so the open never deletes one. A link to an entry the lexicon lacks
+// reads as none.
+test('the open keeps a link to an entry the vocabulary it was picked from lacks', async () => {
   const gone = load({ s1v: 'deleted', s1k: 'kitap' });
   await gone.doc.loadLexicon();
-  assert.equal(await storeAll(gone.doc), null);
+  assert.deepEqual(await gone.doc._reconcile(), { findings: [] });
   assert.equal(gone.calls.length, 0);
-  const node = byVar(gone.doc, 's1v');
-  assert.equal(node.metadata.umr.entry, 'deleted');
-  assert.equal(gone.doc.entryChange(node.id), null);
-  assert.ok(!gone.doc.problems.some((p) => p.code === 'entry-changed' && p.var === 's1v'));
+  assert.equal(byVar(gone.doc, 's1v').metadata.umr.entry, 'deleted');
+  assert.equal(gone.doc.entryChange(byVar(gone.doc, 's1v').id), null);
 });
 
 test('a vocabulary unlinked from the project keeps the entries its nodes were picked from', async () => {
   // v9 is not the project's any more: a maintainer unlinked it, and may link
   // it again. Its entries are not in the lexicon, and are not deleted.
   const unlinked = load({ s1v: 'fish@v9', s2v: 'fish@v9' });
-  await unlinked.doc.loadLexicon();
-  assert.equal(await storeAll(unlinked.doc), null);
+  assert.deepEqual(await unlinked.doc._reconcile(), { findings: [] });
   assert.equal(unlinked.calls.length, 0);
   assert.equal(byVar(unlinked.doc, 's1v').metadata.umr.entry, 'fish');
   // Nor is an entry forgotten whose node does not say which vocabulary it is
   // in: a deleted entry and one this person cannot read look the same.
   const unsaid = load({ s1v: 'deleted@' });
-  await unsaid.doc.loadLexicon();
-  assert.equal(await storeAll(unsaid.doc), null);
+  assert.deepEqual(await unsaid.doc._reconcile(), { findings: [] });
   assert.equal(unsaid.calls.length, 0);
 });
 

@@ -77,6 +77,13 @@ const cloneRaw = (value) => {
   return value;
 };
 
+// The audit label every heal write of a reconcile pass folds under, until the
+// pass names what it changed (see `describeReconcile`).
+const RECONCILE_LABEL = 'Repair on open';
+// The label a pass that failed partway ends with: what it wrote is only part
+// of any repair a fuller label would name.
+const RECONCILE_INTERRUPTED_LABEL = 'Repair on open (interrupted)';
+
 // What an edit planned on an out-of-date document is refused with, unsent: the
 // conflict the edit before it met, so every screen words it the same way.
 // `unsent` tells it from a refusal the server made.
@@ -1492,8 +1499,92 @@ export class DocumentModel {
   // (useValidateOnOpen reports it): `{ findings }`, with `error` when the
   // check itself failed. It writes nothing (R3, 2026-10-24): what another app
   // left is read right by the app's readers, and the next real edit stores
-  // it. A subclass with a contract to check overrides this.
+  // it. A subclass with a contract to check overrides this. igt and ud check
+  // this way. plaid-umr repairs instead (`reconcileOnOpen` below), the one
+  // recorded exception to an open writing nothing (R3b, 2026-10-24).
   validateOnOpen() {
     return { findings: [] };
+  }
+
+  // ----- reconcile on open (plaid-umr) -----
+
+  // Heal what another app may have left in the shared substrate, once, when
+  // the document opens (useReconcileOnOpen holds the editor behind a gate while
+  // it runs). The repair is the subclass's `_reconcile`, which resolves to a
+  // tally carrying `findings` (what it could not heal), and `error` or
+  // `interrupted` for a repair that failed partway. A repair whose writes all
+  // landed and whose refetch (or check) after them failed carries
+  // `refreshError` in their place: it is whole, so it keeps the label that
+  // names it, and only the screen is behind. Every heal write folds
+  // under ONE audit entry, relabelled by `describeReconcile` to name the
+  // repair that ran. A subclass may put that label on before its first write
+  // (UMR does, so a batch sent as several requests carries it from the
+  // first). A pass that failed partway ends as RECONCILE_INTERRUPTED_LABEL
+  // whatever it started with, since it may have written only part of what a
+  // fuller label would claim. A pass that wrote nothing creates no group.
+  // Deliberately not a queued write: a failed heal must not reload and revert
+  // the freshly loaded document. The operation is of kind `repair`, so a
+  // reader of the audit log can tell these writes from a person's.
+  //
+  // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
+  // ONE in-flight pass and its result, so the second caller reports the same
+  // findings as the first.
+  //
+  // `timeout` is how long each of the repair's batches may wait for its
+  // answer (`_repairBatched`), for the repair's own requests alone.
+  async reconcileOnOpen({ timeout } = {}) {
+    if (this._reconcilePromise) return this._reconcilePromise;
+    this._repairTimeout = timeout;
+    this._reconcilePromise = this._client
+      .withOperation(
+        RECONCILE_LABEL,
+        async (setMessage) => {
+          let result = await this._reconcile();
+          // Refused because the document moved on, as when another page
+          // opening it at the same time repaired it first: read it again and
+          // repair once more, so this page shows the document as repaired.
+          if (statusOf(result.error) === 409) {
+            const reread = await this._reload().then(
+              () => true,
+              () => false,
+            );
+            if (reread) result = await this._reconcile();
+          }
+          if (result.error || result.interrupted) {
+            setMessage(RECONCILE_INTERRUPTED_LABEL);
+          } else {
+            const refined = this.describeReconcile(result);
+            if (refined) setMessage(refined);
+          }
+          return result;
+        },
+        { kind: 'repair' },
+      )
+      .finally(() => {
+        this._reconcilePromise = null;
+      });
+    return this._reconcilePromise;
+  }
+
+  // The repair itself: what this document's invariants are and how to heal
+  // them. Resolves to the tally `reconcileOnOpen` describes. Its writes go
+  // through `_repairBatched`.
+  async _reconcile() {
+    return { findings: [] };
+  }
+
+  // A batch of the repair's, which waits for its answer as long as the
+  // repair was given (`reconcileOnOpen`'s `timeout`), else as the client's do.
+  _repairBatched(fn) {
+    return this._repairTimeout === undefined
+      ? this._client.batched(fn)
+      : this._client.batched(fn, { timeout: this._repairTimeout });
+  }
+
+  // One line naming what a repair changed, or null when it wrote nothing. The
+  // audit entry's label, and the console's record of the pass.
+  describeReconcile(result) {
+    void result;
+    return null;
   }
 }

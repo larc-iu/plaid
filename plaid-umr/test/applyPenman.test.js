@@ -104,7 +104,7 @@ test('applyPenman adds a node with its edge, changes a concept and an attribute,
     ],
   );
   // The new node is aligned to no word, so it stands over its whole sentence
-  // and records it (sentenceGraph.js).
+  // and records it (umrReconcile.js).
   const [anchor] = opsOf(calls, 'tokens.bulkCreate');
   assert.equal(anchor.begin, doc.sentence(1).begin);
   assert.equal(anchor.end, doc.sentence(1).end);

@@ -24,6 +24,12 @@ import { TYPE } from '../../lib/typeScale.js';
  * app keeps one route per tab (ud, umr), and the first tab is what an
  * unrecognised path falls back to. plaid-igt keeps its tab in `?tab=` and says.
  *
+ * `disabled` makes every tab a plain disabled button instead of an anchor:
+ * while the body is busy (plaid-umr's repair on open) an anchor
+ * cannot be stopped from navigating, and a tab switch mid-repair leaves the
+ * repair writing under a screen that has moved on. Dropping `to` gives a real
+ * disabled trigger, so click, cmd-click and keyboard activation are all inert.
+ *
  * `failed` says the document could not be read: nothing is loading, the
  * breadcrumb names the project as far as it is known, and there is no
  * heading, since the document's name is not known.
@@ -57,6 +63,7 @@ export const DocumentTabStrip = ({
   failed = false,
   tabs,
   active: activeProp = null,
+  disabled = false,
   status = null,
   actions = null,
   sticky = false,
@@ -119,6 +126,7 @@ export const DocumentTabStrip = ({
   const p = location.pathname;
   const active = activeProp ?? tabs.find((t) => p.includes(`/${t.value}`))?.value ?? tabs[0].value;
   const to = Object.fromEntries(tabs.map((t) => [t.value, t.to]));
+  const target = (value) => (disabled ? { disabled: true } : { to: to[value] });
   const name = document?.name;
 
   return (
@@ -181,7 +189,7 @@ export const DocumentTabStrip = ({
         )}
         <Tabs
           value={active}
-          onValueChange={(v) => navigate(to[v])}
+          onValueChange={(v) => !disabled && navigate(to[v])}
           guard={guard}
           className="min-w-0"
         >
@@ -189,7 +197,7 @@ export const DocumentTabStrip = ({
               the list drew two lines a few pixels apart. */}
           <TabsList className={sticky ? 'border-b-0' : undefined}>
             {tabs.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} to={to[t.value]}>
+              <TabsTrigger key={t.value} value={t.value} {...target(t.value)}>
                 {t.label}
                 {t.count > 0 && (
                   <span className="ms-1.5 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">

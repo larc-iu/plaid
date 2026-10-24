@@ -15,7 +15,6 @@ import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { storeAll } from './settle.js';
 import { recordingClient } from './recordingClient.js';
 
 const FIXTURE = path.join(
@@ -286,13 +285,12 @@ test('a service write nobody has touched stays machine-made', async () => {
   assert.equal(doc.node(untouched.id).metadata[PROV.confirmedKey], undefined);
 });
 
-// What a write stores beside its own change decides nothing, so it vouches
-// for nothing.
-test('what the next write stores leaves provenance alone', async () => {
+// A repair that runs on open decides nothing, so it vouches for nothing.
+test('reconcile leaves provenance alone', async () => {
   const { doc, calls } = load({ machine: true });
   const node = byVar(doc, 's1a');
   assert.ok(node && !node.aligned, 'the corpus has an unaligned node');
-  await storeAll(doc);
+  await doc._reconcile();
   assert.equal(confirms(calls).length, 0);
 });
 

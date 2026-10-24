@@ -1,8 +1,8 @@
 // What a sentence's record (its file number, its gloss and metadata lines, a
 // graph kept as text, the relations held for it, the triples between two
 // constants its block writes) survives of another app's edits to the shared
-// sentences and words, with a UMR write between them or not (igtEdits.js
-// models core's side, and the write stores what the reader shows):
+// sentences and words, with UMR opened between them or not (igtEdits.js
+// models core's side):
 //
 // - Joining two sentences (igt's Merge with above) deletes the second
 //   sentence token. The record is a token of its own over the sentence's
@@ -11,8 +11,8 @@
 // - "Clear sentences" joins every sentence into the first, and splitting the
 //   text again at every old boundary gives every record back.
 // - A triple between two constants written in two sentences' blocks, as
-//   `(root :modal author)` is, comes back in both after a join, a UMR write
-//   and a split.
+//   `(root :modal author)` is, comes back in both after a join, an open and
+//   a split.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -30,8 +30,8 @@ import {
   layersOf,
   mergeSentence,
   mergeWords,
-  writeInUmr,
-  nothingToStore,
+  openInUmr,
+  openWritesNothing,
   respell,
   sentencesOf,
   splitSentenceAt,
@@ -48,7 +48,7 @@ const fixture = (name) =>
   );
 
 // What must survive, sentence by sentence, with every variable read as the
-// node it names, since a join, a UMR write and a split rename variables
+// node it names, since a join, an open and a split rename variables
 // (`s7r` back as `s7r3`): the record (number, stored lines, metadata lines, a
 // graph kept as text with its alignment), the graph, and the document-level
 // block, held relations and triples between constants included. The words,
@@ -107,11 +107,11 @@ test('a join and a split back keep a graph kept as text, its held relations and 
   // waits beside it.
   const joined = new UmrDocument({ raw: structuredClone(raw) }).graph.sentences[kept.index - 2];
   assert.equal(joined.otherRecords.length, 1);
-  await writeInUmr(raw);
+  await openInUmr(raw);
   assert.ok(splitSentenceAt(raw, at));
-  await writeInUmr(raw);
+  await openInUmr(raw);
   assert.deepEqual(canon(raw), before);
-  assert.ok(await nothingToStore(raw));
+  assert.ok(await openWritesNothing(raw));
 });
 
 test('Clear sentences and a split at every old boundary give every record back', async () => {
@@ -120,15 +120,15 @@ test('Clear sentences and a split at every old boundary give every record back',
     const before = canon(raw);
     const at = boundaries(raw);
     clearSentences(raw);
-    await writeInUmr(raw);
+    await openInUmr(raw);
     at.forEach((b) => assert.ok(splitSentenceAt(raw, b)));
-    await writeInUmr(raw);
+    await openInUmr(raw);
     assert.deepEqual(canon(raw), before, name);
-    assert.ok(await nothingToStore(raw), name);
+    assert.ok(await openWritesNothing(raw), name);
   }
 });
 
-test('a triple between two constants comes back in both blocks after a join, a UMR write and a split', async () => {
+test('a triple between two constants comes back in both blocks after a join, an open and a split', async () => {
   const SEP = '#'.repeat(80);
   const block = (n, words) => `${SEP}
 # :: snt${n}
@@ -158,12 +158,12 @@ s${n}a: 1-1
   assert.equal(export0.match(/\(root :modal author\)/g).length, 3);
   const at = sentencesOf(raw)[1].begin;
   mergeSentence(raw, 2);
-  await writeInUmr(raw);
+  await openInUmr(raw);
   assert.ok(splitSentenceAt(raw, at));
-  await writeInUmr(raw);
+  await openInUmr(raw);
   const export1 = new UmrDocument({ raw: structuredClone(raw) }).toUmr();
   assert.equal(export1.match(/\(root :modal author\)/g).length, 3);
-  assert.ok(await nothingToStore(raw));
+  assert.ok(await openWritesNothing(raw));
 });
 
 // ----- a record kept over its whole share of its sentence (REV-FX-UMR2 F1) -----
@@ -177,7 +177,7 @@ const recordTokenOf = (raw, sentence) =>
     .nodes.tokens.filter(isRecordToken)
     .find((t) => t.begin >= sentence.begin && t.begin < sentence.end);
 
-test('text typed at a sentence start, a UMR write, then its old text deleted, keeps the record', async () => {
+test('text typed at a sentence start, an open, then its old text deleted, keeps the record', async () => {
   const raw = fixture('english_umr-0001.umr');
   const before = records(raw);
   const third = sentencesOf(raw)[2];
@@ -185,8 +185,8 @@ test('text typed at a sentence start, a UMR write, then its old text deleted, ke
   typeAtSentenceStart(raw, begin, 'Dun ');
   // Core moves the record along and grows the sentence over the new word.
   assert.equal(recordTokenOf(raw, sentencesOf(raw)[2]).begin, begin + 4);
-  await writeInUmr(raw);
-  // The write puts the record back over the whole sentence.
+  await openInUmr(raw);
+  // The open puts the record back over the whole sentence.
   assert.deepEqual((({ begin: b, end: e }) => [b, e])(recordTokenOf(raw, sentencesOf(raw)[2])), [
     begin,
     end + 4,
@@ -195,7 +195,7 @@ test('text typed at a sentence start, a UMR write, then its old text deleted, ke
   deleteText(raw, begin + 4, end + 4);
   assert.equal(sentencesOf(raw).length, before.length);
   assert.deepEqual(records(raw), before);
-  assert.ok(await nothingToStore(raw));
+  assert.ok(await openWritesNothing(raw));
 });
 
 test('a record left over part of its sentence is put back over its share, and survives a delete there', async () => {
@@ -206,18 +206,19 @@ test('a record left over part of its sentence is put back over its share, and su
   // As a split at a new place and a join back left it before core stopped
   // cutting a token of another layer at a split: over the first word only.
   recordTokenOf(raw, second).end = firstWord.end;
-  await writeInUmr(raw);
+  await openInUmr(raw);
   const record = recordTokenOf(raw, sentencesOf(raw)[1]);
   assert.deepEqual([record.begin, record.end], [second.begin, second.end]);
   deleteText(raw, second.begin, firstWord.end + 1);
   assert.deepEqual(records(raw), before);
   // The node aligned to the word whose text went is kept, by its hold, and
-  // the next write stores it as an unaligned node, which leaves the records
-  // as they are.
-  const plan = await writeInUmr(raw);
-  assert.ok([...plan.meta.values()].some((c) => c.sentence && 'words' in c));
+  // the open makes it an unaligned node, which leaves the records as they are.
+  assert.match(
+    new UmrDocument({ raw: structuredClone(raw) }).describeReconcile(await openInUmr(raw)),
+    /lost its word/,
+  );
   assert.deepEqual(records(raw), before);
-  assert.ok(await nothingToStore(raw));
+  assert.ok(await openWritesNothing(raw));
 });
 
 test('records waiting in a joined sentence each keep their begin and cover up to the next', async () => {
@@ -229,13 +230,13 @@ test('records waiting in a joined sentence each keep their begin and cover up to
   recordTokenOf(raw, second).end = second.begin + 2;
   const waiting = layersOf(raw).nodes.tokens.find((t) => isRecordToken(t) && t.begin === at);
   waiting.end = at + 2;
-  await writeInUmr(raw);
+  await openInUmr(raw);
   assert.deepEqual(
     [recordTokenOf(raw, second).begin, recordTokenOf(raw, second).end],
     [second.begin, at],
   );
   assert.deepEqual([waiting.begin, waiting.end], [at, third.end]);
-  assert.ok(await nothingToStore(raw));
+  assert.ok(await openWritesNothing(raw));
 });
 
 // ----- random edits (the hunter's property) -----
@@ -252,9 +253,9 @@ function rng(seed) {
 }
 
 // Random sentence joins, Clear sentences, word deletes, splits, joins and
-// respells, and split-backs at old boundaries, with a UMR write at random
+// respells, and split-backs at old boundaries, with an open at random
 // points when `opens`. Then every old boundary is split again, and UMR
-// writes. Returns the raw document and the log.
+// opened. Returns the raw document and the log.
 async function run(base, seed, steps, opens, { text = false } = {}) {
   const rand = rng(seed);
   const pick = (a) => a[Math.floor(rand() * a.length)];
@@ -334,12 +335,12 @@ async function run(base, seed, steps, opens, { text = false } = {}) {
       const b = pick(bounds);
       if (b != null && splitSentenceAt(raw, b)) log.push(`split-back ${b}`);
     } else if (opens) {
-      await writeInUmr(raw);
-      log.push('write');
+      await openInUmr(raw);
+      log.push('open');
     }
   }
   bounds.forEach((b) => splitSentenceAt(raw, b));
-  if (opens) await writeInUmr(raw);
+  if (opens) await openInUmr(raw);
   return { raw, log };
 }
 
@@ -376,21 +377,21 @@ for (const [name, runs] of FUZZ) {
       // ones between two constants, which no text holds.
       const constOnly = (c) => c.map((x) => ({ ...x, triples: undefined, held: undefined }));
       assert.deepEqual(constOnly(recordCanon(raw)), constOnly(before), why);
-      assert.ok(await nothingToStore(raw), `a second write stores: ${why}`);
+      assert.ok(await openWritesNothing(raw), `second open writes: ${why}`);
     }
   });
 }
 
 for (const [name, runs] of FUZZ) {
-  test(`${name}: every record and triple survives random edits in IGT, written in UMR or not`, async () => {
+  test(`${name}: every record and triple survives random edits in IGT, opened or not`, async () => {
     const base = fixture(name);
     const before = canon(base);
     for (let seed = 1; seed <= runs; seed++) {
       for (const opens of [true, false]) {
         const { raw, log } = await run(base, seed, 30, opens);
-        const why = `seed ${seed}${opens ? '' : ', never written'}: ${log.join(' | ')}`;
+        const why = `seed ${seed}${opens ? '' : ', never opened'}: ${log.join(' | ')}`;
         assert.deepEqual(canon(raw), before, why);
-        if (opens) assert.ok(await nothingToStore(raw), `a second write stores: ${why}`);
+        if (opens) assert.ok(await openWritesNothing(raw), `second open writes: ${why}`);
       }
     }
   });

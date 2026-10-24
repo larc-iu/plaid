@@ -127,12 +127,12 @@ const twinVar = (raw) => {
   spans.find((s) => s.metadata.umr.var === 's1r').metadata.umr.var = 's1p';
 };
 
-// REV-W2B-OPENS M1: a variable two nodes of one sentence store (an older
-// writer or the API left it) is read apart, the first node by id keeping it
-// and the other read under a counter after it, so the export writes both
-// and the next write stores the new name (renumberMoves).
-test('two nodes of a sentence storing one variable are read apart, and the export writes both', async () => {
-  const { doc } = load(block(1, LUNCH, LUNCH_ALIGNED), twinVar);
+// A variable two nodes of one sentence store (an older writer or the API
+// left it) is read apart, the first node by id keeping it and the other read
+// under a counter after it, so the export writes both, and the open stores
+// the name read.
+test('two nodes of a sentence storing one variable are read apart, exported, and stored on open', async () => {
+  const { doc, calls } = load(block(1, LUNCH, LUNCH_ALIGNED), twinVar);
   const twins = [...doc.graph.nodesById.values()].filter((n) => n.storedVar === 's1p');
   assert.equal(twins.length, 2);
   const [keeps, other] = [...twins].sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -143,24 +143,22 @@ test('two nodes of a sentence storing one variable are read apart, and the expor
   const file = doc.toUmr();
   assert.match(file, /\(s1p \//);
   assert.match(file, /\(s1p2 \//);
-  // The next write stores the name read.
-  assert.ok(await doc.setConcept(keeps.id, 'woman'));
-  const stored = doc.raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.find(
-    (s) => s.id === other.id,
+  const result = await doc._reconcile();
+  assert.equal(
+    doc.describeReconcile(result),
+    'Repaired: renamed 1 variable another node of the sentence also had',
   );
-  assert.equal(stored.metadata.umr.var, 's1p2');
+  assert.deepEqual(
+    calls.filter((c) => c.name === 'spans.patchMetadata').map((c) => c.args),
+    [[other.id, [{ op: 'set', path: ['umr', 'var'], value: 's1p2' }]]],
+  );
 });
 
 test('two sentences sharing a variable are reported once, by the official check, and exported', () => {
   const text = block(1, LUNCH, LUNCH_ALIGNED) + block(2, '(s2l / leave-02)', 's2l: 2-2');
   const { doc } = load(text, (raw) => {
-    const layer = raw.textLayers[0].tokenLayers[2];
-    layer.spanLayers[0].spans.find((s) => s.metadata.umr.var === 's2l').metadata.umr.var = 's1l';
-    // A document that goes by its file's numbers, as a released corpus does,
-    // so the reader reads the names as the file gave them (renumberMoves).
-    layer.tokens.forEach((t) => {
-      if (t.metadata?.umr && !t.metadata.umr.hold) t.metadata.umr.numbering = 'file';
-    });
+    const spans = raw.textLayers[0].tokenLayers[2].spanLayers[0].spans;
+    spans.find((s) => s.metadata.umr.var === 's2l').metadata.umr.var = 's1l';
   });
   assert.equal(doc.problems.filter((p) => p.code === 'non-unique-node-id').length, 1);
   // The file reads back as it was, and a released corpus has such pairs.

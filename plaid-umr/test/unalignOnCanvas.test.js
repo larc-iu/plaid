@@ -1,5 +1,5 @@
 // A node made unaligned on the canvas (Luke's ruling, 2026-10-03) stands
-// where the reader places an unaligned node (`unalignedStretch`): one stretch
+// where reconcile puts an unaligned anchor (`unalignedStretch`): one stretch
 // over the text its pieces stood on, cut to its sentence, never the whole
 // sentence unless it stood on a point. It stood over the whole sentence
 // before, so a later sentence split in IGT anywhere after the sentence's
@@ -15,7 +15,7 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { twoWriterCore } from './twoWriterCore.js';
-import { layersOf, writeInUmr, nothingToStore, splitSentenceAt, wordsOf } from './igtEdits.js';
+import { layersOf, openInUmr, openWritesNothing, splitSentenceAt, wordsOf } from './igtEdits.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'umr');
 const fixture = (name) =>
@@ -85,11 +85,11 @@ function random(seed) {
   };
 }
 
-// The fuzz: on every fixture with aligned nodes that have relations, an aligned node with relations made
+// The reconcile fuzz: on every fixture with aligned nodes that have relations, an aligned node with relations made
 // unaligned on the canvas, then its sentence split in IGT at a random word
-// boundary, then written in UMR. Each relation must fare as it does when the
+// boundary, then opened in UMR. Each relation must fare as it does when the
 // node is left aligned, and the node must end in the same sentence: where
-// its text is. A second write stores nothing.
+// its text is. A second open writes nothing.
 const FUZZ = [
   ['english_umr-0001.umr', 12],
   ['sanapana_umr-0001.umr', 8],
@@ -121,13 +121,13 @@ for (const [name, runs] of FUZZ) {
       tried += 1;
       const where = `${name} run ${run}: ${n.var} split at ${at}`;
       assert.deepEqual(relationIds(unaligned), relationIds(aligned), where);
-      await writeInUmr(unaligned);
-      await writeInUmr(aligned);
-      assert.deepEqual(relationIds(unaligned), relationIds(aligned), `${where}, after a write`);
+      await openInUmr(unaligned);
+      await openInUmr(aligned);
+      assert.deepEqual(relationIds(unaligned), relationIds(aligned), `${where}, after an open`);
       const there = read(unaligned).node(n.id);
       assert.equal(there.aligned, false, where);
       assert.equal(there.sentence, read(aligned).node(n.id).sentence, where);
-      assert.ok(await nothingToStore(unaligned), `${where}: a second write stores nothing`);
+      assert.ok(await openWritesNothing(unaligned), `${where}: a second open writes nothing`);
     }
     assert.ok(tried > 0, `${name}: no split was tried`);
   });

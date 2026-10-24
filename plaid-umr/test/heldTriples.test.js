@@ -12,8 +12,6 @@ import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { storeAll } from './settle.js';
-import { layersOf } from './igtEdits.js';
 import { recordingClient } from './recordingClient.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
 
@@ -114,18 +112,13 @@ test('when IGT adds a sentence before them, held relations follow the renumbered
   insertSentenceAtStart(raw);
   const moved = new UmrDocument({ raw, client: doc._client });
   moved._reload = async () => {};
-  // What was sentence 38 is 39 now, and its record holds relations to s38i2
-  // and the rest, which the reader reads under the new names.
-  const stored = layersOf(raw).nodes.tokens.find((t) => t.id === moved.sentence(39).recordToken)
-    .metadata.umr.held;
-  assert.ok(names(stored).some((t) => t.includes('s38i2')));
-  assert.ok(names(moved.sentence(39).held).some((t) => t.includes('s39i2')));
-  assert.ok(!names(moved.sentence(39).held).some((t) => t.includes('s38i2')));
+  // What was sentence 38 is 39 now, and holds relations to s38i2 and the rest.
+  assert.ok(names(moved.sentence(39).held).some((t) => t.includes('s38i2')));
   const kept = new Set(
     [...moved.sentence(38).rawGraph.matchAll(/\(\s*([^\s/()"]+)\s*\//g)].map((m) => m[1]),
   );
   assert.ok(kept.has('s37i2'));
-  await storeAll(moved);
+  await moved._reconcile();
   const patch = calls.find(
     (c) => c.name === 'tokens.patchMetadata' && c.args[0] === moved.sentence(39).recordToken,
   );
@@ -139,13 +132,11 @@ test('when IGT adds a sentence before them, held relations follow the renumbered
       ),
   );
   const newName = (v) =>
-    renamed.get([...moved.graph.nodesById.values()].find((n) => n.storedVar === v).id);
+    renamed.get([...moved.graph.nodesById.values()].find((n) => n.var === v).id);
   assert.equal(newName('s38i2'), 's39i2');
   // Sentence 36's nodes, now in sentence 37, take no name the kept graph
   // (now sentence 38) defines.
-  const clashes = [...moved.sentence(37).nodes].filter((n) =>
-    kept.has(`s37${n.storedVar.slice(3)}`),
-  );
+  const clashes = [...moved.sentence(37).nodes].filter((n) => kept.has(`s37${n.var.slice(3)}`));
   assert.ok(clashes.length, 'the kept graph and sentence 36 share a name after the number');
   assert.ok(![...renamed.values()].some((v) => kept.has(v)), 'no renamed node takes a kept name');
   assert.ok(held.some((h) => h.source === 's39i2' || h.target === 's39i2'));

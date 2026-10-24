@@ -80,7 +80,8 @@ import { cn } from '../../lib/utils.js';
 // - `renderTab(tab, context)`: the body, where the tab is in the query.
 // - `validateOnOpen`: true to have the shell check the document when it
 //   opens (useValidateOnOpen), for every tab. An app that checks from one tab
-//   does it there.
+//   does it there. An app that repairs from one tab (plaid-umr) holds the tabs
+//   inert meanwhile through `setChromeBusy`.
 // - `saveStatus`: false for an app whose editor shows a save pill of its own.
 // - `roleWords`, `layerWords`: History's words for the app's rows.
 // - `focusParams(focus)`: the URL params a citation's focus opens, or null
@@ -112,7 +113,7 @@ const loadErrorText = (err) => {
 };
 
 // Keyed by document, so opening another document starts from nothing: no
-// history rail and no past state carried over from the last one.
+// history rail, no past state and no busy flag carried over from the last one.
 export const DocumentEditorShell = ({ app, client }) => {
   const { documentId } = useParams();
   return <DocumentEditor key={documentId} app={app} documentClient={client} />;
@@ -131,6 +132,10 @@ const DocumentEditor = ({ app, documentClient }) => {
   const [loadedProject, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  // The tab strip is chrome, so it survives a tab switch, but it must not be
+  // clickable while the body is repairing the document (DocumentTabStrip). The
+  // child raises this through the outlet context (plaid-umr's Annotate tab).
+  const [chromeBusy, setChromeBusy] = useState(false);
   // authService keeps one client, so this is the same object every render.
   const client = documentClient ?? (user ? getClient() : null);
 
@@ -451,6 +456,7 @@ const DocumentEditor = ({ app, documentClient }) => {
     services,
     writeLockHeld: writeLock.held,
     acquireWriteLock: writeLock.acquire,
+    setChromeBusy,
     assistantAvailable,
     askAssistant,
     focusNonce,
@@ -475,7 +481,7 @@ const DocumentEditor = ({ app, documentClient }) => {
       {/* The way into History at the window's left edge, the twin of the
           assistant's on the right (EdgeRail). The button in the tab row is
           the named way in. */}
-      {!history.drawerOpen && doc && (
+      {!history.drawerOpen && doc && !chromeBusy && (
         <EdgeRail
           side="left"
           label="Open history"
@@ -503,6 +509,7 @@ const DocumentEditor = ({ app, documentClient }) => {
           count: t.value === 'comments' ? (comments?.count ?? 0) : 0,
         }))}
         active={tab}
+        disabled={chromeBusy}
         status={doc && app.saveStatus !== false ? <SaveStatus doc={doc} /> : null}
         sticky
         inset={DOC_GUTTER}
@@ -515,7 +522,7 @@ const DocumentEditor = ({ app, documentClient }) => {
             className="gap-1.5"
             onClick={history.drawerOpen ? history.closeHistory : history.openHistory}
             aria-expanded={history.drawerOpen}
-            disabled={!doc}
+            disabled={!doc || chromeBusy}
           >
             <History className="h-4 w-4" /> History
           </Button>

@@ -18,12 +18,14 @@ vi.mock('../../lib/integrityToast.js', () => ({
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), logout: vi.fn(), user: { id: 'u1' } }));
 vi.mock('../../contexts/useAuth.js', () => ({ useAuth: () => auth }));
 vi.mock('../../domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
-// The strip as data: which tab it marks and each tab's address.
+// The strip as data: which tab it marks, whether it is inert, and each tab's
+// address.
 vi.mock('./DocumentTabStrip.jsx', () => ({
-  DocumentTabStrip: ({ tabs, active, project, failed }) => (
+  DocumentTabStrip: ({ tabs, active, disabled, project, failed }) => (
     <div
       data-testid="strip"
       data-active={active}
+      data-disabled={String(disabled)}
       data-project={project?.name ?? ''}
       data-failed={String(!!failed)}
     >
@@ -90,6 +92,7 @@ const seen = {};
 
 const Body = ({ tab, context }) => {
   seen.goToTab = context.goToTab;
+  seen.setChromeBusy = context.setChromeBusy;
   return <div data-testid="body">{tab}</div>;
 };
 
@@ -229,6 +232,20 @@ describe('a document whose tab is in the query', () => {
   it('names the tab in the window title', async () => {
     await mount(['/p/p1/d/d1?tab=details']);
     expect(document.title.startsWith('Details · Doc · Project')).toBe(true);
+    await view.unmount();
+  });
+});
+
+// plaid-umr's Annotate tab repairs the document on open and holds the tabs
+// inert while it does.
+describe('a tab that says the body is busy', () => {
+  it('holds the tabs until it says it is done', async () => {
+    await mount(['/p/p1/d/d1?tab=analyze']);
+    expect(strip().dataset.disabled).toBe('false');
+    await view.step(() => seen.setChromeBusy(true));
+    expect(strip().dataset.disabled).toBe('true');
+    await view.step(() => seen.setChromeBusy(false));
+    expect(strip().dataset.disabled).toBe('false');
     await view.unmount();
   });
 });
