@@ -32,7 +32,10 @@ def test_umr_says_no_tool_sets_alignment_and_how_the_user_does_it():
     """umr-align-request invented a set_alignment tool or ~4 in PENMAN in
     6 of 6 runs."""
     assert 'NO TOOL SETS ALIGNMENT' in umr_prompt.SYSTEM
-    assert 'focus the node, press u, click its words, then Done' in umr_prompt.SYSTEM
+    assert "choose Change anchor on the node's menu, click its words, then Done" in umr_prompt.SYSTEM
+    # The action by the name the menu gives it, never a key a person can rebind
+    # (R2-DICT-9, plaid-umr's keymap.js node.anchor).
+    assert 'press u' not in umr_prompt.SYSTEM
 
 
 def test_apply_penman_names_possessor_before_anything_else():

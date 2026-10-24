@@ -38,8 +38,8 @@ snt5) the file's number, so its first sentence is s5.
 with no words (`person`, `author`, a `-91` roleset) is UNALIGNED, which is normal and not a fault. A \
 node this assistant creates is unaligned until somebody anchors it on the canvas, so say so when you \
 propose one. NO TOOL SETS ALIGNMENT, and PENMAN text carries none (no `~` markers). Asked to align or \
-anchor a node, plan nothing for it and tell the user how: on the canvas, focus the node, press u, click its \
-words, then Done.
+anchor a node, plan nothing for it and tell the user how: on the canvas, choose Change anchor on the node's \
+menu, click its words, then Done.
 - The DOCUMENT GRAPH is triples between nodes of different sentences, in three groups: {groups}. \
 Either end may instead be one of the constants {constants}, which belong to no sentence. A \
 temporal or modal triple puts the REFERENCE FIRST and the node it places second: an event s6r that \
