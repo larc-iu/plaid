@@ -71,7 +71,8 @@
  * human edits (history is valuable). provProb is the probability of the value
  * the entity holds: when a person picks another of the alternatives the
  * producer weighed, the app writes that alternative's probability, and when a
- * person types a value it removes provProb. A consumer still must not present
+ * person types a value it removes provProb (writerPolicy's valueEditStamp
+ * is the one implementation). A consumer still must not present
  * provProb as the machine's confidence once the entity is verified
  * (provConfirmed is exactly the flag to check).
  *
@@ -412,6 +413,8 @@ export const isDoubtful = (metadata, threshold = DEFAULT_CONFIDENCE_THRESHOLD) =
  *   isContributor: boolean,
  *   createStamp: Object|null,
  *   editStamp: (metadata: Object) => Object|null,
+ *   valueEditStamp: (metadata: Object, opts?: {changes?: boolean, prob?: number|null}) => Object|null,
+ *   repointStamp: (metadata: Object) => Object|null,
  *   confirmStamp: (metadata: Object) => Object|null,
  *   adoptStamp: (source: string, detail?: Object) => Object,
  *   reviewable: (metadata: Object) => boolean,
@@ -429,6 +432,8 @@ export const writerPolicy = (contributorId = null) => {
     contributor
       ? state === PROV_STATES.MACHINE
       : state === PROV_STATES.MACHINE || state === PROV_STATES.CONTRIBUTED;
+  const editStamp = (metadata) =>
+    contributor ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata);
   return Object.freeze({
     contributorId: id,
     isContributor: contributor,
@@ -440,7 +445,37 @@ export const writerPolicy = (contributorId = null) => {
      * contributor's edit marks the entity contributed, dropping any earlier
      * confirmation.
      */
-    editStamp: (metadata) => (contributor ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata)),
+    editStamp,
+    /**
+     * The fragment a person's edit of a VALUE merges: editStamp, plus what
+     * the edit means for provProb, which is the producer's probability for
+     * the value it describes. A pick of one of the alternatives a producer
+     * weighed (`prob`, its probability) writes that number. A typed value
+     * that `changes` the value removes it. A re-typed value that changes
+     * nothing keeps it. provDetail stays, as history. Null when there is
+     * nothing to merge.
+     */
+    valueEditStamp: (metadata, { changes = true, prob = null } = {}) => {
+      const stamp = editStamp(metadata);
+      if (!changes) return stamp;
+      if (typeof prob === 'number' && Number.isFinite(prob))
+        return { ...(stamp || {}), [PROV.probKey]: prob };
+      if (metadata?.[PROV.probKey] == null) return stamp;
+      return { ...(stamp || {}), [PROV.probKey]: null };
+    },
+    /**
+     * The fragment that makes a relation whose head a person moved theirs:
+     * every provenance key it held removed, and the create stamp merged, so
+     * it reads as a relation this writer drew (the convention's "a head
+     * re-point yields a person's relation"). Null when there is nothing to
+     * merge.
+     */
+    repointStamp: (metadata) => {
+      const cleared = {};
+      for (const k of PROVENANCE_KEYS) if (metadata?.[k] != null) cleared[k] = null;
+      const fragment = { ...cleared, ...(contributor ? stampContributed(id) : {}) };
+      return Object.keys(fragment).length ? fragment : null;
+    },
     /**
      * The fragment an explicit confirm gesture merges, or null when there is
      * nothing for this writer to confirm: PROV_CONFIRMED for a verifier, the

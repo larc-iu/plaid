@@ -213,6 +213,37 @@ test('writerPolicy for a contributor: everything contributed, reviews machine on
     { ...CONTRIBUTED, provDetail: { value: 'cat', guess: 'gloss:precedent' } });
 });
 
+test('valueEditStamp: a typed change drops provProb, a pick writes its own, a re-type keeps it', () => {
+  const v = writerPolicy(null);
+  const machine = stampInferred('service:x', { prob: 0.8, detail: { value: 'cat' } });
+  assert.deepEqual(v.valueEditStamp(machine), { provConfirmed: true, provProb: null });
+  assert.deepEqual(v.valueEditStamp(machine, { prob: 0.15 }), { provConfirmed: true, provProb: 0.15 });
+  assert.deepEqual(v.valueEditStamp(machine, { changes: false }), PROV_CONFIRMED);
+  assert.deepEqual(v.valueEditStamp(machine, { changes: false, prob: 0.15 }), PROV_CONFIRMED);
+  assert.equal(v.valueEditStamp(null), null);
+  assert.equal(v.valueEditStamp({ ...machine, provConfirmed: true, provProb: undefined }), null);
+  assert.deepEqual(v.valueEditStamp({ ...machine, provConfirmed: true }), { provProb: null });
+  const c = writerPolicy('ann@x.com');
+  assert.deepEqual(c.valueEditStamp(machine), { ...CONTRIBUTED, provConfirmed: null, provProb: null });
+  assert.deepEqual(c.valueEditStamp(machine, { prob: 0.15 }),
+    { ...CONTRIBUTED, provConfirmed: null, provProb: 0.15 });
+  // provDetail stays: the fragment never names it.
+  assert.equal('provDetail' in v.valueEditStamp(machine), false);
+});
+
+test('repointStamp: a moved head makes the relation the writer\'s own', () => {
+  const machine = confirmedInferred('service:stanza', { prob: 0.9, detail: { value: 'obl' } });
+  assert.deepEqual(writerPolicy(null).repointStamp(machine),
+    { prov: null, provSource: null, provConfirmed: null, provProb: null, provDetail: null });
+  assert.equal(writerPolicy(null).repointStamp(null), null);
+  assert.equal(writerPolicy(null).repointStamp({ note: 'x' }), null);
+  assert.deepEqual(writerPolicy('ann@x.com').repointStamp(machine),
+    { ...CONTRIBUTED, provConfirmed: null, provProb: null, provDetail: null });
+  assert.deepEqual(writerPolicy('ann@x.com').repointStamp(null), CONTRIBUTED);
+  assert.deepEqual(mergeMetadata({ ...machine, note: 'x' }, writerPolicy(null).repointStamp(machine)),
+    { note: 'x' });
+});
+
 test('readConfidenceThreshold takes a number in [0, 1] and falls back to the default', () => {
   assert.equal(readConfidenceThreshold(undefined), DEFAULT_CONFIDENCE_THRESHOLD);
   assert.equal(readConfidenceThreshold({ plaid: { confidence: { threshold: 0.3 } } }), 0.3);

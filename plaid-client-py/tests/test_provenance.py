@@ -137,6 +137,33 @@ def test_writer_policy():
     assert c.adopt_stamp('g', {'value': 'cat'}) == {**CONTRIB, 'provDetail': {'value': 'cat', 'guess': 'g'}}
 
 
+def test_value_edit_stamp_matches_the_js_client():
+    v = WriterPolicy(None)
+    m = stamp_inferred('service:x', prob=0.8, detail={'value': 'cat'})
+    assert v.value_edit_stamp(m) == {'provConfirmed': True, 'provProb': None}
+    assert v.value_edit_stamp(m, prob=0.15) == {'provConfirmed': True, 'provProb': 0.15}
+    assert v.value_edit_stamp(m, changes=False) == {'provConfirmed': True}
+    assert v.value_edit_stamp(m, changes=False, prob=0.15) == {'provConfirmed': True}
+    assert v.value_edit_stamp(None) is None
+    assert v.value_edit_stamp({**m, 'provConfirmed': True}) == {'provProb': None}
+    c = WriterPolicy('ann@x.com')
+    assert c.value_edit_stamp(m) == {**CONTRIB, 'provConfirmed': None, 'provProb': None}
+    assert c.value_edit_stamp(m, prob=0.15) == {**CONTRIB, 'provConfirmed': None, 'provProb': 0.15}
+
+
+def test_repoint_stamp_matches_the_js_client():
+    m = confirmed_inferred('service:stanza', prob=0.9, detail={'value': 'obl'})
+    assert WriterPolicy(None).repoint_stamp(m) == {
+        'prov': None, 'provSource': None, 'provConfirmed': None, 'provProb': None, 'provDetail': None}
+    assert WriterPolicy(None).repoint_stamp(None) is None
+    assert WriterPolicy(None).repoint_stamp({'note': 'x'}) is None
+    assert WriterPolicy('ann@x.com').repoint_stamp(m) == {
+        **CONTRIB, 'provConfirmed': None, 'provProb': None, 'provDetail': None}
+    assert WriterPolicy('ann@x.com').repoint_stamp(None) == CONTRIB
+    ops = metadata_ops(WriterPolicy(None).repoint_stamp(m))
+    assert apply_metadata_ops({**m, 'note': 'x'}, ops) == {'note': 'x'}
+
+
 def test_confidence_threshold_and_doubtful_values_match_the_js_client():
     from plaid_client import (DEFAULT_CONFIDENCE_THRESHOLD, read_confidence_threshold,
                               machine_prob, is_doubtful, stamp_inferred)

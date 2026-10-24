@@ -73,7 +73,8 @@ else it considered, in two reserved slots split along the queryability line:
 human edits (history is valuable). ``provProb`` is the probability of the value
 the entity holds: when a person picks another of the alternatives the producer
 weighed, the app writes that alternative's probability, and when a person
-types a value it removes ``provProb``. A consumer still must not present
+types a value it removes ``provProb`` (:meth:`WriterPolicy.value_edit_stamp`
+is the one implementation). A consumer still must not present
 ``provProb`` as the machine's confidence once the entity is verified
 (``provConfirmed`` is exactly the flag to check).
 
@@ -361,6 +362,36 @@ class WriterPolicy:
         if self.is_contributor:
             return contribute_on_edit(metadata, self.contributor_id)
         return verify_on_edit(metadata)
+
+    def value_edit_stamp(self, metadata, changes=True, prob=None):
+        """The fragment a person's edit of a VALUE merges: :meth:`edit_stamp`,
+        plus what the edit means for ``provProb``, which is the producer's
+        probability for the value it describes. A pick of one of the
+        alternatives a producer weighed (``prob``, its probability) writes
+        that number. A typed value that ``changes`` the value removes it. A
+        re-typed value that changes nothing keeps it. ``provDetail`` stays, as
+        history. ``None`` when there is nothing to merge."""
+        stamp = self.edit_stamp(metadata)
+        if not changes:
+            return stamp
+        if (isinstance(prob, (int, float)) and not isinstance(prob, bool)
+                and math.isfinite(prob)):
+            return {**(stamp or {}), PROV_PROB_KEY: prob}
+        if (metadata or {}).get(PROV_PROB_KEY) is None:
+            return stamp
+        return {**(stamp or {}), PROV_PROB_KEY: None}
+
+    def repoint_stamp(self, metadata):
+        """The fragment that makes a relation whose head a person moved
+        theirs: every provenance key it held removed, and the create stamp
+        merged, so it reads as a relation this writer drew (the convention's
+        "a head re-point yields a person's relation"). ``None`` when there is
+        nothing to merge."""
+        md = metadata or {}
+        fragment = {k: None for k in PROVENANCE_KEYS if md.get(k) is not None}
+        if self.is_contributor:
+            fragment.update(stamp_contributed(self.contributor_id))
+        return fragment or None
 
     def reviewable(self, metadata):
         """Material this writer's review gestures act on: a verifier reviews
