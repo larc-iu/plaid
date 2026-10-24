@@ -543,7 +543,9 @@ def test_plan_error_reports_how_much_was_applied():
     ops = [{'kind': 'set_span', 'layer_id': 'L', 'token_id': f'T{i}', 'span_id': None, 'value': 'v', 'label': ''} for i in range(1200)]
     with pytest.raises(PlanError) as ei:
         execute_plan(c, ops, source='s', label='l')
-    assert ei.value.applied == 800 and ei.value.total == 1200 and 'boom' in str(ei.value)
+    # A bug's own text is for the operator's log (R4-3-6), the counts for the user.
+    assert ei.value.applied == 800 and ei.value.total == 1200
+    assert str(ei.value) == 'The assistant stopped on an error.'
 
 
 def test_a_failure_after_the_first_batch_says_what_stood():
