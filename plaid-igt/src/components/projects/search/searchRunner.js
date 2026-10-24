@@ -12,7 +12,7 @@ import { morphemeGlossReading } from '@/domain/tagsets';
 import { translationFieldOf, translationFieldsOf } from '@/domain/sentenceRole';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
-import { buildItemNumbers } from '@/domain/vocabDictionary';
+import { buildItemNumbers, itemLabel } from '@/domain/vocabDictionary';
 import { readVocabulary } from '@/domain/vocabCache';
 
 const MAX_DOCS = 12;
@@ -289,8 +289,7 @@ export async function runFreqSearch(client, domain, queryText, matchType) {
         const layer = await readVocabulary(client, vid);
         const numbers = buildItemNumbers(layer.items || []);
         for (const it of layer.items || []) {
-          const n = numbers.get(it.id);
-          const name = n ? `${it.form} ${n}` : (it.form ?? '');
+          const name = itemLabel(it, numbers);
           nameById.set(String(it.id), { name, vocab: layer.name ?? '' });
           if (!vocabOfName.has(name)) vocabOfName.set(name, new Set());
           vocabOfName.get(name).add(vid);
