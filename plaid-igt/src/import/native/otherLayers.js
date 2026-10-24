@@ -373,6 +373,40 @@ export const remapIds = (value, ids) => {
 };
 
 /**
+ * Once every document is in: the project settings `restoreOtherLayers` wrote,
+ * again with each id of a document or a vocabulary entry the archive carries
+ * replaced by what this import made for it (`ids`), as each layer id was then
+ * (`layerIds`). Another app may name a document in its settings (plaid-umr's
+ * import manifest does), and no document exists when those are first written.
+ * Asks the project and writes only what differs, so a resume or a second call
+ * writes nothing.
+ */
+export async function relinkOtherSettings({ client, projectId, manifest, layerIds, ids }) {
+  if (!manifest?.otherConfig || !ids?.size) return;
+  const first = remapIds(manifest.otherConfig, layerIds || new Map());
+  const now = remapIds(manifest.otherConfig, new Map([...(layerIds || []), ...ids]));
+  // Only the settings that name one: the rest are as they were written.
+  const changed = {};
+  for (const [ns, keys] of Object.entries(now)) {
+    if (!isMap(keys)) continue;
+    for (const [key, value] of Object.entries(keys)) {
+      if (sameConfig(first?.[ns]?.[key], value)) continue;
+      (changed[ns] ||= {})[key] = value;
+    }
+  }
+  if (!Object.keys(changed).length) return;
+  const project = await client.projects.get(projectId);
+  await writeConfigNow(
+    (id, ns, key, value) => client.projects.setConfig(id, ns, key, value),
+    projectId,
+    project?.config,
+    changed,
+    [IGT_NAMESPACE],
+    { [PLAID_NAMESPACE]: UNCARRIED_PLAID_KEYS.project },
+  );
+}
+
+/**
  * Declare again the layer rules the archive carries for the layers
  * `restoreOtherLayers` made or found, once every document is in, so the
  * import is never refused by them partway. A rule naming a layer by its

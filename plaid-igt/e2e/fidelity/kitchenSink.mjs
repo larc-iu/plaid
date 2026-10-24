@@ -917,6 +917,14 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   await buildStory(ctx);
   await buildOtherDocuments(ctx);
   await addGuidelines(client, projectId);
+  // Another app's project settings naming the project's documents and layers
+  // by id, alone and inside a longer string, as plaid-umr's import manifest does.
+  const listed = await client.projects.listDocuments(projectId);
+  await client.projects.setConfig(projectId, 'umr', 'importManifest', {
+    document_ids: Object.fromEntries(listed.map((d, i) => [`doc${i}`, d.id])),
+    layer_ids: { words: foreign.words.id },
+    note: `first document ${listed[0].id}`,
+  });
 
   const blacklistId = await buildBlacklist(client, `Kitchen sink blacklist${suffix}`);
   const twinsId = await buildTwins(client, `Kitchen sink twins${suffix}`);

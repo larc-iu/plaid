@@ -48,6 +48,7 @@ import {
   importOtherLayerData,
   noOtherLayers,
   remapIds,
+  relinkOtherSettings,
   restoreOtherLayers,
 } from './otherLayers.js';
 import {
@@ -1276,6 +1277,16 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     check: () => {
       if (shouldStop?.()) throw new ImportCancelled();
     },
+  });
+  // And what another app's project settings name: a document or an entry,
+  // which did not exist when those settings were written.
+  if (shouldStop?.()) throw new ImportCancelled();
+  await relinkOtherSettings({
+    client,
+    projectId,
+    manifest: archive.manifest,
+    layerIds,
+    ids: new Map([...docIdMap, ...itemIdMap]),
   });
 
   // Last: the structure a vocabulary keeps in item metadata (parents, Entry
