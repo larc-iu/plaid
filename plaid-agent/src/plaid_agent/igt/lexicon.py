@@ -112,6 +112,7 @@ def lexicon_field(vocab: dict, name: str) -> dict:
         return hit
     # A lexicon that declares nothing has no schema to break, so any name goes.
     # The core inventory rides along on every vocabulary and never counts as one.
+    # name-ok: A15 built-in entry key
     if not any(f.get('declared') for f in fields) or name == 'morphType':
         return {**_FREE_FIELD, 'name': name}
     raise ToolError(f'"{vocab["name"]}" has no entry field "{name}". Fields: '

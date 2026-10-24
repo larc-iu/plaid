@@ -77,6 +77,7 @@ const defaultRows = (layers) => [
 ];
 
 const sameRow = (a, b) => a.kind === b.kind && (a.name ?? null) === (b.name ?? null);
+// name-ok: entry field key
 const sameField = (a, b) => a.name === b.name;
 
 /**
@@ -1008,6 +1009,7 @@ export function latexVocabulary(options, vocabs) {
         fields: exportedVocabFields(readVocabFields(v.config)).map((f) => ({
           name: f.name,
           label: fieldLabel(f),
+          // name-ok: entry field key, the saved option it reads
           on: savedFields.find((x) => x?.name === f.name)?.on ?? !offByDefault(f),
         })),
       };
@@ -1142,6 +1144,7 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
       // A morph type goes by its name on screen (multi-word expression), and
       // a plain stem prints none.
       const raw = fieldText(item.metadata?.[f.name]);
+      // name-ok: A15 built-in entry key
       if (f.name === 'morphType' && raw.trim().toLowerCase() === PLAIN_MORPH_TYPE) continue;
       const value = texLine(f.name === 'morphType' ? morphTypeLabel(raw) : raw);
       if (value === '') continue;

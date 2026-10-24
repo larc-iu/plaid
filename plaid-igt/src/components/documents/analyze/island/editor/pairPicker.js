@@ -34,6 +34,7 @@ export const pairPicker = {
     const memo = (this._pickerLexMemo ||= new Map());
     const list = Object.values(vocabsNow || {}).map((v) => {
       const hit = memo.get(v.id);
+      // name-ok: cache key, the memo holds while the vocabulary is unchanged
       if (hit && hit.items === v.items && hit.name === v.name) return hit.lx;
       const lx = pickerLexicon(v);
       memo.set(v.id, { items: v.items, name: v.name, lx });

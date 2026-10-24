@@ -136,6 +136,7 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields, rev
       // Ctrl/Cmd+Shift+↑/↓: the sweep. Reads the caret's word off the event
       // target, so it works from any cell.
       if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        // name-ok: DOM id, the cell ids this editor gives
         const m = /^(.*)-(lemma|xpos|upos|feats)$/.exec(e.target?.id || '');
         e.preventDefault();
         cancelPending();
@@ -147,6 +148,7 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields, rev
         return;
       }
 
+      // name-ok: DOM id, the cell ids this editor gives
       const m = /^(.*)-(lemma|xpos|upos|feats)$/.exec(e.target?.id || '');
       if (!m) return;
       const [, tokenId, field] = m;

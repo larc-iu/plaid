@@ -878,6 +878,7 @@ export const VocabularyDetail = () => {
                 const canMoveUp = idx > 0 && !field.immutable && !fields[idx - 1].immutable;
                 const canMoveDown = idx < fields.length - 1 && !field.immutable;
                 const isRef = field.type === FIELD_TYPES.ITEM;
+                // name-ok: A15 built-in entry key
                 const takesTagset = field.name !== 'morphType' && !isRef;
                 return (
                   <tr key={field.name} className="border-t hover:bg-muted/30">
@@ -954,6 +955,7 @@ export const VocabularyDetail = () => {
                       {/* A morph type is a fixed list and a reference field's
                           values are entries: neither is in a language. The
                           required gloss IS, and it is the one that matters. */}
+                      {/* name-ok: A15 built-in entry key */}
                       {field.name !== 'morphType' && !isRef && (
                         <Input
                           value={langDrafts[field.name] ?? field.lang ?? ''}
@@ -970,6 +972,7 @@ export const VocabularyDetail = () => {
                       )}
                     </td>
                     <td className="px-3 py-1.5">
+                      {/* name-ok: A15 built-in entry key */}
                       {field.name !== 'morphType' && !isRef ? (
                         <Select
                           value={field.role ?? NO_ROLE}

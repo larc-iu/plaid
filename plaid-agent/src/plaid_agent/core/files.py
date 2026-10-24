@@ -252,6 +252,7 @@ class Attachment:
     def is_pdf(self) -> bool:
         """Whether this is a PDF's text, laid out with page markers. Asked of
         the name first, so a text file is never read to find out."""
+        # name-ok: a file extension, of an attached file's name
         if not self.name.lower().endswith('.pdf'):
             return False
         from .pdftext import has_pages
@@ -270,6 +271,7 @@ class Attachment:
         """Whether this table's first line is a spreadsheet's Column1 ..
         ColumnN, which :func:`read_table` passed over for the line after it."""
         table = self.table()
+        # name-ok: a file extension, of an attached file's name
         if not table or self.name.lower().endswith('.json'):
             return False
         first = next(csv.reader(io.StringIO(self.text(), newline=''),

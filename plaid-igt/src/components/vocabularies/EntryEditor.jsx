@@ -90,7 +90,8 @@ export const EntryEditor = ({
             selfId={isNew ? null : selectedId}
             disabled={disabled}
           />
-        ) : field.name === 'morphType' ? (
+        ) : // name-ok: A15 built-in entry key
+        field.name === 'morphType' ? (
           <select
             id={fieldId}
             className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"

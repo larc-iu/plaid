@@ -34,6 +34,7 @@ export const VocabularyCommentsTab = ({
     };
   }, [client, vocabularyId]);
 
+  // name-ok: A15 built-in entry key
   const hasGloss = useMemo(() => (fields || []).some((f) => f.name === 'gloss'), [fields]);
   const anchors = useMemo(
     () => (items ? buildEntryAnchorIndex(items, { glossField: hasGloss ? 'gloss' : null }) : null),

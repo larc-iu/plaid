@@ -329,6 +329,7 @@ async function executeProjectSetupImpl({
 
           updateProgress(50, `Creating span layer: ${field.name} (${field.scope})…`);
           const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
+            // name-ok: within one project, a layer igt's own scope already marks
             (sl) => readScope(sl.config) === field.scope && sl.name === field.name,
           );
           // What language its values are in, when the caller knows. An importer

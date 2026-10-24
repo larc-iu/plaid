@@ -200,6 +200,7 @@ export const groupFieldsForForm = (fields, { statusField = null } = {}) => {
     for (const g of fields) {
       if (
         !placed.has(g.name) &&
+        // name-ok: entry field key
         g.name !== f.name &&
         fieldBaseName(g.name) === fieldBaseName(f.name)
       ) {

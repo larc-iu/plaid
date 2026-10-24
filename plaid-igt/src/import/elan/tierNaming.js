@@ -69,6 +69,7 @@ const LEVEL_ITEM_NAMES = {
     type: 'Type',
   },
 };
+// name-ok: format grammar, FLEx's ELAN tier names
 const ELAN_FLEX_NAME = /^(?:[^_\s]+_)?(phrase|word|morph)-([A-Za-z]+)(?:-(.+))?$/;
 
 /**

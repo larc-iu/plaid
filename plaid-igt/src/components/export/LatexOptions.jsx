@@ -138,6 +138,7 @@ const VocabularyOptions = ({ choice, onChange }) => {
                         onChange={(e) =>
                           setVocab(v.id, {
                             fields: v.fields.map((x) =>
+                              // name-ok: entry field key, the saved option it toggles
                               x.name === f.name ? { ...x, on: e.target.checked } : x,
                             ),
                           })

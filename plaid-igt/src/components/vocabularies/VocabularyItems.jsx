@@ -241,6 +241,7 @@ export const VocabularyItems = ({
 
   // ---- derived from the entries ----
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
+  // name-ok: A15 built-in entry key
   const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
   // The editorial status field, by whatever name this vocabulary declares it.
   const statusKey = useMemo(() => statusFieldKey(fields), [fields]);

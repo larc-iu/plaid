@@ -202,6 +202,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client, o
             <li key={orth.name}>
               {orth.name}{' '}
               {/* Named Baseline already, it says so: "Baseline Baseline" said it twice. */}
+              {/* name-ok: display only */}
               {orth.isBaseline && orth.name !== 'Baseline' && (
                 <Badge variant="secondary">Baseline</Badge>
               )}

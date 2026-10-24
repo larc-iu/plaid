@@ -68,9 +68,11 @@ export function proposeIlg(layerInfo) {
     const name = layer.name;
     let header = null;
     if (scope === 'morpheme') {
+      // name-ok: proposal at creation, never read back
       if (looksLike(name, /gloss|meaning/i)) header = 'morpheme-gloss';
       else if (looksLike(name, /cat|pos|part|type|class/i)) header = 'morpheme-category';
     } else if (scope === 'word') {
+      // name-ok: proposal at creation, never read back
       if (looksLike(name, /gloss|meaning/i)) header = 'word-gloss';
       else if (looksLike(name, /pos|part|tag|class/i)) header = 'pos';
     } else if (scope === 'sentence') {

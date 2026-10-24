@@ -93,6 +93,7 @@ export const ReplaceDialog = ({
     () => [
       { name: 'form', label: 'Form' },
       ...fields
+        // name-ok: A15 built-in entry key
         .filter((f) => f.name !== 'morphType' && f.type !== FIELD_TYPES.ITEM)
         .map((f) => ({ name: f.name, label: humanizeFieldName(f.name) })),
     ],
@@ -159,6 +160,7 @@ export const ReplaceDialog = ({
   const valueIn = (entries, id) => {
     const it = entries.get(settledId(id));
     if (!it) return null;
+    // name-ok: A15 built-in entry key
     return target.name === 'form' ? (it.form ?? '') : String(it.metadata?.[target.name] ?? '');
   };
 

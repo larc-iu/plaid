@@ -228,6 +228,7 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   for (const name of fieldKeys) {
     if (name in fieldsConfig) continue;
     fieldsConfig[name] = {
+      // name-ok: proposal at creation, a new field only
       inline: name === 'gloss' || name === 'pos',
       // The keys the dataset's own columns fill (a sense's Description, its
       // Definition, a Part of Speech) say what they hold.

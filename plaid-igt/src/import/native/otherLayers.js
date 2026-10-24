@@ -161,6 +161,7 @@ export async function restoreOtherLayers({
   const restoreRelationLayers = async (spanLayer, rows) => {
     for (const row of rows || []) {
       check();
+      // name-ok: within one project, the archive's own layers (ruling C4)
       let layer = claim(spanLayer.relationLayers, (c) => c.name === row.name);
       if (!layer) {
         layer = { id: newId(await client.relationLayers.create(spanLayer.id, row.name)) };
@@ -207,9 +208,11 @@ export async function restoreOtherLayers({
     let layer = null;
     if (host && row.scope) {
       layer = (host.spanLayers || []).find(
+        // name-ok: within one project, the archive's own layers (ruling C4)
         (sl) => readScope(sl.config) === row.scope && sl.name === row.name,
       );
     } else if (host) {
+      // name-ok: within one project, the archive's own layers (ruling C4)
       layer = claim(host.spanLayers, (c) => !readScope(c.config) && c.name === row.name);
       if (!layer) {
         layer = { id: newId(await client.spanLayers.create(host.id, row.name)) };
@@ -263,6 +266,7 @@ export async function restoreOtherLayers({
     let layer = claim(
       candidates,
       (c) =>
+        // name-ok: within one project, the archive's own layers (ruling C4)
         c.name === row.name &&
         (c.overlapMode ?? 'any') === overlapMode &&
         (c.parentTokenLayer ?? null) === parentId,
@@ -290,6 +294,7 @@ export async function restoreOtherLayers({
     );
     for (const spanRow of row.spanLayers || []) {
       check();
+      // name-ok: within one project, the archive's own layers (ruling C4)
       let spanLayer = claim(layer.spanLayers, (c) => c.name === spanRow.name);
       if (!spanLayer) {
         spanLayer = { id: newId(await client.spanLayers.create(layer.id, spanRow.name)) };

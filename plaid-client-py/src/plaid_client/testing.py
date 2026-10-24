@@ -623,6 +623,7 @@ class Resource:
             noun = self._name[:-1].capitalize()
             raise _refusal(root, 400, f'{noun}s must all belong to the same layer',
                            sent.method, sent.path)
+        # name-ok: the fake client's own resource name
         if self._name != 'tokens' or layers.pop() not in root.partitioning_layers():
             return
         length = root.text_length(ops[0].get('text'))
