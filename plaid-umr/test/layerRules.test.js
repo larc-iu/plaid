@@ -147,11 +147,9 @@ test('an open asks nothing of the layer rules, whoever opens and whatever the la
     { user: WRITER, stored: acyclic },
   ]) {
     const { doc, calls, reloads } = load(options);
-    const result = await doc._reconcile();
-    assert.deepEqual(result, { findings: [] });
+    await doc.reconcileOnOpen();
     assert.deepEqual(constraintCalls(calls), []);
     assert.equal(reloads(), 0);
-    assert.equal(doc.describeReconcile(result), null);
   }
 });
 

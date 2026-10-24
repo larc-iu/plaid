@@ -89,10 +89,8 @@ to the document graph. What it has to know that the others do not:
   spans over them, then the relations between those spans. That is the order
   `umrImport.js` writes a document in. The document's lock is held across all
   three, from the staleness check to the last write (`plan.holding`), so
-  another user's write cannot land between them. Anyone who opens the document then
-  finds it locked and does not repair it on open, which would otherwise take
-  the new anchors for ones an interrupted add left and delete them. A document
-  another run holds refuses the plan with nothing written.
+  another user's write cannot land between them. A document another run holds
+  refuses the plan with nothing written.
 
 `docs/umr/SAMPLE_PROMPT.md` is what the model sees. `bb sample-prompts` (from
 the repo root) regenerates it with the other two.

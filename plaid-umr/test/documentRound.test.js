@@ -142,8 +142,13 @@ test('two nodes of a sentence sharing a variable are an error, and the export re
 test('two sentences sharing a variable are reported once, by the official check, and exported', () => {
   const text = block(1, LUNCH, LUNCH_ALIGNED) + block(2, '(s2l / leave-02)', 's2l: 2-2');
   const { doc } = load(text, (raw) => {
-    const spans = raw.textLayers[0].tokenLayers[2].spanLayers[0].spans;
-    spans.find((s) => s.metadata.umr.var === 's2l').metadata.umr.var = 's1l';
+    const layer = raw.textLayers[0].tokenLayers[2];
+    layer.spanLayers[0].spans.find((s) => s.metadata.umr.var === 's2l').metadata.umr.var = 's1l';
+    // A document that goes by its file's numbers, as a released corpus does,
+    // so the reader reads the names as the file gave them (renumberMoves).
+    layer.tokens.forEach((t) => {
+      if (t.metadata?.umr && !t.metadata.umr.hold) t.metadata.umr.numbering = 'file';
+    });
   });
   assert.equal(doc.problems.filter((p) => p.code === 'non-unique-node-id').length, 1);
   // The file reads back as it was, and a released corpus has such pairs.

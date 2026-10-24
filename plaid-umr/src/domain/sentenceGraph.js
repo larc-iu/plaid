@@ -11,7 +11,7 @@
 //            sentence's root and `sentence` is its sentence token's id. A node
 //            RECORDS a sentence exactly when it is aligned to no word: the
 //            record is what says so, and the anchor is only where the node
-//            stands (see umrReconcile.js)
+//            stands (`unalignedStretch`)
 //   edge   = a relation in the relation layer, value = role,
 //            metadata.umr = { order }
 //   triple = a relation in the document-graph layer, value = the relation,
@@ -28,8 +28,8 @@
 //            no token, so the node, its edges and its document-level
 //            relations went with the word (H17-UMR-1). Kept by its hold, the
 //            node is read as standing over it, aligned to no word, and
-//            reconcile makes it an ordinary unaligned node (ruling
-//            umr-igt-deleted-word). Every reader leaves holds out of
+//            the next UMR write to its sentence stores it as an ordinary
+//            unaligned node (umrSettle.js, ruling umr-igt-deleted-word). Every reader leaves holds out of
 //            `pieces` while the node has a piece of its own, and every
 //            delete of a node takes them (`tokenIds`). It begins where the
 //            node's words do, not at the sentence's start, because core
@@ -60,6 +60,7 @@ import { perWordStored } from './ilg.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 import { morphemeMorphType } from '../../../plaid-ui/src/domain/morphemes.js';
+import { isLetterMarkOrNumber } from './letterClasses.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -74,8 +75,8 @@ const byBegin = (a, b) => a.begin - b.begin || a.end - b.end;
 /**
  * The words a node's anchor `pieces` stand on: the ids of the `words` that
  * overlap a piece, in text order, each once. What an aligned node reads as
- * its words, and what every writer records on it as `words` (umrReconcile.js
- * planWordSplits). `words_under` in plaid_client.workflows.umr is its twin,
+ * its words, and what every writer records on it as `words`
+ * (`wordSplitCuts`). `words_under` in plaid_client.workflows.umr is its twin,
  * for the Python writers, held to it by plaid-agent's
  * test_umr_words_mirror.py.
  */
@@ -143,7 +144,7 @@ export const NUMBERED_VARIABLE = /^s([0-9]+)(\p{L}.*)$/u;
  * The one sentence number the variables of a sentence's nodes carry, or null
  * when they carry none or disagree. A variable names the sentence it was made
  * in, so after another app adds or removes a sentence before it, this is the
- * number the sentence had, until reconcile renumbers it.
+ * number the sentence had, until a write stores the new one (`renumberMoves`).
  */
 function variableNumber(sentence) {
   let number = null;
@@ -174,7 +175,7 @@ export function fileNumbersItsSentences(parsedSentences) {
  * than by position: its import marked its records so
  * (`fileNumbersItsSentences`), or the first stored `# :: snt` number is not
  * 1, as in a released excerpt starting at snt5. Its variables are left as
- * the file named them (umrReconcile.js `planRenumber`) and its export writes
+ * the file named them (`renumberMoves`) and its export writes
  * the stored numbers. Every other document is numbered by position, a stored
  * number included, once IGT has added or removed a sentence.
  */
@@ -192,8 +193,8 @@ export function numberedByFile(sentences) {
 // describes: a sentence that records something and has no nodes, followed
 // (past any sentences that record nothing and have no nodes either, several
 // typed in at once) by one that records nothing and whose nodes' variables
-// carry the first one's number. Reconcile then moves the record there for
-// good.
+// carry the first one's number. The next UMR write to that sentence moves
+// the record there for good (`recordShares`, umrSettle.js).
 //
 // The number must say so without doubt, since a sentence the file left with
 // no graph (or one whose graph was deleted) followed by one added in IGT and
@@ -361,6 +362,10 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
     const node = {
       id: span.id,
       var: meta.var || null,
+      // The variable as stored. `var` is the one it is read by: its
+      // sentence's number once another app added or removed a sentence
+      // before it (`renumberMoves`).
+      storedVar: meta.var || null,
       concept: span.value ?? '',
       attrs: [...(meta.attrs || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
       constant: meta.constant === true,
@@ -373,9 +378,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
       // node stood on a point of text, which a deletion across that point
       // took away with the node on it. And a word deleted in another app
       // leaves the anchor over its text with no word there: such a node was
-      // drawn aligned while the export wrote `0-0`. Reconcile makes it an
-      // ordinary unaligned node (umrReconcile.js), and a view that does not
-      // reconcile (a past state, a reader) reads it as one already.
+      // drawn aligned while the export wrote `0-0`. Every reader reads it as
+      // an ordinary unaligned node, and the next UMR write to its sentence
+      // stores it as one (umrSettle.js).
       // A node only its hold keeps is aligned to nothing.
       aligned:
         !meta.sentence && pieces.some((p) => !isHoldToken(p) && p.end > p.begin && overWord(p)),
@@ -395,8 +400,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
     // An unaligned node belongs to the sentence it records, while that
     // sentence is alive: another app's edit at a sentence's start moves its
     // anchor into the sentence before, and reading position alone drew it,
-    // and wrote it to the file, under that one. Reconcile brings the anchor
-    // back; the canvas, the export and the Export tab agree before it runs.
+    // and wrote it to the file, under that one. The next UMR write to the
+    // sentence brings the anchor back (umrSettle.js), and the canvas, the
+    // export and the Export tab agree before it does.
     //
     // Unless the anchor begins in a LATER sentence. IGT splits a sentence
     // keeping its token on the left, so a sentence typed in before the first
@@ -413,8 +419,20 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
     }
   });
 
+  // A node that records a sentence and stands in none (its sentence token
+  // gone and its anchor outside every sentence) has no sentence to belong to
+  // and is read as not there: no edge, triple or tag names it. It stays
+  // stored, which harms nothing, since nothing shows it. A document with no
+  // sentences at all is waiting to be tokenized again (a "Clear tokens"),
+  // and keeps every node: the sentences that come back take them in again.
+  if (sentences.length) {
+    nodesById.forEach((node, id) => {
+      if (!node.constant && node.sentence == null && umrMeta(node).sentence) nodesById.delete(id);
+    });
+  }
+
   recordsFollowTheirGraphs(sentences, slice, recordsById);
-  // Every record with the sentence it is read with, for reconcile.
+  // Every record with the sentence it is read with.
   const records = sentences.flatMap((s) =>
     [s.recordToken, ...s.otherRecords].filter(Boolean).map((id, k) => {
       const token = recordsById.get(id);
@@ -425,6 +443,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
         begin: token.begin,
         end: token.end,
         record: umrMeta(token),
+        // The relations it holds, under the names the reader gives the
+        // nodes they name (`renumberMoves` below).
+        held: Array.isArray(umrMeta(token).held) ? umrMeta(token).held : [],
       };
     }),
   );
@@ -436,6 +457,22 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
       listedIn.get(id).add(sentence);
     }),
   );
+
+  // Each variable read by its sentence's number (`renumberMoves`), and the
+  // relations a record holds for a graph kept as text renamed with them.
+  const moves = renumberMoves(sentences, nodesById, keptVariables({ sentences, records }));
+  moves.forEach(({ node, to }) => (node.var = to));
+  const rename = heldRenames(moves);
+  if (rename.size) {
+    const renamed = (held) =>
+      held.map((h) => ({
+        ...h,
+        source: rename.get(h.source) || h.source,
+        target: rename.get(h.target) || h.target,
+      }));
+    sentences.forEach((s) => (s.held = renamed(s.held)));
+    records.forEach((r) => (r.held = renamed(r.held)));
+  }
 
   // Edges, attached to the head's sentence.
   relations.forEach((rel) => {
@@ -490,8 +527,14 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
       // A node aligned to no word covers its whole sentence, which is where
       // it stands and not what it is about: it aligns to nothing and lights
       // up no word.
-      node.alignment = node.aligned ? alignmentOf(node, s.words) : [];
-      node.wordIds = node.aligned ? wordsUnder(node.pieces, s.words) : [];
+      // An aligned node over a word another app split in two reads as
+      // standing on one half (`wordSplitCuts`), and an unaligned one as
+      // standing over one stretch of its sentence (`unalignedStretch`).
+      node.cuts = node.aligned ? wordSplitCuts(node, s) : [];
+      const read = readPieces(node);
+      node.stands = !node.aligned && node.pieces.length ? unalignedStretch(node.pieces, s) : null;
+      node.alignment = node.aligned ? alignmentOf({ pieces: read }, s.words) : [];
+      node.wordIds = node.aligned ? wordsUnder(read, s.words) : [];
     });
     s.nodes.sort(nodeOrder);
     s.edges.sort((a, b) => a.order - b.order);
@@ -758,8 +801,8 @@ export const unreachedByRoot = (graph) => {
 // Nodes in a sentence read by anchor position, then by variable, so a list
 // of them is stable across reloads.
 const nodeOrder = (a, b) => {
-  const ab = a.pieces[0]?.begin ?? 0;
-  const bb = b.pieces[0]?.begin ?? 0;
+  const ab = (a.stands ?? a.pieces[0])?.begin ?? 0;
+  const bb = (b.stands ?? b.pieces[0])?.begin ?? 0;
   if (ab !== bb) return ab - bb;
   return String(a.var).localeCompare(String(b.var));
 };
@@ -1164,4 +1207,183 @@ export function nextVariable(sentenceIndex, concept, taken) {
     const candidate = `${base}${n}`;
     if (!taken.has(candidate)) return candidate;
   }
+}
+
+/**
+ * Where a node aligned to no word stands: one stretch of text from where the
+ * first of its `pieces` that covers text begins to where the last ends, cut
+ * to its sentence `home`, and the whole sentence when they cover no text
+ * there (a point, or no piece). The reader places an unaligned node there
+ * (`stands`), the next UMR write to its sentence stores it (umrSettle.js),
+ * and the canvas puts a node made unaligned there, so a later split of the
+ * sentence outside that text leaves the node, and its relations, on the side
+ * its text is on.
+ *
+ * @param {{ begin: number, end: number }[]} pieces
+ * @param {{ begin: number, end: number }} home
+ * @returns {{ begin: number, end: number }}
+ */
+export function unalignedStretch(pieces, home) {
+  const text = pieces.filter((p) => p.end > p.begin);
+  const begin = Math.max(home.begin, Math.min(...text.map((p) => p.begin)));
+  const end = Math.min(home.end, Math.max(...text.map((p) => p.end)));
+  if (!text.length || end <= begin) return { begin: home.begin, end: home.end };
+  return { begin, end };
+}
+
+/**
+ * The pieces of an aligned node standing over a word another app split in
+ * two (`ikian,` into `ikian` and `,`), each cut to the half the word's
+ * letters are in: core splits only the layers under the word layer, and the
+ * node layer is a root layer, so a node anchored to the word stands over
+ * both halves. The half kept is the one with the most letters, marks and
+ * digits (a vowel sign counts with its letter), the first on a tie (`a.`
+ * keeps `a`, `tsa` split as `t` and `sa` keeps `sa`).
+ *
+ * A node records the words it was aligned to (`words`, their ids). A split
+ * keeps the word's id on its left half and gives the right half a new one,
+ * so a word under the anchor that the node does not record, right after a
+ * recorded one with no space between them, is a half of that word. Only
+ * those are cut: a node aligned on purpose to several touching words (`do`
+ * and `n't`, or the words of a text with no spaces, as Chinese is) records
+ * each of them and is left as it is. A node that records no words is never
+ * cut, nor one that records a word that is gone (merged away, or deleted and
+ * made again). Only the ends of a piece: a piece covers one stretch of text,
+ * and a half in its middle could not be dropped without cutting it in two.
+ *
+ * The reader reads the node on the cut pieces (its alignment and `wordIds`),
+ * and the next UMR write to its sentence stores them (umrSettle.js).
+ *
+ * @returns {{ pieceId: string, begin: number, end: number }[]}
+ */
+export function wordSplitCuts(node, sentence) {
+  if (node.constant || !node.aligned || !sentence) return [];
+  const recorded = new Set(umrMeta(node).words || []);
+  if (!recorded.size) return [];
+  if ([...recorded].some((id) => !sentence.words.some((w) => w.id === id))) return [];
+  const letters = (w) => [...w.text].filter(isLetterMarkOrNumber).length;
+  const kept = (run) => run.reduce((best, w) => (letters(w) > letters(best) ? w : best));
+  const cuts = [];
+  node.pieces.forEach((piece) => {
+    if (isHoldToken(piece)) return;
+    const words = sentence.words.filter((w) => w.begin < piece.end && piece.begin < w.end);
+    if (words.length < 2) return;
+    if (words[0].begin !== piece.begin || words.at(-1).end !== piece.end) return;
+    // Each recorded word with the halves split off it: the words after it
+    // it does not record, touching it and each other.
+    const groups = [];
+    words.forEach((w) => {
+      const group = groups.at(-1);
+      const half = group && !recorded.has(w.id) && group.at(-1).end === w.begin;
+      if (half && recorded.has(group[0].id)) group.push(w);
+      else groups.push([w]);
+    });
+    const first = groups[0];
+    const last = groups.at(-1);
+    const begin = first.length > 1 ? kept(first).begin : piece.begin;
+    const end = last.length > 1 ? kept(last).end : piece.end;
+    if (begin === piece.begin && end === piece.end) return;
+    cuts.push({ pieceId: piece.id, begin, end });
+  });
+  return cuts;
+}
+
+// A node's pieces as the reader reads them: each cut to the half of a split
+// word it stands on (`cuts`, wordSplitCuts).
+export function readPieces(node) {
+  if (!node.cuts?.length) return node.pieces;
+  const at = new Map(node.cuts.map((c) => [c.pieceId, c]));
+  return node.pieces.map((p) => (at.has(p.id) ? { ...p, ...at.get(p.id), id: p.id } : p));
+}
+
+/**
+ * The variables whose sentence number is not their node's sentence, after
+ * another app added or removed sentences before them: each read as its
+ * sentence's number, keeping the rest of the name (`s2v` in sentence 1 is
+ * `s1v`). A name already taken by a node that keeps its own takes a counter
+ * after it, as a new variable does (`s1v2`). Constants and names not of this
+ * shape are left alone. Relations point at nodes, so only the names change.
+ * `reserved` holds names taken by something that is not a node, the
+ * variables a graph kept as text defines. Nothing is renamed in a document
+ * that goes by its file's numbers (`numberedByFile`): one imported from a
+ * file numbered otherwise than 1, 2, 3, as a released excerpt starting at
+ * snt5. A sentence deleted or merged later in a document imported in order
+ * does not stop it: the numbers after it no longer run, and are then read by
+ * position.
+ *
+ * Read off the STORED names (`storedVar`). The reader reads each node by the
+ * name it gives, and the next UMR write to the node's sentence stores it
+ * (umrSettle.js).
+ *
+ * @returns {{ node: object, from: string, to: string }[]}
+ */
+export function renumberMoves(sentences, nodesById, reserved = new Set()) {
+  if (numberedByFile(sentences || [])) return [];
+  const moves = [];
+  const fixed = new Set(reserved);
+  nodesById.forEach((node) => {
+    const stored = node.storedVar ?? node.var;
+    if (!stored) return;
+    const m = NUMBERED_VARIABLE.exec(stored);
+    const wrong = !node.constant && node.sentence != null && m && Number(m[1]) !== node.sentence;
+    if (wrong) moves.push({ node, stored, rest: m[2] });
+    else fixed.add(stored);
+  });
+  const taken = new Set(fixed);
+  return moves
+    .sort((a, b) => a.node.sentence - b.node.sentence || a.stored.localeCompare(b.stored))
+    .map(({ node, stored, rest }) => {
+      const base = `s${node.sentence}${rest}`;
+      let to = base;
+      // The counter goes after the letters, as nextVariable counts.
+      const stem = base.replace(/[0-9]+$/, '');
+      for (let n = 2; taken.has(to); n++) to = `${stem}${n}`;
+      taken.add(to);
+      return { node, from: stored, to };
+    });
+}
+
+/**
+ * The names held relations (a record's `held`) go by after `moves`
+ * (renumberMoves): old name to new. A name two moved nodes share is left as
+ * it is.
+ */
+export function heldRenames(moves) {
+  const to = new Map();
+  moves.forEach((r) => to.set(r.from, to.has(r.from) && to.get(r.from) !== r.to ? null : r.to));
+  return new Map([...to].filter(([, v]) => v));
+}
+
+/**
+ * Each sentence record put back over its share of its sentence: the
+ * sentence's own record from where the sentence begins, a record waiting in
+ * a sentence joined to the one before (`otherRecords`) from where it
+ * begins, since a split back needs that place, and each up to where the next
+ * record of the sentence begins, or to the sentence's end.
+ *
+ * Core's text rule moves a record along with text typed at its sentence's
+ * start rather than growing it, and keeps it only while some of its text is
+ * left, so a record narrower than its share is deleted with text its
+ * sentence survives. Held over the whole share, it goes only with the whole
+ * of it. It also moves a record the reader reads with the sentence it
+ * describes (`recordsFollowTheirGraphs`) there. The next UMR write to the
+ * sentence stores it (umrSettle.js).
+ *
+ * @returns {{ id: string, begin: number, end: number, moved: boolean }[]}
+ */
+export function recordShares(graph, sentenceIndexes = null) {
+  const sentences = graph.sentences || [];
+  const out = [];
+  sentences.forEach((s) => {
+    if (sentenceIndexes && !sentenceIndexes.has(s.index)) return;
+    const mine = (graph.records || []).filter((r) => r.sentence === s.index);
+    mine.forEach((r, k) => {
+      const begin = r.own ? s.begin : r.begin;
+      const next = mine.slice(k + 1).find((x) => x.begin > begin);
+      const end = next ? next.begin : s.end;
+      if (r.begin === begin && r.end === end) return;
+      out.push({ id: r.id, begin, end, moved: !(r.begin >= s.begin && r.begin < s.end) });
+    });
+  });
+  return out;
 }

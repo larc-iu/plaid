@@ -1,11 +1,13 @@
-// Three limits on what reconcile on open and Text mode do after IGT changes
-// the sentences (the defaults adopted with the rulings of 2026-09-28):
+// Three limits on what the reader shows, and the next write stores, and on
+// what Text mode does after IGT changes the sentences (the defaults adopted
+// with the rulings of 2026-09-28). The open writes nothing (R3, 2026-10-24):
 //
 // - Renumbering leaves alone a document whose first stored `snt` number is
 //   not 1: a released excerpt starting at `# :: snt5` keeps its names. A
 //   sentence deleted later in an imported file does not stop it.
 // - Mending a graph kept as text accepts that graph's own names even when IGT
-//   has shifted the sentences since. The next open renumbers them.
+//   has shifted the sentences since. The reader then reads them by their
+//   sentence's number, and the next write stores it.
 // - A sentence with no words at all (IGT's "Clear tokens", before it tokenizes
 //   again) is a tokenization in progress, and its nodes keep their anchors.
 //   So is a document with no sentences at all: every node is kept.
@@ -17,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { planRenumber } from '../src/domain/umrReconcile.js';
+import { planSettle, umrOps } from '../src/domain/umrSettle.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
 import { insertSentenceAtStart } from './igtInsertSentence.js';
@@ -62,27 +64,42 @@ function open(raw) {
 
 const fromText = (text) => rawFromPlan(planImport(parseUmrFile(text).sentences, []));
 const vars = (doc) => [...doc.graph.nodesById.values()].map((n) => n.var).sort();
+// The names the reader gives in place of the stored ones: [stored, read].
+const renamed = (doc) =>
+  [...doc.graph.nodesById.values()]
+    .filter((n) => n.storedVar !== n.var)
+    .map((n) => [n.storedVar, n.var])
+    .sort();
+// What the next write to every sentence stores (umrSettle.js).
+const stores = (doc) => planSettle(doc.graph, null, { lexicon: doc.lexicon });
+// Whether the open sent any write.
+const openWrites = async (doc, calls) => {
+  await doc.reconcileOnOpen();
+  return calls.filter((c) => c.name !== 'operation').length > 0;
+};
 
 // ----- 1. renumbering and the stored sentence numbers -----
 
-test('an excerpt whose file starts at snt5 keeps its variables on first open', async () => {
+test('an excerpt whose file starts at snt5 keeps its variables', async () => {
   const { doc, calls } = open(fromText(`${block(5)}\n${block(6)}`));
   assert.deepEqual(vars(doc), ['s5a', 's5g', 's6a', 's6g']);
-  assert.deepEqual(planRenumber(doc.graph), []);
-  assert.deepEqual(await doc._reconcile(), { findings: [] });
-  assert.equal(calls.length, 0);
+  assert.deepEqual(renamed(doc), []);
+  assert.equal(stores(doc), null);
+  assert.equal(await openWrites(doc, calls), false);
 });
 
 test('the same file starting at snt1 with a sentence IGT added before it is renumbered', async () => {
   const raw = fromText(`${block(1)}\n${block(2)}`);
   insertSentenceAtStart(raw);
-  const { doc } = open(raw);
-  const result = await doc._reconcile();
-  assert.equal(result.renumbered, 4);
-  assert.equal(
-    doc.describeReconcile(result),
-    'Repaired: renumbered 4 variables to match the sentences',
-  );
+  const { doc, calls } = open(raw);
+  assert.deepEqual(renamed(doc), [
+    ['s1a', 's2a'],
+    ['s1g', 's2g'],
+    ['s2a', 's3a'],
+    ['s2g', 's3g'],
+  ]);
+  assert.equal(await openWrites(doc, calls), false);
+  assert.equal([...stores(doc).meta.values()].filter((c) => c.var).length, 4);
 });
 
 test('numbers that skip one, as a sentence deleted in IGT leaves them, still renumber', () => {
@@ -103,14 +120,11 @@ test('numbers that skip one, as a sentence deleted in IGT leaves them, still ren
     rl.relations = rl.relations.filter((r) => alive.has(r.source) && alive.has(r.target));
   });
   const { doc } = open(raw);
-  assert.deepEqual(vars(doc), ['s1a', 's1g', 's3a', 's3g']);
-  assert.deepEqual(
-    planRenumber(doc.graph).map((m) => [m.from, m.to]),
-    [
-      ['s3a', 's2a'],
-      ['s3g', 's2g'],
-    ],
-  );
+  assert.deepEqual(vars(doc), ['s1a', 's1g', 's2a', 's2g']);
+  assert.deepEqual(renamed(doc), [
+    ['s3a', 's2a'],
+    ['s3g', 's2g'],
+  ]);
 });
 
 test('a file whose first sentence was deleted in IGT reads as an excerpt, and keeps its names', () => {
@@ -131,7 +145,7 @@ test('a file whose first sentence was deleted in IGT reads as an excerpt, and ke
   });
   const { doc } = open(raw);
   assert.deepEqual(vars(doc), ['s2a', 's2g']);
-  assert.deepEqual(planRenumber(doc.graph), []);
+  assert.deepEqual(renamed(doc), []);
 });
 
 // ----- 2. a kept graph mended after IGT shifted the sentences -----
@@ -156,9 +170,9 @@ test('a graph kept as text is mended under its own names after IGT added a sente
     .flatMap((c) => c.args[0])
     .filter((r) => r.relationLayerId === docLayer);
   assert.equal(made.length, 10, 'every held relation is made real');
-  // The next open renumbers the mended nodes with the rest.
-  const renumber = planRenumber(doc.graph);
-  const moved = new Map(renumber.map((r) => [r.from, r.to]));
+  // The reader reads the mended nodes by their sentence's number with the
+  // rest, and the next write to the sentence stores it.
+  const moved = new Map(renamed(doc));
   assert.equal(moved.get('s37e'), 's38e');
 });
 
@@ -190,8 +204,8 @@ test('a sentence whose words were all cleared keeps its nodes aligned where they
   const words = role(raw, 'word').tokens;
   role(raw, 'word').tokens = words.filter((t) => !inside(t));
   const { doc, calls } = open(raw);
-  assert.deepEqual(await doc._reconcile(), { findings: [] });
-  assert.equal(calls.length, 0);
+  assert.equal(await openWrites(doc, calls), false);
+  assert.equal(stores(doc), null);
   // Tokenized again, the nodes are aligned as they were.
   role(raw, 'word').tokens = words;
   const { doc: again } = open(raw);
@@ -219,20 +233,21 @@ test('a document whose sentences were all deleted keeps every node, and its sent
   role(raw, 'word').tokens = [];
   const { doc, calls } = open(raw);
   assert.equal(doc.graph.sentences.length, 0);
-  assert.deepEqual(await doc._reconcile(), { findings: [] });
-  assert.equal(calls.length, 0, 'nothing is removed or rewritten');
+  assert.equal(await openWrites(doc, calls), false);
+  assert.equal(stores(doc), null, 'nothing is removed or rewritten');
+  assert.equal([...doc.graph.nodesById.values()].length, before.graph.nodesById.size);
   // Tokenized again: new sentence tokens over the same text, and the words.
   sentenceLayer.tokens = sentences.map((t) => ({ ...t, id: `${t.id}-again` }));
   role(raw, 'word').tokens = words;
-  const { doc: again, calls: written } = open(raw);
-  const result = await again._reconcile();
-  assert.ok(!result.removed, JSON.stringify(result));
-  assert.equal(result.rebound, unaligned.length, 'each unaligned node takes its new sentence');
-  assert.ok(again.sentence(1).nodes.length && again.sentence(2).nodes.length);
-  assert.ok(
-    written.every((c) => !/delete/i.test(c.name)),
-    JSON.stringify(written.map((c) => c.name)),
+  const { doc: again } = open(raw);
+  const plan = stores(again);
+  assert.equal(plan.retoken.length, 0, 'nothing is removed');
+  assert.equal(
+    [...plan.meta.values()].filter((c) => c.sentence).length,
+    unaligned.length,
+    'each unaligned node takes its new sentence',
   );
+  assert.ok(again.sentence(1).nodes.length && again.sentence(2).nodes.length);
 });
 
 test('a sentence that keeps some words still unanchors a node whose word went', async () => {
@@ -241,30 +256,33 @@ test('a sentence that keeps some words still unanchors a node whose word went', 
   const at = body.indexOf('Ali', role(raw, 'sentence').tokens[1].begin);
   role(raw, 'word').tokens = role(raw, 'word').tokens.filter((t) => t.begin !== at);
   const { doc } = open(raw);
-  const result = await doc._reconcile();
-  assert.deepEqual(result.unanchored, ['s2a']);
+  const node = [...doc.graph.nodesById.values()].find((n) => n.var === 's2a');
+  assert.equal(stores(doc).meta.get(node.id).sentence, doc.sentence(2).tokenId);
 });
 
 // ----- 4. the vocabulary read -----
 
-test('an open reads the vocabularies only when a node names an entry', async () => {
+test('an open reads no vocabulary, and a write with the vocabularies read forgets a deleted entry', async () => {
   const raw = fromText(`${block(1)}`);
-  const { client } = recordingClient();
+  const { client, calls } = recordingClient();
   const asked = [];
   client.vocabLayers = { get: async (id) => (asked.push(id), { id, items: [] }) };
-  const doc = new UmrDocument({ raw, client, project: { vocabs: [{ id: 'v1' }] } });
-  doc._reload = async () => {};
-  assert.deepEqual(await doc._reconcile(), { findings: [] });
-  assert.deepEqual(asked, [], 'no node names an entry, so nothing is read');
-  const node = [...doc.graph.nodesById.values()][0];
+  const node = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes).spanLayers[0]
+    .spans[0];
   node.metadata.umr.entry = 'gone';
   node.metadata.umr.entryVocab = 'v1';
   const picked = new UmrDocument({ raw, client, project: { vocabs: [{ id: 'v1' }] } });
   picked._reload = async () => {};
-  client.spans.patchMetadata = async () => {};
-  const result = await picked._reconcile();
+  assert.equal(await openWrites(picked, calls), false);
+  assert.deepEqual(asked, [], 'the open reads nothing');
+  assert.equal(
+    stores(picked),
+    null,
+    'nothing is said of an entry before the vocabularies are read',
+  );
+  await picked.loadLexicon();
   assert.deepEqual(asked, ['v1']);
-  assert.equal(result.unlinked, 1);
+  assert.deepEqual(stores(picked).meta.get(node.id), { entry: undefined, entryVocab: undefined });
 });
 
 // ----- 5. a sentence typed in before the first one -----
@@ -294,23 +312,20 @@ s1k: 2-2
   // IGT keeps the first sentence's token on the new text, which s1n records.
   const kept = insertSentenceAtStart(raw);
   const { doc, calls } = open(raw);
-  const name = [...doc.graph.nodesById.values()].find((n) => n.var === 's1n');
+  const name = [...doc.graph.nodesById.values()].find((n) => n.storedVar === 's1n');
   assert.equal(name.metadata.umr.sentence, kept);
   // It is read in the sentence its anchor and its parent are in, not the
   // one its record names, so no edge crosses a sentence.
   assert.equal(name.sentence, 2);
   assert.equal(name.aligned, false);
-  const result = await doc._reconcile();
-  assert.equal(result.rebound, 1);
-  const patches = calls.filter((c) => c.name === 'spans.patchMetadata' && c.args[0] === name.id);
-  assert.deepEqual(patches[0].args[1], [
+  assert.equal(name.var, 's2n');
+  assert.equal(await openWrites(doc, calls), false);
+  const plan = stores(doc);
+  assert.deepEqual(umrOps(plan.meta.get(name.id)), [
     { op: 'set', path: ['umr', 'sentence'], value: 'igt-right' },
     { op: 'set', path: ['umr', 'var'], value: 's2n' },
   ]);
-  assert.equal(
-    doc.describeReconcile(result),
-    'Repaired: rebound 1 unaligned node to the sentence it is in, renumbered 4 variables to match the sentences',
-  );
+  assert.equal([...plan.meta.values()].filter((c) => c.var).length, 4);
 });
 
 test('a boundary moved later keeps an unaligned node in the sentence it records', () => {

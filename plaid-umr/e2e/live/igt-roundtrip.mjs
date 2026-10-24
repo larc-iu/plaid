@@ -41,6 +41,7 @@ import {
   runNativeImport,
 } from '../../../plaid-igt/src/import/native/importEngine.js';
 import { UmrDocument } from '../../src/domain/UmrDocument.js';
+import { planSettle } from '../../src/domain/umrSettle.js';
 import { adoptSubstrate } from '../../src/domain/umrProjectSetup.js';
 import { getUmrLayerInfo } from '../../src/utils/umrLayerUtils.js';
 import { parseUmrFile } from '../../src/domain/format/umrFile.js';
@@ -307,12 +308,15 @@ try {
 
   // ---- 4. UMR reads it again ------------------------------------------------
 
-  // Opening it heals first, as the editor does (reconcile-on-open).
+  // Opening it writes nothing (R3): the reader reads what IGT's edits left,
+  // and the next UMR write to a sentence stores it (umrSettle.js).
   umr = await loadUmr();
-  const healed = await umr.reconcileOnOpen();
-  check(!healed.error, 'the repair on open ran', String(healed.error));
-  console.log(`   repair: ${umr.describeReconcile(healed) || 'nothing to do'}`);
+  const version = umr.raw.version;
+  await umr.reconcileOnOpen();
   umr = await loadUmr();
+  check(umr.raw.version === version, 'the open writes nothing', `${version} to ${umr.raw.version}`);
+  const toStore = planSettle(umr.graph, null);
+  console.log(`   a write would store: ${toStore ? toStore.meta.size : 0} nodes' records`);
   const nodes = [...umr.graph.nodesById.values()].filter((n) => !n.constant);
   const node = (c) => byConcept(umr, c);
   const edgesOf = (c) => {
@@ -430,16 +434,12 @@ try {
   const copyId = copied?.id || copied;
   const loadCopy = () => UmrDocument.load({ client, documentId: copyId, projectId, project });
   let copy = await loadCopy();
-  const healedCopy = await copy.reconcileOnOpen();
-  // Core's copy rewrites the ids the rows' metadata names, so the copy has
-  // nothing to repair. A rebind here would mean the safety net in
-  // umrReconcile.js is hiding a copy that stopped doing so.
-  check(
-    !copy.describeReconcile(healedCopy),
-    'a copy has nothing to repair',
-    copy.describeReconcile(healedCopy),
-  );
-  copy = await loadCopy();
+  // Core's copy rewrites the ids the rows' metadata names, so the copy reads
+  // a sentence record for each unaligned node exactly where the source did.
+  // A rebind here would mean the reader is hiding a copy that stopped doing so.
+  const rebound = (doc) =>
+    [...(planSettle(doc.graph, null)?.meta.values() || [])].filter((c) => c.sentence).length;
+  check(rebound(copy) === rebound(umr), 'a copy rebinds nothing the source did not', rebound(copy));
   check(
     copy.graph.nodesById.size === umr.graph.nodesById.size && copy.toUmr() === umr.toUmr(),
     'a copy opens with every node, and exports the same',
@@ -481,16 +481,14 @@ try {
       projectId: setupB.projectId,
       project: projectB,
     });
-  let umrB = await loadB();
-  const healedB = await umrB.reconcileOnOpen();
+  const umrB = await loadB();
   // IGT's archive rewrites the ids the rows' metadata names, so the import
-  // has nothing to repair either.
+  // rebinds nothing either.
   check(
-    !umrB.describeReconcile(healedB),
-    'an import has nothing to repair',
-    umrB.describeReconcile(healedB),
+    rebound(umrB) === rebound(umr),
+    'an import rebinds nothing the source did not',
+    rebound(umrB),
   );
-  umrB = await loadB();
   check(
     umrB.graph.nodesById.size === umr.graph.nodesById.size,
     'every node comes back',

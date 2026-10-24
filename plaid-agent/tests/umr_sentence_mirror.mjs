@@ -1,8 +1,9 @@
 // plaid-umr's own reading of a UMR document after IGT has added or moved a
-// sentence, before the app heals it, so test_umr_sentence_mirror.py can hold
-// the Python reading to it: the sentence each node is in, and what each
-// sentence reads of its record (the file's `snt` number, gloss and metadata
-// lines, a graph kept as text) and its block's triples.
+// sentence, before a UMR write stores what it reads, so
+// test_umr_sentence_mirror.py can hold the Python reading to it: the
+// sentence each node is in, and what each sentence reads of its record (the
+// file's `snt` number, gloss and metadata lines, a graph kept as text) and
+// its block's triples.
 //
 // Each case is a small imported file, changed as IGT changes it:
 //   prepend       a sentence typed in before the first and split off, which

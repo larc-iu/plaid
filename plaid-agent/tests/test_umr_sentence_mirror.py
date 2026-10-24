@@ -1,6 +1,7 @@
 """``plaid_client.workflows.umr`` places nodes and reads sentence records as
-plaid-umr's reader does, over a document IGT changed and the app has not yet
-healed: the sentence each node is in, and each sentence's stored ``snt``
+plaid-umr's reader does, over a document IGT changed and no UMR write has
+stored the reader's answer in yet: the sentence each node is in (by the name
+the reader reads it by), and each sentence's stored ``snt``
 number, gloss and metadata lines, kept graph, the relations held on it and
 block triples.
 
@@ -10,7 +11,7 @@ alive, unless the anchor begins in a LATER sentence (``f1a9aecf``), and reads
 a sentence's record, and a triple between constants, with the graph it
 describes after IGT's split left them on new text typed in before it. So the
 services and the assistant saw the old first sentence's number and gloss lines
-on the new text until someone opened the document.
+on the new text until a UMR write stored it.
 
 ``umr_sentence_mirror.mjs`` builds the cases and runs the app's side. It skips
 where it cannot run (no node, or plaid-umr not beside the agent), and says so
@@ -70,9 +71,10 @@ def test_the_cases_are_the_ones_the_rules_are_for(cases):
     """Without this the comparison could pass on cases where the rules never
     come into play."""
     prepend = cases['prepend']
-    # The old first sentence's unaligned node records the new text's token,
-    # and is read in the sentence its anchor and tree are in.
-    assert prepend['nodes']['s1n'] == 2
+    # The old first sentence's unaligned node (stored s1n) records the new
+    # text's token, and is read in the sentence its anchor and tree are in,
+    # under that sentence's number.
+    assert prepend['nodes']['s2n'] == 2
     # Its record is read there too, and the new text reads as new.
     assert [s['snt'] for s in prepend['sentences']] == [None, 1, 2]
     assert prepend['sentences'][0]['triples'] == []
