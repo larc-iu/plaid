@@ -25,14 +25,17 @@
 // provConfirmed: true.
 //
 // Provenance write contract (rule behaves like a re-runnable service): a
-// word/morpheme with no link gets one; a link this rule made that is still
-// unverified is REPLACED when the rule now resolves to a different item; links
-// a human made or confirmed are protected and never touched, and so are
-// another producer's unverified links. An analysis service may link a
-// morpheme by its form AND gloss, picking a sense, which this rule, going by
-// the form alone, must not overwrite with the form's most common entry. A form the rule can't
-// resolve leaves any existing link alone (re-running never strips a machine
-// link the rule has lost its opinion on).
+// word/morpheme with no link gets one, and ANY unverified machine link may be
+// REPLACED when the rule now resolves to a different item (Luke, R29,
+// 2026-10-24): its own, and another producer's that names no picked entry
+// (a link copied by form) or whose entry no longer has the token's form
+// (re-segmented since). Links a human made or confirmed are protected and
+// never touched, and so is a producer's deliberate pick: an analysis service
+// may link a morpheme by its form AND gloss, picking a sense (`provPick`),
+// which this rule, going by the form alone, must not overwrite with the
+// form's most common entry. A form the rule can't resolve leaves any
+// existing link alone (re-running never strips a machine link the rule has
+// lost its opinion on). See linkTarget.
 //
 // Pluggability: computeAutoLinkProposals is the built-in provider; anything
 // that produces [{ tokenId, vocabItemId }] proposals (including a service-
