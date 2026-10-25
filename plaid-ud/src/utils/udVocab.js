@@ -13,8 +13,7 @@
 import { CATEGORICAL } from '../../../plaid-ui/src/domain/dyes.js';
 import { MODES, cleanDescriptions } from './udVocabMode.js';
 import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from './udVocabDescriptions.js';
-
-const UD_NAMESPACE = 'ud';
+import { readUdConfig } from '../domain/udConfig.js';
 
 // UPOS is a CLOSED universal set of exactly 17 tags — not configurable.
 export const UPOS_TAGS = Object.freeze([
@@ -230,21 +229,21 @@ export const resolveColor = (label, colorMap) => (colorMap && colorMap[label]) |
 // ---- config read / normalize (each takes a layer's `.config` object) ----
 
 export const readVocab = (config, { fallback = [] } = {}) => {
-  const v = config?.[UD_NAMESPACE]?.vocab;
+  const v = readUdConfig(config, 'vocab');
   return Array.isArray(v) && v.length ? v : fallback;
 };
 
 // Read the stored colors — a plain {label: '#hex'} map — returning a fresh copy
 // so callers can't mutate the layer config in place.
 export const readColorMap = (config) => {
-  const raw = config?.[UD_NAMESPACE]?.colors;
+  const raw = readUdConfig(config, 'colors');
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
 };
 
 // Returns { list, map } — `list` is the array-of-{key,values} for the config UI,
 // `map` is a key→values[] Map for the value picker.
 export const readFeatureInventory = (config) => {
-  const raw = config?.[UD_NAMESPACE]?.inventory;
+  const raw = readUdConfig(config, 'inventory');
   const list = Array.isArray(raw) && raw.length ? raw : UD_FEATURE_INVENTORY;
   const map = new Map();
   for (const entry of list) {

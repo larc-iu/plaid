@@ -13,8 +13,7 @@ import {
   sameConstraints,
 } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { withStoredConfig } from '../../../plaid-ui/src/domain/configCells.js';
-
-const UD_NAMESPACE = 'ud';
+import { UD_NAMESPACE } from '../domain/udConfig.js';
 
 const stored = (layer) => layer?.constraints?.[UD_NAMESPACE] ?? null;
 

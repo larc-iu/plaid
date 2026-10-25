@@ -12,7 +12,8 @@ import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError, notifySuccess } from '../../utils/feedback.jsx';
-import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
+import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { UD_NAMESPACE } from '../../domain/udConfig.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { baseRel, withAddedValues } from '../../utils/udVocab.js';
 import { MODES } from '../../utils/udVocabMode.js';
@@ -81,7 +82,7 @@ const Occurrences = ({ found, projectId }) => (
 );
 
 export const ProjectValidation = () => {
-  const { project, projectId, loading, canConfigure, fetchProject } = useManagedProject();
+  const { project, projectId, loading, canConfigure } = useManagedProject();
   const { getClient } = useAuth();
   const client = getClient();
 
@@ -186,9 +187,7 @@ export const ProjectValidation = () => {
   // Adopt every off-list value into the vocabulary. Offered, never imposed: a
   // project may well want the list to stay as it is and the values gone. The
   // values are added to the list as stored: a write refused because someone
-  // saved the list since is made again to what they saved. The project is then
-  // read again, quietly, and the new project runs the check again (`scan`
-  // follows `layerInfo`).
+  // saved the list since is made again to what they saved.
   const adopt = useCallback(
     async (field) => {
       setAdding(field.key);
@@ -215,7 +214,7 @@ export const ProjectValidation = () => {
           await attempt(await client.projects.get(projectId));
         }
         notifySuccess(`${field.label} updated`);
-        await fetchProject({ quiet: true });
+        window.location.reload();
       } catch (err) {
         console.error('Failed to add the values:', err);
         notifyError(err, 'Failed to add the values');
@@ -223,7 +222,7 @@ export const ProjectValidation = () => {
         setAdding(null);
       }
     },
-    [client, project, projectId, fetchProject],
+    [client, project, projectId],
   );
 
   if (loading) return <Loading />;

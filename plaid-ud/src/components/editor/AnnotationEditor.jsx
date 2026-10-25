@@ -27,7 +27,7 @@ import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/per
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
 import { setupHref } from '../projects/setup.jsx';
-import { readMetadataFields } from '../../utils/udMetadata.js';
+import { readMetadataFields } from '../../domain/udConfig.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
 import { precedentKey } from '../../domain/precedent.js';

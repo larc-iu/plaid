@@ -16,8 +16,7 @@
 import { PLAID_NAMESPACE, isReservedMetadataKey } from '@larc-iu/plaid-client';
 import { sameName } from '../../../plaid-ui/src/lib/nameKey.js';
 
-export const DOCUMENT_METADATA_KEY = 'documentMetadata';
-export const SENTENCE_METADATA_KEY = 'sentenceMetadata';
+// The keys and their reader, readMetadataFields, are in domain/udConfig.js.
 
 /**
  * Every sentence carries this whether the project declares it or not: it is
@@ -34,16 +33,6 @@ export const SENT_ID = 'sent_id';
  * `# text` line from the text it describes.
  */
 const SENTENCE_RESERVED = new Set([SENT_ID, 'text']);
-
-/** The declared field names for a level, in the order the project set. */
-export function readMetadataFields(config, level) {
-  const key = level === 'sentence' ? SENTENCE_METADATA_KEY : DOCUMENT_METADATA_KEY;
-  const raw = config?.ud?.[key];
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((field) => (typeof field === 'string' ? field : field?.name))
-    .filter((name) => typeof name === 'string' && name.trim() !== '');
-}
 
 /** Names back to what is stored. */
 export const toMetadataConfig = (names) => (names || []).map((name) => ({ name: name.trim() }));

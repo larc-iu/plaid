@@ -38,8 +38,9 @@ import {
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
   UD_ENHANCED_RELATION_CONFIG_KEY,
-  getUdLayerInfo,
-} from '../utils/udLayerUtils.js';
+  hasUdFlag,
+} from './udConfig.js';
+import { getUdLayerInfo } from '../utils/udLayerUtils.js';
 import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js';
 import { newUdWord } from './newUdWord.js';
 import { wordsWithNoUdWord } from './sentenceRows.js';
@@ -58,8 +59,7 @@ import {
 const UNFINISHED_KEY = 'setupUnfinished';
 
 /** Whether the last set-up for UD stopped before it had made every word. */
-export const setupUnfinished = (project) =>
-  project?.config?.[UD_NAMESPACE]?.[UNFINISHED_KEY] === true;
+export const setupUnfinished = (project) => hasUdFlag(project?.config, UNFINISHED_KEY);
 
 export const SPAN_LAYER_SPECS = [
   ['Form', UD_SPAN_CONFIG_KEYS.form],
@@ -299,7 +299,7 @@ export const adoptSubstrate = (client, page) =>
         ROLES.SYNTACTIC_WORD,
       );
       const findFlagged = (layers, key) =>
-        (layers || []).find((layer) => layer.config?.[UD_NAMESPACE]?.[key] === true) || null;
+        (layers || []).find((layer) => hasUdFlag(layer.config, key)) || null;
 
       let lemmaLayer = null;
       for (const [name, configKey] of SPAN_LAYER_SPECS) {

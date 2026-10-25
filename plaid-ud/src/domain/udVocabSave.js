@@ -3,7 +3,8 @@
 
 // Relative imports only, as udConstraints.js, so plain node can load it.
 import { expectStored } from '../../../plaid-ui/src/domain/configCells.js';
-import { UD_NAMESPACE, getUdLayerInfo } from '../utils/udLayerUtils.js';
+import { UD_NAMESPACE } from './udConfig.js';
+import { getUdLayerInfo } from '../utils/udLayerUtils.js';
 import { queueRuleChanges, withConfigWrites } from '../utils/udConstraints.js';
 
 /**

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { readProjectLanguage } from '../src/utils/udLayerUtils.js';
+import { readProjectLanguage } from '../src/domain/udConfig.js';
 import { languageParamSeed } from '../src/utils/serviceDefaults.js';
 
 const project = (language) => ({ config: { ud: { language } } });

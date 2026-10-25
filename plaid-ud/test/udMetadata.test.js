@@ -4,12 +4,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  readMetadataFields,
   toMetadataConfig,
   metadataFieldError,
   metadataRows,
   SENT_ID,
 } from '../src/utils/udMetadata.js';
+import { readMetadataFields } from '../src/domain/udConfig.js';
 
 test('readMetadataFields reads either level, and nothing from an unset project', () => {
   const config = {

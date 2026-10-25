@@ -20,14 +20,13 @@
 // where it gets cleaned up.
 
 import { valueSetAllows } from '@larc-iu/plaid-client';
-
-const UD_NAMESPACE = 'ud';
+import { readUdConfig } from '../domain/udConfig.js';
 
 export const MODES = Object.freeze({ OPEN: 'open', CLOSED: 'closed' });
 
 /** A vocabulary's mode. Anything unrecognised, absent included, reads as open. */
 export const readVocabMode = (config) =>
-  config?.[UD_NAMESPACE]?.vocabMode === MODES.CLOSED ? MODES.CLOSED : MODES.OPEN;
+  readUdConfig(config, 'vocabMode') === MODES.CLOSED ? MODES.CLOSED : MODES.OPEN;
 
 /** True when this vocabulary refuses values outside its list. */
 export const isClosed = (config) => readVocabMode(config) === MODES.CLOSED;
@@ -38,7 +37,7 @@ export const isClosed = (config) => readVocabMode(config) === MODES.CLOSED;
  * ship with the app for a vocabulary nobody has edited.
  */
 export const readDescriptions = (config, fallback = {}) => {
-  const raw = config?.[UD_NAMESPACE]?.vocabDescriptions;
+  const raw = readUdConfig(config, 'vocabDescriptions');
   const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
   return { ...fallback, ...(stored || {}) };
 };

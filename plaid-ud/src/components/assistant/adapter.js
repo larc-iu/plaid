@@ -7,7 +7,7 @@
 // plaid-ui/src/components/assistant/, and plaid-igt has an adapter of its own.
 import { linkLabel, tableCell } from '@ui/components/assistant/citations.js';
 import { isUdProject } from '@ui/domain/udProject.js';
-import { readProjectLanguage } from '../../utils/udLayerUtils.js';
+import { readProjectLanguage } from '../../domain/udConfig.js';
 import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, sentenceHref } from './cite.js';

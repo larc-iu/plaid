@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
+import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import {
+  UD_NAMESPACE,
+  TOKENIZER_LOCALE_KEY,
+  readProjectLanguage,
+  readStoredTokenizerLocale,
+} from '../../domain/udConfig.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
@@ -58,8 +64,8 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
 const TokenizerLocaleCard = ({ project, onSaved }) => {
   const { getClient } = useAuth();
   const info = getUdLayerInfo(project);
-  const saved = info.textLayer?.config?.[UD_NAMESPACE]?.tokenizerLocale || '';
-  const language = project.config?.[UD_NAMESPACE]?.language || '';
+  const saved = readStoredTokenizerLocale(info.textLayer);
+  const language = readProjectLanguage(project);
 
   const [locale, setLocale] = useState(saved);
   const [saving, setSaving] = useState(false);
@@ -76,12 +82,12 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
       if (!client) throw new Error('Not authenticated');
       if (!info.textLayer) throw new Error(NOT_SET_UP);
       const loc = locale.trim();
-      const expected = expectStored(info.textLayer, UD_NAMESPACE, 'tokenizerLocale');
+      const expected = expectStored(info.textLayer, UD_NAMESPACE, TOKENIZER_LOCALE_KEY);
       if (loc)
         await client.textLayers.setConfig(
           info.textLayer.id,
           UD_NAMESPACE,
-          'tokenizerLocale',
+          TOKENIZER_LOCALE_KEY,
           loc,
           undefined,
           expected,
@@ -90,7 +96,7 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
         await client.textLayers.deleteConfig(
           info.textLayer.id,
           UD_NAMESPACE,
-          'tokenizerLocale',
+          TOKENIZER_LOCALE_KEY,
           undefined,
           expected,
         );

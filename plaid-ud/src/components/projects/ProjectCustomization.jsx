@@ -9,13 +9,12 @@ import {
   baseRel,
   vocabCells,
 } from '../../utils/udVocab.js';
+import { toMetadataConfig, metadataFieldError } from '../../utils/udMetadata.js';
 import {
   readMetadataFields,
-  toMetadataConfig,
-  metadataFieldError,
   DOCUMENT_METADATA_KEY,
   SENTENCE_METADATA_KEY,
-} from '../../utils/udMetadata.js';
+} from '../../domain/udConfig.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';

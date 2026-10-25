@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { MetadataFields } from '../common/MetadataFields.jsx';
-import { readMetadataFields, metadataRows } from '../../utils/udMetadata.js';
+import { metadataRows } from '../../utils/udMetadata.js';
+import { readMetadataFields } from '../../domain/udConfig.js';
 
 // What this project records about a document, on the document's Details tab.
 // Nothing is drawn when the project declares no fields and the document carries

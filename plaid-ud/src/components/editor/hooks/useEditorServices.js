@@ -7,7 +7,7 @@ import { useServiceRun } from '@ui/hooks/useServiceRun.js';
 import { useRunProgress } from '@ui/hooks/useRunProgress.js';
 import { notifySuccess } from '../../../utils/feedback.jsx';
 import { BUILTIN_TOKENIZE_SEGMENTER, languageParamSeed } from '../../../utils/serviceDefaults.js';
-import { readProjectLanguage } from '../../../utils/udLayerUtils.js';
+import { readProjectLanguage } from '../../../domain/udConfig.js';
 import { parseNotice } from '../../../domain/parseNotice.js';
 import { tokenizeNotice } from '../../../domain/tokenizeNotice.js';
 
