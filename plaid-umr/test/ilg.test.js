@@ -317,6 +317,25 @@ test('an unanalyzed word reads as itself on the Morphemes line, as in IGT', () =
   );
 });
 
+// A morpheme storing no precedence reads last in its word, as core, igt and
+// ud order it, and two such by id (REV-R4R R5).
+test('a morpheme with no precedence reads last in its word', () => {
+  const info = layerInfo();
+  info.glossLayers.forEach((g) => (g.layer.spans = []));
+  const s = {
+    ...sentence(),
+    words: [{ id: 'w1', index: 1, begin: 0, end: 10, text: 'gidiyorlar' }],
+    morphemes: [
+      { id: 'm4', begin: 0, end: 10, precedence: null, text: 'dir' },
+      { id: 'm3', begin: 0, end: 10, precedence: null, text: 'lar' },
+      { id: 'm2', begin: 0, end: 10, precedence: 2, text: 'iyor' },
+      { id: 'm1', begin: 0, end: 10, precedence: 1, text: 'gid' },
+    ],
+  };
+  const morphemes = ilgLinesFor(s, info, proposeIlg(info)).find((l) => l.key === 'morphemes');
+  assert.deepEqual(morphemes.perWord, [['gid', 'iyor', 'lar', 'dir']]);
+});
+
 // Ruled 2026-10-16: the Morphemes line carries IGT's joints, a prefix's or a
 // proclitic's after it and any other before, so the file reads back word by
 // word instead of as one flat row.

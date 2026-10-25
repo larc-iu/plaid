@@ -273,12 +273,19 @@ export function perWordStored(lines, wordCount) {
 
 // One item of a gloss line: the file has no quoting, so a value with a
 // space in it (`give birth`) is one item with the spaces made visible.
-// The morphemes of each word, in their order within it.
+// The morphemes of each word, in their order within it: one storing no
+// precedence after those that store one, as core orders them, then by id.
 const morphemesPerWord = (sentence) =>
   (sentence.words || []).map((w) =>
     (sentence.morphemes || [])
       .filter((m) => m.begin >= w.begin && m.end <= w.end)
-      .sort((a, b) => a.begin - b.begin || (a.precedence ?? 0) - (b.precedence ?? 0)),
+      .sort(
+        (a, b) =>
+          a.begin - b.begin ||
+          (a.precedence == null) - (b.precedence == null) ||
+          (a.precedence ?? 0) - (b.precedence ?? 0) ||
+          (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      ),
   );
 
 /**
