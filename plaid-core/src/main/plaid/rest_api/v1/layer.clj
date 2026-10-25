@@ -43,12 +43,11 @@
                                {:keys [if-unchanged]} :query
                                body :body} :parameters db :db user-id :user/id :as req}]
                           (if-let [[config-value check] (config-check if-unchanged body false)]
-                            (let [{:keys [success code error documents]} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id check)]
+                            (let [{:keys [success documents] :as result} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id check)]
                               (if success
                                 (prm/assoc-document-versions-in-header
                                  {:status 204} db (pra/readable-document-ids req documents))
-                                {:status (or code 500)
-                                 :body   {:error (or error "Internal server error")}}))
+                                (prm/op-error result)))
                             bad-envelope))}
 
    :delete {:summary    (str "Remove a configuration value for a layer. With <query>if-unchanged</query>=true "
@@ -60,12 +59,11 @@
                                {:keys [if-unchanged]} :query
                                body :body} :parameters db :db user-id :user/id :as req}]
                           (if-let [[_ check] (config-check if-unchanged body true)]
-                            (let [{:keys [success code error documents]} (prj/dissoc-editor-config-pair db table id namespace config-key user-id check)]
+                            (let [{:keys [success documents] :as result} (prj/dissoc-editor-config-pair db table id namespace config-key user-id check)]
                               (if success
                                 (prm/assoc-document-versions-in-header
                                  {:status 204} db (pra/readable-document-ids req documents))
-                                {:status (or code 500)
-                                 :body   {:error (or error "Internal server error")}}))
+                                (prm/op-error result)))
                             bad-envelope))}})
 
 (defn- assert-config-table!
@@ -123,11 +121,10 @@
         ;; A write reports the operation's own :code. The fallback is 500 (a
         ;; failure with no code of its own is a server fault), except on shift,
         ;; where all four layer kinds have always answered 400.
-        respond (fn [{:keys [success code error]} fallback-code fallback-msg on-success]
-                  (if success
+        respond (fn [result fallback-code fallback-msg on-success]
+                  (if (:success result)
                     (on-success)
-                    {:status (or code fallback-code)
-                     :body {:error (or error fallback-msg)}}))]
+                    (prm/op-error result {:code fallback-code :message fallback-msg})))]
     [path
      ["" {:post (assoc post :middleware maintainer)}]
 

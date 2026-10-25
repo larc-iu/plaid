@@ -36,8 +36,7 @@
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
-                           {:status (or (:code result) 500)
-                            :body (prm/error-body result)})))}}]
+                           (prm/op-error result {:extras? true}))))}}]
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
@@ -56,24 +55,23 @@
              :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:name string?]]}
              :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/merge db id {:project/name name} user-id)]
+                        (let [{:keys [success] :as result} (prj/merge db id {:project/name name} user-id)]
                           (if success
                             {:status 200
                              :body (prj/get db id)}
-                            {:status (or code 500)
-                             :body {:error error}})))}
+                            (prm/op-error result {:message nil}))))}
 
      :delete {:summary "Delete a project. It is gone at once, and what it holds is removed in the background."
               :middleware [[pra/wrap-maintainer-required get-project-id]]
               :handler (fn [{{{:keys [id]} :path} :parameters datasource :plaid/datasource user-id :user/id db :db}]
-                         (let [{:keys [success code error]} (prj/delete db id user-id)]
+                         (let [{:keys [success] :as result} (prj/delete db id user-id)]
                            (if success
                              (do
                                ;; After the commit: inside an atomic batch the
                                ;; delete may still roll back.
                                (op/after-commit! #(removal/schedule! datasource id))
                                {:status 204})
-                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                             (prm/op-error result))))}}]
 
    ;; Documents (keyset-paginated)
    ["/:id/documents"
@@ -98,10 +96,10 @@
             "Remove a user's maintainer privileges for this project."]]
           :let [handler (fn [f]
                           (fn [{{{:keys [id user-id]} :path} :parameters db :db actor-user-id :user/id}]
-                            (let [{:keys [success code error]} (f db id user-id role actor-user-id)]
+                            (let [{:keys [success] :as result} (f db id user-id role actor-user-id)]
                               (if success
                                 {:status 204}
-                                {:status (or code 500) :body {:error error}}))))
+                                (prm/op-error result {:message nil})))))
                 parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}]]
       [(str "/" role "s/:user-id")
        {:post {:summary grant-summary
@@ -128,22 +126,22 @@
                            "Only a maintainer of this vocabulary can link it to a project."]]
              :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
              :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (prj/add-vocab db id vocab-id user-id)]
+                        (let [{:keys [success] :as result} (prj/add-vocab db id vocab-id user-id)]
                           (if success
                             {:status 204}
-                            {:status (or code 500) :body {:error error}})))}
+                            (prm/op-error result {:message nil}))))}
 
       :delete {:summary "Unlink a vocabulary to a project."
                :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
                :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
-                          (let [{:keys [success code error documents]}
+                          (let [{:keys [success documents] :as result}
                                 (prj/remove-vocab db id vocab-id user-id)]
                             (if success
                               ;; Unlinking drops the vocabulary's links in this
                               ;; project's documents and bumps their versions.
                               (prm/assoc-document-versions-in-header
                                {:status 204} db documents)
-                              {:status (or code 500) :body {:error error}})))}}]]
+                              (prm/op-error result {:message nil}))))}}]]
 
    ;; Config endpoints
    ["/:id"

@@ -74,7 +74,7 @@
                               (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
                                db doc-id)
-                              {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
+                              (prm/op-error result {:extras? true}))))}}]
 
    (bulk/bulk-routes
     {:create-summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys "
@@ -157,12 +157,12 @@
                                               ;; tok/merge already honors a nil :token/precedence.
                                               (contains? body :precedence) (assoc :token/precedence (:precedence body)))
                                   doc-id (get-document-id request)
-                                  {success :success code :code error :error} (tok/merge db token-id raw-attrs user-id)]
+                                  {success :success :as result} (tok/merge db token-id raw-attrs user-id)]
                               (if success
                                 (prm/assoc-document-version-in-header
                                  {:status 200 :body (tok/get db token-id)}
                                  db doc-id)
-                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
+                                (prm/op-error result))))}
          :delete {:summary (str "Delete a token and remove it from any spans. If this causes the span to have no "
                                 "remaining associated tokens, the span will also be deleted. If the layer has child "
                                 "token layers, deleting a parent token also deletes the descendant tokens nested "
@@ -174,12 +174,12 @@
                   :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :handler (fn [{{{:keys [token-id]} :path} :parameters db :db user-id :user/id :as request}]
                              (let [doc-id (get-document-id request)
-                                   {:keys [success code error]} (tok/delete db token-id user-id)]
+                                   {:keys [success] :as result} (tok/delete db token-id user-id)]
                                (if success
                                  (prm/assoc-document-version-in-header
                                   {:status 204}
                                   db doc-id)
-                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                                 (prm/op-error result))))}}]
 
     ["/split"
      {:post {:summary (str "Split a token at <body>position</body>, a 0-based Unicode code-point offset into the text "
@@ -206,13 +206,13 @@
                                  [:position int?]]}
              :handler (fn [{{{:keys [token-id]} :path {:keys [id keep position]} :body} :parameters db :db user-id :user/id :as request}]
                         (let [doc-id (get-document-id request)
-                              {:keys [success code extra] :as result}
+                              {:keys [success extra] :as result}
                               (tok/split db token-id position user-id {:id id :keep (some-> keep keyword)})]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 201 :body {:id extra}}
                              db doc-id)
-                            {:status (or code 500) :body (prm/error-body result)})))}}]
+                            (prm/op-error result {:extras? true}))))}}]
 
     ["/merge"
      {:post {:summary (str "Merge two tokens. The left token (smaller begin) survives with the combined extent; "
@@ -227,13 +227,13 @@
                           :body [:map [:other-token-id :uuid]]}
              :handler (fn [{{{:keys [token-id]} :path {:keys [other-token-id]} :body} :parameters db :db user-id :user/id :as request}]
                         (let [doc-id (get-document-id request)
-                              {:keys [success code error extra]}
+                              {:keys [success extra] :as result}
                               (tok/merge-tokens db token-id other-token-id user-id)]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 200 :body (tok/get db extra)}
                              db doc-id)
-                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                            (prm/op-error result))))}}]
 
     ["/shift"
      {:post {:summary (str "Shift a token's boundary (move its <body>begin</body> and/or <body>end</body>). On "
@@ -255,13 +255,13 @@
                                       (some? begin) (assoc :token/begin begin)
                                       (some? end) (assoc :token/end end))
                               doc-id (get-document-id request)
-                              {:keys [success code error]}
+                              {:keys [success] :as result}
                               (tok/shift-boundary db token-id attrs user-id)]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 200 :body (tok/get db token-id)}
                              db doc-id)
-                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                            (prm/op-error result))))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "token" :token-id get-project-id get-document-id tok/get tok/set-metadata tok/delete-metadata tok/patch-metadata)]])

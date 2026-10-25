@@ -94,8 +94,7 @@
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
-                           {:status (or (:code result) 500)
-                            :body (prm/error-body result)})))}}]
+                           (prm/op-error result {:extras? true}))))}}]
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
@@ -135,13 +134,12 @@
              :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters
                             db :db
                             user-id :user/id :as req}]
-                        (let [{:keys [success code error documents]} (vocab/merge db id {:vocab/name name} user-id)]
+                        (let [{:keys [success documents] :as result} (vocab/merge db id {:vocab/name name} user-id)]
                           (if success
                             ;; A new name restates every linking document.
                             (prm/assoc-document-versions-in-header
                              {:status 200 :body (vocab/get db id)} db (pra/readable-document-ids req documents))
-                            {:status (or code 500)
-                             :body {:error error}})))}
+                            (prm/op-error result {:message nil}))))}
 
      :delete {:summary "Delete a vocab layer."
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
@@ -149,7 +147,7 @@
               :handler (fn [{{{:keys [id]} :path} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success code error documents]} (vocab/delete db id user-id)]
+                         (let [{:keys [success documents] :as result} (vocab/delete db id user-id)]
                            (if success
                              ;; Deleting a vocabulary unlinks it from the
                              ;; documents that used it, which bumps their
@@ -157,8 +155,7 @@
                              ;; refused on its own next write.
                              (prm/assoc-document-versions-in-header
                               {:status 204} db (pra/readable-document-ids req documents))
-                             {:status (or code 500)
-                              :body {:error (or error "Internal server error")}})))}}]
+                             (prm/op-error result))))}}]
 
    ["/:id/audit"
     {:parameters {:path [:map [:id :uuid]]}
@@ -222,13 +219,12 @@
                              (catch clojure.lang.ExceptionInfo e (history-error e)))
 
                            :else
-                           (let [{:keys [success extra code error documents]}
+                           (let [{:keys [success extra documents] :as result}
                                  (vrestore/restore db id item-id ts user-id)]
                              (if success
                                (prm/assoc-document-versions-in-header
                                 {:status 200 :body extra} db (pra/readable-document-ids req documents))
-                               {:status (or code 500)
-                                :body {:error (or error "Internal server error")}})))))}}]
+                               (prm/op-error result))))))}}]
 
    ;; Maintainer management endpoints
    ["/:id"
@@ -240,22 +236,20 @@
              :handler (fn [{{{:keys [id user-id]} :path} :parameters
                             db :db
                             actor-user-id :user/id :as req}]
-                        (let [{:keys [success code error]} (vocab/add-maintainer db id user-id actor-user-id)]
+                        (let [{:keys [success] :as result} (vocab/add-maintainer db id user-id actor-user-id)]
                           (if success
                             {:status 204}
-                            {:status (or code 500)
-                             :body {:error error}})))}
+                            (prm/op-error result {:message nil}))))}
 
       :delete {:summary "Remove a user's maintainer privileges for this vocab layer."
                :parameters {:path [:map [:id :uuid] [:user-id schema/user-id]]}
                :handler (fn [{{{:keys [id user-id]} :path} :parameters
                               db :db
                               actor-user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (vocab/remove-maintainer db id user-id actor-user-id)]
+                          (let [{:keys [success] :as result} (vocab/remove-maintainer db id user-id actor-user-id)]
                             (if success
                               {:status 204}
-                              {:status (or code 500)
-                               :body {:error error}})))}}]]
+                              (prm/op-error result {:message nil}))))}}]]
 
    ;; Config endpoints
    ["/:id"

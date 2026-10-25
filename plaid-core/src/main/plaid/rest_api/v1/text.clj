@@ -65,8 +65,7 @@
                                {:status 201
                                 :body {:id (:extra result)}}
                                db document-id)
-                              {:status (or (:code result) 500)
-                               :body (prm/error-body result)})))}}]
+                              (prm/op-error result {:extras? true}))))}}]
 
    ["/:text-id"
     {:parameters {:path [:map [:text-id :uuid]]}}
@@ -134,7 +133,7 @@
                  :handler (fn [{{{:keys [text-id]} :path params :body} :parameters db :db user-id :user/id}]
                             (let [doc-id (:text/document (txt/get db text-id))
                                   {:keys [body edits base tokenize-layer]} (when (map? params) params)
-                                  {:keys [success code error op text-changed]}
+                                  {:keys [success error op text-changed] :as result}
                                   (cond
                                     (not (map? params))
                                     {:code 400 :error "The request body must be a map with body or edits."}
@@ -166,21 +165,19 @@
                                         :text-changed true
                                         :digest (:text/digest (txt/get db text-id))}}
                                 :else
-                                {:status (or code 500)
-                                 :body {:error (or error "Internal server error")}})))}
+                                (prm/op-error result))))}
          :delete {:summary "Delete a text and all dependent data."
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :handler (fn [{{{:keys [text-id]} :path} :parameters db :db user-id :user/id}]
                              (let [doc-id (:text/document (txt/get db text-id))
-                                   {:keys [success code error]} (txt/delete db text-id user-id)]
+                                   {:keys [success] :as result} (txt/delete db text-id user-id)]
                                (if success
                                  (prm/assoc-document-version-in-header
                                   {:status 204}
                                   db doc-id)
-                                 {:status (or code 500)
-                                  :body {:error (or error "Internal server error")}})))}}]
+                                 (prm/op-error result))))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "text" :text-id get-project-id get-document-id txt/get txt/set-metadata txt/delete-metadata txt/patch-metadata)]])

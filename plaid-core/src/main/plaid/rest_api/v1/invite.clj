@@ -33,6 +33,7 @@
   (:require [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.sql.invite :as invite]
@@ -272,8 +273,7 @@
                                :body {:error "You can only revoke invites you created."}}
 
                               :else
-                              (let [{:keys [success code error]} (invite/revoke! db id user-id)]
+                              (let [{:keys [success] :as result} (invite/revoke! db id user-id)]
                                 (if success
                                   {:status 204}
-                                  {:status (or code 500)
-                                   :body {:error (or error "Internal server error")}})))))}}]]])
+                                  (prm/op-error result))))))}}]]])

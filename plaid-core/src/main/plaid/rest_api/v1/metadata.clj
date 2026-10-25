@@ -100,11 +100,11 @@
         handle (fn [{{path-params :path} :parameters db :db user-id :user/id :as request} write]
                  (let [entity-id (get path-params entity-id-key)
                        doc-id (when versioned? (get-document-id-fn request))
-                       {:keys [success code error]} (write db entity-id user-id)]
+                       {:keys [success] :as result} (write db entity-id user-id)]
                    (if success
                      (cond-> {:status 200 :body (get-fn db entity-id)}
                        versioned? (prm/assoc-document-version-in-header db doc-id))
-                     {:status (or code 500) :body {:error (or error "Internal server error")}})))]
+                     (prm/op-error result))))]
     {:put    {:summary    (str "Replace all metadata for a " entity-type ". The entire metadata map is replaced - existing metadata keys not included in the request will be removed.")
               :middleware (middleware wrap-metadata-shape-guard)
               :parameters (merge query {:body [:map-of string? any?]})

@@ -123,8 +123,7 @@
                                {:status 201
                                 :body {:id (:extra result) :name (:name result)}}
                                db (:extra result))
-                              {:status (or (:code result) 500)
-                               :body (prm/error-body result)})))}}]
+                              (prm/op-error result {:extras? true}))))}}]
 
    ["/:document-id"
     {:parameters {:path [:map [:document-id :uuid]]}}
@@ -205,24 +204,22 @@
                  :parameters {:body [:map [:name :string]]
                               :query [:map [:document-version {:optional true} :int]]}
                  :handler (fn [{{{:keys [document-id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id}]
-                            (let [{:keys [success code] :as result} (doc/merge db document-id {:document/name name} user-id)]
+                            (let [{:keys [success] :as result} (doc/merge db document-id {:document/name name} user-id)]
                               (if success
                                 (prm/assoc-document-version-in-header
                                  {:status 200
                                   :body (doc/get db document-id)}
                                  db document-id)
-                                {:status (or code 500)
-                                 :body (prm/error-body result)})))}
+                                (prm/op-error result {:extras? true}))))}
          :delete {:summary "Delete a document and all data contained."
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :handler (fn [{{{:keys [document-id]} :path} :parameters db :db user-id :user/id}]
-                             (let [{:keys [success code error]} (doc/delete db document-id user-id)]
+                             (let [{:keys [success] :as result} (doc/delete db document-id user-id)]
                                (if success
                                  {:status 204}
-                                 {:status (or code 500)
-                                  :body {:error (or error "Internal server error")}})))}}]
+                                 (prm/op-error result))))}}]
 
     ["/restore"
      {:post {:summary (str "Restore the document to its state at <query>as-of</query> (an ISO-8601 instant), "
@@ -265,13 +262,12 @@
                                      :body {:error (if (and code (< code 500)) (ex-message e) "Internal error")}}))))
 
                             :else
-                            (let [{:keys [success extra code error]} (restore/restore db document-id ts user-id)]
+                            (let [{:keys [success extra] :as result} (restore/restore db document-id ts user-id)]
                               (if success
                                 (prm/assoc-document-version-in-header
                                  {:status 200 :body extra}
                                  db document-id)
-                                {:status (or code 500)
-                                 :body {:error (or error "Internal server error")}})))))}}]
+                                (prm/op-error result))))))}}]
 
     ["/copy"
      {:post {:summary (str "Copy the document and everything in it into a new document of the same "
@@ -300,7 +296,7 @@
                              {:keys [id name include-media free-name]} :body} :parameters
                             db :db
                             user-id :user/id}]
-                        (let [{:keys [success extra code] :as result}
+                        (let [{:keys [success extra] :as result}
                               (doc/copy db document-id name user-id
                                         {:include-media? (if (some? include-media) include-media true)
                                          :id id
@@ -309,8 +305,7 @@
                             (prm/assoc-document-version-in-header
                              {:status 201 :body extra}
                              db (:id extra))
-                            {:status (or code 500)
-                             :body (prm/error-body result)})))}}]
+                            (prm/op-error result {:extras? true}))))}}]
 
     ["/lock"
      {:plaid/idempotency false

@@ -76,8 +76,7 @@
                             {:status 201
                              :body {:id (:extra result)}}
                             db doc-id)
-                           {:status (or (:code result) 500)
-                            :body (prm/error-body result)})))}}]
+                           (prm/op-error result {:extras? true}))))}}]
 
    (bulk/bulk-routes
     {:create-summary (str "Create multiple vocab links in a single operation. Provide an array of objects whose keys are:\n"
@@ -143,13 +142,12 @@
                                  db :db
                                  user-id :user/id :as req}]
                              (let [doc-id (get-document-id-from-vocab-link req)
-                                   {:keys [success code error]} (vocab-link/delete db id user-id)]
+                                   {:keys [success] :as result} (vocab-link/delete db id user-id)]
                                (if success
                                  (prm/assoc-document-version-in-header
                                   {:status 204}
                                   db doc-id)
-                                 {:status (or code 500)
-                                  :body {:error (or error "Internal server error")}})))}}]
+                                 (prm/op-error result))))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "vocab link" :id get-project-id-from-vocab-link get-document-id-from-vocab-link vocab-link/get vocab-link/set-metadata vocab-link/delete-metadata vocab-link/patch-metadata)]])

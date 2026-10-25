@@ -130,8 +130,7 @@
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
-                           {:status (or (:code result) 500)
-                            :body (prm/error-body result)})))}}]
+                           (prm/op-error result {:extras? true}))))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
@@ -165,8 +164,7 @@
                                          result (vocab-item/bulk-create db attrs-vec user-id document-id)]
                                      (if (:success result)
                                        {:status 201 :body {:ids (:extra result)}}
-                                       {:status (or (:code result) 500)
-                                        :body (prm/error-body result)}))))}
+                                       (prm/op-error result {:extras? true})))))}
              :patch {:summary (str "Update multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
                                    "<body>id</body>, the vocab item to update\n"
                                    "<body>form</body>, an optional new form (set only when the key is present)\n"
@@ -191,13 +189,12 @@
                                                       items)]
                                   (or (pra/vocab-layers-refusal db (vocab-item/get-layer-ids db (map :id items)) user-id)
                                       (maintainer-refusal db (vocab-item/renamed-layer-ids db attrs-vec) req)
-                                      (let [{:keys [success code error extra documents]}
+                                      (let [{:keys [success extra documents] :as result}
                                             (vocab-item/bulk-merge db attrs-vec user-id)]
                                         (if success
                                           (prm/assoc-document-versions-in-header
                                            {:status 200 :body {:count (count extra)}} db (pra/readable-document-ids req documents))
-                                          {:status (or code 500)
-                                           :body {:error (or error "Internal server error")}})))))}
+                                          (prm/op-error result))))))}
              :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. Needs maintainer rights on the vocabulary of every item. "
                                     "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
                       :middleware [[pra/wrap-bulk-delete-of-nothing bulk-get-layer-id-from-item]
@@ -206,12 +203,11 @@
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as req}]
                                  (or (pra/vocab-layers-refusal db (vocab-item/get-layer-ids db ids) user-id)
                                      (maintainer-refusal db (vocab-item/get-layer-ids db ids) req)
-                                     (let [{:keys [success code error documents]} (vocab-item/bulk-delete db ids user-id)]
+                                     (let [{:keys [success documents] :as result} (vocab-item/bulk-delete db ids user-id)]
                                        (if success
                                          (prm/assoc-document-versions-in-header
                                           {:status 204} db (pra/readable-document-ids req documents))
-                                         {:status (or code 500)
-                                          :body {:error (or error "Internal server error")}}))))}}]
+                                         (prm/op-error result)))))}}]
 
    ["/:id"
     {:conflicting true
@@ -246,8 +242,7 @@
                                  {:status 200
                                   :body (vocab-item/get db id)}
                                  db (pra/readable-document-ids req (:documents result)))
-                                {:status (or (:code result) 500)
-                                 :body {:error (:error result)}}))))}
+                                (prm/op-error result {:message nil})))))}
 
      :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
                             "Needs maintainer rights on the vocabulary. With <query>expected-link-count</query> the delete is refused with a 409 "
@@ -282,13 +277,12 @@
             :handler (fn [{{{:keys [id]} :path {:keys [losers]} :body} :parameters
                            db :db
                            user-id :user/id :as req}]
-                       (let [{:keys [success code error extra documents]}
+                       (let [{:keys [success extra documents] :as result}
                              (vocab-item/merge-into db id losers user-id)]
                          (if success
                            (prm/assoc-document-versions-in-header
                             {:status 200 :body extra} db (pra/readable-document-ids req documents))
-                           {:status (or code 500)
-                            :body {:error (or error "Internal server error")}})))}}]
+                           (prm/op-error result))))}}]
 
    ;; Metadata operations. A vocab item has no document, so no
    ;; ?document-version, and its gate is vocab write access.

@@ -69,7 +69,7 @@
                               (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
                                db doc-id)
-                              {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
+                              (prm/op-error result {:extras? true}))))}}]
 
    (bulk/bulk-routes
     {:create-summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys "
@@ -111,24 +111,24 @@
                               :body [:map [:value schema/atomic-value]]}
                  :handler (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters db :db user-id :user/id :as request}]
                             (let [doc-id (get-document-id request)
-                                  {:keys [success code error]} (r/merge db relation-id {:relation/value value} user-id)]
+                                  {:keys [success] :as result} (r/merge db relation-id {:relation/value value} user-id)]
                               (if success
                                 (prm/assoc-document-version-in-header
                                  {:status 200 :body (r/get db relation-id)}
                                  db doc-id)
-                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
+                                (prm/op-error result))))}
          :delete {:summary "Delete a relation."
                   :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :handler (fn [{{{:keys [relation-id]} :path} :parameters db :db user-id :user/id :as request}]
                              (let [doc-id (get-document-id request)
-                                   {:keys [success code error]} (r/delete db relation-id user-id)]
+                                   {:keys [success] :as result} (r/delete db relation-id user-id)]
                                (if success
                                  (prm/assoc-document-version-in-header
                                   {:status 204}
                                   db doc-id)
-                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                                 (prm/op-error result))))}}]
     ["/source" {:put {:summary "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
@@ -136,12 +136,12 @@
                                    :body [:map [:span-id :uuid]]}
                       :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters db :db user-id :user/id :as request}]
                                  (let [doc-id (get-document-id request)
-                                       {:keys [success code error]} (r/set-end db relation-id :relation/source span-id user-id)]
+                                       {:keys [success] :as result} (r/set-end db relation-id :relation/source span-id user-id)]
                                    (if success
                                      (prm/assoc-document-version-in-header
                                       {:status 200 :body (r/get db relation-id)}
                                       db doc-id)
-                                     {:status (or code 400) :body {:error (or error "Failed to update relation source")}})))}}]
+                                     (prm/op-error result {:code 400 :message "Failed to update relation source"}))))}}]
     ["/target" {:put {:summary "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
@@ -149,12 +149,12 @@
                                    :body [:map [:span-id :uuid]]}
                       :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters db :db user-id :user/id :as request}]
                                  (let [doc-id (get-document-id request)
-                                       {:keys [success code error]} (r/set-end db relation-id :relation/target span-id user-id)]
+                                       {:keys [success] :as result} (r/set-end db relation-id :relation/target span-id user-id)]
                                    (if success
                                      (prm/assoc-document-version-in-header
                                       {:status 200 :body (r/get db relation-id)}
                                       db doc-id)
-                                     {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]
+                                     (prm/op-error result {:code 400 :message "Failed to update relation target"}))))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "relation" :relation-id get-project-id get-document-id r/get r/set-metadata r/delete-metadata r/patch-metadata)]])

@@ -46,7 +46,7 @@
                                         (prm/assoc-document-version-in-header
                                          {:status 201 :body {:ids (:extra result)}}
                                          db doc-id)
-                                        {:status (or (:code result) 500) :body (prm/error-body result)}))))}
+                                        (prm/op-error result {:extras? true})))))}
               :delete {:summary delete-summary
                        :middleware [[pra/wrap-bulk-delete-of-nothing project-fn]
                                     [pra/wrap-writer-required project-fn]
@@ -56,10 +56,10 @@
                        :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as request}]
                                   (or (when delete-check (delete-check request ids))
                                       (let [doc-id (document-fn request)
-                                            {:keys [success code error]} (bulk-delete db ids user-id)]
+                                            {:keys [success] :as result} (bulk-delete db ids user-id)]
                                         (if success
                                           (prm/assoc-document-version-in-header {:status 204} db doc-id)
-                                          {:status (or code 500) :body {:error (or error "Internal server error")}}))))}}
+                                          (prm/op-error result)))))}}
        bulk-update
        (assoc :patch {:summary update-summary
                       :middleware [[pra/wrap-writer-required update-project-fn]
@@ -68,9 +68,9 @@
                       :parameters {:query query
                                    :body [:sequential update-entry]}
                       :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
-                                 (let [{:keys [success code error extra]} (bulk-update db items user-id)]
+                                 (let [{:keys [success extra] :as result} (bulk-update db items user-id)]
                                    (if success
                                      (prm/assoc-document-versions-in-header
                                       {:status 200 :body {:count (:count extra)}}
                                       db (:documents extra))
-                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}))]))
+                                     (prm/op-error result))))}))]))

@@ -67,7 +67,7 @@
                               (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
                                db doc-id)
-                              {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
+                              (prm/op-error result {:extras? true}))))}}]
 
    (bulk/bulk-routes
     {:create-summary (str "Create multiple spans in a single operation. Provide an array of objects whose keys "
@@ -108,24 +108,24 @@
                                      [:value schema/atomic-value]]}
                  :handler (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters db :db user-id :user/id :as request}]
                             (let [doc-id (get-document-id request)
-                                  {:keys [success code error]} (s/merge db span-id {:span/value value} user-id)]
+                                  {:keys [success] :as result} (s/merge db span-id {:span/value value} user-id)]
                               (if success
                                 (prm/assoc-document-version-in-header
                                  {:status 200 :body (s/get db span-id)}
                                  db doc-id)
-                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
+                                (prm/op-error result))))}
          :delete {:summary "Delete a span."
                   :parameters {:query [:map [:document-version {:optional true} :int]]}
                   :middleware [[pra/wrap-writer-required get-project-id]
                                [prm/wrap-document-version get-document-id]]
                   :handler (fn [{{{:keys [span-id]} :path} :parameters db :db user-id :user/id :as request}]
                              (let [doc-id (get-document-id request)
-                                   {:keys [success code error]} (s/delete db span-id user-id)]
+                                   {:keys [success] :as result} (s/delete db span-id user-id)]
                                (if success
                                  (prm/assoc-document-version-in-header
                                   {:status 204}
                                   db doc-id)
-                                 {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                                 (prm/op-error result))))}}]
 
     ;; Replace tokens on a span
     ["/tokens" {:put {:summary "Replace tokens for a span."
@@ -135,12 +135,12 @@
                                    :query [:map [:document-version {:optional true} :int]]}
                       :handler (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters db :db user-id :user/id :as request}]
                                  (let [doc-id (get-document-id request)
-                                       {:keys [success code error]} (s/set-tokens db span-id tokens user-id)]
+                                       {:keys [success] :as result} (s/set-tokens db span-id tokens user-id)]
                                    (if success
                                      (prm/assoc-document-version-in-header
                                       {:status 200 :body (s/get db span-id)}
                                       db doc-id)
-                                     {:status (or code 400) :body {:error (or error "Failed to set span tokens")}})))}}]
+                                     (prm/op-error result {:code 400 :message "Failed to set span tokens"}))))}}]
 
     ;; Metadata operations
     (metadata/metadata-routes "span" :span-id get-project-id get-document-id s/get s/set-metadata s/delete-metadata s/patch-metadata)]])

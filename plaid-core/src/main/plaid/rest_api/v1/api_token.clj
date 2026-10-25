@@ -3,6 +3,7 @@
   `/users/:user-id/tokens`. A user manages their own tokens; a global admin
   may manage anyone's. Minting returns the signed JWT exactly ONCE."
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.api-token :as api-token]
@@ -72,13 +73,12 @@
             :parameters {:body {:name string?}}
             :handler (fn [{{{:keys [user-id]} :path {:keys [name]} :body} :parameters
                            db :db secret-key :secret-key :as request}]
-                       (let [{:keys [success code error] :as result}
+                       (let [{:keys [success] :as result}
                              (pra/issue-api-token! db secret-key user-id name (pra/->user-id request))]
                          (if success
                            {:status 201
                             :body (select-keys result [:id :name :token])}
-                           {:status (or code 500)
-                            :body {:error error}})))}}]
+                           (prm/op-error result {:message nil}))))}}]
 
    ["/:token-id"
     {:parameters {:path [:map [:token-id string?]]}}
@@ -96,9 +96,8 @@
                             (if (or (nil? tok) (not= user-id (:api-token/user-id tok)))
                               {:status 404
                                :body {:error "API token not found"}}
-                              (let [{:keys [success code error]}
+                              (let [{:keys [success] :as result}
                                     (api-token/revoke! db token-id (pra/->user-id request))]
                                 (if success
                                   {:status 204}
-                                  {:status (or code 500)
-                                   :body {:error (or error "Internal server error")}})))))}}]]])
+                                  (prm/op-error result))))))}}]]])

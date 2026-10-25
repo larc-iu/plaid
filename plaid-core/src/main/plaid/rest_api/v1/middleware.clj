@@ -115,6 +115,20 @@
   [result]
   (merge {:error (:error result)} (:error-body result)))
 
+(defn op-error
+  "The response to a failed operation `result`: the status is its `:code`,
+  else `code` (500). The body is `error-body` with `extras?`, which keeps the
+  fields the refusal added, and otherwise only its message, else `message`
+  (\"Internal server error\", nil for none). Each route keeps the fallbacks
+  and the body shape it always answered with."
+  ([result] (op-error result {}))
+  ([result {:keys [code message extras?]
+            :or {code 500 message "Internal server error"}}]
+   {:status (or (:code result) code)
+    :body (if extras?
+            (error-body result)
+            {:error (or (:error result) message)})}))
+
 (defn assoc-document-versions-in-header
   "Set X-Document-Versions on the response to the current version of every
   document in `doc-ids`: a JSON map of doc-id to its integer

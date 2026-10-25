@@ -4,6 +4,7 @@
             [plaid.media.avatar :as avatar]
             [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.common :as psc]
@@ -86,8 +87,7 @@
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
-                           {:status (or (:code result) 500)
-                            :body {:error (:error result)}})))}}]
+                           (prm/op-error result {:message nil}))))}}]
 
    ["/:id"
     {:parameters {:path [:map [:id schema/user-id]]}}
@@ -125,7 +125,7 @@
                              api-token/session-only-refusal
 
                              is-admin?
-                             (let [{:keys [success code error]} (user/merge db
+                             (let [{:keys [success] :as result} (user/merge db
                                                                             id
                                                                             {:password password
                                                                              :user/display-name display-name
@@ -134,11 +134,10 @@
                                (if success
                                  {:status 200
                                   :body (user/get db id)}
-                                 {:status (or code 500)
-                                  :body {:error error}}))
+                                 (prm/op-error result {:message nil})))
 
                              (and is-self? (not is-admin))
-                             (let [{:keys [success code error]} (user/merge db
+                             (let [{:keys [success] :as result} (user/merge db
                                                                             id
                                                                             {:password password
                                                                              :user/display-name display-name}
@@ -146,8 +145,7 @@
                                (if success
                                  {:status 200
                                   :body (user/get db id)}
-                                 {:status (or code 500)
-                                  :body {:error error}}))
+                                 (prm/op-error result {:message nil})))
 
                              :else
                              {:status 403
@@ -162,10 +160,10 @@
                              "request signed with a named API token is refused (403).")
                :middleware [pra/wrap-admin-required api-token/wrap-session-required]
                :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
-                          (let [{:keys [success code error]} (user/deactivate db id user-id)]
+                          (let [{:keys [success] :as result} (user/deactivate db id user-id)]
                             (if success
                               {:status 204}
-                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                              (prm/op-error result))))}}]
     ["/avatar"
      {:get {:summary (str "Get a user's profile picture. Readable by any logged-in user, matching "
                           "<body>GET /users/:id</body>. Pass the user record's <body>avatar-hash</body> "
@@ -229,21 +227,21 @@
                            (let [result (avatar/normalize temp-file)]
                              (if-not (:success result)
                                {:status (:code result) :body {:error (:error result)}}
-                               (let [{:keys [success code error]}
+                               (let [{:keys [success] :as outcome}
                                      (user/set-avatar! db id result (pra/->user-id request))]
                                  (if success
                                    {:status 200 :body (user/get db id)}
-                                   {:status (or code 500) :body {:error error}})))))))}
+                                   (prm/op-error outcome {:message nil}))))))))}
 
       :delete {:summary "Remove a user's profile picture. Your own, or anyone's if you are an admin."
                :handler (fn [{{{:keys [id]} :path} :parameters db :db :as request}]
                           (if-not (self-or-admin? db request id)
                             {:status 403 :body {:error "You can only change your own profile picture"}}
-                            (let [{:keys [success code error]}
+                            (let [{:keys [success] :as result}
                                   (user/delete-avatar! db id (pra/->user-id request))]
                               (if success
                                 {:status 204}
-                                {:status (or code 500) :body {:error error}}))))}}]
+                                (prm/op-error result {:message nil})))))}}]
     ["/activate"
      {:post {:summary (str "Reactivate a deactivated user, restoring their ability to log in. Project "
                            "memberships, vocab maintainerships, and API tokens removed at deactivation "
@@ -252,7 +250,7 @@
                            "refused (403).")
              :middleware [pra/wrap-admin-required api-token/wrap-session-required]
              :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
-                        (let [{:keys [success code error]} (user/reactivate db id user-id)]
+                        (let [{:keys [success] :as result} (user/reactivate db id user-id)]
                           (if success
                             {:status 200 :body (user/get db id)}
-                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]]])
+                            (prm/op-error result))))}}]]])
