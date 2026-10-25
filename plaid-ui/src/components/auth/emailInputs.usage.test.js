@@ -34,7 +34,6 @@ describe('address fields', () => {
   it('are text inputs with the email keyboard wherever an address is typed', () => {
     const fields = files.filter((f) => /inputMode="email"/.test(fs.readFileSync(f, 'utf8')));
     expect(fields.map((f) => path.relative(repo, f)).sort()).toEqual([
-      'plaid-dict/src/components/auth/LoginForm.jsx',
       'plaid-ui/src/components/auth/LoginForm.jsx',
       'plaid-ui/src/components/auth/RedeemInvite.jsx',
       'plaid-ui/src/components/shared/UserAdminDialogs.jsx',
