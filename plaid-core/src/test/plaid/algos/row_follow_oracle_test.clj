@@ -29,11 +29,12 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [plaid.algos.text :as ta]))
+            [plaid.algos.text :as ta]
+            [plaid.algos.text.chars :as chars]))
 
 (defn- cps [^String s] (.toArray (.codePoints s)))
 
-(defn- ws? [c] (#'ta/space? c))
+(defn- ws? [c] (chars/space? c))
 
 (defn- trim-ws [^ints cs [b e]]
   (let [b (loop [x b] (if (and (< x e) (ws? (aget cs x))) (recur (inc x)) x))
