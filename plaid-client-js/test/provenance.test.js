@@ -4,7 +4,7 @@ import {
   PROV, PROV_STATES, PROV_CONFIRMED, stampInferred, confirmedInferred, stampContributed,
   provState, provOrigin, isMachine, isProtected, needsReview, verifyOnEdit, contributeOnEdit,
   serviceSource, userSource,
-  REVIEW_KEY, readReview, projectRole, isReviewed, withReviewedUser, writerPolicy,
+  REVIEW_KEY, readReview, reviewsAnyone, projectRole, isReviewed, withReviewedUser, writerPolicy,
   DEFAULT_CONFIDENCE_THRESHOLD, readConfidenceThreshold, machineProb, isDoubtful,
   VALUE_PROBS_KEY, FORM_PROBS_KEY, readValueProbs,
 } from '../src/provenance.js';
@@ -152,6 +152,14 @@ test('readReview normalizes absent, partial and junk lists', () => {
   assert.deepEqual(readReview({ plaid: {} }), { users: [], roles: [] });
   assert.deepEqual(readReview({ plaid: { review: { users: ['a', 3, null] } } }), { users: ['a'], roles: [] });
   assert.deepEqual(readReview({ plaid: { review: { roles: ['writer'], users: 'x' } } }), { users: [], roles: ['writer'] });
+});
+
+test('reviewsAnyone is true when a person or a role is named', () => {
+  assert.equal(reviewsAnyone(undefined), false);
+  assert.equal(reviewsAnyone({ plaid: { review: { users: [], roles: [] } } }), false);
+  assert.equal(reviewsAnyone({ plaid: { review: { users: [3, null] } } }), false);
+  assert.equal(reviewsAnyone({ plaid: { review: { users: ['a'] } } }), true);
+  assert.equal(reviewsAnyone({ plaid: { review: { roles: ['writer'] } } }), true);
 });
 
 test('projectRole reads the ACL lists; an implicit admin is a maintainer', () => {

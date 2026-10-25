@@ -1,4 +1,5 @@
-import { PROV, PROV_STATES, provOrigin, provState } from '@larc-iu/plaid-client';
+import { PROV_STATES } from '@larc-iu/plaid-client';
+import { provDescription } from '@ui/domain/provDescription.js';
 
 // Provenance, the cross-app convention: what a machine drafted or a
 // contributor made wears a dashed border in one of the two hues every app
@@ -15,24 +16,17 @@ const MARKS = {
   [PROV_STATES.MACHINE]: 'machine',
   [PROV_STATES.CONTRIBUTED]: 'contributed',
 };
-const TITLES = {
-  [PROV_STATES.MACHINE]: 'Machine-made, unverified',
-  [PROV_STATES.CONTRIBUTED]: 'Contributed, unverified',
-};
 
 // `{ mark, title }`: `mark` is 'machine', 'contributed' or null, `title`
-// the tooltip's words, null for hand-made material.
+// the tooltip's words ('Machine-made, unverified', 'Contributed, confirmed'),
+// null for hand-made material.
 export const provMark = (metadata) => {
-  const state = provState(metadata);
-  if (state !== PROV_STATES.VERIFIED) {
-    return { mark: MARKS[state] || null, title: TITLES[state] || null };
-  }
+  const { state, word } = provDescription(metadata);
+  if (state === PROV_STATES.HUMAN) return { mark: null, title: null };
+  const how = state === PROV_STATES.VERIFIED ? 'confirmed' : 'unverified';
   return {
-    mark: null,
-    title:
-      provOrigin(metadata) === PROV.CONTRIBUTED
-        ? 'Contributed, confirmed'
-        : 'Machine-made, confirmed',
+    mark: MARKS[state] || null,
+    title: `${word.charAt(0).toUpperCase()}${word.slice(1)}, ${how}`,
   };
 };
 

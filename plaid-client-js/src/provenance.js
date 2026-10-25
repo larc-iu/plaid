@@ -314,6 +314,18 @@ export const readReview = (config) => {
 };
 
 /**
+ * Whether the project reviews anybody's work: a person or a role is named in
+ * its review lists. Where it reviews nobody, nothing is contributed, and an
+ * editor's legend has no contributed mark to explain.
+ * @param {object|null} [config] - a project's `config`
+ * @returns {boolean}
+ */
+export const reviewsAnyone = (config) => {
+  const { users, roles } = readReview(config);
+  return users.length > 0 || roles.length > 0;
+};
+
+/**
  * A person's role in a project from its ACL lists: 'maintainer' | 'writer' |
  * 'reader' | null. An admin with no explicit entry is a maintainer, as the
  * permission model treats them.

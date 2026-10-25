@@ -16,7 +16,7 @@ from plaid_client.provenance import (
     stamp_inferred, confirmed_inferred, stamp_contributed, prov_state, prov_origin,
     is_protected, needs_review, verify_on_edit, contribute_on_edit,
     service_source, user_source,
-    REVIEW_KEY, read_review, project_role, is_reviewed, with_reviewed_user, WriterPolicy,
+    REVIEW_KEY, read_review, reviews_anyone, project_role, is_reviewed, with_reviewed_user, WriterPolicy,
     VALUE_PROBS_KEY, FORM_PROBS_KEY, read_value_probs,
 )
 from plaid_client.metadata_ops import apply_metadata_ops, metadata_ops
@@ -93,6 +93,14 @@ def test_read_review_normalizes():
     assert read_review({'plaid': {}}) == {'users': [], 'roles': []}
     assert read_review({'plaid': {'review': {'users': ['a', 3, None]}}}) == {'users': ['a'], 'roles': []}
     assert read_review({'plaid': {'review': {'roles': ['writer'], 'users': 'x'}}}) == {'users': [], 'roles': ['writer']}
+
+
+def test_reviews_anyone_when_a_person_or_a_role_is_named():
+    assert reviews_anyone(None) is False
+    assert reviews_anyone({'plaid': {'review': {'users': [], 'roles': []}}}) is False
+    assert reviews_anyone({'plaid': {'review': {'users': [3, None]}}}) is False
+    assert reviews_anyone({'plaid': {'review': {'users': ['a']}}}) is True
+    assert reviews_anyone({'plaid': {'review': {'roles': ['writer']}}}) is True
 
 
 def test_project_role_and_is_reviewed():

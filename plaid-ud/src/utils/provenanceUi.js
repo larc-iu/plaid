@@ -7,15 +7,8 @@
 // client's readValueProbs reads it). Parsers that emit distributions should
 // write the top handful, not the whole tag set.
 
-import {
-  provState,
-  provOrigin,
-  PROV_STATES,
-  PROV,
-  PROVENANCE_KEYS,
-  isDoubtful,
-} from '@larc-iu/plaid-client';
-import { confidenceNote } from '../../../plaid-ui/src/domain/confidence.js';
+import { provState, PROV_STATES, PROV, PROVENANCE_KEYS, isDoubtful } from '@larc-iu/plaid-client';
+import { provDescription } from '../../../plaid-ui/src/domain/provDescription.js';
 
 export const PARSER_GROUP = 'Parser suggestions';
 
@@ -92,17 +85,14 @@ export const provDoubtful = (metadata, threshold) => isDoubtful(metadata, thresh
 export const isProvKey = (key) => PROV_KEYS.has(key);
 
 export function provCellTitle(base, metadata) {
-  const state = provState(metadata);
+  const { state, word, note } = provDescription(metadata);
   if (state === PROV_STATES.HUMAN) return base;
   const detail = metadata?.[PROV.detailKey];
   const bits = [metadata?.[PROV.sourceKey]];
   if (detail?.model) bits.push(detail.model);
   if (detail?.language) bits.push(detail.language);
   // Only while nobody has reviewed it: the number is the prediction's.
-  const note = confidenceNote(metadata);
   if (note) bits.push(note);
-  const origin = provOrigin(metadata) === PROV.CONTRIBUTED ? 'contributed' : 'machine-made';
-  const who =
-    state === PROV_STATES.VERIFIED ? `${origin}, human-verified` : `${origin}, unverified`;
+  const who = state === PROV_STATES.VERIFIED ? `${word}, human-verified` : `${word}, unverified`;
   return `${base}: ${who} (${bits.filter(Boolean).join(' · ')})`;
 }

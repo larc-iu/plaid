@@ -1,4 +1,6 @@
-import { readReview } from '@larc-iu/plaid-client';
+import { Kbd as Key } from '@ui/components/shared/Kbd.jsx';
+import { LegendRow as Row } from '@ui/components/shared/LegendRow.jsx';
+import { MarksRow } from '@ui/components/shared/MarksRow.jsx';
 
 // The grid's gestures and marks, the help of the Annotate tab's RunBar, so
 // they are one click away and nothing while you work. It replaces the single
@@ -6,41 +8,12 @@ import { readReview } from '@larc-iu/plaid-client';
 // gesture out of a dozen. Keep it in step with the guide's Keyboard Shortcuts
 // table (C5).
 
-const Key = ({ children }) => (
-  <kbd className="rounded border border-border bg-muted px-1 py-px font-sans text-[10px] leading-none text-foreground">
-    {children}
-  </kbd>
-);
-
-const Row = ({ title, children }) => (
-  <div className="flex gap-3 py-1">
-    <strong className="w-24 shrink-0 font-medium text-foreground">{title}</strong>
-    <span className="min-w-0">{children}</span>
-  </div>
-);
-
 export const EditorLegend = ({ project }) => {
-  // The amber mark only means something in a project that reviews somebody's
-  // work. Everywhere else there is no such thing as a contributed annotation,
-  // and a legend row for it is a row about a feature nobody here has.
-  const review = readReview(project?.config);
-  const reviewsSomeone = review.users.length > 0 || review.roles.length > 0;
-
   return (
     <>
-      <Row title="Marks">
-        <span className="plaid-prov--machine">machine-made</span>
-        {' · '}
-        <span className="plaid-prov--machine plaid-prov--doubtful">low confidence</span>
-        {' · '}
-        {reviewsSomeone && (
-          <>
-            <span className="plaid-prov--contributed">contributed</span>
-            {' · '}
-          </>
-        )}
+      <MarksRow project={project} lowConfidence>
         plain: settled. A dashed arc in the tree marks an unreviewed relation.
-      </Row>
+      </MarksRow>
 
       <Row title="Review">
         <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>↵</Key> to accept a word and move to the next ·{' '}

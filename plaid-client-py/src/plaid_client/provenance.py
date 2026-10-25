@@ -264,6 +264,14 @@ def read_review(config):
     return {'users': strings(raw.get('users')), 'roles': strings(raw.get('roles'))}
 
 
+def reviews_anyone(config):
+    """Whether the project reviews anybody's work: a person or a role is
+    named in its review lists. Where it reviews nobody, nothing is
+    contributed."""
+    review = read_review(config)
+    return bool(review['users'] or review['roles'])
+
+
 def project_role(project, user_id, is_admin=False):
     """A person's role in a project from its ACL lists: ``'maintainer'`` |
     ``'writer'`` | ``'reader'`` | ``None``. An admin with no explicit entry

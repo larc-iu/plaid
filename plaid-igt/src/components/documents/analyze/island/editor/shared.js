@@ -1,7 +1,8 @@
 import { html, nothing } from 'lit-html';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
-import { PROV, provState, PROV_STATES, isDoubtful } from '@larc-iu/plaid-client';
+import { provState, PROV_STATES, isDoubtful } from '@larc-iu/plaid-client';
 import { confidenceNote } from '@ui/domain/confidence.js';
+import { originWord } from '@ui/domain/provDescription.js';
 import { keys } from '@/lib/keymap.js';
 import { isPendingId, settleKey, stableKey } from '@ui/domain/pendingIds.js';
 
@@ -202,7 +203,7 @@ const provStateText = (state, origin, contributor, note) => {
     return contributor
       ? 'contributed, awaiting review'
       : `contributed, unverified. ${reviewHint()}`;
-  return origin === PROV.CONTRIBUTED ? 'contributed, confirmed' : 'machine-made, confirmed';
+  return `${originWord(origin)}, confirmed`;
 };
 export const provTitle = (value, state, origin, contributor, note = null) =>
   `${value}: ${provStateText(state, origin, contributor, note)}`;

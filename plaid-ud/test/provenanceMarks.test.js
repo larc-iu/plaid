@@ -48,9 +48,12 @@ test('Accept and Discard wear the shared review pair', () => {
 });
 
 // The legend's samples ARE the marks, so they take plaid-ui's classes rather
-// than a hand-written look that drifts from the grid's.
+// than a hand-written look that drifts from the grid's. The legend draws them
+// through plaid-ui's MarksRow, low confidence included.
 test('the legend draws its samples with the shared mark classes', async () => {
-  const legend = await read('../src/components/editor/annotation/EditorLegend.jsx');
+  const own = await read('../src/components/editor/annotation/EditorLegend.jsx');
+  assert.match(own, /<MarksRow project=\{project\} lowConfidence>/);
+  const legend = await read('../../plaid-ui/src/components/shared/MarksRow.jsx');
   assert.match(legend, /className="plaid-prov--machine"/);
   assert.match(legend, /className="plaid-prov--contributed"/);
   assert.doesNotMatch(legend, /decoration-dotted/);

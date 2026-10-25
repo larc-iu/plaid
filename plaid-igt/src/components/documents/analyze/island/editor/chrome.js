@@ -1,6 +1,6 @@
 import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
-import { PROV, PROV_STATES, readReview } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES, reviewsAnyone } from '@larc-iu/plaid-client';
 import { readOrthographies, readIgnoredTokens } from '@/domain/igtConfig';
 import { translationFieldsOf } from '@/domain/sentenceRole';
 import { PRECEDENT_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
@@ -114,9 +114,7 @@ export const chrome = {
       guess,
       // The legend explains the contributed mark only where it can appear:
       // when the project reviews anyone's work.
-      reviewsSomeone: (({ users, roles }) => users.length > 0 || roles.length > 0)(
-        readReview(this.doc.project?.config),
-      ),
+      reviewsSomeone: reviewsAnyone(this.doc.project?.config),
     };
     // _computeRowMenuPos needs the row list to estimate the menu's height, and
     // it runs from a click handler rather than from render.
