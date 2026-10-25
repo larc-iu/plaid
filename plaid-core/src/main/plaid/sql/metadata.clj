@@ -127,14 +127,7 @@
 (defn- encode-value [v]
   (psc/write-json v))
 
-(defn- decode-value [s]
-  (when (some? s)
-    (try
-      ;; Keep nested map keys as STRINGS so user-supplied case round-trips.
-      ;; psc/read-json keywordizes; we deliberately use raw clojure.data.json here.
-      (clojure.data.json/read-str s)
-      (catch Exception _
-        s))))
+(def ^:private decode-value psc/read-metadata-value)
 
 (defn get-metadata
   "Return a `{key-string value}` map for the (entity-type, entity-id)
@@ -151,24 +144,10 @@
                     [key (decode-value value)]))
           rows)))
 
-(defn metadata-of
+(def ^{:arglists '([db entity-type ids])} metadata-of
   "`{entity-id-string {key-string value}}` for the `entity-type` entities
-  `ids`, read in chunks, the many-entity form of `get-metadata`. An entity
-  with no metadata is absent. Each entity's keys are read in key order, as in
-  `get-metadata`."
-  [db entity-type ids]
-  (reduce (fn [m {:keys [entity_id key value]}]
-            (assoc-in m [(str entity_id) key] (decode-value value)))
-          {}
-          (into []
-                (mapcat (fn [chunk]
-                          (psc/q db {:select [:entity_id :key :value]
-                                     :from [:entity_metadata]
-                                     :where [:and
-                                             [:= :entity_type entity-type]
-                                             [:in :entity_id (vec chunk)]]
-                                     :order-by [:entity_id :key]})))
-                (partition-all psc/bulk-chunk-size (distinct (map str ids))))))
+  `ids`, the many-entity form of `get-metadata` (`psc/metadata-by-entity`)."
+  psc/metadata-by-entity)
 
 (defn with-metadata-of
   "Attach to each entity in `by-id` (`{id entity}`) the metadata its own

@@ -13,8 +13,7 @@
   `plaid.history.read/document-rows-at` folds out of the audit log, so
   a live read and an as-of read are diffable row for row. `assemble`
   builds the nested deep-read shape out of that one, for both."
-  (:require [clojure.data.json :as json]
-            [plaid.sql.audit-write :as psaw]
+  (:require [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
@@ -27,12 +26,11 @@
   "SELECT * FROM table WHERE col IN ids, chunked under SQLite's parameter
   ceiling. Empty ids reads nothing."
   [db table col ids]
-  (into []
-        (mapcat (fn [chunk]
-                  (psc/q db {:select [:*]
-                             :from [table]
-                             :where [:in col (vec chunk)]})))
-        (partition-all chunk-size (distinct (seq ids)))))
+  (psc/in-chunks (fn [chunk]
+                   (psc/q db {:select [:*]
+                              :from [table]
+                              :where [:in col (vec chunk)]}))
+                 ids))
 
 ;; ============================================================
 ;; The shape
@@ -57,41 +55,13 @@
 ;; Reads
 ;; ============================================================
 
-(defn- token-lists
-  "`{parent-id [token-id ...]}` in order_idx order, from a junction table."
-  [db table parent-col parent-ids]
-  (->> (q-in db table parent-col parent-ids)
-       (group-by parent-col)
-       (reduce-kv (fn [m k rows]
-                    (assoc m k (mapv :token_id (sort-by :order_idx rows))))
-                  {})))
-
-(defn- decode-metadata-value [s]
-  (try (json/read-str s) (catch Exception _ s)))
-
-(defn- metadata-index
-  "`{entity-id {key value}}` for the entities of one type, each entity's keys
-  read in key order (`plaid.sql.metadata/get-metadata`)."
-  [db etype ids]
-  (reduce (fn [m r]
-            (update m (:entity_id r) (fnil assoc {}) (:key r) (decode-metadata-value (:value r))))
-          {}
-          (into []
-                (mapcat (fn [chunk]
-                          (psc/q db {:select [:entity_id :key :value]
-                                     :from [:entity_metadata]
-                                     :where [:and
-                                             [:= :entity_type etype]
-                                             [:in :entity_id (vec chunk)]]
-                                     :order-by [:entity_id :key]})))
-                (partition-all chunk-size (distinct (seq ids))))))
-
 (defn with-metadata
-  "Attach `:metadata` to the rows that have any."
+  "Attach `:metadata` to the rows that have any, each entity's keys read in
+  key order (`psc/metadata-by-entity`)."
   [db etype rows]
-  (let [idx (metadata-index db etype (map :id rows))]
+  (let [idx (psc/metadata-by-entity db etype (map :id rows))]
     (mapv (fn [r]
-            (let [m (get idx (:id r))]
+            (let [m (get idx (str (:id r)))]
               (cond-> r (seq m) (assoc :metadata m))))
           rows)))
 
@@ -108,17 +78,13 @@
         by-doc (fn [table] (psc/q db {:select [:*] :from [table]
                                       :where [:= :document_id doc-id]
                                       :order-by [[:id :asc]]}))
-        spans (by-doc :spans)
-        links (by-doc :vocab_links)
-        span-tokens (token-lists db :span_tokens :span_id (map :id spans))
-        link-tokens (token-lists db :vocab_link_tokens :vocab_link_id (map :id links))]
+        whole (fn [table] (psaw/row-images db table (by-doc table)))]
     {:document (first (with-metadata db "document" [doc]))
-     :texts (with-metadata db "text" (by-doc :texts))
-     :tokens (with-metadata db "token" (by-doc :tokens))
-     :spans (with-metadata db "span" (mapv #(assoc % :tokens (get span-tokens (:id %) [])) spans))
-     :relations (with-metadata db "relation" (by-doc :relations))
-     :vocab-links (with-metadata db "vocab-link"
-                    (mapv #(assoc % :tokens (get link-tokens (:id %) [])) links))}))
+     :texts (whole :texts)
+     :tokens (whole :tokens)
+     :spans (whole :spans)
+     :relations (whole :relations)
+     :vocab-links (whole :vocab_links)}))
 
 ;; ============================================================
 ;; Assembly: the deep read shape

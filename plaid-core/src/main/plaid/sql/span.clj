@@ -217,12 +217,11 @@
       (insert-span-tokens! tx (:id r) (:tokens r))
       (metadata/insert-metadata! tx "span" (:id r) (:metadata r)
                                  {:skip-parent-audit? true}))
-    (doseq [r records]
-      (let [post-row (psc/fetch-by-id tx :spans (:id r))
-            post-tokens (crud/junction-token-ids tx :spans (:id r))
-            post-image (cond-> (assoc post-row :tokens post-tokens)
-                         (seq (:metadata r)) (assoc :metadata (:metadata r)))]
-        (psaw/record-audit-write! tx :spans (:id r) :insert nil post-image)))
+    ;; One folded :insert each, the row read whole as a lazy row's image is.
+    (let [images (into {} (map (fn [[id image]] [(str id) image]))
+                       (psaw/entity-images tx :spans (map :id records)))]
+      (psaw/record-audit-writes! tx :spans :insert
+                                 (map (fn [r] [(:id r) nil (clojure.core/get images (str (:id r)))]) records)))
     (mapv :id records)))
 
 (defn create

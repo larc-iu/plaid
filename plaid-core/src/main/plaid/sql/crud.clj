@@ -62,11 +62,7 @@
   (or (:name (psc/q1 db ["SELECT name FROM pragma_index_list(?) WHERE origin = 'pk'" (name table)]))
       (throw (ex-info (str "Table " (name table) " has no primary key index") {:table table}))))
 
-(defn- in-chunks
-  "`(f chunk)` over `xs` (distinct) in chunks of `psc/bulk-chunk-size`,
-  concatenated into a vector."
-  [f xs]
-  (into [] (mapcat f) (partition-all psc/bulk-chunk-size (distinct (seq xs)))))
+(def ^:private in-chunks psc/in-chunks)
 
 (defn select-in
   "The rows (`cols`, a SQL column list) of `table` whose `col` is one of

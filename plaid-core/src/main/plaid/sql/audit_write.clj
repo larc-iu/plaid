@@ -10,8 +10,7 @@
 
   Split out of `plaid.sql.common` so the audit contract is one file, separate
   from the row helpers that obey it."
-  (:require [clojure.data.json :as json]
-            [clojure.string]
+  (:require [clojure.string]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]))
 
@@ -113,23 +112,16 @@
   [table]
   (contains? document-tables (name table)))
 
-(defn- in-chunks
-  "`(f chunk)` over the distinct `xs` in chunks of `psc/bulk-chunk-size`,
-  concatenated."
-  [f xs]
-  (into [] (mapcat f) (partition-all psc/bulk-chunk-size (distinct (seq xs)))))
+(def ^:private in-chunks psc/in-chunks)
 
-(defn- decode-metadata-value [s]
-  (when (some? s)
-    (try (json/read-str s) (catch Exception _ s))))
-
-(defn entity-images
-  "`{id image}` for the rows among `ids` of document table `table` that
-  exist, each read whole (see above). An id with no row is left out."
-  [db table ids]
-  (let [t (keyword (name table))
-        {:keys [etype junction]} (get document-tables (name table))
-        rows (in-chunks #(psc/q db {:select [:*] :from [t] :where [:in :id (mapv str %)]}) ids)
+(defn row-images
+  "`rows` of document table `table`, in their order, each read whole (see
+  above): its ordered token list under `:tokens` when the table keeps one,
+  its metadata under `:metadata` when it has any. The one builder of a
+  row's whole image, for the lazy rows' audit images, the document reads of
+  `plaid.sql.document-rows` and the creates' insert images."
+  [db table rows]
+  (let [{:keys [etype junction]} (get document-tables (name table))
         found (map :id rows)
         tokens (when junction
                  (let [[jt jc] junction]
@@ -138,20 +130,21 @@
                                    found)
                         (group-by jc)
                         (into {} (map (fn [[k rs]] [k (mapv :token_id (sort-by :order_idx rs))]))))))
-        metas (->> (in-chunks #(psc/q db {:select [:entity_id :key :value] :from [:entity_metadata]
-                                          :where [:and [:= :entity_type etype]
-                                                  [:in :entity_id (mapv str %)]]})
-                              found)
-                   (reduce (fn [m r] (assoc-in m [(str (:entity_id r)) (:key r)]
-                                               (decode-metadata-value (:value r))))
-                           {}))]
-    (into {}
-          (map (fn [r]
-                 (let [m (get metas (str (:id r)))]
-                   [(:id r) (cond-> r
-                              junction (assoc :tokens (get tokens (:id r) []))
-                              (seq m) (assoc :metadata m))])))
+        metas (psc/metadata-by-entity db etype found)]
+    (mapv (fn [r]
+            (let [m (get metas (str (:id r)))]
+              (cond-> r
+                junction (assoc :tokens (get tokens (:id r) []))
+                (seq m) (assoc :metadata m))))
           rows)))
+
+(defn entity-images
+  "`{id image}` for the rows among `ids` of document table `table` that
+  exist, each read whole (`row-images`). An id with no row is left out."
+  [db table ids]
+  (let [t (keyword (name table))
+        rows (in-chunks #(psc/q db {:select [:*] :from [t] :where [:in :id (mapv str %)]}) ids)]
+    (into {} (map (juxt :id identity)) (row-images db table rows))))
 
 (def version-mismatch
   "The one message a stale `document-version` is refused with, before the

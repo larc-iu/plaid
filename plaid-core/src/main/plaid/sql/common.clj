@@ -658,6 +658,38 @@
   same ceiling."
   4000)
 
+(defn in-chunks
+  "`(f chunk)` over the distinct `xs` in chunks of `bulk-chunk-size`,
+  concatenated into a vector. The one id chunker of the sql namespaces."
+  [f xs]
+  (into [] (mapcat f) (partition-all bulk-chunk-size (distinct (seq xs)))))
+
+(defn read-metadata-value
+  "One stored `entity_metadata.value` as its value. Nested map keys stay
+  STRINGS so user-supplied case round-trips (`read-json` keywordizes). Text
+  that is not JSON comes back as it is, nil as nil."
+  [s]
+  (when (some? s)
+    (try (json/read-str s) (catch Exception _ s))))
+
+(defn metadata-by-entity
+  "`{entity-id-string {key-string value}}` for the `entity-type` entities
+  `ids`, read in chunks. An entity with no metadata is absent. Each entity's
+  keys are read in key order, so a map small enough to keep its order (eight
+  keys or fewer) comes out the same on every read."
+  [db entity-type ids]
+  (reduce (fn [m {:keys [entity_id key value]}]
+            (assoc-in m [(str entity_id) key] (read-metadata-value value)))
+          {}
+          (in-chunks (fn [chunk]
+                       (q db {:select [:entity_id :key :value]
+                              :from [:entity_metadata]
+                              :where [:and
+                                      [:= :entity_type entity-type]
+                                      [:in :entity_id (vec chunk)]]
+                              :order-by [:entity_id :key]}))
+                     (map str ids))))
+
 (defn fetch-ids
   "Batch-fetch rows by ID. Returns a vector of rows (column-keyed maps).
   Chunks the IN-list to stay under SQLite's variable-count ceiling."
