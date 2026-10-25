@@ -76,7 +76,7 @@ def test_a_document_gained_or_lost_and_a_value_edited_are_each_named():
 
 
 def test_a_field_named_in_lower_case_keeps_its_case_in_the_refusal_on_screen():
-    from plaid_agent.core.approval import _sentence
+    from plaid_agent.core.outcome import _sentence
     then = [_span('t1', 'S', 'Z')]
     with pytest.raises(PlanOutOfDate) as e:
         _check(then, then + [_span('t2', 'S', 'Z')], change='ge "S" → "Z"')

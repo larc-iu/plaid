@@ -381,7 +381,8 @@ The modules below are `igt/` unless they say otherwise.
   `core/service_cli.py` (the flags, startup and its pings), `core/record_ops.py`
   (the record ops and the send that starts a turn), `core/turn.py` (the turn and
   the stamps on its question), `core/approval.py` (approval, with the staleness
-  check in `core/staleness.py`) and `core/page_writes.py` (the plans a page
+  check in `core/staleness.py` and what a run came to, the partly applied tally
+  among it, in `core/outcome.py`) and `core/page_writes.py` (the plans a page
   writes itself). `core/version.py` holds the version each turn records.
 - `core/web.py`: the optional web tools, the URL guard, and HTML to text.
 - `core/workspace.py`: the workspace both apps subclass. What one turn holds

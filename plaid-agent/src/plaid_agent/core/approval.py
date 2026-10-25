@@ -9,7 +9,7 @@ from plaid_client.http import PlaidAPIError
 from plaid_client.provenance import is_reviewed
 from plaid_client.service import requester_message
 
-from .conversation import ConversationStore, find_plan, now_iso, partial_note, partial_tally, plan_settling
+from .conversation import ConversationStore, find_plan, now_iso, plan_settling
 from .ops import busy_why
 from . import rules
 from .opkind import ROW
@@ -19,6 +19,90 @@ from .plan import (EXPANSION, WRITING, DocumentsBusy, Expansion, ExpansionUnread
 from .conversation import WROTE
 from .staleness import _named, stale_documents
 from .record_ops import _marks
+from .outcome import Outcome, _sentence, partly_applied
+
+
+class Approval:
+    """One approval of one plan, as its run and its settling share it: the
+    requester's client, the project, the conversation's store and id, the
+    plan and its id, the request and its helper. `run_with` adds what the
+    run writes with once the pre-checks pass."""
+
+    def __init__(self, service, client, project, store: ConversationStore, conv_id: str, plan: Dict[str, Any],
+                 plan_id: str, request_id, helper, pending: Optional[dict] = None):
+        self.service = service
+        self.client = client
+        self.project = project
+        self.store = store
+        self.conv_id = conv_id
+        self.plan = plan
+        self.plan_id = plan_id
+        self.request_id = request_id
+        self.helper = helper
+        self.pending = pending
+        self.model = service.cfg.model
+        self.ops: List[Dict[str, Any]] = []
+        self.documents: List[Dict[str, Any]] = []
+        self.summary = ''
+        self.stamp_mode: Optional[str] = None
+        self.contributor: Optional[str] = None
+        self.detail: Dict[str, Any] = {}
+        self.proposer = None
+        self.expansion: Optional[Expansion] = None
+        #: What the plan's writing mark was before this run marked it.
+        self.was = None
+
+    def run_with(self, ops, documents, summary, stamp_mode, contributor, *, detail, proposer) -> None:
+        """What the run writes with. ``detail`` and ``proposer`` are the model
+        and version, and the service id, of the turn that proposed the plan."""
+        self.ops, self.documents, self.summary = ops, documents, summary
+        self.stamp_mode, self.contributor = stamp_mode, contributor
+        self.detail, self.proposer = detail, proposer
+        self.expansion = Expansion(self.plan, self.remember)
+
+    def settled(self, status=None, note=None, **fields) -> bool:
+        """Clear the pending marker so the card is decidable again, and
+        settle the plan as ``status`` when given (`plan_settling`). False
+        when the conversation moved on, which `_write` reports rather than
+        raising.
+
+        An outcome that wrote (applied, partly applied) is written on the
+        plan even when the conversation moved on (another request's
+        marker stands): the record never says undecided over changes
+        that landed, and the model is told. The other request's marker
+        is kept. False only when the conversation is gone."""
+        plan = self.plan
+        change = plan_settling(self.plan_id, status, note, documents=plan.get('documents'),
+                               expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **fields)
+        if self.service._write(self.store, self.conv_id, change, self.request_id, self.model):
+            return True
+        return status in WROTE and self.service._write(self.store, self.conv_id, change, None, self.model)
+
+    def remember(self, undecided=False):
+        """Write the plan's documents as the run holds them, what its
+        scopes resolved to and whether it may have written, the approval
+        still pending. ``undecided``: only on a plan the record still has
+        undecided under this approval (`plan.writing`)."""
+        plan = self.plan
+        return self.service._write(self.store, self.conv_id,
+                                   plan_settling(self.plan_id, documents=plan.get('documents'),
+                                                 expansion=plan.get(EXPANSION), writing=plan.get(WRITING),
+                                                 undecided=undecided),
+                                   self.request_id, self.model, pending=self.pending)
+
+    def nothing_written(self) -> None:
+        """A run that certainly wrote nothing: a run again of a plan whose
+        earlier run may have written keeps the mark, the versions that run
+        held and what its scopes found. Otherwise the next approval holds the
+        versions the documents have then, finds what they hold then, and may
+        be discarded meanwhile."""
+        if self.was:
+            self.plan[WRITING] = self.was
+            return
+        forget_held(self.documents)
+        if self.expansion is not None:
+            self.expansion.forget()
+        self.plan.pop(WRITING, None)
 
 
 class Approving:
@@ -83,30 +167,15 @@ class Approving:
         return is_reviewed(project, user_id, is_admin=is_admin)
 
     def _apply(self, client, project, store, conv_id, conv, meta, approve: dict, request_id, response_helper) -> None:
-        model = self.cfg.model
         plan_id = approve.get('plan_id')
-        index, item = find_plan(conv, plan_id) if plan_id else (-1, None)
+        _, item = find_plan(conv, plan_id) if plan_id else (-1, None)
         if item is None:
             response_helper.error('No such plan in this conversation')
             return
         plan = item['plan']
-
-        def settled(status=None, note=None, **fields):
-            """Clear the pending marker so the card is decidable again, and
-            settle the plan as ``status`` when given (`plan_settling`). False
-            when the conversation moved on, which `_write` reports rather than
-            raising.
-
-            An outcome that wrote (applied, partly applied) is written on the
-            plan even when the conversation moved on (another request's
-            marker stands): the record never says undecided over changes
-            that landed, and the model is told. The other request's marker
-            is kept. False only when the conversation is gone."""
-            change = plan_settling(plan_id, status, note, documents=plan.get('documents'),
-                                   expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **fields)
-            if self._write(store, conv_id, change, request_id, model):
-                return True
-            return status in WROTE and self._write(store, conv_id, change, None, model)
+        ap = Approval(self, client, project, store, conv_id, plan, plan_id, request_id, response_helper,
+                      pending=(meta or {}).get('pending'))
+        settled = ap.settled
 
         # This process applied the plan and its outcome never reached the
         # record (the conversation was deleted and its write refused, say):
@@ -169,9 +238,9 @@ class Approving:
                 return
             stamp_mode = ('contributed' if contributor else 'human' if approve.get('as_human')
                           else 'verified')
-        as_human = stamp_mode == 'human'
         documents = plan.get('documents') or []
-        summary = plan.get('summary') or self.summarize(ops)
+        ap.run_with(ops, documents, plan.get('summary') or self.summarize(ops), stamp_mode, contributor,
+                    detail=proposed_by(item), proposer=item['service'])
         # The plan is written in several requests, and a document opened in
         # between is half written: its editor's repair on open can delete what
         # the first batch made, and the next batch fails. So every document the
@@ -181,25 +250,10 @@ class Approving:
         # released: a lock that lapsed refuses every later write this client
         # makes while the block runs, the record's too, which would leave the
         # card pending over a plan that stopped partway.
-        def remember(undecided=False):
-            """Write the plan's documents as the run holds them, what its
-            scopes resolved to and whether it may have written, the approval
-            still pending. ``undecided``: only on a plan the record still has
-            undecided under this approval (`plan.writing`)."""
-            return self._write(store, conv_id, plan_settling(plan_id, documents=plan.get('documents'),
-                                                             expansion=plan.get(EXPANSION),
-                                                             writing=plan.get(WRITING), undecided=undecided),
-                               request_id, model, pending=(meta or {}).get('pending'))
-        expansion = Expansion(plan, remember)
-
         try:
             with holding(client, self.documents_to_lock(ops, documents)):
-                counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
-                                                 index, conv, settled, remember, stamp_mode, contributor, store,
-                                                 response_helper, conv_id, proposed_by(item),
-                                                 item['service'], expansion, plan=plan, run=request_id)
+                outcome = self._check_and_execute(ap)
         except DocumentsBusy as e:
-            settled()
             name = next((d.get('name') for d in documents
                          if isinstance(d, dict) and d.get('id') == e.document_id), None)
             which = f'"{name}"' if name else 'A document'
@@ -208,35 +262,71 @@ class Approving:
             else:
                 said = (f'{which} could not be locked for the change '
                         f'({requester_message(e.cause, secrets=self.REQUEST_SECRETS)}). Approve again.')
-            response_helper.error(f'Nothing was written. {said}')
+            outcome = Outcome.refused(f'Nothing was written. {said}')
+        self._settle(ap, outcome)
+
+    def _settle(self, ap: 'Approval', outcome: Outcome) -> None:
+        """Write what an approval's run came to on the record and answer the
+        request: the one place every outcome is settled, after the documents'
+        locks are released."""
+        if outcome.counts is not None:
+            self._settle_applied(ap, outcome.counts)
             return
-        if callable(counts):
-            counts()
+        if outcome.failure is not None:
+            outcome = self._failed(ap, outcome.failure)
+        if outcome.forget:
+            ap.nothing_written()
+        if outcome.status == 'partial':
+            self._remember_applied(ap.plan_id, 'partial', outcome.note, outcome.fields)
+        kept = ap.settled(outcome.status, outcome.note, **outcome.fields)
+        if outcome.written is not None:
+            said = outcome.message + ('' if kept else ' This conversation was deleted.')
+            ap.helper.complete({'kind': 'applied', 'partial': True, 'applied': outcome.written,
+                                'counts': [], 'message': said})
             return
+        ap.helper.error(_moved_on(ap.store, ap.conv_id, ap.plan_id) if outcome.moved_on else outcome.message)
+
+    @staticmethod
+    def _failed(ap: 'Approval', e: PlanError) -> Outcome:
+        """A run that failed (``e``): partly applied when it wrote, else
+        refused with nothing written, worded as the user reads it."""
+        why = 'the server did not answer' if e.unknown else _failure(ap.client, ap.documents, e)
+        if e.wrote:
+            return partly_applied(ap.ops, e, why)
+        # Nothing landed on this run.
+        if why == KEY_REUSED:
+            return Outcome.refused(f'Failed to apply the plan: {why}. Check those changes in '
+                                   f'History, then ask the assistant to plan again.', forget=True)
+        return Outcome.refused(f'Failed to apply the plan: {why}. Nothing was written.', forget=True)
+
+    def _settle_applied(self, ap: 'Approval', counts: Dict[str, Any]) -> None:
+        """A plan written in full: settled applied and answered with its
+        counts."""
+        counts = dict(counts)
         notes = counts.pop('notes', [])
         # Card rows that wrote nothing under this approval (a contributor's
         # confirmation of only other contributors' work), which the card does
         # not show as applied.
         unwritten = counts.pop('unwritten', [])
-        note = f'(note) The plan was approved and applied: {summary}.' + (' ' + '; '.join(notes) if notes else '')
+        note = f'(note) The plan was approved and applied: {ap.summary}.' + (' ' + '; '.join(notes) if notes else '')
         # Settled even when the conversation moved on (`settled`), so the card
         # never offers Approve over work already done. `_applied_plans` keeps
         # the outcome too, for a record that could not take it.
         # What the record keeps of the outcome: how the approval was recorded,
         # and what applying dropped (a change a later one superseded, say),
         # since each change's outcome is otherwise the plan's.
-        outcome = {'as_human': as_human, **({'contributed': True} if contributor else {}),
+        outcome = {'as_human': ap.stamp_mode == 'human', **({'contributed': True} if ap.contributor else {}),
                    **({'apply_notes': notes} if notes else {}),
                    **({'unwritten': unwritten} if unwritten else {})}
-        self._remember_applied(plan_id, 'applied', note, outcome)
-        if not settled('applied', note, **outcome):
-            response_helper.error('The changes were applied, but this conversation was deleted.')
+        self._remember_applied(ap.plan_id, 'applied', note, outcome)
+        if not ap.settled('applied', note, **outcome):
+            ap.helper.error('The changes were applied, but this conversation was deleted.')
             return
-        response_helper.progress(100, 'Done')
-        response_helper.complete({
+        ap.helper.progress(100, 'Done')
+        ap.helper.complete({
             'kind': 'applied', 'applied': sum(counts.values()),
             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
-            'message': f'Applied {self.summarize(ops)}.' + ''.join(' ' + _sentence(n) for n in notes),
+            'message': f'Applied {self.summarize(ap.ops)}.' + ''.join(' ' + _sentence(n) for n in notes),
         })
 
     def _busy_sentence(self, client, document_id: str, which: str, plan: Dict[str, Any], user_id: str,
@@ -254,66 +344,48 @@ class Approving:
                         f'{left} second{"" if left == 1 else "s"}.')
         return f'{which} is locked by another run. Try again in a minute.'
 
-    def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
-                           settled, remember, stamp_mode, contributor, store,
-                           response_helper, conv_id, detail, proposer, expansion=None, plan=None, run=True):
+    def _check_and_execute(self, ap: 'Approval') -> Outcome:
         """The staleness check and the writes, under the documents' locks.
-        ``detail`` and ``proposer`` are the model and version, and the service
-        id, of the turn that proposed the plan: the writes name that assistant
-        (`provSource`, `provDetail`) and so does the operation's ref, whichever
-        is running now.
-        The counts of what was applied, or, when the plan was refused or
-        failed, the answer to give once the locks are released: it writes the
-        conversation record, which must not be written under a lock that may
-        have lapsed."""
+        The writes name the assistant that proposed the plan (``ap.detail``
+        and ``ap.proposer``: `provSource`, `provDetail`), and so does the
+        operation's ref, whichever is running now. What the run came to, which
+        `_settle` writes on the conversation record once the locks are
+        released: the record must not be written under a lock that may have
+        lapsed."""
+        client, plan, ops, documents = ap.client, ap.plan, ap.ops, ap.documents
+
         def out_of_date(reasons, then=None):
             # Settled as out of date, so the card stops offering an Approve
             # that can only fail again, and the model is told on the next turn.
+            # The card says why, in the same words (`reason`).
             said = ' '.join(_sentence(s) for s in reasons)
+            return Outcome.refused(f'Nothing was written. {said} {then or "Ask the assistant to plan again."}',
+                                   'stale', f'(note) The plan was not applied: {said} Nothing was written.',
+                                   reason=said)
 
-            def refuse():
-                # The card says why, in the same words (`reason`).
-                settled('stale', f'(note) The plan was not applied: {said} Nothing was written.', reason=said)
-                response_helper.error(f'Nothing was written. {said} {then or "Ask the assistant to plan again."}')
-            return refuse
-
-        stale = self._stale(client, project, documents)
+        stale = self._stale(client, ap.project, documents)
         if stale:
             return out_of_date(stale)
-        plan = {} if plan is None else plan
 
         # A run again of a plan whose earlier run may have written keeps the
         # mark, the versions that run held and what its scopes found, whatever
         # stops this one before it writes: some of the plan may be in the
         # project already.
-        was = plan.get(WRITING)
-
-        def nothing_written():
-            if was:
-                plan[WRITING] = was
-                return
-            # The next approval holds the versions the documents have then,
-            # finds what they hold then, and may be discarded meanwhile.
-            forget_held(documents)
-            if expansion is not None:
-                expansion.forget()
-            plan.pop(WRITING, None)
+        ap.was = plan.get(WRITING)
         try:
-            writing(client, plan, documents, lambda: remember(undecided=True), run=run, ops=ops,
-                    stamp=stamp_mode, contributor=contributor)
-        except (RecordFull, PlanMovedOn) as e:
-            def stopped(e=e):
-                nothing_written()
-                settled()
-                response_helper.error(str(e) if isinstance(e, RecordFull) else _moved_on(store, conv_id, plan_id))
-            return stopped
-        response_helper.progress(10, 'Applying changes…')
+            writing(client, plan, documents, lambda: ap.remember(undecided=True), run=ap.request_id, ops=ops,
+                    stamp=ap.stamp_mode, contributor=ap.contributor)
+        except RecordFull as e:
+            return Outcome.refused(str(e), forget=True)
+        except PlanMovedOn:
+            return Outcome.refused(forget=True, moved_on=True)
+        ap.helper.progress(10, 'Applying changes…')
         # One operation of kind assistant-plan, naming the conversation, the
         # plan and the assistant that proposed it, so the audit log says which
         # writes a plan made. The app's own operation inside flattens into it.
-        label = audit_label(summary)
-        source = service_source(proposer)
-        ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
+        label = audit_label(ap.summary)
+        source = service_source(ap.proposer)
+        ref = f'conv:{ap.conv_id}/plan:{ap.plan_id}/{source}'
         try:
             # Keyed by the plan's id, and every row it creates is named by an
             # id drawn from it (`core.plan.Minter`). Applied again, from the
@@ -321,24 +393,24 @@ class Approving:
             # requests: one that landed is answered from its first send, and a
             # create whose key is gone is refused as a taken id, which the
             # executor takes as made. Nothing is made twice.
-            keys = {'seed': plan_id, 'stamps': {}}
+            keys = {'seed': ap.plan_id, 'stamps': {}}
             with client.operation(label, kind='assistant-plan', ref=ref, keys=keys) as operation:
                 # Each op names its row on the card, so a plan that stops
                 # partway can say which changes were written.
                 try:
                     # A scope reads what an earlier run of this plan found
                     # (`core.plan.Expansion`), or records what it finds.
-                    with expanding(client, expansion):
+                    with expanding(client, ap.expansion):
                         counts = self.execute_plan(client, [{**op, ROW: i} for i, op in enumerate(ops)],
                                                    source=source,
-                                                   label=label, project=project,
-                                                   stamp_mode=stamp_mode, contributor=contributor,
-                                                   requester=store.user_id, detail=detail,
-                                                   seed=plan_id)
+                                                   label=label, project=ap.project,
+                                                   stamp_mode=ap.stamp_mode, contributor=ap.contributor,
+                                                   requester=ap.store.user_id, detail=ap.detail,
+                                                   seed=ap.plan_id)
                 except PlanError as e:
                     # History names what was written, not the whole plan.
                     if e.wrote:
-                        partly_label = self.partial_label(ops, e.written or [], summary)
+                        partly_label = self.partial_label(ops, e.written or [], ap.summary)
                         operation.set_message(partly_label)
                     raise
         except ScopeMoved as e:
@@ -353,85 +425,24 @@ class Approving:
             # A write whose answer was lost may have landed, so it counts as
             # written: "Nothing was written" was false, and approving again
             # wrote the plan a second time over the first attempt's leftovers.
-            written = e.wrote
-            if written:
-                self._remember_applied(plan_id)
-
-            def failed(e=e):
-                why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
-                if not written:
-                    # Nothing landed on this run.
-                    nothing_written()
-                    settled()
-                    if why == KEY_REUSED:
-                        response_helper.error(f'Failed to apply the plan: {why}. Check those changes in '
-                                              f'History, then ask the assistant to plan again.')
-                    else:
-                        response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
-                    return
-                # Settled as partly applied (Luke's ruling Q4): no Approve that
-                # cannot work, the card marks the changes written in full, and
-                # the model is told which, so the user asks it to finish. The
-                # count is of the card's rows: `applied` counts batch calls,
-                # and one change can be several.
-                done = list(e.written or [])
-                labels = [op.get('label') or '' for op in ops]
-                # A row that folds many changes ("dep on 600 words") counts
-                # each of them, written or not, so a row cut short by the
-                # failure says "400 of 600", not "0 of 1".
-                sizes = [int(op.get('count') or 1) if op.get('compact') or rules.is_rule(op) else 1 for op in ops]
-                parts = {i: n for i, n in (e.members or {}).items() if 0 <= i < len(ops) and i not in done}
-                written_n = sum(sizes[i] for i in done if 0 <= i < len(ops)) + sum(parts.values())
-                # A row another service wrote in part (a parse that stopped
-                # partway) has no count here: its own message says how much.
-                partly = sorted({i for i in e.partly if 0 <= i < len(ops) and i not in done and i not in parts})
-                note = partial_note(labels, done, e.unknown, why,
-                                    parts={i: (n, sizes[i]) for i, n in parts.items()},
-                                    sizes=sizes, partly=partly)
-                # The count as the card says it, kept on the record for
-                # whatever shows the plan later (an exported conversation).
-                outcome = f'{partial_tally(written_n, sum(sizes), len(partly))}.'
-                # A row another service wrote in part and counted (a parse
-                # that stopped partway) is said in its count, kept on the
-                # record too (Luke 2026-10-16).
-                count = e.partly_count if len(partly) == 1 else None
-                if count:
-                    n, of, unit = count
-                    outcome = (f'Written in part: {n} of {of} {unit}.' if not written_n
-                               else f'{partial_tally(written_n, sum(sizes), 1)} ({n} of {of} {unit}).')
-                fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {}),
-                          **({'in_part': list(count)} if count else {})}
-                said = (f'Partly applied{". " if count and not written_n else ": "}{outcome} '
-                        + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
-                self._remember_applied(plan_id, 'partial', note, fields)
-                if not settled('partial', note, **fields):
-                    said += ' This conversation was deleted.'
-                response_helper.complete({'kind': 'applied', 'partial': True, 'applied': written_n,
-                                          'counts': [], 'message': said})
-            return failed
+            if e.wrote:
+                self._remember_applied(ap.plan_id)
+            return Outcome.failed(e)
         except ExpansionUnreadable as e:
             # The record is there because an earlier run began writing, so
             # some of the plan may stand. Nothing more is sent, and the plan
             # settles as partly applied: approved again it would send other
             # requests than that run did under the same keys.
-            def unreadable(e=e):
-                outcome = 'An earlier run may have written some of these changes. History shows them.'
-                note = (f'(note) The plan was not applied again: {e}. An earlier run may have written some of '
-                        'its changes. Nothing more was written.')
-                fields = {'written': [], 'outcome': outcome}
-                self._remember_applied(plan_id, 'partial', note, fields)
-                settled('partial', note, **fields)
-                response_helper.error(f'Not applied again: {e}. An earlier run may have written some of its '
-                                      'changes, which History shows. Ask the assistant to plan the rest again.')
-            return unreadable
+            return Outcome.refused(
+                f'Not applied again: {e}. An earlier run may have written some of its '
+                'changes, which History shows. Ask the assistant to plan the rest again.',
+                'partial', (f'(note) The plan was not applied again: {e}. An earlier run may have written some of '
+                            'its changes. Nothing more was written.'),
+                written=[], outcome='An earlier run may have written some of these changes. History shows them.')
         except ValueError as e:
-            def rejected(e=e):
-                nothing_written()
-                settled()
-                response_helper.error(str(e) if isinstance(e, RecordFull)
-                                      else f'The plan was rejected before anything was written: {e}')
-            return rejected
-        return counts
+            return Outcome.refused(str(e) if isinstance(e, RecordFull)
+                                   else f'The plan was rejected before anything was written: {e}', forget=True)
+        return Outcome.applied(counts)
 
     def _stale(self, client, project, documents: list) -> list:
         """What stands in the way of applying a plan made against
@@ -528,13 +539,6 @@ def audit_label(summary: str) -> str:
     if len(label) <= AUDIT_LABEL_MAX:
         return label
     return clip_caption(label, AUDIT_LABEL_MAX - 1) + '…'
-
-
-def _sentence(text: str) -> str:
-    """A note as a sentence of its own on screen, where a semicolon run of
-    them read as one long clause."""
-    text = str(text).strip()
-    return text[:1].upper() + text[1:] + ('' if text.endswith('.') else '.')
 
 
 def _document_name(client, documents: list, document_id: str) -> Optional[str]:
