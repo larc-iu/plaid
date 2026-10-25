@@ -11,7 +11,7 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit, read_int, sentence_number
-from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET, note_cut
+from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS, READ_LIMITS, RENDER_BUDGET, note_cut
 from .trace import ranges
 
 
@@ -306,13 +306,42 @@ def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) 
     return documents_page(ws, pattern, limit, offset)
 
 
+def _by_name(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Documents in the order list_documents pages through them."""
+    return sorted(docs, key=lambda d: (d.get('name') or '').casefold())
+
+
+def document_lines(docs: List[Dict[str, Any]]) -> List[str]:
+    """One line per document, as document= reads it back: its name quoted,
+    which is its own in the project (core refuses a name another document
+    holds, ruling 5), or its id when it has none."""
+    from .history import plain_quote
+    return [f'  {plain_quote(d["name"]) if d.get("name") else d["id"]}' for d in docs]
+
+
+def overview_documents(docs: List[Dict[str, Any]],
+                       lines: Optional[Callable[[List[Dict[str, Any]]], List[str]]] = None) -> List[str]:
+    """The project overview's document list, the same in every app: the
+    count, the first :data:`OVERVIEW_DOCS` by name (the order list_documents
+    pages in), one line each (``lines`` for an app that prints a document
+    its own way), and where the rest are."""
+    docs = _by_name(docs)
+    shown = docs[:OVERVIEW_DOCS]
+    more = len(docs) - len(shown)
+    out = [f'Documents ({len(docs)})' + (f', the first {OVERVIEW_DOCS} by name' if more else '') + ':']
+    out += (lines or document_lines)(shown)
+    if more:
+        out.append(f'  … {more} more, list_documents(offset={len(shown)}) for the next page')
+    return out
+
+
 def documents_page(ws, pattern: str = None, limit: int = None, offset: int = 0, *,
                    docs: Optional[List[Dict[str, Any]]] = None,
                    lines: Optional[Callable[[List[Dict[str, Any]]], List[str]]] = None) -> str:
     """:func:`list_documents` for an app that narrows the list further
     (``docs``) or prints a document its own way (``lines``)."""
     narrowed = docs is not None
-    docs = sorted(ws.documents() if docs is None else docs, key=lambda d: (d.get('name') or '').casefold())
+    docs = _by_name(ws.documents() if docs is None else docs)
     if pattern:
         from .workspace import name_matcher
         matches = name_matcher(pattern)
@@ -331,11 +360,7 @@ def documents_page(ws, pattern: str = None, limit: int = None, offset: int = 0, 
     if lines:
         out += lines(page)
     else:
-        # A name another document shares is followed by the id, which
-        # document= reads back, as the label whole does.
-        from .history import doc_labels, plain_quote
-        labels = doc_labels(ws, plain_quote)
-        out += [f'  {labels.get(d["id"]) or plain_quote(d.get("name") or "")}' for d in page]
+        out += document_lines(page)
     if offset + len(page) < len(docs):
         out.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
     return truncate('\n'.join(out))

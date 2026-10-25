@@ -21,8 +21,8 @@ from plaid_client.workflows.umr import (is_variable, parse_attribute_line, unkno
                                         unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import ATTRIBUTE_RELATIONS, ATTRIBUTE_VALUES, edge_only, is_known_relation
 
-from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
-from ..core.tools import ToolError, truncate
+from ..core.limits import SAMPLE_LINES
+from ..core.tools import ToolError, overview_documents, truncate
 from .diff import plan_penman
 from .plan import KIND, attr_line, attrs_scope_held, attrs_scope_targets, holds, replacing_phrase
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, attrs_change,
@@ -58,11 +58,7 @@ def t_project_overview(ws: Workspace) -> str:
         out.append('')
     except Exception:  # noqa: BLE001 - the overview is worth having without the size
         pass
-    out.append(f'Documents ({len(docs)}):')
-    for d in docs[:OVERVIEW_DOCS]:
-        out.append(f'  {plain_quote(d.get("name"))}')
-    if len(docs) > OVERVIEW_DOCS:
-        out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
+    out.extend(overview_documents(docs))
     return '\n'.join(out)
 
 

@@ -586,7 +586,8 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     c = FakeClient(documents=docs)
     w = fake_ws(c)
     ov = call_tool(w, 'project_overview', {})
-    assert f'Documents ({total}): first {OVERVIEW_DOCS} by name; list_documents' in ov
+    assert f'Documents ({total}), the first {OVERVIEW_DOCS} by name:' in ov
+    assert f'… {total - OVERVIEW_DOCS} more, list_documents(offset={OVERVIEW_DOCS}) for the next page' in ov
     assert f'Text {OVERVIEW_DOCS - 1:03d}' in ov and f'Text {OVERVIEW_DOCS:03d}' not in ov
     out = call_tool(w, 'list_documents', {'pattern': 'Text 10', 'limit': 2})
     assert out.startswith('5 documents matching, showing 1-2:') and 'Text 100' in out and 'list_documents(offset=2)' in out

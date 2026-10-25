@@ -17,13 +17,13 @@ from ..core import keep
 from ..core.keep import is_keep
 from ..core.bidi import qname, qv
 from ..core.args import whole
-from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
-from ..core.history import doc_label, doc_labels, plain_quote
+from ..core.limits import MAX_SCOPE_DOCS
+from ..core.history import doc_label, doc_labels
 from ..core.plan import MANY, by_document, confirm_preview
 from ..core.provenance import unmark
 from ..core.refs import clip, read_ref
 from ..core.scope import review_documents
-from ..core.tools import ToolError, server_refused
+from ..core.tools import ToolError, overview_documents, server_refused
 from .plan import (RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_taking)
 from .project import (FEATURES, Sentence, Token, UdDoc, Word, feats_order, feature_key,
@@ -70,12 +70,7 @@ def t_project_overview(ws: Workspace) -> str:
         out.append('')
     except Exception:  # noqa: BLE001 - the overview is worth having without the size
         pass
-    out.append(f'Documents ({len(docs)}):')
-    labels = doc_labels(ws, plain_quote)
-    for d in docs[:OVERVIEW_DOCS]:
-        out.append(f'  {labels[d["id"]]}')
-    if len(docs) > OVERVIEW_DOCS:
-        out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
+    out.extend(overview_documents(docs))
     return '\n'.join(out)
 
 

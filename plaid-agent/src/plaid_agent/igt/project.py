@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 
 from ..core.guidelines import Guideline, load as load_guidelines
-from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
+from ..core.limits import MAX_SENTENCES_PER_READ
 from ..core.project import declares, find_layer, join_with, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.bidi import plain_quote, visible
 from ..core.refs import clip, read_ref, same_form
@@ -40,7 +40,7 @@ from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
 from plaid_client.workflows.igt.word_breaks import (is_js_space, is_unicode_punctuation,  # noqa: F401
                                                     split_words)
 from .vocab import CORE_VOCAB_FIELDS, ROLE_GLOSS, fields_with_role, normalize_vocab_fields, vocab_field_summary
-from ..core.tools import ValueRefusal
+from ..core.tools import ValueRefusal, overview_documents
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -1143,9 +1143,7 @@ def render_overview(project: IgtProject, documents: List[dict], fill: Optional[D
                                            for v in project.vocabs) or '(none)'))
     if project.document_metadata:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
-    lines.append(f'Documents ({len(documents)}):' + (f' first {OVERVIEW_DOCS} by name; list_documents pages and filters the rest'
-                                                     if len(documents) > OVERVIEW_DOCS else ''))
-    lines.extend(document_lines(sorted(documents, key=lambda d: (d.get('name') or '').lower())[:OVERVIEW_DOCS]))
+    lines.extend(overview_documents(documents, document_lines))
     return '\n'.join(lines)
 
 

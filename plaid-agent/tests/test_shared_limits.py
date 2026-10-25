@@ -180,7 +180,6 @@ def test_every_app_caps_a_scope_and_a_read_at_the_same_number():
     from plaid_agent.core import tools as core_tools
     from plaid_agent.igt import project as igt_project
     from plaid_agent.ud import tools as ud_tools
-    from plaid_agent.umr import tools as umr_tools
     # Both apps' reviews over several documents are capped in core.scope.
     assert core_scope.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
     assert ud_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
@@ -188,9 +187,8 @@ def test_every_app_caps_a_scope_and_a_read_at_the_same_number():
     # has its own, which pages the same way.
     assert core_tools.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
     assert igt_project.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
-    assert igt_project.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
-    assert ud_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
-    assert umr_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
+    # Every app's overview lists its documents through core.tools.overview_documents.
+    assert core_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
 
 
 def test_the_prompt_says_how_many_documents_the_overview_really_shows():
