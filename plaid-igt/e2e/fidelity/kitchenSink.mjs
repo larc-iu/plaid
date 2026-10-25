@@ -1041,8 +1041,10 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
       { role: 'blacklist', id: blacklistId, name: `Kitchen sink blacklist${suffix}` },
       { role: 'twins', id: twinsId, name: `Kitchen sink twins${suffix}` },
       { role: 'bare', id: bareId, name: `Bare${suffix}` },
-      // Read back by the native archive only: the other formats are igt's view
-      // of a project, and an import through them sets igt up.
+      // `formats` names the formats roundTrip.mjs reads this project back
+      // through: the native archive only, since the other formats are igt's
+      // view of a project and an import through them sets igt up. It does not
+      // limit the exports, and validate.mjs checks them in every format.
       {
         role: 'udOnly',
         id: udOnlyId,

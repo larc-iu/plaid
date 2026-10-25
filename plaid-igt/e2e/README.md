@@ -87,8 +87,9 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
     licenses in its README, `PLAID_SCHEMA_DIR` names another directory). A
     missing schema or program is reported as skipped, never as a pass, and as a
     failure under `PLAID_VALIDATORS_REQUIRED`, which the nightly gate sets. An
-    export refusal `refusals.mjs` lists is a skip, any other refusal a failure,
-    and a project is validated only in the formats the kitchen sink gives it.
+    export refusal `refusals.mjs` lists is a skip, any other refusal a failure.
+    Every project is validated in every format, whatever formats the round trip
+    reads it back through.
   - `resume.mjs` — stops an import after the Nth write, resumes it the way the
     unfinished-import screen does, and compares the project with one imported
     straight through.

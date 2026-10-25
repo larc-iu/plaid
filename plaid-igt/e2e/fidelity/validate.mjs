@@ -10,7 +10,8 @@
 // a broken export. Which validator covers which file, and where the schemas
 // come from, is ./validators.mjs.
 //
-// A project is validated only in the formats the kitchen sink gives it. An
+// Every project but the bare one is validated in every format. A project's
+// `formats` names only the formats the round trip reads it back through. An
 // export refusal refusals.mjs expects is a skip, any other refusal is a
 // failure, and so is an export that goes through where the list expects a
 // refusal.
@@ -55,7 +56,6 @@ try {
   for (const p of built.projects) {
     if (p.role === 'bare') continue;
     for (const format of formats) {
-      if (p.formats && !p.formats.includes(formatIdOf(format))) continue;
       const label = `${p.role} as ${format}`;
       const expected = expectedExportRefusal(p.role, formatIdOf(format));
       let exported;
