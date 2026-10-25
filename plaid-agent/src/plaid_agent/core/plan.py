@@ -35,8 +35,8 @@ from .keep import is_keep, kept_value
 from . import opkind as ok
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
-from plaid_client.provenance import (PROVENANCE_KEYS, PROV_CONFIRMED_KEY, WriterPolicy, stamp_contributed,
-                                     stamp_inferred)
+from plaid_client.provenance import (CONTRIBUTED_STATE, MACHINE, PROVENANCE_KEYS, PROV_CONFIRMED_KEY,
+                                     WriterPolicy)
 
 # How an approval is recorded. 'verified' is the default: the assistant made
 # it, a reviewer confirmed it. 'human' is the reviewer saying the work is
@@ -1085,11 +1085,15 @@ class Stamps:
         The editor's rule (``WriterPolicy.confirm_stamp``): a contributor
         accepting a machine proposal makes it their own contribution, never a
         verification, and a contributor reviews no one's work, theirs or
-        another contributor's. Any other approval confirms it."""
+        another contributor's. Any other approval confirms it. The policy
+        says whether the piece is this writer's to review
+        (``reviewable_state``) and what its confirm merges
+        (``confirm_fragment``)."""
         if self.human:
             return dict(CONFIRM)
-        piece = stamp_contributed('someone') if contributed_work else stamp_inferred(self.source)
-        return self.policy.confirm_stamp(piece)
+        if not self.policy.reviewable_state(CONTRIBUTED_STATE if contributed_work else MACHINE):
+            return None
+        return self.policy.confirm_fragment()
 
 
 def confirm_preview(machine: int, theirs: int) -> str:
