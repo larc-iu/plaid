@@ -548,7 +548,7 @@ class IgtDoc:
     def sentence_time(self, s: 'Sentence') -> Optional[Tuple[float, float]]:
         """(start, end) seconds of a sentence: over the segments wholly
         inside it, else the one segment that contains it, else None. The rule
-        the ELAN export uses (plaid-igt export/elan.js ``sentenceTiming``)."""
+        the ELAN export uses (plaid-igt domain/sentenceSegments.js ``sentenceTiming``)."""
         inside = [g for g in self.segments if g.begin >= s.begin and g.end <= s.end]
         if inside:
             return min(g.start for g in inside), max(g.stop for g in inside)
