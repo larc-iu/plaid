@@ -16,7 +16,10 @@
 // A unit that is in the file and not in the plan is the builder's doing, and
 // the builder has to have SAID so: each document's `leftOut` lists the word
 // analyses it does not import (could not place, or punctuation only, left as
-// text), and what those held is accounted for. Anything else unaccounted for
+// text). What a word it could not place held is accounted for. A punctuation
+// word is accounted for only as a word and its morphemes, since real
+// punctuation holds nothing more, so a real word wrongly sent down that path
+// shows its glosses and links lost. Anything else unaccounted for
 // is a finding. A unit that is in the
 // plan and not in the project is the engine's doing, and there is no such
 // thing as an acceptable one.
@@ -143,15 +146,32 @@ function wordCounts(words, ir) {
   };
 }
 
+/** A sentence's notes, one per string in each writing system. */
+const noteCount = (notes) => sum(notes || [], (n) => strings(n).length);
+
 /**
- * A sentence's notes, one per writing system that holds any. The import
- * writes a sentence's notes in one language as one value, a line each
- * (importEngine.js), so three notes on a sentence are one note in the
- * project. Counted per note, lamkang.fwbackup read 1246 notes lost that
- * were all such joins (REV-RT 5).
+ * The import writes a sentence's notes in one language as one value, a line
+ * each (importEngine.js), so three notes on a sentence are one span in the
+ * project (REV-RT 5). Each such span the plan makes, as its joined text, with
+ * the note strings it is worth. A project span holding exactly that text
+ * holds each of them, so a join that drops any note but the first counts its
+ * notes lost (REV-FL F2).
  */
-const noteCount = (notes) =>
-  new Set((notes || []).flatMap((n) => Object.keys(n || {}).filter((ws) => filled(n[ws])))).size;
+const plannedNoteJoins = (sentences) =>
+  sentences.flatMap((s) => {
+    const byWs = new Map();
+    for (const n of s.notes || []) {
+      for (const [ws, v] of Object.entries(n || {})) {
+        if (!v) continue;
+        if (!byWs.has(ws)) byWs.set(ws, []);
+        byWs.get(ws).push(v);
+      }
+    }
+    return [...byWs.values()].map((vs) => ({
+      text: vs.join('\n'),
+      worth: vs.filter(filled).length,
+    }));
+  });
 
 /** What the parser found, over the texts this run imported. */
 function countFile(ir, keptGuids) {
@@ -198,18 +218,36 @@ function countPlan(build, ir) {
   };
 }
 
-/** What the server holds. A field's name is its base plus the writing system. */
-function countProject(snapshot) {
+/**
+ * What the server holds. A field's name is its base plus the writing system.
+ * Notes are counted as the planned note strings a Note span holds.
+ */
+function countProject(snapshot, build) {
   const docs = snapshot.documents || [];
   const tokens = (role) => docs.flatMap((d) => d.tokens.filter((t) => t.layer === `token:${role}`));
   const spans = docs.flatMap((d) => d.spans);
   const layer = (key) => (snapshot.layers || []).find((l) => l.key === key);
-  const named = (scope, base) =>
+  const namedSpans = (scope, base) =>
     spans.filter((sp) => {
       const l = layer(sp.layer);
       if (!l || l.config?.igt?.scope !== scope) return false;
       return l.name === base || l.name.startsWith(`${base} (`);
-    }).length;
+    });
+  const named = (scope, base) => namedSpans(scope, base).length;
+  // Each Note span's text is used up by one planned join at most.
+  const noteTexts = new Map();
+  for (const sp of namedSpans('Sentence', 'Note')) {
+    noteTexts.set(sp.value, (noteTexts.get(sp.value) ?? 0) + 1);
+  }
+  const notesHeld = sum(
+    plannedNoteJoins(build.documents.flatMap((d) => d.sentences)),
+    ({ text, worth }) => {
+      const n = noteTexts.get(text) ?? 0;
+      if (!n) return 0;
+      noteTexts.set(text, n - 1);
+      return worth;
+    },
+  );
   const items = (snapshot.vocabularies || []).flatMap((v) => v.items || []);
   // What the importer writes itself, so what is left is the project's own
   // fields: the values a FLEx custom field brought over.
@@ -255,7 +293,7 @@ function countProject(snapshot) {
     morphPos: named('Morpheme', 'POS'),
     translations: named('Sentence', 'Translation'),
     literalTranslations: named('Sentence', 'Literal Translation'),
-    notes: named('Sentence', 'Note'),
+    notes: notesHeld,
     entries: items.filter((it) => it.metadata?.parent == null).length,
     senses: items.filter((it) => it.metadata?.parent != null).length,
   };
@@ -307,16 +345,26 @@ try {
     const kept = new Set(parsed.build.documents.map((d) => d.guid));
     const file = countFile(parsed.ir, kept);
     const plan = countPlan(parsed.build, parsed.ir);
-    const project = countProject(snapshot);
+    const project = countProject(snapshot, parsed.build);
     // What the builder said it left behind, counted from the words it named:
-    // a word it could not place, and a word of punctuation only, which stays
-    // text (8aa867863), each with its glosses, category, morphemes and links.
-    // Only what those words held is allowed, so a gloss dropped from a word
-    // that did land is a finding.
-    const said = wordCounts(
-      parsed.build.documents.flatMap((d) => [...d.leftOut.unaligned, ...d.leftOut.punctuation]),
+    // a word it could not place, with its glosses, category, morphemes and
+    // links, and a word of punctuation only, which stays text (8aa867863), as
+    // the word and its morphemes alone. Only that is allowed, so a gloss
+    // dropped from a word that did land is a finding, and so is any gloss,
+    // category or link on a word the builder called punctuation (REV-FL F1).
+    const unaligned = wordCounts(
+      parsed.build.documents.flatMap((d) => d.leftOut.unaligned),
       parsed.ir,
     );
+    const punctuation = wordCounts(
+      parsed.build.documents.flatMap((d) => d.leftOut.punctuation),
+      parsed.ir,
+    );
+    const said = {
+      ...unaligned,
+      words: unaligned.words + punctuation.words,
+      morphemes: unaligned.morphemes + punctuation.morphemes,
+    };
 
     console.log(`\n${label}${docCap ? ` (${docCap} smallest texts)` : ''} (${secs()})`);
     const findings = [];
