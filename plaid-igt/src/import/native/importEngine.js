@@ -45,7 +45,7 @@ import {
   writeVocabConfig,
   withoutStamps,
 } from '../resume.js';
-import { CHUNK, withMintedIds } from '../../domain/bulk.js';
+import { CHUNK } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import { proposeEntryRole } from '../../domain/entryRole.js';
@@ -76,6 +76,7 @@ import {
   recordImportUnmarked,
 } from '../../domain/igtConfig.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
+import { NATIVE_ITEM_KEY, createEntriesOnce, itemsBySourceKey } from '../lexicon.js';
 import { humanizeError } from '@ui/lib/errors.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
@@ -83,8 +84,6 @@ import { declareIgtRules, igtFields } from '../../domain/igtConstraints.js';
 import { getIgtLayerInfo } from '../../domain/layerInfo.js';
 import { notInForceText } from '../../components/projects/settings/refusedValues.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
-
-const ITEM_SOURCE_KEY = 'nativeImportId';
 
 // The manifest's fields as the flat {name, scope} list the shared pipeline
 // takes: the archive groups them by scope, everything else names the scope on
@@ -330,11 +329,7 @@ export async function importVocabulary({
   }
 
   const existing = await client.vocabLayers.get(vocabId, true);
-  const itemIdMap = new Map();
-  for (const item of existing.items || []) {
-    const source = item.metadata?.[ITEM_SOURCE_KEY];
-    if (source) itemIdMap.set(source, item.id);
-  }
+  const itemIdMap = itemsBySourceKey(existing.items, NATIVE_ITEM_KEY);
   // Entries an earlier run made unmarked, where they are still in the vocabulary.
   const present = new Set((existing.items || []).map((item) => item.id));
   for (const it of vocabData.items || []) {
@@ -345,7 +340,7 @@ export async function importVocabulary({
   const pending = (vocabData.items || []).filter((it) => !itemIdMap.has(it.id));
   // An entry whose metadata is at the cap is made without the mark, and the
   // import record names it instead.
-  const fitsMark = (it) => fitsCap({ ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id });
+  const fitsMark = (it) => fitsCap({ ...(it.metadata || {}), [NATIVE_ITEM_KEY]: it.id });
   const unmarkedCount = pending.filter((it) => !fitsMark(it)).length;
   if (unmarkedCount) {
     warnings.push(
@@ -361,37 +356,28 @@ export async function importVocabulary({
     return { form: read.form, metadata };
   };
   const stamped = (it) =>
-    fitsMark(it) ? { ...asStored(it).metadata, [ITEM_SOURCE_KEY]: it.id } : asStored(it).metadata;
-  let done = 0;
-  for (let i = 0; i < pending.length; i += CHUNK) {
-    check();
-    const chunk = pending.slice(i, i + CHUNK);
-    // bulkCreate rather than a batch of per-item creates: one request, one
-    // operation row, one pass over the table, where a batch re-dispatches the
-    // whole REST stack per item inside the same held write lock. `ids` come
-    // back in input order.
-    const ids = createdIds(
-      await client.vocabItems.bulkCreate(
-        withMintedIds(
-          chunk.map((it) => ({
-            vocabLayerId: vocabId,
-            form: asStored(it).form,
-            metadata: stamped(it),
-          })),
-        ),
-      ),
-    );
-    chunk.forEach((it, j) => {
-      if (ids[j]) itemIdMap.set(it.id, ids[j]);
-    });
+    fitsMark(it) ? { ...asStored(it).metadata, [NATIVE_ITEM_KEY]: it.id } : asStored(it).metadata;
+  await createEntriesOnce({
+    client,
+    vocabId,
+    entries: pending.map((it) => ({
+      key: it.id,
+      form: asStored(it).form,
+      metadata: stamped(it),
+      item: it,
+    })),
+    known: itemIdMap,
+    check,
     // Named on the record before anything else is written.
-    const madeUnmarked = chunk.flatMap((it, j) =>
-      ids[j] && !fitsMark(it) ? [[it.id, ids[j]]] : [],
-    );
-    if (madeUnmarked.length && unmarked) await unmarked.entriesMade(madeUnmarked);
-    done += chunk.length;
-    onProgress?.({ phase: 'vocabulary', name: vocabData.name, done, total: pending.length });
-  }
+    onChunk: async (chunk, ids) => {
+      const madeUnmarked = chunk.flatMap((e, j) =>
+        ids[j] && !fitsMark(e.item) ? [[e.key, ids[j]]] : [],
+      );
+      if (madeUnmarked.length && unmarked) await unmarked.entriesMade(madeUnmarked);
+    },
+    onProgress: (done, total) =>
+      onProgress?.({ phase: 'vocabulary', name: vocabData.name, done, total }),
+  });
 
   // Entry comments. Items are reused on resume, so the comments on them may
   // already have been posted by the run that made them: a comment already on
@@ -1512,7 +1498,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
   // reference too (./references.js). The import's own stamp names the archive
   // entry on purpose, and is written afresh below anyway.
   const lookup = (id) => itemIdMap.get(id) ?? docIdMap?.get(id);
-  const stamp = new Set([ITEM_SOURCE_KEY]);
+  const stamp = new Set([NATIVE_ITEM_KEY]);
   const out = [];
   const dropped = [];
   for (const it of vocabData.items || []) {
@@ -1569,8 +1555,8 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
     // these items.
     if (!changed) continue;
     const patch = metadataPatchTo(
-      { ...meta, [ITEM_SOURCE_KEY]: it.id },
-      { ...next, [ITEM_SOURCE_KEY]: it.id },
+      { ...meta, [NATIVE_ITEM_KEY]: it.id },
+      { ...next, [NATIVE_ITEM_KEY]: it.id },
     );
     if (patch.length) out.push({ id: newId, metadata: patch });
   }

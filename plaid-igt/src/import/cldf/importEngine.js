@@ -11,16 +11,8 @@
 // Lexicon items are deduped by the CLDF entry id stamped at creation, which
 // doubles as provenance back to the source dataset.
 
-import { createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
-import {
-  ImportCancelled,
-  importStamp,
-  priorImports,
-  writeVocabConfig,
-  settlePrior,
-} from '../resume.js';
-import { CHUNK, withMintedIds } from '../../domain/bulk.js';
+import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
@@ -30,7 +22,7 @@ import {
   setupDataFor,
   writeBuiltDocument,
 } from '../project.js';
-import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
+import { createEntriesOnce, itemsBySourceKey, mergeFieldSchema, placeSenses } from '../lexicon.js';
 import { sameName } from '@ui/lib/nameKey.js';
 
 // The entry keys the importer itself fills from CLDF's own columns, and the
@@ -107,11 +99,7 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     if (shouldStop?.()) throw new ImportCancelled();
   };
   const existing = await client.vocabLayers.get(vocabId, true);
-  const byEntry = new Map();
-  for (const item of existing.items || []) {
-    const key = item.metadata?.[ITEM_SOURCE_KEY];
-    if (key) byEntry.set(key, item.id);
-  }
+  const byEntry = itemsBySourceKey(existing.items, ITEM_SOURCE_KEY);
 
   // What to create, headword before its senses, and where each sense belongs.
   // The placement is planned for EVERY sense, not only the ones created here:
@@ -127,28 +115,25 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
         places.push({ key: senseKey(entry, sense), parentKey: entry.id, senseOrder: i + 1 });
       }
     }
-    // The entry and each of its senses are asked about one by one: a run
-    // that stopped after making the entry left its senses unmade, and a
-    // resume that skipped the whole entry for being there would never make
-    // them.
-    if (!byEntry.has(entry.id)) {
-      const metadata = { ...entry.metadata };
-      if (split) {
-        // The senses hold these now, one meaning each.
-        delete metadata.gloss;
-        delete metadata.definition;
-      } else {
-        // One sense is the entry's own meaning, so what its row carried (its
-        // part of speech, its definition, its own fields) belongs on the entry
-        // rather than being dropped with the row. The entry's own values win.
-        const only = entry.senses?.[0];
-        if (only) Object.assign(metadata, { ...(only.metadata || {}), ...metadata });
-      }
-      pending.push({ key: entry.id, form: entry.form, metadata });
+    // The entry and each of its senses are asked about one by one
+    // (createEntriesOnce): a run that stopped after making the entry left its
+    // senses unmade, and a resume that skipped the whole entry for being there
+    // would never make them.
+    const metadata = { ...entry.metadata };
+    if (split) {
+      // The senses hold these now, one meaning each.
+      delete metadata.gloss;
+      delete metadata.definition;
+    } else {
+      // One sense is the entry's own meaning, so what its row carried (its
+      // part of speech, its definition, its own fields) belongs on the entry
+      // rather than being dropped with the row. The entry's own values win.
+      const only = entry.senses?.[0];
+      if (only) Object.assign(metadata, { ...(only.metadata || {}), ...metadata });
     }
+    pending.push({ key: entry.id, form: entry.form, metadata });
     if (!split) continue;
     for (const sense of entry.senses) {
-      if (byEntry.has(senseKey(entry, sense))) continue;
       pending.push({
         key: senseKey(entry, sense),
         form: entry.form,
@@ -180,67 +165,45 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     }
   }
 
-  let done = 0;
-  for (let i = 0; i < pending.length; i += CHUNK) {
-    check();
-    const slice = pending.slice(i, i + CHUNK);
-    const res = await client.vocabItems.bulkCreate(
-      withMintedIds(
-        slice.map((p) => ({
-          vocabLayerId: vocabId,
-          form: p.form,
-          metadata: { ...p.metadata, [ITEM_SOURCE_KEY]: p.key },
-        })),
-      ),
-    );
-    createdIds(res).forEach((id, n) => byEntry.set(slice[n].key, id));
-    done += slice.length;
-    onProgress?.({ phase: 'lexicon', done, total: pending.length });
-  }
+  await createEntriesOnce({
+    client,
+    vocabId,
+    entries: pending.map((p) => ({ ...p, metadata: { ...p.metadata, [ITEM_SOURCE_KEY]: p.key } })),
+    known: byEntry,
+    check,
+    onProgress: (done, total) => onProgress?.({ phase: 'lexicon', done, total }),
+  });
 
   // The tree, once every item has an id. A sense that already has a parent is
   // left as it is: it was placed by an earlier run, or arranged by hand.
-  const parented = new Set(
-    (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
-  );
-  const placed = places.filter(
-    (p) => byEntry.has(p.key) && byEntry.has(p.parentKey) && !parented.has(byEntry.get(p.key)),
-  );
-  // One bulk update per chunk: a batch would re-dispatch the whole REST stack
-  // per sense inside the held write lock.
-  for (let i = 0; i < placed.length; i += CHUNK) {
-    check();
-    await client.vocabItems.bulkUpdate(
-      placed.slice(i, i + CHUNK).map((p) => ({
+  await placeSenses({
+    client,
+    existing,
+    places: places
+      .filter((p) => byEntry.has(p.key) && byEntry.has(p.parentKey))
+      .map((p) => ({
         id: byEntry.get(p.key),
-        metadata: [
-          { op: 'set', path: ['parent'], value: byEntry.get(p.parentKey) },
-          { op: 'set', path: ['senseOrder'], value: p.senseOrder },
-        ],
+        parent: byEntry.get(p.parentKey),
+        senseOrder: p.senseOrder,
       })),
-    );
-  }
+    check,
+  });
 
   // The vocab's field schema drives the management table and the item modal.
-  // MERGED into what the vocabulary already declares, never written over it:
-  // project setup puts the Status field there when it makes the vocabulary,
-  // and a vocabulary being added to keeps its own fields, order and inline
-  // flags.
-  const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
-  for (const name of fieldKeys) {
-    if (name in fieldsConfig) continue;
-    fieldsConfig[name] = {
+  // Project setup puts the Status field there when it makes the vocabulary.
+  await mergeFieldSchema({
+    client,
+    vocabId,
+    existing,
+    keys: fieldKeys,
+    declare: (name) => ({
       // name-ok: proposal at creation, a new field only
       inline: name === 'gloss' || name === 'pos',
       // The keys the dataset's own columns fill (a sense's Description, its
       // Definition, a Part of Speech) say what they hold.
       ...(COLUMN_ROLES[name] ? { role: COLUMN_ROLES[name] } : {}),
-    };
-  }
-  // Only where it differs: a resume writes nothing the first run already did.
-  await writeVocabConfig(existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
-    client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
-  );
+    }),
+  });
   return byEntry;
 }
 // The steps one document goes through, in order, so progress can report how

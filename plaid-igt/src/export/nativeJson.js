@@ -55,6 +55,7 @@ import {
 } from '../domain/otherLayers.js';
 import { discoverExportLayers } from './exportLayers.js';
 import { IMPORT_STAMP_KEYS } from '../import/resume.js';
+import { NATIVE_ITEM_KEY } from '../import/lexicon.js';
 
 export const NATIVE_FORMAT_VERSION = 1;
 const NATIVE_FORMAT_NAME = 'plaid-igt';
@@ -65,7 +66,7 @@ const nonEmpty = (obj) => obj != null && Object.keys(obj).length > 0;
 const withMetadata = (node, metadata) => (nonEmpty(metadata) ? { ...node, metadata } : node);
 
 // See the note where this is used, on vocabulary items.
-const IMPORT_KEYS = ['nativeImportId'];
+const IMPORT_KEYS = [NATIVE_ITEM_KEY];
 const withoutImportKeys = (metadata) => {
   if (!metadata || !IMPORT_KEYS.some((k) => k in metadata)) return metadata;
   const out = { ...metadata };

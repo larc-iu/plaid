@@ -11,13 +11,7 @@
 // half-imported ones are deleted and redone. Lexicon items are deduped by
 // their FLEx sense guid (metadata.flexSense).
 
-import {
-  stampInferred,
-  confirmedInferred,
-  createdIds,
-  metadataOps,
-  entryForm,
-} from '@larc-iu/plaid-client';
+import { stampInferred, confirmedInferred, metadataOps, entryForm } from '@larc-iu/plaid-client';
 import {
   ImportCancelled,
   importStamp,
@@ -38,6 +32,7 @@ import {
   writeAlignments,
   writeDocumentLayers,
 } from '../project.js';
+import { createEntriesOnce, itemsBySourceKey, mergeFieldSchema, placeSenses } from '../lexicon.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -302,10 +297,7 @@ export async function importLexicon({
   shouldStop,
 }) {
   const existing = await client.vocabLayers.get(vocabId, true);
-  const senseToItem = new Map();
-  for (const item of existing.items || []) {
-    if (item.metadata?.flexSense) senseToItem.set(item.metadata.flexSense, item.id);
-  }
+  const senseToItem = itemsBySourceKey(existing.items, 'flexSense');
 
   const wsOk = analysisWss ? new Set(analysisWss) : null;
   // What this import knows of each key it writes, for the field schema: the
@@ -382,7 +374,7 @@ export async function importLexicon({
     if (container) {
       const metadata = entryMeta(null);
       note(metadata);
-      if (!senseToItem.has(entry.guid)) pending.push({ form, metadata, senseGuid: entry.guid });
+      pending.push({ key: entry.guid, form, metadata });
     }
     for (const sense of entry.senses) {
       const examples = (sense.examples ?? [])
@@ -403,14 +395,13 @@ export async function importLexicon({
         ...entryMeta(sense),
       };
       note(metadata);
-      if (senseToItem.has(sense.guid)) continue;
-      pending.push({ form, metadata, senseGuid: sense.guid });
+      pending.push({ key: sense.guid, form, metadata });
     }
     // Entries with no senses still become one item (form-only).
     if (entry.senses.length === 0) {
       const metadata = entryMeta(null);
       note(metadata);
-      if (!senseToItem.has(entry.guid)) pending.push({ form, metadata, senseGuid: entry.guid });
+      pending.push({ key: entry.guid, form, metadata });
     }
   }
 
@@ -418,75 +409,57 @@ export async function importLexicon({
   // popover and as table columns (idempotent; cheap relative to the import).
   // A vocab that already has a schema (an existing lexicon being extended)
   // keeps its fields, order and inline flags; keys new to it are appended.
-  const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
   // A gloss or definition keeps the bare name for the PRIMARY analysis writing
   // system and carries the tag in the name for every other one ("gloss (ru)"),
   // so the bare key's language is known here and nowhere else. Record it, or
   // the LIFT export has to fall back to the preset's analysis tag and a lexicon
   // glossed in one non-English language goes out mislabelled.
   const BARE_PRIMARY = new Set(['gloss', 'definition']);
-  for (const n of fieldKeys) {
-    const role = keyRole.get(n);
-    const lang = keyLang.get(n) ?? customFieldWs[n];
-    if (n in fieldsConfig) {
-      // The wizard seeds every new vocabulary with gloss and definition before
-      // the import runs, so for a FLEx import "already declared" is the usual
-      // case, not the exception, and the language went unrecorded on every
-      // lexicon a wizard made. A field that carries no language yet takes the
-      // one this import knows. One that has a language keeps it: a lexicon
-      // someone declared by hand is not this import's to relabel.
-      if (BARE_PRIMARY.has(n) && !fieldsConfig[n].lang) {
-        fieldsConfig[n] = { ...fieldsConfig[n], lang: primaryAnalysisWs };
-      }
-      continue;
-    }
+  await mergeFieldSchema({
+    client,
+    vocabId,
+    existing,
+    keys: fieldKeys,
     // `lang` records the writing system of every per-language key this
     // import writes ("gloss (ru)" is in ru), and `role` what a gloss, a
     // definition or the part of speech is, whatever the key is called.
-    fieldsConfig[n] = {
-      inline: n === 'gloss' || n === 'pos',
-      ...(lang ? { lang } : {}),
-      ...(BARE_PRIMARY.has(n) ? { lang: primaryAnalysisWs } : {}),
-      ...(role ? { role } : {}),
-    };
-  }
-  // Only where it differs: a resume writes nothing the first run already did.
-  await writeVocabConfig(existing, IGT_NAMESPACE, 'fields', fieldsConfig, () =>
-    client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig),
-  );
+    declare: (n) => {
+      const role = keyRole.get(n);
+      const lang = keyLang.get(n) ?? customFieldWs[n];
+      return {
+        inline: n === 'gloss' || n === 'pos',
+        ...(lang ? { lang } : {}),
+        ...(BARE_PRIMARY.has(n) ? { lang: primaryAnalysisWs } : {}),
+        ...(role ? { role } : {}),
+      };
+    },
+    // The wizard seeds every new vocabulary with gloss and definition before
+    // the import runs, so for a FLEx import "already declared" is the usual
+    // case, not the exception, and the language went unrecorded on every
+    // lexicon a wizard made. A field that carries no language yet takes the
+    // one this import knows. One that has a language keeps it: a lexicon
+    // someone declared by hand is not this import's to relabel.
+    redeclare: (n, field) =>
+      BARE_PRIMARY.has(n) && !field.lang ? { ...field, lang: primaryAnalysisWs } : field,
+  });
 
-  // bulkCreate, not a batch of per-item creates: the bulk endpoint is one
-  // request, one operation row and one pass over the table, where a batch of
-  // N creates re-dispatches the whole REST stack N times and writes N
-  // operation rows — all inside the same held write lock. `ids` come back in
-  // input order.
   // The items this run made. A RESUME heals everything an earlier run left
   // unplaced; a fresh import into a lexicon someone already has arranges only
   // what it adds, so a sense they made a separate entry stays one.
-  const created = new Set();
-  let done = 0;
-  for (let i = 0; i < pending.length; i += CHUNK) {
+  const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = pending.slice(i, i + CHUNK);
-    const ids = createdIds(
-      await client.vocabItems.bulkCreate(
-        withMintedIds(
-          chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
-        ),
-      ),
-    );
-    chunk.forEach((p, j) => {
-      if (ids[j]) {
-        senseToItem.set(p.senseGuid, ids[j]);
-        created.add(ids[j]);
-      }
-    });
-    done += chunk.length;
-    onProgress?.({ phase: 'lexicon', done, total: pending.length });
-  }
+  };
+  const created = await createEntriesOnce({
+    client,
+    vocabId,
+    entries: pending,
+    known: senseToItem,
+    check,
+    onProgress: (done, total) => onProgress?.({ phase: 'lexicon', done, total }),
+  });
 
   const only = resume ? null : created;
-  await placeSenses({ client, lexicon, senseToItem, existing, only, shouldStop });
+  await placeEntrySenses({ client, lexicon, senseToItem, existing, only, check });
   if (variants)
     await placeVariants({ client, vocabId, lexicon, senseToItem, existing, only, shouldStop });
   return senseToItem;
@@ -497,7 +470,9 @@ export async function importLexicon({
 // subsense is a sense of the sense that owned it.
 // Written after creation, since a parent is an item id; only items made in
 // this run are placed, so an entry already in the lexicon is left as it is.
-async function placeSenses({ client, lexicon, senseToItem, existing, only = null, shouldStop }) {
+// `only` is set for a fresh import into a lexicon already arranged by hand, so
+// a sense they made a separate entry stays one.
+async function placeEntrySenses({ client, lexicon, senseToItem, existing, only, check }) {
   const patches = [];
   for (const entry of lexicon) {
     if (entry.senses.length < 2) continue;
@@ -510,32 +485,7 @@ async function placeSenses({ client, lexicon, senseToItem, existing, only = null
       patches.push({ id, parent, senseOrder: s.senseIndex + 1 });
     }
   }
-  // Place a sense that has no parent YET, rather than one this run created.
-  // An entry created by a run that was cancelled or lost part way through has
-  // none either, and asking "did this run make it" left such an entry flat
-  // forever: the resume neither recreates it nor places it. A sense someone
-  // has since moved under another entry keeps that place. `only` (a fresh
-  // import into a lexicon already arranged by hand) narrows it further to the
-  // items this run made, so one they made a separate entry stays one.
-  const placedAlready = new Set(
-    (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
-  );
-  const fresh = patches.filter((p) => !placedAlready.has(p.id) && (!only || only.has(p.id)));
-  // One bulk update per chunk, not a batch of one patch per sense: a batch
-  // re-dispatches the whole REST stack per op inside the held write lock, and a
-  // FLEx lexicon has as many of these as it has senses.
-  for (let i = 0; i < fresh.length; i += CHUNK) {
-    if (shouldStop?.()) throw new ImportCancelled();
-    await client.vocabItems.bulkUpdate(
-      fresh.slice(i, i + CHUNK).map((p) => ({
-        id: p.id,
-        metadata: [
-          { op: 'set', path: ['parent'], value: p.parent },
-          { op: 'set', path: ['senseOrder'], value: p.senseOrder },
-        ],
-      })),
-    );
-  }
+  await placeSenses({ client, existing, places: patches, only, check });
 }
 
 // The fields FLEx's variants and complex forms land in. A variant entry
