@@ -5,6 +5,9 @@ the place the match covers, mapped back onto the stored value by code point,
 with the replacement as typed.
 """
 
+import json
+import os
+
 from plaid_agent.core.java_regex import decompose_pattern, matcher, names_mark
 from plaid_agent.core.replace import replacer
 
@@ -12,70 +15,14 @@ from test_igt_rules import _replace, _ws
 
 NFD = 'pʰá.PL'
 
-#: (pattern, names a mark), shared word for word with core's
-#: plaid.util.canonical-test and plaid-ui's javaRegex.test.js.
-NAMES_MARK_CASES = [
-    ('́', True), (r'\x{301}', True), (r'\u0301', True), (r'\x{0301}', True), ('[́]', True),
-    (r'[\x{300}-\x{36f}]', True), ('[̀-ͯ]', True), (r'\p{M}', True), (r'\p{Mn}', True),
-    ('a|́', True), (r'\Q' + '́' + r'\E', True), (r'\pM', True), (r'\p{IsMn}', True),
-    (r'\p{gc=Mc}', True), (r'\p{InCombiningDiacriticalMarks}', True), (r'\p{Mark}', True),
-    (r'\p{general_category=Nonspacing_Mark}', True), (r'[\p{Mn}\p{Me}]', True), (r'[a\x{301}]', True),
-    (r'[\p{M}]', True), (r'[[\p{M}]a]', True), (r'\x30' + '́', True),
-    ('a', False), ('a.', False), (r'\w', False), ('[a-z]', False), (r'\p{L}', False), (r'\P{M}', False),
-    (r'\\x{301}', False), (r'\x41', False), (r'[\x{2f0}-\x{310}]', False), (r'\p{IsLatin}', False),
-    ('[a-]', False), (r'\x{zz}', False), (r'[^\p{Me}]', False), (r'\x{110000}', False), (r'\x{1F600}', False),
-    (r'[\p{L}\p{M}]', False), (r'\b', False), (r'\W', False), (r'a\w', False), (r'[^\x{301}]', True),
-    (r'[\x{2ff}-\x{370}]', False),
-    # REV8-CORE-6
-    (r'\N{COMBINING ACUTE ACCENT}', True), (r'\N{combining acute accent}', True),
-    (r'[\N{COMBINING GRAVE ACCENT}a]', True), (r'\N{LATIN SMALL LETTER A WITH ACUTE}', False),
-    (r'\N{NO SUCH NAME}', False), (r'[^\P{M}]', True), (r'[^\P{Mn}]', True), (r'[^\P{M}a]', False),
-    (r'[\P{M}]', False), (r'\P{M}', False), (r'[^\P{M}\p{M}]', False),
-]
-
-#: (pattern, as it matches a value in NFD), shared word for word with core's
-#: plaid.util.names-mark-test and plaid-ui's javaRegex.test.js (REV8-CORE-1).
-DECOMPOSED_CASES = [
-    ('\u00e1', 'a\u0301'),
-    ('x\u00e1y', 'xa\u0301y'),
-    ('[\u00e1\\x{301}]', '(?:a\u0301|[\u00e1\\x{301}])'),
-    ('[\u00f3\u00fa\u0301]', '(?:o\u0301|u\u0301|[\u00f3\u00fa\u0301])'),
-    ('[^\u00e1\\x{301}]', '(?:(?!a\u0301)[^\u00e1\\x{301}])'),
-    ('[^\u00e1]+', '(?:(?!a\u0301)[^\u00e1])+'),
-    ('[^\u00e1&&b]', '[^a\u0301&&b]'),
-    ('[x[^\u00e1]]', '[x[^a\u0301]]'),
-    ('[^x[\u00e1]]', '[^x[a\u0301]]'),
-    ('[[\u00e1]\u00e9]', '(?:e\u0301|[[\u00e1]\u00e9])'),
-    ('[\u00e1\u00e1]', '(?:a\u0301|[\u00e1\u00e1])'),
-    ('[\u1ea5\u00e2]', '(?:a\u0302\u0301|a\u0302|[\u1ea5\u00e2])'),
-    ('[\\x{e1}b]', '(?:a\u0301|[\\x{e1}b])'),
-    ('[\\u00e1]', '(?:a\u0301|[\\u00e1])'),
-    ('[\\\u00e1]', '(?:a\u0301|[\\\u00e1])'),
-    ('[\u00e0-\u00fa]', '[\u00e0-\u00fa]'),
-    ('[a-\u00fa\u00e9]', '(?:e\u0301|[a-\u00fa\u00e9])'),
-    ('[\u00e1&&\\p{L}]', '[\u00e1&&\\p{L}]'),
-    ('[\u00e1-]', '(?:a\u0301|[\u00e1-])'),
-    ('[\\Q\u00e1]\\E]', '(?:a\u0301|[\\Q\u00e1]\\E])'),
-    ('[\u00e1]+', '(?:a\u0301|[\u00e1])+'),
-    ('\u00e9+', '(?:e\u0301)+'),
-    ('\u00e9{2}', '(?:e\u0301){2}'),
-    ('\u00e9*?', '(?:e\u0301)*?'),
-    ('a\u00e9?', 'a(?:e\u0301)?'),
-    ('(\u00e9)+', '(e\u0301)+'),
-    ('\u00e9{x', 'e\u0301{x'),
-    ('\\x{e9}+', '\\x{e9}+'),
-    ('\\\u00e9', '\\\u00e9'),
-    ('\\p{L}\u00e9', '\\p{L}e\u0301'),
-    ('\\Q\u00e9\\E+', '\\Q\\E(?:\\Qe\u0301\\E)+'),
-    ('\\Q\u00e1\u00e9\\E', '\\Qa\u0301e\u0301\\E'),
-    ('\\Q\u00e1', '\\Qa\u0301'),
-    ('\u1ea1\u0301', 'a\u0323\u0301'),
-    ('\u00e1\u0323', 'a\u0323\u0301'),
-    ('[]\u00e1]', '(?:a\u0301|[]\u00e1])'),
-    ('[^]\u00e1]', '(?:(?!a\u0301)[^]\u00e1])'),
-    ('[x[]\u00e1]]', '[x[]\u00e1]]'),
-    ('[^x[\u00fa-\u1ea5\u00e1]]', '[^x[\u00fa-\u1ea5a\u0301]]'),
-]
+# (pattern, names a mark) and (pattern, as it matches a value in NFD), the
+# one table core's plaid.util.names-mark-test and plaid-ui's
+# javaRegex.test.js read too (REV7-CORE-4, REV8-CORE-1).
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       '../../plaid-core/src/test/plaid/util/canonical_cases.json'), encoding='utf-8') as _f:
+    _CASES = json.load(_f)
+NAMES_MARK_CASES = [tuple(c) for c in _CASES['namesMark']]
+DECOMPOSED_CASES = [tuple(c) for c in _CASES['decomposed']]
 
 
 def rep(pattern, replacement, value, regex=False, whole=False):
