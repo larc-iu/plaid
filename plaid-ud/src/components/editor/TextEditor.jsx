@@ -185,19 +185,21 @@ export const TextEditor = () => {
   const saveText = async (at) => {
     if (!doc) return;
     if (!textContent.trim() || doc.isSaving) return;
-    // A save that deletes tokens asks first, naming what goes with them on
-    // this editor's layers (R44). One that only adds text or cuts a token
-    // down asks nothing.
+    // A save that deletes tokens, or a sentence with fields, asks first,
+    // naming what goes with them on this editor's layers (R44, R45). One that
+    // only adds text or cuts a token down asks nothing.
     const removed = removedStretches(editLog.log.base, editLog.gaps());
     const loss = removed.length > 0 ? doc.textDeleteLoss(removed) : null;
-    if (loss?.tokens > 0) {
+    if (loss?.tokens > 0 || loss?.sentenceFields > 0) {
       const what = listed([
-        countOf(loss.tokens, 'token'),
+        loss.sentences > 0 && countOf(loss.sentences, 'sentence'),
+        loss.tokens > 0 && countOf(loss.tokens, 'token'),
         loss.words > 0 && countOf(loss.words, 'word'),
       ]);
       const on = listed([
         loss.annotations > 0 && countOf(loss.annotations, 'annotation'),
         loss.relations > 0 && countOf(loss.relations, 'relation'),
+        loss.sentenceFields > 0 && countOf(loss.sentenceFields, 'sentence field'),
       ]);
       const ok = await confirm({
         title: 'Save text?',

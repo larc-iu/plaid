@@ -73,8 +73,9 @@ const dialog = () => document.querySelector('[role="alertdialog"]');
 const buttonIn = (root, label) =>
   [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
 
-const typeAndSave = async (value) => {
+const typeAndSave = async (value, loss = null) => {
   const doc = setup();
+  if (loss) doc.textDeleteLoss.mockReturnValue(loss);
   const view = await mount();
   const box = view.container.querySelector('textarea');
   await view.step(() => typeInto(box, value));
@@ -92,7 +93,7 @@ describe('the Text Editor asking before a save deletes tokens', () => {
 
   it('asks before a token typed over whole goes, and Cancel keeps the typed text', async () => {
     const { doc, view, box } = await typeAndSave('the dog sat');
-    expect(doc.textDeleteLoss).toHaveBeenCalledWith([[4, 7]]);
+    expect(doc.textDeleteLoss).toHaveBeenCalledWith([[4, 7, true]]);
     expect(dialog().textContent).toContain('Save text?');
     expect(dialog().textContent).toContain(
       'Deletes 1 token and 1 word, with 2 annotations and 1 relation.',
@@ -124,13 +125,43 @@ describe('the Text Editor asking before a save deletes tokens', () => {
     await view.unmount();
   });
 
+  it('names the sentences it deletes and their fields (R45)', async () => {
+    const loss = {
+      tokens: 3,
+      words: 3,
+      annotations: 6,
+      relations: 3,
+      sentences: 1,
+      sentenceFields: 2,
+    };
+    const { view } = await typeAndSave('a', loss);
+    expect(dialog().textContent).toContain(
+      'Deletes 1 sentence, 3 tokens and 3 words, with 6 annotations, 3 relations and 2 sentence fields.',
+    );
+    await view.unmount();
+  });
+
+  it('asks before a sentence with fields goes alone', async () => {
+    const loss = {
+      tokens: 0,
+      words: 0,
+      annotations: 0,
+      relations: 0,
+      sentences: 1,
+      sentenceFields: 1,
+    };
+    const { view } = await typeAndSave('the cat sa', loss);
+    expect(dialog().textContent).toContain('Deletes 1 sentence, with 1 sentence field.');
+    await view.unmount();
+  });
+
   it('asks nothing for a save that only adds text or only cuts a token', async () => {
     let { doc, view } = await typeAndSave('the cat sat down');
     expect(dialog()).toBeNull();
     expect(doc.saveText).toHaveBeenCalledTimes(1);
     await view.unmount();
     ({ doc, view } = await typeAndSave('the ct sat'));
-    expect(doc.textDeleteLoss).toHaveBeenCalledWith([[5, 6]]);
+    expect(doc.textDeleteLoss).toHaveBeenCalledWith([[5, 6, false]]);
     expect(dialog()).toBeNull();
     expect(doc.saveText).toHaveBeenCalledTimes(1);
     await view.unmount();

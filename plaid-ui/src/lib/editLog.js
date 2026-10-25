@@ -320,10 +320,13 @@ function assertEditLog(log, op) {
 export const editLogGaps = (log) => composeTextEdits(log.base, log.ops);
 
 /**
- * The stretches of `base` (code points, [begin, end)) that `gaps` take away:
- * each gap's old text less what it gives back at its front and end. A gap
- * that only adds to its old text takes nothing: it is an insert. A token that
- * lies wholly inside one of these goes with a save of the gaps.
+ * The stretches of `base` (code points, `[begin, end, typed]`) that `gaps`
+ * take away: each gap's old text less what it gives back at its front and
+ * end, and whether text is typed in its place. A gap that only adds to its
+ * old text takes nothing: it is an insert. A word that lies wholly inside one
+ * of these goes with a save of the gaps, and so does a sentence or a row,
+ * unless the stretch is exactly its text and `typed` (the core's plain rule,
+ * R42 and R45).
  */
 export function removedStretches(base, gaps) {
   const cps = Array.from(base);
@@ -340,9 +343,20 @@ export function removedStretches(base, gaps) {
     ) {
       back += 1;
     }
-    return front + back < old.length ? [[start + front, end - back]] : [];
+    return front + back < old.length
+      ? [[start + front, end - back, front + back < typed.length]]
+      : [];
   });
 }
+
+/**
+ * Whether a save that takes away `stretches` (`removedStretches`) deletes a
+ * sentence or a row over [begin, end): it lies wholly inside one, and that
+ * one is not exactly its text with text typed in its place, which keeps it.
+ */
+export const deletesSentenceOrRow = (stretches, { begin, end }) =>
+  begin < end &&
+  stretches.some(([b, e, typed]) => b <= begin && end <= e && !(typed && b === begin && e === end));
 
 /**
  * Split the log at a send. `sent` is what to send: the base, its digest and

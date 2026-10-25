@@ -41,6 +41,8 @@ test('a token typed over whole goes with its word, its annotations and its relat
     words: 1,
     annotations: 2,
     relations: 3,
+    sentences: 0,
+    sentenceFields: 0,
   });
 });
 
@@ -52,11 +54,20 @@ test('a relation between two tokens that go is counted once', () => {
     words: 2,
     annotations: 3,
     relations: 3,
+    sentences: 0,
+    sentenceFields: 0,
   });
 });
 
 test('a stretch that only cuts a token, or takes only a space, deletes nothing', () => {
-  const none = { tokens: 0, words: 0, annotations: 0, relations: 0 };
+  const none = {
+    tokens: 0,
+    words: 0,
+    annotations: 0,
+    relations: 0,
+    sentences: 0,
+    sentenceFields: 0,
+  };
   assert.deepEqual(open().textDeleteLoss([[14, 16]]), none);
   assert.deepEqual(open().textDeleteLoss([[3, 4]]), none);
   assert.deepEqual(open().textDeleteLoss([]), none);
@@ -69,5 +80,36 @@ test("a multi-word token goes with every word and every word's form", () => {
     words: 2,
     annotations: 4,
     relations: 2,
+    sentences: 0,
+    sentenceFields: 0,
   });
+});
+
+// Two sentences, `hi .` 0-4 and `bye .` 5-10, the first with a note.
+const TWO = [
+  '# sent_id = s1',
+  '# note = greeting',
+  '# text = hi .',
+  '1\thi\thi\tINTJ\t_\t_\t0\troot\t_\t_',
+  '2\t.\t.\tPUNCT\t_\t_\t1\tpunct\t_\t_',
+  '',
+  '# sent_id = s2',
+  '# text = bye .',
+  '1\tbye\tbye\tINTJ\t_\t_\t0\troot\t_\t_',
+  '2\t.\t.\tPUNCT\t_\t_\t1\tpunct\t_\t_',
+].join('\n');
+
+test('a sentence a stretch covers whole goes with its fields, and one typed over exactly stays (R45)', () => {
+  const doc = open(TWO);
+  const [s1] = doc.layerInfo.sentenceTokenLayer.tokens;
+  // the first sentence and more: it goes, with its note
+  const gone = doc.textDeleteLoss([[s1.begin, s1.end + 1, true]]);
+  assert.equal(gone.sentences, 1);
+  assert.equal(gone.sentenceFields, 1);
+  // exactly the first sentence, typed over: it stays
+  const kept = doc.textDeleteLoss([[s1.begin, s1.end, true]]);
+  assert.equal(kept.sentences, 0);
+  assert.equal(kept.sentenceFields, 0);
+  // exactly the first sentence, deleted with nothing typed: it goes
+  assert.equal(doc.textDeleteLoss([[s1.begin, s1.end, false]]).sentences, 1);
 });

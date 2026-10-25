@@ -26,7 +26,11 @@ import {
   sendTextPlan,
   sendingPlan,
 } from '../../../plaid-ui/src/lib/textSave.js';
-import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
+import {
+  deletesSentenceOrRow,
+  editLogGaps,
+  storedHolds,
+} from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
 import { joinSpansOn, singleSpanRule } from '../../../plaid-ui/src/domain/mergeRules.js';
 import {
@@ -53,6 +57,7 @@ import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { gapTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { fieldName } from '../utils/fieldNames.js';
+import { isProvKey } from '../utils/provenanceUi.js';
 
 // The rows of an edit, each made under the id this page minted for it, as
 // `_settle` takes them.
@@ -998,12 +1003,28 @@ export class ConlluDocument extends DocumentModel {
 
   // What a save of the text deletes on this editor's layers, as the Text
   // Editor asks before it sends one (R44): the tokens wholly inside one of
-  // `ranges` (code points of the stored body, [begin, end)), their words, the
-  // annotations on those words with their forms, and the dependency
-  // relations attached to them. `{ tokens, words, annotations, relations }`.
+  // `ranges` (plaid-ui removedStretches: code points of the stored body,
+  // `[begin, end, typed]`), their words, the annotations on those words with
+  // their forms, and the dependency relations attached to them, and the
+  // sentences the save deletes with their fields (R45: one wholly inside a
+  // stretch goes, unless the stretch is exactly its text typed over). A
+  // sentence's fields are its metadata lines but `sent_id`, `text` and
+  // provenance. `{ tokens, words, annotations, relations, sentences,
+  // sentenceFields }`.
   textDeleteLoss(ranges) {
     const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
     const tokens = (this.layerInfo.wordTokenLayer?.tokens || []).filter(inside);
+    const sentences = (this.layerInfo.sentenceTokenLayer?.tokens || []).filter((t) =>
+      deletesSentenceOrRow(ranges, t),
+    );
+    const sentenceFields = sentences.reduce(
+      (n, t) =>
+        n +
+        Object.keys(t.metadata || {}).filter(
+          (k) => k !== 'sent_id' && k !== 'text' && !isProvKey(k),
+        ).length,
+      0,
+    );
     const relations = new Set();
     let words = 0;
     let annotations = 0;
@@ -1013,7 +1034,14 @@ export class ConlluDocument extends DocumentModel {
       annotations += loss.annotations + loss.forms;
       for (const id of loss.relations) relations.add(id);
     }
-    return { tokens: tokens.length, words, annotations, relations: relations.size };
+    return {
+      tokens: tokens.length,
+      words,
+      annotations,
+      relations: relations.size,
+      sentences: sentences.length,
+      sentenceFields,
+    };
   }
 
   // Delete a word token (cascades its morphemes and their spans + relations

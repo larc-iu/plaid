@@ -199,6 +199,96 @@ describe('useBaselineOperations, the counts in the confirm', () => {
   });
 });
 
+// R45: a stretch typed over that covers whole sentences or segments deletes
+// them, with the translations and times on them, and one typed over exactly
+// keeps them (R42 Q1), so neither it nor what is on it is counted (REV-DUMB F4).
+describe('baselineLossSentence, sentences and segments', () => {
+  const TRANSLATION = { igt: { sentenceRole: 'translation' } };
+  // `one two.\nthree four.`: two sentences, each with a translation and a
+  // segment with its times, and four words
+  const lines = () => {
+    const body = 'one two.\nthree four.';
+    const words = {
+      id: 'w',
+      tokens: [
+        { id: 'w1', begin: 0, end: 3 },
+        { id: 'w2', begin: 4, end: 7 },
+        { id: 'w3', begin: 9, end: 14 },
+        { id: 'w4', begin: 15, end: 19 },
+      ],
+      spanLayers: [],
+    };
+    const sentences = {
+      id: 's',
+      overlapMode: 'partitioning',
+      tokens: [
+        { id: 's1', begin: 0, end: 9 },
+        { id: 's2', begin: 9, end: 20 },
+      ],
+      spanLayers: [
+        {
+          id: 'tr',
+          config: TRANSLATION,
+          spans: [
+            { id: 't1', tokens: ['s1'], value: 'one two' },
+            { id: 't2', tokens: ['s2'], value: 'three four' },
+          ],
+        },
+      ],
+    };
+    const segments = {
+      id: 'a',
+      tokens: [
+        { id: 'a1', begin: 0, end: 8, metadata: { timeBegin: 0, timeEnd: 1 } },
+        { id: 'a2', begin: 9, end: 20, metadata: { timeBegin: 1, timeEnd: 2 } },
+      ],
+      spanLayers: [],
+    };
+    return fakeDocument({
+      body,
+      layerInfo: {
+        primaryTextLayer: {
+          id: 'tl-1',
+          text: { id: 't-1', digest: 'd0' },
+          tokenLayers: [sentences, words, segments],
+        },
+        primaryTokenLayer: words,
+        sentenceTokenLayer: sentences,
+        alignmentTokenLayer: segments,
+      },
+    });
+  };
+  const said = (doc, gaps) => baselineLossSentence(doc, removedStretches(doc.body, gaps));
+
+  it('counts the sentences and segments a paste over both lines covers whole', () => {
+    // pasted as `uno dos.\ntres cuatro.`: only the `.` at the end is shared,
+    // so the first sentence and segment lie inside the stretch
+    const doc = lines();
+    expect(said(doc, [{ start: 0, end: 20, value: 'uno dos.\ntres cuatro.' }])).toBe(
+      'Deletes 1 sentence with 1 translation, 1 segment with its times and 4 words.',
+    );
+  });
+
+  it('counts both lines deleted whole', () => {
+    const doc = lines();
+    expect(said(doc, [{ start: 0, end: 20, value: '' }])).toBe(
+      'Deletes 2 sentences with 2 translations, 2 segments with their times and 4 words.',
+    );
+  });
+
+  it('keeps a sentence and a segment typed over exactly out of the count', () => {
+    const doc = lines();
+    // the first sentence typed over exactly, its line break included: it and
+    // its translation stay, and its segment, which the stretch covers with
+    // more, goes
+    expect(said(doc, [{ start: 0, end: 9, value: 'X Y!' }])).toBe(
+      'Deletes 1 segment with its times and 2 words.',
+    );
+    // the first segment typed over exactly: it stays with its times
+    expect(said(doc, [{ start: 0, end: 8, value: 'X Y!' }])).toBe('Deletes 2 words.');
+  });
+});
+
 describe('removesText', () => {
   it('is false for inserts and for what a replace gives back at its ends', () => {
     expect(removesText('ab cd', [{ start: 2, end: 2, value: ' x' }])).toBe(false);

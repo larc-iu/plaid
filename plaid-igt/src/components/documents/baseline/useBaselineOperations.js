@@ -3,12 +3,17 @@ import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
-import { removedStretches } from '@ui/lib/editLog.js';
+import { deletesSentenceOrRow, removedStretches } from '@ui/lib/editLog.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { countTextDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
 import { countOf } from '@ui/lib/plural.js';
-import { isTokenIgnored, readIgnoredTokens } from '@/domain/igtConfig';
+import {
+  SENTENCE_ROLES,
+  isTokenIgnored,
+  readIgnoredTokens,
+  readSentenceRole,
+} from '@/domain/igtConfig';
 
 // Baseline tab operations, backed by the shared IgtDocument. The box keeps
 // its changes as edits made at the caret (plaid-ui's useEditLog), and the
@@ -31,17 +36,30 @@ import { isTokenIgnored, readIgnoredTokens } from '@/domain/igtConfig';
 // text typed during a save that landed that cannot be moved onto it. It lasts
 // until the next save or Cancel.
 
-// What a save that takes away `ranges` deletes, as a sentence for its
-// question: the words wholly inside a removed stretch, and the shared loss
-// counter's count of what hangs off every token that goes. A token the
-// ignored-tokens rule excludes reads as text here (punctuation ud's Tokenize
-// made, say), so neither it nor what another app nested in it or put on it
-// is counted: the question is the one the same text with no such token gets
-// (ruling 29). A stretch that only cuts a word down changes that word. One
-// that touches no word asks nothing: '' then.
+// "a", "a and b", "a, b and c".
+const listed = (parts) => {
+  const xs = parts.filter(Boolean);
+  return xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+};
+
+// What a save that takes away `ranges` (plaid-ui removedStretches) deletes,
+// as a sentence for its question, or '' when it deletes nothing that asks:
+// - the words wholly inside a removed stretch
+// - the sentences and segments it deletes, by the rule core takes (R45): one
+//   wholly inside a stretch goes, unless the stretch is exactly its text typed
+//   over, which keeps it and what is on it (R42 Q1)
+// - each sentence's translations, and each segment's times
+// - the shared loss counter's count of what else hangs off every token that
+//   goes, and what is only cut down
+// A token the ignored-tokens rule excludes reads as text here (punctuation
+// ud's Tokenize made, say), so neither it nor what another app nested in it
+// or put on it is counted: the question is the one the same text with no
+// such token gets (ruling 29). A sentence with nothing on it asks nothing
+// when it goes alone. A stretch that only cuts a word down changes that word.
 export function baselineLossSentence(doc, ranges) {
-  const layer = doc.layerInfo?.primaryTokenLayer;
-  const tokenLayers = doc.layerInfo?.primaryTextLayer?.tokenLayers || [];
+  const info = doc.layerInfo;
+  const layer = info?.primaryTokenLayer;
+  const tokenLayers = info?.primaryTextLayer?.tokenLayers || [];
   const cfg = readIgnoredTokens(layer?.config);
   const body = Array.from(doc.body || '');
   const ignored = [];
@@ -50,32 +68,48 @@ export function baselineLossSentence(doc, ranges) {
     (isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg) ? ignored : shown).push(t);
   }
   const inIgnored = (t) => ignored.some((g) => g.begin <= t.begin && t.end <= g.end);
+  const held = new Set(
+    [info?.sentenceTokenLayer?.id, info?.alignmentTokenLayer?.id].filter(Boolean),
+  );
+  const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
   const except = tokenLayers.flatMap((tl) =>
-    (tl.tokens || []).filter((t) => (tl.id === layer?.id ? !shown.includes(t) : inIgnored(t))),
+    (tl.tokens || []).filter((t) => {
+      if (tl.id === layer?.id) return !shown.includes(t);
+      // a sentence or a segment typed over exactly is kept
+      if (held.has(tl.id)) return inside(t) && !deletesSentenceOrRow(ranges, t);
+      return inIgnored(t);
+    }),
   );
   const loss = countTextDeleteLoss(tokenLayers, ranges, {
     vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
     except: except.map((t) => t.id),
   });
-  const words = shown.filter((t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e)).length;
-  const gone = [words && countOf(words, 'word'), lossPhrase(loss)].filter(Boolean).join(' and ');
+  const gone = (tl) => (tl?.tokens || []).filter((t) => deletesSentenceOrRow(ranges, t));
+  const sentences = gone(info?.sentenceTokenLayer).length;
+  const segments = gone(info?.alignmentTokenLayer);
+  const timed = segments.some((t) => t.metadata?.timeBegin != null);
+  const translations = (info?.sentenceTokenLayer?.spanLayers || [])
+    .filter((sl) => readSentenceRole(sl.config) === SENTENCE_ROLES.TRANSLATION)
+    .reduce((n, sl) => n + (loss.byLayer?.get(sl.id) ?? 0), 0);
+  const words = shown.filter(inside).length;
+  const annotations = loss.annotations - translations;
+  const asks = words || segments.length || translations || annotations || loss.links;
+  const what = listed([
+    sentences &&
+      `${countOf(sentences, 'sentence')}${translations ? ` with ${countOf(translations, 'translation')}` : ''}`,
+    segments.length &&
+      `${countOf(segments.length, 'segment')}${timed ? (segments.length === 1 ? ' with its times' : ' with their times') : ''}`,
+    words && countOf(words, 'word'),
+    lossPhrase({ annotations, links: loss.links }),
+  ]);
   const cut = lossPhrase(loss.shortened);
-  const said = [gone && `Deletes ${gone}.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
+  const said = [asks && what && `Deletes ${what}.`, cut && `Shortens ${cut}.`]
+    .filter(Boolean)
+    .join(' ');
   if (said) return said;
   const touched = shown.some((t) => ranges.some(([b, e]) => b < t.end && t.begin < e));
   return touched ? 'Changes the words in the removed text.' : '';
 }
-
-// Does the document hold a word? A token the ignored-tokens rule excludes is
-// text, not a word (punctuation ud's Tokenize made, say).
-const hasWords = (doc) => {
-  const layer = doc.layerInfo?.primaryTokenLayer;
-  const cfg = readIgnoredTokens(layer?.config);
-  const body = Array.from(doc.body || '');
-  return (layer?.tokens || []).some(
-    (t) => !isTokenIgnored(body.slice(t.begin, t.end).join(''), cfg),
-  );
-};
 
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
@@ -136,11 +170,12 @@ export const useBaselineOperations = () => {
       handleCancel();
       return;
     }
-    // On a tokenized document, a save that deletes or replaces text can
-    // delete tokens and the annotations on them, so it asks first. One that
-    // only inserts, glued to a word or not, keeps every token (Luke,
-    // 2026-10-16), and one that touches no word changes none.
-    const removed = hasWords(doc) ? removedStretches(editLog.log.base, editLog.gaps()) : [];
+    // A save that deletes or replaces text can delete words, sentences and
+    // segments and what is on them, so it asks first. One that only inserts,
+    // glued to a word or not, keeps every token (Luke, 2026-10-16), and one
+    // that touches no word and deletes no sentence or segment with anything
+    // on it changes none.
+    const removed = removedStretches(editLog.log.base, editLog.gaps());
     const loses = removed.length > 0 ? baselineLossSentence(doc, removed) : '';
     if (
       loses &&
