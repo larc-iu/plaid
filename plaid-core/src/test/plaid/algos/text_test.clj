@@ -10,6 +10,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
+            [plaid.algos.text.ops :as text-ops]
             [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
@@ -825,7 +826,7 @@
   (let [old "xaaaaay"
         tokens [(tok :t 1 3) (tok :u 4 6)]
         ops (ta/slide-to-tokens [(ta/delete-op 1 1) (ta/delete-op 4 1)] old tokens #{} nil nil)
-        edits (#'ta/ops->edits ops)]
+        edits (text-ops/ops->edits ops)]
     (is (every? (fn [[a b]] (< (:end a) (:start b))) (partition 2 1 edits)) (pr-str ops))
     (is (= "xaaay" (:text/body (:text (apply-all ops old tokens)))))))
 
@@ -972,8 +973,8 @@
         ops (case (.nextInt r 3)
               0 (loop [p 0 out []]
                   (if (or (>= p n) (< (.nextDouble r) 0.2))
-                    (#'ta/edits->ops (cond-> out
-                                       (< (.nextDouble r) 0.3) (conj {:kind :insert :at n :value (rstr (inc (.nextInt r 3)))})))
+                    (text-ops/edits->ops (cond-> out
+                                           (< (.nextDouble r) 0.3) (conj {:kind :insert :at n :value (rstr (inc (.nextInt r 3)))})))
                     (let [s (+ p (.nextInt r (inc (min 4 (- n p)))))
                           len (.nextInt r (inc (min 4 (- n s))))
                           v (rstr (.nextInt r 4))
@@ -1213,7 +1214,7 @@
 ;; that the two choose alike.
 
 (defn- normalize-deletes-counting-every-token [ops old tokens]
-  (let [edits (#'ta/ops->edits ops)
+  (let [edits (text-ops/ops->edits ops)
         near (#'ta/tokens-near tokens (count edits))
         cut-count (fn [ranges]
                     (count (filter (fn [{:token/keys [begin end]}]
@@ -1254,7 +1255,7 @@
       (if-let [next (step edits)]
         (recur (vec (remove nil? next)) true)
         (let [joined (#'ta/join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
-          (if (or merged? (not= joined edits)) (#'ta/edits->ops joined) ops))))))
+          (if (or merged? (not= joined edits)) (text-ops/edits->ops joined) ops))))))
 
 (deftest normalize-deletes-counting-near-tokens-chooses-as-counting-all
   ;; Short words from few letters, so a kept run often repeats the edge of a
