@@ -99,7 +99,7 @@ import { PlaidClient } from "./client.js";
 
 export default PlaidClient;
 export { PlaidClient };
-export { BACKUP_TIMEOUT_MS } from "./client.js";
+export { BACKUP_TIMEOUT_MS } from "./apiServer.js";
 export { valueSetAllows, violationCountOf, violationsOf } from "./constraints.js";
 
 // Unicode code-point helpers for text offsets (token begin/end are code-point
