@@ -2,27 +2,20 @@
  * plaid-client - JavaScript client for the Plaid annotation API
  */
 
-import { transformRequest, transformResponse } from "./transforms.js";
+import { transformResponse } from "./transforms.js";
 import {
   makeRequest,
+  postBatch,
   queueRequest,
   restampDocumentVersion,
-  extractDocumentVersions,
   parseErrorBody,
   makeHttpError,
   makeNetworkError,
   timeoutSignal,
-  retryWhileBusy,
-  retryUnknown,
   nextIdempotencyKey,
-  mergeVersions,
-  IDEMPOTENCY_HEADER,
-  REPLAYED_HEADER,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_BATCH_TIMEOUT_MS,
   queryTimeout,
-  writesStarted,
-  writesLanded,
 } from "./http.js";
 import { uuidv4, uuidv7, normalizeUserId } from "./ids.js";
 import { constraintsBody } from "./constraints.js";
@@ -4444,129 +4437,16 @@ class PlaidClient {
    * Idempotency-Key: a batch whose answer is lost (no response, 502, 504) is
    * sent again under it, and answered from the first send if that landed.
    * `timeout` is this request's, in place of `batchTimeout` when given.
+   * See postBatch in http.js.
+   * @param {string} url
+   * @param {object[]} body
+   * @param {{key?: string, timeout?: number | null}} [options]
    * @private
    */
-  async _postBatch(url, body, { key = uuidv7(), timeout } = {}) {
-    const fetchOptions = {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-        [IDEMPOTENCY_HEADER]: key,
-      },
-      body: JSON.stringify(body),
-    };
-
-    const started = writesStarted(this);
-    try {
-      // Retry a 503: the batch is atomic, so a refused one wrote nothing and
-      // repeating it is safe. A fresh timeout signal per attempt — an
-      // AbortSignal.timeout stays aborted once it fires.
-      const attempt = async () => {
-        const signal = timeoutSignal(
-          timeout !== undefined ? timeout : this.batchTimeout,
-        );
-        let res;
-        try {
-          res = await fetch(
-            url,
-            signal ? { ...fetchOptions, signal } : fetchOptions,
-          );
-        } catch (e) {
-          throw makeNetworkError(e, url, "POST");
-        }
-        if (!res.ok) {
-          throw makeHttpError(res, await parseErrorBody(res), url, "POST");
-        }
-        return res;
-      };
-      const onRetry = (info) => this._noteRetry(info);
-      const response = await retryUnknown(() => retryWhileBusy(attempt, { onRetry }), {
-        delaysMs: this.retryDelaysMs,
-        onRetry,
-      }).catch((error) => {
-        error.idempotencyKey = key;
-        // 401 means the token is missing, expired or invalid: fire the app's
-        // auth-error handler once, exactly as makeRequest does.
-        if (
-          error?.status === 401 &&
-          typeof this.onAuthError === "function" &&
-          !this._authErrorFired
-        ) {
-          this._authErrorFired = true;
-          try {
-            this.onAuthError(error);
-          } catch (_) {
-            /* handler must not mask the original error */
-          }
-        }
-        throw error;
-      });
-
-      const results = await response.json();
-      // A replayed batch carries the versions right after its first send.
-      const replayed = response.headers?.get?.(REPLAYED_HEADER) === "true";
-
-      // Extract document versions from each batch response
-      for (const result of results) {
-        if (result.headers && result.headers["X-Document-Versions"]) {
-          try {
-            const versionsMap = JSON.parse(
-              result.headers["X-Document-Versions"],
-            );
-            if (typeof versionsMap === "object" && versionsMap !== null) {
-              // Clone once per response, then merge — not once per entry.
-              this.documentVersions = mergeVersions(
-                this.documentVersions,
-                versionsMap,
-                replayed,
-              );
-            }
-          } catch (e) {
-            console.warn(
-              "Failed to parse document versions header from batch response:",
-              e,
-            );
-          }
-        }
-      }
-      // The batch's own header holds each document's version after the whole
-      // batch, the layer rules' remedies at its end included, which no single
-      // operation's answer does: a split that deletes a relation crossing
-      // the new boundary moves the version once more.
-      const outerVersions = response.headers?.get?.("X-Document-Versions");
-      if (outerVersions) {
-        try {
-          const versionsMap = JSON.parse(outerVersions);
-          if (typeof versionsMap === "object" && versionsMap !== null) {
-            this.documentVersions = mergeVersions(
-              this.documentVersions,
-              versionsMap,
-              replayed,
-            );
-          }
-        } catch (e) {
-          console.warn(
-            "Failed to parse document versions header from batch response:",
-            e,
-          );
-        }
-      }
-
-      writesLanded(this, started, replayed);
-
-      const out = results.map((result) => ({
-        ...result,
-        body: transformResponse(result.body),
-      }));
-      return replayed ? markReplayed(out) : out;
-    } catch (error) {
-      if (error.status !== undefined) throw error;
-      throw Object.assign(makeNetworkError(error, url, "POST"), {
-        idempotencyKey: key,
-      });
-    }
+  async _postBatch(url, body, options) {
+    return postBatch(this, url, body, options);
   }
+
 
   /**
    * Run `fn` with a batch, then submit all queued ops as `submit()` does (ONE

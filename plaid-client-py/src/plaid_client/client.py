@@ -14,14 +14,13 @@ from urllib.parse import quote, urlencode
 
 import requests as req_lib
 
-from plaid_client.document_lock import (DocumentLock, LockKeeper, lock_ttl_s, writes_landed,
-                                         writes_started)
+from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
 from plaid_client.http import (
-    PlaidAPIError, make_request, queue_request, extract_document_versions,
+    PlaidAPIError, make_request, queue_request, post_batch, network_error,
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
-    list_all, list_page, iter_pages, build_api_error, retry_while_busy,
-    retry_unknown, is_unknown_outcome, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
-    IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
+    list_all, list_page, iter_pages, build_api_error,
+    retry_unknown, is_unknown_outcome, next_idempotency_key, NO_PIN,
+    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
 )
 from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.replayed import mark_replayed, was_replayed
@@ -4089,11 +4088,6 @@ class PlaidClient:
         # ``committed_results``.
         results_out: list[Any] = []
         try:
-            headers = {
-                'Authorization': f'Bearer {self.token}',
-                'Content-Type': 'application/json',
-            }
-
             # The server caps a batch at MAX_BATCH_OPS so one transaction
             # cannot hold the write lock without bound. A larger batch goes
             # as consecutive requests, results concatenated in queue order:
@@ -4136,79 +4130,14 @@ class PlaidClient:
                 # op's version as its path now carries it.
                 stamped = next((op for op, d in zip(body, chunk_stamps) if d), None)
                 record(_claimed_version(stamped['path']) if stamped else None)
-                request_headers = {**headers, IDEMPOTENCY_HEADER: key}
-
-                # Retry a 503: the batch is atomic, so a refused one wrote
-                # nothing and repeating it is safe. The batch timeout is its
-                # own, longer budget — giving up here does not stop the
-                # server's transaction.
-                # Retry a 503: the batch is atomic, so a refused one wrote
-                # nothing. And send it again under its key when the answer
-                # was lost (no response, 502, 504): a resend of one that
-                # landed is answered from its first send.
                 # Encoded once, before anything goes: a body that cannot be
                 # sent is the caller's mistake, never an unknown outcome.
                 data = json.dumps(body, default=_unsendable)
-                started = writes_started(self)
-
-                def attempt(data=data, request_headers=request_headers):
-                    try:
-                        resp = self.session.post(url, headers=request_headers, data=data,
-                                                 timeout=wire_timeout(budget))
-                    except PlaidAPIError:
-                        raise
-                    except Exception as e:
-                        if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-                            raise PlaidAPIError(f'Request timed out at {url}', url=url,
-                                                method='POST', original_error=e) from e
-                        raise PlaidAPIError(f'Network error: {e} at {url}', url=url,
-                                            method='POST', original_error=e) from e
-                    if not resp.ok:
-                        raise build_api_error(resp, url, 'POST')
-                    return resp
-
-                try:
-                    response = retry_unknown(
-                        lambda: retry_while_busy(attempt, on_retry=self._note_retry),
-                        self.retry_delays, on_retry=self._note_retry)
-                except PlaidAPIError as e:
-                    e.idempotency_key = key
-                    raise
-                results = response.json()
-                # A replayed batch carries the versions right after its first send.
-                replayed = is_replayed(getattr(response, 'headers', None))
+                results, replayed = post_batch(self, url, data, key, budget)
                 # The server took the request, so each operation it joined exists.
                 for group in (stamped_groups or [])[start:start + MAX_BATCH_OPS]:
                     if group is not None:
                         group['written'] = True
-
-                for result in results:
-                    if isinstance(result, dict) and 'headers' in result:
-                        dv_header = result['headers'].get('X-Document-Versions')
-                        if dv_header:
-                            try:
-                                versions_map = json.loads(dv_header)
-                                if isinstance(versions_map, dict):
-                                    self.document_versions.update(merge_versions(
-                                        self.document_versions, versions_map, replayed))
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-                # The batch's own header holds each document's version after
-                # the whole batch, the layer rules' remedies at its end
-                # included, which no single operation's answer does: a split
-                # that deletes a relation crossing the new boundary moves the
-                # version once more.
-                outer_header = (getattr(response, 'headers', None) or {}).get('X-Document-Versions')
-                if outer_header:
-                    try:
-                        versions_map = json.loads(outer_header)
-                        if isinstance(versions_map, dict):
-                            self.document_versions.update(merge_versions(
-                                self.document_versions, versions_map, replayed))
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                writes_landed(self, started, replayed)
 
                 results_out.extend({**r, 'body': transform_response(r.get('body'))}
                                    if isinstance(r, dict) else r
@@ -4311,11 +4240,7 @@ class PlaidClient:
         try:
             response = getattr(req_lib, method.lower())(url, **kwargs)
         except Exception as e:
-            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-                raise PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
-                                    original_error=e)
-            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
-                                original_error=e)
+            raise network_error(e, url, method)
         if not response.ok:
             raise build_api_error(response, url, method)
         return transform_response(response.json())

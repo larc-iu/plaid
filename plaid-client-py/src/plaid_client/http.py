@@ -879,6 +879,85 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
     return {'batched': True}
 
 
+def network_error(e, url, method):
+    """The error for a request that got no answer: a timeout, or any other
+    failure to reach the server, with ``e`` as its ``original_error``."""
+    if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+        return PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
+                             original_error=e)
+    return PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
+                         original_error=e)
+
+
+def with_retries(client, attempt, *, keyed=False, no_busy_retry=False):
+    """Run ``attempt`` with the client's retries: a 503 is retried (unless
+    ``no_busy_retry``), and a keyed request whose answer was lost is sent
+    again under its key (``retry_unknown``). Each retry is told to the
+    ``on_retry`` listeners."""
+    on_retry = getattr(client, '_note_retry', None)
+    busy = {'on_retry': on_retry, **({'retries': 0} if no_busy_retry else {})}
+    return (retry_unknown(lambda: retry_while_busy(attempt, **busy),
+                          getattr(client, 'retry_delays', None), on_retry=on_retry)
+            if keyed else retry_while_busy(attempt, **busy))
+
+
+def post_batch(client, url, data, key, timeout):
+    """POST one batch request (at most MAX_BATCH_OPS operations, ``data``
+    already encoded) through the same retries and version learning as every
+    other request, and return ``(results, replayed)``: the server's answer per
+    operation as it came, and whether it was replayed from a first send.
+    ``key`` is the request's Idempotency-Key: a batch whose answer is lost (no
+    response, 502, 504) is sent again under it, and answered from the first
+    send if that landed. A refused batch wrote nothing (it is atomic), so a
+    503 is retried too. ``timeout`` is the request's own budget, longer than
+    a single request's: giving up does not stop the server's transaction.
+
+    Each sub-response's ``X-Document-Versions`` is learned, and the batch's
+    own, which holds each document's version after the whole batch, the layer
+    rules' remedies at its end included (a split that deletes a relation
+    crossing the new boundary moves the version once more). The batch's own
+    ``X-Document-Versions-Omitted`` is not taken up: each sub-response keeps
+    its own list. The batch does not note the server clock."""
+    headers = {
+        'Authorization': f'Bearer {client.token}',
+        'Content-Type': 'application/json',
+        IDEMPOTENCY_HEADER: key,
+    }
+    started = writes_started(client)
+
+    def attempt():
+        try:
+            resp = client.session.post(url, headers=headers, data=data,
+                                       timeout=wire_timeout(timeout))
+        except PlaidAPIError:
+            raise
+        except Exception as e:
+            raise network_error(e, url, 'POST') from e
+        if not resp.ok:
+            raise build_api_error(resp, url, 'POST')
+        return resp
+
+    try:
+        response = with_retries(client, attempt, keyed=True)
+    except PlaidAPIError as e:
+        e.idempotency_key = key
+        raise
+    results = response.json()
+    # A replayed batch carries the versions right after its first send.
+    replayed = is_replayed(getattr(response, 'headers', None))
+    replayed_header = 'true' if replayed else None
+    for result in results:
+        if isinstance(result, dict) and 'headers' in result:
+            extract_document_versions(client, {
+                'X-Document-Versions': result['headers'].get('X-Document-Versions'),
+                REPLAYED_HEADER: replayed_header})
+    extract_document_versions(client, {
+        'X-Document-Versions': (getattr(response, 'headers', None) or {}).get('X-Document-Versions'),
+        REPLAYED_HEADER: replayed_header})
+    writes_landed(client, started, replayed)
+    return results, replayed
+
+
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, out_of_band=False,
                  no_operation=False, skip_response_transform=False,
@@ -984,11 +1063,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         try:
             resp = client.session.request(**kwargs)
         except Exception as e:
-            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-                raise PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
-                                    original_error=e)
-            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
-                                original_error=e)
+            raise network_error(e, url, method)
         note_server_clock(client, getattr(resp, 'headers', None))
         # Raise a 503 from inside so retry_while_busy can see it; every other
         # failure is raised here too and simply propagates.
@@ -997,11 +1072,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         return resp
 
     try:
-        on_retry = getattr(client, '_note_retry', None)
-        busy = {'on_retry': on_retry, **({'retries': 0} if no_busy_retry else {})}
-        response = (retry_unknown(lambda: retry_while_busy(attempt, **busy),
-                                  getattr(client, 'retry_delays', None), on_retry=on_retry)
-                    if keyed else retry_while_busy(attempt, **busy))
+        response = with_retries(client, attempt, keyed=keyed, no_busy_retry=no_busy_retry)
     except PlaidAPIError as e:
         data = e.response_data if isinstance(e.response_data, dict) else {}
         # Answered as made only for a single create, the one whose answer is

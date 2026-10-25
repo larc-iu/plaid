@@ -268,7 +268,7 @@ export async function retryWhileBusy(
 // keyed write for a day, and the same key sent again for the same request is
 // answered from it with `Idempotent-Replayed: true`, writing nothing. So a
 // write whose answer was lost (no response, 502, 504) can be sent again
-// safely: it lands once. `makeRequest` and `_postBatch` do that three times
+// safely: it lands once. `makeRequest` and `postBatch` do that three times
 // themselves (retryUnknown), and the error that escapes carries the key as
 // `idempotencyKey`.
 //
@@ -739,6 +739,142 @@ export async function queueRequest(batch, method, path, options = {}) {
 }
 
 /**
+ * One send of a request by fetch, under a fresh timeout signal: an
+ * AbortSignal.timeout fires once and stays aborted, so a retry needs its own.
+ * `timeoutMs` 0 or null sends with none.
+ * @private
+ */
+function fetchWithTimeout(url, fetchOptions, timeoutMs) {
+  const signal = timeoutSignal(timeoutMs);
+  return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
+}
+
+/**
+ * Run `attempt` with the client's retries: a 503 is retried (unless
+ * `noBusyRetry`), and a keyed request whose answer was lost is sent again
+ * under its key (retryUnknown). Each retry is told to `onRetry` listeners.
+ * @private
+ */
+function withRetries(client, attempt, { keyed = false, noBusyRetry = false } = {}) {
+  const onRetry = (info) => client._noteRetry?.(info);
+  const busy = noBusyRetry ? { onRetry, retries: 0 } : { onRetry };
+  return keyed
+    ? retryUnknown(() => retryWhileBusy(attempt, busy), {
+        delaysMs: client.retryDelaysMs,
+        onRetry,
+      })
+    : retryWhileBusy(attempt, busy);
+}
+
+/**
+ * A 401 means the token is missing, expired or invalid. Fire the app's
+ * auth-error handler once per client (it discards the token and routes back
+ * to login). A 403 (authenticated but not permitted) deliberately does not.
+ * @private
+ */
+function noteAuthError(client, error) {
+  if (
+    error?.status === 401 &&
+    typeof client.onAuthError === "function" &&
+    !client._authErrorFired
+  ) {
+    client._authErrorFired = true;
+    try {
+      client.onAuthError(error);
+    } catch (_) {
+      /* handler must not mask the original error */
+    }
+  }
+}
+
+/**
+ * POST one batch request (at most MAX_BATCH_OPS operations) through the same
+ * send, retries and version learning as every other request. Resolves to one
+ * `{ status, headers, body }` per operation, with only the body recased: the
+ * headers keep the server's spelling. `key` is the request's Idempotency-Key:
+ * a batch whose answer is lost (no response, 502, 504) is sent again under
+ * it, and answered from the first send if that landed. A refused batch wrote
+ * nothing (it is atomic), so a 503 is retried too. `timeout` is this
+ * request's, in place of `batchTimeout` when given.
+ *
+ * Each sub-response's `X-Document-Versions` is learned, and the batch's own,
+ * which holds each document's version after the whole batch, the layer
+ * rules' remedies at its end included (a split that deletes a relation
+ * crossing the new boundary moves the version once more). The batch's own
+ * `X-Document-Versions-Omitted` is not taken up: each sub-response keeps its
+ * own list. The batch does not note the server clock.
+ * @param {object} client - PlaidClient instance
+ * @param {string} url
+ * @param {object[]} body - The operations
+ * @param {{key?: string, timeout?: number | null}} [options]
+ */
+export async function postBatch(client, url, body, { key = uuidv7(), timeout } = {}) {
+  const fetchOptions = {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${client.token}`,
+      "Content-Type": "application/json",
+      [IDEMPOTENCY_HEADER]: key,
+    },
+    body: JSON.stringify(body),
+  };
+
+  const started = writesStarted(client);
+  try {
+    const attempt = async () => {
+      let res;
+      try {
+        res = await fetchWithTimeout(
+          url,
+          fetchOptions,
+          timeout !== undefined ? timeout : client.batchTimeout,
+        );
+      } catch (e) {
+        throw makeNetworkError(e, url, "POST");
+      }
+      if (!res.ok) {
+        throw makeHttpError(res, await parseErrorBody(res), url, "POST");
+      }
+      return res;
+    };
+    const response = await withRetries(client, attempt, { keyed: true }).catch((error) => {
+      error.idempotencyKey = key;
+      noteAuthError(client, error);
+      throw error;
+    });
+
+    const results = await response.json();
+    // A replayed batch carries the versions right after its first send.
+    const replayed = response.headers?.get?.(REPLAYED_HEADER) === "true";
+    const replayedHeader = replayed ? "true" : null;
+    for (const result of results) {
+      const versions = result.headers?.["X-Document-Versions"] ?? null;
+      extractDocumentVersions(client, {
+        get: (name) =>
+          name === "X-Document-Versions" ? versions : name === REPLAYED_HEADER ? replayedHeader : null,
+      });
+    }
+    extractDocumentVersions(client, {
+      get: (name) =>
+        name === "X-Document-Versions-Omitted" ? null : (response.headers?.get?.(name) ?? null),
+    });
+
+    writesLanded(client, started, replayed);
+
+    const out = results.map((result) => ({
+      ...result,
+      body: transformResponse(result.body),
+    }));
+    return replayed ? markReplayed(out) : out;
+  } catch (error) {
+    if (error.status !== undefined) throw error;
+    throw Object.assign(makeNetworkError(error, url, "POST"), {
+      idempotencyKey: key,
+    });
+  }
+}
+
+/**
  * Generic request method handling all fetch logic.
  *
  * Options:
@@ -863,8 +999,7 @@ export async function makeRequest(client, method, path, options = {}) {
         timeout: timeoutMs,
       });
     }
-    const signal = timeoutSignal(timeoutMs);
-    return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
+    return fetchWithTimeout(url, fetchOptions, timeoutMs);
   };
 
   // One attempt: a 503, and for a keyed write a 502 or 504, surfaces as a
@@ -894,14 +1029,7 @@ export async function makeRequest(client, method, path, options = {}) {
   };
 
   try {
-    const onRetry = (info) => client._noteRetry?.(info);
-    const busy = noBusyRetry ? { onRetry, retries: 0 } : { onRetry };
-    const response = keyed
-      ? await retryUnknown(() => retryWhileBusy(attempt, busy), {
-          delaysMs: client.retryDelaysMs,
-          onRetry,
-        })
-      : await retryWhileBusy(attempt, busy);
+    const response = await withRetries(client, attempt, { keyed, noBusyRetry });
     noteServerClock(client, response.headers);
 
     if (!response.ok) {
@@ -917,21 +1045,7 @@ export async function makeRequest(client, method, path, options = {}) {
         return transformResponse({ id: errorData.id });
       }
       const error = makeHttpError(response, errorData, url, method);
-      // 401 means the token is missing/expired/invalid. Fire the app's auth-error
-      // handler once (it discards the token and routes back to login). 403
-      // (forbidden — authenticated but not permitted) deliberately does NOT.
-      if (
-        response.status === 401 &&
-        typeof client.onAuthError === "function" &&
-        !client._authErrorFired
-      ) {
-        client._authErrorFired = true;
-        try {
-          client.onAuthError(error);
-        } catch (_) {
-          /* handler must not mask the original error */
-        }
-      }
+      noteAuthError(client, error);
       throw error;
     }
     // The server took it, so the operation's group exists.
