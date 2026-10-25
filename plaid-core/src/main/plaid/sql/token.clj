@@ -27,6 +27,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
+            [plaid.sql.span :as span]
             [clojure.string]
             [plaid.sql.constraints.token :as tc]
             [plaid.util.codepoint :as cp])
@@ -284,18 +285,6 @@
 ;; Cascade delete
 ;; ============================================================
 
-(defn- relations-referencing-spans
-  "IDs of relations whose source or target span is in `span-ids`, each end
-  read by its own index."
-  [tx span-ids]
-  (if (empty? span-ids)
-    []
-    (->> (concat (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" span-ids)
-                 (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" span-ids))
-         (map :id)
-         distinct
-         vec)))
-
 (defn- partition-spans-by-deletion
   "For the set of spans that reference any token in `token-ids`,
   partition into (a) fully orphaned (every token in token-ids — DELETE,
@@ -413,25 +402,6 @@
                            [:= :vocab_link_id vl-id]
                            [:not-in :token_id (if (seq post-tokens) (vec post-tokens) [nil])]]})))
 
-(defn- sweep-entity-metadata!
-  "Delete `entity_metadata` rows for the given entity-type/ids cluster.
-  No-op when ids is empty.
-
-  Audit strategy: this sweep is INTENTIONALLY unaudited. The parent
-  entity's `:delete` audit row (just emitted via `crud/delete-by-id!`)
-  signals the entity is gone, and metadata is treated by the ETL
-  replayer as parent-owned state (any metadata key whose entity row
-  is absent must also be absent in the history replica). Auditing each
-  metadata DELETE individually would be high-volume noise without
-  adding information ETL can't already derive.
-
-  entity_metadata has no FK to its parent, so the row would otherwise
-  be orphaned in SQLite. We sweep here for the cascaded entity types
-  the same way the token sweep at the bottom of `multi-delete!`
-  handles tokens directly."
-  [tx entity-type ids]
-  (crud/delete-entity-metadata! tx entity-type ids))
-
 (defn multi-delete!
   "Delete every token in `eids`, AND cascade to the visible entities
   whose existence depends on them. Spans and vocab_links that reference
@@ -440,8 +410,8 @@
   remain — synthetic :update audit row carrying the trimmed `:tokens`
   vector).
   Relations whose source/target span is about to disappear are deleted
-  too. Each visible-entity delete uses crud/delete-by-id! so
-  audit_writes captures it.
+  too, with the spans (`span/delete-spans!`). Each visible-entity delete
+  is audited.
 
   Ordering rationale: a span deletion FK-cascades to relations
   (relations.{source,target}_span_id ON DELETE CASCADE). FK cascades
@@ -454,11 +424,10 @@
   when a parent is gone — those are high-volume and not separately
   audited (the parent's row carries the change).
 
-  entity_metadata cleanup: see `sweep-entity-metadata!` — we sweep
-  metadata for each cascaded entity type (relations, spans, vocab_links,
-  tokens) AFTER the audited parent delete. The sweeps themselves are
-  unaudited; the parent entity's :delete audit row signals the metadata
-  going away in the history replica."
+  entity_metadata, which has no FK, goes with each deleted row
+  (`crud/delete-entities!`): the sweeps are unaudited, and the row's
+  :delete audit row signals its metadata going away in the history
+  replica."
   [tx eids]
   (when (seq eids)
     (cascade-stats/prepare! tx)
@@ -469,19 +438,16 @@
           ;;    partial-trim (synthetic audit row).
           {:keys [orphan-span-ids span-trim-plan]}
           (partition-spans-by-deletion tx eids eids-set)
-          ;; 2. Which relations reference an orphaned span?
-          rel-ids (relations-referencing-spans tx orphan-span-ids)
-          ;; 3. Vocab_links touched by this delete set — same split.
+          ;; 2. Vocab_links touched by this delete set — same split.
           {:keys [orphan-vl-ids vl-trim-plan]}
           (partition-vocab-links-by-deletion tx eids eids-set)]
       ;; Order: relations → spans → vocab_links → tokens.
       ;; Each cascade phase is a chunked DELETE ... WHERE id IN (...)
       ;; RETURNING * by the primary key, with per-id audit rows
-      ;; (crud/delete-ids!).
-      (crud/delete-ids! tx :relations rel-ids)
-      (sweep-entity-metadata! tx "relation" rel-ids)
-      (crud/delete-ids! tx :spans orphan-span-ids)
-      (sweep-entity-metadata! tx "span" orphan-span-ids)
+      ;; (crud/delete-entities!). The orphaned spans go with the
+      ;; relations on them first.
+      (when (seq orphan-span-ids)
+        (span/delete-spans! tx orphan-span-ids))
       ;; Span partial trim: emit synthetic audit + rewrite junctions.
       (psaw/ensure-recorded! tx :spans (map :span-id span-trim-plan))
       (doseq [plan span-trim-plan]
@@ -491,10 +457,8 @@
       (doseq [plan vl-trim-plan]
         (trim-vocab-link-tokens! tx plan))
       ;; Vocab_link full-orphan delete.
-      (crud/delete-ids! tx :vocab_links orphan-vl-ids)
-      (sweep-entity-metadata! tx "vocab-link" orphan-vl-ids)
-      (crud/delete-ids! tx :tokens eids)
-      (sweep-entity-metadata! tx "token" eids))))
+      (crud/delete-entities! tx :vocab_links orphan-vl-ids)
+      (crud/delete-entities! tx :tokens eids))))
 
 ;; ============================================================
 ;; Create
@@ -787,10 +751,7 @@
      ;; route's authorize-by-first-id sound: without it a writer of
      ;; project A could smuggle project-B token ids into the list.
      ;; Token->document is immutable, so the pre-tx fetch is safe here.
-     (let [doc-ids (distinct (map :token/document tokens))]
-       (when (> (count doc-ids) 1)
-         (throw (ex-info "Not all tokens belong to the same document"
-                         {:document-ids doc-ids :code 400}))))
+     (psc/one-document! (map :token/document tokens) "Not all tokens belong to the same document")
      ;; :pre runs the partitioning all-or-nothing check (the cascade has
      ;; not run, so the orphan guard is skipped), :post the orphan guard
      ;; against the original extents (the layer is empty by then, so the
