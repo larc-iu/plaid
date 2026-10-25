@@ -1011,6 +1011,8 @@
             :when anchor]
       (add-where! st [:= (col (v->alias r) :document_id) (col (v->alias anchor) :document_id)]))))
 
+(declare compile-clauses!)
+
 (defn- compile-not!
   "Compile a `[:not & inner-clauses]` clause to a correlated `NOT EXISTS`. A var
   already bound in the outer query is CORRELATED (the subquery references its
@@ -1033,35 +1035,10 @@
     ;; :not's own vars are handled by its recursive compile-not! call, not here.)
     (doseq [v (distinct (mapcat clauses/clause-vars inner))]
       (ensure-var! sub-st v inner-cons))
-    (doseq [c inner]
-      (cond
-        (= :not (first c)) (compile-not! sub-st constraints c)   ; nested NOT EXISTS
-        ;; layer clauses: the pre-loop ensure-var! allocated + scoped the var; emit
-        ;; its name/structural filters INSIDE the subquery so a CORRELATED outer
-        ;; layer var's predicates are negated here, not silently dropped.
-        (layer-kind? (first c))
-        (let [[head v cmap] c]
-          (emit-layer-filters! sub-st (get-in @sub-st [:var->alias v]) head (or cmap {}) inner-cons))
-        (contains? entity-table (first c))
-        (let [[_ v cmap] c]
-          ;; emit this clause's attribute filters INSIDE the subquery — for a
-          ;; correlated outer var this is the negated predicate's correct home.
-          (emit-entity-filters! sub-st (first c) (get-in @sub-st [:var->alias v]) (or cmap {}))
-          ;; ...and its :layer. For an inner-only var ensure-var! emitted the layer
-          ;; with the scope predicate, but for a CORRELATED var it no-ops (the var
-          ;; has its alias already), and the layer is not one of the attribute
-          ;; filters. Left out, `[:not [:span ?s {:layer L}]]` negated nothing at
-          ;; all: NOT EXISTS (SELECT 1 WHERE TRUE), and no rows.
-          (when (contains? outer-vars v)
-            (let [a    (get-in @sub-st [:var->alias v])
-                  kind (get-in @sub-st [:kinds v])]
-              (when-let [ids (::qr/layer-ids cmap)]
-                (add-where! sub-st [:in (col a (layer-fk kind)) (vec ids)]))
-              (when (symbol? (:layer cmap))
-                (add-where! sub-st [:= (col a (layer-fk kind))
-                                    (col (ensure-var! sub-st (:layer cmap) inner-cons) :id)]))))
-          (compile-relation-inline! sub-st inner-cons c))
-        :else (compile-rel! sub-st constraints c)))
+    ;; each clause's filters go INSIDE the subquery: for a correlated outer var
+    ;; this is the negated predicate's correct home.
+    (compile-clauses! sub-st inner {:cons inner-cons :rel-cons constraints
+                                    :correlated outer-vars :per-clause? true})
     (anchor-relations! sub-st inner)
     (let [subq (cond-> {:select [1] :where (into [:and] (:where @sub-st))}
                  (seq (:from @sub-st)) (merge (from-clause sub-st)))]
@@ -1476,6 +1453,68 @@
                             [:= (col y :vocab_item_id) (col vl :vocab_item_id)]
                             [:< (col y :id) (col vl :id)]]}]]))
 
+;; ---------------------------------------------------------------------------
+;; Clause dispatch: the one loop over a query's clauses and a :not's
+;; ---------------------------------------------------------------------------
+
+(defn- compile-clause-filters!
+  "An entity or layer clause's filters against its var's alias, per clause so
+  two clauses on one var AND. Layer filters (name, structural slots) are
+  emitted here and not in ensure-layer-var!, so a :not can correlate them.
+  A var in `correlated` (bound outside the :not being compiled) also gets its
+  :layer here: ensure-var! emitted it with the scope predicate for a var of
+  the subquery's own, but no-ops for a correlated var (it has its alias
+  already), and the layer is not one of the attribute filters. Left out,
+  `[:not [:span ?s {:layer L}]]` negated nothing at all: NOT EXISTS (SELECT 1
+  WHERE TRUE), and no rows."
+  [st clause cons correlated]
+  (let [[head v cmap] clause]
+    (cond
+      (contains? entity-table head)
+      (do
+        (emit-entity-filters! st head (get-in @st [:var->alias v]) (or cmap {}))
+        (when (contains? correlated v)
+          (let [a    (get-in @st [:var->alias v])
+                kind (get-in @st [:kinds v])]
+            (when-let [ids (::qr/layer-ids cmap)]
+              (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
+            (when (symbol? (:layer cmap))
+              (add-where! st [:= (col a (layer-fk kind))
+                              (col (ensure-var! st (:layer cmap) cons) :id)])))))
+      (layer-kind? head)
+      (emit-layer-filters! st (get-in @st [:var->alias v]) head (or cmap {}) cons))))
+
+(defn- compile-clause-joins!
+  "Pass C for one clause: a relationship, an entity clause's inline relation
+  source/target, a predicate, or a nested :not. A layer clause has nothing
+  here: ensure-layer-var! and its filters did it all."
+  [st clause cons rel-cons]
+  (cond
+    (= :not (first clause)) (compile-not! st rel-cons clause)
+    (layer-kind? (first clause)) nil
+    (contains? entity-table (first clause)) (compile-relation-inline! st cons clause)
+    (pred-honeysql-op (first clause)) (compile-pred! st clause)
+    (= clauses/op-match (first clause)) (compile-regex-pred! st clause)
+    (= :in (first clause)) (compile-in-pred! st clause)
+    :else (compile-rel! st rel-cons clause)))
+
+(defn- compile-clauses!
+  "Compile `clauses` into `st`, every var already allocated. `cons` holds the
+  entity constraints the clauses' own vars are scoped by, `rel-cons` those a
+  relationship or a nested :not reads (inside a :not, the outer query's), and
+  `correlated` the vars bound outside the :not being compiled. The outer query
+  emits every clause's filters before any clause's joins, a :not
+  (`per-clause?`) each clause's filters and then its joins: the SQL the
+  planner has been measured on."
+  [st clauses {:keys [cons rel-cons correlated per-clause?] :or {correlated #{}}}]
+  (if per-clause?
+    (doseq [c clauses]
+      (compile-clause-filters! st c cons correlated)
+      (compile-clause-joins! st c cons rel-cons))
+    (do
+      (doseq [c clauses] (compile-clause-filters! st c cons correlated))
+      (doseq [c clauses] (compile-clause-joins! st c cons rel-cons)))))
+
 (defn compile-query
   "Resolved AST -> HoneySQL map. Throws 400 on a field path into an array, 500 on
   internal invariant failures."
@@ -1491,28 +1530,9 @@
     ;; subquery and are allocated there by compile-not!, not in the outer query.
     (doseq [v (clauses/positive-binding-vars (:where resolved))]
       (ensure-var! st v constraints))
-    ;; emit each positive entity/layer clause's filters against its var's alias —
-    ;; per-clause so two clauses on one var AND. Layer filters (name/structural
-    ;; slots) are emitted here too (not in ensure-layer-var!) so the :not path can
-    ;; correlate them; see emit-layer-filters!.
-    (doseq [clause (:where resolved)]
-      (let [[head v cmap] clause]
-        (cond
-          (contains? entity-table head)
-          (emit-entity-filters! st head (get-in @st [:var->alias v]) (or cmap {}))
-          (layer-kind? head)
-          (emit-layer-filters! st (get-in @st [:var->alias v]) head (or cmap {}) constraints))))
+    ;; each positive entity/layer clause's filters against its var's alias, then
     ;; Pass C: relationship clauses, inline relation source/target, and negation.
-    (doseq [clause (:where resolved)]
-      (cond
-        (= :not (first clause)) (compile-not! st constraints clause)
-        ;; layer-constraint clauses are fully handled by ensure-layer-var! in Pass B
-        (layer-kind? (first clause)) nil
-        (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
-        (pred-honeysql-op (first clause)) (compile-pred! st clause)
-        (= clauses/op-match (first clause)) (compile-regex-pred! st clause)
-        (= :in (first clause)) (compile-in-pred! st clause)
-        :else (compile-rel! st constraints clause)))
+    (compile-clauses! st (:where resolved) {:cons constraints :rel-cons constraints})
     (anchor-relations! st (:where resolved))
     (assert-acl-invariant! st)
     (if (clauses/aggregate? resolved)
