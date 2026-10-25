@@ -509,8 +509,9 @@ The modules below are `igt/` unless they say otherwise.
   losslessly and keep one lexicon link; a multi-word expression whose words
   merge into one, or whose deletion would leave one member, goes with them);
   and the text edits `append_text` and `retype_sentence`, which go through
-  the server's diffing text update (unchanged words keep their tokens and
-  analyses) and then tokenize the edited region as the editor would.
+  the server's text edit as the stretches that changed (a word with a
+  letter left keeps its token and analysis, one all of whose letters
+  change goes) and then tokenize the edited region as the editor would.
   Reads mark a value, link, or segmentation awaiting review: `~` for
   unconfirmed machine output, `^` for a contributor's unreviewed work.
 - `corpus.py`: the query-engine side of every corpus-wide tool. Project-wide

@@ -40,6 +40,7 @@ import {
   applyTextEditsLocally,
   removeTokensLocally,
 } from '@/domain/textEdits.js';
+import { getIgtLayerInfo } from '@/domain/layerInfo.js';
 import { makeFakeClient } from '@/domain/test-helpers.js';
 
 export const digestOf = (body) => createHash('sha256').update(body, 'utf8').digest('hex');
@@ -120,13 +121,41 @@ function reshapeOf(before, after) {
 // before the server answers (`applyGapsLocally`). Text typed with no space in
 // it at a token's edge joins the token on the `side` the op names, as the
 // client asks of the core, and a token left with no text is deleted, with what
-// hangs off it. That is all. It is NOT the core's rule (plaid-core
+// hangs off it. A token other than a sentence or a segment that a gap deletes
+// whole goes too, whatever is typed in its place, as the core's rule has it
+// (R42). That is all. It is NOT the core's rule (plaid-core
 // `apply-plain-gaps`), which decides which word new text joins and which words
 // an edit deletes where the client names no side: those are tested in the core
 // (`plain_edits_test.clj` and its oracles). The tests here are of what the app
 // sends and what it does with the server's answer.
 function takeEdit(raw, textId, gaps, vocabs) {
   const textLayer = raw.textLayers.find((tl) => tl.text?.id === textId);
+  const info = getIgtLayerInfo(raw);
+  const holds = new Set([info.sentenceTokenLayer?.id, info.alignmentTokenLayer?.id]);
+  // each gap less the text it shares with the old at its start and end, as
+  // the core takes it
+  const old = [...(textLayer.text?.body ?? '')];
+  const deleting = gaps.map(({ start, end, value }) => {
+    const typed = [...value];
+    let front = 0;
+    while (front < end - start && front < typed.length && old[start + front] === typed[front]) {
+      front += 1;
+    }
+    let back = 0;
+    while (
+      back < end - start - front &&
+      back < typed.length - front &&
+      old[end - 1 - back] === typed[typed.length - 1 - back]
+    ) {
+      back += 1;
+    }
+    return [start + front, end - back];
+  });
+  const typedOver = (textLayer.tokenLayers || [])
+    .filter((layer) => !holds.has(layer.id))
+    .flatMap((layer) => layer.tokens || [])
+    .filter((t) => t.begin < t.end && deleting.some(([b, e]) => b <= t.begin && t.end <= e))
+    .map((t) => t.id);
   for (const gap of [...gaps].reverse()) {
     applyGapsLocally(raw, textId, [gap]);
     const n = [...gap.value].length;
@@ -138,11 +167,11 @@ function takeEdit(raw, textId, gaps, vocabs) {
       }
     }
   }
-  const gone = [];
+  const gone = new Set(typedOver);
   for (const layer of textLayer.tokenLayers || []) {
-    for (const t of layer.tokens || []) if (t.begin >= t.end) gone.push(t.id);
+    for (const t of layer.tokens || []) if (t.begin >= t.end) gone.add(t.id);
   }
-  if (gone.length) removeTokensLocally(raw, textId, gone, vocabs);
+  if (gone.size) removeTokensLocally(raw, textId, [...gone], vocabs);
 }
 
 // The writes the two tabs send, applied to `raw` in place. Each answers what

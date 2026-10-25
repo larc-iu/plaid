@@ -183,7 +183,7 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     });
   });
 
-  it('a row that is the whole text, typed over with nothing kept, is one edit that keeps its segment and its word', async () => {
+  it('a row that is the whole text, typed over with nothing kept, is one edit that keeps its segment and deletes its word', async () => {
     const server = segmentServer(
       buildRawDoc({
         body: 'abc',
@@ -206,10 +206,8 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     expect(edits.map((w) => w.args[1])).toEqual([
       [{ type: 'replace', index: 0, length: 3, value: 'xyzw' }],
     ]);
-    // the word typed over whole keeps its token, as in the Baseline
-    expect(layer(server.stored, 'wordL').tokens.map((t) => [t.id, t.begin, t.end])).toEqual([
-      ['w-1', 0, 4],
-    ]);
+    // the word typed over whole goes, as in the Baseline (R42)
+    expect(layer(server.stored, 'wordL').tokens.map((t) => t.id)).not.toContain('w-1');
   });
 });
 
@@ -496,7 +494,8 @@ describe('two pages edit the same row (Q1)', () => {
     expect(outcome.landed).toBe(true);
     expect(server.body).toBe('uno two three!');
     expect(textWrites(server).at(-1).args[3].base).toBe(digestOf('uno two three'));
-    expect(glosses(server.stored)).toEqual(['uno:G1', 'two:G2', 'three!:G3']);
+    // `one` typed over whole as `uno` goes with its gloss (R42)
+    expect(glosses(server.stored)).toEqual(['two:G2', 'three!:G3']);
     expect(mine.body).toBe(server.body);
   });
 });

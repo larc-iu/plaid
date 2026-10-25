@@ -437,11 +437,11 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
 def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str) -> str:
     """What a retype does to the sentence's words, for the card. The text is
     sent as edits at their place (``plan._region_edits``) and the server's
-    plain rule decides: a word edited or typed over keeps its token and its
-    analysis, a word left with no letter is deleted with its analysis, and
-    text between words becomes new words with none. The analyzed words an
-    edit reaches are named, since each either carries its analysis onto a new
-    spelling or loses it."""
+    plain rule decides: a word with a letter of it left keeps its token and
+    its analysis, a word all of whose letters the edits replace or delete is
+    deleted with its analysis, and text between words becomes new words with
+    none. The analyzed words an edit reaches are named, those that carry
+    their analysis onto a new spelling apart from those that lose it."""
     from difflib import SequenceMatcher
     from .stats import _analyzed
     gaps = [(at + i1, at + i2, text[j1:j2])
@@ -461,9 +461,18 @@ def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str) ->
                 return True
         return False
 
+    def lost(w) -> bool:
+        # every letter of it inside a stretch the edits delete or replace
+        return all(any(gb <= i < ge for gb, ge, _ in gaps)
+                   for i in range(w.begin, w.end) if not old[i - at].isspace())
+
     touched = [w for w in s.words if _analyzed(w) and reached(w)]
-    out = ('Changed words keep their analysis, removed words lose theirs, new words start unanalyzed. '
-           'Sentence fields stay')
-    if touched:
-        out += '. Analyzed words changed: ' + ', '.join(w.surface for w in touched)
+    kept = [w for w in touched if not lost(w)]
+    gone = [w for w in touched if lost(w)]
+    out = ('Changed words keep their analysis while a letter of theirs is left, words all of whose letters '
+           'change or go lose theirs, new words start unanalyzed. Sentence fields stay')
+    if kept:
+        out += '. Analyzed words changed: ' + ', '.join(w.surface for w in kept)
+    if gone:
+        out += '. Analyzed words that lose their analysis: ' + ', '.join(w.surface for w in gone)
     return out

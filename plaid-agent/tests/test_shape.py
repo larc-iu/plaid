@@ -304,17 +304,25 @@ def test_a_retype_and_an_analysis_of_its_words_cannot_share_a_plan():
 
 def test_a_retype_card_says_what_the_plain_rule_does_to_the_words():
     """The text goes to the server as edits, and its plain rule keeps a word
-    that is edited or typed over, with its analysis. The card promised the
-    words would be re-tokenized without analysis (H8-ASSISTANT-1), so a
-    misheard word replaced through the assistant kept the wrong word's gloss
-    under a card saying it would not. It now says what happens and names the
-    analyzed words the edit touches."""
+    with a letter of it left, with its analysis, and deletes one all of whose
+    letters the edits replace (R42). The card promised the words would be
+    re-tokenized without analysis (H8-ASSISTANT-1), so a misheard word
+    replaced through the assistant kept the wrong word's gloss under a card
+    saying it would not. It now says what happens and names the analyzed
+    words the edit touches, those that keep their analysis and those that
+    lose it."""
     w = ws()
     call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
     label = w.ops[0]['label']
-    assert 'Changed words keep their analysis, removed words lose theirs, new words start unanalyzed.' in label
+    assert ('Changed words keep their analysis while a letter of theirs is left, words all of whose letters '
+            'change or go lose theirs, new words start unanalyzed.') in label
     assert 'Analyzed words changed: Ali-di' in label
+    assert 'lose their analysis:' not in label
     assert 're-tokenized' not in label
+    w3 = ws()
+    call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Bob gam akuna.'})
+    assert 'Analyzed words that lose their analysis: Ali-di' in w3.ops[0]['label']
+    assert 'Analyzed words changed' not in w3.ops[0]['label']
     w2 = ws()
     call_tool(w2, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di gam akuna mai.'})
     assert 'Analyzed words changed' not in w2.ops[0]['label']

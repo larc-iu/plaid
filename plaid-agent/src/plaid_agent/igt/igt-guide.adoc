@@ -130,7 +130,9 @@ Each save also splits the text it adds into words, unless the project has **Toke
 A script written without spaces between words, such as Chinese, Japanese, or Thai, is not split into words, so make its words on the Tokenize tab.
 
 You can edit the baseline later too, and the sentences, words, and annotations already there are kept.
-A word you change keeps its analysis, and a word is deleted with its annotations only when all its text is.
+A word you change keeps its analysis as long as one of its letters is left.
+A word all of whose letters you replace, by selecting it and typing or by pasting over it, is deleted with its annotations, even when you type the same word again, and what you typed is new text.
+A word whose text you delete is deleted with its annotations too.
 New text becomes words of its own, and text typed at either end of a sentence joins that sentence.
 A new line typed after a sentence joins that sentence, and one typed before the first sentence becomes a sentence of its own. To make a new line a sentence, **Ctrl/Cmd+click** its first word on the Tokenize tab.
 A space typed inside a word splits it in two. The part holding more of the word keeps its analysis, and the other part is a new word with none.
@@ -178,7 +180,8 @@ Every segment is a row you can edit:
 * **Space** plays and pauses the whole recording when you are not typing in a box.
 * **Alt+Enter** splits the segment at playback, its text between the words at the caret, and **Alt+M** merges it with the next segment. The words, their annotations and the sentences are unchanged, so two segments in different sentences do not merge.
 
-A change to a row's text is saved as it is on the Baseline tab, and the words in it keep their analysis.
+A change to a row's text is saved as it is on the Baseline tab, and the words in it keep their analysis unless all of a word's letters are replaced.
+A segment keeps its times even when you replace all of its text.
 When someone else changed the same segment's text while you were editing it, the row shows their text with yours under it.
 **Enter** keeps yours, and **Esc** lets it go.
 

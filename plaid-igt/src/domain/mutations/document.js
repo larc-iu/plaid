@@ -104,7 +104,8 @@ export const documentMutations = {
   //
   // A text that exists takes the body as the one edit that turns `base` into
   // it (the start and end they share kept), sent as the Baseline tab sends
-  // its edits (`editBaselineText`).
+  // its edits (`editBaselineText`). That edit is one stretch typed over, so
+  // every word between the first change and the last goes.
   async saveBaselineText(typedBody, base = this.body, { tokenize = false } = {}) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
@@ -165,10 +166,10 @@ export const documentMutations = {
   // (`{ start, end, value }` in code points, see plaid-ui's editLog.js), and
   // `digest`, the digest of `base` the server issued, or null when it was not
   // known. They go to the server as edits at the caret with the digest of the
-  // text they apply to (texts.edit), so an insert or a delete stands exactly
-  // where it was typed and only a stretch typed over is read as a whole-body
-  // save reads it. The answer says what the edit did to the tokens, and the
-  // document is patched from it instead of read again.
+  // text they apply to (texts.edit), so each stands exactly where it was
+  // typed, a stretch typed over as a delete and an insert there. The answer
+  // says what the edit did to the tokens, and the document is patched from
+  // it instead of read again.
   //
   // When the stored body is no longer `base` (someone saved meanwhile, or the
   // server refused the digest), the gaps are moved onto the stored body with

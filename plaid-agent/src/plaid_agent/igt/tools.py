@@ -301,9 +301,9 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
 
 
 # A text edit names every word and morpheme of the region it rewrites, and
-# the plan treats all of them as deleted. It is a GUESS: the edit goes through
-# the server's diffing text update, so an unchanged word keeps its token and
-# its analysis, and which words those are is not known until the edit runs.
+# the plan treats all of them as deleted. It is a GUESS: the edit goes to the
+# server as the stretches that changed, so an unchanged word keeps its token
+# and its analysis, and which words those are is not known until the edit runs.
 _TEXT_SHAPE_KINDS = opkind.shaped(KIND, TEXT_SHAPE)
 
 

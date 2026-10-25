@@ -485,8 +485,9 @@ TOOLS += [
         {'document': _DOC, 'text': {'type': 'string'}}, ['document', 'text']),
     _fn('retype_sentence',
         'PLAN: replace the baseline text of one sentence (fix a transcript: insert, remove, or respell words). '
-        'A word that is edited or typed over keeps its analysis (gloss, morphemes, links) under its new '
-        'spelling, a word removed entirely loses it, and new words start unanalyzed. When a retyped word is a '
+        'A word edited with a letter of it left keeps its analysis (gloss, morphemes, links) under its new '
+        'spelling, a word all of whose letters change or go loses it, and new words start unanalyzed. When a '
+        'respelled word is a '
         'different word, its old analysis is wrong: tell the user, and once the retype is applied, plan its new '
         'analysis. The sentence\'s own fields stay. Newlines in the new text split it into several sentences.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The sentence, sN.'}, 'text': {'type': 'string'}},

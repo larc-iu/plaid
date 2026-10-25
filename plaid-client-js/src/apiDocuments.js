@@ -526,7 +526,8 @@ export function textsApi(client) {
      * directives as `update` takes them (code-point indices, applied in
      * order, each index in the body the ones before it left). Only their
      * net change counts. An insert or a delete stays where it was made, and
-     * a stretch deleted and typed over is read as a whole new body is. The
+     * a stretch deleted and typed over is a delete and an insert at the same
+     * place, so a word all of whose letters it replaces is deleted. The
      * answer is the text with its new `digest` and `reshape` (the tokens
      * moved, the spans and vocab links trimmed, the rows deleted). With
      * `base`, the digest of the body the edits were made on, the edit

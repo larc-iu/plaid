@@ -939,8 +939,9 @@ class TextsResource(_MetadataMethods, _Resource):
         ``edits`` are edit directives as ``update`` takes them (code-point
         indices, applied in order, each index in the body the ones before it
         left). Only their net change counts: an insert or a delete stays where
-        it was made, and a stretch deleted and typed over is read as a whole
-        new body is. The answer is the text with its new ``digest`` and
+        it was made, and a stretch deleted and typed over is a delete and an
+        insert at the same place, so a word all of whose letters it replaces
+        is deleted. The answer is the text with its new ``digest`` and
         ``reshape`` (the tokens moved, the spans and vocab links trimmed, the
         rows deleted). See ``compose_text_edits`` and ``gaps_to_ops``.
 

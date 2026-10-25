@@ -63,7 +63,7 @@ wire's key recasing):
   merge_sentences {sentence_id, other_id, spans: [...]}
   edit_text       {document_id, text_id|null, sentence_id|null, begin, end, old, new, word_ids, morpheme_ids}
                   (append or retype: the region is re-verified against the live body, the edit goes through the
-                   server's diffing text update so unchanged words keep their tokens, then sentence boundaries at
+                   server's text edit as the stretches that changed, so unchanged words keep their tokens, then sentence boundaries at
                    line starts and word tokens for untokenized text in the region are created from the real result)
   confirm         {span_ids, token_ids, link_ids, on: {id: token_id}, named}   (provConfirmed on material
                   awaiting review, any origin. `on` says which token each span and link sits on. `named` marks
