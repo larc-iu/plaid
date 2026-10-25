@@ -65,7 +65,8 @@ const roleOf = (layer) => layer?.config?.plaid?.role ?? null;
 const layerLabel = (layer) => roleOf(layer) ?? `name=${layer.name}`;
 
 async function readMedia(client, documentId) {
-  const data = await client.documents.getMedia(documentId);
+  // No timeout: a long recording takes longer than the client's default.
+  const data = await client.documents.getMedia(documentId, { timeout: null });
   let bytes;
   if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
   else if (ArrayBuffer.isView(data))
