@@ -4,6 +4,7 @@
   typed space splits, and the roles a layer's shape gives it in a save
   (`layer-roles`)."
   (:require [plaid.algos.text.chars :refer [line-break? punct? punct-only? space?]]
+            [plaid.algos.text.index :refer [upper-bound]]
             [plaid.algos.text.ops :refer [apply-text-edits gap-ops]]
             [plaid.util.codepoint :as cp]))
 
@@ -478,12 +479,7 @@
          _ (dotimes [i k] (aset shift (inc i) (+ (aget shift i) (long (:delta (info i))))))
          starts (long-array (map :start gaps))
         ;; the last gap starting at or before x, or -1
-         at-or-before (fn [x]
-                        (loop [lo 0 hi k]
-                          (if (< lo hi)
-                            (let [m (quot (+ lo hi) 2)]
-                              (if (<= (aget starts m) (long x)) (recur (inc m) hi) (recur lo m)))
-                            (dec lo))))
+         at-or-before (fn [x] (dec (upper-bound starts x)))
          wide (filterv #(< (:token/begin %) (:token/end %)) tokens)
 
          zero (filterv #(= (:token/begin %) (:token/end %)) tokens)

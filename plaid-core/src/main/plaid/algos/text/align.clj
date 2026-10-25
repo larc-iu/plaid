@@ -2,7 +2,7 @@
   "The word aligner of a whole-body save: each changed stretch of the diff
   aligned again word by word (see `align-to-words`)."
   (:require [plaid.algos.text.chars :refer [combining-mark? space? word-letter?]]
-            [plaid.algos.text.index :refer [tokens-near]]
+            [plaid.algos.text.index :refer [lower-bound tokens-near]]
             [plaid.algos.text.ops :refer [edits->ops ops->edits]]
             [plaid.util.codepoint :as cp]))
 
@@ -167,11 +167,7 @@
                       ;; (none when no word token is near)
                       reach (long-array (rest (reductions max Long/MIN_VALUE (map :token/end ws))))
                       inside? (fn [p]
-                                (let [c (loop [x 0 y (alength begins)]
-                                          (if (< x y)
-                                            (let [h (quot (+ x y) 2)]
-                                              (if (< (aget begins h) (long p)) (recur (inc h) y) (recur x h)))
-                                            x))]
+                                (let [c (lower-bound begins p)]
                                   (and (pos? c) (> (aget reach (dec c)) (long p)))))]
                   (into #{}
                         (comp (mapcat (juxt :token/begin :token/end))

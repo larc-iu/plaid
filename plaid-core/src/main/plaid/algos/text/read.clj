@@ -7,7 +7,7 @@
             [plaid.algos.text.chars :refer [punct-only? space? word-letter?]]
             [plaid.algos.text.align :refer [align-to-words]]
             [plaid.algos.text.diff :refer [diff]]
-            [plaid.algos.text.index :refer [tokens-near]]
+            [plaid.algos.text.index :refer [lower-bound tokens-near upper-bound]]
             [plaid.algos.text.ops :refer [compose-edits edits->ops ops->edits]]
             [plaid.algos.text.plain :refer [apply-plain-gaps gaps-body typed-to-next? word-token?]]
             [plaid.util.codepoint :as cp]))
@@ -665,13 +665,8 @@
         wbegins (long-array (map :token/begin wide))
         words (vec (filter word? wide))
         begins (long-array (map :token/begin words))
-        ;; the first index whose value is above x
-        upper (fn [^longs xs x] (loop [a 0 b (alength xs)]
-                                  (if (< a b)
-                                    (let [h (quot (+ a b) 2)] (if (<= (aget xs h) (long x)) (recur (inc h) b) (recur a h)))
-                                    a)))
         word-of (fn [{:keys [start end]}]
-                  (let [i (dec (upper begins start))]
+                  (let [i (dec (upper-bound begins start))]
                     (when (>= i 0) (let [w (words i)] (when (<= end (:token/end w)) w)))))
         blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate (test [_ c] (space? c)))))
         apart? (fn [x y] (some #(space? (aget o %)) (range (:end x) (:start y))))
@@ -695,8 +690,8 @@
           (mapcat (fn [[w run]]
                     (if (and w (< 1 (count run))
                              (some #(goes? run %)
-                                   (subvec wide (upper wbegins (dec (:token/begin w)))
-                                           (upper wbegins (dec (:token/end w))))))
+                                   (subvec wide (upper-bound wbegins (dec (:token/begin w)))
+                                           (upper-bound wbegins (dec (:token/end w))))))
                       (let [a (:start (first run))]
                         [{:start a :end (:end (peek run))
                           :value (apply str (map-indexed (fn [i g]
@@ -809,11 +804,7 @@
          begins (long-array (map first words))
          longest (reduce max 0 (map (fn [[b e]] (- e b)) words))
          ;; how many words [a, b) touches the inside of, two at most
-         over (fn [a b] (let [from (loop [lo 0 hi (alength begins)]
-                                     (if (< lo hi)
-                                       (let [m (quot (+ lo hi) 2)]
-                                         (if (< (aget begins m) (- a longest)) (recur (inc m) hi) (recur lo m)))
-                                       lo))]
+         over (fn [a b] (let [from (lower-bound begins (- a longest))]
                           (loop [i from k 0]
                             (if (and (< i (count words)) (< k 2) (< (aget begins i) b))
                               (recur (inc i) (if (> (second (words i)) a) (inc k) k))
@@ -854,11 +845,7 @@
          in? (fn [lo hi {:token/keys [begin end]}] (if (= begin end) (<= lo begin hi) (and (< begin hi) (< lo end))))
          cut-one (fn [lo hi tk] (assoc tk :token/begin (- (max lo (:token/begin tk)) lo) :token/end (- (min hi (:token/end tk)) lo)))
          cut (fn [lo hi]
-               (let [from (loop [a 0 b (alength tbegins)]
-                            (if (< a b)
-                              (let [m (quot (+ a b) 2)]
-                                (if (< (aget tbegins m) (- lo tlongest)) (recur (inc m) b) (recur a m)))
-                              a))]
+               (let [from (lower-bound tbegins (- lo tlongest))]
                  (loop [i from out (transient (into [] (comp (filter #(in? lo hi %)) (map #(cut-one lo hi %))) longs))]
                    (if (and (< i (count by-begin)) (<= (aget tbegins i) hi))
                      (let [tk (by-begin i)]

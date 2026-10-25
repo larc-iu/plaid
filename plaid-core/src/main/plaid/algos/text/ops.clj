@@ -4,6 +4,7 @@
   ops an editor sends (`compose-edits`) and the ops of a list of gaps, and
   the conversion between running-coordinate ops and old-body edits."
   (:require [plaid.algos.text.chars :refer [leading-marks]]
+            [plaid.algos.text.index :refer [lower-bound]]
             [plaid.util.codepoint :as cp]
             [plaid.util.op-json :as op-json]))
 
@@ -298,20 +299,13 @@
             ;; the shift of the edits before each
             before (long-array (reductions + 0 (map :delta edits)))
             fns (mapv (comp token-edit :op) edits)
-            ;; the first index in xs whose value is at least x
-            lower (fn [^longs xs x]
-                    (loop [a 0 b (alength xs)]
-                      (if (< a b)
-                        (let [m (quot (+ a b) 2)]
-                          (if (< (aget xs m) (long x)) (recur (inc m) b) (recur a m)))
-                        a)))
             edit-token (fn [{:token/keys [begin] :as t}]
                          ;; The edits that end before it only shift it. From
                          ;; the first that reaches it, each op stands at or
                          ;; after where the one before stood, so once one
                          ;; stands past the token's end, none of the rest
                          ;; touches it.
-                         (let [lo (lower ends begin)
+                         (let [lo (lower-bound ends begin)
                                d (aget before lo)
                                t (if (zero? d)
                                    t

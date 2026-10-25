@@ -1,5 +1,26 @@
 (ns plaid.algos.text.index
-  "Tokens looked up by position for the text rules.")
+  "Positions looked up for the text rules: the binary searches over sorted
+  offsets, and tokens by position.")
+
+(defn lower-bound
+  "The first index of `xs`, in ascending order, whose value is at least
+  `x`, or the length of `xs` when none is."
+  ^long [^longs xs ^long x]
+  (loop [a 0 b (alength xs)]
+    (if (< a b)
+      (let [m (quot (+ a b) 2)]
+        (if (< (aget xs m) x) (recur (inc m) b) (recur a m)))
+      a)))
+
+(defn upper-bound
+  "The first index of `xs`, in ascending order, whose value is above `x`,
+  or the length of `xs` when none is."
+  ^long [^longs xs ^long x]
+  (loop [a 0 b (alength xs)]
+    (if (< a b)
+      (let [m (quot (+ a b) 2)]
+        (if (<= (aget xs m) x) (recur (inc m) b) (recur a m)))
+      a)))
 
 (defn tokens-near
   "A function of `lo` and `hi` giving the tokens that begin or end within
@@ -16,16 +37,9 @@
     (let [by-begin (vec (sort-by :token/begin tokens))
           by-end (vec (sort-by :token/end tokens))
           begins (long-array (map :token/begin by-begin))
-          ends (long-array (map :token/end by-end))
-          ;; the first index whose value is at least x
-          lower (fn [^longs xs x]
-                  (loop [a 0 b (alength xs)]
-                    (if (< a b)
-                      (let [m (quot (+ a b) 2)]
-                        (if (< (aget xs m) (long x)) (recur (inc m) b) (recur a m)))
-                      a)))]
+          ends (long-array (map :token/end by-end))]
       (fn [lo hi]
         (-> []
-            (into (subvec by-begin (lower begins lo) (lower begins (inc hi))))
+            (into (subvec by-begin (lower-bound begins lo) (lower-bound begins (inc hi))))
             (into (filter #(< (:token/begin %) lo))
-                  (subvec by-end (lower ends lo) (lower ends (inc hi)))))))))
+                  (subvec by-end (lower-bound ends lo) (lower-bound ends (inc hi)))))))))
