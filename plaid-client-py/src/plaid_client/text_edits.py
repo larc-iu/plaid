@@ -208,6 +208,31 @@ def _refine_inside(at, s, b, e, pos, c):
         at[i] = nxt
 
 
+def compose_pieces(s):
+    """The pieces ``compose_text`` composes ``s`` in, ``[begin, end]`` each, in
+    order and covering ``s``: a code point that is not a mark begins one,
+    unless it composes with the piece before (Hangul jamo, a vowel sign). Each
+    piece composes on its own, so a cut changes what composing gives only
+    strictly inside a piece."""
+    s = s or ''
+    n = len(s)
+    pieces = []
+    start = 0
+    for i in range(1, n + 1):
+        if i < n and unicodedata.category(s[i]).startswith('M'):
+            continue
+        if pieces and ord(s[start]) >= 0x300:
+            last = pieces[-1]
+            a, b = s[last[0]:last[1]], s[start:i]
+            if _nfc(a + b) != _nfc(a) + _nfc(b):
+                last[1] = i
+                start = i
+                continue
+        pieces.append([start, i])
+        start = i
+    return pieces
+
+
 def compose_text(s, cuts=None):
     """``s`` composed (Unicode NFC), as the server stores every text, and where
     each code-point position of ``s`` goes in it: ``(text, at)``, ``at(p)`` for
@@ -236,20 +261,7 @@ def compose_text(s, cuts=None):
         return s, (lambda p: p)
     n = len(s)
     cut_at = {c for c in (cuts or ()) if isinstance(c, int) and 0 < c < n}
-    pieces = []
-    start = 0
-    for i in range(1, n + 1):
-        if i < n and unicodedata.category(s[i]).startswith('M'):
-            continue
-        if pieces and ord(s[start]) >= 0x300:
-            last = pieces[-1]
-            a, b = s[last[0]:last[1]], s[start:i]
-            if _nfc(a + b) != _nfc(a) + _nfc(b):
-                last[1] = i
-                start = i
-                continue
-        pieces.append([start, i])
-        start = i
+    pieces = compose_pieces(s)
     # a piece with a cut strictly inside it composes in parts
     parts = []
     for b, e in pieces:

@@ -54,3 +54,73 @@ def test_an_edit_is_moved_onto_the_body_the_server_stored():
     # a body the edit cannot have made: the text changed meanwhile
     assert igt_plan._composed_as('ka ma', 'ka mo') is None
     assert igt_plan._composed_as('ka ma', 'ka  ma') is None
+
+
+# Bodies core stored after an edit (REV-BH7-TEXT F1, read off core's own
+# compose), with core's place for every position. The first is stored as sent,
+# kept decomposed by its token edges. The others need four or more cuts in one
+# run of marks, past what a search over cut combinations reached.
+CORE_STORED = [
+    ('ِٕٕٔٔأّ',
+     'ِٕٕٔٔأّ',
+     [0, 1, 2, 3, 4, 5, 6, 7, 8]),
+    ('ּבְָָּּׁׁׁׁ',
+     'ּבְָָּּׁׁׁׁ',
+     list(range(12))),
+    ('ِّٕٕأَّٓلَٔ',
+     'ِّٕٕأَّٓلَٔ',
+     [0, 1, 2, 3, 4, 5, 6, 9, 9, 9, 10, 11, 12]),
+    ('=≠kḳ̣̣́́́́e',
+     '=≠kḳ̣̣́́́́e',
+     [0, 1, 2, 3, 4, 5, 6, 7, 10, 10, 10, 11, 12, 13]),
+    ('\nἀᾁ̔̔ἀ \nͅ῎ῃ᾿',
+     '\nἀᾁ̔̔ἀ \nͅ῎ῃ᾿',
+     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 14, 14, 15]),
+    ('\nְָשָּשָׁשְָָּּּׁׁ',
+     '\nְָשָּשָׁשְָָּּּׁׁ',
+     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 18]),
+]
+
+
+def test_a_body_stored_with_many_cuts_in_one_run_is_core_s():
+    for sent, stored, core_at in CORE_STORED:
+        got = igt_plan._composed_as(sent, stored)
+        assert got is not None, ascii(sent)
+        text, at = got
+        assert text == stored
+        assert [at(p) for p in range(len(sent) + 1)] == core_at, ascii(sent)
+
+
+def _thai_run(n, seed):
+    # a run with no space: consonants, each with marks in the order NFC keeps,
+    # and one character at the end whose two marks a token edge keeps apart in
+    # an order NFC would swap (U+0E48 before U+0E38)
+    import random
+    rng = random.Random(seed)
+    run = ''
+    while len(run) < n:
+        run += rng.choice('กขคง') + rng.choice(['', 'ิ', 'ุ', 'ุ่', 'ั้'])
+    return run + 'กุ่'
+
+
+def test_a_long_run_with_no_space_is_read_in_time_linear_in_its_length():
+    from plaid_client.testing import timed, within_factor_of
+    small, big = _thai_run(300, 1), _thai_run(3000, 2)
+    for run in (small, big):
+        text, at = igt_plan._composed_as(run, run)
+        assert text == run
+    # the body sent composes an a and its mark, so the identity shortcut is
+    # not what is timed, and the stored run keeps its last character's marks
+    # apart, which takes a cut there
+    def case(run):
+        return lambda: igt_plan._composed_as('a\u0301' + run, '\u00e1' + run)
+
+    def check(run):
+        got = case(run)()
+        assert got is not None and got[0] == '\u00e1' + run
+
+    check(small)
+    check(big)
+    _, small_ms = timed(case(small), runs=3)
+    _, big_ms = timed(case(big), runs=3)
+    within_factor_of(30, small_ms, big_ms, floor_ms=2, label='3,000 against 300 code points')

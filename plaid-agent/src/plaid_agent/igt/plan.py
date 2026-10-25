@@ -2004,10 +2004,13 @@ def _composed_as(body: str, stored: str):
     changed meanwhile). The server composes with the edges of its tokens as
     its rule leaves them (``compose_text`` with them as cuts), so a character
     a token edge falls inside stays decomposed. Those cuts are read off
-    ``stored``: whitespace never composes, so ``body`` and ``stored`` are
-    compared word by word, and in a word stored otherwise than composed whole
-    the fewest cuts that give its stored spelling are found."""
+    ``stored``: a body stored as sent moved nothing, whitespace never
+    composes, so ``body`` and ``stored`` are compared word by word, and in a
+    word stored otherwise than composed whole the fewest cuts that give its
+    stored spelling are found."""
     from plaid_client import compose_text
+    if body == stored:
+        return stored, (lambda p: p)
     words, kept = re.split(r'(\s)', body), re.split(r'(\s)', stored)
     if len(words) != len(kept):
         return None
@@ -2022,26 +2025,43 @@ def _composed_as(body: str, stored: str):
     return (text, at) if text == stored else None
 
 
-# The most cuts looked for in one word: a token edge inside a character is a
-# tone mark that is a token of its own, one or two to a word.
-MAX_WORD_CUTS = 3
-
-
 def _cuts_in(word: str, stored: str):
     """The fewest positions of ``word`` where cutting it composes it to
-    ``stored``, or None. Only a cut before a mark or a Hangul vowel or final
-    can change what composing gives."""
-    import itertools
+    ``stored``, the earliest of those that tie, or None. Composing goes piece
+    by piece (``compose_pieces``), so only a cut inside a piece can change
+    what it gives, and the pieces are matched against ``stored`` in turn: at
+    each piece's end the places ``stored`` may have reached, each with the
+    best cuts that reach it."""
     from plaid_client import compose_text
+    from plaid_client.text_edits import compose_pieces
     if compose_text(word)[0] == stored:
         return ()
-    places = [i for i in range(1, len(word))
-              if unicodedata.category(word[i]).startswith('M') or '\u1160' <= word[i] <= '\u11ff']
-    for k in range(1, min(len(places), MAX_WORD_CUTS) + 1):
-        for cut in itertools.combinations(places, k):
-            if compose_text(word, cut)[0] == stored:
-                return cut
-    return None
+    nfc = lambda t: unicodedata.normalize('NFC', t)  # noqa: E731
+    reached = {0: ()}
+    for b, e in compose_pieces(word):
+        nxt = {}
+        for j, cut in reached.items():
+            # the ways the piece's parts, composed one by one, spell what
+            # follows j in stored: from (i, k) on, word[i:...] is matched at k
+            inside = {(b, j): cut}
+            for i in range(b, e):
+                for k, done in [(k, c) for (p, k), c in inside.items() if p == i]:
+                    for m in range(i + 1, e + 1):
+                        part = nfc(word[i:m])
+                        if not stored.startswith(part, k):
+                            continue
+                        key, got = (m, k + len(part)), done + ((m,) if m < e else ())
+                        have = inside.get(key)
+                        if have is None or (len(got), got) < (len(have), have):
+                            inside[key] = got
+            for (p, k), got in inside.items():
+                have = nxt.get(k)
+                if p == e and (have is None or (len(got), got) < (len(have), have)):
+                    nxt[k] = got
+        if not nxt:
+            return None
+        reached = nxt
+    return reached.get(len(stored))
 
 
 def _region_gaps(old: str, new: str, at: int) -> List[Dict[str, Any]]:
