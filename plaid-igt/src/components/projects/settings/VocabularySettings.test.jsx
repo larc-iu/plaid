@@ -42,10 +42,16 @@ const makeClient = ({ linked = [], link } = {}) => ({
 const rowOf = (root, name) => byText(root, 'tbody tr', name);
 const boxOf = (root, name) => rowOf(root, name).querySelector('input[type=checkbox]');
 
-const mount = (client) =>
+// The page's project, as the page read it.
+const mount = async (client, onProjectUpdate) =>
   renderComponent(
     <MemoryRouter>
-      <VocabularySettings projectId="p1" client={client} />
+      <VocabularySettings
+        project={await client.projects.get('p1')}
+        projectId="p1"
+        client={client}
+        onProjectUpdate={onProjectUpdate}
+      />
     </MemoryRouter>,
   );
 
@@ -284,5 +290,48 @@ describe('Project settings, Vocabularies, a list that will not load', () => {
     expect(view.container.textContent).toMatch(/Failed to load or save the vocabularies/);
     expect(notifyError).not.toHaveBeenCalled();
     await view.unmount();
+  });
+});
+
+// The links shown are the page's project's, and a link sent reads the page's
+// project again, so the other settings sections show it.
+describe("Project settings, Vocabularies, the page's project", () => {
+  it('shows the links the page holds', async () => {
+    const client = makeClient({ linked: ['v2'] });
+    const project = { id: 'p1', vocabs: [{ id: 'v1' }] };
+    const view = await renderComponent(
+      <MemoryRouter>
+        <VocabularySettings project={project} projectId="p1" client={client} />
+      </MemoryRouter>,
+    );
+    expect(boxOf(view.container, 'Mine').checked).toBe(true);
+    expect(boxOf(view.container, 'Theirs').checked).toBe(false);
+    expect(client.projects.get).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('reads the page again after a link or an unlink, and not after a refusal', async () => {
+    const onProjectUpdate = vi.fn(async () => {});
+    const client = makeClient({ linked: ['v2'] });
+    const view = await mount(client, onProjectUpdate);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    expect(client.projects.linkVocab).toHaveBeenCalledWith('p1', 'v1');
+    expect(onProjectUpdate).toHaveBeenCalledTimes(1);
+    await view.step(() => rowOf(view.container, 'Theirs').click());
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
+    expect(client.projects.unlinkVocab).toHaveBeenCalledWith('p1', 'v2');
+    expect(onProjectUpdate).toHaveBeenCalledTimes(2);
+    await view.unmount();
+
+    const refusing = makeClient({
+      link: async () => {
+        throw refused();
+      },
+    });
+    const update = vi.fn(async () => {});
+    const again = await mount(refusing, update);
+    await again.step(() => rowOf(again.container, 'Mine').click());
+    expect(update).not.toHaveBeenCalled();
+    await again.unmount();
   });
 });

@@ -13,26 +13,26 @@ import {
 } from '@/domain/igtConfig';
 import { TYPE } from '@ui/lib/typeScale.js';
 
-export const OrthographiesSettings = ({ projectId, client }) => {
+// The project is the page's, and a save or a refusal reads the page's project
+// again (onProjectUpdate), so every section shows the same one.
+export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
   const [, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   // Word token layer id, for usage counts at delete time (set during load).
   const wordLayerIdRef = useRef(null);
   // The stored list as last read, which every write expects, so a page opened
   // before another maintainer's save is refused rather than writing over it.
-  // A refused save loads the list again (a new `reloads` remounts the editor).
+  // A refused save reads the project again and loads the list from it (a new
+  // `reloads` remounts the editor).
   const [stored, setStored] = useState(undefined);
   const orthographiesCell = useConfigCell(stored);
   const [reloads, setReloads] = useState(0);
 
-  // Load current project configuration
+  // The list as the page's project holds it.
   const handleLoadData = async () => {
     try {
       setIsLoading(true);
       setHasError(false);
-
-      // Get the project which contains text layers
-      const project = await client.projects.get(projectId);
 
       if (!project.textLayers || project.textLayers.length === 0) {
         // No text layers yet, return null for defaults
@@ -89,9 +89,6 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       setIsLoading(true);
       setHasError(false);
 
-      // Get the project which contains text layers
-      const project = await client.projects.get(projectId);
-
       if (!project.textLayers || project.textLayers.length === 0) {
         throw new Error(notSetUp('No text layers found in project'));
       }
@@ -126,11 +123,19 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         );
         return nonBaselineOrthographies;
       });
+      // The save has landed, so a read that fails is not a failed save.
+      await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+        console.error('Failed to reload the project:', err),
+      );
     } catch (error) {
       console.error('Failed to save orthographies configuration:', error);
       // Someone else saved since: show what is stored now.
-      if (isConfigConflict(error)) setReloads((n) => n + 1);
-      else setHasError(true);
+      if (isConfigConflict(error)) {
+        await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+          console.error('Failed to reload the project:', err),
+        );
+        setReloads((n) => n + 1);
+      } else setHasError(true);
       throw error;
     } finally {
       setIsLoading(false);

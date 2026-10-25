@@ -11,7 +11,9 @@ import { TYPE } from '@ui/lib/typeScale.js';
 // humanize.
 const refusal = (error) => error?.responseData?.error || error;
 
-export const VocabularySettings = ({ projectId, client }) => {
+// The links shown are the page's project's, and each link or unlink sent reads
+// the page's project again (onProjectUpdate), so every section shows it.
+export const VocabularySettings = ({ project, projectId, client, onProjectUpdate }) => {
   const { user } = useAuth();
   const [hasError, setHasError] = useState(false);
 
@@ -23,8 +25,6 @@ export const VocabularySettings = ({ projectId, client }) => {
       // Get all available vocabularies
       const allVocabs = await client.vocabLayers.list();
 
-      // Get the project to see which vocabularies are linked
-      const project = await client.projects.get(projectId);
       const linkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
       // Transform to component format. Linking a vocabulary takes one of its
@@ -56,13 +56,17 @@ export const VocabularySettings = ({ projectId, client }) => {
   // already settled (a refused link, then an untick) does nothing.
   const handleSaveChanges = async ({ change }) => {
     if (!change) return;
-    const project = await client.projects.get(projectId);
-    const linked = (project.vocabs || []).some((v) => v.id === change.id);
+    const live = await client.projects.get(projectId);
+    const linked = (live.vocabs || []).some((v) => v.id === change.id);
     if (change.enabled && !linked) {
       await client.projects.linkVocab(projectId, change.id);
     } else if (!change.enabled && linked) {
       await client.projects.unlinkVocab(projectId, change.id);
-    }
+    } else return;
+    // The link has landed, so a read that fails is not a failed send.
+    await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+      console.error('Failed to reload the project:', err),
+    );
   };
 
   // How many links this project has into a vocabulary: an unlink removes them.

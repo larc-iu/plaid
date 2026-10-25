@@ -8,7 +8,10 @@ import { ROLE_OPTIONS } from '@/domain/roleGrants.js';
 
 // What the project is, then what it annotates with, then who may touch it: the
 // order every app lists its settings in. Access holds the members and the API
-// tokens, two answers to one question.
+// tokens, two answers to one question. A section shows the page's `project`
+// and calls `onProjectUpdate` after a save and after a refused one, which
+// reads the page's project again, so every section shows the same project.
+// Services is plaid-ui's own screen and reads the project for itself.
 const SECTIONS = [
   {
     value: 'general',

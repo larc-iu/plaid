@@ -10,10 +10,15 @@ import { Card } from '@ui/components/ui/card';
 export const OrthographyVocabSettings = ({ project, projectId, client, onProjectUpdate }) => (
   <>
     <Card className="p-6">
-      <OrthographiesSettings projectId={projectId} client={client} />
+      <OrthographiesSettings project={project} client={client} onProjectUpdate={onProjectUpdate} />
     </Card>
     <Card className="p-6">
-      <VocabularySettings projectId={projectId} client={client} />
+      <VocabularySettings
+        project={project}
+        projectId={projectId}
+        client={client}
+        onProjectUpdate={onProjectUpdate}
+      />
     </Card>
     <Card className="p-6">
       <ComposeSettings

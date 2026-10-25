@@ -54,7 +54,9 @@ afterEach(() => vi.clearAllMocks());
 describe('Settings > Orthographies, an orthography named Baseline', () => {
   it('is shown after the Baseline row and kept when another is added', async () => {
     const client = fakeClient([{ name: 'Baseline' }, { name: 'IPA' }]);
-    const view = await renderComponent(<OrthographiesSettings projectId="p1" client={client} />);
+    const view = await renderComponent(
+      <OrthographiesSettings project={await client.projects.get()} client={client} />,
+    );
     await view.step(settle);
     expect(rowNames()).toEqual(['Baseline', 'Baseline', 'IPA']);
     expect(all(document.body, '.group').map((r) => !!r.querySelector('button'))).toEqual([
@@ -84,7 +86,9 @@ describe('Settings > Orthographies, an orthography named Baseline', () => {
 
   it('can be removed, and the Baseline row stays', async () => {
     const client = fakeClient([{ name: 'Baseline' }, { name: 'IPA' }]);
-    const view = await renderComponent(<OrthographiesSettings projectId="p1" client={client} />);
+    const view = await renderComponent(
+      <OrthographiesSettings project={await client.projects.get()} client={client} />,
+    );
     await view.step(settle);
     const remove = all(document.body, '.group')[1].querySelector(
       'button[aria-label^="Remove"], button[title^="Remove"]',
