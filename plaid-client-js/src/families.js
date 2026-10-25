@@ -8,7 +8,7 @@
 import { constraintsBody } from "./constraints.js";
 import { listAll, listPage } from "./pagination.js";
 
-/** @typedef {import("./index.js").PlaidClient} PlaidClient */
+/** @typedef {import("./client.js").PlaidClient} PlaidClient */
 /**
  * @typedef {import("./types.js").MetadataOp} MetadataOp
  * @typedef {import("./types.js").LayerConstraint} LayerConstraint

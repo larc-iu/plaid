@@ -773,10 +773,10 @@ results = b.results</code></pre>
 
 // Main execution
 function main() {
-  // The client is index.js and the modules beside it it is built from
+  // The client is client.js and the modules it is built from
   // (families.js holds the method families a bundle spreads in).
   const jsClientDir = path.join(__dirname, '..', '..', 'plaid-client-js', 'src');
-  const jsSources = ['index.js', 'families.js'];
+  const jsSources = ['client.js', 'families.js'];
   // The resources and the client are in client.py, the client's operations
   // and the batch object in classes of their own modules: each of those is
   // read from its class on, past the module's helper functions.

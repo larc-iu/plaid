@@ -19,7 +19,7 @@
  * @typedef {import("./services.js").ResponseHelper} ResponseHelper
  * @typedef {import("./services.js").ServiceRegistration} ServiceRegistration
  * @typedef {import("./services.js").ServiceStatusEvent} ServiceStatusEvent
- * @typedef {import("./index.js").PlaidClient["operationGroups"]} OperationGroupsBundle
+ * @typedef {import("./client.js").PlaidClient["operationGroups"]} OperationGroupsBundle
  */
 
 /**
@@ -61,8 +61,8 @@
  * until `submit()`. See `PlaidClient.batch()`. `submit()` resolves to one
  * result per operation, in order. `ref(opIndex, index)` stands for the id a
  * queued operation will create, in the body of a later write on this batch.
- * @typedef {import("./index.js").PlaidClient & {
- *   readonly client: import("./index.js").PlaidClient,
+ * @typedef {import("./client.js").PlaidClient & {
+ *   readonly client: import("./client.js").PlaidClient,
  *   readonly operations: Array<{path: string, method: string, body?: any}>,
  *   submit(): Promise<any[]>,
  *   abort(): void,
