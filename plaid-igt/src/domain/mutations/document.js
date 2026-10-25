@@ -96,7 +96,8 @@ export const documentMutations = {
   // Baseline tab's first save. `base` is the body it was typed over.
   //
   // A text not made yet is made with its sentences, one per line, in one
-  // batch, the text under an id minted here, so the sentences can name it. A
+  // batch, the text under an id minted here, so the sentences can name it,
+  // and both are shown before it is sent. A
   // lost answer is sent again under the same keys by the queue and answered
   // from what the first one stored. `tokenize`: it also gets the words of the
   // project's "Tokenize new text" (`tokenizeLayerOf`), which the server makes.
@@ -125,16 +126,38 @@ export const documentMutations = {
       return false;
     }
 
-    // Minted outside the send, so a resend of it names the same text.
+    const label = 'Failed to save baseline text';
+    if (!this._canWrite(label)) return false;
+    // Minted outside the send, so a resend of it names the same rows.
     const newTextId = pendingId();
+    const sentences =
+      cpLength(newBody) > 0
+        ? sentenceSeed(sentenceTokenLayer.id, newTextId, newBody).map((s) => ({
+            id: pendingId(),
+            ...s,
+          }))
+        : [];
+    // Shown before it is sent, so a write made while it is on its way plans
+    // on the text it makes and sends no second create. Over a copy that has
+    // a text (this one shown again over a read) it shows nothing.
+    this._applyRawPatch((next, infoNext) => {
+      if (infoNext.primaryTextLayer.text) return;
+      infoNext.primaryTextLayer.text = { id: newTextId, body: newBody, metadata: {} };
+      infoNext.sentenceTokenLayer.tokens = sentences.map(({ id, text, begin, end }) => ({
+        id,
+        text,
+        begin,
+        end,
+      }));
+    });
     const tokenizeLayer = tokenize ? tokenizeLayerOf(info) : undefined;
-    return this._queueWrite('Failed to save baseline text', async () => {
+    return this._queueWrite(label, async () => {
       await this._client.batched(async (b) => {
         this._ensureText(b, { id: newTextId, body: newBody }, { tokenizeLayer });
-        if (cpLength(newBody) > 0) {
-          b.tokens.bulkCreate(sentenceSeed(sentenceTokenLayer.id, newTextId, newBody));
-        }
+        if (sentences.length) b.tokens.bulkCreate(sentences);
       });
+      // Made under the ids shown, which are no longer pending.
+      this._settle(new Map([newTextId, ...sentences.map((s) => s.id)].map((id) => [id, id])));
       await this._reloadInSend();
     });
   },

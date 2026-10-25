@@ -1,8 +1,8 @@
-// A document with no text yet (made by ud's form, an import with no body, a
-// New document, which makes none) gets its text from the first write that
-// needs one, in that write's batch (A3-8): the Baseline save, and a segment
-// made in the Media tab. Against a server that keeps what it stores
-// (test/segmentServer.js).
+// A document with no text yet (made by ud's form, an import with no body, the
+// API, or a New document whose second request failed) gets its text from the
+// first write that needs one, in that write's batch (A3-8): the Baseline save,
+// and a segment made in the Media tab. Against a server that keeps what it
+// stores (test/segmentServer.js).
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildRawDoc, makeIgtDoc, resetIds, settle } from './test-helpers.js';
 import { segmentServer } from '../test/segmentServer.js';
@@ -109,5 +109,51 @@ describe('a document with no text', () => {
     expect(batch.ops.map((o) => o.kind)).toEqual(['texts.create', 'tokens.bulkCreate']);
     expect(server.body).toBe('kai pele');
     expect(doc.body).toBe('kai pele');
+  });
+
+  // The Baseline save shows the text it makes before it sends, so a segment
+  // made while that save is on its way plans an edit of it, and no second
+  // create.
+  it('takes a segment made while its first Baseline save is on its way', async () => {
+    const { doc, server } = open();
+    const saved = doc.saveBaselineText('kai pele', '');
+    expect(doc.body).toBe('kai pele');
+    expect(doc.layerInfo.sentenceTokenLayer.tokens.map((t) => [t.begin, t.end])).toEqual([[0, 8]]);
+    const segment = doc.createAlignment({ text: 'mau', timeBegin: 0, timeEnd: 1 });
+    expect(await saved).toBe(true);
+    expect(await segment).toBe(true);
+    await idle(doc);
+    const creates = server.sent
+      .flatMap((r) => (r.kind === 'batch' ? r.ops : [r]))
+      .filter((w) => w.kind === 'texts.create');
+    expect(creates).toHaveLength(1);
+    expect(server.segments()).toHaveLength(1);
+    expect(server.body).toContain('kai pele');
+    expect(server.body).toContain('mau');
+    expect(doc.body).toBe(server.body);
+  });
+
+  // A segment that makes the text, stored with its answer lost, and the
+  // client's own resend refused before the key is looked up: it is stored,
+  // so it is no failure, as a segment over a text already there.
+  it('takes a segment that made the text when its resend is refused', async () => {
+    const server = segmentServer(textless());
+    const doc = makeIgtDoc({
+      raw: structuredClone(server.stored),
+      client: server.client,
+      user: { id: 'a' },
+    });
+    const errors = [];
+    doc.onError = (message) => errors.push(String(message));
+    server.storeThenRefuse(500);
+    const first = doc.createAlignment({ text: 'kai', timeBegin: 0, timeEnd: 1 });
+    const second = doc.createAlignment({ text: 'pele', timeBegin: 1, timeEnd: 2 });
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    await idle(doc);
+    expect(errors).toEqual([]);
+    expect(server.body).toBe('kai pele');
+    expect(server.segments()).toHaveLength(2);
+    expect(doc.alignmentTokens).toHaveLength(2);
   });
 });

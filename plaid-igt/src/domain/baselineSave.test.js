@@ -33,7 +33,7 @@ describe('saveBaselineText on a text that exists', () => {
 });
 
 describe('saveBaselineText on a document with no text yet', () => {
-  it('makes the text and its sentences in one batch, the sentences naming the id minted for the text', async () => {
+  it('makes the text and its sentences in one batch, the sentences naming the id minted for the text, each under an id minted for it', async () => {
     const raw = buildRawDoc({ body: '', sentences: [], words: [], morphemes: [] });
     raw.textLayers[0].text = null;
     const client = makeFakeClient({
@@ -46,8 +46,8 @@ describe('saveBaselineText on a document with no text yet', () => {
     expect(typeof id).toBe('string');
     const seed = client.calls.find((c) => c.kind === 'tokens.bulkCreate');
     expect(seed.args[0]).toEqual([
-      { tokenLayerId: 'sentL', text: id, begin: 0, end: 2 },
-      { tokenLayerId: 'sentL', text: id, begin: 2, end: 3 },
+      { id: expect.any(String), tokenLayerId: 'sentL', text: id, begin: 0, end: 2 },
+      { id: expect.any(String), tokenLayerId: 'sentL', text: id, begin: 2, end: 3 },
     ]);
   });
 });

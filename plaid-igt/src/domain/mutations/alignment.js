@@ -1308,11 +1308,18 @@ export const alignmentMutations = {
       planned,
       send: (base) => send(sent, base),
     };
+    // A write whose key was sent before with another request, or refused
+    // after the client sent it again: it landed when the segment it makes is
+    // there.
+    const landed = (fresh) => segmentIds(fresh).has(settledId(sent.segment.id));
     const write = async () => {
-      // A write that makes the text sends it whole, so there is no base.
+      // A write that makes the text sends it whole, so there is no base, and
+      // is not made again on a refusal: it is read back, and stands when the
+      // segment it makes is there.
       const making = newText != null;
-      const results =
-        making || !textOps.length
+      const results = making
+        ? await send(sent).catch((err) => this._landedAfterRefusal(err, landed))
+        : !textOps.length
           ? await send(sent)
           : await this._sendOverSegmentText(state, {
               replan: (fresh, updated) => {
@@ -1325,10 +1332,7 @@ export const alignmentMutations = {
                   show: () => this._showRead(updated, show(m)),
                 };
               },
-              // A write whose key was sent before with another request, or
-              // refused after the client sent it again: it landed when the
-              // segment it makes is there.
-              landed: (fresh) => segmentIds(fresh).has(settledId(sent.segment.id)),
+              landed,
               readOnRefusal: true,
             });
       const at = sent.textOps.length ? 1 : 0;
@@ -1677,17 +1681,8 @@ export const alignmentMutations = {
       } catch (err) {
         reused = isKeyReused(err);
         if (!reused && !isChangedElsewhere(err)) {
-          if (!readOnRefusal || !landed || isUnknownOutcome(err)) throw err;
-          let updated;
-          try {
-            updated = await this._fetch();
-          } catch {
-            throw err;
-          }
-          if (!landed(getIgtLayerInfo(updated))) throw err;
-          await this._adoptReload(updated);
-          this._showRead(updated);
-          return null;
+          if (!readOnRefusal || !landed) throw err;
+          return this._landedAfterRefusal(err, landed);
         }
       }
     }
@@ -1713,6 +1708,26 @@ export const alignmentMutations = {
     state.keys = this._client.keySeed?.() ?? null;
     state.again = false;
     return this._sendSegmentBatch(state);
+  },
+
+  // A write refused with `err` read back: a send under its keys may have
+  // landed with its answer lost, sent by the client inside its own resend,
+  // whatever the refusal of the resend says (a 500, a 403). When
+  // `landed(fresh)` finds it stored, what was read is shown and the answer is
+  // null. Otherwise, and for a lost answer, which the queue sends again, it
+  // is refused with `err`.
+  async _landedAfterRefusal(err, landed) {
+    if (isUnknownOutcome(err)) throw err;
+    let updated;
+    try {
+      updated = await this._fetch();
+    } catch {
+      throw err;
+    }
+    if (!landed(getIgtLayerInfo(updated))) throw err;
+    await this._adoptReload(updated);
+    this._showRead(updated);
+    return null;
   },
 
   // `state.send(state.base)` under `state.keys`.
