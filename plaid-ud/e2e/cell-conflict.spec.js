@@ -179,12 +179,13 @@ test('a lemma lost to a respelling keeps yours on Enter, one lost to a split doe
     await B.page.keyboard.press('Enter');
     await expect.poll(() => stored(fast, 'lemma')).toBe('quick');
 
-    // "runs" (8-12) split and re-cased "Run s": the larger part keeps the token.
+    // "runs" (8-12) split and re-cased as "ruN s", the `n` typed over as "N "
+    // inside the word: the larger part keeps the token (REV-DUMB F2).
     const runs = S.morphIds[2];
     const before = await stored(runs, 'lemma');
     release = B.hold();
     await typeInto(B.page, runs, 'lemma', 'sprint');
-    await editText(A.page, 8, 12, 'Run s');
+    await editText(A.page, 10, 11, 'N ');
     release();
     const runsNote = B.page.locator(`[id="${runs}-lemma-conflict"]`);
     await expect(runsNote).toHaveText('Yours: sprint · Esc to keep theirs');

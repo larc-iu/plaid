@@ -1187,3 +1187,46 @@
       (is (= [[:w 1]] (:deleted r)))
       (is (= [[0 3] [4 6]]
              (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))))))
+
+;; REV-DUMB F1, ruled R45: a paste or a retype that covers a whole sentence or
+;; row along with more text deletes it, with what is on it, and the neighbour
+;; it only cuts takes the new text. Only a sentence or row typed over exactly
+;; keeps its token (R42 Q1). Rows here are a layer that forbids overlap beside
+;; the words, as igt's segments are.
+(defn- edit-rows
+  "`[body deleted kept]` after `op` on `body` with sentences, words and rows
+  at the extents given, `kept` each live token's extent by id."
+  [body sents words rows op]
+  (let [t (fn [id l [b e]] {:token/id id :token/layer l :token/begin b :token/end e})
+        tokens (concat (map-indexed #(t [:s %1] :s %2) sents) (map-indexed #(t [:w %1] :w %2) words)
+                       (map-indexed #(t [:a %1] :a %2) rows))
+        r (th/plain-edits body tokens [op] #{:s} #{:w} {:exclusive #{:w :a}})
+        gone (set (:deleted r))]
+    [(:text/body (:text r))
+     (vec (sort (:deleted r)))
+     (into (sorted-map) (keep #(when-not (gone (:token/id %)) [(:token/id %) [(:token/begin %) (:token/end %)]])) (:tokens r))]))
+
+(deftest a-paste-over-whole-sentences-or-rows-deletes-them
+  (testing "both lines pasted over: they share only the final `.`, so the first sentence and row lie inside the stretch and go"
+    (is (= ["uno dos.\ntres cuatro." [[:a 0] [:s 0] [:w 0] [:w 1] [:w 2]]
+            {[:a 1] [0 21] [:s 1] [14 21] [:w 3] [14 21]}]
+           (edit-rows "one two.\nthree four." [[0 9] [9 20]] [[0 3] [4 8] [9 14] [15 20]] [[0 8] [9 20]]
+                      (rep 0 20 "uno dos.\ntres cuatro.")))))
+  (testing "two sentences under one row, retyped whole: the first sentence goes, the row stays"
+    (is (= ["xy. zw." [[:s 0] [:w 0]] {[:a 0] [0 7] [:s 1] [4 7] [:w 1] [4 7]}]
+           (edit-rows "ab. cd." [[0 4] [4 7]] [[0 3] [4 7]] [[0 7]] (rep 0 7 "xy. zw.")))))
+  (testing "a stretch over three lines: the middle sentence and row go"
+    (is (= ["aa XX\nYY ZZ\nWW ff" [[:a 1] [:s 1] [:w 1] [:w 2] [:w 3] [:w 4]]
+            {[:a 0] [0 14] [:a 2] [15 17] [:s 0] [0 3] [:s 2] [15 17] [:w 0] [0 2] [:w 5] [15 17]}]
+           (edit-rows "aa bb\ncc dd\nee ff" [[0 6] [6 12] [12 17]] [[0 2] [3 5] [6 8] [9 11] [12 14] [15 17]]
+                      [[0 5] [6 11] [12 17]] (rep 3 11 "XX\nYY ZZ\nWW")))))
+  (testing "a sentence typed over exactly keeps its token, and the row it covers with more goes"
+    (is (= ["X Y!three four." [[:a 0] [:w 0] [:w 1]]
+            {[:a 1] [4 15] [:s 0] [0 4] [:s 1] [4 15] [:w 2] [4 9] [:w 3] [10 15]}]
+           (edit-rows "one two.\nthree four." [[0 9] [9 20]] [[0 3] [4 8] [9 14] [15 20]] [[0 8] [9 20]]
+                      (rep 0 9 "X Y!")))))
+  (testing "a row typed over exactly keeps its token"
+    (let [[_ deleted kept] (edit-rows "one two.\nthree four." [[0 9] [9 20]] [[0 3] [4 8] [9 14] [15 20]] [[0 8] [9 20]]
+                                      (rep 0 8 "X Y!"))]
+      (is (= [[:w 0] [:w 1]] deleted))
+      (is (= [0 4] (kept [:a 0]))))))
