@@ -4,7 +4,6 @@
   repair the stored data for a list. The rules themselves and their checks
   are in `plaid.sql.constraints.layer`."
   (:require [clojure.string :as str]
-            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.constraints.layer :as lc]
             [plaid.sql.crud :as crud]
@@ -68,10 +67,8 @@
              ;; History names the rules this write declared, not the ones a
              ;; client meant to (a refused rule is sent again without it).
              (when-not op/*custom-description*
-               (psc/execute! tx {:update :operations
-                                 :set {:description (str "Set " ns " rules on " (nouns kind) " " (:name row) ": "
-                                                         (if (seq cs) (str/join ", " (map #(get % "type") cs)) "none"))}
-                                 :where [:= :id (:id psaw/*op*)]})))
+               (op/describe! tx (str "Set " ns " rules on " (nouns kind) " " (:name row) ": "
+                                     (if (seq cs) (str/join ", " (map #(get % "type") cs)) "none")))))
            new-map))))))
 
 (defn delete-constraints

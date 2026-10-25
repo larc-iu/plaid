@@ -1437,12 +1437,10 @@
                         (when (seq vs)
                           (remedy! tx ctx c vs counts))))
                     (let [said (describe-counts @counts)]
-                      (psc/execute! tx {:update :operations
-                                        :set {:description (str (if (= op-type :layer/repair-constraints)
-                                                                  "Repaired layer rules"
-                                                                  "Applied layer rules")
-                                                                (when (seq said) (str ": " said)))}
-                                        :where [:= :id (:id psaw/*op*)]}))
+                      (op/describe! tx (str (if (= op-type :layer/repair-constraints)
+                                              "Repaired layer rules"
+                                              "Applied layer rules")
+                                            (when (seq said) (str ": " said)))))
                     @counts)))]
     (when-not (:success result)
       (throw (ex-info (str "Applying layer rules to document " doc " failed: " (:error result))
@@ -1464,7 +1462,7 @@
       (when-let [op-id (:id psaw/*op*)]
         (or (:batch_id (psc/q1 tx {:select [:batch_id] :from :operations :where [:= :id op-id]}))
             (let [bid (random-uuid)]
-              (psc/execute! tx {:update :operations :set {:batch_id bid} :where [:= :id op-id]})
+              (op/set-batch! tx bid)
               bid)))
       (random-uuid)))
 

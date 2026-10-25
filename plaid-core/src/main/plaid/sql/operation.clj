@@ -397,6 +397,20 @@
         (when-let [a (:affected-projects psaw/*op*)]
           (swap! a update (:project_id pre) (fnil conj #{}) doc-id))))))
 
+(defn describe!
+  "Rewrite the current operation's `description`, for a body that knows
+  what it did only once it has done it. Whether a client's
+  `?audit-message=` (`*custom-description*`) wins is each caller's rule."
+  [tx description]
+  (psc/execute! tx {:update :operations
+                    :set {:description description}
+                    :where [:= :id (:id psaw/*op*)]}))
+
+(defn set-batch!
+  "Put the current operation into batch `batch-id` after its row was made."
+  [tx batch-id]
+  (psc/execute! tx {:update :operations :set {:batch_id batch-id} :where [:= :id (:id psaw/*op*)]}))
+
 (defn op-ts
   "The current operation's monotonic timestamp, for bodies that stamp a
   time column themselves (vocab-layer creation, the folded `:modified_at`
