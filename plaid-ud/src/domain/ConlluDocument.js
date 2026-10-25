@@ -1268,31 +1268,14 @@ export class ConlluDocument extends DocumentModel {
           changes: existingFeat.value !== pair,
           value: pair,
         });
+        const ops = metadataOps(verifyFeat);
         // Optimistic overwrite: update the tag locally before the round trip.
-        this._applyRawPatch((next, infoNext) => {
-          const layerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
-            layer.spans?.some((span) => span.id === existingFeat.id),
-          );
-          const spanIndex = layerDoc?.spans?.findIndex((span) => span.id === existingFeat.id);
-          if (layerDoc?.spans && spanIndex != null && spanIndex !== -1) {
-            layerDoc.spans[spanIndex].value = pair;
-            if (verifyFeat) {
-              layerDoc.spans[spanIndex].metadata = mergeMetadata(
-                layerDoc.spans[spanIndex].metadata,
-                verifyFeat,
-              );
-            }
-          }
-        });
+        this._showValues([{ id: existingFeat.id, value: pair, ops }]);
         return this._queueWrite(label, async () => {
           const id = settledId(existingFeat.id);
           await this._sendMaking(
             made,
-            (c) => {
-              const sent = c.spans.update(id, pair);
-              if (verifyFeat) c.spans.patchMetadata(id, metadataOps(verifyFeat));
-              return sent;
-            },
+            (c) => this._sendValue(c, 'span', id, pair, ops),
             Boolean(verifyFeat),
           );
         });
@@ -1392,33 +1375,14 @@ export class ConlluDocument extends DocumentModel {
         changes: existingSpan.value !== value,
         value,
       });
+      const ops = metadataOps(verify);
       // Optimistic: update the value (+ metadata) locally before the round trip.
-      this._applyRawPatch((next, infoNext) => {
-        const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
-          layer.spans?.some((span) => span.id === existingSpan.id),
-        );
-        if (targetLayerDoc?.spans) {
-          const spanIndex = targetLayerDoc.spans.findIndex((span) => span.id === existingSpan.id);
-          if (spanIndex !== -1) {
-            targetLayerDoc.spans[spanIndex].value = value;
-            if (verify) {
-              targetLayerDoc.spans[spanIndex].metadata = mergeMetadata(
-                targetLayerDoc.spans[spanIndex].metadata,
-                verify,
-              );
-            }
-          }
-        }
-      });
+      this._showValues([{ id: existingSpan.id, value, ops }]);
       return this._queueWrite(label, async () => {
         const id = settledId(existingSpan.id);
         await this._sendMaking(
           made,
-          (c) => {
-            const sent = c.spans.update(id, value);
-            if (verify) c.spans.patchMetadata(id, metadataOps(verify));
-            return sent;
-          },
+          (c) => this._sendValue(c, 'span', id, value, ops),
           Boolean(verify),
         );
         this._settle(madeAsMinted(this._madeRows(made)));
@@ -1939,25 +1903,7 @@ export class ConlluDocument extends DocumentModel {
     // Optimistic: reflect the new value immediately, BEFORE the round trip,
     // so the label doesn't flash the previous value while the save is in
     // flight. On failure, the queue reloads from the server and reverts.
-    this._applyRawPatch((next, infoNext) => {
-      for (const relLayer of dependencyRelationLayers(infoNext)) {
-        const found = (relLayer.relations || []).find((r) => r.id === relationId);
-        if (!found) continue;
-        found.value = deprel;
-        if (verify) found.metadata = mergeMetadata(found.metadata, verify);
-      }
-    });
-    return this._queueWrite(label, async () => {
-      const id = settledId(relationId);
-      if (verify) {
-        await this._client.batched(async (b) => {
-          b.relations.update(id, deprel);
-          b.relations.patchMetadata(id, metadataOps(verify));
-        });
-      } else {
-        await this._client.relations.update(id, deprel);
-      }
-    });
+    return this._writeValue('relation', relationId, deprel, metadataOps(verify), label);
   }
 
   // Delete a relation from the tree or from the enhanced layer. Either way it
@@ -2086,38 +2032,12 @@ export class ConlluDocument extends DocumentModel {
     if (spanPatchById.size === 0 && relPatchById.size === 0) return left.length === 0;
 
     // Optimistic: stamp confirmed locally so the inferred styling clears now.
-    this._applyRawPatch((next, infoNext) => {
-      for (const layer of [
-        infoNext.formLayer,
-        infoNext.lemmaLayer,
-        infoNext.uposLayer,
-        infoNext.xposLayer,
-        infoNext.featuresLayer,
-      ]) {
-        for (const span of layer?.spans || []) {
-          const patch = spanPatchById.get(span.id);
-          if (patch) span.metadata = mergeMetadata(span.metadata, patch);
-        }
-      }
-      for (const layer of dependencyRelationLayers(infoNext)) {
-        for (const rel of layer.relations || []) {
-          const patch = relPatchById.get(rel.id);
-          if (patch) rel.metadata = mergeMetadata(rel.metadata, patch);
-        }
-      }
-    });
-
-    const landed = await this._queueWrite(
+    const landed = await this._stampRows(
+      [
+        ...[...spanPatchById].map(([id, patch]) => ['span', id, patch]),
+        ...[...relPatchById].map(([id, patch]) => ['relation', id, patch]),
+      ],
       label,
-      () =>
-        this._client.batched(async (b) => {
-          for (const [id, patch] of spanPatchById) {
-            b.spans.patchMetadata(settledId(id), metadataOps(patch));
-          }
-          for (const [id, patch] of relPatchById) {
-            b.relations.patchMetadata(settledId(id), metadataOps(patch));
-          }
-        }),
       'Accept predicted annotations',
       { kind: 'review' },
     );
