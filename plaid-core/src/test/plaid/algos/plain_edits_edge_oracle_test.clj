@@ -334,14 +334,24 @@
                                (cp/cp-count nb)))
         sents (filter #(= :s (:token/layer %)) tokens)
         words (filter #(= :w (:token/layer %)) tokens)
+        ;; the plain rule deletes a token with no letter left and no word
+        ;; under it kept, its sentence or not (REV-W2-LAST F1)
+        may-go? (fn [begin end]
+                  (and (not-any? (fn [i] (and (not (ws? (aget o i)))
+                                              (not-any? #(and (<= (:start %) i) (< i (:end %))) server)))
+                                 (range begin end))
+                       (not-any? #(and (<= begin (:token/begin %)) (<= (:token/end %) end) (by-id (:token/id %)))
+                                 words)))
         out (transient [])]
     ;; segments over sentences
     (doseq [{:token/keys [id begin end]} tokens :when (= :as (first id))
             :let [st (some #(when (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])) %) sents)
                   want (some->> st :token/id filled (trim-ws (cps nb)))
                   got (some-> (by-id id) ((juxt :token/begin :token/end)))]
-            :when (and want got (not= want got))]
-      (conj! out (str id " at " got ", its sentence at " want)))
+            :when (and want (not= want got) (or got (not (may-go? begin end))))]
+      (conj! out (if got
+                   (str id " at " got ", its sentence at " want)
+                   (str id " deleted though its sentence stays, at " want))))
     ;; rows over sentences with their whitespace (REV2-TEXT-1): each on its
     ;; sentence as the gap-fill leaves it, off the whitespace it had none of,
     ;; text typed in its whitespace going with the sentence that takes it
@@ -355,12 +365,14 @@
                                              e (if (ws? (aget o (dec end))) e (loop [x e] (if (and (> x b) (ws? (aget nw (dec x)))) (recur (dec x)) x)))
                                              b (if-let [pe (:end (peek acc))] (max b pe) b)]
                                          (when (< b e) [b e])))]
-                            (conj acc {:id id :want want :end (second want)})))
+                            (conj acc {:id id :want want :end (second want) :span [begin end]})))
                         [] rws)]
-      (doseq [{:keys [id want]} wants
+      (doseq [{:keys [id want span]} wants
               :let [got (some-> (by-id id) ((juxt :token/begin :token/end)))]
-              :when (and want got (not= want got))]
-        (conj! out (str id " at " got ", its sentence at " want))))
+              :when (and want (not= want got) (or got (not (apply may-go? span))))]
+        (conj! out (if got
+                     (str id " at " got ", its sentence at " want)
+                     (str id " deleted though its sentence stays, at " want)))))
     ;; nodes over several words, not over a sentence, keep to their words
     (doseq [{:token/keys [id begin end]} tokens :when (#{:un :us} (first id))
             :let [n (by-id id)
@@ -503,7 +515,21 @@
     (is (= [18 21] (at [:rw 1])))
     (is (= [21 26] (at [:rw 2])))
     (is (empty? (problems body tokens server r)))
-    (is (empty? (follow-checks body tokens server r)))))
+    (is (empty? (follow-checks body tokens server r)))
+    ;; and a product that deleted the row, or a segment over the sentence,
+    ;; while its sentence stays fails the follow checks (REV-W2-LAST F1)
+    (let [without (fn [r id] (-> r
+                                 (update :tokens (fn [ts] (vec (remove #(= id (:token/id %)) ts))))
+                                 (update :deleted (fnil conj []) id)))
+          tokens' (into tokens (for [[id begin end] [[[:as 0] 0 15] [[:as 1] 18 21] [[:as 2] 23 40]]]
+                                 {:token/id id :token/layer :ss :token/begin begin :token/end end}))
+          server' (server-gaps body tokens' ops :apps)
+          r' (run body tokens' ops)]
+      (is (= ["[:rw 1] deleted though its sentence stays, at [18 21]"]
+             (follow-checks body tokens server (without r [:rw 1]))))
+      (is (empty? (follow-checks body tokens' server' r')))
+      (is (= ["[:as 1] deleted though its sentence stays, at [18 21]"]
+             (follow-checks body tokens' server' (without r' [:as 1])))))))
 
 ;; ---------------------------------------------------------------- the side the caret is on
 
