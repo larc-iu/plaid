@@ -653,6 +653,34 @@
                      :total-drops total-drops}))))
     (boolean accepted?)))
 
+(defn- publish-event!
+  "The one publish path of the event bus: offer `(make-event)` to it, unless
+  it is not started or not writable. True when the event was queued, false
+  otherwise, an exception included, which is logged as `failed` with
+  `context`. `event-type` tags the event for the drop diagnostics, and
+  `unwritable` is the warning for a bus that is not writable."
+  [event-type {:keys [unwritable failed]} context make-event]
+  (try
+    (log/debug "Publishing" event-type "event" context)
+    (cond
+      (nil? event-bus)
+      (do (log/warn "Event bus is not initialized") false)
+
+      (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
+      ;; An unstarted/misbound event-bus drops events, so say so: silence
+      ;; here made partial mount starts invisible.
+      (do (log/warn unwritable) false)
+
+      :else
+      (let [event (make-event)]
+        (log/debug "Event data:" event)
+        (if (offer-event! event event-type)
+          (do (log/debug "Event published successfully") true)
+          false)))
+    (catch Exception e
+      (log/error e failed context)
+      false)))
+
 (defn publish-audit-event!
   "Publish an audit event to the event bus for distribution to subscribed clients.
 
@@ -660,97 +688,66 @@
    write operations. The event contains:
    - audit/id: Unique identifier for this audit entry
    - audit/projects: Set of affected project IDs
-   - audit/documents: Set of affected document IDs  
+   - audit/documents: Set of affected document IDs
    - audit/user: User who performed the operation
    - audit/time: Timestamp of the operation
    - audit/ops: Vector of individual operations with details
-   
+
    Returns true if event was successfully published, false otherwise.
 
    It also closes the service channels and /listen streams an operation took the right to hold
    away from (`check-standing!`), before the write's response goes out."
   [audit-entry operations user-id]
   (check-standing! operations)
-  (try
-    (log/debug "Publishing audit event" {:audit-id (:audit/id audit-entry)
-                                         :projects (:audit/projects audit-entry)
-                                         :user-id  user-id})
-    (cond
-      (nil? event-bus)
-      (do (log/warn "Event bus is not initialized") false)
-
-      (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
-      ;; An unstarted/misbound event-bus drops events — say so (the
-      ;; publish-message! twin already does; silence here made partial
-      ;; mount starts invisible).
-      (do (log/warn "Event bus is not writable; dropping audit event") false)
-
-      :else
-      (let [event {:event/type      :audit-log
-                   :event/projects  (:audit/projects audit-entry)
-                   :event/documents-by-project (:audit/documents-by-project audit-entry)
-                   :audit/id        (:audit/id audit-entry)
-                   :audit/projects  (:audit/projects audit-entry)
-                   :audit/documents (:audit/documents audit-entry)
-                   :audit/user      user-id
-                   :audit/time      (java.util.Date.)
-                   :audit/ops       (mapv #(-> (select-keys % [:op/id :op/type :op/project
-                                                               :op/document :op/description])
-                                               (update :op/type op-type-to-string))
-                                          operations)}]
-        (log/debug "Event data:" event)
-        (if (offer-event! event :audit-log)
-          (do (log/debug "Event published successfully") true)
-          false)))
-    (catch Exception e
-      (log/error e "Exception while publishing audit event"
-                 {:audit-id (:audit/id audit-entry)
-                  :projects (:audit/projects audit-entry)
-                  :user-id  user-id})
-      false)))
+  (publish-event!
+   :audit-log
+   {:unwritable "Event bus is not writable; dropping audit event"
+    :failed "Exception while publishing audit event"}
+   {:audit-id (:audit/id audit-entry)
+    :projects (:audit/projects audit-entry)
+    :user-id  user-id}
+   (fn []
+     {:event/type      :audit-log
+      :event/projects  (:audit/projects audit-entry)
+      :event/documents-by-project (:audit/documents-by-project audit-entry)
+      :audit/id        (:audit/id audit-entry)
+      :audit/projects  (:audit/projects audit-entry)
+      :audit/documents (:audit/documents audit-entry)
+      :audit/user      user-id
+      :audit/time      (java.util.Date.)
+      :audit/ops       (mapv #(-> (select-keys % [:op/id :op/type :op/project
+                                                  :op/document :op/description])
+                                  (update :op/type op-type-to-string))
+                             operations)})))
 
 (defn publish-message!
   "Publish a message event to the event bus for distribution to subscribed clients.
-   
+
    Messages are arbitrary data payloads that can be sent to project subscribers.
    Unlike audit events, messages are not tied to database operations and are
    purely for real-time communication.
-   
+
    Parameters:
    - project-id: The project ID this message is for
    - message-data: Arbitrary data to send (will be JSON serialized)
    - user-id: The user sending the message
-   
+
    Returns true if message was successfully published, false otherwise."
   [project-id message-data user-id]
-  (try
-    (log/debug "Publishing message event" {:project-id project-id
-                                           :user-id    user-id})
-    (cond
-      (nil? event-bus)
-      (do (log/warn "Event bus is not initialized") false)
-
-      (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
-      (do (log/warn "Event bus is not writable") false)
-
-      :else
-      (let [message-id (java.util.UUID/randomUUID)
-            event {:event/type      :message
-                   :event/projects  #{project-id}
-                   :message/id      message-id
-                   :message/project project-id
-                   :message/user    user-id
-                   :message/time    (java.util.Date.)
-                   :message/data    message-data}]
-        (log/debug "Message event data:" event)
-        (if (offer-event! event :message)
-          (do (log/debug "Message published successfully") true)
-          false)))
-    (catch Exception e
-      (log/error e "Exception while publishing message event"
-                 {:project-id project-id
-                  :user-id    user-id})
-      false)))
+  (publish-event!
+   :message
+   {:unwritable "Event bus is not writable"
+    :failed "Exception while publishing message event"}
+   {:project-id project-id
+    :user-id    user-id}
+   (fn []
+     {:event/type      :message
+      :event/projects  #{project-id}
+      :message/id      (java.util.UUID/randomUUID)
+      :message/project project-id
+      :message/user    user-id
+      :message/time    (java.util.Date.)
+      :message/data    message-data})))
 
 ;; =============================================================================
 ;; Test helpers
