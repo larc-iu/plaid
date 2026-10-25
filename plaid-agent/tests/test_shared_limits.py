@@ -176,12 +176,13 @@ def test_the_sweep_covers_every_shared_read():
 
 
 def test_every_app_caps_a_scope_and_a_read_at_the_same_number():
+    from plaid_agent.core import scope as core_scope
     from plaid_agent.core import tools as core_tools
-    from plaid_agent.igt import tools as igt_tools
     from plaid_agent.igt import project as igt_project
     from plaid_agent.ud import tools as ud_tools
     from plaid_agent.umr import tools as umr_tools
-    assert igt_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
+    # Both apps' reviews over several documents are capped in core.scope.
+    assert core_scope.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
     assert ud_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
     # UD and UMR read a document through `core.tools.read_document`; plaid-igt
     # has its own, which pages the same way.
