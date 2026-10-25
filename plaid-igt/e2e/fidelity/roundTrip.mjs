@@ -38,21 +38,10 @@ import { coreForRun } from './core.mjs';
 import { exportDocument, exportProject, importProject } from './drivers.mjs';
 import { canonicalExport, diffExports } from './fixedPoint.mjs';
 import { buildKitchenSink } from './kitchenSink.mjs';
+import { REFUSALS } from './refusals.mjs';
 import { snapshotProject } from './snapshot.mjs';
 
 const LISTS = { native: nativeList, cldf: cldfList, elan: elanList };
-
-// What a format refuses, by kitchen-sink project and by the half of the round
-// trip that refuses it. A project listed here is checked for the refusal and
-// nothing else, and skipped by a format it does not name.
-const REFUSALS = {
-  // Ruled a user error (2026-09-17): the archive import tells vocabularies
-  // apart by name, and a CLDF dataset names one by its name alone.
-  twins: {
-    native: { at: 'import', message: /Two vocabularies are named/ },
-    cldf: { at: 'export', message: /Two vocabularies are named/ },
-  },
-};
 
 const arg = (name) => {
   const i = process.argv.indexOf(name);
@@ -181,6 +170,8 @@ try {
     for (const p of sources) {
       // A project only some formats are meant to read back (the kitchen sink says which).
       if (p.formats && !p.formats.includes(format)) continue;
+      // A project refusals.mjs lists is checked for its refusal and nothing
+      // else, and skipped by a format the list does not name for it.
       if (REFUSALS[p.role]) {
         const expected = REFUSALS[p.role][format];
         if (expected) failures += await refusal(client, p, format, expected);

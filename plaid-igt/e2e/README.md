@@ -86,7 +86,9 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
     schemas are unmodified third-party copies in `fidelity/schemas/` (sources and
     licenses in its README, `PLAID_SCHEMA_DIR` names another directory). A
     missing schema or program is reported as skipped, never as a pass, and as a
-    failure under `PLAID_VALIDATORS_REQUIRED`, which the nightly gate sets.
+    failure under `PLAID_VALIDATORS_REQUIRED`, which the nightly gate sets. An
+    export refusal `refusals.mjs` lists is a skip, any other refusal a failure,
+    and a project is validated only in the formats the kitchen sink gives it.
   - `resume.mjs` — stops an import after the Nth write, resumes it the way the
     unfinished-import screen does, and compares the project with one imported
     straight through.

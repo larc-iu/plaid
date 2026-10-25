@@ -51,6 +51,10 @@ import { readNativeArchive } from '../../src/import/native/readArchive.js';
  */
 const EXPORT_FORMAT = { native: 'plaid-igt-json', cldf: 'cldf', elan: 'elan' };
 
+/** The fidelity format id an export format id is written with, the inverse of the table above. */
+export const formatIdOf = (exportFormatId) =>
+  Object.keys(EXPORT_FORMAT).find((id) => EXPORT_FORMAT[id] === exportFormatId) ?? exportFormatId;
+
 async function exportScope(client, projectId, formatId, scope, over = null) {
   const project = await client.projects.get(projectId);
   const preset = {

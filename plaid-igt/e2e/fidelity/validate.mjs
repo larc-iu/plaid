@@ -10,14 +10,20 @@
 // a broken export. Which validator covers which file, and where the schemas
 // come from, is ./validators.mjs.
 //
+// A project is validated only in the formats the kitchen sink gives it. An
+// export refusal refusals.mjs expects is a skip, any other refusal is a
+// failure, and so is an export that goes through where the list expects a
+// refusal.
+//
 // The core is the campaign's private one (core.mjs), never the dev core.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { coreForRun } from './core.mjs';
-import { exportProject } from './drivers.mjs';
+import { exportProject, formatIdOf } from './drivers.mjs';
 import { buildKitchenSink } from './kitchenSink.mjs';
+import { expectedExportRefusal } from './refusals.mjs';
 import { validateExport } from './validators.mjs';
 
 const arg = (name, fallback = null) => {
@@ -49,14 +55,23 @@ try {
   for (const p of built.projects) {
     if (p.role === 'bare') continue;
     for (const format of formats) {
+      if (p.formats && !p.formats.includes(formatIdOf(format))) continue;
       const label = `${p.role} as ${format}`;
+      const expected = expectedExportRefusal(p.role, formatIdOf(format));
       let exported;
       try {
         exported = await exportProject(client, p.id, format);
       } catch (err) {
-        // A refusal is the export's own answer, and the round trip checks the
-        // ones we mean: here it only means there is no file to validate.
-        record({ label, state: 'skip', detail: `the export refused it: ${err.message}` });
+        const state = expected?.message.test(err.message) ? 'skip' : 'fail';
+        record({ label, state, detail: `the export refused it: ${err.message}` });
+        continue;
+      }
+      if (expected) {
+        record({
+          label,
+          state: 'fail',
+          detail: 'the export went through, refusals.mjs expects it refused',
+        });
         continue;
       }
       if (outDir) {
