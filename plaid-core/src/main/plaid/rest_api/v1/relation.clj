@@ -22,6 +22,25 @@
 (def ^:private bulk-update-get-project-id (:bulk-update-project-id resolvers))
 (def ^:private bulk-update-get-document-id (:bulk-update-document-id resolvers))
 
+(def ^:private create-entry
+  "The body of a relation create, the POST's and each bulk create entry's."
+  [:map
+   [:id {:optional true} :uuid]
+   [:relation-layer-id :uuid]
+   [:source :uuid]
+   [:target :uuid]
+   [:value schema/atomic-value]
+   [:metadata {:optional true} [:map-of string? any?]]])
+
+(defn- ->attrs
+  "The attributes of the relation a create body names."
+  [{:keys [id relation-layer-id source target value]}]
+  (cond-> {:relation/layer relation-layer-id
+           :relation/source source
+           :relation/target target
+           :relation/value value}
+    (some? id) (assoc :relation/id id)))
+
 (def relation-routes
 
   ["/relations"
@@ -41,19 +60,9 @@
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:query [:map [:document-version {:optional true} :int]]
-                            :body [:map
-                                   [:id {:optional true} :uuid]
-                                   [:relation-layer-id :uuid]
-                                   [:source :uuid]
-                                   [:target :uuid]
-                                   [:value schema/atomic-value]
-                                   [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [id relation-layer-id source target value metadata]} :body} :parameters db :db user-id :user/id :as request}]
-                          (let [attrs (cond-> {:relation/layer relation-layer-id
-                                               :relation/source source
-                                               :relation/target target
-                                               :relation/value value}
-                                        (some? id) (assoc :relation/id id))
+                            :body create-entry}
+               :handler (fn [{{{:keys [metadata] :as body} :body} :parameters db :db user-id :user/id :as request}]
+                          (let [attrs (->attrs body)
                                 doc-id (get-document-id request)
                                 result (r/create db attrs user-id metadata)]
                             (if (:success result)
@@ -71,19 +80,8 @@
                           "<body>value</body>, the relation's value\n"
                           "<body>metadata</body>, an optional map of metadata\n"
                           "<body>id</body>, optional, the new relation's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
-     :create-entry [:map
-                    [:id {:optional true} :uuid]
-                    [:relation-layer-id :uuid]
-                    [:source :uuid]
-                    [:target :uuid]
-                    [:value schema/atomic-value]
-                    [:metadata {:optional true} [:map-of string? any?]]]
-     :->attrs (fn [{:keys [id relation-layer-id source target value]}]
-                (cond-> {:relation/layer relation-layer-id
-                         :relation/source source
-                         :relation/target target
-                         :relation/value value}
-                  (some? id) (assoc :relation/id id)))
+     :create-entry create-entry
+     :->attrs ->attrs
      :bulk-create r/bulk-create
      :update-summary "Update many relations in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the relation's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a list of metadata ops, as for PATCH on one entity's metadata\nThe relations may lie in several documents of one project; every document touched has its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown id refuses the whole update. <query>document-version</query> names one document, so it is refused when the entries reach more than one."
      :update-entry [:map [:id :uuid] [:value {:optional true} schema/atomic-value] [:metadata {:optional true} metadata/metadata-ops-schema]]

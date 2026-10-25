@@ -21,6 +21,27 @@
 (def ^:private bulk-update-get-project-id (:bulk-update-project-id resolvers))
 (def ^:private bulk-update-get-document-id (:bulk-update-document-id resolvers))
 
+(def ^:private create-entry
+  "The body of a token create, the POST's and each bulk create entry's."
+  [:map
+   [:id {:optional true} :uuid]
+   [:token-layer-id :uuid]
+   [:text :uuid]
+   [:begin int?]
+   [:end int?]
+   [:precedence {:optional true} int?]
+   [:metadata {:optional true} [:map-of string? any?]]])
+
+(defn- ->attrs
+  "The attributes of the token a create body names."
+  [{:keys [id token-layer-id text begin end precedence]}]
+  (cond-> {:token/layer token-layer-id
+           :token/text text
+           :token/begin begin
+           :token/end end}
+    (some? id) (assoc :token/id id)
+    (some? precedence) (assoc :token/precedence precedence)))
+
 (def token-routes
   ["/tokens"
 
@@ -44,21 +65,9 @@
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:query [:map [:document-version {:optional true} :int]]
-                            :body [:map
-                                   [:id {:optional true} :uuid]
-                                   [:token-layer-id :uuid]
-                                   [:text :uuid]
-                                   [:begin int?]
-                                   [:end int?]
-                                   [:precedence {:optional true} int?]
-                                   [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [id token-layer-id text begin end precedence metadata]} :body} :parameters db :db user-id :user/id :as request}]
-                          (let [attrs (cond-> {:token/layer token-layer-id
-                                               :token/text text
-                                               :token/begin begin
-                                               :token/end end}
-                                        (some? id) (assoc :token/id id)
-                                        (some? precedence) (assoc :token/precedence precedence))
+                            :body create-entry}
+               :handler (fn [{{{:keys [metadata] :as body} :body} :parameters db :db user-id :user/id :as request}]
+                          (let [attrs (->attrs body)
                                 doc-id (get-document-id request)
                                 result (tok/create db attrs user-id metadata)]
                             (if (:success result)
@@ -77,21 +86,8 @@
                           "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
                           "<body>metadata</body>, an optional map of metadata\n"
                           "<body>id</body>, optional, the new token's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
-     :create-entry [:map
-                    [:id {:optional true} :uuid]
-                    [:token-layer-id :uuid]
-                    [:text :uuid]
-                    [:begin int?]
-                    [:end int?]
-                    [:precedence {:optional true} int?]
-                    [:metadata {:optional true} [:map-of string? any?]]]
-     :->attrs (fn [{:keys [id token-layer-id text begin end precedence]}]
-                (cond-> {:token/layer token-layer-id
-                         :token/text text
-                         :token/begin begin
-                         :token/end end}
-                  (some? id) (assoc :token/id id)
-                  (some? precedence) (assoc :token/precedence precedence)))
+     :create-entry create-entry
+     :->attrs ->attrs
      :bulk-create tok/bulk-create
      :update-summary (str "Patch the metadata of many tokens in a single operation. Provide an array of objects whose "
                           "keys are:\n<body>id</body>, the token's id\n"
