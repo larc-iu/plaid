@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { fakeDocument, mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
-import {
-  baselineLossSentence,
-  removedStretches,
-  useBaselineOperations,
-} from './useBaselineOperations.js';
+import { removedStretches } from '@ui/lib/editLog.js';
+import { baselineLossSentence, useBaselineOperations } from './useBaselineOperations.js';
 
 const removesText = (base, gaps) => removedStretches(base, gaps).length > 0;
 

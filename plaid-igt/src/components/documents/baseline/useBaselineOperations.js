@@ -3,6 +3,7 @@ import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
+import { removedStretches } from '@ui/lib/editLog.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { countTextDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
@@ -29,27 +30,6 @@ import { isTokenIgnored, readIgnoredTokens } from '@/domain/igtConfig';
 // because the same passage was changed elsewhere: a save refused for it, or
 // text typed during a save that landed that cannot be moved onto it. It lasts
 // until the next save or Cancel.
-// The stretches of `base` (code points, [begin, end)) that `gaps` take away:
-// each gap's old text less what it gives back at its front and end. A paste
-// over the whole box that only adds to it takes nothing: it is an insert.
-export function removedStretches(base, gaps) {
-  const cps = Array.from(base);
-  return gaps.flatMap(({ start, end, value }) => {
-    const old = cps.slice(start, end);
-    const typed = Array.from(value);
-    let front = 0;
-    while (front < old.length && front < typed.length && old[front] === typed[front]) front += 1;
-    let back = 0;
-    while (
-      back < old.length - front &&
-      back < typed.length - front &&
-      old[old.length - 1 - back] === typed[typed.length - 1 - back]
-    ) {
-      back += 1;
-    }
-    return front + back < old.length ? [[start + front, end - back]] : [];
-  });
-}
 
 // What a save that takes away `ranges` deletes, as a sentence for its
 // question: the words wholly inside a removed stretch, and the shared loss

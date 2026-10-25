@@ -320,6 +320,31 @@ function assertEditLog(log, op) {
 export const editLogGaps = (log) => composeTextEdits(log.base, log.ops);
 
 /**
+ * The stretches of `base` (code points, [begin, end)) that `gaps` take away:
+ * each gap's old text less what it gives back at its front and end. A gap
+ * that only adds to its old text takes nothing: it is an insert. A token that
+ * lies wholly inside one of these goes with a save of the gaps.
+ */
+export function removedStretches(base, gaps) {
+  const cps = Array.from(base);
+  return gaps.flatMap(({ start, end, value }) => {
+    const old = cps.slice(start, end);
+    const typed = Array.from(value);
+    let front = 0;
+    while (front < old.length && front < typed.length && old[front] === typed[front]) front += 1;
+    let back = 0;
+    while (
+      back < old.length - front &&
+      back < typed.length - front &&
+      old[old.length - 1 - back] === typed[typed.length - 1 - back]
+    ) {
+      back += 1;
+    }
+    return front + back < old.length ? [[start + front, end - back]] : [];
+  });
+}
+
+/**
  * Split the log at a send. `sent` is what to send: the base, its digest and
  * the gaps. `rest` is a new log over the text the gaps make, for what is typed
  * while the save is on its way, with its digest unknown until the answer
