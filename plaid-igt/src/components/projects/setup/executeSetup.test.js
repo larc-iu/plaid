@@ -849,3 +849,35 @@ describe('setup makes the project and its vocabularies under minted ids', () => 
     expect(result.resources.project.name).toBe(SETUP_DATA.basicInfo.projectName);
   });
 });
+
+// A native archive of a project igt never set up (Luke's ruling R37).
+describe('executeProjectSetup with substrateOnly', () => {
+  it('makes the project, its text layer and the named token layers with their roles, and nothing of igt', async () => {
+    const { client, calls } = stub({ id: 'p1', config: {}, textLayers: [], vocabs: [] });
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: null,
+      setupData: {
+        basicInfo: { projectName: 'Treebank' },
+        substrateOnly: { roles: [ROLES.SENTENCE, ROLES.WORD] },
+        vocabulary: {
+          vocabularies: [{ id: 'new-v', name: 'Lemmas', enabled: true, isCustom: true }],
+        },
+      },
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'token').map((c) => c.name)).toEqual(['Sentences', 'Main Tokens']);
+    expect(madeOf(calls, 'span')).toEqual([]);
+    expect(madeOf(calls, 'vocab').map((c) => c.name)).toEqual(['Lemmas']);
+    expect(calls.config.filter((c) => c.ns === IGT_NAMESPACE)).toEqual([]);
+    expect(
+      calls.config.filter((c) => c.kind === 'token').map((c) => [c.ns, c.key, c.value]),
+    ).toEqual([
+      [PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE],
+      [PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD],
+    ]);
+    expect(calls.constraints ?? []).toEqual([]);
+  });
+});

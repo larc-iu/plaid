@@ -10,6 +10,7 @@ const project = () => ({
   id: 'p',
   config: {
     igt: {
+      initialized: true,
       tagsets: { Leipzig: { mode: 'closed', delimiters: '.', values: [{ value: 'PL' }] } },
       import: { kind: 'Plaid IGT archive' },
     },
@@ -65,6 +66,17 @@ describe('finishImport', () => {
       ['setConstraints', 'mg', [{ type: 'single-span' }, vs]],
       ['deleteConfig', 'p', 'igt', 'import'],
     ]);
+  });
+
+  it('declares no igt rule on a project igt did not set up, and clears the record', async () => {
+    const client = stub({ count: 0, valueCount: 0, values: [] });
+    client.projects.get = async () => {
+      const p = project();
+      delete p.config.igt.initialized;
+      return p;
+    };
+    expect(await finishImport(client, 'p')).toEqual({ cleared: true, warnings: [] });
+    expect(client.calls).toEqual([['deleteConfig', 'p', 'igt', 'import']]);
   });
 
   it('names a list the stored values break, and clears the record', async () => {

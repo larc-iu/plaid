@@ -505,6 +505,21 @@ describe('deriveSetupData', () => {
     ]);
   });
 
+  it('sets up only the shared layers a project igt never set up had (R37)', () => {
+    const base = buildArchive().manifest;
+    const other = {
+      ...base,
+      project: { ...base.project, igt: false },
+      layers: { ...base.layers, morpheme: null, timeAlignment: null },
+    };
+    const data = deriveSetupData(other, 'x');
+    expect(data.substrateOnly).toEqual({ roles: ['sentence', 'word'] });
+    expect(data.fields).toBeUndefined();
+    expect(data.documentMetadata).toBeUndefined();
+    // An archive that says nothing is igt's.
+    expect(deriveSetupData(base, 'x').substrateOnly).toBeUndefined();
+  });
+
   it('hands setup no ignored-tokens rule, which the engine writes as stored', () => {
     const base = buildArchive().manifest;
     const withBl = {

@@ -1,7 +1,7 @@
 // The end of an import, however it ends: run to the end, resumed to the end,
 // or ended by "Use the project as it is". Relative imports only: the
 // fidelity drivers run this from plain node.
-import { markImportFinished, readImportState } from './igtConfig.js';
+import { markImportFinished, readImportState, readInitialized } from './igtConfig.js';
 import { declareIgtRules } from './igtConstraints.js';
 import { notInForceText } from '../components/projects/settings/refusedValues.js';
 
@@ -29,7 +29,13 @@ export const importRepairs = (config) => readImportState(config)?.kind !== NATIV
 export const finishImport = async (client, projectId) => {
   const warnings = [];
   try {
-    const repair = importRepairs((await client.projects.get(projectId))?.config);
+    const config = (await client.projects.get(projectId))?.config;
+    // A project igt did not set up (a native archive of another app's
+    // project) gets none of igt's rules.
+    if (!readInitialized(config)) {
+      return { cleared: await markImportFinished(client, projectId), warnings };
+    }
+    const repair = importRepairs(config);
     const { notInForce } = await declareIgtRules(client, projectId, { repair });
     warnings.push(...notInForce.map((f) => notInForceText([f])));
   } catch (err) {

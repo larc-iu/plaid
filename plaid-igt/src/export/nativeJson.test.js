@@ -434,7 +434,15 @@ describe('buildProjectFile', () => {
     });
     expect(out.format).toBe('plaid-igt');
     expect(out.formatVersion).toBe(NATIVE_FORMAT_VERSION);
-    expect(out.project).toEqual({ id: 'p1', name: 'Proj' });
+    expect(out.project).toEqual({ id: 'p1', name: 'Proj', igt: true });
+    // A project only another app set up says so.
+    const noIgt = buildProjectFile({
+      project: { id: 'p2', name: 'Other', config: { ud: { language: 'es' } }, textLayers: [] },
+      documents: [],
+      vocabularies: [],
+      exportedAt: 'x',
+    });
+    expect(noIgt.project).toEqual({ id: 'p2', name: 'Other', igt: false });
     expect(out.schema).toEqual({
       orthographies: [{ name: 'Translit' }],
       fields: {

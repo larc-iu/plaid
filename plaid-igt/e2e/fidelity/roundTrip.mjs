@@ -168,6 +168,8 @@ try {
     const list = LISTS[format];
     console.log(`\n${list.name}`);
     for (const p of sources) {
+      // A project only some formats are meant to read back (the kitchen sink says which).
+      if (p.formats && !p.formats.includes(format)) continue;
       if (REFUSALS[p.role]) {
         const expected = REFUSALS[p.role][format];
         if (expected) failures += await refusal(client, p, format, expected);

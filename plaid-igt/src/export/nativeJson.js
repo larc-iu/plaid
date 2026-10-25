@@ -165,7 +165,13 @@ export function buildProjectFile({
     formatVersion: NATIVE_FORMAT_VERSION,
     exportedAt,
     asOf: asOf ?? null,
-    project: { id: project?.id ?? null, name: project?.name ?? null },
+    // `igt`: whether this app set the project up, so an import of a project
+    // only another app did makes no igt setup of its own (Luke's ruling R37).
+    project: {
+      id: project?.id ?? null,
+      name: project?.name ?? null,
+      igt: nonEmpty(project?.config?.[IGT_NAMESPACE]),
+    },
     schema: {
       orthographies: readOrthographies(wordLayer?.config) ?? [],
       fields: {

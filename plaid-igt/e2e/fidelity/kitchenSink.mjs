@@ -12,13 +12,15 @@
 // a second annotation in a field on one word or a morpheme matching no word,
 // cannot be stored, so it is not built.
 //
-// Four projects:
+// Five projects:
 //   Kitchen sink            everything that fits in one project
 //   Kitchen sink blacklist  the ignored-tokens rule a project can only have one of
 //   Kitchen sink twins      two vocabularies with one name, which the native
 //                           import and the CLDF export refuse (ruled a user
 //                           error), so it cannot share a project with the rest
 //   Bare                    setup and nothing else, the negative control
+//   Kitchen sink ud only    a project plaid-ud set up and plaid-igt never did,
+//                           which the native archive brings back without igt
 //
 // `buildKitchenSink(client)` returns `{projects: [{role, id, name}], users}`.
 // A second user (a reviewed contributor) is created for provenance and for
@@ -39,6 +41,10 @@ import {
   IGT_NAMESPACE,
   defaultIgnoredTokensSetup,
 } from '../../src/domain/igtConfig.js';
+import {
+  declarePreserveOnSplit,
+  declareSplitOnSpace,
+} from '../../../plaid-ui/src/domain/substrateConfig.js';
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
 import { newPreset } from '../../src/export/presets.js';
 import { wavBytes } from '../bugbash/harness.mjs';
@@ -871,6 +877,75 @@ async function buildTwins(client, name) {
   return setup.projectId;
 }
 
+// A project plaid-ud set up and plaid-igt never did, its layers as
+// udProjectSetup.js lays them out: no igt config, no morpheme or alignment
+// layer. The archive is the project's whole state, so it comes back with
+// exactly these (Luke's ruling R37).
+async function buildUdOnly(client, name) {
+  const project = await client.projects.create(name);
+  const text = await client.textLayers.create(project.id, 'Text');
+  await client.textLayers.setConfig(text.id, PLAID_NAMESPACE, 'role', 'baseline');
+  const sentences = await client.tokenLayers.create(text.id, 'Sentences', 'partitioning');
+  await client.tokenLayers.setConfig(sentences.id, PLAID_NAMESPACE, 'role', 'sentence');
+  await declarePreserveOnSplit(client, sentences.id);
+  const tokens = await client.tokenLayers.create(
+    text.id,
+    'Tokens',
+    'non-overlapping',
+    sentences.id,
+  );
+  await client.tokenLayers.setConfig(tokens.id, PLAID_NAMESPACE, 'role', 'word');
+  await declarePreserveOnSplit(client, tokens.id);
+  await declareSplitOnSpace(client, tokens.id);
+  const words = await client.tokenLayers.create(text.id, 'Words', 'any', tokens.id);
+  await client.tokenLayers.setConfig(words.id, PLAID_NAMESPACE, 'role', 'syntactic-word');
+  const lemma = await client.spanLayers.create(words.id, 'Lemma');
+  await client.spanLayers.setConfig(lemma.id, 'ud', 'lemma', true);
+  const upos = await client.spanLayers.create(words.id, 'UPOS');
+  await client.spanLayers.setConfig(upos.id, 'ud', 'upos', true);
+  const deps = await client.relationLayers.create(lemma.id, 'Dependency Relations');
+  await client.relationLayers.setConfig(deps.id, 'ud', 'dependency', true);
+  await client.projects.setConfig(project.id, 'ud', 'language', 'es');
+
+  const doc = await client.documents.create(project.id, 'Sent 1', { sent_id: 'es-1' });
+  const body = 'El perro ladra.';
+  const t = idOf(await client.texts.create(text.id, doc.id, body));
+  await client.tokens.bulkCreate([
+    { tokenLayerId: sentences.id, text: t, begin: 0, end: body.length },
+  ]);
+  const at = [
+    [0, 2],
+    [3, 8],
+    [9, 14],
+    [14, 15],
+  ];
+  const tk = (
+    await client.tokens.bulkCreate(
+      at.map(([begin, end]) => ({ tokenLayerId: tokens.id, text: t, begin, end })),
+    )
+  ).ids;
+  const sw = (
+    await client.tokens.bulkCreate(
+      at.map(([begin, end]) => ({
+        tokenLayerId: words.id,
+        text: t,
+        begin,
+        end,
+        precedence: 1,
+      })),
+    )
+  ).ids;
+  const lemmas = ['el', 'perro', 'ladrar', '.'];
+  const ids = [];
+  for (let i = 0; i < sw.length; i++) {
+    ids.push(idOf(await client.spans.create(lemma.id, [sw[i]], lemmas[i])));
+  }
+  await client.spans.create(upos.id, [sw[1]], 'NOUN');
+  await client.relations.create(deps.id, ids[2], ids[1], 'nsubj');
+  await client.tokens.patchMetadata(tk[3], metadataOps({ SpaceAfter: 'No' }));
+  return project.id;
+}
+
 async function buildBare(client, name) {
   const setup = await executeProjectSetup({
     client,
@@ -948,6 +1023,7 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   const blacklistId = await buildBlacklist(client, `Kitchen sink blacklist${suffix}`);
   const twinsId = await buildTwins(client, `Kitchen sink twins${suffix}`);
   const bareId = await buildBare(client, `Bare${suffix}`);
+  const udOnlyId = await buildUdOnly(client, `Kitchen sink ud only${suffix}`);
 
   return {
     projects: [
@@ -955,6 +1031,14 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
       { role: 'blacklist', id: blacklistId, name: `Kitchen sink blacklist${suffix}` },
       { role: 'twins', id: twinsId, name: `Kitchen sink twins${suffix}` },
       { role: 'bare', id: bareId, name: `Bare${suffix}` },
+      // Read back by the native archive only: the other formats are igt's view
+      // of a project, and an import through them sets igt up.
+      {
+        role: 'udOnly',
+        id: udOnlyId,
+        name: `Kitchen sink ud only${suffix}`,
+        formats: ['native'],
+      },
     ],
     users: { admin: client, contributor },
   };

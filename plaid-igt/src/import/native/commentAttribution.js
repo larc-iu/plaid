@@ -62,7 +62,7 @@ export const stripAttribution = (body) => String(body ?? '').replace(NOTE_RE, ''
  */
 export function attributedBody(comment) {
   const body = String(comment?.body ?? '');
-  if (NOTE_RE.test(body)) return { body, attributed: true };
+  if (stripAttribution(body) !== body) return { body, attributed: true };
   const original = body;
   const author = formatAuthor(comment?.author);
   const date = formatDate(comment?.createdAt);

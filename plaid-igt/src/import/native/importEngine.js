@@ -111,6 +111,20 @@ const manifestFields = (manifest) => {
 };
 
 /**
+ * Whether the archive's project had igt set up (`project.igt`). An archive
+ * made before the key says nothing, and every one of those is igt's.
+ */
+const archiveHasIgt = (manifest) => manifest?.project?.igt !== false;
+
+// This app's own token layers by the manifest key that names each.
+const SUBSTRATE_ROLES = [
+  ['sentence', ROLES.SENTENCE],
+  ['word', ROLES.WORD],
+  ['morpheme', ROLES.MORPHEME],
+  ['timeAlignment', ROLES.TIME_ALIGNMENT],
+];
+
+/**
  * The setup-wizard input derived from an archive manifest. `vocabularies` are
  * the archive's (readNativeArchive), whose entry fields a field from an
  * archive made before Lexicon fields is proposed one from: "Gloss (en)" pairs
@@ -118,6 +132,24 @@ const manifestFields = (manifest) => {
  */
 export function deriveSetupData(manifest, projectName, vocabularies = []) {
   const schema = manifest.schema || {};
+  // A project igt never set up comes back with only the shared layers it had,
+  // and no igt setup (Luke's ruling R37).
+  if (!archiveHasIgt(manifest)) {
+    return {
+      basicInfo: { projectName },
+      substrateOnly: {
+        roles: SUBSTRATE_ROLES.filter(([key]) => manifest.layers?.[key]).map(([, role]) => role),
+      },
+      vocabulary: {
+        vocabularies: (manifest.vocabularies || []).map((v) => ({
+          id: `new-${v.id}`,
+          name: v.name,
+          enabled: true,
+          isCustom: true,
+        })),
+      },
+    };
+  }
   const entryFields = lexiconFieldChoices(
     vocabularies.map((v) => ({
       config: {
@@ -149,7 +181,9 @@ export function deriveSetupData(manifest, projectName, vocabularies = []) {
  */
 export function resolveNativeTargets(project, manifest) {
   return {
-    ...resolveIgtTargets(project, manifestFields(manifest)),
+    ...resolveIgtTargets(project, manifestFields(manifest), {
+      substrateOnly: !archiveHasIgt(manifest),
+    }),
     // Annotation layers already reported as missing, so a corpus does not
     // carry the same warning once per annotation.
     skippedSpanLayers: new Set(),
@@ -1053,9 +1087,11 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const unmarked = unmarkedLedger({ client, projectId, project });
 
   const schema = archive.manifest.schema || {};
+  // Igt's own settings, fields and rules, only for a project that had them.
+  const igt = archiveHasIgt(archive.manifest);
   const words = findWordTokenLayer(findBaselineTextLayer(project.textLayers || [])?.tokenLayers);
   // "Tokenize new text" is on unless the word layer says false.
-  if (schema.tokenizeNewText === false && words) {
+  if (igt && schema.tokenizeNewText === false && words) {
     await client.tokenLayers.setConfig(words.id, IGT_NAMESPACE, TOKENIZE_NEW_TEXT_KEY, false);
   }
   // The ignored-tokens rule exactly as the archive stores it, keys and all.
@@ -1170,7 +1206,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     ['export', schema.exportPresets],
     ['documentMetadata', schema.documentMetadata],
   ]) {
-    if (value != null) {
+    if (igt && value != null) {
       await client.projects.setConfig(projectId, IGT_NAMESPACE, key, remapIds(value, layerIds));
     }
   }
@@ -1330,7 +1366,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   // their layers hold the rules the archived project's did.
   if (shouldStop?.()) throw new ImportCancelled();
   await declareOtherLayerRules({ client, restored: targets.otherLayers, warnings });
-  await declareRulesAtEnd({ client, projectId, warnings });
+  if (igt) await declareRulesAtEnd({ client, projectId, warnings });
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
 }

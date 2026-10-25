@@ -14,6 +14,13 @@
 //  - the initialized flag is only written when no step failed.
 //
 // Returns { projectId, resources, failures, alreadyInitialized }.
+//
+// `setupData.substrateOnly` (`{roles}`) is a native archive of a project igt
+// never set up (Luke's ruling R37): only the project, the baseline text layer
+// and the shared token layers named in `roles` are made, each with its role
+// and nothing else, and the vocabularies are made and linked unseeded. No
+// igt config, field, rule or initialized flag is written. What else those
+// layers hold the archive puts back as it was.
 
 import {
   IGNORED_TOKENS_KEY,
@@ -99,6 +106,9 @@ async function executeProjectSetupImpl({
 }) {
   const mintOf = (key) => (mints[key] ??= { current: null });
   const updateProgress = (pct, msg) => onProgress?.(pct, msg);
+  // Igt's own setup, or only the shared substrate another app's project had.
+  const substrateRoles = setupData.substrateOnly ? new Set(setupData.substrateOnly.roles) : null;
+  const igt = !substrateRoles;
 
   // Refuse to re-run setup on an already-initialized project. Re-running
   // would create a second set of plaid-tagged layers and break
@@ -207,6 +217,19 @@ async function executeProjectSetupImpl({
       rules = null,
     ) => {
       let layer = found;
+      if (!igt) {
+        // Only a layer the archived project had, made with its role alone.
+        if (!substrateRoles.has(role)) return layer?.id ?? null;
+        if (layer) return layer.id;
+        updateProgress(pct, msg);
+        const id = uuidv7();
+        await client.batched((b) => {
+          b.tokenLayers.create(textLayerId, name, overlapMode, parentId, undefined, { id });
+          b.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
+        });
+        resources[resourceKey] = { id, name, config: { [PLAID_NAMESPACE]: { [ROLE_KEY]: role } } };
+        return id;
+      }
       if (!layer) {
         // A layer made here is made in one batch with its role, what a split
         // keeps, and IGT's rules for it. It is empty, so no data can refuse
@@ -287,7 +310,7 @@ async function executeProjectSetupImpl({
   }
 
   // Step 5: Configure orthographies on the word token layer
-  if (tokenLayerId && setupData.orthographies?.orthographies) {
+  if (igt && tokenLayerId && setupData.orthographies?.orthographies) {
     updateProgress(40, 'Configuring orthographies…');
     const orthographiesConfig = setupData.orthographies.orthographies
       .filter((orth) => !orth.isBaseline)
@@ -310,7 +333,7 @@ async function executeProjectSetupImpl({
   // fields of that scope. A layer without the scope is never setup's, whatever
   // it is called (another app's, or one made through the API): the field gets
   // a layer of its own beside it.
-  if (tokenLayerId && sentenceTokenLayerId) {
+  if (igt && tokenLayerId && sentenceTokenLayerId) {
     updateProgress(50, 'Creating annotation field layers…');
     const createdSpanLayers = [];
 
@@ -435,6 +458,7 @@ async function executeProjectSetupImpl({
   // once from the fields setup makes, never over what is stored. An archive
   // brings its own (`serviceFieldDefaults: false`).
   if (
+    igt &&
     currentProjectId &&
     setupData.serviceFieldDefaults !== false &&
     existingProject?.config?.[IGT_NAMESPACE]?.serviceDefaults === undefined
@@ -449,7 +473,7 @@ async function executeProjectSetupImpl({
   }
 
   // Step 7: Configure ignored tokens on the word token layer
-  if (tokenLayerId && setupData.fields?.ignoredTokens) {
+  if (igt && tokenLayerId && setupData.fields?.ignoredTokens) {
     updateProgress(60, 'Configuring ignored tokens…');
     await client.tokenLayers.setConfig(
       tokenLayerId,
@@ -524,12 +548,12 @@ async function executeProjectSetupImpl({
           // list, the same setup every creation path does (statusFieldSeed).
           // Written only where it is missing, so finishing one an earlier run
           // started does not overwrite what that run already put there.
-          const igt = newVocab.config?.[IGT_NAMESPACE] || {};
+          const stored = newVocab.config?.[IGT_NAMESPACE] || {};
           const add = statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} });
-          if (!igt.tagsets) {
+          if (igt && !stored.tagsets) {
             await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, 'tagsets', add.tagsets);
           }
-          if (!igt.fields) {
+          if (igt && !stored.fields) {
             await client.vocabLayers.setConfig(
               newVocab.id,
               IGT_NAMESPACE,
@@ -555,6 +579,9 @@ async function executeProjectSetupImpl({
     }
     resources.vocabularies = vocabulariesProcessed;
   }
+
+  // The rest is igt's own: a project it does not set up is done here.
+  if (!igt) return { projectId: currentProjectId, resources, failures, alreadyInitialized: false };
 
   // Step 9: Configure document metadata
   updateProgress(80, 'Configuring document metadata…');

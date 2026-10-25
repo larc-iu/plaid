@@ -115,14 +115,16 @@ const INCOMPLETE = 'Project setup incomplete';
  * substrate: a project without one simply carries no time alignment, which the
  * engines report as a warning per document.
  */
-export function resolveIgtTargets(project, fields = []) {
+export function resolveIgtTargets(project, fields = [], { substrateOnly = false } = {}) {
   const textLayer = findBaselineTextLayer(project.textLayers || []);
   if (!textLayer) throw new Error(`No baseline text layer. ${INCOMPLETE}`);
   const tokenLayers = textLayer.tokenLayers || [];
   const sentenceLayer = findSentenceTokenLayer(tokenLayers);
   const wordLayer = findWordTokenLayer(tokenLayers);
   const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
-  if (!sentenceLayer || !wordLayer || !morphemeLayer) {
+  // A project igt never set up (a native archive's, `substrateOnly`) has only
+  // the shared layers it had, and nothing is written to one it lacks.
+  if (!substrateOnly && (!sentenceLayer || !wordLayer || !morphemeLayer)) {
     throw new Error(`Substrate token layers missing. ${INCOMPLETE}`);
   }
   const spanLayerByScopeName = new Map();
@@ -138,9 +140,9 @@ export function resolveIgtTargets(project, fields = []) {
   }
   return {
     textLayerId: textLayer.id,
-    sentenceLayerId: sentenceLayer.id,
-    wordLayerId: wordLayer.id,
-    morphemeLayerId: morphemeLayer.id,
+    sentenceLayerId: sentenceLayer?.id ?? null,
+    wordLayerId: wordLayer?.id ?? null,
+    morphemeLayerId: morphemeLayer?.id ?? null,
     alignmentLayerId: findAlignmentTokenLayer(tokenLayers)?.id ?? null,
     spanLayerByScopeName,
   };
