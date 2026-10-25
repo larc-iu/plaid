@@ -60,5 +60,3 @@ def agent_version(texts: List[str], tools: List[Dict[str, Any]],
     text = json.dumps([list(texts), list(tools), [list(s) for s in sources]],
                       sort_keys=True, ensure_ascii=False)
     return f'{AGENT_VERSION}+{hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]}'
-
-

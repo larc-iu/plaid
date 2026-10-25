@@ -113,7 +113,7 @@ def test_setup_stops_the_service_when_the_model_does_not_answer(monkeypatch, cap
 
 
 def test_setup_stops_the_service_when_the_search_provider_does_not_answer(monkeypatch, capsys):
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import service_cli
     from plaid_agent.igt.service import AssistantService
     monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
 
@@ -124,24 +124,24 @@ def test_setup_stops_the_service_when_the_search_provider_does_not_answer(monkey
     assert exc.value.code == 1 and 'needs a key' in capsys.readouterr().out
 
     # Keyed, but the provider refuses.
-    monkeypatch.setattr(service_mod, 'ping_search',
+    monkeypatch.setattr(service_cli, 'ping_search',
                         lambda cfg, q=None: (_ for _ in ()).throw(RuntimeError('rejected the key')))
     with pytest.raises(SystemExit) as exc:
         AssistantService().setup(service_args(web_search='brave', web_search_key='k'))
     assert exc.value.code == 1 and 'rejected the key' in capsys.readouterr().out
 
     # Keyed and answering: the Plaid host is denied to any fetch.
-    monkeypatch.setattr(service_mod, 'ping_search', lambda cfg, q=None: 3)
+    monkeypatch.setattr(service_cli, 'ping_search', lambda cfg, q=None: 3)
     svc = AssistantService()
     svc.setup(service_args(web_search='brave', web_search_key='k', url='https://plaid.example.org'))
     assert svc.web_cfg.backend == 'brave' and svc.web_cfg.deny_hosts == ('plaid.example.org',)
 
 
 def test_a_self_hosted_provider_wants_a_url_and_no_key(monkeypatch, capsys):
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import service_cli
     from plaid_agent.igt.service import AssistantService
     monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
-    monkeypatch.setattr(service_mod, 'ping_search', lambda cfg, q=None: 2)
+    monkeypatch.setattr(service_cli, 'ping_search', lambda cfg, q=None: 2)
 
     # No key is needed, but it does need to be told where the instance is.
     with pytest.raises(SystemExit) as exc:

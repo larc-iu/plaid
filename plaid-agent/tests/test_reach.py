@@ -112,7 +112,7 @@ def test_past_the_cap_a_project_is_unavailable_not_silently_dropped():
 
 def test_the_service_advertises_the_cap(monkeypatch):
     """The browser shows its "Add project" control only when this is there."""
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import service_cli
     svc = service('igt')
 
     class Args:
@@ -120,7 +120,7 @@ def test_the_service_advertises_the_cap(monkeypatch):
         no_stream, service_id, service_name, web_search, timeout = False, None, None, None, 120.0
         url = 'http://localhost:8085'
 
-    monkeypatch.setattr(service_mod, 'ping_model', lambda cfg: None)
+    monkeypatch.setattr(service_cli, 'ping_model', lambda cfg: None)
     svc.setup(Args())
     assert svc.extras['max_projects'] == MAX_PROJECTS
 

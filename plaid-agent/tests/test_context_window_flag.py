@@ -14,6 +14,7 @@ import pytest
 from fixtures import FakeClient
 
 from plaid_agent.core import service as service_mod
+from plaid_agent.core import service_cli
 from plaid_agent.core.agent import ModelConfig, TurnResult, context_window
 from test_service_flow import Helper, _request, _seed, _service
 
@@ -46,7 +47,7 @@ def test_the_flag_takes_a_positive_whole_number():
 
 
 def test_setup_carries_the_flag_into_the_model_config(monkeypatch, capsys):
-    monkeypatch.setattr(service_mod, 'ping_model', lambda cfg: None)
+    monkeypatch.setattr(service_cli, 'ping_model', lambda cfg: None)
     svc = _service()
     svc.setup(_parser().parse_args(['--model', UNKNOWN, '--context-window', '131072']))
     assert svc.cfg.context_window == 131072
@@ -54,7 +55,7 @@ def test_setup_carries_the_flag_into_the_model_config(monkeypatch, capsys):
 
 
 def test_setup_says_when_the_window_is_unknown(monkeypatch, capsys):
-    monkeypatch.setattr(service_mod, 'ping_model', lambda cfg: None)
+    monkeypatch.setattr(service_cli, 'ping_model', lambda cfg: None)
     svc = _service()
     svc.setup(_parser().parse_args(['--model', UNKNOWN]))
     assert svc.cfg.context_window is None
