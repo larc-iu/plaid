@@ -5,8 +5,12 @@
   and a dependency layer on Lemma, with every rule ud declares. One text
   save near the start moves every token after it, which is the heaviest
   structural write there is. `finish!`, the whole of what the rules add,
-  must stay under a second there. A 1,000-op batch of span creates on a
-  single-span and value-set layer must add under 100 ms."
+  must stay under a quarter of what the same save takes with no rules (8
+  to 11 s here, the rules adding 0.4 to 0.6 s). A 1,000-op batch of span
+  creates on a single-span and value-set layer must spend under a tenth of
+  the batch's time on them (13 to 25 ms of 1.2 to 2.4 s). Both are bounded
+  by the write itself on the same machine, not by a number of milliseconds
+  a loaded runner breaks."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is use-fixtures]]
             [plaid.sql.common :as psc]
@@ -16,9 +20,9 @@
             [taoensso.timbre :as log]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [id stale-statistics! create-test-project create-test-document create-text-layer
-                                        create-token-layer-opts create-span-layer create-relation-layer
-                                        create-text]]))
+            [plaid.test-helpers :as h :refer [id stale-statistics! create-test-project create-test-document create-text-layer
+                                              create-token-layer-opts create-span-layer create-relation-layer
+                                              create-text]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
@@ -137,16 +141,16 @@
     (let [[ruled-ms ruled-finish] (timed-finish #(save! (str "xy" body)))]
       (log/warn (format "50,000 words, one edit at the start: %.0f ms without rules (finish! %.0f ms), %.0f ms with (finish! %.0f ms)"
                         plain-ms plain-finish ruled-ms ruled-finish))
-      (is (< (- ruled-finish plain-finish) 1000)
-          (str "the rules added " (- ruled-finish plain-finish) " ms to a text save")))))
+      (h/within-factor-of 1/4 plain-ms (- ruled-finish plain-finish)
+                          {:label "what the rules added to a text save, against the save with none"}))))
 
-(deftest a-text-save-on-50000-words-spends-under-a-second-on-the-rules
+(deftest a-text-save-on-50000-words-spends-a-fraction-of-its-time-on-the-rules
   (stale-statistics!)
   (try
     (text-save-with-rules)
     (finally (fresh-statistics!))))
 
-(deftest a-1000-op-batch-spends-under-100-ms-on-the-rules
+(deftest a-1000-op-batch-spends-a-fraction-of-its-time-on-the-rules
   (let [proj (create-test-project admin-request "Batch")
         doc (create-test-document admin-request proj "D")
         tl (id (create-text-layer admin-request proj "T"))
@@ -164,4 +168,5 @@
     (declare! "span" gloss "igt" [{:type "single-span"} {:type "value-set" :values ["N" "V"]}])
     (let [[total-ms finish-ms] (timed-finish run!)]
       (log/warn (format "1,000 span creates in one batch: %.0f ms, finish! %.0f ms" total-ms finish-ms))
-      (is (< finish-ms 100) (str "the rules added " finish-ms " ms to the batch")))))
+      (h/within-factor-of 1/10 total-ms finish-ms
+                          {:label "what the rules added to the batch, against the whole batch"}))))
