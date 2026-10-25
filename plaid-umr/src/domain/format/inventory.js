@@ -233,6 +233,12 @@ export const DOC_CONSTANTS = [
   'future-reference',
 ];
 
+// The conceivers: a triple to one of these is modal, to any other constant
+// temporal.
+export const MODAL_CONSTANTS = ['author', 'root', 'null-conceiver', 'have-condition-91'];
+export const groupOfConstant = (name) => (MODAL_CONSTANTS.includes(name) ? 'modal' : 'temporal');
+export const TEMPORAL_CONSTANTS = DOC_CONSTANTS.filter((c) => !MODAL_CONSTANTS.includes(c));
+
 // docs/umr/schema/abstract_concepts.json, its five tables.
 export const ABSTRACT_CONCEPTS = {
   implicitHeads: ['person', 'thing', 'animal', 'event', 'place', 'temporal', 'quantity'],

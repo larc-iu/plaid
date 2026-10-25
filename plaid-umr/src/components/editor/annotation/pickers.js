@@ -14,7 +14,7 @@ import {
   entriesStartingWith,
   entryLabel,
 } from '../../../domain/vocabLexicon.js';
-import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
+import { DOC_RELATIONS } from '../../../domain/format/inventory.js';
 import { conceptProblem, attrValueProblem } from '../../../domain/format/penman.js';
 import { valueGrammarProblem } from '../../../domain/format/validate.js';
 
@@ -46,12 +46,6 @@ export const docRelationOptions = (group, sets = 'validator', ends = null) => {
       : rels;
   return [{ group: group.charAt(0).toUpperCase() + group.slice(1), items }];
 };
-
-// The conceivers: a triple to one of these is modal, to any other constant
-// temporal.
-export const MODAL_CONSTANTS = ['author', 'root', 'null-conceiver', 'have-condition-91'];
-export const groupOfConstant = (name) => (MODAL_CONSTANTS.includes(name) ? 'modal' : 'temporal');
-export const TEMPORAL_CONSTANTS = DOC_CONSTANTS.filter((c) => !MODAL_CONSTANTS.includes(c));
 
 // Every node of the document as an option, `var concept`, sentence by sentence.
 export const nodeOptions = (graph, exceptId = null) =>

@@ -29,13 +29,15 @@ import {
   conceptOptions,
   wordOptions,
   docRelationOptions,
-  groupOfConstant,
   nodeOptions,
-  MODAL_CONSTANTS,
-  TEMPORAL_CONSTANTS,
   focusValue,
 } from './pickers.js';
-import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
+import {
+  DOC_CONSTANTS,
+  MODAL_CONSTANTS,
+  TEMPORAL_CONSTANTS,
+  groupOfConstant,
+} from '../../../domain/format/inventory.js';
 import { followIds, stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { SentenceComments } from '@ui/components/shared/SentenceComments';
