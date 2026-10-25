@@ -85,6 +85,22 @@ describe('a document with no text', () => {
     expect(isPendingId(doc.layerInfo.primaryTextLayer.text.id)).toBe(false);
   });
 
+  // `bb fidelity` (the kitchen sink): the text the Baseline save made was
+  // still taken for one to make, and aligning its sentence sent the create
+  // again, refused 409 id-taken.
+  it('aligns its baseline once the Baseline save made the text, with no second create', async () => {
+    const { doc, server } = open();
+    expect(await doc.saveBaselineText('kai pele', '')).toBe(true);
+    await idle(doc);
+    expect(await doc.alignBaseline({ begin: 0, end: 8, timeBegin: 0, timeEnd: 1 })).toBe(true);
+    await idle(doc);
+    const creates = server.sent
+      .flatMap((r) => (r.kind === 'batch' ? r.ops : [r]))
+      .filter((w) => w.kind === 'texts.create');
+    expect(creates).toHaveLength(1);
+    expect(server.segments().map((s) => [s.begin, s.end])).toEqual([[0, 8]]);
+  });
+
   it('takes its first Baseline save, the text and its sentences in one batch', async () => {
     const { doc, server } = open();
     expect(await doc.saveBaselineText('kai pele', '', { tokenize: true })).toBe(true);

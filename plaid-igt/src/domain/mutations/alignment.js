@@ -49,7 +49,7 @@ import {
   wasReplayed,
   PROVENANCE_KEYS,
 } from '@larc-iu/plaid-client';
-import { isPendingId, pendingId, settledId } from '@ui/domain/pendingIds.js';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/errors.js';
 import { inferEdit } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
@@ -530,7 +530,8 @@ export const alignmentMutations = {
     }
     // A document with no text yet gets one with its first segment
     // (`_ensureText`), under an id minted here.
-    const textId = primaryTextLayer.text?.id ?? pendingId();
+    const newText = primaryTextLayer.text?.id ? null : pendingId();
+    const textId = primaryTextLayer.text?.id ?? newText;
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
     if (overlap) {
       this.refuse(overlap);
@@ -560,6 +561,7 @@ export const alignmentMutations = {
     };
     return this._showSegmentWrite('Failed to create alignment', {
       textId,
+      newText,
       ...plan,
       metadata: meta,
       speaker,
@@ -1220,7 +1222,17 @@ export const alignmentMutations = {
   // (`_sameRecording`), for when it waits behind a refused one.
   _showSegmentWrite(
     label,
-    { textId, textOps, token, metadata, seedLength, speaker, replan, recheck = null },
+    {
+      textId,
+      newText = null,
+      textOps,
+      token,
+      metadata,
+      seedLength,
+      speaker,
+      replan,
+      recheck = null,
+    },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -1260,9 +1272,9 @@ export const alignmentMutations = {
         // base: a batch checks the version at the first write that claims
         // one, and the token after it claims the version from before the
         // batch.
-        if (isPendingId(textId)) {
+        if (newText) {
           const body = applyTextOps(planned.body, m.textOps);
-          this._ensureText(b, { id: textId, body }, { tokenizeLayer });
+          this._ensureText(b, { id: newText, body }, { tokenizeLayer });
         } else if (m.textOps.length) {
           b.texts.update(textId, m.textOps, undefined, { base, versioned: true, tokenizeLayer });
         }
@@ -1297,9 +1309,8 @@ export const alignmentMutations = {
       send: (base) => send(sent, base),
     };
     const write = async () => {
-      // Judged when it is sent: a text made by a write queued before this one
-      // is the server's by then.
-      const making = isPendingId(textId);
+      // A write that makes the text sends it whole, so there is no base.
+      const making = newText != null;
       const results =
         making || !textOps.length
           ? await send(sent)

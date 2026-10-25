@@ -1,6 +1,6 @@
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
-import { isPendingId, settledId } from '@ui/domain/pendingIds.js';
+import { settledId } from '@ui/domain/pendingIds.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
@@ -264,14 +264,13 @@ export class IgtDocument extends DocumentModel {
   // The document's text, made in the batch `b` of the write that first needs
   // one, when the document has none (a New document makes none, nor does ud's
   // form or an import with no body): `text` is the text that write shows,
-  // `{ id, body }`, under an id minted for it, so the rows the batch makes
-  // after it can name it. A text the server has made is left alone. Answers
-  // whether the create was queued, in which case the text's body is in it.
+  // `{ id, body }`, under the id it minted when it found no text, so the rows
+  // the batch makes after it can name it. The caller decides it is needed
+  // when it plans the write, on the copy it shows: a pending id is no sign,
+  // since the Baseline save's text keeps the id it was minted under.
   _ensureText(b, { id, body }, { tokenizeLayer } = {}) {
-    if (!isPendingId(id)) return false;
     const layerId = this.layerInfo.primaryTextLayer.id;
     b.texts.create(layerId, this.id, body, undefined, undefined, { id, tokenizeLayer });
-    return true;
   }
 
   get alignmentTokens() {
