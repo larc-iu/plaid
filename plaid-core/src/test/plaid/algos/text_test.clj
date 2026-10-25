@@ -12,6 +12,7 @@
             [plaid.algos.text :as ta]
             [plaid.algos.text.diff :as text-diff]
             [plaid.algos.text.ops :as text-ops]
+            [plaid.algos.text.read :as text-read]
             [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
@@ -1216,7 +1217,7 @@
 
 (defn- normalize-deletes-counting-every-token [ops old tokens]
   (let [edits (text-ops/ops->edits ops)
-        near (#'ta/tokens-near tokens (count edits))
+        near (#'text-read/tokens-near tokens (count edits))
         cut-count (fn [ranges]
                     (count (filter (fn [{:token/keys [begin end]}]
                                      (and (< begin end)
@@ -1255,7 +1256,7 @@
     (loop [edits edits merged? false]
       (if-let [next (step edits)]
         (recur (vec (remove nil? next)) true)
-        (let [joined (#'ta/join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
+        (let [joined (#'text-read/join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
           (if (or merged? (not= joined edits)) (text-ops/edits->ops joined) ops))))))
 
 (deftest normalize-deletes-counting-near-tokens-chooses-as-counting-all

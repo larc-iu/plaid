@@ -40,6 +40,7 @@
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.algos.text.chars :as chars]
+            [plaid.algos.text.read :as text-read]
             [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
@@ -524,7 +525,7 @@
   [^String old tokens ops layout]
   (let [{:keys [partitioning deciders] :as r} (roles layout false)
         o (cps old)]
-    (ta/apply-plain-gaps old tokens (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))
+    (ta/apply-plain-gaps old tokens (vec (keep #(#'text-read/trim-gap o %) (ta/compose-edits ops old)))
                          partitioning deciders
                          (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
 
@@ -576,7 +577,7 @@
   the edit as made keeps (REV3-F-TEXT-CORE G3)."
   [^String old tokens ops layout r]
   (let [o (cps old)
-        as-made (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))]
+        as-made (vec (keep #(#'text-read/trim-gap o %) (ta/compose-edits ops old)))]
     (cond-> (letters-left-problems old tokens ops r)
       (= as-made (server-gaps old tokens ops layout))
       (into (lost-problems old tokens r (exact old tokens ops layout))))))
