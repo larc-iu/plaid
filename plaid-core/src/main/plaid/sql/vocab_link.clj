@@ -5,6 +5,7 @@
   CASCADE sweeps the junction rows."
   (:require [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.bulk :as bulk]
             [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
@@ -132,10 +133,8 @@
     (when-not (apply distinct? token-ids)
       (throw (ex-info "Token list contains duplicate IDs."
                       {:ids token-ids :code 400})))
-    (let [doc-ids (set (map :document_id token-rows))]
-      (when (> (count doc-ids) 1)
-        (throw (ex-info "Tokens inside vocab link must all belong to the same document"
-                        {:code 400})))
+    (let [doc-id (psc/one-document! (map :document_id token-rows)
+                                    "Tokens inside vocab link must all belong to the same document")]
       ;; Same-text + same-token-layer invariants. One SELECT DISTINCT
       ;; covers both — the row count tells us if either axis disagrees,
       ;; and the values let us produce a precise error message.
@@ -152,8 +151,7 @@
               (> (count tl-ids) 1)
               (throw (ex-info "Tokens inside vocab link must all belong to the same token layer"
                               {:code 400 :token-layer-ids tl-ids}))))))
-      (let [doc-id (first doc-ids)
-            doc-row (psc/fetch-by-id tx :documents doc-id)
+      (let [doc-row (psc/fetch-by-id tx :documents doc-id)
             project-id (:project_id doc-row)
             vocab-layer-id (:vocab_layer_id vi-row)
             link-row (psc/q1 tx {:select [:vocab_layer_id]
@@ -226,10 +224,9 @@
                       :doc-id doc-id
                       :metadata (:metadata a)}))
                  attrs-vec)
-        doc-ids (->> records (map :doc-id) distinct)]
-    (when-not (= 1 (count doc-ids))
-      (throw (ex-info "Tokens in a bulk vocab-link create must all belong to the same document"
-                      {:document-ids doc-ids :code 400})))
+        _ (psc/one-document! (map :doc-id records)
+                             "Tokens in a bulk vocab-link create must all belong to the same document"
+                             {:require-one? true})]
     ;; Rows, join rows and metadata unaudited, then one folded :insert each.
     (psc/execute! tx {:insert-into :vocab_links
                       :values (mapv (fn [r]
@@ -340,29 +337,14 @@
   links must belong to a single document (the doc-version OCC covers one
   doc). Returns the vector of ids actually deleted."
   [db eids user-id]
-  (let [eids (vec (distinct eids))
-        rows (psc/fetch-ids db :vocab_links eids)
-        first-row (first rows)
-        outer-doc-id (:document_id first-row)
-        outer-project (when first-row
-                        (:project_id (psc/fetch-by-id db :documents outer-doc-id)))]
-    (submit-operation!
-     [tx db {:type :vocab-link/bulk-delete
-             :project outer-project
-             :document outer-doc-id
-             :description (str "Delete " (psc/counted (count rows) "vocab mapping"))
-             :user user-id}]
-     ;; Re-fetch inside the tx so the existence check matches the rows we
-     ;; delete (a concurrent delete between the outer read and here is fine).
-     (let [rows-tx (psc/fetch-ids tx :vocab_links eids)
-           existing-ids (->> rows-tx (keep :id) vec)]
-       (when (seq existing-ids)
-         (let [doc-ids (->> rows-tx (map :document_id) distinct)]
-           (when (> (count doc-ids) 1)
-             (throw (ex-info "Tokens in a bulk vocab-link delete must all belong to the same document"
-                             {:document-ids doc-ids :code 400}))))
-         (delete-vocab-links! tx existing-ids))
-       existing-ids))))
+  (bulk/bulk-delete! db eids user-id
+                     {:table :vocab_links
+                      :op-type :vocab-link/bulk-delete
+                      :project-of (fn [db row]
+                                    (:project_id (psc/fetch-by-id db :documents (:document_id row))))
+                      :description (fn [_ rows] (str "Delete " (psc/counted (count rows) "vocab mapping")))
+                      :message "Tokens in a bulk vocab-link delete must all belong to the same document"
+                      :delete! delete-vocab-links!}))
 
 ;; ============================================================
 ;; Metadata

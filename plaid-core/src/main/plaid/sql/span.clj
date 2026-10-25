@@ -134,8 +134,7 @@
     (when (nil? layer-row)
       (throw (ex-info (psc/err-msg-not-found "Span layer" span-layer-id)
                       {:id span-layer-id :code 400})))
-    (let [token-layer-ids (set (map :token_layer_id token-rows))
-          doc-ids (set (map :document_id token-rows))]
+    (let [token-layer-ids (set (map :token_layer_id token-rows))]
       (when (> (count token-layer-ids) 1)
         (throw (ex-info "Not all token IDs belong to the same layer."
                         {:layer-ids token-layer-ids :code 400})))
@@ -146,9 +145,7 @@
                           {:token-layer-id tokl-id
                            :span-layer-id span-layer-id
                            :code 400}))))
-      (when (> (count doc-ids) 1)
-        (throw (ex-info "Not all token IDs belong to the same document."
-                        {:code 400}))))))
+      (psc/one-document! (map :document_id token-rows) "Not all token IDs belong to the same document."))))
 
 (defn- insert-span-tokens!
   "Insert the ordered join rows linking `span-id` to `token-ids`."
@@ -207,10 +204,8 @@
                       :value (:span/value a)
                       :metadata (:metadata a)}))
                  attrs-vec)
-        doc-ids (->> records (map :doc-id) distinct)]
-    (when-not (= 1 (count doc-ids))
-      (throw (ex-info "Not all spans belong to the same document"
-                      {:document-ids doc-ids :code 400})))
+        _ (psc/one-document! (map :doc-id records) "Not all spans belong to the same document"
+                             {:require-one? true})]
     (psc/execute! tx {:insert-into :spans
                       :values (mapv (fn [r]
                                       {:id (:id r)
@@ -401,40 +396,18 @@
   entity_metadata. Mirrors the cascade ordering in
   plaid.sql.token/multi-delete!.
 
-  Ids that don't resolve to an existing span row are silently dropped.
-  Returns the vector of ids actually deleted, which
-  excludes any unknown ids the caller passed in. Without this filter,
-  unknown ids would flow through `crud/delete-by-id!` and produce phantom
-  audit rows with `pre = nil`."
+  Ids that don't resolve to an existing span row are silently dropped
+  (`plaid.sql.bulk/bulk-delete!`). Returns the vector of ids actually
+  deleted."
   [db eids user-id]
-  (let [eids (vec (distinct eids))
-        span-rows (psc/fetch-ids db :spans eids)
-        first-row (first span-rows)
-        outer-doc-id (:document_id first-row)
-        outer-project (when first-row
-                        (:project_id (psc/fetch-by-id db :span_layers
-                                                      (:span_layer_id first-row))))]
-    (submit-operation!
-     [tx db {:type :span/bulk-delete
-             :project outer-project
-             :document outer-doc-id
-             :description (str "Delete " (psc/counted (count eids) "span"))
-             :user user-id}]
-     ;; Re-fetch inside the tx so the existence check is consistent
-     ;; with the rows we then delete. Filter the caller's eids down to
-     ;; ids that actually exist; unknown ids are dropped silently and
-     ;; never reach crud/delete-by-id! (which would otherwise audit a
-     ;; phantom :delete with pre = nil).
-     (let [span-rows-tx (psc/fetch-ids tx :spans eids)
-           existing-ids (->> span-rows-tx (keep :id) vec)]
-       (when (seq existing-ids)
-         (let [;; Pre-flight document consistency.
-               doc-ids (->> span-rows-tx (map :document_id) distinct)]
-           (when (> (count doc-ids) 1)
-             (throw (ex-info "Not all spans belong to the same document"
-                             {:document-ids doc-ids :code 400}))))
-         (delete-spans! tx existing-ids))
-       existing-ids))))
+  (bulk/bulk-delete! db eids user-id
+                     {:table :spans
+                      :op-type :span/bulk-delete
+                      :project-of (fn [db row]
+                                    (:project_id (psc/fetch-by-id db :span_layers (:span_layer_id row))))
+                      :description (fn [eids _] (str "Delete " (psc/counted (count eids) "span")))
+                      :message "Not all spans belong to the same document"
+                      :delete! delete-spans!}))
 
 ;; ============================================================
 ;; Set tokens

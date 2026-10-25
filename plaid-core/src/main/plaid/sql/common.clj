@@ -673,6 +673,20 @@
                             :where [:in id-col (vec chunk)]})))
            (partition-all bulk-chunk-size ids)))))
 
+(defn one-document!
+  "The one document `doc-ids` name, or nil when they name none. Refuses with
+  400 and `message` when they name more than one, and with
+  `:require-one? true` also when they name none. A bulk route's gate judges
+  only its first entry, so that every entry lies in one document, and so in
+  one project, is what makes its ACL sound."
+  ([doc-ids message] (one-document! doc-ids message nil))
+  ([doc-ids message {:keys [require-one?]}]
+   ;; `seq` first: `(distinct some-set)` throws in Clojure 1.12.
+   (let [ds (distinct (seq doc-ids))]
+     (when (or (next ds) (and require-one? (empty? ds)))
+       (throw (ex-info message {:document-ids ds :code 400})))
+     (first ds))))
+
 (defn fetch-ids-as-map
   "Like fetch-ids but returns a map of id → row for lookups."
   ([db table ids]

@@ -163,11 +163,8 @@
                       :value (psc/write-json value)
                       ::metadata (:metadata a)}))
                  attrs-vec)
-        doc-ids (->> records (map :document_id) distinct)
+        _ (psc/one-document! (map :document_id records) "Not all relations belong to the same document")
         metadata-of (into {} (map (juxt :id ::metadata)) records)]
-    (when (> (count doc-ids) 1)
-      (throw (ex-info "Not all relations belong to the same document"
-                      {:document-ids doc-ids :code 400})))
     (crud/insert-many! tx :relations (mapv #(dissoc % ::metadata) records)
                        {:image (fn [post]
                                  (let [m (clojure.core/get metadata-of (:id post))]
@@ -331,29 +328,18 @@
 
 (defn bulk-delete
   "Bulk-delete relations. Relations are leaves in the entity graph
-  (nothing references them), so we delete each row + its entity_metadata
-  and we're done."
+  (nothing references them), so each row goes with its entity_metadata.
+  Ids that don't resolve to an existing row are dropped
+  (`plaid.sql.bulk/bulk-delete!`). Returns the ids actually deleted."
   [db eids user-id]
-  (let [eids (vec (distinct eids))
-        rel-rows (psc/fetch-ids db :relations eids)
-        first-row (first rel-rows)
-        outer-doc-id (:document_id first-row)
-        outer-project (when first-row
-                        (:project_id (psc/fetch-by-id db :relation_layers
-                                                      (:relation_layer_id first-row))))]
-    (submit-operation!
-     [tx db {:type :relation/bulk-delete
-             :project outer-project
-             :document outer-doc-id
-             :description (str "Delete " (psc/counted (count eids) "relation"))
-             :user user-id}]
-     (when (seq eids)
-       (let [doc-ids (->> rel-rows (map :document_id) distinct)]
-         (when (> (count doc-ids) 1)
-           (throw (ex-info "Not all relations belong to the same document"
-                           {:document-ids doc-ids :code 400}))))
-       (delete-relations! tx eids))
-     eids)))
+  (bulk/bulk-delete! db eids user-id
+                     {:table :relations
+                      :op-type :relation/bulk-delete
+                      :project-of (fn [db row]
+                                    (:project_id (psc/fetch-by-id db :relation_layers (:relation_layer_id row))))
+                      :description (fn [eids _] (str "Delete " (psc/counted (count eids) "relation")))
+                      :message "Not all relations belong to the same document"
+                      :delete! delete-relations!}))
 
 ;; ============================================================
 ;; Set endpoint (source/target swap)

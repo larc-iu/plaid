@@ -1,5 +1,6 @@
 (ns plaid.sql.bulk
-  "The one bulk-update path, shared by spans, relations and tokens.
+  "The one bulk-update path, shared by spans, relations and tokens, and the
+  one bulk-delete path, shared by spans, relations and vocab links.
 
   `PATCH /spans/bulk`, `/relations/bulk` and `/tokens/bulk` are the same
   operation over three tables: set values, patch metadata, refuse an
@@ -106,3 +107,29 @@
          (when (> (count doc-ids) 1)
            (op/bump-document-versions! tx doc-ids))
          {:count (count items) :documents doc-ids})))))
+
+(defn bulk-delete!
+  "Delete the rows `eids` (distinct) of `table` in one operation of type
+  `op-type`. The rows are read before the transaction to name the
+  operation's project (`(project-of db row)` of the first row) and document,
+  and `(description eids rows)` describes it. Inside the transaction they
+  are read again: an id with no row is dropped, and never reaches
+  `delete!`, which would otherwise audit a phantom :delete. The rest must
+  lie in one document (`psc/one-document!`, refused with `message`), and
+  `(delete! tx ids)` removes them. Returns the ids deleted."
+  [db eids user-id {:keys [table op-type project-of description message delete!]}]
+  (let [eids (vec (distinct eids))
+        rows (psc/fetch-ids db table eids)
+        first-row (first rows)]
+    (submit-operation!
+     [tx db {:type op-type
+             :project (when first-row (project-of db first-row))
+             :document (:document_id first-row)
+             :description (description eids rows)
+             :user user-id}]
+     (let [rows-tx (psc/fetch-ids tx table eids)
+           existing-ids (->> rows-tx (keep :id) vec)]
+       (when (seq existing-ids)
+         (psc/one-document! (map :document_id rows-tx) message)
+         (delete! tx existing-ids))
+       existing-ids))))
