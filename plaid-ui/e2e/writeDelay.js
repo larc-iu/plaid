@@ -18,7 +18,7 @@ const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const POST_READS = /\/api\/v1\/(query|invites\/lookup|login)(\?|$)/;
 
 // Whether a request to /api is a write.
-export const isWrite = (req) => WRITES.has(req.method()) && !POST_READS.test(req.url());
+const isWrite = (req) => WRITES.has(req.method()) && !POST_READS.test(req.url());
 
 const writeDelayMs = () => Number(process.env.PLAID_E2E_WRITE_DELAY_MS) || 0;
 

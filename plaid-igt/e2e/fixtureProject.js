@@ -179,7 +179,7 @@ async function ensureVocab(client, projectId) {
 }
 
 // The ids of the baseline text layer and its sentence, word and morpheme layers.
-export function resolveLayers(project) {
+function resolveLayers(project) {
   const tl =
     (project.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE) ||
     (project.textLayers || [])[0];
