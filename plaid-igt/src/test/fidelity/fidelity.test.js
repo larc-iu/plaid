@@ -564,6 +564,8 @@ const IDENTIFIERS = {
   SPLIT_ON_SPACE_KEY: 'splitOnSpace',
   REVIEW_KEY: 'review',
   CONFIDENCE_KEY: 'confidence',
+  TARTAN_KEY: 'tartan',
+  RESEARCH_KEY: 'research',
   IMPORT_KEY: 'import',
   TOKENIZE_NEW_TEXT_KEY: 'tokenizeNewText',
   LEXICON_FIELD_KEY: 'lexiconField',

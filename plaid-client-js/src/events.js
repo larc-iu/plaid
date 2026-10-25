@@ -1,4 +1,5 @@
 import { transformRequest } from "./transforms.js";
+import { readResearchTelemetry } from "./roles.js";
 
 // ---------------------------------------------------------------------------
 // Client events: the opt-in research telemetry of a project (defined in
@@ -214,7 +215,7 @@ export class EventRecorder {
     Promise.resolve()
       .then(() => client.projects.get(projectId))
       .then(
-        (project) => project?.config?.plaid?.research?.telemetry === true,
+        (project) => readResearchTelemetry(project?.config),
         () => false,
       )
       .then((on) => {

@@ -369,7 +369,7 @@ export const ServiceDefaultsSettings = ({
         setServices((svcs || []).filter((s) => s.seen !== false));
         if (servicesOnly) return;
         setProject(p);
-        setDraft(p?.config?.[namespace]?.serviceDefaults || {});
+        setDraft(storedConfig(p, namespace, 'serviceDefaults') || {});
         setThreshold(thresholdText(p?.config));
         onProjectLoaded?.(p);
         setDirty(false);

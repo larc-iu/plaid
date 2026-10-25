@@ -15,6 +15,9 @@ from plaid_client import (
     PLAID_NAMESPACE,
     ROLE_KEY,
     IGNORED_TOKENS_KEY,
+    TARTAN_KEY,
+    RESEARCH_KEY,
+    read_research_telemetry,
     read_role,
     read_ignored_tokens,
     find_by_role,
@@ -69,3 +72,15 @@ if __name__ == '__main__':
     test_read_role()
     test_find_by_role_returns_first_match_else_none()
     print('roles tests passed')
+
+
+def test_read_research_telemetry_is_true_only_when_stored_true():
+    # The same cases as plaid-client-js's surface.test.js.
+    assert (TARTAN_KEY, RESEARCH_KEY) == ('tartan', 'research')
+    assert read_research_telemetry({'plaid': {'research': {'telemetry': True}}}) is True
+    assert read_research_telemetry({'plaid': {'research': {'telemetry': 'true'}}}) is False
+    assert read_research_telemetry({'plaid': {'research': {'telemetry': False}}}) is False
+    assert read_research_telemetry({'plaid': {'research': True}}) is False
+    assert read_research_telemetry({'igt': {'research': {'telemetry': True}}}) is False
+    assert read_research_telemetry({}) is False
+    assert read_research_telemetry(None) is False

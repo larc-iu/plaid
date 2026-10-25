@@ -62,6 +62,7 @@ import {
   wordLayerConstraints,
 } from '../../../domain/igtConstraints.js';
 import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
+import { storedConfig } from '../../../../../plaid-ui/src/domain/configCells.js';
 import { createOnce } from '../../../../../plaid-ui/src/lib/createOnce.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 import { importRepairs } from '../../../domain/importFinish.js';
@@ -461,7 +462,7 @@ async function executeProjectSetupImpl({
     igt &&
     currentProjectId &&
     setupData.serviceFieldDefaults !== false &&
-    existingProject?.config?.[IGT_NAMESPACE]?.serviceDefaults === undefined
+    storedConfig(existingProject, IGT_NAMESPACE, 'serviceDefaults') === undefined
   ) {
     const proposed = proposeServiceFieldDefaults(
       madeFields,

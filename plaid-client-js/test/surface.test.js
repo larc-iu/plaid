@@ -11,6 +11,9 @@ import {
   stampContributed,
   IGNORED_TOKENS_KEY,
   readIgnoredTokens,
+  TARTAN_KEY,
+  RESEARCH_KEY,
+  readResearchTelemetry,
 } from "../src/index.js";
 import { reportRequestEvent } from "../src/services.js";
 
@@ -183,4 +186,17 @@ test("the ignored-tokens rule is read from the plaid namespace only", () => {
   assert.deepEqual(readIgnoredTokens({ plaid: { ignoredTokens: rule } }), rule);
   assert.equal(readIgnoredTokens({ igt: { ignoredTokens: rule } }), null);
   assert.equal(readIgnoredTokens(undefined), null);
+});
+
+// The same cases as plaid-client-py's test_read_research_telemetry_is_true_only_when_stored_true.
+test("research telemetry is on only when stored exactly true", () => {
+  assert.equal(TARTAN_KEY, "tartan");
+  assert.equal(RESEARCH_KEY, "research");
+  assert.equal(readResearchTelemetry({ plaid: { research: { telemetry: true } } }), true);
+  assert.equal(readResearchTelemetry({ plaid: { research: { telemetry: "true" } } }), false);
+  assert.equal(readResearchTelemetry({ plaid: { research: { telemetry: false } } }), false);
+  assert.equal(readResearchTelemetry({ plaid: { research: true } }), false);
+  assert.equal(readResearchTelemetry({ igt: { research: { telemetry: true } } }), false);
+  assert.equal(readResearchTelemetry({}), false);
+  assert.equal(readResearchTelemetry(undefined), false);
 });

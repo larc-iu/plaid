@@ -11,7 +11,7 @@
 // Relative imports only: project setup (executeSetup.js) runs this from plain
 // node too.
 import { uuidv7 } from '@larc-iu/plaid-client';
-import { IGT_NAMESPACE, LEXICON_FIELD_KEY, SENTENCE_ROLE_KEY } from './igtConfig.js';
+import { IGT_NAMESPACE, LEXICON_FIELD_KEY, SENTENCE_ROLE_KEY, readScope } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { findDoubles } from './doubles.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
@@ -329,7 +329,7 @@ export const declareIgtRules = async (
       ? {
           repair: fixable,
           repairCount: await reachableCount(client, p, fixable),
-          scope: fields.get(p.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
+          scope: readScope(fields.get(p.layerId)?.config),
         }
       : {};
     if (named) {
@@ -371,7 +371,7 @@ export const fieldsOutOfForce = (project) => {
         layerId: e.layerId,
         field: fields.get(e.layerId)?.name ?? e.layerId,
         tagset: readTagsetName(fields.get(e.layerId)?.config),
-        scope: fields.get(e.layerId)?.config?.[IGT_NAMESPACE]?.scope ?? null,
+        scope: readScope(fields.get(e.layerId)?.config),
         closed,
         list: closed && !sameConstraints(listOf(e.stored), listOf(e.constraints)),
         stale: !closed && has(e.stored, 'value-set'),

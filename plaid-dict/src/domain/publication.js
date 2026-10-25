@@ -12,7 +12,7 @@
 // nothing published, and Publish all has nowhere to write.
 
 import { statusFieldKey } from '@igt/domain/vocabDictionary.js';
-import { IGT_NAMESPACE, readVocabFields } from '@igt/domain/igtConfig.js';
+import { readVocabFields } from '@igt/domain/igtConfig.js';
 import { metadataOps } from '@larc-iu/plaid-client';
 
 export const PUBLISHED = 'published';
@@ -74,8 +74,7 @@ const BATCH_CHUNK = 200;
  */
 export const publishAll = async (client, { vocabularyId, name, onProgress }) => {
   const layer = await client.vocabLayers.get(vocabularyId, true);
-  const igt = layer?.config?.[IGT_NAMESPACE] ?? {};
-  const key = statusFieldKey(igt.fields);
+  const key = statusKeyOfConfig(layer?.config);
   if (!key) throw new Error(NO_STATUS_FIELD);
   const pending = (layer?.items || []).filter((it) => !isPublished(it, key));
   if (!pending.length) return 0;

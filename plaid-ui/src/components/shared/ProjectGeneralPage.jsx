@@ -1,4 +1,10 @@
 import { useEffect, useState } from 'react';
+import {
+  PLAID_NAMESPACE,
+  RESEARCH_KEY,
+  TARTAN_KEY,
+  readResearchTelemetry,
+} from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/useAuth.js';
 import { humanizeError } from '../../lib/errors.js';
 import { expectStored, isConfigConflict } from '../../domain/configCells.js';
@@ -200,11 +206,11 @@ const TartanCard = ({ project, onSaved }) => {
     try {
       await getClient().projects.setConfig(
         project.id,
-        'plaid',
-        'tartan',
+        PLAID_NAMESPACE,
+        TARTAN_KEY,
         next,
         undefined,
-        expectStored(project, 'plaid', 'tartan'),
+        expectStored(project, PLAID_NAMESPACE, TARTAN_KEY),
       );
       await onSaved?.();
     } catch (err) {
@@ -248,7 +254,7 @@ const TartanCard = ({ project, onSaved }) => {
 // when they next read the project.
 const ResearchCard = ({ project, onSaved }) => {
   const { getClient } = useAuth();
-  const saved = project.config?.plaid?.research?.telemetry === true;
+  const saved = readResearchTelemetry(project.config);
   const [on, setOn] = useState(saved);
   const [saving, setSaving] = useState(false);
   useEffect(() => setOn(saved), [saved]);
@@ -260,11 +266,11 @@ const ResearchCard = ({ project, onSaved }) => {
       const client = getClient();
       await client.projects.setConfig(
         project.id,
-        'plaid',
-        'research',
+        PLAID_NAMESPACE,
+        RESEARCH_KEY,
         { telemetry: next },
         undefined,
-        expectStored(project, 'plaid', 'research'),
+        expectStored(project, PLAID_NAMESPACE, RESEARCH_KEY),
       );
       client.events?.setEnabled?.(project.id, next);
       await onSaved?.();

@@ -48,6 +48,23 @@ SPLIT_ON_SPACE_KEY = 'splitOnSpace'
 IGNORED_TOKENS_KEY = 'ignoredTokens'
 
 
+#: Project config key (False to hide): whether the project's tartan shows
+#: beside its name. Absent means shown.
+TARTAN_KEY = 'tartan'
+
+#: Project config key holding the research settings, ``{telemetry}``. Client
+#: events are recorded only while ``telemetry`` is True. See the manual's
+#: "Research telemetry".
+RESEARCH_KEY = 'research'
+
+
+def read_research_telemetry(config):
+    """Whether a project records research telemetry:
+    ``config.plaid.research.telemetry`` is exactly True."""
+    research = ((config or {}).get(PLAID_NAMESPACE) or {}).get(RESEARCH_KEY)
+    return isinstance(research, dict) and research.get('telemetry') is True
+
+
 class ROLES:
     """The fixed role inventory (attribute access mirrors JS ``ROLES.BASELINE``)."""
     BASELINE = 'baseline'

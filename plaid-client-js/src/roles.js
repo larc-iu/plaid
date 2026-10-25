@@ -53,6 +53,29 @@ export const SPLIT_ON_SPACE_KEY = 'splitOnSpace';
  */
 export const IGNORED_TOKENS_KEY = 'ignoredTokens';
 
+/**
+ * Project config key (false to hide): whether the project's tartan shows beside
+ * its name. Absent means shown.
+ */
+export const TARTAN_KEY = 'tartan';
+
+/**
+ * Project config key holding the research settings, `{telemetry}`. Client
+ * events are recorded only while `telemetry` is true. See the manual's
+ * `Research telemetry`.
+ */
+export const RESEARCH_KEY = 'research';
+
+/**
+ * Whether a project records research telemetry: `config.plaid.research.telemetry`
+ * is exactly true.
+ * @param {object} [config] a project's `config` object
+ * @returns {boolean}
+ */
+export function readResearchTelemetry(config) {
+  return config?.[PLAID_NAMESPACE]?.[RESEARCH_KEY]?.telemetry === true;
+}
+
 export const ROLES = Object.freeze({
   BASELINE: 'baseline',
   SENTENCE: 'sentence',
