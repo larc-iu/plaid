@@ -1,6 +1,6 @@
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
-import { followIds, settledId } from '@ui/domain/pendingIds.js';
+import { settledId } from '@ui/domain/pendingIds.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
@@ -22,6 +22,19 @@ import { linkFootprint, linksUntouched, tokenIdsOf } from './linkRebase.js';
 import { linkChangedTo } from '@ui/lib/cellConflict.js';
 import { buildItemNumbers, itemLabel } from './vocabDictionary.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+
+// The mutation mixins whose public methods are the writes (WRITES).
+// pendingMutations holds only the pending-id helpers and is not among them.
+const MIXINS = [
+  spanMutations,
+  tokenMutations,
+  sentenceMutations,
+  morphemeMutations,
+  vocabMutations,
+  documentMutations,
+  alignmentMutations,
+  analysisCopyMutations,
+];
 
 // A patch's own copy of the vocabularies. Everything but the entry lists is
 // copied whole: this document's links and the vocabulary's settings, which
@@ -75,6 +88,11 @@ const sameItems = (before, after) =>
 // link/unlink patches to that table in `_applyRawPatch`.
 
 export class IgtDocument extends DocumentModel {
+  // Every public method of the mutation mixins (see the end of this file).
+  static WRITES = MIXINS.flatMap((mixin) => Object.keys(mixin)).filter(
+    (name) => !name.startsWith('_'),
+  );
+
   constructor({
     raw,
     project = null,
@@ -649,37 +667,11 @@ function mergeRawVocabLinks(raw, vocabularies) {
 // plain objects of methods; Object.assign-ing them onto the prototype lets
 // every method see `this` as the IgtDocument instance and call the shared
 // helpers (_queueWrite, _applyRawPatch, _reload, layerInfo, etc.).
-Object.assign(
-  IgtDocument.prototype,
-  pendingMutations,
-  spanMutations,
-  tokenMutations,
-  sentenceMutations,
-  morphemeMutations,
-  vocabMutations,
-  documentMutations,
-  alignmentMutations,
-  analysisCopyMutations,
-);
+Object.assign(IgtDocument.prototype, pendingMutations, ...MIXINS);
 
 // The editor keeps ids on its cells and in its state, and a row it created a
 // moment ago is known by a pending id until the server answers (see
-// mutations/pending.js). Every public mutation takes its arguments settled,
-// so an id held from before the answer names the same row after it.
-const MUTATIONS = [
-  spanMutations,
-  tokenMutations,
-  sentenceMutations,
-  morphemeMutations,
-  vocabMutations,
-  documentMutations,
-  alignmentMutations,
-  analysisCopyMutations,
-].flatMap((mixin) => Object.keys(mixin));
-for (const name of MUTATIONS) {
-  if (name.startsWith('_')) continue;
-  const fn = IgtDocument.prototype[name];
-  IgtDocument.prototype[name] = function (...args) {
-    return fn.apply(this, args.map(followIds));
-  };
-}
+// mutations/pending.js). Every public mutation takes its arguments settled
+// (DocumentModel `_runWrite`), so an id held from before the answer names the
+// same row after it.
+IgtDocument.wrapWrites();

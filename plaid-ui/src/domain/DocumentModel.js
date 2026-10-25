@@ -39,7 +39,7 @@ import {
   mergeMetadata,
   metadataOps,
 } from '../../../plaid-client-js/src/metadataOps.js';
-import { newId, recordSettled, settleIds, settledId } from './pendingIds.js';
+import { followIds, newId, recordSettled, settleIds, settledId } from './pendingIds.js';
 import { sameConfig } from './configCells.js';
 import { DOCUMENT_DELETED, asDeletedDocument } from './permissions.js';
 import {
@@ -162,6 +162,20 @@ const withoutMember = (project, userId) => {
 };
 
 export class DocumentModel {
+  // The public writes a subclass declares, by name. `wrapWrites`, called once
+  // under the class, puts each through `_runWrite`. A census test holds every
+  // public async method of each model to this list or to its exempt list.
+  static WRITES = [];
+
+  static wrapWrites() {
+    for (const name of this.WRITES) {
+      const write = this.prototype[name];
+      this.prototype[name] = function (...args) {
+        return this._runWrite(name, write, args);
+      };
+    }
+  }
+
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     this._raw = raw;
     this._client = client;
@@ -728,6 +742,14 @@ export class DocumentModel {
   _invalidate(...keys) {
     if (keys.length === 0) this._derivedCache.clear();
     else for (const key of keys) this._derivedCache.delete(key);
+  }
+
+  // How a declared write runs (`WRITES`): with every id it is handed
+  // settled, so an id the screen held from before the server answered (a
+  // row made a moment ago, see pendingIds.js) names the same row after it.
+  // A subclass that guards its writes overrides it.
+  _runWrite(name, write, args) {
+    return write.apply(this, args.map(followIds));
   }
 
   // ----- row writes every model makes the same way -----

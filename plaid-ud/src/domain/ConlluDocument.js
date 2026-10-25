@@ -2184,6 +2184,47 @@ export class ConlluDocument extends DocumentModel {
 
   // Serialize the current document state to CoNLL-U text. Result is cached
   // per version so repeated calls between mutations are free.
+  // Every declared write (WRITES) runs here: refused while the project is
+  // not set up for UD, and over a stand-in word it makes the word first
+  // (`_makeWords`) or refuses. A grid value goes again by itself past another
+  // user's value on another word (BY_ENTITY).
+  async _runWrite(name, write, args) {
+    const send = (sent) =>
+      BY_ENTITY.has(name)
+        ? this.resendsByEntity(() => write.apply(this, sent))
+        : write.apply(this, sent);
+    if (!this._asOf && !this.layerInfo.isConfigured) {
+      return this.refuse('This project is not set up for UD.');
+    }
+    if (SKIPS_STAND_INS.has(name)) {
+      args[0] = (args[0] || []).filter((id) => !isVirtualWordId(id));
+      return send(args);
+    }
+    const at = MAKES_WORDS[name];
+    // A past state or a deleted document makes nothing: the write refuses.
+    const { ids, made, refusal } =
+      at && !this._asOf && !this._deleted
+        ? this._makeWords(at.map((i) => args[i]))
+        : { ids: null, made: null };
+    if (refusal) return this.refuse(refusal);
+    if (ids) at.forEach((i, k) => (args[i] = ids[k]));
+    if (args.some(namesStandIn)) {
+      if (made) this._unmakeWords(made);
+      return this.refuse('This word is not stored yet.');
+    }
+    // Read by the write before its first await (`_making`), and marked when
+    // it queues: one that sends nothing takes the words back.
+    this._making = made;
+    let sent;
+    try {
+      sent = send(args);
+    } finally {
+      this._making = null;
+    }
+    if (made && !made.queued) this._unmakeWords(made);
+    return sent;
+  }
+
   toConllu() {
     return this._derived('conllu', () => this._buildConllu());
   }
@@ -2260,42 +2301,5 @@ const namesStandIn = (arg) => {
   return Boolean(arg && typeof arg === 'object' && isVirtualWordId(arg.id));
 };
 
-for (const name of UD_WRITES) {
-  const write = ConlluDocument.prototype[name];
-  const send = function (args) {
-    if (BY_ENTITY.has(name)) return this.resendsByEntity(() => write.apply(this, args));
-    return write.apply(this, args);
-  };
-  ConlluDocument.prototype[name] = async function guarded(...args) {
-    if (!this._asOf && !this.layerInfo.isConfigured) {
-      return this.refuse('This project is not set up for UD.');
-    }
-    if (SKIPS_STAND_INS.has(name)) {
-      args[0] = (args[0] || []).filter((id) => !isVirtualWordId(id));
-      return send.call(this, args);
-    }
-    const at = MAKES_WORDS[name];
-    // A past state or a deleted document makes nothing: the write refuses.
-    const { ids, made, refusal } =
-      at && !this._asOf && !this._deleted
-        ? this._makeWords(at.map((i) => args[i]))
-        : { ids: null, made: null };
-    if (refusal) return this.refuse(refusal);
-    if (ids) at.forEach((i, k) => (args[i] = ids[k]));
-    if (args.some(namesStandIn)) {
-      if (made) this._unmakeWords(made);
-      return this.refuse('This word is not stored yet.');
-    }
-    // Read by the write before its first await (`_making`), and marked when
-    // it queues: one that sends nothing takes the words back.
-    this._making = made;
-    let sent;
-    try {
-      sent = send.call(this, args);
-    } finally {
-      this._making = null;
-    }
-    if (made && !made.queued) this._unmakeWords(made);
-    return sent;
-  };
-}
+ConlluDocument.WRITES = UD_WRITES;
+ConlluDocument.wrapWrites();
