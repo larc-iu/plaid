@@ -182,13 +182,17 @@ function parseJSDoc(content) {
 
   // Look for bundle assignments like this.vocabLinks = { ... };
   // Require at least a newline inside the braces to skip one-liners like `this.x = {};`
-  const bundleRegex = /this\.(\w+)\s*=\s*\{(\n[\s\S]*?)\n\s*\};/g;
+  // or, in an api module, a factory `export function vocabLinksApi(client) {
+  // return { ... }; }` whose object is the bundle `vocabLinks`.
+  const bundleRegex =
+    /this\.(\w+)\s*=\s*\{(\n[\s\S]*?)\n\s*\};|^export function (\w+)Api\(client\) \{\n  return \{(\n[\s\S]*?)\n  \};\n\}$/gm;
   let bundleMatch;
 
   while ((bundleMatch = bundleRegex.exec(content)) !== null) {
-    const [, bundleName, bundleContent] = bundleMatch;
+    const bundleName = bundleMatch[1] ?? bundleMatch[3];
+    const bundleContent = bundleMatch[2] ?? bundleMatch[4];
     const found = bundleMethods(bundleContent);
-    const spreadRegex = /\.\.\.(\w+Methods)\(this\b/g;
+    const spreadRegex = /\.\.\.(\w+Methods)\((?:this|client)\b/g;
     let spreadMatch;
     while ((spreadMatch = spreadRegex.exec(bundleContent)) !== null) {
       const from = helpers[spreadMatch[1]];
@@ -774,9 +778,14 @@ results = b.results</code></pre>
 // Main execution
 function main() {
   // The client is client.js and the modules it is built from
-  // (families.js holds the method families a bundle spreads in).
+  // (families.js holds the method families a bundle spreads in, and each
+  // api module the bundles of one domain).
   const jsClientDir = path.join(__dirname, '..', '..', 'plaid-client-js', 'src');
-  const jsSources = ['client.js', 'families.js'];
+  const jsSources = [
+    'client.js',
+    'families.js',
+    ...fs.readdirSync(jsClientDir).filter((f) => /^api\w+\.js$/.test(f)).sort(),
+  ];
   // The resources and the client are in client.py, the client's operations
   // and the batch object in classes of their own modules: each of those is
   // read from its class on, past the module's helper functions.
