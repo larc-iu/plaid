@@ -659,7 +659,7 @@
   ;; is refused with a 409 naming the layer by its name
   (let [{:keys [text]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
                                    [[0 3] [5 8] [9 13]] [4])
-        r (with-redefs [plaid.algos.text/pin-points-to-edges (fn [_ _ _ points] points)]
+        r (with-redefs [plaid.algos.text.plain/pin-points-to-edges (fn [_ _ _ points] points)]
             (edit-text text {:edits [(ins 4 "x\n")]}))]
     (is (= 409 (:status r)))
     (is (re-find #"layer \"Rows\"" (str (:error (:body r)))) (pr-str (:body r)))
