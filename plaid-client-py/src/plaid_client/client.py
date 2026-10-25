@@ -18,11 +18,12 @@ from plaid_client.document_lock import with_document_lock
 from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, post_batch, network_error,
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
-    list_all, list_page, iter_pages, build_api_error,
+    build_api_error,
     retry_unknown, is_unknown_outcome, next_idempotency_key, NO_PIN,
     DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
 )
 from plaid_client.ids import normalize_user_id, uuid7
+from plaid_client.pagination import iter_pages, list_all, list_page
 from plaid_client.replayed import mark_replayed, was_replayed
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection

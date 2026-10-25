@@ -21,7 +21,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import http
-from plaid_client.http import list_all, iter_pages
+from plaid_client.pagination import list_all, iter_pages
 
 
 class _FakeClient:
