@@ -108,6 +108,14 @@ def _network_failure(error) -> str:
     return 'The Plaid server did not answer.'
 
 
+class Refusal(ValueError):
+    """A request refused in words written for the person who asked (no gloss
+    field by that name, the document changed, human work would be lost).
+    Raise it, never a bare ValueError, for such a refusal. A ValueError, so
+    every handler that takes a ValueError as authored takes this one too
+    (:func:`service_error_message`)."""
+
+
 def service_error_message(error, service_name='', secrets=()) -> str:
     """What the requester is told when a request fails, named by the service.
 

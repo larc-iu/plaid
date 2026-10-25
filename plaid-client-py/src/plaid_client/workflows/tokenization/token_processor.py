@@ -12,7 +12,7 @@ from typing import List, Dict, Optional
 
 from plaid_client.constraints import same_ancestor_layer
 from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_protected
-from plaid_client.service import batch_body_budget, require_held, requester_message
+from plaid_client.service import Refusal, batch_body_budget, require_held, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
 
@@ -89,12 +89,12 @@ class TokenProcessor:
         text_layer = next((tl for tl in full_document.get("text_layers", [])
                            if tl.get("id") == text_layer_id), None)
         if not text_layer or not (text_layer.get("text") or {}).get("id"):
-            raise ValueError("This document has no text to tokenize.")
+            raise Refusal("This document has no text to tokenize.")
         text_id = text_layer["text"]["id"]
         text_content = text_layer["text"]["body"]
         
         if not text_content.strip():
-            raise ValueError("This document has no text to tokenize.")
+            raise Refusal("This document has no text to tokenize.")
         
         # Get existing tokens
         response_helper.progress(20, "Reading existing tokens…")
@@ -174,7 +174,7 @@ class TokenProcessor:
                 # cut, and has no sentence for the loss to be "in".
                 where = ("in the sentence" if existing_sentences
                          else "across the new sentence breaks")
-                raise ValueError(
+                raise Refusal(
                     f"Re-tokenizing would delete {reset_loss['protected']} human-made or "
                     f"human-verified annotation(s) {where}. "
                     f"Re-run with overwrite enabled to replace them."
@@ -228,7 +228,7 @@ class TokenProcessor:
         if tokens_to_delete and not should_do_sentences:
             split_loss = self._delete_loss(text_layer, primary_layer, tokens_to_delete)
             if split_loss['protected'] and not overwrite:
-                raise ValueError(
+                raise Refusal(
                     f"Re-tokenizing would delete {split_loss['protected']} human-made or "
                     f"human-verified annotation(s) on words that cross a sentence boundary. "
                     f"Re-run with overwrite enabled to replace them."

@@ -76,6 +76,7 @@ from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.provenance import (
     prov_state, read_confidence_threshold, HUMAN, PROV_SOURCE_KEY, VERIFIED)
 from plaid_client.roles import ROLES, find_by_role
+from plaid_client.service import Refusal
 from plaid_client.workflows.igt import (
     derive, ANALYZE_REQUEST_FIELDS,
     project_entry_types, morph_type, gloss_of,
@@ -178,7 +179,7 @@ def igt_layers(project) -> Tuple[str, str, str]:
         w, m, s = (find_by_role(tls, r) for r in (ROLES.WORD, ROLES.MORPHEME, ROLES.SENTENCE))
         if w and m and s:
             return w['id'], m['id'], s['id']
-    raise ValueError('This project has no IGT word, morpheme and sentence layers.')
+    raise Refusal('This project has no IGT word, morpheme and sentence layers.')
 
 
 def trusted_analysis(w, gloss_layer_id, entry_types=None) -> Optional[List[Tuple[str, str]]]:

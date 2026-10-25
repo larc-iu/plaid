@@ -49,7 +49,7 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, Param, TASKS, service_source, uuid7
-from plaid_client.service import PhasedProgress, held_run
+from plaid_client.service import PhasedProgress, Refusal, held_run
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (DOC_CONSTANTS, UMR_NAMESPACE, Graph, file_numbers,
                                         group_of, penman_nodes, reachable_from_root,
@@ -732,9 +732,9 @@ def resolve_against(client, project_id, document_id, against):
     """
     wanted = str(against or '').strip()
     if not wanted:
-        raise ValueError('Name the document to score this one against.')
+        raise Refusal('Name the document to score this one against.')
     if wanted == document_id:
-        raise ValueError('A document cannot be scored against itself. '
+        raise Refusal('A document cannot be scored against itself. '
                          'Pick the other annotator\'s copy.')
     if not project_id:
         return wanted
@@ -744,12 +744,12 @@ def resolve_against(client, project_id, document_id, against):
             return wanted
     named = [entry for entry in entries if entry.get('name') == wanted]
     if len(named) > 1:
-        raise ValueError(f'{len(named)} documents in this project are called "{wanted}". '
+        raise Refusal(f'{len(named)} documents in this project are called "{wanted}". '
                          'Name the one to score against by its id.')
     if not named:
-        raise ValueError(f'This project has no document called "{wanted}".')
+        raise Refusal(f'This project has no document called "{wanted}".')
     if named[0].get('id') == document_id:
-        raise ValueError('A document cannot be scored against itself. '
+        raise Refusal('A document cannot be scored against itself. '
                          'Pick the other annotator\'s copy.')
     return named[0]['id']
 
@@ -759,12 +759,12 @@ def check_same_words(this_words, other_words, this_name, other_name) -> None:
     attach onto different words. Scoring two annotations of different texts
     would produce a number, and the number would mean nothing."""
     if len(this_words) != len(other_words):
-        raise ValueError(f'"{this_name}" has {len(this_words)} sentences and '
+        raise Refusal(f'"{this_name}" has {len(this_words)} sentences and '
                          f'"{other_name}" {len(other_words)}. '
                          'The two must be annotations of one text.')
     for i, (mine, theirs) in enumerate(zip(this_words, other_words)):
         if mine != theirs:
-            raise ValueError(f'Sentence {i + 1} differs: "{this_name}" has '
+            raise Refusal(f'Sentence {i + 1} differs: "{this_name}" has '
                              f'"{" ".join(mine)}", "{other_name}" has "{" ".join(theirs)}". '
                              'The two must be annotations of one text.')
 
@@ -838,7 +838,7 @@ class UmrAncastService(BaseService):
             other = self.client.documents.get(against_id, include_body=True)
             other_name = other.get('name') or against_id
             if other.get('id') == document_id:
-                raise ValueError('A document cannot be scored against itself. '
+                raise Refusal('A document cannot be scored against itself. '
                                  'Pick the other annotator\'s copy.')
 
             this_graph, this_text = read_umr(document)

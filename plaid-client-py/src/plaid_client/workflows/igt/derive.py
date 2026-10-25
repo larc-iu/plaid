@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from plaid_client.provenance import prov_state, MACHINE
 from plaid_client.roles import read_ignored_tokens
+from plaid_client.services import Refusal
 from plaid_client.workflows.messages import setup_incomplete
 
 from .config import read_scope
@@ -92,9 +93,9 @@ def _spans_by_token(token_layer):
     return out
 
 
-class NoGlossField(ValueError):
+class NoGlossField(Refusal):
     """The gloss field a request names is not a morpheme-scope field of the
-    document. A ValueError, so it reaches the requester as written; its own
+    document. A Refusal, so it reaches the requester as written; its own
     class, so a service that reads glosses only as context can go on without
     them by catching it, never by reading the message."""
 

@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred
 from plaid_client.ids import uuid7
-from plaid_client.service import require_held, requester_message
+from plaid_client.service import Refusal, require_held, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
 from plaid_client.workflows.igt.config import read_tokenize_new_text
@@ -170,7 +170,7 @@ class AlignmentProcessor:
             # The exception names the media URL, which is the operator's
             # business; the requester is told what failed, not where.
             print(f"Failed to download media file: {e}")
-            raise ValueError(f"The document's media file could not be downloaded "
+            raise Refusal(f"The document's media file could not be downloaded "
                              f"({requester_message(e)}).")
 
     def _create_time_alignment_tokens(self, client, document_id: str, transcriptions: List[Dict],
@@ -472,7 +472,7 @@ class AlignmentProcessor:
                 break
             moved = max(inside)
         if moved != pos and any(a["begin"] < moved < a["end"] for a in segments):
-            raise ValueError(
+            raise Refusal(
                 f"The new segment at {start:g} s has no place in the text: the segment before it ends "
                 f"inside a word that runs into the next segment. Nothing was written.")
         return moved
@@ -524,7 +524,7 @@ class AlignmentProcessor:
                                    if ((x[0] < t and x[1] >= pos) if after
                                        else (x[0] > t and x[1] <= pos)))
             whose = 'new segment' if other_new else "document's segment"
-            raise ValueError(
+            raise Refusal(
                 f"The new segment at {t:g} s has no place in time order: the {whose} at {u:g} s "
                 f"stands {'after' if after else 'before'} it in the text. Put the document's "
                 f"segments in time order first. Nothing was written.")

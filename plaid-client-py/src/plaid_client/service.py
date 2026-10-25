@@ -36,8 +36,8 @@ from plaid_client.service_schema import build_extras, coerce
 # that puts a message on the wire: `serve`'s own fallback needs them too and
 # this module imports that one, not the other way round. Re-exported here
 # because this is where services import them from.
-from plaid_client.services import (  # noqa: F401  (UNKNOWN_FAILURE, requester_message re-exported)
-    ServiceRegistrationError, ServiceCancelled,
+from plaid_client.services import (  # noqa: F401  (Refusal, UNKNOWN_FAILURE, requester_message re-exported)
+    Refusal, ServiceRegistrationError, ServiceCancelled,
     UNKNOWN_FAILURE, requester_message, service_error_message,
 )
 
@@ -147,7 +147,7 @@ def check_unchanged(client, document_id, version, current=None) -> None:
     if current is None:
         current = (client.documents.get(document_id) or {}).get('version')
     if current and current != version:
-        raise ValueError('The document changed after this run was asked for. Run it again.')
+        raise Refusal('The document changed after this run was asked for. Run it again.')
 
 
 @contextlib.contextmanager

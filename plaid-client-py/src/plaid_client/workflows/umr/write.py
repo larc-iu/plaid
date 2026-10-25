@@ -27,7 +27,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, PROVENANCE_KEYS, service_source
-from plaid_client.service import (PhasedProgress, batch_body_budget, held_run, partly_written,
+from plaid_client.service import (PhasedProgress, Refusal, batch_body_budget, held_run, partly_written,
                                   require_held)
 from plaid_client.service_schema import Param
 
@@ -417,7 +417,7 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     kept = [plan['sentence'].number for plan in plans
             if plan['sentence'].nodes and not plan['sentence'].redraftable]
     if kept:
-        raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
+        raise Refusal(f'Sentence {kept[0]} has work a draft may not replace.')
     units = [_keep_stored(plan, _sentence_writes(layers, plan, frag), taken) for plan in plans]
     units = [unit for unit in units if _writes_anything(unit)]
     if not units:
@@ -555,7 +555,7 @@ def _begin_draft(client, request_data: Dict[str, Any], response_helper) -> Draft
     if scope == 'sentence':
         in_scope = [s for s in in_scope if s.index == wanted]
         if not in_scope:
-            raise ValueError(f'The document has no sentence {wanted}.')
+            raise Refusal(f'The document has no sentence {wanted}.')
     with_graph = [s for s in in_scope if s.words and s.nodes]
     targets = [s for s in in_scope
                if s.words and (not s.nodes or (overwrite and s.redraftable))]

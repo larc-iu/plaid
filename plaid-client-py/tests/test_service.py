@@ -1421,6 +1421,26 @@ def test_an_authored_refusal_keeps_its_own_words():
     assert _reported_error(handler) == said
 
 
+def test_a_refusal_is_the_authored_valueerror_every_shared_refusal_raises():
+    """Refusal is a ValueError, so it reaches the requester in its own words
+    as a bare one does, and setup_incomplete and the derive refusals are
+    Refusals."""
+    from plaid_client.service import Refusal
+    from plaid_client.workflows.igt.derive import NoGlossField
+    from plaid_client.workflows.messages import SETUP_INCOMPLETE, setup_incomplete
+
+    said = 'Choose the gloss field.'
+
+    def handler(_data, _helper):
+        raise Refusal(said)
+
+    assert issubclass(Refusal, ValueError)
+    assert _reported_error(handler) == said
+    refused = setup_incomplete('no word layer')
+    assert isinstance(refused, Refusal) and str(refused) == SETUP_INCOMPLETE
+    assert issubclass(NoGlossField, Refusal)
+
+
 class _HTTPError(Exception):
     """A refusal as requests raises it: the status is on ``response``."""
 

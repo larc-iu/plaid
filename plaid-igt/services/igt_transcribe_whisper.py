@@ -11,7 +11,7 @@ import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY, ROLES, find_by_role
-from plaid_client.service import held_run, progress_heartbeat
+from plaid_client.service import Refusal, held_run, progress_heartbeat
 from plaid_client.workflows.requester import requester_of
 
 
@@ -240,7 +240,7 @@ class WhisperASRService(BaseService):
         # Get media URL from document
         media_url = full_document.get("media_url")
         if not media_url:
-            raise ValueError("The document has no media file.")
+            raise Refusal("The document has no media file.")
         
         # Construct full media URL if it's a relative path
         if media_url.startswith('/'):
