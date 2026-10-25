@@ -32,6 +32,13 @@ test('readMetadataFields ignores a malformed entry rather than rendering it', ()
   assert.deepEqual(readMetadataFields({ ud: { documentMetadata: 'Source' } }, 'document'), []);
 });
 
+// Fields are stored as objects (toMetadataConfig), and nothing writes a bare
+// name, so a bare name is not read as a field either.
+test('readMetadataFields reads no field from a bare name', () => {
+  const config = { ud: { sentenceMetadata: ['text_en', { name: 'text_de' }] } };
+  assert.deepEqual(readMetadataFields(config, 'sentence'), ['text_de']);
+});
+
 test('toMetadataConfig stores the object form, trimmed', () => {
   assert.deepEqual(toMetadataConfig([' Source ', 'Genre']), [
     { name: 'Source' },

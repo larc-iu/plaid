@@ -70,6 +70,6 @@ export function readMetadataFields(config, level) {
   const raw = readUdConfig(config, key);
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((field) => (typeof field === 'string' ? field : field?.name))
+    .map((field) => field?.name)
     .filter((name) => typeof name === 'string' && name.trim() !== '');
 }
