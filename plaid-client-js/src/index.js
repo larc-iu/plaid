@@ -1240,13 +1240,7 @@ class PlaidClient {
        */
       audit: (id, startTime, endTime, opTypes, itemId, kinds) =>
         listAll(this, `/api/v1/vocab-layers/${id}/audit`, {
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            "item-id": itemId,
-            kinds: kindsParam(kinds),
-          },
+          query: auditQuery({ startTime, endTime, opTypes, itemId, kinds }),
         }),
       /**
        * One page of the same log, newest-first with `order: "desc"`. Use this
@@ -1276,16 +1270,7 @@ class PlaidClient {
         listPage(this, `/api/v1/vocab-layers/${id}/audit`, {
           limit,
           cursor,
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-            order,
-            "ops-limit": opsLimit,
-            "entry-id": entryId,
-            "item-id": itemId,
-          },
+          query: auditQuery({ startTime, endTime, opTypes, kinds, order, opsLimit, entryId, itemId }),
         }),
       /**
        * Put one entry of the vocabulary back as it was at `asOf`, as one
@@ -1900,65 +1885,7 @@ class PlaidClient {
             "display-name": displayName ?? undefined,
           }),
         }),
-      /**
-       * Get audit log for a user's actions. Transparently follows pagination
-       * cursors and returns the full flat array.
-       * @param {string} userId - The user ID
-       * @param {string} [startTime] - Start of time range
-       * @param {string} [endTime] - End of time range
-       * @param {string[]|string} [opTypes] - Only return operations of these
-       *   types, spelled as in an entry's `op/type` (e.g.
-       *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
-       *   one of its operations matches, carrying only the ones that did.
-       * @param {string[]|string} [kinds] - Only the entries of operations of
-       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
-       * @returns {Promise<AuditEntry[]>}
-       */
-      audit: (userId, startTime, endTime, opTypes, kinds) =>
-        listAll(this, `/api/v1/users/${userId}/audit`, {
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-          },
-        }),
-      /**
-       * One page of the same log, newest-first with `order: "desc"`. Use this
-       * rather than audit() wherever the caller wants the recent end of a log
-       * that may be long: audit() walks every page before it resolves.
-       * @param {string} userId - The user ID
-       * @param {object} [opts]
-       * @param {string} [opts.startTime] - Only entries at or after this instant
-       * @param {string} [opts.endTime] - Only entries at or before this instant
-       * @param {string[]|string} [opts.opTypes] - Only these op types
-       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
-       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
-       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
-       * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
-       *   operations in `ops` (1..1000). `opCount` on every entry says how
-       *   many it has
-       * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<Page<AuditEntry>>}
-       */
-      auditPage: (
-        userId,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
-      ) =>
-        listPage(this, `/api/v1/users/${userId}/audit`, {
-          limit,
-          cursor,
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-            order,
-            "ops-limit": opsLimit,
-            "entry-id": entryId,
-          },
-        }),
+      ...auditMethods(this, "users"),
       /**
        * Get a user by ID
        * @param {string} id - The resource ID
@@ -2629,12 +2556,7 @@ class PlaidClient {
        */
       list: ({ startTime, endTime, opTypes, kinds } = {}) =>
         listAll(this, "/api/v1/audit", {
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-          },
+          query: auditQuery({ startTime, endTime, opTypes, kinds }),
         }),
       /**
        * Fetch a single page of the instance-wide audit log. Admin only.
@@ -2657,15 +2579,7 @@ class PlaidClient {
         listPage(this, "/api/v1/audit", {
           limit,
           cursor,
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-            order,
-            "ops-limit": opsLimit,
-            "entry-id": entryId,
-          },
+          query: auditQuery({ startTime, endTime, opTypes, kinds, order, opsLimit, entryId }),
         }),
       /**
        * Async-iterate the instance-wide audit log page by page. Admin only.
@@ -2680,12 +2594,7 @@ class PlaidClient {
       iterPages: ({ startTime, endTime, opTypes, kinds, pageSize } = {}) =>
         iterPages(this, "/api/v1/audit", {
           pageSize,
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-          },
+          query: auditQuery({ startTime, endTime, opTypes, kinds }),
         }),
       /**
        * Per-user activity counts. `changes` is the number of logical actions,
@@ -2972,69 +2881,7 @@ class PlaidClient {
           queryParams: { "media-version": mediaVersion },
         }),
       ...metadataMethods(this, "documents"),
-      /**
-       * Get audit log for a document. Transparently follows pagination cursors
-       * and returns the full flat array. Each entry, and each of its `ops`,
-       * says what kind of credential made it as `credential`: `login`,
-       * `named-token` or `delegated` (absent on older operations, `service`
-       * on some from 2026-10-06 to 2026-10-08),
-       * beside `apiToken` (the named token's id and name) when there was one.
-       * @param {string} documentId - The document ID
-       * @param {string} [startTime] - Start of time range
-       * @param {string} [endTime] - End of time range
-       * @param {string[]|string} [opTypes] - Only return operations of these
-       *   types, spelled as in an entry's `op/type` (e.g.
-       *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
-       *   one of its operations matches, carrying only the ones that did.
-       * @param {string[]|string} [kinds] - Only the entries of operations of
-       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
-       * @returns {Promise<AuditEntry[]>}
-       */
-      audit: (documentId, startTime, endTime, opTypes, kinds) =>
-        listAll(this, `/api/v1/documents/${documentId}/audit`, {
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-          },
-        }),
-      /**
-       * One page of the same log, newest-first with `order: "desc"`. Use this
-       * rather than audit() wherever the caller wants the recent end of a log
-       * that may be long: audit() walks every page before it resolves.
-       * @param {string} documentId - The document ID
-       * @param {object} [opts]
-       * @param {string} [opts.startTime] - Only entries at or after this instant
-       * @param {string} [opts.endTime] - Only entries at or before this instant
-       * @param {string[]|string} [opts.opTypes] - Only these op types
-       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
-       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
-       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
-       * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
-       *   operations in `ops` (1..1000). `opCount` on every entry says how
-       *   many it has
-       * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<Page<AuditEntry>>}
-       */
-      auditPage: (
-        documentId,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
-      ) =>
-        listPage(this, `/api/v1/documents/${documentId}/audit`, {
-          limit,
-          cursor,
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-            order,
-            "ops-limit": opsLimit,
-            "entry-id": entryId,
-          },
-        }),
+      ...auditMethods(this, "documents"),
       /**
        * Restore a document to its state at an earlier time, as one
        * operation: what was deleted since then comes back under its original
@@ -3236,69 +3083,7 @@ class PlaidClient {
           `/api/v1/projects/${id}/maintainers/${userId}`,
           { auditMessage },
         ),
-      /**
-       * Get audit log for a project. Transparently follows pagination cursors
-       * and returns the full flat array. Each entry, and each of its `ops`,
-       * says what kind of credential made it as `credential`: `login`,
-       * `named-token` or `delegated` (absent on older operations, `service`
-       * on some from 2026-10-06 to 2026-10-08),
-       * beside `apiToken` (the named token's id and name) when there was one.
-       * @param {string} projectId - The project ID
-       * @param {string} [startTime] - Start of time range
-       * @param {string} [endTime] - End of time range
-       * @param {string[]|string} [opTypes] - Only return operations of these
-       *   types, spelled as in an entry's `op/type` (e.g.
-       *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
-       *   one of its operations matches, carrying only the ones that did.
-       * @param {string[]|string} [kinds] - Only the entries of operations of
-       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
-       * @returns {Promise<AuditEntry[]>}
-       */
-      audit: (projectId, startTime, endTime, opTypes, kinds) =>
-        listAll(this, `/api/v1/projects/${projectId}/audit`, {
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-          },
-        }),
-      /**
-       * One page of the same log, newest-first with `order: "desc"`. Use this
-       * rather than audit() wherever the caller wants the recent end of a log
-       * that may be long: audit() walks every page before it resolves.
-       * @param {string} projectId - The project ID
-       * @param {object} [opts]
-       * @param {string} [opts.startTime] - Only entries at or after this instant
-       * @param {string} [opts.endTime] - Only entries at or before this instant
-       * @param {string[]|string} [opts.opTypes] - Only these op types
-       * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
-       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
-       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
-       * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
-       *   operations in `ops` (1..1000). `opCount` on every entry says how
-       *   many it has
-       * @param {string} [opts.entryId] - Read only this entry, not a page
-       * @returns {Promise<Page<AuditEntry>>}
-       */
-      auditPage: (
-        projectId,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
-      ) =>
-        listPage(this, `/api/v1/projects/${projectId}/audit`, {
-          limit,
-          cursor,
-          query: {
-            "start-time": startTime,
-            "end-time": endTime,
-            "op-types": opTypesParam(opTypes),
-            kinds: kindsParam(kinds),
-            order,
-            "ops-limit": opsLimit,
-            "entry-id": entryId,
-          },
-        }),
+      ...auditMethods(this, "projects"),
       /**
        * When the calling user last wrote to each document in a project, as a
        * `{documentId: timestamp}` map. Documents they have never written to
@@ -4970,6 +4755,86 @@ function configRequest(auditMessage, value, options, isDelete = false) {
     auditMessage,
     queryParams: { "if-unchanged": true },
     rawBody: isDelete ? { expected } : { expected, value },
+  };
+}
+
+/**
+ * The query of an audit read: the window, the op-type and kind filters, the
+ * one vocabulary entry, and for one page its order, ops limit and entry id. A
+ * key left undefined is not sent.
+ * @private
+ */
+function auditQuery({ startTime, endTime, opTypes, itemId, kinds, order, opsLimit, entryId }) {
+  return {
+    "start-time": startTime,
+    "end-time": endTime,
+    "op-types": opTypesParam(opTypes),
+    "item-id": itemId,
+    kinds: kindsParam(kinds),
+    order,
+    "ops-limit": opsLimit,
+    "entry-id": entryId,
+  };
+}
+
+/**
+ * The audit readers of a document, a project or a user, on
+ * `/api/v1/<kind>/<id>/audit`. A vocabulary's take an entry id as well and are
+ * its own, and the instance-wide log is `audit.list`.
+ * @param {PlaidClient} client
+ * @param {"documents"|"projects"|"users"} kind
+ */
+function auditMethods(client, kind) {
+  const path = (id) => `/api/v1/${kind}/${id}/audit`;
+  return {
+    /**
+     * Get the audit log of a document or a project, or of a user's actions.
+     * Transparently follows pagination cursors and returns the full flat
+     * array. Each entry, and each of its `ops`, says what kind of credential
+     * made it as `credential`: `login`, `named-token` or `delegated` (absent
+     * on older operations, `service` on some from 2026-10-06 to 2026-10-08),
+     * beside `apiToken` (the named token's id and name) when there was one.
+     * @param {string} id - The document, project or user ID
+     * @param {string} [startTime] - Start of time range
+     * @param {string} [endTime] - End of time range
+     * @param {string[]|string} [opTypes] - Only return operations of these
+     *   types, spelled as in an entry's `op/type` (e.g.
+     *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
+     *   one of its operations matches, carrying only the ones that did.
+     * @param {string[]|string} [kinds] - Only the entries of operations of
+     *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
+     * @returns {Promise<AuditEntry[]>}
+     */
+    audit: (id, startTime, endTime, opTypes, kinds) =>
+      listAll(client, path(id), { query: auditQuery({ startTime, endTime, opTypes, kinds }) }),
+    /**
+     * One page of the same log, newest-first with `order: "desc"`. Use this
+     * rather than audit() wherever the caller wants the recent end of a log
+     * that may be long: audit() walks every page before it resolves.
+     * @param {string} id - The document, project or user ID
+     * @param {object} [opts]
+     * @param {string} [opts.startTime] - Only entries at or after this instant
+     * @param {string} [opts.endTime] - Only entries at or before this instant
+     * @param {string[]|string} [opts.opTypes] - Only these op types
+     * @param {OperationKind[]|string} [opts.kinds] - Only the entries of operations of these kinds, each whole
+     * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
+     *   operations in `ops` (1..1000). `opCount` on every entry says how
+     *   many it has
+     * @param {string} [opts.entryId] - Read only this entry, not a page
+     * @returns {Promise<Page<AuditEntry>>}
+     */
+    auditPage: (
+      id,
+      { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
+    ) =>
+      listPage(client, path(id), {
+        limit,
+        cursor,
+        query: auditQuery({ startTime, endTime, opTypes, kinds, order, opsLimit, entryId }),
+      }),
   };
 }
 

@@ -368,6 +368,19 @@ def _op_types_param(op_types):
     return joined or None
 
 
+def _audit_query(start_time, end_time, op_types, kinds, *, order=None, ops_limit=None,
+                 entry_id=None, item_id=None):
+    """The query of an audit read: the window, the op-type and kind filters,
+    for one page its order, ops limit and entry id, and the one vocabulary
+    entry. A key left None is not sent. Every audit read builds its query
+    here, so a new filter is one key. The readers keep their own signatures:
+    a Python parameter name can be passed by keyword, so each resource's
+    (``document_id``, ``project_id``, ``user_id``, ``id``) is its own."""
+    return {'start-time': start_time, 'end-time': end_time,
+            'op-types': _op_types_param(op_types), 'kinds': _op_types_param(kinds),
+            'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id, 'item-id': item_id}
+
+
 AVATAR_TOKEN_RENEW_S = 600
 """An avatar token is minted again once less than this many seconds are left
 of it."""
@@ -514,10 +527,7 @@ class VocabLayersResource(_ConfigMethods, _Resource):
                 comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/vocab-layers/{id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types),
-                               'kinds': _op_types_param(kinds),
-                               'item-id': item_id})
+                        query=_audit_query(start_time, end_time, op_types, kinds, item_id=item_id))
 
     def audit_page(self, id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
@@ -542,10 +552,8 @@ class VocabLayersResource(_ConfigMethods, _Resource):
             item_id: Only the changes that wrote this one entry
         """
         return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
-                         query={'start-time': start_time, 'end-time': end_time,
-                                'op-types': _op_types_param(op_types),
-                                'kinds': _op_types_param(kinds),
-                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id, 'item-id': item_id})
+                         query=_audit_query(start_time, end_time, op_types, kinds, order=order,
+                                            ops_limit=ops_limit, entry_id=entry_id, item_id=item_id))
 
     def restore_item(self, id: str, item_id: str, as_of: str, *, dry_run: bool = False,
                      audit_message: str | None = None) -> Any:
@@ -1136,9 +1144,7 @@ class UsersResource(_Resource):
                 comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/users/{user_id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types),
-                               'kinds': _op_types_param(kinds)})
+                        query=_audit_query(start_time, end_time, op_types, kinds))
 
     def audit_page(self, user_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
@@ -1161,10 +1167,8 @@ class UsersResource(_Resource):
             entry_id: Read only this entry, not a page
         """
         return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
-                         query={'start-time': start_time, 'end-time': end_time,
-                                'op-types': _op_types_param(op_types),
-                                'kinds': _op_types_param(kinds),
-                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
+                         query=_audit_query(start_time, end_time, op_types, kinds, order=order,
+                                            ops_limit=ops_limit, entry_id=entry_id))
 
     def get_avatar(self, id: str) -> bytes:
         """Get a user's profile picture as raw bytes.
@@ -2303,9 +2307,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/documents/{document_id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types),
-                               'kinds': _op_types_param(kinds)})
+                        query=_audit_query(start_time, end_time, op_types, kinds))
 
     def audit_page(self, document_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
@@ -2328,10 +2330,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
             entry_id: Read only this entry, not a page
         """
         return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
-                         query={'start-time': start_time, 'end-time': end_time,
-                                'op-types': _op_types_param(op_types),
-                                'kinds': _op_types_param(kinds),
-                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
+                         query=_audit_query(start_time, end_time, op_types, kinds, order=order,
+                                            ops_limit=ops_limit, entry_id=entry_id))
 
     def restore(self, document_id: str, as_of: str, *, dry_run: bool = False,
                 audit_message: str | None = None) -> Any:
@@ -2779,9 +2779,7 @@ class ProjectsResource(_ConfigMethods, _Resource):
                 comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types),
-                               'kinds': _op_types_param(kinds)})
+                        query=_audit_query(start_time, end_time, op_types, kinds))
 
     def audit_page(self, project_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
@@ -2804,10 +2802,8 @@ class ProjectsResource(_ConfigMethods, _Resource):
             entry_id: Read only this entry, not a page
         """
         return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
-                         query={'start-time': start_time, 'end-time': end_time,
-                                'op-types': _op_types_param(op_types),
-                                'kinds': _op_types_param(kinds),
-                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
+                         query=_audit_query(start_time, end_time, op_types, kinds, order=order,
+                                            ops_limit=ops_limit, entry_id=entry_id))
 
     def my_last_edits(self, project_id: str) -> Any:
         """When you last wrote to each document in a project, as a
@@ -3438,9 +3434,7 @@ class AuditResource(_Resource):
                 comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, '/api/v1/audit',
-                        query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types),
-                               'kinds': _op_types_param(kinds)})
+                        query=_audit_query(start_time, end_time, op_types, kinds))
 
     def list_page(self, *, start_time: str | None = None, end_time: str | None = None,
                   op_types: Any = None, kinds: Any = None, order: str | None = None,
@@ -3459,10 +3453,8 @@ class AuditResource(_Resource):
             entry_id: Read only this entry, not a page
         """
         return list_page(self._client, '/api/v1/audit', limit=limit, cursor=cursor,
-                         query={'start-time': start_time, 'end-time': end_time,
-                                'op-types': _op_types_param(op_types),
-                                'kinds': _op_types_param(kinds),
-                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
+                         query=_audit_query(start_time, end_time, op_types, kinds, order=order,
+                                            ops_limit=ops_limit, entry_id=entry_id))
 
     def iter_pages(self, *, start_time: str | None = None, end_time: str | None = None,
                    op_types: Any = None, kinds: Any = None, page_size: int = 1000):
@@ -3470,9 +3462,7 @@ class AuditResource(_Resource):
 
         """
         return iter_pages(self._client, '/api/v1/audit', page_size=page_size,
-                          query={'start-time': start_time, 'end-time': end_time,
-                                 'op-types': _op_types_param(op_types),
-                                 'kinds': _op_types_param(kinds)})
+                          query=_audit_query(start_time, end_time, op_types, kinds))
 
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:
