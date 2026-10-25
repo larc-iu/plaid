@@ -18,14 +18,12 @@ export async function exportProjectUmr(client, projectId, project, { onProgress 
   const lexicon = docs.length ? ((await readEntryLexicon(client, project))?.lexicon ?? null) : null;
   const out = [];
   const problems = [];
-  // One read at a time, the next sent while this one is written out.
+  onProgress?.(0, docs.length, null);
+  // Four reads at a time (readInOrder's bound), the files written in the
+  // project's order.
   const reads = readInOrder(
     docs.map((_, i) => i),
-    (i) => {
-      onProgress?.(i, docs.length, docs[i].name);
-      return client.documents.get(docs[i].id, true);
-    },
-    { inFlight: 1 },
+    (i) => client.documents.get(docs[i].id, true),
   );
   for await (const { id: i, value: raw, error } of reads) {
     if (error) throw error;
@@ -34,6 +32,7 @@ export async function exportProjectUmr(client, projectId, project, { onProgress 
     const found = doc.exportProblems;
     if (found.length) problems.push(...found.map((p) => ({ ...p, document: summary.name })));
     else out.push({ name: summary.name, text: doc.toUmr() });
+    onProgress?.(i + 1, docs.length, summary.name);
   }
   onProgress?.(docs.length, docs.length, null);
   if (problems.length) throw new UnwritableUmrError(problems);

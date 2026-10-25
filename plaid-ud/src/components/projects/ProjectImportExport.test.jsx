@@ -8,13 +8,20 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // error becomes a sentence, and this row walked past it.
 
 vi.mock('./ProjectTabs.jsx', () => ({ ProjectTabs: () => null }));
+const unreachable = () =>
+  Object.assign(
+    new Error('HTTP 503 Service Unavailable at http://localhost:8085/api/v1/documents/d1'),
+    { status: 503 },
+  );
+const loads = vi.hoisted(() => ({ delay: 0, live: 0, mostLive: 0 }));
 vi.mock('../../domain/ConlluDocument.js', () => ({
   ConlluDocument: {
     load: async () => {
-      throw Object.assign(
-        new Error('HTTP 503 Service Unavailable at http://localhost:8085/api/v1/documents/d1'),
-        { status: 503 },
-      );
+      loads.live += 1;
+      loads.mostLive = Math.max(loads.mostLive, loads.live);
+      await new Promise((r) => setTimeout(r, loads.delay));
+      loads.live -= 1;
+      throw unreachable();
     },
   },
 }));
@@ -85,6 +92,33 @@ describe('the skipped-document rows after an export', () => {
 
     const row = view.container.querySelector('li')?.textContent ?? '';
     expect(row).toBe('Doc one: Failed to reach the server. Check your connection and try again.');
+    await view.unmount();
+  });
+});
+
+// The export reads with igt's bound: four documents at a time.
+describe('the export reads', () => {
+  it('four documents at a time', async () => {
+    const docs = Array.from({ length: 12 }, (_, i) => ({ id: `d${i}`, name: `Doc ${i}` }));
+    auth.getClient.mockReturnValue({
+      projects: {
+        get: async () => ({ id: 'A', name: 'Ay', maintainers: ['u'], writers: [], readers: [] }),
+        listDocuments: async () => docs,
+      },
+    });
+    Object.assign(loads, { delay: 5, live: 0, mostLive: 0 });
+    const view = await renderComponent(app);
+    await view.step(settle);
+    const button = [...view.container.querySelectorAll('button')].find(
+      (b) => b.textContent.trim() === 'Export',
+    );
+    await view.step(async () => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    expect(view.container.querySelectorAll('li').length).toBe(12);
+    expect(loads.mostLive).toBe(4);
+    loads.delay = 0;
     await view.unmount();
   });
 });

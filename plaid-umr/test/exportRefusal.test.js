@@ -222,6 +222,42 @@ test('the project export names every document with a problem, and writes none', 
   assert.deepEqual(umrFileProblems([]), []);
 });
 
+// The export reads with the same bound as igt's and ud's: four documents at a
+// time, the files still in the project's order.
+test('the project export reads four documents at a time, in order', async () => {
+  const raw = loadWith('big').raw;
+  const docs = Array.from({ length: 10 }, (_, i) => ({ id: `d${i}`, name: `doc ${i}` }));
+  let live = 0;
+  let mostLive = 0;
+  const client = {
+    projects: { listDocuments: async () => docs },
+    documents: {
+      get: async (id) => {
+        live += 1;
+        mostLive = Math.max(mostLive, live);
+        // Later documents answer sooner, so the order is the export's doing.
+        await new Promise((resolve) => setTimeout(resolve, 20 - Number(id.slice(1))));
+        live -= 1;
+        return structuredClone(raw);
+      },
+    },
+  };
+  const seen = [];
+  const files = await exportProjectUmr(client, 'p', null, {
+    onProgress: (done, total) => seen.push([done, total]),
+  });
+  assert.equal(mostLive, 4);
+  assert.deepEqual(
+    files.map((f) => f.name),
+    docs.map((d) => d.name),
+  );
+  assert.deepEqual(seen.at(-1), [10, 10]);
+  assert.ok(
+    seen.every(([done], i) => i === 0 || done >= seen[i - 1][0]),
+    'progress never goes back',
+  );
+});
+
 // Review of the refusal (2026-09-27): three more ways a file read back as
 // something other than what was stored, with no error.
 test('a bare value that reads as a variable is refused, and quoted it is written', () => {
