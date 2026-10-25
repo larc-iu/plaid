@@ -5,7 +5,7 @@ import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { followIds, recordSettled, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '@/domain/bulk';
 import { readVocabulary } from '@/domain/vocabCache';
-import { sendKeyed } from './vocabSends.js';
+import { keyedSend } from '@ui/domain/keyedSend.js';
 
 // A past state read with no entry list: one empty list, so the memos over it
 // keep their identity.
@@ -220,43 +220,36 @@ export function useVocabEntries({
     failure,
     { refused, answered, resync: reread = resync, minted } = {},
   ) =>
-    sendKeyed(
-      writes,
-      client,
-      label,
-      write,
-      {
-        refused: async (err) => {
-          console.error(`${label}:`, err);
-          if (!answered?.(err)) notifyError(err, failure);
-          await (refused || unseedUnlessTyped)(err);
-        },
-        resync: reread,
+    keyedSend(writes, client, label, write, {
+      minted,
+      refused: async (err) => {
+        console.error(`${label}:`, err);
+        if (!answered?.(err)) notifyError(err, failure);
+        await (refused || unseedUnlessTyped)(err);
       },
-      minted ? { minted } : {},
-    );
+      resync: reread,
+    });
 
   // Bulk Add and Replace: a run of writes planned against the entries as
-  // shown, which can hold a save still on its way. The run takes its turn
-  // behind that save. Resolves `{ landed, error }`. A refusal re-reads the
-  // entries here, the dialog reports it. `tags` is the operation's kind and
-  // ref (see the client's beginOperation).
-  const sendPlanned = async (label, write, tags) => {
+  // the server holds them in the run's turn, which comes behind any save
+  // still on its way. `plan()` reads and plans once, and every send of the
+  // run hands `write(setMessage, planned)` what it planned (keyedSend), so a
+  // resend after a lost answer sends what the first send did. Resolves
+  // `{ landed, error }`. A refusal re-reads the entries here, the dialog
+  // reports it. `kind` and `ref` tag the operation (see the client's
+  // beginOperation).
+  const sendPlanned = async (label, write, { plan, kind, ref } = {}) => {
     let error = null;
-    const landed = await sendKeyed(
-      writes,
-      client,
-      label,
-      write,
-      {
-        refused: (err) => {
-          error = err;
-          unseedUnlessTyped();
-        },
-        resync,
+    const landed = await keyedSend(writes, client, label, write, {
+      plan,
+      kind,
+      ref,
+      refused: (err) => {
+        error = err;
+        unseedUnlessTyped();
       },
-      tags,
-    );
+      resync,
+    });
     return { landed, error };
   };
 

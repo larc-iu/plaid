@@ -357,8 +357,9 @@ export const BulkAddDialog = ({
   tagsetFor = NO_TAGSETS,
   existingItems,
   client,
-  // `send(label, write, tags)` runs the import's writes in their turn behind the
-  // entry saves (see VocabularyItems' sendPlanned).
+  // `send(label, write, { plan, kind, ref })` runs the import's writes in their
+  // turn behind the entry saves, planned once (see useVocabEntries'
+  // sendPlanned).
   send,
   onImported,
 }) => {
@@ -586,32 +587,13 @@ export const BulkAddDialog = ({
     setProgress({ done: 0, total, phase: creates.length ? 'adding' : 'updating' });
     const { landed, error } = await send(
       `Bulk add to ${vocabularyName || 'vocabulary'}`,
-      async (setMessage) => {
-        // The entries are read again in the import's turn. When they changed
-        // since the review, so that this plan would now write something else,
-        // nothing is written: the refusal re-reads the entries and the review
-        // shows the plan made against them.
-        const fresh = await readVocabulary(client, vocabularyId);
-        const now = planVocabImport({
-          entries,
-          existingItems: fresh?.items || [],
-          fieldNames,
-          caseInsensitive,
-          strategies,
-          overrides,
-          refuses,
-        });
-        if (planWrites(now) !== planWrites(plan)) throw new ChangedSinceReview();
-        for (let i = 0; i < creates.length; i += CHUNK) {
-          const chunk = creates.slice(i, i + CHUNK);
+      async (setMessage, specs) => {
+        created = 0;
+        updated = 0;
+        for (let i = 0; i < specs.length; i += CHUNK) {
+          const chunk = specs.slice(i, i + CHUNK);
           await client.vocabItems.bulkCreate(
-            withMintedIds(
-              chunk.map((c) => ({
-                vocabLayerId: vocabularyId,
-                form: c.form,
-                ...(Object.keys(c.metadata).length ? { metadata: followIds(c.metadata) } : {}),
-              })),
-            ),
+            chunk.map((c) => (c.metadata ? { ...c, metadata: followIds(c.metadata) } : c)),
           );
           created += chunk.length;
           setProgress({ done: created, total, phase: 'adding' });
@@ -628,7 +610,35 @@ export const BulkAddDialog = ({
         }
         setMessage(`Bulk add: ${countOf(created, 'entry')} added, ${updated} updated`);
       },
-      { kind: 'import', ref: 'format:table' },
+      {
+        // The entries are read again in the import's turn, once. When they
+        // changed since the review, so that this plan would now write
+        // something else, nothing is written: the refusal re-reads the
+        // entries and the review shows the plan made against them. The
+        // creates' ids are minted here, so every send makes the same ones.
+        plan: async () => {
+          const fresh = await readVocabulary(client, vocabularyId);
+          const now = planVocabImport({
+            entries,
+            existingItems: fresh?.items || [],
+            fieldNames,
+            caseInsensitive,
+            strategies,
+            overrides,
+            refuses,
+          });
+          if (planWrites(now) !== planWrites(plan)) throw new ChangedSinceReview();
+          return withMintedIds(
+            creates.map((c) => ({
+              vocabLayerId: vocabularyId,
+              form: c.form,
+              ...(Object.keys(c.metadata).length ? { metadata: c.metadata } : {}),
+            })),
+          );
+        },
+        kind: 'import',
+        ref: 'format:table',
+      },
     );
     if (landed) {
       await onImported();

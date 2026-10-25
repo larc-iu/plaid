@@ -37,9 +37,9 @@ const open = async ({
   fields = FIELDS,
 } = {}) => {
   const client = { vocabItems: { bulkCreate, bulkUpdate: vi.fn(async () => {}) } };
-  const send = async (_label, write) => {
+  const send = async (_label, write, { plan } = {}) => {
     try {
-      await write(() => {});
+      await write(() => {}, plan ? await plan() : undefined);
       return { landed: true };
     } catch (error) {
       return { landed: false, error };

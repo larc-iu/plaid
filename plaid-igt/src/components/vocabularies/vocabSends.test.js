@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { WriteQueue } from '@ui/domain/WriteQueue.js';
-import { sendKeyed, sendFieldPrune } from './vocabSends.js';
+import { sendFieldPrune } from './vocabSends.js';
 
-// REV4 J3: the vocabulary's settings writes and the field-value prune go under
-// operation keys, and a send whose answer was lost goes again under them until
-// it is answered, like every other write.
+// REV4 J3: the field-value prune goes under operation keys, and a send whose
+// answer was lost goes again under them, as planned, until it is answered.
+// The keyed send itself is plaid-ui's keyedSend (keyedSend.test.js).
 
 const lost = (method = 'PUT') =>
   Object.assign(new Error('Network error: fetch failed at http://x/api/v1/vocab-layers/A'), {
@@ -24,58 +24,6 @@ const fakeClient = () => {
     },
   };
 };
-
-describe('sendKeyed', () => {
-  it('sends a write whose answer was lost again, under the same operation and keys, until it lands', async () => {
-    const client = fakeClient();
-    const queue = new WriteQueue({ retryDelay: () => 0 });
-    let tries = 0;
-    const landed = await sendKeyed(queue, client, 'Rename vocabulary', async () => {
-      tries += 1;
-      if (tries < 4) throw lost();
-    });
-    expect(landed).toBe(true);
-    expect(tries).toBe(4);
-    expect(client.ops.map((o) => o.label)).toEqual(Array(4).fill('Rename vocabulary'));
-    expect(new Set(client.ops.map((o) => o.opts)).size).toBe(1);
-    expect(client.ops[0].opts.keys).toEqual({ seed: 'seed1' });
-  });
-
-  it('refuses a write the server refused, once', async () => {
-    const client = fakeClient();
-    const queue = new WriteQueue({ retryDelay: () => 0 });
-    const refused = vi.fn();
-    const landed = await sendKeyed(
-      queue,
-      client,
-      'Change the fields',
-      async () => {
-        throw Object.assign(new Error('HTTP 409'), { status: 409, method: 'PUT' });
-      },
-      { refused },
-    );
-    expect(landed).toBe(false);
-    expect(refused).toHaveBeenCalledTimes(1);
-    expect(client.ops).toHaveLength(1);
-  });
-
-  it("gives the operation its minted ids and tags beside the send's own group and keys", async () => {
-    const client = fakeClient();
-    const queue = new WriteQueue({ retryDelay: () => 0 });
-    await sendKeyed(
-      queue,
-      client,
-      'Bulk Add',
-      async () => {},
-      {},
-      { minted: ['m1'], kind: 'import', ref: 'format:table' },
-    );
-    const [{ opts }] = client.ops;
-    expect(opts).toMatchObject({ minted: ['m1'], kind: 'import', ref: 'format:table' });
-    expect(opts.keys).toEqual({ seed: 'seed1' });
-    expect(typeof opts.groupId).toBe('string');
-  });
-});
 
 describe('sendFieldPrune', () => {
   const after = { name: 'ref', type: 'text' };

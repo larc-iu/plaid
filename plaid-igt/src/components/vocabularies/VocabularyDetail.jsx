@@ -50,7 +50,8 @@ import {
   RESERVED_STATUS_MESSAGE,
   STATUS_TAGSET,
 } from '@/domain/vocabDictionary';
-import { sendFieldPrune, sendKeyed } from './vocabSends.js';
+import { keyedSend } from '@ui/domain/keyedSend.js';
+import { sendFieldPrune } from './vocabSends.js';
 import { readTagsets, byTagsetName, glossReadingOf } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -440,7 +441,7 @@ export const VocabularyDetail = () => {
         setEditedName(name);
         if (name !== vocabulary.name) {
           setVocabulary((v) => ({ ...v, name }));
-          sendKeyed(
+          keyedSend(
             writes.schema,
             client,
             `Rename vocabulary "${name}"`,
@@ -540,7 +541,7 @@ export const VocabularyDetail = () => {
   const saveFields = (updatedFields, { statesTagsets = false } = {}) => {
     setFields(updatedFields);
     if (isNewVocabulary) return Promise.resolve(true);
-    return sendKeyed(
+    return keyedSend(
       writes.schema,
       client,
       'Change the fields',
@@ -784,7 +785,7 @@ export const VocabularyDetail = () => {
     }
     setDraftTagsets(next);
     if (repointed) setFields(repointed);
-    const saved = await sendKeyed(
+    const saved = await keyedSend(
       writes.schema,
       client,
       'Change the tagsets',

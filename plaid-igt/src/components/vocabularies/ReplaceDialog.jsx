@@ -81,8 +81,8 @@ export const ReplaceDialog = ({
   items,
   numbers,
   client,
-  // `send(label, write, tags)` runs the writes in their turn behind the entry
-  // saves (see VocabularyItems' sendPlanned).
+  // `send(label, write, { plan, kind, ref })` runs the writes in their turn
+  // behind the entry saves, planned once (see useVocabEntries' sendPlanned).
   send,
   onApplied,
 }) => {
@@ -177,13 +177,7 @@ export const ReplaceDialog = ({
       const { landed, error } = await send(
         label,
         async () => {
-          // The entries are read again in the write's turn. A value someone
-          // changed since this preview is left as they made it.
-          const fresh = await readVocabulary(client, vocabularyId);
-          const entries = new Map((fresh?.items || []).map((it) => [it.id, it]));
-          const kept = chosen.filter((r) => valueIn(entries, r.id) === r.old);
-          skipped = chosen.length - kept.length;
-          writes = replaceWrites(kept, { field: target.name });
+          done = 0;
           for (let i = 0; i < writes.length; i += CHUNK) {
             // An entry still being made when this was planned is named by the
             // server's id now that its create has landed.
@@ -197,7 +191,19 @@ export const ReplaceDialog = ({
             setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
           }
         },
-        { kind: 'bulk-edit', ref: 'action:vocab-replace' },
+        {
+          // The entries are read again in the write's turn, once. A value
+          // someone changed since this preview is left as they made it.
+          plan: async () => {
+            const fresh = await readVocabulary(client, vocabularyId);
+            const entries = new Map((fresh?.items || []).map((it) => [it.id, it]));
+            const kept = chosen.filter((r) => valueIn(entries, r.id) === r.old);
+            skipped = chosen.length - kept.length;
+            writes = replaceWrites(kept, { field: target.name });
+          },
+          kind: 'bulk-edit',
+          ref: 'action:vocab-replace',
+        },
       );
       if (landed) {
         await onApplied();
