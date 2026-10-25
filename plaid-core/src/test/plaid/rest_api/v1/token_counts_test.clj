@@ -5,7 +5,8 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :as fix :refer [with-db with-mount-states with-clean-db
                                             with-rest-handler with-admin with-test-users
-                                            api-call admin-request user1-request]]
+                                            api-call admin-request user1-request db]]
+            [plaid.sql.common :as psc]
             [plaid.test-helpers :as h :refer [id]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -55,6 +56,31 @@
     (testing "a flag and a document with no match"
       (is (= [[tokl doc 1]] (-> (counts admin-request [tokl] {:regex "^ana$" :flags "i"}) :body :results)))
       (is (= [[tokl doc 0]] (-> (counts admin-request [tokl] {:regex "zzz"}) :body :results))))))
+
+(deftest counts-canonical-spellings-as-the-query-language-does
+  ;; The same word stored composed (á) and decomposed (a and U+0301), and a
+  ;; word with a plain a. A text is composed when it is written, so the body is
+  ;; set decomposed in the database, as a core before composing stored it.
+  ;; Each pattern counts what a query's :value regex finds.
+  (let [acute (str (char 0x301))
+        composed "pʰá"
+        decomposed (str "pʰa" acute)
+        body (str composed " " decomposed " ta")
+        pid (h/create-test-project admin-request "Canon")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (str (id (h/create-token-layer admin-request txtl "words")))
+        doc (str (h/create-test-document admin-request pid "d1"))
+        text (id (h/create-text admin-request txtl doc body))]
+    (psc/execute! db {:update :texts :set {:body body} :where [:= :id (str text)]})
+    (doseq [[b e] [[0 3] [4 8] [9 11]]] (h/create-token admin-request tokl text b e))
+    (doseq [[pattern n] [[{:regex composed} 2]
+                         [{:regex decomposed} 2]
+                         [{:regex "\\x{301}"} 2]
+                         [{:regex "a"} 2]
+                         [{:regex (str "^pʰ" acute)} 0]]]
+      (testing (pr-str pattern)
+        (is (= [[tokl doc n]] (-> (counts admin-request [tokl] pattern) :body :results)))
+        (is (= n (ql-count tokl pattern)))))))
 
 (deftest a-long-document-counts-fast
   (let [body (apply str (repeat 20000 "Ana runs, «Ben» said... "))
