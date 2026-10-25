@@ -162,3 +162,19 @@ def test_same_ancestor_layer_reads_the_rule_as_this_client_spells_it():
     assert same_ancestor_layer({'type': 'same-ancestor', 'token_layer': 'S'}) == 'S'
     assert same_ancestor_layer({'type': 'acyclic'}) is None
     assert same_ancestor_layer(None) is None
+
+
+# The remediable rule types in the order their remedies run, as plaid-core's
+# registry has them (remediable-kinds-test holds the case file to it). The
+# client names them in repair_constraints' docstring, and they must not drift.
+REMEDIABLE_KINDS = json.loads(
+    (Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'test' / 'plaid' / 'sql'
+     / 'constraints' / 'remediable_kinds.json').read_text(encoding='utf-8'))
+
+
+@pytest.mark.parametrize('bundle', BUNDLES)
+def test_repair_constraints_names_the_remediable_types_in_cores_order(bundle):
+    import re
+    doc = getattr(PlaidClient('http://localhost:0', 'dummy-token'), bundle).repair_constraints.__doc__
+    named = re.search(r'remediable types\s*\(([^)]*)\)', doc).group(1)
+    assert named.split(', ') == REMEDIABLE_KINDS['remediable']

@@ -146,3 +146,26 @@ test("a token layer has no value-set, so no refusedValues", () => {
   const client = new PlaidClient("http://localhost:0", "dummy-token");
   assert.equal(client.tokenLayers.refusedValues, undefined);
 });
+
+// The rule types and the remediable ones, in the order their remedies run,
+// as plaid-core's registry has them (remediable-kinds-test holds the case
+// file to it). The client names both in its docs, and they must not drift.
+const KINDS = JSON.parse(
+  readFileSync(
+    new URL("../../plaid-core/src/test/plaid/sql/constraints/remediable_kinds.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+test("the LayerConstraint type lists every rule type core has", () => {
+  const src = readFileSync(new URL("../src/constraints.js", import.meta.url), "utf8");
+  const union = src.match(/@typedef \{\{type: ([^}]*)\}/)[1];
+  const listed = [...union.matchAll(/"([a-z-]+)"/g)].map((m) => m[1]);
+  assert.deepEqual([...listed].sort(), KINDS.types);
+});
+
+test("repairConstraints names the remediable types in core's order", () => {
+  const src = readFileSync(new URL("../src/families.js", import.meta.url), "utf8");
+  const named = src.match(/remediable types\s*\n\s*\*\s*\(([^)]*)\)/)[1];
+  assert.deepEqual(named.split(", "), KINDS.remediable);
+});

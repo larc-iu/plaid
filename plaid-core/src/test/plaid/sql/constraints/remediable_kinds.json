@@ -1,0 +1,4 @@
+{
+  "types": ["acyclic", "coextensive", "max-in-degree", "same-ancestor", "single-link", "single-span", "value-set"],
+  "remediable": ["coextensive", "single-span", "single-link", "same-ancestor"]
+}

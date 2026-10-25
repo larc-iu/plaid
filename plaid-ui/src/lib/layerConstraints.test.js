@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { ensureLayerConstraints, sameConstraints, storedConstraints } from './layerConstraints.js';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  ensureLayerConstraints,
+  queueRepairOfBareLayer,
+  sameConstraints,
+  storedConstraints,
+} from './layerConstraints.js';
 import { humanizeError, isChangedElsewhere, isConstraintViolation } from './errors.js';
 
 // A client with the four bundle methods, a batch that queues them, and a
@@ -404,5 +412,30 @@ describe('the helpers every app shares', () => {
     expect(sameConstraints(null, [])).toBe(true);
     expect(sameConstraints([{ a: 1, b: 2 }], [{ b: 2, a: 1 }])).toBe(true);
     expect(sameConstraints([{ type: 'x' }], [])).toBe(false);
+  });
+});
+
+// The rule types with a remedy are plaid-core's (remediable-kinds-test holds
+// the case file to its registry), so a rule core repairs is repaired here
+// first and one it refuses is never sent to a repair.
+describe('the rules with a remedy', () => {
+  const kinds = JSON.parse(
+    readFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../../plaid-core/src/test/plaid/sql/constraints/remediable_kinds.json',
+      ),
+      'utf8',
+    ),
+  );
+
+  it('are the ones core remedies', () => {
+    const repaired = kinds.types.filter((type) =>
+      queueRepairOfBareLayer(
+        { spanLayers: { repairConstraints: () => {} } },
+        { kind: 'span', layerId: 'L', constraints: [{ type }], stored: null },
+      ),
+    );
+    expect(repaired.sort()).toEqual([...kinds.remediable].sort());
   });
 });
