@@ -29,6 +29,15 @@
       (and (string? type) (keyword type))
       type))
 
+(defn- op-extent
+  "`[deleted typed]`: how many code points `op`, of `type` (see `op-type`),
+  deletes and types."
+  [type {:keys [value length]}]
+  (case type
+    :insert [0 (cp/cp-count value)]
+    :delete [value 0]
+    :replace [length (cp/cp-count value)]))
+
 (defn- check-op!
   "The 400s `apply-text-edits` throws, for `op` applied to a text of `len`
   code points."
@@ -63,16 +72,15 @@
   {:kind :replace :start s :end e :value v}."
   [ops]
   (loop [ops ops del 0 ins 0 out []]
-    (if-let [{:keys [type index value length]} (first ops)]
-      (let [type (if (keyword? type) type (keyword type))
-            old-pos (+ index del (- ins))]
-        (case type
-          :delete (recur (rest ops) (+ del value) ins
-                         (conj out {:kind :delete :start old-pos :end (+ old-pos value)}))
-          :insert (recur (rest ops) del (+ ins (cp/cp-count value))
-                         (conj out {:kind :insert :at old-pos :value value}))
-          :replace (recur (rest ops) (+ del length) (+ ins (cp/cp-count value))
-                          (conj out {:kind :replace :start old-pos :end (+ old-pos length)
+    (if-let [{:keys [type index value length] :as op} (first ops)]
+      (let [type (op-type type)
+            old-pos (+ index del (- ins))
+            [d i] (op-extent type op)]
+        (recur (rest ops) (+ del d) (+ ins i)
+               (conj out (case type
+                           :delete {:kind :delete :start old-pos :end (+ old-pos value)}
+                           :insert {:kind :insert :at old-pos :value value}
+                           :replace {:kind :replace :start old-pos :end (+ old-pos length)
                                      :value value}))))
       out)))
 
@@ -243,11 +251,8 @@
         {:keys [edits break]}
         (reduce (fn [{:keys [len shift reach edits break] :as acc} op]
                   (let [type (check-op! op len)
-                        {:keys [index value length]} op
-                        [del ins] (case type
-                                    :insert [0 (cp/cp-count value)]
-                                    :delete [value 0]
-                                    :replace [length (cp/cp-count value)])
+                        {:keys [index value]} op
+                        [del ins] (op-extent type op)
                         s (- index shift)
                         t (+ s del)]
                     (assoc acc
@@ -275,11 +280,8 @@
             (recur ops
                    (loop [i 0 shift 0 reach 0]
                      (if (< i (count ops))
-                       (let [{:keys [type index value length]} (ops i)
-                             [del ins] (case (op-type type)
-                                         :insert [0 (cp/cp-count value)]
-                                         :delete [value 0]
-                                         :replace [length (cp/cp-count value)])
+                       (let [{:keys [type index] :as op} (ops i)
+                             [del ins] (op-extent (op-type type) op)
                              s (- index shift)]
                          (if (< s reach) i (recur (inc i) (+ shift (- ins del)) (+ s del))))
                        i))
@@ -372,9 +374,8 @@
                  (let [op (first ops)
                        type (check-op! op len)
                        {:keys [index value length]} op
-                       k (case type :insert 0 :delete value :replace length)
+                       [k vn] (op-extent type op)
                        v (if (= type :delete) "" value)
-                       vn (cp/cp-count v)
                        ;; the finger to `index`
                        [left right] (loop [left left right right pos pos]
                                       (cond
