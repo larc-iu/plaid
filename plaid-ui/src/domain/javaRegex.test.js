@@ -149,15 +149,14 @@ describe('translatePattern', () => {
     }
   });
 
-  // The server's cap is core's plaid.query.clauses/regex-max-len. The client
-  // refuses first, so a cap left behind here is the one that holds.
+  // The server's cap is core's plaid.query.clauses/regex-max-len, which core's
+  // shared-constants-test holds regex_max_len.json to. The client refuses
+  // first, so a cap left behind here is the one that holds.
   it("takes the server's own cap", () => {
-    const clauses = readFileSync(
-      at('../../../plaid-core/src/main/plaid/query/clauses.clj'),
-      'utf8',
+    const { max } = JSON.parse(
+      readFileSync(at('../../../plaid-core/src/test/plaid/sql/regex_max_len.json'), 'utf8'),
     );
-    const [, cap] = clauses.match(/\(def regex-max-len (\d+)\)/);
-    expect(SERVER_PATTERN_MAX).toBe(Number(cap));
+    expect(SERVER_PATTERN_MAX).toBe(max);
     expect(tr('\\bko\\b|\\bka\\b|\\bta\\b').error).toBeNull();
   });
 

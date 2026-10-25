@@ -2594,14 +2594,14 @@ describe('runNativeImport, references in metadata', () => {
 });
 
 // The same list core's document copy rewrites, which core holds as
-// `plaid.sql.document/metadata-reference-kinds` under the names of its tables.
-// This test reads that vector out of the Clojure source, so a document-scoped
-// table added on either side fails here until both lists name it.
-// `plaid.sql.document-copy-test` checks core's list against the tables a
+// `plaid.sql.document/metadata-reference-kinds` under the names of its tables,
+// and its shared-constants-test holds metadata_reference_kinds.json to. So a
+// document-scoped table added on either side fails here until both lists name
+// it. `plaid.sql.document-copy-test` checks core's list against the tables a
 // document read returns.
-const CORE_DOCUMENT_CLJ = path.resolve(
+const CORE_REFERENCE_KINDS_JSON = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../../plaid-core/src/main/plaid/sql/document.clj',
+  '../../../../plaid-core/src/test/plaid/sql/metadata_reference_kinds.json',
 );
 const CORE_KIND_NAMES = {
   document: 'document',
@@ -2612,13 +2612,7 @@ const CORE_KIND_NAMES = {
   'vocab-links': 'link',
 };
 function coreReferenceKinds() {
-  const source = readFileSync(CORE_DOCUMENT_CLJ, 'utf8');
-  const def = source.match(/\(def metadata-reference-kinds\s+"(?:[^"\\]|\\.)*"\s*\[([^\]]*)\]\)/);
-  if (!def) throw new Error(`no metadata-reference-kinds vector in ${CORE_DOCUMENT_CLJ}`);
-  return def[1]
-    .trim()
-    .split(/\s+/)
-    .map((k) => k.replace(/^:/, ''));
+  return JSON.parse(readFileSync(CORE_REFERENCE_KINDS_JSON, 'utf8')).kinds;
 }
 describe('the kinds of row a reference in metadata can name', () => {
   it('is the list core rewrites on a copy, in this import s own words', () => {

@@ -1,0 +1,4 @@
+{
+  "about": "The longest regex core takes in a query or a token count (plaid.query.clauses/regex-max-len). plaid-core's shared-constants-test fails when this file and the var differ, and plaid-ui's javaRegex.test.js and plaid-agent's test_java_regex.py read it rather than core's source.",
+  "max": 4096
+}

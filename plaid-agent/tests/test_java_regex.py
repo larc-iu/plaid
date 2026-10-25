@@ -192,9 +192,10 @@ def test_any_case_folds_as_unicode_does():
 
 def test_the_server_cap_is_core_s():
     # The client refuses first, so a cap left behind here is the one that holds.
-    clauses = open(os.path.join(HERE, '..', '..', 'plaid-core', 'src', 'main', 'plaid', 'query',
-                                'clauses.clj'), encoding='utf-8').read()
-    cap = int(re.search(r'\(def regex-max-len (\d+)\)', clauses).group(1))
+    # Core's shared-constants-test holds regex_max_len.json to plaid.query.clauses/regex-max-len.
+    with open(os.path.join(HERE, '..', '..', 'plaid-core', 'src', 'test', 'plaid', 'sql',
+                           'regex_max_len.json'), encoding='utf-8') as f:
+        cap = json.load(f)['max']
     assert SERVER_PATTERN_MAX == cap
     assert translate(r'\bko\b|\bka\b|\bta\b').server.endswith(S)
 

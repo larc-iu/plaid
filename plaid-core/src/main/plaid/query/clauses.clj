@@ -61,7 +61,9 @@
 ;; (compiles to a REGEXP match). Text-valued keys only.
 (def regex-keys #{:value :form :name :body})
 ;; 4096: the clients send a case-insensitive search as a class per letter
-;; (`[aA]`), about four characters a letter.
+;; (`[aA]`), about four characters a letter. The clients read it from the case
+;; file src/test/plaid/sql/regex_max_len.json, which
+;; plaid.sql.shared-constants-test holds to this var.
 (def regex-max-len 4096)
 
 (defn compile-regex

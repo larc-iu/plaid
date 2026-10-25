@@ -324,9 +324,11 @@
 (deftest the-rewrite-covers-every-kind-of-row-a-document-owns
   (let [proj (create-test-project admin-request "CopyKinds")
         doc-id (create-test-document admin-request proj "Doc")]
-    ;; plaid-igt's importEngine.test.js reads this var out of document.clj
-    ;; and checks its own REFERENCE_KINDS (src/import/native/references.js)
-    ;; against it, so the two lists cannot drift apart.
+    ;; plaid-igt's importEngine.test.js reads this var from its case file
+    ;; (metadata_reference_kinds.json, held to it by
+    ;; plaid.sql.shared-constants-test) and checks its own REFERENCE_KINDS
+    ;; (src/import/native/references.js) against it, so the two lists cannot
+    ;; drift apart.
     (testing "the kinds are every kind a document read returns"
       (is (= (set doc/metadata-reference-kinds)
              (set (keys (drows/read-rows db doc-id))))

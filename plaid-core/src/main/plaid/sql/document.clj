@@ -471,7 +471,9 @@
   this one, so a new document-scoped table joins both lists or its
   references dangle on one side. A restore (`plaid.history.restore`)
   re-inserts rows under the ids they already had, so it rewrites nothing
-  and needs no list. Pinned by `plaid.sql.document-copy-test`."
+  and needs no list. Pinned by `plaid.sql.document-copy-test`, and held
+  to the case file src/test/plaid/sql/metadata_reference_kinds.json, which
+  plaid-igt reads, by `plaid.sql.shared-constants-test`."
   [:document :texts :tokens :spans :relations :vocab-links])
 
 (defn- rows-of

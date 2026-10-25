@@ -1,0 +1,4 @@
+{
+  "about": "The kinds of row whose id a document copy rewrites inside metadata (plaid.sql.document/metadata-reference-kinds), in order, as the keys of a read-rows map. plaid-core's shared-constants-test fails when this file and the var differ, and plaid-igt's importEngine.test.js reads it rather than core's source.",
+  "kinds": ["document", "texts", "tokens", "spans", "relations", "vocab-links"]
+}
