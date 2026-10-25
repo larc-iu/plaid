@@ -73,20 +73,19 @@ def test_text_appended_to_an_empty_document_on_a_live_core(live_client):
         s.delete()
 
 
-def test_the_seeded_sentences_cover_the_body_the_server_stored(monkeypatch):
+def test_the_seeded_sentences_cover_the_body_the_server_stored():
     """The seed is measured on the stored body, read again after the edit,
-    not on the client's mirror of the server's composition: core refuses a
+    not on the body sent: the server composes it, and core refuses a
     partition that does not end at the text's length."""
-    import plaid_client
+    import unicodedata
     c = FakeClient(project=project_raw(), documents={'d1': _empty_doc()})
     ws = Workspace(c, load_project(c, 'p1'))
-    call_tool(ws, 'append_text', {'document': 'Text 1', 'text': TEXT})
-    _TextServer(c)
+    typed = 'Ga\u0301m akuna.\nAli\u0301 gam.'
+    call_tool(ws, 'append_text', {'document': 'Text 1', 'text': typed})
+    server = _TextServer(c)
+    stores = server._apply
+    server._apply = lambda body: stores(unicodedata.normalize('NFC', body))
     c.tokens.split = lambda sid, pos, id=None: {'id': id}
-    real = plaid_client.compose_text
-    # A mirror one character off the server's composition.
-    monkeypatch.setattr(plaid_client, 'compose_text',
-                        lambda body, edges: (lambda b, at: (b + 'x', at))(*real(body, edges)))
     execute_plan(c, ws.ops, source='s', label='l', project=load_project(c, 'p1'))
     [sentences] = c.payloads('tokens.bulk_create')
-    assert sentences[-1]['end'] == len(TEXT)
+    assert [(t['begin'], t['end']) for t in sentences] == [(0, 11), (11, len(typed) - 2)]

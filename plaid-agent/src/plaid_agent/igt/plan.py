@@ -87,6 +87,8 @@ wire's key recasing):
 Each also carries a human ``label`` for the approval UI.
 """
 
+import re
+import unicodedata
 from collections import Counter
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -1883,7 +1885,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     edit names the word layer when the project's "Tokenize new text" is on,
     and the server makes the words of the text it types. What it creates is
     made under ids from ``new_id()``."""
-    from plaid_client import compose_text, gaps_to_ops
+    from plaid_client import gaps_to_ops
     from .project import find_layer
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
@@ -1902,17 +1904,19 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True,
                       tokenize_layer=project.word_layer_id if project.tokenize_new_text else None)
-    # The server stores the body composed: text written that composes with a
-    # letter beside it becomes one character with it, unless a token edge
-    # falls between them. The region is moved onto the composed body, as the
-    # server moves its tokens.
-    new_body, at = compose_text(new_body, _edges_after_gaps(
-        [t for layer in (tl or {}).get('token_layers') or [] for t in layer.get('tokens') or []], gaps))
-    region_end = at(b + len(new))
-    b = at(b)
-
     raw = client.documents.get(doc_id, include_body=True)
     stored_tl, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    # The server stores the body composed: text written that composes with a
+    # letter beside it becomes one character with it, unless a token edge
+    # falls between them, and which token takes the text is its rule's to
+    # say. The region is moved onto the body it stored.
+    composed = _composed_as(new_body, ((stored_tl or {}).get('text') or {}).get('body') or '')
+    if composed is None:
+        raise ValueRefusal('the text changed while the edit was written; its sentences were not split',
+                           kind='conflict')
+    new_body, at = composed
+    region_end = at(b + len(new))
+    b = at(b)
     _follow_sole_forms(client, project, before, stored_tl)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents:
@@ -1994,42 +1998,50 @@ def _follow_sole_forms(client, project, before: Dict[str, tuple], tl) -> None:
         client.tokens.bulk_update(writes[i:i + FORM_CHUNK])
 
 
-def _cut_after(p: int, gaps: List[Dict[str, Any]], end: bool) -> int:
-    """Where a token edge at ``p`` goes when ``gaps`` are saved, for composing
-    the body: moved by the change before it, an end where text is inserted
-    after it (the token before takes the text), a begin there before it, and
-    a place inside a stretch typed over or deleted at its start (a begin) or
-    at the end of what was typed there (an end). Mirror of plaid-igt's
-    ``domain/textEdits.js`` ``cutAfter``."""
-    shift = 0
-    for g in gaps:
-        start, stop, value = g['start'], g['end'], g['value']
-        delta = len(value) - (stop - start)
-        if start == stop:
-            if p > start or (end and p == start):
-                shift += delta
-            continue
-        if p >= stop:
-            shift += delta
-        elif p > start:
-            return start + shift + (len(value) if end else 0)
-    return p + shift
+def _composed_as(body: str, stored: str):
+    """``(stored, at)`` when ``stored`` is ``body`` as the server composes it,
+    ``at(p)`` where position ``p`` of ``body`` is in it, else None (the text
+    changed meanwhile). The server composes with the edges of its tokens as
+    its rule leaves them (``compose_text`` with them as cuts), so a character
+    a token edge falls inside stays decomposed. Those cuts are read off
+    ``stored``: whitespace never composes, so ``body`` and ``stored`` are
+    compared word by word, and in a word stored otherwise than composed whole
+    the fewest cuts that give its stored spelling are found."""
+    from plaid_client import compose_text
+    words, kept = re.split(r'(\s)', body), re.split(r'(\s)', stored)
+    if len(words) != len(kept):
+        return None
+    cuts, at = set(), 0
+    for word, as_stored in zip(words, kept):
+        found = _cuts_in(word, as_stored)
+        if found is None:
+            return None
+        cuts.update(at + c for c in found)
+        at += len(word)
+    text, at = compose_text(body, cuts)
+    return (text, at) if text == stored else None
 
 
-def _edges_after_gaps(tokens, gaps: List[Dict[str, Any]]) -> set:
-    """Where ``tokens`` (every token on the text) begin and end once ``gaps``
-    are saved: the cuts the server composes the new body by, so a character a
-    token edge falls inside stays decomposed (``compose_text``). Text typed
-    where one token ends goes to it, as the server's plain rule gives it, so a
-    token that also begins there begins after it. Mirror of plaid-igt's
-    ``domain/textEdits.js`` ``edgesAfterGaps``, compared with it by
-    tests/test_text_edges_mirror.py."""
-    ends = {t['end'] for t in tokens}
-    out = set()
-    for t in tokens:
-        out.add(_cut_after(t['begin'], gaps, t['begin'] in ends))
-        out.add(_cut_after(t['end'], gaps, True))
-    return out
+# The most cuts looked for in one word: a token edge inside a character is a
+# tone mark that is a token of its own, one or two to a word.
+MAX_WORD_CUTS = 3
+
+
+def _cuts_in(word: str, stored: str):
+    """The fewest positions of ``word`` where cutting it composes it to
+    ``stored``, or None. Only a cut before a mark or a Hangul vowel or final
+    can change what composing gives."""
+    import itertools
+    from plaid_client import compose_text
+    if compose_text(word)[0] == stored:
+        return ()
+    places = [i for i in range(1, len(word))
+              if unicodedata.category(word[i]).startswith('M') or '\u1160' <= word[i] <= '\u11ff']
+    for k in range(1, min(len(places), MAX_WORD_CUTS) + 1):
+        for cut in itertools.combinations(places, k):
+            if compose_text(word, cut)[0] == stored:
+                return cut
+    return None
 
 
 def _region_gaps(old: str, new: str, at: int) -> List[Dict[str, Any]]:

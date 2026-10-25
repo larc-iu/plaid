@@ -36,23 +36,21 @@ def test_a_new_documents_text_is_composed_and_its_sentences_measured_on_it():
     assert [body[t['begin']:t['end']] for t in sentences] == ['pʰá bó\n', 'cá']
 
 
-def test_an_edit_composes_the_body_as_the_server_does_with_its_token_edges():
-    from plaid_client import compose_text
-    # "ka", its tone mark as a word of its own, "ma": the server keeps the
-    # mark apart from the a, so a word measured after it stays on its letters
-    body = 'ka\u0301 ma'
-    tokens = [{'begin': 0, 'end': 2}, {'begin': 2, 'end': 3}, {'begin': 4, 'end': 6}]
-    gaps = [{'start': 6, 'end': 6, 'value': ' tres'}]
-    text, at = compose_text(body + ' tres', igt_plan._edges_after_gaps(tokens, gaps))
+def test_an_edit_is_moved_onto_the_body_the_server_stored():
+    # "ka", its tone mark as a word of its own, "ma": the server kept the mark
+    # apart from the a, so a position after it is where it was
+    text, at = igt_plan._composed_as('ka\u0301 ma tres', 'ka\u0301 ma tres')
     assert text == 'ka\u0301 ma tres'
     assert (at(7), at(11)) == (7, 11)
-    # a mark typed after a letter where a token ends goes to that token, and
-    # composes with the letter
-    typed = [{'start': 6, 'end': 6, 'value': '\u0301'}]
-    text, _ = compose_text('ka\u0301 ma\u0301', igt_plan._edges_after_gaps(tokens, typed))
-    assert text == 'ka\u0301 m\u00e1'
-    # the space between "ka" and its mark deleted: both words keep their letters
-    spaced = [{'begin': 0, 'end': 2}, {'begin': 3, 'end': 4}]
-    gone = [{'start': 2, 'end': 3, 'value': ''}]
-    text, at = compose_text('ka\u0301', igt_plan._edges_after_gaps(spaced, gone))
-    assert text == 'ka\u0301'
+    # a mark the server gave the token before it composes with its letter
+    text, at = igt_plan._composed_as('ka\u0301 ma\u0301', 'ka\u0301 m\u00e1')
+    assert text == 'ka\u0301 m\u00e1' and at(6) == 6 and at(7) == 6
+    # a line typed after it: its start is after the composed letter
+    text, at = igt_plan._composed_as('Ali-di\u0301\ngam', 'Ali-d\u00ed\ngam')
+    assert text == 'Ali-d\u00ed\ngam' and (at(6), at(8)) == (6, 7)
+    # Hangul jamo the server joined, and two tone marks kept apart in one word
+    assert igt_plan._composed_as('\u1100\u1161 x', '\uac00 x')[0] == '\uac00 x'
+    assert igt_plan._composed_as('a\u0301ba\u0301', 'a\u0301b\u00e1')[0] == 'a\u0301b\u00e1'
+    # a body the edit cannot have made: the text changed meanwhile
+    assert igt_plan._composed_as('ka ma', 'ka mo') is None
+    assert igt_plan._composed_as('ka ma', 'ka  ma') is None
