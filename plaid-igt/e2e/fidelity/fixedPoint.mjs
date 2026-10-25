@@ -87,8 +87,27 @@ function sortKeys(value) {
   );
 }
 
-/** The export as `Map<path, string>`, each file in canonical form. */
-export function canonicalExport(bytes, filename = 'export') {
+// A dictionary address the core already held when an import ran is dropped
+// by that import (importEngine.js slugTakenElsewhere), which is right, and
+// which core holds which address is no content of the export. So when the
+// second import ran on a core holding an address the second export names (the
+// first import's, when the source is on another core), the address comes out
+// of the second export before the two are compared. On the source's core the
+// first import already dropped it and nothing is masked.
+function withoutHeldSlug(value, heldSlugs) {
+  const slug = value?.config?.dict?.slug;
+  if (typeof slug !== 'string' || !heldSlugs.has(slug.trim())) return value;
+  const { slug: _slug, ...dict } = value.config.dict;
+  const { dict: _dict, ...config } = value.config;
+  return { ...value, config: Object.keys(dict).length ? { ...config, dict } : config };
+}
+
+/**
+ * The export as `Map<path, string>`, each file in canonical form.
+ * `heldSlugs`: the dictionary addresses the core held when the NEXT import of
+ * this export ran (see withoutHeldSlug).
+ */
+export function canonicalExport(bytes, filename = 'export', { heldSlugs = new Set() } = {}) {
   const files = isZip(bytes) ? unzipSync(bytes) : { [filename]: bytes };
   const out = new Map();
   const decoder = new TextDecoder();
@@ -100,7 +119,8 @@ export function canonicalExport(bytes, filename = 'export') {
     }
     const text = decoder.decode(data);
     if (/\.json$/i.test(path)) {
-      out.set(path, JSON.stringify(sortKeys(canonicalJson(JSON.parse(text))), null, 2));
+      const json = withoutHeldSlug(JSON.parse(text), heldSlugs);
+      out.set(path, JSON.stringify(sortKeys(canonicalJson(json)), null, 2));
     } else {
       out.set(path, text.replace(UUID, '<id>').replace(/ DATE="[^"]*"/, ' DATE=""'));
     }
@@ -108,13 +128,38 @@ export function canonicalExport(bytes, filename = 'export') {
   return out;
 }
 
+// The most cells the longest-common-subsequence table may hold (about 64 MB).
+const LCS_CELLS = 16e6;
+
 // The lines of `a` and `b` that are not in their longest common subsequence,
-// in order. Exports here are small enough for the quadratic table.
-function lineDiff(a, b) {
-  const x = a.split('\n');
-  const y = b.split('\n');
+// in order. The lines both start and end with are trimmed first, so a file
+// that differs in one place costs the table only that place. When what is
+// left is still too large for the table, every line of it is printed as
+// differing, the first's then the second's: a difference that wide is read
+// from the files, not from this list.
+export function lineDiff(a, b) {
+  const xs = a.split('\n');
+  const ys = b.split('\n');
+  let head = 0;
+  while (head < xs.length && head < ys.length && xs[head] === ys[head]) head++;
+  let tail = 0;
+  while (
+    tail < xs.length - head &&
+    tail < ys.length - head &&
+    xs[xs.length - 1 - tail] === ys[ys.length - 1 - tail]
+  ) {
+    tail++;
+  }
+  const x = xs.slice(head, xs.length - tail);
+  const y = ys.slice(head, ys.length - tail);
   const n = x.length;
   const m = y.length;
+  if ((n + 1) * (m + 1) > LCS_CELLS) {
+    return [
+      ...x.map((text, i) => ({ side: '-', line: head + i + 1, text })),
+      ...y.map((text, j) => ({ side: '+', line: head + j + 1, text })),
+    ];
+  }
   const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
@@ -129,9 +174,9 @@ function lineDiff(a, b) {
       i++;
       j++;
     } else if (j < m && (i === n || lcs[i][j + 1] >= lcs[i + 1][j])) {
-      out.push({ side: '+', line: j + 1, text: y[j++] });
+      out.push({ side: '+', line: head + j + 1, text: y[j++] });
     } else {
-      out.push({ side: '-', line: i + 1, text: x[i++] });
+      out.push({ side: '-', line: head + i + 1, text: x[i++] });
     }
   }
   return out;

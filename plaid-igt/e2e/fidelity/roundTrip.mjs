@@ -132,9 +132,9 @@ async function refusal(client, p, format, expected) {
  * run still prints what changed, so a new difference is visible, but the list
  * has already said this one does not come out even.
  */
-function fixedPoint(label, list, second, third) {
+function fixedPoint(label, list, second, third, heldSlugs) {
   const diffs = diffExports(
-    canonicalExport(second.bytes, second.filename),
+    canonicalExport(second.bytes, second.filename, { heldSlugs }),
     canonicalExport(third.bytes, second.filename),
   );
   if (!diffs.length) {
@@ -149,6 +149,17 @@ function fixedPoint(label, list, second, third) {
   );
   for (const line of diffs) console.log(`       ${line}`);
   return known ? 0 : 1;
+}
+
+/** The dictionary addresses the core holds now, before an import. */
+async function heldSlugs(client) {
+  const vocabs = await client.vocabLayers.list();
+  return new Set(
+    (vocabs || [])
+      .map((v) => v.config?.dict?.slug)
+      .filter((slug) => typeof slug === 'string' && slug.trim())
+      .map((slug) => slug.trim()),
+  );
 }
 
 const core = await coreForRun({ keep });
@@ -200,10 +211,11 @@ try {
       await save(`${format}.${p.role}.actual.json`, out.actual);
       const again = await exportProject(client, imported.projectId, format);
       await save(`${format}.${p.role}.export2`, again.bytes);
+      const held = await heldSlugs(client);
       const twice = await importProject(client, format, again.bytes, p.name);
       const third = await exportProject(client, twice.projectId, format);
       await save(`${format}.${p.role}.export3`, third.bytes);
-      failures += fixedPoint(label, list, again, third);
+      failures += fixedPoint(label, list, again, third, held);
     }
     console.log(`(${secs()})`);
   }
@@ -255,8 +267,9 @@ async function perDocument(client, list, p, source, bare) {
         list.id,
       );
     const again = await onlyDocument(imported.projectId);
+    const held = await heldSlugs(client);
     const twice = await importProject(client, list.id, again.bytes, p.name);
-    failed += fixedPoint(label, list, again, await onlyDocument(twice.projectId));
+    failed += fixedPoint(label, list, again, await onlyDocument(twice.projectId), held);
   }
   return failed;
 }
