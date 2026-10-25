@@ -53,6 +53,34 @@
     ;; a word all of whose letters go
     (is (empty? (judged "the cat sat" "the sat" [1])))))
 
+;; The judge's own rules, on results made by hand: it passes what the
+;; written rule gives and reports what breaks it (R42).
+(deftest the-judge-holds-the-written-rule
+  (let [t (fn [id layer b e] {:token/id id :token/layer layer :token/begin b :token/end e})
+        old "the cat sat"
+        tokens [(t [:s 0] :s 0 11) (t [:w 1] :w 0 3) (t [:w 2] :w 4 7) (t [:w 3] :w 8 11) (t [:a 0] :a 4 7)]
+        result (fn [body gaps-of gone]
+                 {:text {:text/body body}
+                  :tokens (vec (for [tk tokens :when (not (gone (:token/id tk)))] (merge tk (gaps-of (:token/id tk)))))
+                  :deleted (vec gone)})
+        said? (fn [re ps] (some #(re-find re %) ps))
+        typed-over [{:start 4 :end 7 :value "dog"}]]
+    (testing "a word typed over whole goes, and a row typed over whole stays"
+      (is (empty? (problems old tokens typed-over (result "the dog sat" {} #{[:w 2]}))))
+      (is (said? #"\[:w 2\] kept with none of its text" (problems old tokens typed-over (result "the dog sat" {} #{})))))
+    (testing "a row typed over whole may not go"
+      (is (said? #"\[:a 0\] deleted though it has text" (problems old tokens typed-over (result "the dog sat" {} #{[:w 2] [:a 0]})))))
+    (testing "a word with a letter left stays"
+      (let [gaps [{:start 5 :end 7 :value "ow"}]]
+        (is (empty? (problems old tokens gaps (result "the cow sat" {} #{}))))
+        (is (said? #"\[:w 2\] deleted though it has text" (problems old tokens gaps (result "the cow sat" {} #{[:w 2]}))))))
+    (testing "text typed at a word's edge with whitespace between stays out of it"
+      (let [gaps [{:start 7 :end 7 :value " x"}]]
+        (is (empty? (problems old tokens gaps (result "the cat x sat" {[:s 0] {:token/end 13} [:w 3] {:token/begin 10 :token/end 13}} #{}))))
+        (is (said? #"\[:w 2\] took a new letter apart from it"
+                   (problems old tokens gaps (result "the cat x sat" {[:s 0] {:token/end 13} [:w 2] {:token/end 9} [:a 0] {:token/end 9}
+                                                                      [:w 3] {:token/begin 10 :token/end 13}} #{}))))))))
+
 ;; ---------------------------------------------------------------- whole-body saves of word edits
 
 ;; Words of a script's layers under one sentence, one respelled with
