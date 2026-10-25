@@ -568,7 +568,7 @@ def test_a_later_turn_reads_a_fetched_file_from_the_reply_that_stored_it():
 
 def test_a_turn_that_fetched_a_pdf_puts_it_on_its_reply(monkeypatch):
     from test_service_flow import Helper, _request, _seed, _service
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import turn as turn_mod
     from plaid_agent.core.agent import TurnResult
 
     client = FakeClient()
@@ -578,7 +578,7 @@ def test_a_turn_that_fetched_a_pdf_puts_it_on_its_reply(monkeypatch):
         ws.keeper.keep(ws.files, 'g.pdf', SAMPLE.text, source='https://r.example/g.pdf')
         return TurnResult('Read.', [{'role': 'assistant', 'content': 'Read.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert not helper.errors
@@ -590,7 +590,7 @@ def test_a_turn_that_fetched_a_pdf_puts_it_on_its_reply(monkeypatch):
 
 def test_a_turn_that_fails_after_fetching_leaves_nothing_stored(monkeypatch):
     from test_service_flow import Helper, _request, _seed, _service
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import turn as turn_mod
 
     client = FakeClient()
     _seed(client)
@@ -599,7 +599,7 @@ def test_a_turn_that_fails_after_fetching_leaves_nothing_stored(monkeypatch):
         ws.keeper.keep(ws.files, 'g.pdf', SAMPLE.text, source='https://r.example/g.pdf')
         raise RuntimeError('the model went away')
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert helper.errors
@@ -610,7 +610,7 @@ def test_a_turn_whose_reply_is_dropped_takes_back_what_it_stored(monkeypatch):
     # The user stopped and sent again while the turn ran: the reply is not
     # written, and nothing else names the file it stored.
     from test_service_flow import Helper, _request, _seed, _service
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import turn as turn_mod
     from plaid_agent.core.agent import TurnResult
 
     client = FakeClient()
@@ -622,7 +622,7 @@ def test_a_turn_whose_reply_is_dropped_takes_back_what_it_stored(monkeypatch):
         store.save('c1', conv, {**meta, 'pending': {'kind': 'turn', 'request_id': 'r2'}})
         return TurnResult('Read.', [{'role': 'assistant', 'content': 'Read.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper(request_id='r1')
     _service().process_request(_request(client), helper)
     assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') == []
@@ -632,7 +632,7 @@ def test_a_turn_whose_reply_the_store_refuses_keeps_what_the_answer_names(monkey
     """The answer goes back whole for the page to write into the record
     (A2-UD-2), and it names what the turn stored, so that stays."""
     from test_service_flow import Helper, _request, _seed, _service
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import turn as turn_mod
     from plaid_agent.core.agent import TurnResult
 
     client = FakeClient()
@@ -645,7 +645,7 @@ def test_a_turn_whose_reply_the_store_refuses_keeps_what_the_answer_names(monkey
     def refuse(*a, **k):
         raise ValueError('too large')
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     monkeypatch.setattr(ConversationStore, 'write', refuse)
     helper = Helper()
     _service().process_request(_request(client), helper)

@@ -9,7 +9,7 @@ import pytest
 from fixtures import FakeClient
 from test_service_flow import Helper, _request, _seed, _service
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnCancelled
 from plaid_agent.core.conversation import build_meta, user_item
 
@@ -36,7 +36,7 @@ def test_the_next_turn_reads_the_question_a_failed_turn_never_answered(monkeypat
     def fail(*a, **k):
         raise failure
 
-    monkeypatch.setattr(service_mod, 'run_turn', fail)
+    monkeypatch.setattr(turn_mod, 'run_turn', fail)
     _service().process_request(_request(client), Helper())
     conv, _meta = store.load('c1')
     assert [d['kind'] for d in conv['display']] == ['user', 'error']
@@ -49,7 +49,7 @@ def test_the_next_turn_reads_the_question_a_failed_turn_never_answered(monkeypat
         seen['transcript'] = transcript
         raise RuntimeError('still down')
 
-    monkeypatch.setattr(service_mod, 'run_turn', answer)
+    monkeypatch.setattr(turn_mod, 'run_turn', answer)
     _ask_next(store, NEXT, 'r2')
     helper = Helper(request_id='r2')
     _service().process_request(_request(client), helper)
@@ -85,7 +85,7 @@ def test_a_turn_the_page_settled_first_keeps_the_question_once_and_the_note_afte
             raise RuntimeError('RateLimitError: Model capacity reached')
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', run)
+    monkeypatch.setattr(turn_mod, 'run_turn', run)
     _service().process_request(_request(client), Helper())
     conv, _meta = store.load('c1')
     contents = [m['content'] for m in conv['messages']]

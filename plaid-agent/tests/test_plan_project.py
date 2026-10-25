@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from multi_fixtures import OTHER_ID, OTHER_NAME, client  # noqa: E402
 from test_reach_turn import APPS, _Helper, _seed, _svc  # noqa: E402
 
-from plaid_agent.core import service as service_mod  # noqa: E402
+from plaid_agent.core import turn as turn_mod  # noqa: E402
 from plaid_agent.core.agent import TurnResult  # noqa: E402
 
 
@@ -26,7 +26,7 @@ def _turn(app, monkeypatch, projects, delegated):
                                    'ops': [], 'changes': [{'label': 'x'}], 'documents': []}
         return TurnResult('Planned.', [{'role': 'assistant', 'content': 'Planned.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = _Helper()
     _svc(app).process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
                                'conversation_id': 'c1', 'delegated_projects': delegated(pid)}, helper)

@@ -20,7 +20,7 @@ import test_stale_by_sentence as sbs
 from test_plan_record import _staged, _stored
 from test_service_flow import PLAN1, Helper, _request, _seed, _seed_plan, _service
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnCancelled, TurnResult
 from plaid_agent.core.plan import Stamps
 from plaid_agent.core.service import AGENT_VERSION, agent_sources, agent_version
@@ -125,7 +125,7 @@ def test_a_turn_names_the_model_and_the_version(monkeypatch):
     from fixtures import FakeClient
     client = FakeClient()
     store = _seed(client)
-    monkeypatch.setattr(service_mod, 'run_turn', lambda *a, **k: TurnResult(
+    monkeypatch.setattr(turn_mod, 'run_turn', lambda *a, **k: TurnResult(
         'Two words.', [{'role': 'assistant', 'content': 'Two words.'}], []))
     svc = _service()
     svc.process_request(_request(client), Helper())
@@ -142,7 +142,7 @@ def test_a_turn_that_ended_without_an_answer_names_them_too(monkeypatch, fail):
 
     def run_turn(*a, **k):
         raise fail
-    monkeypatch.setattr(service_mod, 'run_turn', run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', run_turn)
     helper = Helper()
     helper.cancelled = isinstance(fail, TurnCancelled)
     svc = _service()

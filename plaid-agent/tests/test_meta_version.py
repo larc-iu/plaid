@@ -13,7 +13,7 @@ from test_agent import service_args
 from test_service_flow import PLAN1, Helper, _request, _seed, _seed_plan, _service
 
 from plaid_agent.core import agent
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import build_meta, user_item
 
@@ -31,7 +31,7 @@ def test_a_turn_writes_the_version_into_the_entry(monkeypatch):
     from fixtures import FakeClient
     client = FakeClient()
     store = _seed(client)
-    monkeypatch.setattr(service_mod, 'run_turn', lambda *a, **k: TurnResult(
+    monkeypatch.setattr(turn_mod, 'run_turn', lambda *a, **k: TurnResult(
         'Two words.', [{'role': 'assistant', 'content': 'Two words.'}], []))
     svc = _service()
     svc.process_request(_request(client), Helper())

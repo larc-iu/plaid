@@ -19,7 +19,7 @@ from fixtures import FakeClient
 from test_service_flow import Helper, _request, _seed, _service
 
 from plaid_agent.core import plan as core_plan
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import ConversationStore
 
@@ -247,7 +247,7 @@ def test_a_save_that_failed_says_so_with_one_period(monkeypatch):
     def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
         PlaidAPIError('HTTP 413 The value is too large.', status=413, method='PUT')))
     helper = Helper()
@@ -276,7 +276,7 @@ def test_a_failed_final_save_ends_the_request_once_with_the_answer(monkeypatch):
     def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     monkeypatch.setattr(ConversationStore, 'write', lambda self, *a, **k: (_ for _ in ()).throw(
         PlaidAPIError('HTTP 500 Internal error', status=500, method='PUT')))
     helper = Helper()

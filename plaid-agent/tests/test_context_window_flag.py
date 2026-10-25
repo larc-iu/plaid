@@ -13,7 +13,7 @@ import pytest
 
 from fixtures import FakeClient
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core import service_cli
 from plaid_agent.core.agent import ModelConfig, TurnResult, context_window
 from test_service_flow import Helper, _request, _seed, _service
@@ -72,7 +72,7 @@ def test_the_turn_records_the_stated_window_beside_its_usage(monkeypatch, stated
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [],
                           usage={'sent': 1000, 'received': 20})
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc = _service()
     svc.cfg = ModelConfig(model=UNKNOWN, context_window=stated)
     helper = Helper()
@@ -108,7 +108,7 @@ def test_the_reply_keeps_how_long_it_took(monkeypatch):
         time.sleep(0.05)
         return TurnResult('Done.', [{'role': 'assistant', 'content': 'Done.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', slow_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', slow_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert not helper.errors, helper.errors
@@ -140,7 +140,7 @@ def test_the_transcript_sent_is_held_to_the_window_before_the_first_call(monkeyp
         seen['transcript'] = transcript
         seen['shrink'] = ws.shrink
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [], usage={'sent': 10, 'received': 1})
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc = _service()
     svc.cfg = ModelConfig(model=UNKNOWN, context_window=6000)
     helper = Helper()
@@ -161,7 +161,7 @@ def test_a_learned_window_is_the_one_the_reply_records(monkeypatch):
 
     def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [], usage={'sent': 1000, 'received': 20})
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc = _service()
     svc.cfg = ModelConfig(model=UNKNOWN)
     svc.process_request(_request(client), Helper())

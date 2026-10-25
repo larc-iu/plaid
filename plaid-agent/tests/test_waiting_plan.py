@@ -7,7 +7,7 @@ rows and plans again, and nothing of the plan is stored beside the
 conversation."""
 from fixtures import FakeClient, fake_ws
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import build_meta, user_item
 from plaid_agent.core.plan import waiting_plan
@@ -96,7 +96,7 @@ def test_the_service_tells_the_turn_of_the_waiting_plan(monkeypatch):
         seen['waiting'] = ws.waiting
         return TurnResult('Done.', [{'role': 'assistant', 'content': 'Done.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert not helper.errors, helper.errors
@@ -118,7 +118,7 @@ def test_a_staging_turn_replaces_the_waiting_card_and_stores_nothing_beside_it(m
         assert 'This replaces the plan of 1 change' in out, out
         return TurnResult('Planned.', [{'role': 'assistant', 'content': 'Planned.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert not helper.errors, helper.errors

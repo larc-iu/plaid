@@ -2,7 +2,7 @@
 asked for."""
 from fixtures import FakeClient
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.files import file_key
 from plaid_agent.core.prompt import find_first
@@ -37,7 +37,7 @@ def test_an_attached_table_of_entries_is_sent_to_bulk_add(monkeypatch):
         seen['stamp'] = transcript[-1]['content']
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     _service().process_request(_request(client), Helper())
     assert IgtWorkspace.FILE_ROUTES in seen['stamp']
     assert 'Bulk Add' in IgtWorkspace.FILE_ROUTES and 'save_file' in IgtWorkspace.FILE_ROUTES

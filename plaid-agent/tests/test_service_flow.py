@@ -10,7 +10,7 @@ import pytest
 from fixtures import FakeClient
 from plaid_client import CancelScope, ServiceCancelled
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import ModelConfig, TurnCancelled, TurnResult
 from plaid_agent.core.conversation import ConversationStore, assistant_item, build_meta, user_item
 from plaid_agent.igt.service import AssistantService
@@ -86,7 +86,7 @@ def test_a_turn_is_written_to_the_record_before_it_is_reported(monkeypatch):
         ws.doc('Text 1')
         return TurnResult('Two words.', [{'role': 'assistant', 'content': 'Two words.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     real_write = ConversationStore.write
     monkeypatch.setattr(ConversationStore, 'write',
                         lambda self, *a, **k: (order.append('saved'), real_write(self, *a, **k))[1])
@@ -113,7 +113,7 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
         assert cancelled() is True
         raise TurnCancelled()
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     helper.cancelled = True
     _service().process_request(_request(client), helper)
@@ -196,7 +196,7 @@ def test_a_stop_while_the_turn_is_set_up_is_recorded_at_its_first_check(monkeypa
         assert cancelled() is True
         raise TurnCancelled()
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc.process_request(_request(client), helper)
     assert helper.done == [{'kind': 'stopped'}]
     conv, meta = store.load('c1')
@@ -216,7 +216,7 @@ def test_a_stop_after_the_answer_was_written_still_reports_the_answer(monkeypatc
         real_save(*a)
         helper.cancelled = True  # Stop lands as the record is written
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     monkeypatch.setattr(ConversationStore, 'save', save)
     _service().process_request(_request(client), helper)
     assert helper.done[0]['kind'] == 'turn' and helper.done[0]['message'] == 'Two words.'
@@ -231,7 +231,7 @@ def test_a_failed_turn_is_written_as_an_error_item(monkeypatch):
     def fake_run_turn(*a, **k):
         raise RuntimeError('provider down')
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert helper.errors == ['The assistant could not answer: provider down']
@@ -251,7 +251,7 @@ def test_an_outcome_is_not_written_over_a_conversation_that_moved_on(monkeypatch
         store.save('c1', conv, {**meta, 'pending': {'kind': 'turn', 'request_id': 'r2'}})
         return TurnResult('late', [{'role': 'assistant', 'content': 'late'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper(request_id='r1')
     _service().process_request(_request(client), helper)
     assert helper.done[0]['kind'] == 'turn', 'the request still ends'
@@ -366,7 +366,7 @@ def test_the_workspace_is_released_when_the_turn_ends(monkeypatch):
         ws.close = lambda: released.append(True)
         return ws
     monkeypatch.setattr(AssistantService, 'make_workspace', make_workspace)
-    monkeypatch.setattr(service_mod, 'run_turn',
+    monkeypatch.setattr(turn_mod, 'run_turn',
                         lambda *a, **k: TurnResult('hi', [{'role': 'assistant', 'content': 'hi'}], []))
     svc = _service()
     svc.process_request(_request(client), Helper())
@@ -375,7 +375,7 @@ def test_the_workspace_is_released_when_the_turn_ends(monkeypatch):
 
     def cancelled(*a, **k):
         raise TurnCancelled()
-    monkeypatch.setattr(service_mod, 'run_turn', cancelled)
+    monkeypatch.setattr(turn_mod, 'run_turn', cancelled)
     _seed(client)
     svc.process_request(_request(client), Helper())
     assert released == [True]
@@ -403,7 +403,7 @@ def test_a_turn_meets_the_file_the_user_attached(monkeypatch):
         seen['offered'] = {t['function']['name'] for t in igt_tools_for(ws)}
         return TurnResult('Both.', [{'role': 'assistant', 'content': 'Both.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
 
@@ -428,7 +428,7 @@ def test_a_turn_with_nothing_attached_is_not_told_about_files(monkeypatch):
         seen['offered'] = {t['function']['name'] for t in igt_tools_for(ws)}
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     _service().process_request(_request(client), Helper())
     assert seen['stamp'] == 'Which words are unglossed?'
     assert 'read_file' not in seen['offered']
@@ -454,7 +454,7 @@ def _turn_after_plan(monkeypatch, stages):
         return ws
 
     monkeypatch.setattr(AssistantService, 'make_workspace', make_workspace)
-    monkeypatch.setattr(service_mod, 'run_turn', lambda *a, **k: TurnResult(
+    monkeypatch.setattr(turn_mod, 'run_turn', lambda *a, **k: TurnResult(
         'Done.', [{'role': 'assistant', 'content': 'Done.'}], []))
     helper = Helper()
     _service().process_request(_request(client), helper)

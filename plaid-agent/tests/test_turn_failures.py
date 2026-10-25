@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from plaid_agent.core import agent
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_client.workflows import llm
 from plaid_agent.core.agent import (EMPTY_REPLY, ModelConfig, Toolkit, TurnFailed, model_failure_line,
                                     run_turn)
@@ -416,7 +416,7 @@ def test_the_record_never_quotes_the_provider(monkeypatch):
         def boom(*a, **k):
             raise error
 
-        monkeypatch.setattr(service_mod, 'run_turn', boom)
+        monkeypatch.setattr(turn_mod, 'run_turn', boom)
         helper = Helper()
         svc = _service()
         svc.REQUEST_SECRETS = ('sk-secret-123456',)
@@ -439,7 +439,7 @@ def test_any_other_failure_is_redacted(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError('refused at http://internal:8085/api/v1/x with sk-secret-123456')
 
-    monkeypatch.setattr(service_mod, 'run_turn', boom)
+    monkeypatch.setattr(turn_mod, 'run_turn', boom)
     helper = Helper()
     svc = _service()
     svc.REQUEST_SECRETS = ('sk-secret-123456',)
@@ -459,7 +459,7 @@ def test_an_empty_reply_is_a_failed_turn_with_its_own_line(monkeypatch):
     def empty(*a, **k):
         raise TurnFailed(EMPTY_REPLY)
 
-    monkeypatch.setattr(service_mod, 'run_turn', empty)
+    monkeypatch.setattr(turn_mod, 'run_turn', empty)
     helper = Helper()
     _service().process_request(_request(client), helper)
     conv, _meta = store.load('c1')

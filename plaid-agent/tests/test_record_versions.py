@@ -10,7 +10,7 @@ import pytest
 from fixtures import FakeClient
 from plaid_client import PlaidAPIError
 
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import (ConversationStore, RecordMoved, assistant_item, build_meta,
                                            conv_key, meta_key, plan_settling, turn_ending, user_item)
@@ -30,7 +30,7 @@ def _answering(monkeypatch, meanwhile=lambda client: None, text='Two words.'):
     def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
         meanwhile(ws.client)
         return TurnResult(text, [{'role': 'assistant', 'content': text}], [])
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
 
 
 def _browser_writes(client, change, pending='keep'):

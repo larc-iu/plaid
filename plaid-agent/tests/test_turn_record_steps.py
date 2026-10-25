@@ -17,7 +17,7 @@ import pytest
 from fixtures import FakeClient
 
 from plaid_agent.core import agent
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import ModelConfig, Toolkit, TurnCancelled, run_turn, turn_trace
 from plaid_agent.core.conversation import (ConversationStore, assistant_item, error_item, prune, user_item,
                                            conversation_bytes)
@@ -151,7 +151,7 @@ STEPS = [{'id': 'c1', 'name': 'search', 'kind': 'read', 'label': 'Searched', 'ro
 def test_the_record_keeps_a_failed_or_stopped_turns_steps(monkeypatch, exc, stopped):
     client = FakeClient()
     store = flow._seed(client)
-    monkeypatch.setattr(service_mod, 'run_turn', _failing_with(exc, STEPS, 'Half a senten'))
+    monkeypatch.setattr(turn_mod, 'run_turn', _failing_with(exc, STEPS, 'Half a senten'))
     helper = flow.Helper()
     helper.cancelled = stopped
     flow._service().process_request(flow._request(client), helper)

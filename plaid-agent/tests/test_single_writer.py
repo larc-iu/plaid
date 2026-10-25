@@ -15,6 +15,7 @@ from test_service_flow import PLAN1, Helper, _seed_plan, _service
 
 from plaid_agent.core import conversation as conversation_mod
 from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import (DISCARDED_NOTE, ConversationStore, conv_key, conversation_bytes,
                                            meta_key, now_iso)
@@ -37,7 +38,7 @@ def _answering(monkeypatch, text='Two words.', calls=None, gate=None):
         if gate is not None:
             gate.wait(5)
         return TurnResult(text, [{'role': 'assistant', 'content': text}], [])
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
 
 
 def _send(svc, client, text='Which words are unglossed?', rid='r1', tab=TAB, create=True, **fields):
@@ -118,7 +119,7 @@ def test_a_send_reports_recorded_before_the_model_is_asked(monkeypatch):
         assert meta['pending']['request_id'] == 'r1' and meta['pending']['service_id'] == 'igt:assist:fake'
         assert seen[0] is True
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     _service().process_request(_req(client, 'send', text='hi', create=True), helper)
     assert not helper.errors
 
@@ -407,7 +408,7 @@ def test_retry_sends_the_last_message_again_after_its_attempt(monkeypatch):
 
     def boom(*a, **k):
         raise RuntimeError('provider down')
-    monkeypatch.setattr(service_mod, 'run_turn', boom)
+    monkeypatch.setattr(turn_mod, 'run_turn', boom)
     _send(svc, client, text='Gloss it', files=[{'id': 'f1', 'name': 'a.csv'}])
     _answering(monkeypatch, calls=calls)
     helper = Helper(request_id='r2')

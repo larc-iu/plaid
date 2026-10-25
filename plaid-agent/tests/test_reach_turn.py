@@ -12,7 +12,7 @@ from multi_fixtures import (OTHER_ID, OTHER_NAME, client, home_workspace, reache
                             reads_in, service)
 
 from plaid_agent.core import prompt as shared  # noqa: E402
-from plaid_agent.core import service as service_mod  # noqa: E402
+from plaid_agent.core import turn as turn_mod  # noqa: E402
 from plaid_agent.core.agent import ModelConfig, TurnResult  # noqa: E402
 from plaid_agent.core.conversation import ConversationStore, build_meta  # noqa: E402
 from plaid_agent.core.limits import OTHER_PROJECT_CHARS  # noqa: E402
@@ -219,7 +219,7 @@ def test_a_turn_reads_the_other_project_and_says_what_did_not_open(app, monkeypa
         text = f'There: <cite project="{OTHER_NAME}" doc="{DOC[app]}" ref="s1"/>'
         return TurnResult(text, [{'role': 'assistant', 'content': text}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = _Helper()
     _svc(app).process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
                                'conversation_id': 'c1', 'delegated_projects': [pid, OTHER_ID, 'gone']},
@@ -250,7 +250,7 @@ def test_a_turn_reads_no_project_its_token_does_not_reach(app, monkeypatch):
         seen['system'] = system
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     helper = _Helper()
     _svc(app).process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
                                'conversation_id': 'c1', 'delegated_projects': [pid]}, helper)
@@ -272,7 +272,7 @@ def test_a_turn_with_no_other_projects_is_todays_turn(app, monkeypatch):
         seen['system'], seen['transcript'], seen['reach'] = system, transcript, ws.reach
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc = _svc(app)
     svc.process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid, 'delegated_projects': [pid],
                          'conversation_id': 'c1'}, _Helper())
@@ -298,7 +298,7 @@ def test_a_projects_list_that_names_no_other_project_is_todays_turn(app, project
         seen['system'], seen['transcript'], seen['reach'] = system, transcript, ws.reach
         return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc = _svc(app)
     svc.process_request({'op': 'send', 'requester_client': c, 'requester_id': 'u@x', 'project_id': pid, 'delegated_projects': [pid],
                          'conversation_id': 'c1'}, _Helper())

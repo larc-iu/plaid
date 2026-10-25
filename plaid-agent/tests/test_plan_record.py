@@ -235,7 +235,7 @@ def _staged(spec, client, monkeypatch):
     """The spec's change staged the way a turn stages it, through the
     service, so the plan carries what the turn adds to it."""
     from importlib import import_module
-    from plaid_agent.core import service as service_mod
+    from plaid_agent.core import turn as turn_mod
     from plaid_agent.core.agent import ModelConfig, TurnResult
     from test_service_flow import Helper
     call_tool = import_module(f'plaid_agent.{spec["app"]}.toolkit').call_tool
@@ -251,7 +251,7 @@ def _staged(spec, client, monkeypatch):
         assert ws.ops
         return TurnResult('Planned.', [{'role': 'assistant', 'content': 'Planned.'}], [])
 
-    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(turn_mod, 'run_turn', fake_run_turn)
     svc = spec['service']()
     svc.cfg = ModelConfig(model='fake/model')
     svc.service_id = sid

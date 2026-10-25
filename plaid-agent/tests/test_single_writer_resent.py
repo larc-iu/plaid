@@ -13,7 +13,7 @@ from test_service_flow import Helper, _service
 from test_single_writer import _answering, _req, _send, _store
 
 from plaid_agent.core import conversation as conversation_mod
-from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 
 
 def _lose_answer_once(client, match):
@@ -38,7 +38,7 @@ def test_a_retry_whose_record_write_lost_its_answer_asks_once_and_adds_no_lost_l
 
     def boom(*a, **k):
         raise RuntimeError('provider down')
-    monkeypatch.setattr(service_mod, 'run_turn', boom)
+    monkeypatch.setattr(turn_mod, 'run_turn', boom)
     _send(svc, client, text='Gloss it')
     monkeypatch.setattr(conversation_mod, '_pause', lambda s: None)
     state = _lose_answer_once(client, lambda k, v: ':conv:' in k and "'retry': True" in str(v))
