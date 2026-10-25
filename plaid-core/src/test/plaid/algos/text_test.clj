@@ -10,6 +10,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
+            [plaid.algos.text.diff :as text-diff]
             [plaid.algos.text.ops :as text-ops]
             [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
@@ -1151,7 +1152,7 @@
         mutate (fn [s] (apply str (mapcat (fn [c] (case (.nextInt r 12) 0 [] 1 [(str c) (rstr 2)] 2 [(rstr 1)] [(str c)]))
                                           (map #(String. (Character/toChars (int %))) (.toArray (.codePoints ^String s))))))]
     (doseq [limit [0 4 30 1000]]
-      (with-redefs [ta/hunk-limit limit]
+      (with-redefs [text-diff/hunk-limit limit]
         (dotimes [i 400]
           (let [old (rstr (.nextInt r 200))
                 new (if (even? i) (mutate old) (rstr (.nextInt r 200)))
@@ -1176,8 +1177,8 @@
       (let [a (vec (repeatedly (inc (.nextInt r 40)) #(.nextInt r 3)))
             b (vec (repeatedly (inc (.nextInt r 40)) #(.nextInt r 3)))]
         (doseq [cells [1 200000]]
-          (with-redefs [ta/band-cells cells]
-            (let [[ma mb] (map vec (#'ta/band-matches (int-array a) (int-array b)))]
+          (with-redefs [text-diff/band-cells cells]
+            (let [[ma mb] (map vec (#'text-diff/band-matches (int-array a) (int-array b)))]
               (is (= (count ma) (count mb)))
               (is (every? true? (map #(= (a %1) (b %2)) ma mb)))
               (is (apply < -1 ma))
