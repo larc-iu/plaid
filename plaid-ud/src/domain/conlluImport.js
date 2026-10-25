@@ -12,8 +12,6 @@ import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { sendInChunks } from '../../../plaid-ui/src/domain/bulkChunks.js';
 
-const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
 // The parsed file with every string in it composed (NFC), as the server
 // stores text, so the text built of the forms and the tokens measured on it
 // are the text that is stored. Composed after parsing, value by value, so a
@@ -61,7 +59,9 @@ export function offListWarnings(parsedData, layerInfo) {
     const n = [...seen.values()].reduce((a, b) => a + b, 0);
     const shown = [...seen.keys()].slice(0, 5).join(', ');
     const more = seen.size > 5 ? `, and ${seen.size - 5} more` : '';
-    out.push(`${count(n, `${label} value`, `${label} values`)} not on the list: ${shown}${more}.`);
+    out.push(
+      `${countOf(n, `${label} value`, `${label} values`)} not on the list: ${shown}${more}.`,
+    );
   }
   return out;
 }
@@ -123,17 +123,17 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
     // is lost to the same decision as the node.
     const parts = [];
     if (emptyNodes > 0)
-      parts.push(`${count(emptyNodes, 'empty node', 'empty nodes')} (decimal-ID rows)`);
+      parts.push(`${countOf(emptyNodes, 'empty node', 'empty nodes')} (decimal-ID rows)`);
     if (emptyNodeDeps > 0) {
       parts.push(
-        `${count(emptyNodeDeps, 'enhanced dependency', 'enhanced dependencies')} from an empty node`,
+        `${countOf(emptyNodeDeps, 'enhanced dependency', 'enhanced dependencies')} from an empty node`,
       );
     }
     importWarnings.push(`${parts.join(' and ')} dropped: Plaid UD does not store empty nodes.`);
   }
   if (unreadableDeps > 0) {
     importWarnings.push(
-      `DEPS values on ${count(unreadableDeps, 'token row', 'token rows')} could not be read and were dropped.`,
+      `DEPS values on ${countOf(unreadableDeps, 'token row', 'token rows')} could not be read and were dropped.`,
     );
   }
   if (miscTokens > 0) {
@@ -428,7 +428,7 @@ async function importDocument(client, projectId, name, conlluText, precomputedLa
       [dropped.enhancedSelf, 'enhanced dependency', 'enhanced dependencies', SELF_HEAD],
     ];
     for (const [n, one, many, why] of headWarnings) {
-      if (n > 0) importWarnings.push(`${count(n, one, many)} dropped: ${why}`);
+      if (n > 0) importWarnings.push(`${countOf(n, one, many)} dropped: ${why}`);
     }
 
     // The text with its sentences in one request (a sentence layer

@@ -20,8 +20,7 @@ import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
 import { pendingId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 import { CHUNK, sendInChunks } from '../../../plaid-ui/src/domain/bulkChunks.js';
-
-const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 /**
  * @param {object} client
@@ -744,7 +743,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         ? `sentence ${which[0]}`
         : `sentences ${which.slice(0, -1).join(', ')} and ${which.at(-1)}`;
     warnings.push(
-      `Sentence ${shown(index)}: ${count(n, 'document-level relation is', 'document-level relations are')} held until ${names} ${which.length === 1 ? 'is' : 'are'} mended.`,
+      `Sentence ${shown(index)}: ${countOf(n, 'document-level relation is', 'document-level relations are')} held until ${names} ${which.length === 1 ? 'is' : 'are'} mended.`,
     );
   });
 
@@ -762,7 +761,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
 
   // A graph kept as text is not "no graph": it has its own line above.
   const empty = parsedSentences.filter((ps) => !ps.graph?.root && !ps.graph?.errors?.length).length;
-  if (empty) warnings.push(`${count(empty, 'sentence has', 'sentences have')} no graph.`);
+  if (empty) warnings.push(`${countOf(empty, 'sentence has', 'sentences have')} no graph.`);
 
   return {
     body: bodyLines.join('\n') + '\n',

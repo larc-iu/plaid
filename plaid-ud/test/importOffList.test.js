@@ -37,3 +37,14 @@ test('each closed list names the values outside it, with how many rows', () => {
     '1 DEPREL value not on the list: subject.',
   ]);
 });
+
+test('a count is written for the reader, as every count in Plaid is', () => {
+  const rows = Array.from(
+    { length: 1204 },
+    (_, i) => `${i + 1}\tw\tw\tADJECTIVE\tNN\t_\t0\troot\t_\t_`,
+  );
+  const file = ['# text = many', ...rows].join('\n');
+  assert.deepEqual(offListWarnings(parseCoNLLU(file), info({ upos: MODES.CLOSED })), [
+    '1,204 UPOS values not on the list: ADJECTIVE.',
+  ]);
+});
