@@ -411,6 +411,7 @@ Type a pattern and run it with the **Search** button or **Ctrl/Cmd+Enter**.
 Results are grouped by document. Click a match to jump straight to that sentence in the Annotate view.
 A built-in syntax reference with more examples is available on the search screen.
 `is_tree` and `is_not_tree` are not supported.
+`is_forest`, `is_not_forest`, `is_cyclic` and `is_not_cyclic` take every word to have one head, as import and the editor keep it.
 
 === Looking for a Word
 
