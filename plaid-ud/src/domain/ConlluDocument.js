@@ -31,6 +31,7 @@ import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
 import { joinSpansOn, singleSpanRule } from '../../../plaid-ui/src/domain/mergeRules.js';
 import {
+  applyTokenDelete,
   countDeleteLoss,
   countPartitionLoss,
   countSplitLoss,
@@ -646,38 +647,10 @@ export class ConlluDocument extends DocumentModel {
     if (!this._canWrite(label)) return false;
     const found = this._clearRoots();
     if (!found) return false;
-    const { chain, rootIndex } = found;
     const roots = found.roots.map((t) => t.id);
-    this._applyRawPatch((next, infoNext) => {
-      const layers = infoNext.textLayer?.tokenLayers || [];
-      // The UD layers from the root down, and every layer nested under them.
-      const doomed = new Set(
-        chain
-          .slice(rootIndex)
-          .filter(Boolean)
-          .map((layer) => layer.id),
-      );
-      let grew = true;
-      while (grew) {
-        grew = false;
-        for (const layer of layers) {
-          if (!doomed.has(layer.id) && doomed.has(layer.parentTokenLayer)) {
-            doomed.add(layer.id);
-            grew = true;
-          }
-        }
-      }
-      for (const layer of layers) {
-        if (!doomed.has(layer.id)) continue;
-        layer.tokens = [];
-        for (const spanLayer of layer.spanLayers || []) {
-          spanLayer.spans = [];
-          for (const relationLayer of spanLayer.relationLayers || []) {
-            relationLayer.relations = [];
-          }
-        }
-      }
-    });
+    this._applyRawPatch((next, infoNext) =>
+      applyTokenDelete(infoNext.textLayer?.tokenLayers || [], roots),
+    );
     return this._queueWrite(label, () => this._client.tokens.bulkDelete(roots.map(settledId)));
   }
 
@@ -848,12 +821,7 @@ export class ConlluDocument extends DocumentModel {
       const ordered = [...existing].sort(byPosition);
       return this._respellWords(word, ordered, cleanForms, wordSubstring, wordFormOps, label);
     }
-    const removedMorphIds = new Set(existing.map((m) => m.id));
-    const removedLemmaSpanIds = new Set(
-      (lemmaLayer?.spans || [])
-        .filter((s) => Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t)))
-        .map((s) => s.id),
-    );
+    const removedMorphIds = existing.map((m) => m.id);
     const made = cleanForms.map((form, i) =>
       newUdWord(
         { begin: word.begin, end: word.end, precedence: i },
@@ -876,23 +844,9 @@ export class ConlluDocument extends DocumentModel {
         const w = (info.wordTokenLayer?.tokens || []).find((t) => t.id === settledId(word.id));
         if (w) w.metadata = applyMetadataOps(w.metadata, wordFormOps);
       }
+      applyTokenDelete(info.textLayer?.tokenLayers || [], removedMorphIds);
       const layer = info.morphemeTokenLayer;
-      layer.tokens = (layer.tokens || [])
-        .filter((t) => !removedMorphIds.has(t.id))
-        .concat(morphemes.map((m) => ({ ...m })));
-      (layer.spanLayers || []).forEach((sl) => {
-        if (Array.isArray(sl.spans)) {
-          sl.spans = sl.spans.filter(
-            (s) => !(Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t))),
-          );
-        }
-      });
-      for (const relLayer of dependencyRelationLayers(info)) {
-        if (!Array.isArray(relLayer.relations)) continue;
-        relLayer.relations = relLayer.relations.filter(
-          (r) => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target),
-        );
-      }
+      layer.tokens = (layer.tokens || []).concat(morphemes.map((m) => ({ ...m })));
       const add = (spanLayer, spans) => {
         if (!spanLayer || spans.length === 0) return;
         if (!Array.isArray(spanLayer.spans)) spanLayer.spans = [];
@@ -1074,42 +1028,10 @@ export class ConlluDocument extends DocumentModel {
     const label = 'Failed to delete token';
     if (!this._canWrite(label)) return false;
     const wordId = settledId(rawWordId);
-    const { wordTokenLayer, morphemeTokenLayer, lemmaLayer } = this.layerInfo;
-    const wordTokens = wordTokenLayer?.tokens || [];
-    const morphemeTokens = morphemeTokenLayer?.tokens || [];
-    const word = wordTokens.find((w) => w.id === wordId);
-    const removedMorphIds = new Set(
-      word ? morphemeTokens.filter((m) => containsToken(word, m)).map((m) => m.id) : [],
+    // Optimistic: the word and its cascade go locally before the round trip.
+    this._applyRawPatch((next, info) =>
+      applyTokenDelete(info.textLayer?.tokenLayers || [], [wordId]),
     );
-    const removedLemmaSpanIds = new Set(
-      (lemmaLayer?.spans || [])
-        .filter((s) => Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t)))
-        .map((s) => s.id),
-    );
-    // Optimistic: remove the word + its cascade locally before the round trip.
-    this._applyRawPatch((next, info) => {
-      if (info.wordTokenLayer?.tokens) {
-        info.wordTokenLayer.tokens = info.wordTokenLayer.tokens.filter((t) => t.id !== wordId);
-      }
-      if (info.morphemeTokenLayer?.tokens) {
-        info.morphemeTokenLayer.tokens = info.morphemeTokenLayer.tokens.filter(
-          (t) => !removedMorphIds.has(t.id),
-        );
-      }
-      (info.morphemeTokenLayer?.spanLayers || []).forEach((sl) => {
-        if (Array.isArray(sl.spans)) {
-          sl.spans = sl.spans.filter(
-            (s) => !(Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t))),
-          );
-        }
-      });
-      for (const layer of dependencyRelationLayers(info)) {
-        if (!Array.isArray(layer.relations)) continue;
-        layer.relations = layer.relations.filter(
-          (r) => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target),
-        );
-      }
-    });
     return this._queueWrite(label, () => this._client.tokens.delete(settledId(wordId)));
   }
 

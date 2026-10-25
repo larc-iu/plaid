@@ -167,9 +167,17 @@ export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } 
         text: { id: 'text-1', body: hierarchy.text },
         tokenLayers: [
           { id: 'sentence-layer', config: { plaid: { role: 'sentence' } }, tokens: sentenceTokens },
-          { id: 'word-layer', config: { plaid: { role: 'word' } }, tokens: wordTokens },
+          // Nested as setup makes them (udProjectSetup.js), which is what
+          // core's delete cascade follows.
+          {
+            id: 'word-layer',
+            parentTokenLayer: 'sentence-layer',
+            config: { plaid: { role: 'word' } },
+            tokens: wordTokens,
+          },
           {
             id: 'morpheme-layer',
+            parentTokenLayer: 'word-layer',
             config: { plaid: { role: 'syntactic-word' } },
             tokens: morphemeTokens,
             spanLayers: [

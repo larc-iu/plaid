@@ -412,6 +412,73 @@ export const dropRelations = (tokenLayers, ids) => {
 };
 
 /**
+ * Show a token delete on a document's token layers, in place, as core's
+ * cascade makes it, on the same walk countDeleteLoss counts: the tokens
+ * `tokenIds` and every token nested under one of them go, a span or link left
+ * with none of its tokens goes, one that keeps some is cut down to them (a new
+ * object), and a relation with an end on a span that went goes. An id no
+ * layer holds still counts as gone, so a write that took its tokens out
+ * itself (a text edit) sweeps what was on them.
+ *
+ * @param {object[]} tokenLayers a text layer's token layers, every app's,
+ *   with their `vocabs[].vocabLinks`
+ * @param {Iterable<string>} tokenIds the tokens deleted
+ * @param {object} [options]
+ * @param {object} [options.vocabs] a table of vocabularies by id, each with
+ *   `vocabLinks`, kept beside the layers: its links are swept too
+ * @returns {{tokens: Set<string>, trimmedLinks: Set<string>}} every token
+ *   that went, and the links cut down rather than deleted
+ */
+export const applyTokenDelete = (tokenLayers, tokenIds, { vocabs = null } = {}) => {
+  const layers = tokenLayers || [];
+  const ids = new Set(tokenIds || []);
+  const dead = new Set(ids);
+  for (const id of dyingTokens(layers, ids).keys()) dead.add(id);
+  const trimmedLinks = new Set();
+  if (!dead.size) return { tokens: dead, trimmedLinks };
+  const emptied = new Set();
+  const sweep = (items, onTrim, onDrop) =>
+    items.flatMap((item) => {
+      if (!Array.isArray(item.tokens) || !item.tokens.some((id) => dead.has(id))) return [item];
+      const kept = item.tokens.filter((id) => !dead.has(id));
+      if (!kept.length) {
+        onDrop(item.id);
+        return [];
+      }
+      onTrim(item.id);
+      return [{ ...item, tokens: kept }];
+    });
+  const none = () => {};
+  for (const tl of layers) {
+    if (Array.isArray(tl.tokens) && tl.tokens.some((t) => dead.has(t.id))) {
+      tl.tokens = tl.tokens.filter((t) => !dead.has(t.id));
+    }
+    for (const sl of tl.spanLayers || []) {
+      if (Array.isArray(sl.spans)) sl.spans = sweep(sl.spans, none, (id) => emptied.add(id));
+    }
+  }
+  if (emptied.size) {
+    for (const tl of layers) {
+      for (const sl of tl.spanLayers || []) {
+        for (const rl of sl.relationLayers || []) {
+          if (Array.isArray(rl.relations)) {
+            rl.relations = rl.relations.filter(
+              (r) => !emptied.has(r.source) && !emptied.has(r.target),
+            );
+          }
+        }
+      }
+    }
+  }
+  const trim = (id) => trimmedLinks.add(id);
+  const vocabLists = [...layers.flatMap((tl) => tl.vocabs || []), ...Object.values(vocabs || {})];
+  for (const vocab of vocabLists) {
+    if (Array.isArray(vocab?.vocabLinks)) vocab.vocabLinks = sweep(vocab.vocabLinks, trim, none);
+  }
+  return { tokens: dead, trimmedLinks };
+};
+
+/**
  * "3 annotations and 2 vocabulary links", the counts a question about a
  * delete names, or '' when there are none.
  */

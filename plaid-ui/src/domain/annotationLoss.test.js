@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  applyTokenDelete,
   countDeleteLoss,
   countPartitionLoss,
   countSplitLoss,
@@ -215,6 +216,45 @@ describe('countTextDeleteLoss', () => {
     expect(loss.annotations).toBe(0);
     const except = countTextDeleteLoss(withNodes(), [[10, 14]], { except: ['n1'] });
     expect(except.byLayer.has('tl-node')).toBe(false);
+  });
+});
+
+describe('applyTokenDelete', () => {
+  const ids = (list) => (list || []).map((x) => x.id);
+
+  it('takes what countDeleteLoss counts, on every layer', () => {
+    const layers = make();
+    const loss = countDeleteLoss(make(), ['w1']);
+    const { tokens, trimmedLinks } = applyTokenDelete(layers, ['w1']);
+    const [sentences, words, morphs, synWords] = layers;
+    expect([...tokens].sort()).toEqual(['m1', 'm2', 'sw1', 'w1']);
+    expect(ids(words.tokens)).toEqual(['w2', 'w3']);
+    expect(ids(morphs.tokens)).toEqual([]);
+    expect(ids(synWords.tokens)).toEqual(['sw2', 'sw3']);
+    expect(ids(words.spanLayers[0].spans)).toEqual([]);
+    expect(ids(morphs.spanLayers[0].spans)).toEqual([]);
+    expect(ids(synWords.spanLayers[0].spans)).toEqual(['L2', 'L3']);
+    // The relations the count names, and no other.
+    const left = synWords.spanLayers[0].relationLayers.flatMap((rl) => ids(rl.relations));
+    expect(left).toEqual(['r2']);
+    expect(loss.relationIds.sort()).toEqual(['r1', 'r3']);
+    // The link over both words keeps w2, the morpheme's goes.
+    expect(words.vocabs[0].vocabLinks).toEqual([{ id: 'mwe', tokens: ['w2'] }]);
+    expect(morphs.vocabs[0].vocabLinks).toEqual([]);
+    expect([...trimmedLinks]).toEqual(['mwe']);
+    // The sentence and its translation stay.
+    expect(ids(sentences.tokens)).toEqual(['S1', 'S2']);
+    expect(ids(sentences.spanLayers[0].spans)).toEqual(['tr1']);
+  });
+
+  it('sweeps what was on tokens a write already took out, and a vocabulary table beside', () => {
+    const layers = make();
+    const [, words] = layers;
+    words.tokens = words.tokens.filter((t) => t.id !== 'w2');
+    const vocabs = { v1: { id: 'v1', vocabLinks: [{ id: 'mwe', tokens: ['w1', 'w2'] }] } };
+    applyTokenDelete(layers, ['w2'], { vocabs });
+    expect(vocabs.v1.vocabLinks).toEqual([{ id: 'mwe', tokens: ['w1'] }]);
+    expect(words.vocabs[0].vocabLinks).toEqual([{ id: 'mwe', tokens: ['w1'] }]);
   });
 });
 

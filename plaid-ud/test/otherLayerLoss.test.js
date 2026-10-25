@@ -226,3 +226,35 @@ test('a split drops the relations it cuts on other layers, and counts none the s
   assert.equal(doc.layerInfo.sentenceTokenLayer.tokens.length, 1);
   assert.equal(doc.otherLossForSentenceSplit(came.begin).annotations, 0);
 });
+
+// B5-1: what a delete or a clear takes on the other layers leaves the copy at
+// once, as core's cascade takes it, not after a refetch.
+const ids = (list) => (list || []).map((x) => x.id);
+const layer = (doc, id) => doc.layerInfo.textLayer.tokenLayers.find((l) => l.id === id);
+const sending = () => {
+  const client = withOps({ tokens: { delete: async () => ({}), bulkDelete: async () => ({}) } });
+  return client;
+};
+
+test("deleting a token takes the other layers' tokens, spans, relations and links on it at once", async () => {
+  const { doc, came } = open();
+  doc._client = sending();
+  const pending = doc.deleteWord(came.id);
+  const other = layer(doc, 'other-morphs');
+  assert.deepEqual(ids(other.tokens), ['om3']);
+  assert.deepEqual(ids(other.spanLayers[0].spans), ['og3']);
+  assert.deepEqual(ids(other.spanLayers[0].relationLayers[0].relations), []);
+  assert.deepEqual(ids(other.vocabs[0].vocabLinks), []);
+  assert.deepEqual(ids(doc.layerInfo.wordTokenLayer.spanLayers[0].spans), []);
+  assert.equal(await pending, true);
+});
+
+test('clearing the tokens takes the other layers under them at once, links included', async () => {
+  const { doc } = open();
+  doc._client = sending();
+  const pending = doc.clearTokens();
+  const other = layer(doc, 'other-morphs');
+  assert.deepEqual(ids(other.tokens), []);
+  assert.deepEqual(ids(other.vocabs[0].vocabLinks), []);
+  assert.equal(await pending, true);
+});

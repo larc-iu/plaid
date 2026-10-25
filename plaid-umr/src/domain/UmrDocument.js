@@ -16,6 +16,7 @@ import {
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
+import { applyTokenDelete } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
@@ -821,20 +822,15 @@ export class UmrDocument extends DocumentModel {
     };
   }
 
-  // Remove spans and everything that hangs off them, the way the server's
-  // cascade does when their tokens go.
+  // Remove nodes by deleting their tokens, which a node's delete sends, and
+  // show what the server's cascade takes with them on every layer
+  // (annotationLoss.js `applyTokenDelete`).
   _dropSpans(info, spanIds) {
     const gone = new Set(spanIds);
-    const L = this._layers(info);
-    const tokenIds = new Set(L.spans.filter((s) => gone.has(s.id)).flatMap((s) => s.tokens || []));
-    info.nodeTokenLayer.tokens = L.tokens.filter((t) => !tokenIds.has(t.id));
-    info.conceptLayer.spans = L.spans.filter((s) => !gone.has(s.id));
-    info.relationLayer.relations = L.relations.filter(
-      (r) => !gone.has(r.source) && !gone.has(r.target),
-    );
-    info.documentGraphLayer.relations = L.triples.filter(
-      (r) => !gone.has(r.source) && !gone.has(r.target),
-    );
+    const tokenIds = this._layers(info)
+      .spans.filter((s) => gone.has(s.id))
+      .flatMap((s) => s.tokens || []);
+    applyTokenDelete(info.textLayer?.tokenLayers || [], tokenIds);
   }
 
   // ----- mutations -----
