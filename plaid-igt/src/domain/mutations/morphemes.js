@@ -87,6 +87,19 @@ const sortByPrecedence = (ms) =>
       (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
 
+// One past the highest precedence stored among `siblings` (read in chain
+// order), and a slot for each sibling storing none, numbered from there in
+// the order it reads: what a writer numbering pieces beside them stores, so
+// none reads out of order.
+const nullSlots = (siblings) => {
+  const highest = Math.max(
+    0,
+    ...siblings.filter((m) => m.precedence != null).map((m) => m.precedence),
+  );
+  const slots = siblings.filter((m) => m.precedence == null).map((m, j) => [m.id, highest + 1 + j]);
+  return { next: highest + 1 + slots.length, slots };
+};
+
 const formOf = (morpheme, body) => {
   const meta = morpheme?.metadata;
   if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
@@ -94,14 +107,15 @@ const formOf = (morpheme, body) => {
 };
 
 export const morphemeMutations = {
-  // Append a new morpheme to a word; precedence = (existing count) + 1.
+  // Append a new morpheme to a word, past every morpheme it holds.
   async createMorpheme(wordTokenId, form) {
     return this.createMorphemes(wordTokenId, [form]);
   },
 
   // Append N morphemes to a word, in one batch. Used by the MWT-split flow
-  // where a single form is split into several at once. Precedences are
-  // assigned starting from (existing count) + 1 in order.
+  // where a single form is split into several at once. Precedences go from
+  // one past the highest stored, after each morpheme storing none is numbered
+  // there in the order it reads.
   async createMorphemes(wordTokenId, forms) {
     if (!Array.isArray(forms) || forms.length === 0) return false;
     const info = this.layerInfo;
@@ -118,7 +132,10 @@ export const morphemeMutations = {
     }
     const label = forms.length === 1 ? 'Failed to create morpheme' : 'Failed to create morphemes';
     if (!this._canWrite(label)) return false;
-    const base = morphemesInWord(morphemeLayer.tokens, word).length + 1;
+    const { next: base, slots } = nullSlots(
+      sortByPrecedence(morphemesInWord(morphemeLayer.tokens, word)),
+    );
+    const numbered = new Map(slots);
     const rows = forms.map((form, i) => ({
       id: pendingId(),
       begin: word.begin,
@@ -126,10 +143,16 @@ export const morphemeMutations = {
       precedence: base + i,
       metadata: created(this, form ? { form } : undefined) || {},
     }));
-    this._applyRawPatch((next, infoNext) => this._showMorphemes(infoNext, rows));
+    this._applyRawPatch((next, infoNext) => {
+      (infoNext.morphemeTokenLayer?.tokens || []).forEach((m) => {
+        if (numbered.has(m.id)) m.precedence = numbered.get(m.id);
+      });
+      this._showMorphemes(infoNext, rows);
+    });
     return this._queueWrite(label, async () => {
       const ids = new Map();
       const results = await this._client.batched(async (b) => {
+        slots.forEach(([id, p]) => b.tokens.update(settledId(id), undefined, undefined, p));
         rows.forEach((r) =>
           b.tokens.create(
             morphemeLayer.id,
@@ -143,7 +166,7 @@ export const morphemeMutations = {
           ),
         );
       });
-      rows.forEach((r, i) => ids.set(r.id, createdId(results[i])));
+      rows.forEach((r, i) => ids.set(r.id, createdId(results[slots.length + i])));
       this._settle(ids);
     });
   },
@@ -385,7 +408,21 @@ export const morphemeMutations = {
       : isZeroMorph(currentForm)
         ? previousForm
         : previousForm + currentForm;
-    const subsequents = siblings.slice(idx + 1);
+    // A sibling storing a precedence past the target's moves down one into
+    // the freed slot. One storing none is numbered past the stored ones, in
+    // the order it reads, so none goes below 1 or ahead of what it follows.
+    const tp = target.precedence;
+    const shifts = siblings
+      .filter((m) => m.id !== morphemeId && m.precedence != null && tp != null && m.precedence > tp)
+      .map((m) => [m.id, m.precedence - 1]);
+    const shifted = new Map(shifts);
+    const { slots } = nullSlots(
+      siblings
+        .filter((m) => m.id !== morphemeId)
+        .map((m) => (shifted.has(m.id) ? { ...m, precedence: shifted.get(m.id) } : m)),
+    );
+    const renumber = [...shifts, ...slots];
+    const renumbered = new Map(renumber);
     const patch = formStamped(this, previous, mergedForm);
 
     const textId = info.primaryTextLayer?.text?.id;
@@ -397,13 +434,7 @@ export const morphemeMutations = {
       // The delete takes the morpheme's annotations and links (HUNT-model M5).
       removeTokensLocally(next, textId, [morphemeId], vocabs);
       layer.tokens.forEach((m) => {
-        if (
-          m.begin === target.begin &&
-          m.end === target.end &&
-          (m.precedence ?? 0) > (target.precedence ?? 0)
-        ) {
-          m.precedence = (m.precedence ?? 0) - 1;
-        }
+        if (renumbered.has(m.id)) m.precedence = renumbered.get(m.id);
       });
     });
 
@@ -411,8 +442,9 @@ export const morphemeMutations = {
       this._client.batched(async (b) => {
         b.tokens.patchMetadata(settledId(previous.id), metadataOps(patch));
         b.tokens.delete(settledId(morphemeId));
-        subsequents.forEach((m) => {
-          b.tokens.update(settledId(m.id), undefined, undefined, (m.precedence ?? 0) - 1);
+        // Ascending, into the slot the delete freed, then past every stored.
+        renumber.forEach(([id, p]) => {
+          b.tokens.update(settledId(id), undefined, undefined, p);
         });
       }),
     );

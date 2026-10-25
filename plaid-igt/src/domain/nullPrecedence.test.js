@@ -240,3 +240,67 @@ describe('a morpheme storing no precedence', () => {
     expect(precedenceUpdates(client)).toEqual([['m-3', 2]]);
   });
 });
+
+// REV-FL F3: a merge shifts only the siblings storing a precedence past the
+// target's, and numbers each sibling storing none from one past the highest
+// stored, in the order it reads. An append lands past every sibling.
+describe('a merge or append beside a morpheme storing no precedence', () => {
+  const m = (id, precedence, form) => ({
+    id,
+    text: 'text-1',
+    begin: 0,
+    end: 6,
+    precedence,
+    metadata: { form },
+  });
+  const abcdef = (morphemes) =>
+    buildRawDoc({ body: 'abcdef', words: [{ id: 'w-1', begin: 0, end: 6 }], morphemes });
+
+  it('mergeMorphemes numbers a later sibling storing none past the stored ones', async () => {
+    const client = makeFakeClient();
+    const doc = docFor(
+      abcdef([m('m-a', 1, 'ab'), m('m-b', 2, 'cd'), m('m-c', null, 'ef')]),
+      client,
+    );
+    expect(await doc.mergeMorphemes('m-b')).toBe(true);
+    expect(formsOf(doc, 0)).toEqual(['abcd', 'ef']);
+    expect(precedenceUpdates(client)).toEqual([['m-c', 2]]);
+  });
+
+  it('mergeMorphemes of a target storing none shifts no stored sibling', async () => {
+    const client = makeFakeClient();
+    const doc = docFor(
+      abcdef([m('m-a', 1, 'ab'), m('m-b', null, 'cd'), m('m-c', null, 'ef')]),
+      client,
+    );
+    expect(await doc.mergeMorphemes('m-b')).toBe(true);
+    expect(formsOf(doc, 0)).toEqual(['abcd', 'ef']);
+    expect(precedenceUpdates(client)).toEqual([['m-c', 2]]);
+  });
+
+  it('mergeMorphemes still closes a gapped stored chain', async () => {
+    const client = makeFakeClient();
+    const doc = docFor(abcdef([m('m-a', 1, 'ab'), m('m-b', 3, 'cd'), m('m-c', 5, 'ef')]), client);
+    expect(await doc.mergeMorphemes('m-b')).toBe(true);
+    expect(formsOf(doc, 0)).toEqual(['abcd', 'ef']);
+    expect(precedenceUpdates(client)).toEqual([['m-c', 4]]);
+  });
+
+  it('createMorpheme lands after a gapped stored sibling', async () => {
+    const client = makeFakeClient();
+    const doc = docFor(abcdef([m('m-a', 1, 'ab'), m('m-b', 5, 'cd')]), client);
+    expect(await doc.createMorpheme('w-1', 'ef')).toBe(true);
+    expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'ef']);
+    expect(precedenceUpdates(client)).toEqual([]);
+    expect(createdPrecedences(client)).toEqual([6]);
+  });
+
+  it('createMorpheme numbers a sibling storing none before the new one', async () => {
+    const client = makeFakeClient();
+    const doc = docFor(abcdef([m('m-a', 1, 'ab'), m('m-b', null, 'cd')]), client);
+    expect(await doc.createMorpheme('w-1', 'ef')).toBe(true);
+    expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'ef']);
+    expect(precedenceUpdates(client)).toEqual([['m-b', 2]]);
+    expect(createdPrecedences(client)).toEqual([3]);
+  });
+});
