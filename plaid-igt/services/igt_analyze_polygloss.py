@@ -48,13 +48,13 @@ runs; CPU works but is many times slower.
 import argparse
 from typing import Dict, List, Optional, Tuple
 
-from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import PhasedProgress, held_run
-from plaid_client.workflows.requester import requester_of
+from plaid_client import BaseService, TASKS, Param
 from plaid_client.workflows.igt import (
-    ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
-    write_analyses, analysis_result, ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
+    ParsedWord, parse_interleaved, align_words, analysis_for,
+    ANALYZE_REQUEST_FIELDS,
 )
+from plaid_client.workflows.igt.analyze import (AnalysisProgress, begin_analysis, finish_analysis,
+                                                read_analysis_request)
 
 DEFAULT_MODEL = 'lecslab/polygloss-byt5-interleaved-2025-12-28'
 
@@ -160,11 +160,11 @@ class PolyGlossModel:
 
 # --- the service ---------------------------------------------------------------
 
-class AnalyzeProgress(PhasedProgress):
-    """The bar's stretches for the first pass over the sentences, the
-    continuations of the ones cut short, and the write."""
+class AnalyzeProgress(AnalysisProgress):
+    """The bar's stretches for the first pass over the sentences and the
+    continuations of the ones cut short."""
 
-    ANALYZE, CONTINUE, WRITE = (15, 80), (80, 88), (88, 99)
+    ANALYZE, CONTINUE = (15, 80), (80, 88)
 
 
 class PolyGlossService(BaseService):
@@ -210,61 +210,20 @@ class PolyGlossService(BaseService):
 
     # -- request --
     def process_request(self, request_data: dict, response_helper) -> None:
-        document_id = request_data.get('document_id')
-        requester = requester_of(self.client, request_data)
+        request = read_analysis_request(self.client, request_data, response_helper, language=True)
+        if request is None:
+            return
         progress = AnalyzeProgress(response_helper)
-        word_layer_id = request_data.get('word_token_layer_id')
-        morph_layer_id = request_data.get('morpheme_token_layer_id')
-        sent_layer_id = request_data.get('sentence_token_layer_id')
-        for key, val in (('documentId', document_id), ('wordTokenLayerId', word_layer_id),
-                         ('morphemeTokenLayerId', morph_layer_id), ('sentenceTokenLayerId', sent_layer_id)):
-            if not val:
-                response_helper.error(f'Missing required parameter: {key}')
-                return
-        language = request_data['language'].strip()
-        if not language:
-            response_helper.error('Missing required option: Language')
-            return
-        metalanguage = request_data['metalanguage'].strip()
-        # The fields come from the request, never from a name: the dialog fills
-        # the gloss field from its stored Lexicon field, and one left out is an
-        # error. The translation is context, read only when one is named.
-        gloss_field = request_data['gloss_field'].strip()
-        if not gloss_field:
-            response_helper.error('Choose the gloss field.')
-            return
-        translation_field = request_data['translation_field'].strip() or None
-        overwrite = request_data['overwrite']
+        language, metalanguage = request.language, request.metalanguage
 
-        # The document is held from the read the run plans from through the
-        # last write, so no edit can land while the model works (one rule for
-        # every service, Luke's ruling R15). The result goes once it is let go.
-        with held_run(self.client, response_helper, document_id) as run:
-            response_helper.progress(3, 'Fetching document…')
-            doc = self.client.documents.get(document_id, include_body=True)
-            try:
-                sentences, gloss_layer_id = derive(
-                    doc, word_layer_id, morph_layer_id, sent_layer_id,
-                    gloss_field=gloss_field, translation_field=translation_field)
-            except ValueError as e:
-                run.refusal = str(e)
-                return
-            # The translation is context only, so a run goes on without it, and
-            # says so rather than analyzing a little worse without a word.
-            translation_missing = (translation_field if translation_field
-                                   and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
-
+        with begin_analysis(self.client, response_helper, request, fetch_percent=3) as run:
             # Eligible sentences: any word we may write (the write contract).
-            targets, skipped = select_targets(sentences, overwrite,
-                                              skip_word_ids=read_skip_word_ids(request_data))
-            skipped['unaligned'] = 0
-            if not targets:
-                run.result = analysis_result(document_id, len(sentences), 0, skipped,
-                                             translation_missing=translation_missing)
+            if run is None or not run.choose_targets():
                 return
+            targets, skipped = run.targets, run.skipped
 
             # Generate, with continuation passes for truncated tails.
-            stamp_detail = self.stamp_detail(requester, **self.model.describe(),
+            stamp_detail = self.stamp_detail(request.requester, **self.model.describe(),
                                              language=language, metalanguage=metalanguage)
             aligned: Dict[str, List[Optional[ParsedWord]]] = {}  # sentence id -> per input word
             pending = [(s, 0) for s, _ in targets]  # (sentence, first word index still to transcribe)
@@ -303,8 +262,6 @@ class PolyGlossService(BaseService):
                 passes += 1
 
             # Plan writes.
-            response_helper.progress(88, 'Writing analyses…')
-            source = service_source(self.service_id)
             plans = []
             replaced = 0
             for s, idxs in targets:
@@ -318,21 +275,10 @@ class PolyGlossService(BaseService):
                     if w['state'] != 'unanalyzed':
                         replaced += 1
 
-            # The writes cannot be stopped once begun: a stop halfway would
-            # leave words half analyzed.
-            with response_helper.critical():
-                with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)'),
-                                           kind='service-run', ref=service_source(self.service_id)):
-                    def wrote(done, total):
-                        progress.count(AnalyzeProgress.WRITE, done, total,
-                                       f'Writing analyses ({done}/{total} batches)…')
+            finish_analysis(self.client, response_helper, run, plans, service_id=self.service_id,
+                            label='PolyGloss analysis', stamp_detail=stamp_detail, replaced=replaced,
+                            failed=failed)
 
-                    written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
-                                             source, stamp_detail, on_progress=wrote)
-
-            run.result = analysis_result(document_id, len(sentences), len(targets), skipped,
-                                         written=written, replaced=replaced, failed=failed,
-                                         translation_missing=translation_missing)
 
 def main():
     PolyGlossService().run()

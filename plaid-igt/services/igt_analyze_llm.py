@@ -46,18 +46,18 @@ import argparse
 import difflib
 from typing import List, Optional
 
-from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import PhasedProgress, held_run, requester_message
-from plaid_client.workflows.requester import requester_of
+from plaid_client import BaseService, TASKS, Param
+from plaid_client.service import requester_message
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.workflows.igt.config import read_lexicon_field, read_vocab_fields
 from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
 from plaid_client.workflows.igt import (
-    derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
-    ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
-    write_analyses, analysis_result, tagset_for, mode_rule, value_lines, entry_types_of, morph_type, gloss_of,
+    derive, word_state, parse_interleaved, align_words, analysis_for,
+    ANALYZE_REQUEST_FIELDS, tagset_for, mode_rule, value_lines, entry_types_of, morph_type, gloss_of,
 )
+from plaid_client.workflows.igt.analyze import (AnalysisProgress, begin_analysis, finish_analysis,
+                                                read_analysis_request)
 
 DEFAULT_SERVICE_ID = 'llm-analyzer'
 MAX_EXAMPLE_DOCS = 25  # documents scanned for example sentences per run
@@ -374,11 +374,11 @@ def build_user_prompt(language, metalanguage, words, translation, entries, examp
 
 # --- the service ---------------------------------------------------------------
 
-class AnalyzeProgress(PhasedProgress):
-    """The bar's stretches for reading the lexicon, collecting the examples,
-    glossing the sentences and the write."""
+class AnalyzeProgress(AnalysisProgress):
+    """The bar's stretches for reading the lexicon, collecting the examples
+    and glossing the sentences."""
 
-    LEXICON, EXAMPLES, GLOSS, WRITE = (5, 8), (8, 20), (20, 85), (88, 99)
+    LEXICON, EXAMPLES, GLOSS = (5, 8), (8, 20), (20, 85)
 
 
 class LLMAnalyzeService(BaseService):
@@ -417,60 +417,19 @@ class LLMAnalyzeService(BaseService):
 
     # -- request --
     def process_request(self, request_data: dict, response_helper) -> None:
-        document_id = request_data.get('document_id')
-        project_id = request_data.get('project_id')
-        requester = requester_of(self.client, request_data)
+        request = read_analysis_request(self.client, request_data, response_helper, project=True, language=True)
+        if request is None:
+            return
         progress = AnalyzeProgress(response_helper)
-        word_layer_id = request_data.get('word_token_layer_id')
-        morph_layer_id = request_data.get('morpheme_token_layer_id')
-        sent_layer_id = request_data.get('sentence_token_layer_id')
-        for key, val in (('documentId', document_id), ('projectId', project_id),
-                         ('wordTokenLayerId', word_layer_id), ('morphemeTokenLayerId', morph_layer_id),
-                         ('sentenceTokenLayerId', sent_layer_id)):
-            if not val:
-                response_helper.error(f'Missing required parameter: {key}')
-                return
-        language = request_data['language'].strip()
-        if not language:
-            response_helper.error('Missing required option: Language')
-            return
-        metalanguage = request_data['metalanguage'].strip()
-        # The fields come from the request, never from a name: the dialog fills
-        # the gloss field from its stored Lexicon field, and one left out is an
-        # error. The translation is context, read only when one is named.
-        gloss_field = request_data['gloss_field'].strip()
-        if not gloss_field:
-            response_helper.error('Choose the gloss field.')
-            return
-        translation_field = request_data['translation_field'].strip() or None
-        overwrite = request_data['overwrite']
+        document_id, project_id = request.document_id, request.project_id
+        language, metalanguage = request.language, request.metalanguage
+        gloss_field, translation_field = request.gloss_field, request.translation_field
         n_examples = int(request_data['examples'])
 
-        # The document is held from the read the run plans from through the
-        # last write, so no edit can land while the model works (one rule for
-        # every service, Luke's ruling R15). The result goes once it is let go.
-        with held_run(self.client, response_helper, document_id) as run:
-            response_helper.progress(2, 'Fetching document…')
-            doc = self.client.documents.get(document_id, include_body=True)
-            layers = (word_layer_id, morph_layer_id, sent_layer_id)
-            try:
-                sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
-                                                   translation_field=translation_field)
-            except ValueError as e:
-                run.refusal = str(e)
+        with begin_analysis(self.client, response_helper, request, fetch_percent=2) as run:
+            if run is None or not run.choose_targets():
                 return
-            # The translation is context only, so a run goes on without it, and
-            # says so rather than analyzing a little worse without a word.
-            translation_missing = (translation_field if translation_field
-                                   and not field_layer_id(doc, sent_layer_id, translation_field, 'Sentence') else None)
-
-            targets, skipped = select_targets(sentences, overwrite,
-                                              skip_word_ids=read_skip_word_ids(request_data))
-            skipped['unaligned'] = 0
-            if not targets:
-                run.result = analysis_result(document_id, len(sentences), 0, skipped,
-                                             translation_missing=translation_missing)
-                return
+            targets, skipped, gloss_layer_id = run.targets, run.skipped, run.gloss_layer_id
 
             # Retrieval, once per run.
             response_helper.progress(5, 'Reading the lexicon…')
@@ -484,7 +443,7 @@ class LLMAnalyzeService(BaseService):
                 on_progress=lambda n, total: progress.count(
                     AnalyzeProgress.LEXICON, n, total, f'Reading the lexicon ({n + 1}/{total})…'))
             pool = load_examples(
-                self.client, project_id, layers, gloss_field, translation_field,
+                self.client, project_id, request.layers, gloss_field, translation_field,
                 exclude_doc_id=document_id,
                 entry_types=entry_types,
                 on_progress=lambda n, total: progress.count(
@@ -492,7 +451,7 @@ class LLMAnalyzeService(BaseService):
             ) if n_examples else []
 
             # One model call per sentence.
-            stamp_detail = self.stamp_detail(requester, **self.model.describe(),
+            stamp_detail = self.stamp_detail(request.requester, **self.model.describe(),
                                              language=language, metalanguage=metalanguage)
             plans = []
             failed = []
@@ -551,26 +510,11 @@ class LLMAnalyzeService(BaseService):
                         replaced += 1
 
             print(self.model.usage_line())
-            response_helper.progress(88, 'Writing analyses…')
-            source = service_source(self.service_id)
-            # The writes cannot be stopped once begun: a stop halfway would
-            # leave words half analyzed.
-            with response_helper.critical():
-                with self.client.operation(requester.label(f'LLM glossing ({len(plans)} words)'),
-                                           kind='service-run', ref=service_source(self.service_id)):
-                    def wrote(done, total):
-                        progress.count(AnalyzeProgress.WRITE, done, total,
-                                       f'Writing analyses ({done}/{total} batches)…')
-
-                    written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
-                                             source, stamp_detail, on_progress=wrote)
-
-            run.result = analysis_result(
-                document_id, len(sentences), total, skipped,
-                written=written, replaced=replaced, failed=failed, not_asked=not_asked,
-                translation_missing=translation_missing,
-                lexicon_entries=len(lexicon), example_sentences=len(pool),
-                tagset=tagset['name'] if tagset else None)
+            finish_analysis(self.client, response_helper, run, plans, service_id=self.service_id,
+                            label='LLM glossing', stamp_detail=stamp_detail, replaced=replaced,
+                            failed=failed, not_asked=not_asked,
+                            lexicon_entries=len(lexicon), example_sentences=len(pool),
+                            tagset=tagset['name'] if tagset else None)
 
 
 def main():

@@ -82,6 +82,8 @@ def _stamp_sites(tree):
                 yield node, node.lineno, fn
             elif 'prov_detail' in kw:
                 yield kw['prov_detail'], node.lineno, fn
+            elif _called(node) == 'finish_analysis':
+                yield kw.get('stamp_detail'), node.lineno, fn
             elif _called(node) == 'write_analyses':
                 # (client, plans, gloss_layer_id, morph_layer_id, source, detail, ...)
                 yield kw.get('detail', node.args[5] if len(node.args) > 5 else None), node.lineno, fn

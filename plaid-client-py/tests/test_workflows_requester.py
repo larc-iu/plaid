@@ -122,7 +122,8 @@ def _assigned(tree, name):
 
 def test_every_bundled_service_names_its_requester():
     """A service opens its History entry through ``requester.label``, or
-    drafts through ``drafting`` / ``finish_draft``, which do it for it."""
+    drafts through ``drafting`` / ``finish_draft`` or analyzes through
+    ``read_analysis_request`` / ``finish_analysis``, which do it for it."""
     files = _service_files()
     assert len(files) >= 9, files
     missing = []
@@ -132,8 +133,19 @@ def test_every_bundled_service_names_its_requester():
         if not _is_service(tree):
             continue
         rel = path.relative_to(REPO)
-        if 'requester_of(' not in source and 'drafting(' not in source:
+        if not any(reads in source for reads in ('requester_of(', 'drafting(', 'read_analysis_request(')):
             missing.append(f'{rel}: never reads its requester')
         for line in _unlabeled_operations(tree):
             missing.append(f'{rel}:{line}: an operation label without the requester')
     assert missing == []
+
+
+def test_the_shared_run_tails_name_the_requester():
+    """``finish_analysis`` and ``finish_draft`` open the History entry of the
+    services that write through them."""
+    workflows = REPO / 'plaid-client-py' / 'src' / 'plaid_client' / 'workflows'
+    for path in (workflows / 'igt' / 'analyze.py', workflows / 'umr' / 'write.py'):
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        assert any(isinstance(n, ast.Call) and getattr(n.func, 'attr', None) == 'operation'
+                   for n in ast.walk(tree)), path
+        assert _unlabeled_operations(tree) == [], path
