@@ -11,7 +11,7 @@ import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY, ROLES, find_by_role
-from plaid_client.service import held_run, machine_detail, progress_heartbeat
+from plaid_client.service import held_run, progress_heartbeat
 from plaid_client.workflows.requester import requester_of
 
 
@@ -296,7 +296,7 @@ class WhisperASRService(BaseService):
         for alignment in alignments:
             scores = (alignment.metadata or {}).get(PROV_DETAIL_KEY) or {}
             alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
-                                  requester.detail(machine_detail(self.version, **scores))}
+                                  self.stamp_detail(requester, **scores)}
         # The word layer, whose "Tokenize new text" gives the transcribed
         # text its words, as typed text gets them.
         text_layer = next((tl for tl in full_document.get("text_layers") or []

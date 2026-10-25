@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.client import PlaidClient
 from plaid_client.document_lock import DocumentLockLost
 from plaid_client.http import PlaidAPIError, short_error
+from plaid_client.provenance import service_source, stamp_inferred
 from plaid_client.service_schema import build_extras, coerce
 # requester_message and UNKNOWN_FAILURE live in services.py, beside the code
 # that puts a message on the wire: `serve`'s own fallback needs them too and
@@ -508,6 +509,21 @@ class BaseService(ABC):
                     and isinstance(values.get(key), str) and not values[key].strip()):
                 values[key] = param['default']
         return values
+
+    def stamp_detail(self, requester=None, *, model: Optional[str], **extra) -> Dict[str, Any]:
+        """The ``provDetail`` of this service's machine writes
+        (:func:`machine_detail` at this service's version), with who asked
+        added when ``requester`` is given (``Requester.detail``)."""
+        detail = machine_detail(self.version, model=model, **extra)
+        return requester.detail(detail) if requester is not None else detail
+
+    def stamp(self, requester=None, *, model: Optional[str], **extra) -> Dict[str, Any]:
+        """The machine stamp this service's writes carry:
+        :func:`~plaid_client.provenance.stamp_inferred` with this service's own
+        id as the source (the one its operation's ``ref`` names) and
+        :meth:`stamp_detail` as the detail."""
+        return stamp_inferred(service_source(self.service_id),
+                              detail=self.stamp_detail(requester, model=model, **extra))
 
     #: Secrets to keep out of anything a requester is shown (a provider API
     #: key, say). Set in :meth:`setup`; see :func:`requester_message`.

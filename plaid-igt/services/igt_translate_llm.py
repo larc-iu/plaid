@@ -32,7 +32,7 @@ import argparse
 from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import PhasedProgress, held_run, machine_detail, requester_message
+from plaid_client.service import PhasedProgress, held_run, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -282,8 +282,8 @@ class LLMTranslateService(BaseService):
             # One model call per sentence, in document order so earlier drafts can
             # serve as context for later sentences.
             source = service_source(self.service_id)
-            base_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
-                                                          language=language, metalanguage=metalanguage))
+            base_detail = self.stamp_detail(requester, **self.model.describe(),
+                                            language=language, metalanguage=metalanguage)
             drafts: Dict[str, str] = {}
             plans = []  # (sentence, existing span or None, text)
             failed = []

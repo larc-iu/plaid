@@ -4,8 +4,9 @@ what made the prediction and which version of the service made it
 "Provenance"), so a record can be traced to the model and the code or prompt
 behind it.
 
-The detail is built in one place, ``machine_detail``, and the version is the
-service file's own (``service_version``). The services are plain scripts with
+The detail is built in one place, ``machine_detail``, which a service reaches
+through ``BaseService.stamp`` and ``BaseService.stamp_detail``, and the version
+is the service file's own (``service_version``). The services are plain scripts with
 heavy imports (whisper, stanza), so the check that each one goes through the
 helper reads them, like ``test_service_operation_kind.py``. Each service's own
 suite checks what a run really writes."""
@@ -35,6 +36,11 @@ REPORTS = {'umr_ancast.py'}
 SUBSTRATE = {'igt_tokenize_punkt.py'}
 
 
+# The helpers that build a machine stamp's detail: machine_detail itself and
+# the two BaseService methods over it, which take its arguments.
+DETAIL_HELPERS = ('machine_detail', 'stamp_detail', 'stamp')
+
+
 def _called(node):
     f = node.func
     return f.attr if isinstance(f, ast.Attribute) else getattr(f, 'id', None)
@@ -54,10 +60,10 @@ def _functions(tree):
 
 
 def _built_by_helper(expr, assigned) -> bool:
-    """``expr`` is a machine_detail call, contains one, or is a name some
-    assignment in the file gave one."""
+    """``expr`` is a call to one of the DETAIL_HELPERS, contains one, or is a
+    name some assignment in the file gave one."""
     for node in ast.walk(expr):
-        if isinstance(node, ast.Call) and _called(node) == 'machine_detail':
+        if isinstance(node, ast.Call) and _called(node) in DETAIL_HELPERS:
             return True
         if isinstance(node, ast.Name) and any(_built_by_helper(v, {}) for v in assigned.get(node.id, [])):
             return True
@@ -72,6 +78,8 @@ def _stamp_sites(tree):
             kw = {k.arg: k.value for k in node.keywords}
             if _called(node) in ('stamp_inferred', 'confirmed_inferred'):
                 yield kw.get('detail'), node.lineno, fn
+            elif _called(node) == 'stamp':
+                yield node, node.lineno, fn
             elif 'prov_detail' in kw:
                 yield kw['prov_detail'], node.lineno, fn
             elif _called(node) == 'write_analyses':
@@ -117,7 +125,7 @@ def test_every_service_that_writes_machine_output_names_its_model():
         if path.name in REPORTS or path.name in SUBSTRATE:
             continue
         tree = ast.parse(path.read_text(), str(path))
-        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and _called(n) == 'machine_detail']
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and _called(n) in DETAIL_HELPERS]
         if not calls:
             missing.append(f'{path.name}: no machine_detail')
         for call in calls:
@@ -133,7 +141,7 @@ def test_a_service_that_writes_only_substrate_stamps_nothing():
     for name in SUBSTRATE:
         tree = ast.parse((ROOT / 'plaid-igt' / 'services' / name).read_text())
         calls = {_called(n) for n in ast.walk(tree) if isinstance(n, ast.Call)}
-        assert not calls & {'machine_detail', 'stamp_inferred', 'confirmed_inferred'}, name
+        assert not calls & {*DETAIL_HELPERS, 'stamp_inferred', 'confirmed_inferred'}, name
         assert not any(isinstance(n, ast.keyword) and n.arg in ('prov_source', 'prov_detail')
                        for n in ast.walk(tree)), name
 
@@ -194,3 +202,25 @@ def test_a_subclass_with_no_code_of_its_own_has_its_parents_version():
 
     Second = type('Second', (Svc,), {'label': 'another name'})
     assert Second('s', 'S', 'd').version == service_version(__file__)
+
+
+def test_a_service_s_stamp_is_the_one_it_assembled_by_hand():
+    from plaid_client import BaseService, service_source, stamp_inferred
+    from plaid_client.service import machine_detail
+    from plaid_client.workflows.requester import Requester
+
+    class Svc(BaseService):
+        def process_request(self, request_data, response_helper):
+            pass
+
+    svc = Svc('nlp:svc', 'S', 'd')
+    asked = Requester('u@example.org', 'U')
+    by_hand = stamp_inferred(service_source('nlp:svc'),
+                             detail=asked.detail(machine_detail(svc.version, model='m', language='x')))
+    assert svc.stamp(asked, model='m', language='x') == by_hand
+    assert list(svc.stamp(asked, model='m', language='x')['provDetail']) == ['model', 'version', 'language',
+                                                                              'requestedBy']
+    assert svc.stamp(model=None, method='rules') == stamp_inferred(
+        service_source('nlp:svc'), detail=machine_detail(svc.version, model=None, method='rules'))
+    assert svc.stamp_detail(asked, model='m') == asked.detail(machine_detail(svc.version, model='m'))
+    assert svc.stamp_detail(model='m') == machine_detail(svc.version, model='m')

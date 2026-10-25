@@ -1,10 +1,10 @@
 import json
 import stanza
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
-                          stamp_inferred, is_protected, service_source)
+                          is_protected, service_source)
 from plaid_client.provenance import PROVENANCE_KEYS
 from plaid_client.service import (PhasedProgress, batch_body_budget, locked_for_writes,
-                                  machine_detail, partly_written, progress_heartbeat,
+                                  partly_written, progress_heartbeat,
                                   requester_message)
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import Requester, requester_of
@@ -1147,11 +1147,7 @@ class StanzaParserService(BaseService):
         reads a person's value against.) See the manual, "Provenance". The
         detail also names who asked for the run (``requester``, see
         plaid_client.workflows.requester)."""
-        return stamp_inferred(
-            service_source(self.service_id),
-            detail=requester.detail(machine_detail(self.version, model=f'stanza=={stanza.__version__}',
-                                                   language=language)),
-        )
+        return self.stamp(requester, model=f'stanza=={stanza.__version__}', language=language)
 
     def setup(self, args):
         # Pipelines are built lazily per requested language and cached; preload

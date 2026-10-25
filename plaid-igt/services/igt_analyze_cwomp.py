@@ -76,7 +76,7 @@ from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.provenance import (
     prov_state, read_confidence_threshold, HUMAN, PROV_SOURCE_KEY, VERIFIED)
 from plaid_client.roles import ROLES, find_by_role
-from plaid_client.service import PhasedProgress, held_run, machine_detail
+from plaid_client.service import PhasedProgress, held_run
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, write_analyses, analysis_result, ANALYZE_REQUEST_FIELDS,
@@ -872,7 +872,7 @@ class CwompService(BaseService):
 
             response_helper.progress(88, 'Writing analyses…')
             source = service_source(self.service_id)
-            stamp_detail = requester.detail(machine_detail(self.version, **model.describe()))
+            stamp_detail = self.stamp_detail(requester, **model.describe())
             with response_helper.critical():
                 with self.client.operation(requester.label(f'CWoMP analysis ({len(plans)} words)'),
                                            kind='service-run', ref=service_source(self.service_id)):
