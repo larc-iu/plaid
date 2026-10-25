@@ -846,8 +846,11 @@ class UmrAncastService(BaseService):
             check_same_words(words_of(this_graph), words_of(other_graph), this_name, other_name)
             progress.report(ScoreProgress.READ, 1.0, 'Reading the other document…')
 
-            progress.report(ScoreProgress.SCORE, 0.0, f'Scoring against {other_name}…')
-            scores, sentences = score_umr(this_text, other_text, scope)
+            scoring = f'Scoring against {other_name}…'
+            progress.report(ScoreProgress.SCORE, 0.0, scoring)
+            # One call that reports nothing of its own, so it keeps talking.
+            with progress.heartbeat(ScoreProgress.SCORE, 0.0, scoring):
+                scores, sentences = score_umr(this_text, other_text, scope)
             sentences = with_scored_graphs(sentences, this_graph, other_graph)
             skipped = len([s for s in sentences if s['skipped']])
             scored = len(sentences) - skipped

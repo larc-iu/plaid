@@ -982,3 +982,37 @@ def test_the_service_serves_the_compare_task_with_scope_as_its_one_parameter():
     assert scope['default'] == 'doc'
     assert '**Document**' in service.extras['summary']
     assert '**Scope**' in service.extras['summary']
+
+
+def test_the_scoring_keeps_talking_while_it_runs(monkeypatch):
+    """Scoring is one call that reports nothing of its own, and a long document
+    takes a while. Without the heartbeat the requester gives up on the silence
+    while the run is working (the anti-hang contract)."""
+    import threading
+    import plaid_client.service as service_module
+
+    beaten = threading.Event()
+    real_heartbeat = service_module.progress_heartbeat
+    monkeypatch.setattr(service_module, 'progress_heartbeat',
+                        lambda helper, percent, message, interval_s=0.01:
+                        real_heartbeat(helper, percent, message, interval_s=0.01))
+
+    def slow_score(*_args, **_kwargs):
+        # Stands in for the metric, which this test does not need to run.
+        beaten.wait(5)
+        raise RuntimeError('scored')
+
+    monkeypatch.setattr(umr, 'score_umr', slow_score)
+    said = 'Scoring against Bo…'
+
+    class _Counting(servicetest.Helper):
+        def progress(self, percent, msg='', **extra):
+            super().progress(percent, msg, **extra)
+            if self.messages.count(said) >= 3:
+                beaten.set()
+
+    helper = servicetest.run(_service(), REQUEST, _Counting())
+
+    assert beaten.is_set(), 'the scoring went quiet'
+    assert helper.messages.count(said) >= 3
+    assert helper.errors == ['AnCast adjudication: scored']
