@@ -8,7 +8,6 @@ sentence partitioning.
 
 import os
 import unicodedata
-import requests
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred
@@ -25,7 +24,6 @@ from .asr_model import Alignment
 # how long to wait for the connection, and how long one chunk may take.
 CONNECT_TIMEOUT_S = 15
 READ_TIMEOUT_S = 60
-CHUNK_BYTES = 1 << 16
 
 
 class AlignmentProcessor:
@@ -112,18 +110,21 @@ class AlignmentProcessor:
 
         return tokens_created
     
-    def download_media_file(self, client, media_url: str, temp_dir: str, on_progress=None) -> str:
+    def download_media_file(self, client, document_id: str, temp_dir: str, on_progress=None) -> str:
         """
-        Download media file from authenticated URL.
-        
+        Download a document's media file into ``temp_dir``, through the
+        client's ``documents.get_media``, which asks a busy core again.
+
         Args:
             client: PlaidClient instance with authentication
-            media_url: URL of media file to download
+            document_id: The document whose recording to download
             temp_dir: Temporary directory for downloaded file
-            
+            on_progress: Called with ``(bytes_read, total)`` as it arrives,
+                total 0 when unknown
+
         Returns:
             Path to downloaded file
-            
+
         Raises:
             Refusal: If the download fails, with a reason the requester reads
             RuntimeError: Called with no document held. The media is part of
@@ -134,38 +135,18 @@ class AlignmentProcessor:
         if getattr(client, 'strict_mode_document_id', None) is None:
             raise RuntimeError('Download the media inside locked_for_writes or held_run. '
                                'This service file is older than plaid-client: update it with the client.')
+        heard = None
+        if on_progress:
+            def heard(progress):
+                on_progress(progress['loaded'], progress['total'] or 0)
         try:
-            # The token goes in the header, not the query string. A media URL
-            # already carries a `?v=` cache-buster, so appending `?token=` made
-            # a second `?`: the token was swallowed into the `v` parameter and
-            # the request arrived unauthenticated (401). A header also keeps the
-            # token out of access logs, which is why the browser client stopped
-            # putting it in the URL.
-            #
             # The timeout is a STALL timeout: a connect budget and a per-chunk
             # read budget, not a cap on the download, so a large file over a
             # slow link still arrives while a server that stops sending does
             # not hold the request open forever with nothing to report.
-            response = requests.get(
-                media_url,
-                stream=True,
-                headers={'Authorization': f'Bearer {client.token}'},
-                timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
-            )
-            response.raise_for_status()
-
-            total = int(response.headers.get('Content-Length') or 0)
-            temp_file = os.path.join(temp_dir, "media")
-            read = 0
-            with open(temp_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=CHUNK_BYTES):
-                    f.write(chunk)
-                    read += len(chunk)
-                    if on_progress:
-                        on_progress(read, total)
-
-            return temp_file
-
+            return client.documents.get_media(
+                document_id, to_path=os.path.join(temp_dir, "media"), on_progress=heard,
+                timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S))
         except Exception as e:
             # The exception names the media URL, which is the operator's
             # business; the requester is told what failed, not where.

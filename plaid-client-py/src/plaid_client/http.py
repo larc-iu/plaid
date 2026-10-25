@@ -620,12 +620,50 @@ def with_retries(client, attempt, *, keyed=False, no_busy_retry=False):
             if keyed else retry_while_busy(attempt, **busy))
 
 
+DOWNLOAD_CHUNK_BYTES = 1 << 16
+
+
+def _read_download(response, url, method, to_path, on_progress):
+    """A streamed response's body, written to ``to_path`` (answering the
+    path) or gathered in memory (answering the bytes), ``on_progress`` told
+    ``{'loaded', 'total'}`` after each piece. A connection lost partway is the
+    client's network error."""
+    length = int((response.headers or {}).get('Content-Length') or 0)
+    total = length or None
+    loaded = 0
+    parts = []
+    pieces = response.iter_content(chunk_size=DOWNLOAD_CHUNK_BYTES)
+    out = open(to_path, 'wb') if to_path is not None else None
+    try:
+        while True:
+            # Only the read is the network's: a failed write is the disk's,
+            # and goes up as it is.
+            try:
+                chunk = next(pieces)
+            except StopIteration:
+                break
+            except Exception as e:
+                raise network_error(e, url, method) from e
+            if out is not None:
+                out.write(chunk)
+            else:
+                parts.append(chunk)
+            loaded += len(chunk)
+            if on_progress is not None:
+                on_progress({'loaded': loaded, 'total': total})
+    finally:
+        if out is not None:
+            out.close()
+    return to_path if to_path is not None else b''.join(parts)
+
+
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, out_of_band=False,
                  no_operation=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None, versioned=True,
-                 no_busy_retry=False, _learning_omitted_version=False):
+                 no_busy_retry=False, to_path=None, on_download_progress=None,
+                 _learning_omitted_version=False):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -655,6 +693,11 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
+        to_path: With ``binary_response``, stream the body into this file
+            and return the path, rather than holding it in memory.
+        on_download_progress: With ``binary_response``, called with
+            ``{'loaded': bytes_read, 'total': content_length}`` (total None
+            when unknown) as the body arrives.
         no_busy_retry: If True, a 503 is not retried. For a query: core
             answers 503 when its queue of large queries stays full until the
             query's deadline, and asking again at once only joins the same
@@ -694,6 +737,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     kwargs = {'method': method, 'url': url, 'headers': headers,
               'timeout': wire_timeout(timeout if timeout is not _UNSET
                                       else getattr(client, 'timeout', DEFAULT_TIMEOUT_S))}
+
+    streamed = binary_response and (to_path is not None or on_download_progress is not None)
+    if streamed:
+        kwargs['stream'] = True
 
     encoded_upload = None
     if request_body is not None:
@@ -761,6 +808,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         writes_landed(client, started, is_replayed(response.headers))
         if not _learning_omitted_version:
             _learn_omitted_version_quietly(client)
+        if streamed:
+            return _read_download(response, url, method, to_path, on_download_progress)
         return response.content
 
     # JSON or text response

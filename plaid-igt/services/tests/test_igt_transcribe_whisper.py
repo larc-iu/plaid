@@ -1,7 +1,7 @@
 """The Whisper transcribe service's REQUEST HANDLER, driven end to end.
 
-Whisper itself is replaced at its one seam (``whisper.load_model``), the media
-download at ``requests.get``, and the document at the client, so a whole run --
+Whisper itself is replaced at its one seam (``whisper.load_model``), and the
+document and its recording at the client, so a whole run --
 fetch, download, transcribe, write, report -- happens in milliseconds with no
 model and no server.
 
@@ -17,7 +17,6 @@ import pytest
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
 from plaid_client.service import service_version
-from plaid_client.workflows.asr import alignment_processor as ap_module
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
@@ -83,25 +82,23 @@ def load_whisper(segments=SEGMENTS, before_return=None):
 
 
 def _media(monkeypatch, size=3 << 20, chunks=3):
-    """A media file that arrives in ``chunks`` pieces, recording the request."""
+    """A recording that arrives in ``chunks`` pieces through the client's
+    ``documents.get_media``, recording what it was asked."""
     seen = {}
 
-    class _Response:
-        headers = {'Content-Length': str(size)}
+    def get_media(self, document_id, *, to_path=None, on_progress=None, timeout=None):
+        self._root.record('read', document_id)
+        seen.update(document_id=document_id, timeout=timeout)
+        piece = b'\0' * (size // chunks)
+        with open(to_path, 'wb') as f:
+            for n in range(1, chunks + 1):
+                f.write(piece)
+                if on_progress:
+                    on_progress({'loaded': n * len(piece), 'total': size})
+        return to_path
 
-        def raise_for_status(self):
-            pass
-
-        def iter_content(self, chunk_size=None):
-            for _ in range(chunks):
-                yield b'\0' * (size // chunks)
-
-    def get(url, stream=None, headers=None, timeout=None):
-        seen['url'] = url
-        seen['headers'] = headers
-        return _Response()
-
-    monkeypatch.setattr(ap_module.requests, 'get', get)
+    monkeypatch.setattr(servicetest.FakeClient._Documents, 'get_media', get_media,
+                        raising=False)
     return seen
 
 
@@ -391,16 +388,19 @@ def test_a_download_failure_names_what_failed_and_not_where(monkeypatch):
     module, _ = load_whisper()
     service = _service(module)
 
-    def get(url, **kwargs):
-        raise Exception('404 Client Error: Not Found for url: '
-                        'http://plaid.internal:8085/api/v1/documents/d1/media?v=3')
+    def get_media(self, document_id, **kwargs):
+        raise PlaidAPIError('HTTP 404 Media file not found at '
+                            'http://plaid.internal:8085/api/v1/documents/d1/media',
+                            status=404, method='GET',
+                            url='http://plaid.internal:8085/api/v1/documents/d1/media')
 
-    monkeypatch.setattr(ap_module.requests, 'get', get)
+    monkeypatch.setattr(servicetest.FakeClient._Documents, 'get_media', get_media,
+                        raising=False)
     helper = servicetest.run(service, REQUEST)
 
     assert len(helper.errors) == 1
     assert helper.errors[0] == ("The document's media file could not be downloaded "
-                                '(404 Client Error: Not Found).')
+                                '(HTTP 404 Media file not found).')
     assert 'plaid.internal' not in helper.errors[0]
 
 
@@ -484,10 +484,9 @@ def test_the_download_says_how_far_in_it_is(monkeypatch):
         'Downloading media file (30 MB of 30 MB)…',
     ]
     assert [pct for pct, _ in downloads[1:]] == [16, 23, 30]
-    # The token rides in a header, never in the URL: a media URL already
-    # carries a `?v=` cache-buster, and a second `?` swallowed the token.
-    assert seen['url'] == 'http://plaid.internal:8085' + MEDIA_URL
-    assert seen['headers'] == {'Authorization': 'Bearer tok'}
+    # Read through the client, which asks a busy core again, with stall
+    # budgets rather than a cap on the whole download.
+    assert seen == {'document_id': DOC, 'timeout': (15, 60)}
 
 
 def test_the_transcription_keeps_talking_while_it_runs(monkeypatch):

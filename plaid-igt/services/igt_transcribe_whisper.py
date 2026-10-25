@@ -233,21 +233,13 @@ class WhisperASRService(BaseService):
                     sentence_token_layer_id, model_size, language, requester, temp_dir,
                     response_helper, model=None):
         """Read, transcribe and write, under the caller's lock. The result."""
-        # Get document to fetch media URL
+        # Get the document, to learn whether it has a recording
         response_helper.progress(5, "Fetching document…")
         full_document = self.client.documents.get(document_id, include_body=True)
         
-        # Get media URL from document
-        media_url = full_document.get("media_url")
-        if not media_url:
+        if not full_document.get("media_url"):
             raise Refusal("The document has no media file.")
-        
-        # Construct full media URL if it's a relative path
-        if media_url.startswith('/'):
-            full_media_url = self.client.base_url.rstrip('/') + media_url
-        else:
-            full_media_url = media_url
-        
+
         # Download media file. A recording is often hundreds of megabytes,
         # so say how far in it is rather than going quiet until it lands.
         response_helper.progress(10, "Downloading media file…")
@@ -259,7 +251,7 @@ class WhisperASRService(BaseService):
                                      + (f" of {total >> 20} MB)…" if total else ")…"))
 
         audio_file = self.alignment_processor.download_media_file(
-            self.client, full_media_url, temp_dir, on_progress=downloaded)
+            self.client, document_id, temp_dir, on_progress=downloaded)
 
         # Transcribe audio with ASR model. One blocking call with nothing to
         # poll inside it, and the longest stretch of this service by far: an

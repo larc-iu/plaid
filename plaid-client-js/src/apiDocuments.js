@@ -127,15 +127,23 @@ export function documentsApi(client) {
         },
       }),
     /**
-     * Get the media file for a document. Media is not versioned, so there is
-     * no as-of form: the route refuses the parameter. Prefer the document's
-     * own `mediaUrl`, which carries the file's version for caching.
+     * Get the media file for a document, as a Blob whose `type` is the
+     * served media type. Media is not versioned, so there is no as-of form:
+     * the route refuses the parameter. A busy core (503) is asked again, as
+     * for any read. To play a recording, stream it from `mediaLink` instead.
      * @param {string} documentId - The document ID
-     * @returns {Promise<ArrayBuffer>}
+     * @param {object} [options]
+     * @param {number | null} [options.timeout] - This read's timeout in ms, in place of the client's. A
+     *   recording can take longer than the default 30 s to come down: null or 0 waits as long as it takes.
+     * @param {(progress: {loaded: number, total: number | null}) => void} [options.onProgress] - Called with
+     *   `{ loaded, total }` (bytes, total null when unknown) as the file comes down.
+     * @returns {Promise<Blob>}
      */
-    getMedia: (documentId) =>
+    getMedia: (documentId, { timeout, onProgress } = {}) =>
       client._request("GET", `/api/v1/documents/${documentId}/media`, {
-        binaryResponse: true,
+        blobResponse: true,
+        onDownloadProgress: onProgress,
+        timeout,
       }),
     /**
      * Create a new document in a project.

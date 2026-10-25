@@ -744,6 +744,10 @@ export function noteAuthError(client, error) {
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text
+ *   blobResponse    - Return a Blob of the body, its `type` the response's
+ *                     Content-Type (a recording, whose reader needs both)
+ *   onDownloadProgress - With blobResponse, called with `{ loaded, total }`
+ *                     (bytes; total null when unknown) as the body arrives
  *   noBusyRetry     - If true, a 503 is not retried. For a query: core
  *                     answers 503 when its queue of large queries stays full
  *                     until the query's deadline, and asking again at once
@@ -791,12 +795,38 @@ export function writesLanded(client, started, replayed = false) {
   }
 }
 
+/**
+ * A response's body as a Blob typed by its Content-Type, `onProgress` told
+ * `{ loaded, total }` after each piece when given (total null when the
+ * response has no Content-Length).
+ * @private
+ */
+async function readBlob(response, onProgress) {
+  const type = response.headers.get("content-type") ?? "";
+  const reader = onProgress ? response.body?.getReader?.() : null;
+  if (!reader) return new Blob([await response.arrayBuffer()], { type });
+  const length = Number(response.headers.get("content-length"));
+  const total = length > 0 ? length : null;
+  const parts = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    loaded += value.byteLength;
+    onProgress({ loaded, total });
+  }
+  return new Blob(parts, { type });
+}
+
 export async function makeRequest(client, method, path, options = {}) {
   const {
     formData,
     skipResponseTransform,
     noAuth,
     binaryResponse,
+    blobResponse,
+    onDownloadProgress,
     timeout,
     onUploadProgress,
     learningOmittedVersion,
@@ -903,6 +933,12 @@ export async function makeRequest(client, method, path, options = {}) {
       landed(response.headers);
       if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       return await response.arrayBuffer();
+    }
+    if (blobResponse) {
+      extractDocumentVersions(client, response.headers);
+      landed(response.headers);
+      if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
+      return await readBlob(response, onDownloadProgress);
     }
 
     // JSON or text response

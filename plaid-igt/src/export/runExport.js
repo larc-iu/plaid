@@ -172,28 +172,22 @@ const flexReadme = ({ stem, lexicon, docCount }) =>
   ].join('\n');
 
 /**
- * Fetch a document's media by the `mediaUrl` its document record carries. That
- * URL names the file's version (`?v=`), so the browser cache can never hand
- * back a recording that has since been replaced. A historical export gets the
+ * Read a document's recording through the client, which asks a busy core
+ * again and answers errors in its own shape. A historical export gets the
  * current recording too: media is not versioned, and the media route refuses
- * `as-of`. Issued directly with fetch rather than client.documents.getMedia
- * because the client's _request is bounded by its default 30s timeout, which
- * large media files can easily exceed. Returns { bytes, ext, mime }.
+ * `as-of`. The read has no timeout, since a large recording can take longer
+ * than the client's 30 s to come down. The bare media path revalidates its
+ * cache entry on every read, so a recording since replaced is never handed
+ * back. Returns { bytes, ext, mime }.
  */
-async function fetchDocumentMedia(client, mediaUrl) {
-  const res = await fetch(`${client.baseUrl}${mediaUrl}`, {
-    headers: { Authorization: `Bearer ${client.token}` },
-  });
-  if (!res.ok) {
-    throw Object.assign(new Error(`media fetch failed (${res.status})`), { status: res.status });
-  }
-  const contentType = res.headers.get('content-type');
+async function fetchDocumentMedia(client, documentId) {
+  const blob = await client.documents.getMedia(documentId, { timeout: null });
   return {
-    bytes: new Uint8Array(await res.arrayBuffer()),
-    ext: extensionForMediaType(contentType),
+    bytes: new Uint8Array(await blob.arrayBuffer()),
+    ext: extensionForMediaType(blob.type),
     // CLDF's MediaTable.Media_Type wants the media type itself, not the
     // extension the archive filename gets.
-    mime: bareMediaType(contentType),
+    mime: bareMediaType(blob.type),
   };
 }
 
@@ -535,11 +529,7 @@ export async function runExport({
     let mediaType = '';
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
-        const {
-          bytes,
-          ext: mediaExt,
-          mime,
-        } = await reading(() => fetchMedia(client, igtDoc.raw.mediaUrl));
+        const { bytes, ext: mediaExt, mime } = await reading(() => fetchMedia(client, docIds[i]));
         // An .eaf names its recording, and an ELAN import keeps that name in a
         // Media file field. Written back under it, with the extension of what
         // is stored, since a recording may have been converted on the way in.

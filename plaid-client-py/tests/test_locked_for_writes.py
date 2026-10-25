@@ -225,4 +225,4 @@ def test_the_media_is_not_downloaded_with_no_document_held(tmp_path):
     from plaid_client.workflows.asr.alignment_processor import AlignmentProcessor
     client = FakeClient([{'id': 'd1', 'version': 4}])
     with pytest.raises(RuntimeError, match='older than plaid-client'):
-        AlignmentProcessor().download_media_file(client, 'http://x/media', str(tmp_path))
+        AlignmentProcessor().download_media_file(client, 'd1', str(tmp_path))

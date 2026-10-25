@@ -1899,18 +1899,28 @@ class DocumentsResource(_MetadataMethods, _Resource):
                              query_params={'include-body': include_body, 'as-of': as_of,
                                            'layers': _csv_param(layers)})
 
-    def get_media(self, document_id: str) -> bytes:
-        """Get the media file for a document.
+    def get_media(self, document_id: str, *, to_path: str | None = None, on_progress=None,
+                  timeout=_UNSET) -> bytes | str:
+        """Get the media file for a document: its bytes, or with ``to_path``
+        the path it was written to.
 
         Media is not versioned, so there is no as-of form: the route refuses the
-        parameter. Prefer the document's own media URL, which carries the file's
-        version for caching.
+        parameter. A busy core (503) is asked again, as for any read.
 
         Args:
             document_id: The document ID
+            to_path: Stream the file into this path rather than into memory,
+                for a recording too large to hold. Answers the path.
+            on_progress: Called with ``{'loaded': n, 'total': m}`` (bytes,
+                total None when unknown) as the file comes down.
+            timeout: This read's timeout in seconds, in place of the
+                client's. ``requests`` reads it as a stall budget (or a
+                ``(connect, read)`` pair), not a cap on the whole transfer.
+                None or 0 waits as long as it takes.
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
-                             binary_response=True)
+                             binary_response=True, to_path=to_path,
+                             on_download_progress=on_progress, timeout=timeout)
 
     def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None, free_name: bool = False) -> Any:

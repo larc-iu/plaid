@@ -137,6 +137,10 @@ function stubClient({
         if (failIds.includes(id)) throw new Error('boom');
         return JSON.parse(JSON.stringify(docs.find((d) => d.id === id)));
       },
+      getMedia: async (id, options) => {
+        calls.push(['documents.getMedia', id, options]);
+        return new Blob([new Uint8Array([7, 7, 7])], { type: 'audio/vnd.wave' });
+      },
     },
     vocabLayers: {
       get: async (id, includeItems, asOf) => {
@@ -813,13 +817,13 @@ describe('runExport — native plaid-igt-json', () => {
       project: PROJECT,
       preset: nativePreset(),
       scope: { type: 'project' },
-      fetchMedia: async (_c, url) => {
-        fetched.push(url);
+      fetchMedia: async (_c, documentId) => {
+        fetched.push(documentId);
         return { bytes: new Uint8Array([9, 9]), ext: '.wav' };
       },
     });
-    // Fetched by the document's own mediaUrl, which carries the file's version.
-    expect(fetched).toEqual(['/api/v1/documents/d1/media']);
+    // Fetched for the document that has a recording.
+    expect(fetched).toEqual(['d1']);
     const entries = await unzipBlob(result.blob);
     expect([...entries['media/A.wav']]).toEqual([9, 9]);
     const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
@@ -1135,6 +1139,25 @@ describe('runExport — native plaid-igt-json', () => {
     await expect(
       runExport({ client, project: PROJECT, preset: nativePreset(), scope: { type: 'project' } }),
     ).rejects.toThrow('The comments on "A" could not be read: comment boom');
+  });
+
+  it('reads a recording through client.documents.getMedia, with no timeout', async () => {
+    // A recording can take longer to come down than the client's 30 s, and a
+    // busy core is asked again by the client like any other read.
+    const docs = [rawDoc('d1', 'A', 'hi', '/api/v1/documents/d1/media?v=1-3')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    expect(client.calls.filter(([name]) => name === 'documents.getMedia')).toEqual([
+      ['documents.getMedia', 'd1', { timeout: null }],
+    ]);
+    const entries = await unzipBlob(result.blob);
+    // Named by the Blob's media type, which is what the server served.
+    expect([...entries['media/A.wav']]).toEqual([7, 7, 7]);
   });
 
   it('skips media when includeMedia is off', async () => {
