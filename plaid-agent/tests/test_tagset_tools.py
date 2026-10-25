@@ -242,6 +242,22 @@ def test_delimiters_drop_the_whitespace_the_app_drops():
     assert ws.ops[-1]['after']['delimiters'] == '.\x85\x1c:'
 
 
+def test_a_stored_tagset_name_is_read_with_the_whitespace_the_app_trims():
+    """The name a field gives its tagset, read back for a plan's check and its
+    rules, is trimmed as igt and field_constraints trim it: NEL kept, a byte
+    order mark dropped."""
+    from plaid_agent.igt import tagsets as T
+    tagset = {'delimiters': '.', 'mode': 'closed', 'values': [{'value': 'NOM'}]}
+    for stored, name in [('g\x85', 'g\x85'), ('\ufeffg\x1c ', 'g\x1c')]:
+        cfg = {'igt': {'tagsets': {name: tagset}}}
+        layer = {'id': 'sl', 'config': {'igt': {'tagset': stored}}}
+        op = {'kind': 'assign_tagset', 'field_kind': T.SPAN, 'key': 'sl'}
+        assert T._reference(cfg, [layer], {}, op) == name
+        [rules] = T._field_rules(cfg, [layer], [])
+        assert rules['tagset'] == name
+        assert rules['wanted'] == field_constraints(layer['config'], cfg) != []
+
+
 def test_approval_reads_back_what_the_app_wrote_and_never_writes(proj):
     ws = ws_of(proj)
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})

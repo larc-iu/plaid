@@ -24,7 +24,7 @@ from plaid_client.provenance import project_role
 from plaid_client.workflows.igt.config import read_igt, read_igt_namespace, read_scope, read_vocab_fields
 from plaid_client.workflows.igt.glossing import is_lexical_part
 from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset,
-                                                strip_space)
+                                                strip_space, trim)
 
 from ..core.bidi import qv
 from ..core.tools import ToolError, kind_of
@@ -784,7 +784,7 @@ def _reference(cfg, layers, entry_fields, op) -> Optional[str]:
     else:
         spec = (entry_fields or {}).get(key)
         name = spec.get('tagset') if isinstance(spec, dict) else None
-    return (name.strip() or None) if isinstance(name, str) else None
+    return (trim(name) or None) if isinstance(name, str) else None
 
 
 def _canonical(rules) -> str:
@@ -832,7 +832,7 @@ def _field_rules(cfg, layers, ops) -> List[dict]:
     for sl in layers:
         lcfg = read_igt_namespace(sl.get('config'))
         old = lcfg.get('tagset') if isinstance(lcfg.get('tagset'), str) else None
-        name = final(SPAN, sl['id'], (old or '').strip() or None)
+        name = final(SPAN, sl['id'], trim(old or '') or None)
         layer_after = {**(sl.get('config') or {}), IGT: {**lcfg, 'tagset': name}}
         wanted = field_constraints(layer_after, after_cfg)
         before = field_constraints(sl.get('config') or {}, cfg)
