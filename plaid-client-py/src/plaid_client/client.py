@@ -358,6 +358,14 @@ class _Resource:
 class VocabLinksResource(_MetadataMethods, _Resource):
     _kind = 'vocab-links'
 
+    def get(self, id: str) -> Any:
+        """Get a vocab link by ID.
+
+        Args:
+            id: The resource ID
+        """
+        return self._request('GET', f'/api/v1/vocab-links/{id}')
+
     def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None) -> Any:
         """Create a new vocab link between tokens and a vocab item.
@@ -374,6 +382,14 @@ class VocabLinksResource(_MetadataMethods, _Resource):
         """
         return self._request('POST', '/api/v1/vocab-links',
                              body=_body_of(id=_UNSET if id is None else id, vocab_item=vocab_item, tokens=tokens, metadata=metadata), audit_message=audit_message)
+
+    def delete(self, id: str, audit_message=None) -> Any:
+        """Delete a vocab link.
+
+        Args:
+            id: The resource ID
+        """
+        return self._request('DELETE', f'/api/v1/vocab-links/{id}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab links in a single operation.
@@ -398,22 +414,6 @@ class VocabLinksResource(_MetadataMethods, _Resource):
             body: The request body
         """
         return self._request('DELETE', '/api/v1/vocab-links/bulk', body=body, audit_message=audit_message)
-
-    def get(self, id: str) -> Any:
-        """Get a vocab link by ID.
-
-        Args:
-            id: The resource ID
-        """
-        return self._request('GET', f'/api/v1/vocab-links/{id}')
-
-    def delete(self, id: str, audit_message=None) -> Any:
-        """Delete a vocab link.
-
-        Args:
-            id: The resource ID
-        """
-        return self._request('DELETE', f'/api/v1/vocab-links/{id}', audit_message=audit_message)
 
 
 class VocabLayersResource(_ConfigMethods, _Resource):
@@ -450,6 +450,69 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         """
         return self._request('GET', f'/api/v1/vocab-layers/{id}/items/{item_id}',
                              query_params={'as-of': as_of})
+
+    def list(self) -> Any:
+        """List all vocab layers accessible to the current user.
+
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+        """
+        return list_all(self._client, '/api/v1/vocab-layers')
+
+    def list_page(self, *, limit: int | None = None, cursor: str | None = None) -> Any:
+        """List one page of vocab layers.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, '/api/v1/vocab-layers',
+                         limit=limit, cursor=cursor)
+
+    def iter_pages(self, *, page_size: int = 1000):
+        """Iterate over pages of vocab layers, yielding each page's entries list.
+
+        Args:
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, '/api/v1/vocab-layers',
+                          page_size=page_size)
+
+    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
+        """Create a new vocab layer.
+
+        Also registers the current user as a maintainer.
+
+        Args:
+            name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
+        """
+        return self._request('POST', '/api/v1/vocab-layers',
+                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
+
+    def update(self, id: str, name: str, audit_message=None) -> Any:
+        """Update a vocab layer's name.
+
+        A new name restates every document linking the vocabulary: their
+        versions are bumped and taken up from X-Document-Versions.
+
+        Args:
+            id: The resource ID
+            name: The name
+        """
+        return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
+                             body=_body_of(name=name), audit_message=audit_message)
+
+    def delete(self, id: str, audit_message=None) -> Any:
+        """Delete a vocab layer.
+
+        Args:
+            id: The resource ID
+        """
+        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message)
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -532,69 +595,6 @@ class VocabLayersResource(_ConfigMethods, _Resource):
                                            'dry-run': 'true' if dry_run else None},
                              audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None) -> Any:
-        """Delete a vocab layer.
-
-        Args:
-            id: The resource ID
-        """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message)
-
-    def update(self, id: str, name: str, audit_message=None) -> Any:
-        """Update a vocab layer's name.
-
-        A new name restates every document linking the vocabulary: their
-        versions are bumped and taken up from X-Document-Versions.
-
-        Args:
-            id: The resource ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
-                             body=_body_of(name=name), audit_message=audit_message)
-
-    def list(self) -> Any:
-        """List all vocab layers accessible to the current user.
-
-        Transparently follows server-side pagination cursors and returns the
-        full flat list.
-        """
-        return list_all(self._client, '/api/v1/vocab-layers')
-
-    def list_page(self, *, limit: int | None = None, cursor: str | None = None) -> Any:
-        """List one page of vocab layers.
-
-        Args:
-            limit: Page size (1..1000)
-            cursor: Opaque cursor from a previous page's ``next_cursor``
-        """
-        return list_page(self._client, '/api/v1/vocab-layers',
-                         limit=limit, cursor=cursor)
-
-    def iter_pages(self, *, page_size: int = 1000):
-        """Iterate over pages of vocab layers, yielding each page's entries list.
-
-        Args:
-            page_size: Page size (1..1000)
-        """
-        return iter_pages(self._client, '/api/v1/vocab-layers',
-                          page_size=page_size)
-
-    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
-        """Create a new vocab layer.
-
-        Also registers the current user as a maintainer.
-
-        Args:
-            name: The name
-            id: Optional. The id to create it under, a UUIDv7 this client
-                minted (``plaid_client.uuid7()``), so a create sent again after
-                its answer was lost lands once (409 with ``id_taken`` when the
-                id was used before).
-        """
-        return self._request('POST', '/api/v1/vocab-layers',
-                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
-
     def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Assign a user as a maintainer for this vocab layer.
 
@@ -617,26 +617,6 @@ class VocabLayersResource(_ConfigMethods, _Resource):
 class RelationsResource(_MetadataMethods, _Resource):
     _kind = 'relations'
 
-    def set_target(self, relation_id: str, span_id: str, audit_message=None) -> Any:
-        """Update the target span of a relation.
-
-        Args:
-            relation_id: The relation ID
-            span_id: The span ID
-        """
-        return self._request('PUT', f'/api/v1/relations/{relation_id}/target',
-                             body=_body_of(span_id=span_id), audit_message=audit_message)
-
-    def set_source(self, relation_id: str, span_id: str, audit_message=None) -> Any:
-        """Update the source span of a relation.
-
-        Args:
-            relation_id: The relation ID
-            span_id: The span ID
-        """
-        return self._request('PUT', f'/api/v1/relations/{relation_id}/source',
-                             body=_body_of(span_id=span_id), audit_message=audit_message)
-
     def get(self, relation_id: str) -> Any:
         """Get a relation by ID.
 
@@ -644,24 +624,6 @@ class RelationsResource(_MetadataMethods, _Resource):
             relation_id: The relation ID
         """
         return self._request('GET', f'/api/v1/relations/{relation_id}')
-
-    def delete(self, relation_id: str, audit_message=None) -> Any:
-        """Delete a relation.
-
-        Args:
-            relation_id: The relation ID
-        """
-        return self._request('DELETE', f'/api/v1/relations/{relation_id}', audit_message=audit_message)
-
-    def update(self, relation_id: str, value: Any, audit_message=None) -> Any:
-        """Update a relation's value.
-
-        Args:
-            relation_id: The relation ID
-            value: The value
-        """
-        return self._request('PATCH', f'/api/v1/relations/{relation_id}',
-                             body=_body_of(value=value), audit_message=audit_message)
 
     def create(self, relation_layer_id: str, source: str, target: str, value: Any,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None) -> Any:
@@ -685,6 +647,24 @@ class RelationsResource(_MetadataMethods, _Resource):
         return self._request('POST', '/api/v1/relations',
                              body=_body_of(id=_UNSET if id is None else id, relation_layer_id=relation_layer_id,
                                            source=source, target=target, value=value, metadata=metadata), audit_message=audit_message)
+
+    def update(self, relation_id: str, value: Any, audit_message=None) -> Any:
+        """Update a relation's value.
+
+        Args:
+            relation_id: The relation ID
+            value: The value
+        """
+        return self._request('PATCH', f'/api/v1/relations/{relation_id}',
+                             body=_body_of(value=value), audit_message=audit_message)
+
+    def delete(self, relation_id: str, audit_message=None) -> Any:
+        """Delete a relation.
+
+        Args:
+            relation_id: The relation ID
+        """
+        return self._request('DELETE', f'/api/v1/relations/{relation_id}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple relations in a single operation.
@@ -726,6 +706,26 @@ class RelationsResource(_MetadataMethods, _Resource):
         """
         return self._request('PATCH', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
+    def set_target(self, relation_id: str, span_id: str, audit_message=None) -> Any:
+        """Update the target span of a relation.
+
+        Args:
+            relation_id: The relation ID
+            span_id: The span ID
+        """
+        return self._request('PUT', f'/api/v1/relations/{relation_id}/target',
+                             body=_body_of(span_id=span_id), audit_message=audit_message)
+
+    def set_source(self, relation_id: str, span_id: str, audit_message=None) -> Any:
+        """Update the source span of a relation.
+
+        Args:
+            relation_id: The relation ID
+            span_id: The span ID
+        """
+        return self._request('PUT', f'/api/v1/relations/{relation_id}/source',
+                             body=_body_of(span_id=span_id), audit_message=audit_message)
+
 
 class SpanLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _ValueSetMethods, _Resource):
     _kind = 'span-layers'
@@ -749,16 +749,6 @@ class SpanLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Val
 class SpansResource(_MetadataMethods, _Resource):
     _kind = 'spans'
 
-    def set_tokens(self, span_id: str, tokens: list, audit_message=None) -> Any:
-        """Replace the tokens associated with a span.
-
-        Args:
-            span_id: The span ID
-            tokens: The tokens
-        """
-        return self._request('PUT', f'/api/v1/spans/{span_id}/tokens',
-                             body=_body_of(tokens=tokens), audit_message=audit_message)
-
     def get(self, span_id: str) -> Any:
         """Get a span by ID.
 
@@ -766,24 +756,6 @@ class SpansResource(_MetadataMethods, _Resource):
             span_id: The span ID
         """
         return self._request('GET', f'/api/v1/spans/{span_id}')
-
-    def delete(self, span_id: str, audit_message=None) -> Any:
-        """Delete a span.
-
-        Args:
-            span_id: The span ID
-        """
-        return self._request('DELETE', f'/api/v1/spans/{span_id}', audit_message=audit_message)
-
-    def update(self, span_id: str, value: Any, audit_message=None) -> Any:
-        """Update a span's value.
-
-        Args:
-            span_id: The span ID
-            value: The value
-        """
-        return self._request('PATCH', f'/api/v1/spans/{span_id}',
-                             body=_body_of(value=value), audit_message=audit_message)
 
     def create(self, span_layer_id: str, tokens: list, value: Any, metadata: Any = _UNSET,
                audit_message=None, *, id: str | None = None) -> Any:
@@ -806,6 +778,24 @@ class SpansResource(_MetadataMethods, _Resource):
         return self._request('POST', '/api/v1/spans',
                              body=_body_of(id=_UNSET if id is None else id, span_layer_id=span_layer_id, tokens=tokens,
                                            value=value, metadata=metadata), audit_message=audit_message)
+
+    def update(self, span_id: str, value: Any, audit_message=None) -> Any:
+        """Update a span's value.
+
+        Args:
+            span_id: The span ID
+            value: The value
+        """
+        return self._request('PATCH', f'/api/v1/spans/{span_id}',
+                             body=_body_of(value=value), audit_message=audit_message)
+
+    def delete(self, span_id: str, audit_message=None) -> Any:
+        """Delete a span.
+
+        Args:
+            span_id: The span ID
+        """
+        return self._request('DELETE', f'/api/v1/spans/{span_id}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple spans in a single operation.
@@ -847,9 +837,27 @@ class SpansResource(_MetadataMethods, _Resource):
         """
         return self._request('PATCH', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
+    def set_tokens(self, span_id: str, tokens: list, audit_message=None) -> Any:
+        """Replace the tokens associated with a span.
+
+        Args:
+            span_id: The span ID
+            tokens: The tokens
+        """
+        return self._request('PUT', f'/api/v1/spans/{span_id}/tokens',
+                             body=_body_of(tokens=tokens), audit_message=audit_message)
+
 
 class TextsResource(_MetadataMethods, _Resource):
     _kind = 'texts'
+
+    def get(self, text_id: str) -> Any:
+        """Get a text.
+
+        Args:
+            text_id: The text ID
+        """
+        return self._request('GET', f'/api/v1/texts/{text_id}')
 
     def create(self, text_layer_id: str, document_id: str, body: str,
                metadata: Any = _UNSET, audit_message=None, *, id: str | None = None,
@@ -882,22 +890,6 @@ class TextsResource(_MetadataMethods, _Resource):
                                            tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer,
                                            metadata=metadata), audit_message=audit_message)
 
-    def get(self, text_id: str) -> Any:
-        """Get a text.
-
-        Args:
-            text_id: The text ID
-        """
-        return self._request('GET', f'/api/v1/texts/{text_id}')
-
-    def delete(self, text_id: str, audit_message=None) -> Any:
-        """Delete a text and all dependent data.
-
-        Args:
-            text_id: The text ID
-        """
-        return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
-
     def update(self, text_id: str, body: Any, audit_message=None, *, base: str | None = None,
                versioned: bool | None = None, tokenize_layer: str | None = None) -> Any:
         """Update a text's ``body``.
@@ -925,6 +917,14 @@ class TextsResource(_MetadataMethods, _Resource):
                                            tokenize_layer=_UNSET if tokenize_layer is None else tokenize_layer),
                              audit_message=audit_message,
                              versioned=(base is None) if versioned is None else versioned)
+
+    def delete(self, text_id: str, audit_message=None) -> Any:
+        """Delete a text and all dependent data.
+
+        Args:
+            text_id: The text ID
+        """
+        return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
 
     def edit(self, text_id: str, edits: list, audit_message=None, *, base: str | None = None,
              versioned: bool | None = None, tokenize_layer: str | None = None) -> Any:
@@ -957,6 +957,26 @@ class TextsResource(_MetadataMethods, _Resource):
                              versioned=(base is None) if versioned is None else versioned)
 
 class UsersResource(_Resource):
+    def get(self, id: str) -> Any:
+        """Get a user by ID.
+
+        Args:
+            id: The resource ID
+        """
+        return self._request('GET', f'/api/v1/users/{id}')
+
+    def get_avatar(self, id: str) -> bytes:
+        """Get a user's profile picture as raw bytes.
+
+        Raises for 404 when the user has no picture, so check the user
+        record's ``avatar_hash`` first if that is not an error for you.
+
+        Args:
+            id: The user ID
+        """
+        return self._request('GET', f'/api/v1/users/{id}/avatar',
+                             binary_response=True)
+
     def list(self, *, q: str | None = None) -> Any:
         """List (or search) users. Admin-or-maintainer only.
 
@@ -1012,13 +1032,30 @@ class UsersResource(_Resource):
                                            display_name=_UNSET if display_name is None else display_name),
                              audit_message=audit_message)
 
-    def get(self, id: str) -> Any:
-        """Get a user by ID.
+    def update(self, id: str, *, password: Any = _UNSET, display_name: Any = _UNSET,
+               is_admin: Any = _UNSET, audit_message=None) -> Any:
+        """Modify a user.
+
+        Admins may change the display name, password, and admin status of any
+        user. All other users may only modify their own display name or
+        password. A password change cannot be made with a named API token
+        (403): it needs a sign-in token.
+
+        A user's id is their email address and is fixed for the life of the
+        account — it is what they log in with, so nothing can change it.
 
         Args:
-            id: The resource ID
+            id: The resource ID (the user's email address)
+            password: New password. Omit to leave unchanged; pass ``None`` to
+                send JSON null.
+            display_name: New display name. Omit to leave unchanged; pass
+                ``None`` to send JSON null.
+            is_admin: New admin status. Omit to leave unchanged; pass ``None``
+                to send JSON null.
         """
-        return self._request('GET', f'/api/v1/users/{id}')
+        return self._request('PATCH', f'/api/v1/users/{id}',
+                             body=_body_of(password=password, display_name=display_name,
+                                           is_admin=is_admin), audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Deactivate a user.
@@ -1044,31 +1081,6 @@ class UsersResource(_Resource):
             id: The resource ID
         """
         return self._request('POST', f'/api/v1/users/{id}/activate', audit_message=audit_message)
-
-    def update(self, id: str, *, password: Any = _UNSET, display_name: Any = _UNSET,
-               is_admin: Any = _UNSET, audit_message=None) -> Any:
-        """Modify a user.
-
-        Admins may change the display name, password, and admin status of any
-        user. All other users may only modify their own display name or
-        password. A password change cannot be made with a named API token
-        (403): it needs a sign-in token.
-
-        A user's id is their email address and is fixed for the life of the
-        account — it is what they log in with, so nothing can change it.
-
-        Args:
-            id: The resource ID (the user's email address)
-            password: New password. Omit to leave unchanged; pass ``None`` to
-                send JSON null.
-            display_name: New display name. Omit to leave unchanged; pass
-                ``None`` to send JSON null.
-            is_admin: New admin status. Omit to leave unchanged; pass ``None``
-                to send JSON null.
-        """
-        return self._request('PATCH', f'/api/v1/users/{id}',
-                             body=_body_of(password=password, display_name=display_name,
-                                           is_admin=is_admin), audit_message=audit_message)
 
     def audit(self, user_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -1116,18 +1128,6 @@ class UsersResource(_Resource):
         return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
                          query=_audit_query(start_time, end_time, op_types, kinds, order=order,
                                             ops_limit=ops_limit, entry_id=entry_id))
-
-    def get_avatar(self, id: str) -> bytes:
-        """Get a user's profile picture as raw bytes.
-
-        Raises for 404 when the user has no picture, so check the user
-        record's ``avatar_hash`` first if that is not an error for you.
-
-        Args:
-            id: The user ID
-        """
-        return self._request('GET', f'/api/v1/users/{id}/avatar',
-                             binary_response=True)
 
     def set_avatar(self, id: str, file, audit_message=None) -> Any:
         """Upload a profile picture. Your own, or anyone's if you are an admin.
@@ -1292,6 +1292,10 @@ class UserDataResource(_Resource):
     preferences). Owner or admin only, and never audited. A write refuses to
     join an open batch, a read goes over the wire around one."""
 
+    def get(self, user_id: str, key: str) -> Any:
+        """Read one entry ({key, updated_at, version, value}); 404 if absent."""
+        return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
+
     def list(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
              include_values: bool = False, page_size: int = 100) -> Any:
         """List a user's entries ({key, updated_at}, plus value when requested),
@@ -1354,9 +1358,10 @@ class UserDataResource(_Resource):
                           query={'prefix': prefix, 'pattern': pattern,
                                  'include-values': include_values or None})
 
-    def get(self, user_id: str, key: str) -> Any:
-        """Read one entry ({key, updated_at, version, value}); 404 if absent."""
-        return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
+    def delete(self, user_id: str, key: str) -> Any:
+        """Delete one entry; 404 if absent."""
+        return self._request('DELETE', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+                             no_batch=True)
 
     def put(self, user_id: str, key: str, value: Any, version: int | None = None) -> Any:
         """Create or replace one entry. ``value`` is any JSON, up to the
@@ -1392,11 +1397,6 @@ class UserDataResource(_Resource):
                     pass
             raise
 
-    def delete(self, user_id: str, key: str) -> Any:
-        """Delete one entry; 404 if absent."""
-        return self._request('DELETE', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
-                             no_batch=True)
-
 
 class CommentsResource(_Resource):
     """Free-text discussion anchored to a document, text, token, span or
@@ -1413,45 +1413,9 @@ class CommentsResource(_Resource):
     comment. It is then shown as outdated with its ``anchor_label``, the
     caption passed when it was posted."""
 
-    def create(self, entity_type: str, entity_id: str, body: str, *,
-               anchor_label: str | None = None, id: str | None = None) -> Any:
-        """Post a comment on an entity.
-
-        Args:
-            entity_type: One of ``document``, ``text``, ``token``, ``span``,
-                ``relation``, ``vocab-item``
-            entity_id: The commented entity's id
-            body: The comment text (1..10000 characters)
-            anchor_label: What the comment is about, in words (at most 200
-                characters); shown once the anchor has been deleted
-            id: Optional. The id to create it under, a UUIDv7 this client
-                minted (``plaid_client.uuid7()``), so a create sent again after
-                its answer was lost lands once (409 with ``id_taken`` when the
-                id was used before).
-        """
-        # A comment is not audited, so it never joins an open operation, and
-        # never takes a number from an operation's Idempotency-Key seed.
-        return self._request('POST', '/api/v1/comments',
-                             body=_body_of(id=_UNSET if id is None else id, entity_type=entity_type, entity_id=entity_id, body=body,
-                                           anchor_label=_UNSET if anchor_label is None else anchor_label),
-                             no_operation=True)
-
     def get(self, comment_id: str) -> Any:
         """Read one comment."""
         return self._request('GET', f'/api/v1/comments/{comment_id}')
-
-    def update(self, comment_id: str, body: str) -> Any:
-        """Edit a comment's body.
-
-        Only the comment's author may do this — not maintainers, not admins.
-        Sets ``edited`` on the returned comment.
-        """
-        return self._request('PATCH', f'/api/v1/comments/{comment_id}',
-                             body=_body_of(body=body), no_operation=True)
-
-    def delete(self, comment_id: str) -> Any:
-        """Delete a comment (author, or a maintainer of its project)."""
-        return self._request('DELETE', f'/api/v1/comments/{comment_id}', no_operation=True)
 
     def list(self, project_id: str, *, document_id: str | None = None,
              entity_type: str | None = None, entity_id: str | None = None) -> Any:
@@ -1505,23 +1469,6 @@ class CommentsResource(_Resource):
                           query={'document-id': document_id, 'entity-type': entity_type,
                                  'entity-id': entity_id})
 
-    def counts(self, project_id: str, *, document_id: str | None = None,
-               entity_type: str | None = None, entity_id: str | None = None) -> Any:
-        """Comment counts per entity, as an ``{entity_id: n}`` dict.
-
-        Same scope and filters as :meth:`list`. One cheap request paints a
-        comment indicator on every annotated item in a document without paging
-        through the bodies.
-
-        The response is NOT key-transformed: its keys are entity ids, and
-        recasing would mangle the hyphens in a UUID.
-        """
-        return self._request('GET', f'/api/v1/projects/{project_id}/comments/counts',
-                             query_params={'document-id': document_id,
-                                           'entity-type': entity_type,
-                                           'entity-id': entity_id},
-                             skip_response_transform=True)
-
     def list_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
         """List the comments on a vocabulary's entries, oldest first.
 
@@ -1561,6 +1508,59 @@ class CommentsResource(_Resource):
         return iter_pages(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
                           page_size=page_size, query={'entity-id': entity_id})
 
+    def create(self, entity_type: str, entity_id: str, body: str, *,
+               anchor_label: str | None = None, id: str | None = None) -> Any:
+        """Post a comment on an entity.
+
+        Args:
+            entity_type: One of ``document``, ``text``, ``token``, ``span``,
+                ``relation``, ``vocab-item``
+            entity_id: The commented entity's id
+            body: The comment text (1..10000 characters)
+            anchor_label: What the comment is about, in words (at most 200
+                characters); shown once the anchor has been deleted
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
+        """
+        # A comment is not audited, so it never joins an open operation, and
+        # never takes a number from an operation's Idempotency-Key seed.
+        return self._request('POST', '/api/v1/comments',
+                             body=_body_of(id=_UNSET if id is None else id, entity_type=entity_type, entity_id=entity_id, body=body,
+                                           anchor_label=_UNSET if anchor_label is None else anchor_label),
+                             no_operation=True)
+
+    def update(self, comment_id: str, body: str) -> Any:
+        """Edit a comment's body.
+
+        Only the comment's author may do this — not maintainers, not admins.
+        Sets ``edited`` on the returned comment.
+        """
+        return self._request('PATCH', f'/api/v1/comments/{comment_id}',
+                             body=_body_of(body=body), no_operation=True)
+
+    def delete(self, comment_id: str) -> Any:
+        """Delete a comment (author, or a maintainer of its project)."""
+        return self._request('DELETE', f'/api/v1/comments/{comment_id}', no_operation=True)
+
+    def counts(self, project_id: str, *, document_id: str | None = None,
+               entity_type: str | None = None, entity_id: str | None = None) -> Any:
+        """Comment counts per entity, as an ``{entity_id: n}`` dict.
+
+        Same scope and filters as :meth:`list`. One cheap request paints a
+        comment indicator on every annotated item in a document without paging
+        through the bodies.
+
+        The response is NOT key-transformed: its keys are entity ids, and
+        recasing would mangle the hyphens in a UUID.
+        """
+        return self._request('GET', f'/api/v1/projects/{project_id}/comments/counts',
+                             query_params={'document-id': document_id,
+                                           'entity-type': entity_type,
+                                           'entity-id': entity_id},
+                             skip_response_transform=True)
+
     def counts_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
         """Comment counts per entry of a vocabulary, as an ``{entry_id: n}`` dict.
 
@@ -1588,65 +1588,9 @@ class GuidelinesResource(_Resource):
     Writes are audited, so a change shows in the project's activity. They are
     NOT time-travelable: ``as_of`` reads and restore are document-scoped."""
 
-    def create(self, project_id: str, title: str, *,
-               body: str | None = None, pinned: bool | None = None,
-               audit_message=None, id: str | None = None) -> Any:
-        """Create a guideline in a project.
-
-        Args:
-            project_id: The project the guideline belongs to
-            title: The handle an assistant asks for one by (1..100 characters)
-            body: The Markdown text (up to 20000 characters; may be empty)
-            pinned: Send this one to the assistant in full on every turn
-            audit_message: Message recorded on the operation
-            id: Optional. The id to create it under, a UUIDv7 this client
-                minted (``plaid_client.uuid7()``), so a create sent again after
-                its answer was lost lands once (409 with ``id_taken`` when the
-                id was used before).
-        """
-        return self._request('POST', f'/api/v1/projects/{project_id}/guidelines',
-                             body=_body_of(id=_UNSET if id is None else id, title=title,
-                                           body=_UNSET if body is None else body,
-                                           pinned=_UNSET if pinned is None else pinned),
-                             audit_message=audit_message)
-
     def get(self, guideline_id: str) -> Any:
         """Read one guideline, Markdown body included."""
         return self._request('GET', f'/api/v1/guidelines/{guideline_id}')
-
-    def update(self, guideline_id: str, *, title: str | None = None,
-               body: str | None = None, pinned: bool | None = None,
-               expected_updated_at: str | None = None,
-               audit_message=None) -> Any:
-        """Update a guideline.
-
-        Every field is optional and an omitted one is left alone, so an edit to
-        the body need not restate the title.
-
-        Pass ``expected_updated_at`` (the ``updated_at`` you last read) when a
-        person has been editing prose: the write then fails with 409 rather
-        than overwriting somebody who saved in between. Leave it off for a pin
-        toggle or a script, which have nothing of anyone's to lose.
-
-        Args:
-            guideline_id: The guideline to change
-            title: The new handle
-            body: The new Markdown text
-            pinned: Whether the assistant always gets it in full
-            expected_updated_at: Write only if this is still the stored updated_at
-            audit_message: Message recorded on the operation
-        """
-        return self._request('PATCH', f'/api/v1/guidelines/{guideline_id}',
-                             query_params={'updated-at': expected_updated_at},
-                             body=_body_of(title=_UNSET if title is None else title,
-                                           body=_UNSET if body is None else body,
-                                           pinned=_UNSET if pinned is None else pinned),
-                             audit_message=audit_message)
-
-    def delete(self, guideline_id: str, audit_message=None) -> Any:
-        """Delete a guideline."""
-        return self._request('DELETE', f'/api/v1/guidelines/{guideline_id}',
-                             audit_message=audit_message)
 
     def list(self, project_id: str, *, include_bodies: bool | None = None) -> Any:
         """List a project's guidelines, by title.
@@ -1692,6 +1636,62 @@ class GuidelinesResource(_Resource):
         return iter_pages(self._client, f'/api/v1/projects/{project_id}/guidelines',
                           page_size=page_size,
                           query={'include-bodies': include_bodies})
+
+    def create(self, project_id: str, title: str, *,
+               body: str | None = None, pinned: bool | None = None,
+               audit_message=None, id: str | None = None) -> Any:
+        """Create a guideline in a project.
+
+        Args:
+            project_id: The project the guideline belongs to
+            title: The handle an assistant asks for one by (1..100 characters)
+            body: The Markdown text (up to 20000 characters; may be empty)
+            pinned: Send this one to the assistant in full on every turn
+            audit_message: Message recorded on the operation
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
+        """
+        return self._request('POST', f'/api/v1/projects/{project_id}/guidelines',
+                             body=_body_of(id=_UNSET if id is None else id, title=title,
+                                           body=_UNSET if body is None else body,
+                                           pinned=_UNSET if pinned is None else pinned),
+                             audit_message=audit_message)
+
+    def update(self, guideline_id: str, *, title: str | None = None,
+               body: str | None = None, pinned: bool | None = None,
+               expected_updated_at: str | None = None,
+               audit_message=None) -> Any:
+        """Update a guideline.
+
+        Every field is optional and an omitted one is left alone, so an edit to
+        the body need not restate the title.
+
+        Pass ``expected_updated_at`` (the ``updated_at`` you last read) when a
+        person has been editing prose: the write then fails with 409 rather
+        than overwriting somebody who saved in between. Leave it off for a pin
+        toggle or a script, which have nothing of anyone's to lose.
+
+        Args:
+            guideline_id: The guideline to change
+            title: The new handle
+            body: The new Markdown text
+            pinned: Whether the assistant always gets it in full
+            expected_updated_at: Write only if this is still the stored updated_at
+            audit_message: Message recorded on the operation
+        """
+        return self._request('PATCH', f'/api/v1/guidelines/{guideline_id}',
+                             query_params={'updated-at': expected_updated_at},
+                             body=_body_of(title=_UNSET if title is None else title,
+                                           body=_UNSET if body is None else body,
+                                           pinned=_UNSET if pinned is None else pinned),
+                             audit_message=audit_message)
+
+    def delete(self, guideline_id: str, audit_message=None) -> Any:
+        """Delete a guideline."""
+        return self._request('DELETE', f'/api/v1/guidelines/{guideline_id}',
+                             audit_message=audit_message)
 
 
 class InvitesResource(_Resource):
@@ -1808,25 +1808,6 @@ class InvitesResource(_Resource):
 class TokenLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
     _kind = 'token-layers'
 
-    def count_matching(self, layer_ids: list, value: dict) -> Any:
-        """Count, per document, the tokens of each layer whose surface matches
-        a regex, as a query's ``value: {'regex': ...}`` on a token decides. Each
-        text is read once, so it stays fast on a long document. Layers you
-        cannot read are left out.
-
-        Args:
-            layer_ids: The token layer ids.
-            value: The regex spec, ``{'regex': ..., 'flags'?: 'i'}``.
-
-        Returns:
-            ``{'results': [[layer_id, document_id, count], ...]}``, a document
-            with tokens of the layer and no match counting 0.
-        """
-        # A read that travels as a POST, timed as a query is (see query).
-        return self._request('POST', '/api/v1/query/token-counts',
-                             body={'layers': layer_ids, 'value': value}, out_of_band=True,
-                             timeout=query_timeout(self._client), no_busy_retry=True)
-
     def create(self, text_layer_id: str, name: str, *, overlap_mode: Any = _UNSET,
                parent_token_layer_id: Any = _UNSET, audit_message=None,
                id: str | None = None) -> Any:
@@ -1866,9 +1847,113 @@ class TokenLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Re
                                            overlap_mode=overlap_mode,
                                            parent_token_layer_id=parent_token_layer_id), audit_message=audit_message)
 
+    def count_matching(self, layer_ids: list, value: dict) -> Any:
+        """Count, per document, the tokens of each layer whose surface matches
+        a regex, as a query's ``value: {'regex': ...}`` on a token decides. Each
+        text is read once, so it stays fast on a long document. Layers you
+        cannot read are left out.
+
+        Args:
+            layer_ids: The token layer ids.
+            value: The regex spec, ``{'regex': ..., 'flags'?: 'i'}``.
+
+        Returns:
+            ``{'results': [[layer_id, document_id, count], ...]}``, a document
+            with tokens of the layer and no match counting 0.
+        """
+        # A read that travels as a POST, timed as a query is (see query).
+        return self._request('POST', '/api/v1/query/token-counts',
+                             body={'layers': layer_ids, 'value': value}, out_of_band=True,
+                             timeout=query_timeout(self._client), no_busy_retry=True)
+
 
 class DocumentsResource(_MetadataMethods, _Resource):
     _kind = 'documents'
+
+    def get(self, document_id: str, *, include_body: bool | None = None,
+            as_of: str | None = None, layers=None) -> Any:
+        """Get a document.
+
+        Set ``include_body`` to true to include all data contained in the
+        document.
+
+        A document with a recording has ``media_url``, and ``media_duration``,
+        the recording's length in seconds, when the server could read it from
+        the file at upload (WAV, MP4, M4A, MOV, FLAC, MP3).
+
+        ``layers`` narrows a body read to the layers you name (ids of any
+        kind: text, token, span, or relation). A layer comes back when it is
+        named or is an ancestor of a named layer, and carries its own
+        texts/tokens/spans/relations/vocabs only when it is itself named — so
+        name the text layer too if you also want the text body. An id that is
+        not a layer of this document's project is an error, not a quietly
+        smaller response. Requires ``include_body``.
+
+        Args:
+            document_id: The document ID
+            include_body: Include document body data
+            as_of: Temporal query timestamp
+            layers: Layer ids to restrict a body read to
+        """
+        return self._request('GET', f'/api/v1/documents/{document_id}',
+                             query_params={'include-body': include_body, 'as-of': as_of,
+                                           'layers': _csv_param(layers)})
+
+    def get_media(self, document_id: str) -> bytes:
+        """Get the media file for a document.
+
+        Media is not versioned, so there is no as-of form: the route refuses the
+        parameter. Prefer the document's own media URL, which carries the file's
+        version for caching.
+
+        Args:
+            document_id: The document ID
+        """
+        return self._request('GET', f'/api/v1/documents/{document_id}/media',
+                             binary_response=True)
+
+    def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None,
+               *, id: str | None = None, free_name: bool = False) -> Any:
+        """Create a new document in a project. Returns ``{'id': ..., 'name': ...}``,
+        the name the document was given.
+
+        Args:
+            project_id: The project ID
+            name: The name
+            metadata: Metadata map. Omit to leave unset; pass ``None`` to send
+                JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
+            free_name: A name another document of the project holds, ignoring case,
+                becomes
+                the first free "name (2)", "name (3)" and on. Without it such a
+                name is refused with 422 and ``name-taken``.
+        """
+        return self._request('POST', '/api/v1/documents',
+                             body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name,
+                                           metadata=metadata, free_name=True if free_name else _UNSET),
+                             audit_message=audit_message)
+
+    def update(self, document_id: str, name: str, audit_message=None) -> Any:
+        """Update a document's name. A name another document of the project
+        holds, ignoring case, is refused with 422 and ``name-taken``.
+
+        Args:
+            document_id: The document ID
+            name: The name
+        """
+        return self._request('PATCH', f'/api/v1/documents/{document_id}',
+                             body=_body_of(name=name), audit_message=audit_message)
+
+    def delete(self, document_id: str, audit_message=None) -> Any:
+        """Delete a document and all data contained.
+
+        Args:
+            document_id: The document ID
+        """
+        return self._request('DELETE', f'/api/v1/documents/{document_id}', audit_message=audit_message)
 
     def check_lock(self, document_id: str) -> Any:
         """Get information about a document lock.
@@ -2004,19 +2089,6 @@ class DocumentsResource(_MetadataMethods, _Resource):
                                 should_renew=should_renew) as lock:
             yield lock
 
-    def get_media(self, document_id: str) -> bytes:
-        """Get the media file for a document.
-
-        Media is not versioned, so there is no as-of form: the route refuses the
-        parameter. Prefer the document's own media URL, which carries the file's
-        version for caching.
-
-        Args:
-            document_id: The document ID
-        """
-        return self._request('GET', f'/api/v1/documents/{document_id}/media',
-                             binary_response=True)
-
     def media_link(self, document_id: str) -> Any:
         """Get a link that plays the document's recording without an
         Authorization header, for an audio or video element, which cannot send
@@ -2082,78 +2154,6 @@ class DocumentsResource(_MetadataMethods, _Resource):
         # aborts after this op leaves the recording in place.
         return self._request('DELETE', f'/api/v1/documents/{document_id}/media',
                              query_params={'media-version': media_version},
-                             audit_message=audit_message)
-
-    def get(self, document_id: str, *, include_body: bool | None = None,
-            as_of: str | None = None, layers=None) -> Any:
-        """Get a document.
-
-        Set ``include_body`` to true to include all data contained in the
-        document.
-
-        A document with a recording has ``media_url``, and ``media_duration``,
-        the recording's length in seconds, when the server could read it from
-        the file at upload (WAV, MP4, M4A, MOV, FLAC, MP3).
-
-        ``layers`` narrows a body read to the layers you name (ids of any
-        kind: text, token, span, or relation). A layer comes back when it is
-        named or is an ancestor of a named layer, and carries its own
-        texts/tokens/spans/relations/vocabs only when it is itself named — so
-        name the text layer too if you also want the text body. An id that is
-        not a layer of this document's project is an error, not a quietly
-        smaller response. Requires ``include_body``.
-
-        Args:
-            document_id: The document ID
-            include_body: Include document body data
-            as_of: Temporal query timestamp
-            layers: Layer ids to restrict a body read to
-        """
-        return self._request('GET', f'/api/v1/documents/{document_id}',
-                             query_params={'include-body': include_body, 'as-of': as_of,
-                                           'layers': _csv_param(layers)})
-
-    def delete(self, document_id: str, audit_message=None) -> Any:
-        """Delete a document and all data contained.
-
-        Args:
-            document_id: The document ID
-        """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}', audit_message=audit_message)
-
-    def update(self, document_id: str, name: str, audit_message=None) -> Any:
-        """Update a document's name. A name another document of the project
-        holds, ignoring case, is refused with 422 and ``name-taken``.
-
-        Args:
-            document_id: The document ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/documents/{document_id}',
-                             body=_body_of(name=name), audit_message=audit_message)
-
-    def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None,
-               *, id: str | None = None, free_name: bool = False) -> Any:
-        """Create a new document in a project. Returns ``{'id': ..., 'name': ...}``,
-        the name the document was given.
-
-        Args:
-            project_id: The project ID
-            name: The name
-            metadata: Metadata map. Omit to leave unset; pass ``None`` to send
-                JSON null.
-            id: Optional. The id to create it under, a UUIDv7 this client
-                minted (``plaid_client.uuid7()``), so a create sent again after
-                its answer was lost lands once (409 with ``id_taken`` when the
-                id was used before).
-            free_name: A name another document of the project holds, ignoring case,
-                becomes
-                the first free "name (2)", "name (3)" and on. Without it such a
-                name is refused with 422 and ``name-taken``.
-        """
-        return self._request('POST', '/api/v1/documents',
-                             body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name,
-                                           metadata=metadata, free_name=True if free_name else _UNSET),
                              audit_message=audit_message)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
@@ -2453,20 +2453,16 @@ class MessagesResource(_Resource):
 class ProjectsResource(_ConfigMethods, _Resource):
     _kind = 'projects'
 
-    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
-        """Create a new project.
+    def get(self, id: str) -> Any:
+        """Get a project by ID.
 
-        Also registers the current user as a maintainer.
+        To fetch the project's document IDs and names, use ``list_documents``
+        (the former ``include_documents`` param has been removed server-side).
 
         Args:
-            name: The name
-            id: Optional. The id to create it under, a UUIDv7 this client
-                minted (``plaid_client.uuid7()``), so a create sent again after
-                its answer was lost lands once (409 with ``id_taken`` when the
-                id was used before).
+            id: The resource ID
         """
-        return self._request('POST', '/api/v1/projects',
-                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
+        return self._request('GET', f'/api/v1/projects/{id}')
 
     def list(self) -> Any:
         """List all projects accessible to the current user.
@@ -2538,16 +2534,30 @@ class ProjectsResource(_ConfigMethods, _Resource):
         return iter_pages(self._client, f'/api/v1/projects/{id}/documents',
                           page_size=page_size)
 
-    def get(self, id: str) -> Any:
-        """Get a project by ID.
+    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
+        """Create a new project.
 
-        To fetch the project's document IDs and names, use ``list_documents``
-        (the former ``include_documents`` param has been removed server-side).
+        Also registers the current user as a maintainer.
+
+        Args:
+            name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
+        """
+        return self._request('POST', '/api/v1/projects',
+                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
+
+    def update(self, id: str, name: str, audit_message=None) -> Any:
+        """Update a project's name.
 
         Args:
             id: The resource ID
+            name: The name
         """
-        return self._request('GET', f'/api/v1/projects/{id}')
+        return self._request('PATCH', f'/api/v1/projects/{id}',
+                             body=_body_of(name=name), audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None, timeout=_UNSET) -> Any:
         """Delete a project and everything in it. This is irrecoverable. The
@@ -2563,16 +2573,6 @@ class ProjectsResource(_ConfigMethods, _Resource):
         return self._request('DELETE', f'/api/v1/projects/{id}',
                               audit_message=audit_message,
                               **_body_of(timeout=timeout))
-
-    def update(self, id: str, name: str, audit_message=None) -> Any:
-        """Update a project's name.
-
-        Args:
-            id: The resource ID
-            name: The name
-        """
-        return self._request('PATCH', f'/api/v1/projects/{id}',
-                             body=_body_of(name=name), audit_message=audit_message)
 
     def add_writer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Set a user's access level to read and write for this project.
@@ -2736,6 +2736,14 @@ class TextLayersResource(_ConfigMethods, _LayerMethods, _Resource):
 class VocabItemsResource(_MetadataMethods, _Resource):
     _kind = 'vocab-items'
 
+    def get(self, id: str) -> Any:
+        """Get a vocab item by ID.
+
+        Args:
+            id: The resource ID
+        """
+        return self._request('GET', f'/api/v1/vocab-items/{id}')
+
     def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET, audit_message=None,
                *, id: str | None = None) -> Any:
         """Create a new vocab item.
@@ -2752,6 +2760,36 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         """
         return self._request('POST', '/api/v1/vocab-items',
                              body=_body_of(id=_UNSET if id is None else id, vocab_layer_id=vocab_layer_id, form=form, metadata=metadata), audit_message=audit_message)
+
+    def update(self, id: str, form: str, audit_message=None) -> Any:
+        """Update a vocab item's form.
+
+        A document read carries the entry's form on every link to it, so a
+        rename restates those documents: each has its version bumped, and a
+        strict-mode client picks up their new versions from the response.
+
+        Args:
+            id: The resource ID
+            form: The vocab item form
+        """
+        return self._request('PATCH', f'/api/v1/vocab-items/{id}',
+                             body=_body_of(form=form), audit_message=audit_message)
+
+    def delete(self, id: str, audit_message=None, expected_link_count: int = None) -> Any:
+        """Delete a vocab item, and every link to it.
+
+        Every document holding one of those links has its version bumped, and a
+        strict-mode client picks up their new versions from the response.
+
+        Args:
+            id: The resource ID
+            expected_link_count: The number of links the caller showed. The
+                delete is refused with a 409 when the entry has any other
+                number of links by then.
+        """
+        return self._request('DELETE', f'/api/v1/vocab-items/{id}',
+                             query_params={'expected-link-count': expected_link_count},
+                             audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab items in a single operation.
@@ -2802,30 +2840,6 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         """
         return self._request('DELETE', '/api/v1/vocab-items/bulk', body=body, audit_message=audit_message)
 
-    def get(self, id: str) -> Any:
-        """Get a vocab item by ID.
-
-        Args:
-            id: The resource ID
-        """
-        return self._request('GET', f'/api/v1/vocab-items/{id}')
-
-    def delete(self, id: str, audit_message=None, expected_link_count: int = None) -> Any:
-        """Delete a vocab item, and every link to it.
-
-        Every document holding one of those links has its version bumped, and a
-        strict-mode client picks up their new versions from the response.
-
-        Args:
-            id: The resource ID
-            expected_link_count: The number of links the caller showed. The
-                delete is refused with a 409 when the entry has any other
-                number of links by then.
-        """
-        return self._request('DELETE', f'/api/v1/vocab-items/{id}',
-                             query_params={'expected-link-count': expected_link_count},
-                             audit_message=audit_message)
-
     def merge(self, survivor_id: str, loser_ids: list, audit_message=None) -> Any:
         """Merge entries into this one, in one operation.
 
@@ -2849,20 +2863,6 @@ class VocabItemsResource(_MetadataMethods, _Resource):
         """
         return self._request('POST', f'/api/v1/vocab-items/{survivor_id}/merge',
                              body={'losers': list(loser_ids)}, audit_message=audit_message)
-
-    def update(self, id: str, form: str, audit_message=None) -> Any:
-        """Update a vocab item's form.
-
-        A document read carries the entry's form on every link to it, so a
-        rename restates those documents: each has its version bumped, and a
-        strict-mode client picks up their new versions from the response.
-
-        Args:
-            id: The resource ID
-            form: The vocab item form
-        """
-        return self._request('PATCH', f'/api/v1/vocab-items/{id}',
-                             body=_body_of(form=form), audit_message=audit_message)
 
 class RelationLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _ValueSetMethods, _Resource):
     _kind = 'relation-layers'
@@ -2893,38 +2893,6 @@ class TokensResource(_MetadataMethods, _Resource):
             token_id: The token ID
         """
         return self._request('GET', f'/api/v1/tokens/{token_id}')
-
-    def delete(self, token_id: str, audit_message=None) -> Any:
-        """Delete a token and remove it from any spans.
-
-        If this causes a span to have no remaining tokens, the span will
-        also be deleted.
-
-        Args:
-            token_id: The token ID
-        """
-        return self._request('DELETE', f'/api/v1/tokens/{token_id}', audit_message=audit_message)
-
-    def update(self, token_id: str, *, begin: Any = _UNSET, end: Any = _UNSET,
-               precedence: Any = _UNSET, audit_message=None) -> Any:
-        """Update a token's ``begin``, ``end``, or ``precedence``.
-
-        ``precedence`` distinguishes three cases: omit it to leave the value
-        unchanged; pass an int to set it; pass ``None`` explicitly to CLEAR it
-        (revert to no explicit ordering) -- the server reads key-presence, not
-        non-nil-ness, so a sent JSON ``null`` is an explicit clear.
-        ``begin``/``end`` are left unchanged when omitted.
-
-        Args:
-            token_id: The token ID
-            begin: New start offset, inclusive (Unicode code points). Omit to leave unchanged.
-            end: New end offset, exclusive (Unicode code points). Omit to leave unchanged.
-            precedence: Ordering precedence. Omit to leave unchanged; pass an
-                int to set; pass ``None`` explicitly to CLEAR it (revert to no
-                explicit ordering).
-        """
-        return self._request('PATCH', f'/api/v1/tokens/{token_id}',
-                             body=_body_of(begin=begin, end=end, precedence=precedence), audit_message=audit_message)
 
     def create(self, token_layer_id: str, text: str, begin: int, end: int, *,
                precedence: Any = _UNSET, metadata: Any = _UNSET, audit_message=None,
@@ -2958,6 +2926,38 @@ class TokensResource(_MetadataMethods, _Resource):
                              body=_body_of(id=_UNSET if id is None else id, token_layer_id=token_layer_id, text=text,
                                            begin=begin, end=end, precedence=precedence,
                                            metadata=metadata), audit_message=audit_message)
+
+    def update(self, token_id: str, *, begin: Any = _UNSET, end: Any = _UNSET,
+               precedence: Any = _UNSET, audit_message=None) -> Any:
+        """Update a token's ``begin``, ``end``, or ``precedence``.
+
+        ``precedence`` distinguishes three cases: omit it to leave the value
+        unchanged; pass an int to set it; pass ``None`` explicitly to CLEAR it
+        (revert to no explicit ordering) -- the server reads key-presence, not
+        non-nil-ness, so a sent JSON ``null`` is an explicit clear.
+        ``begin``/``end`` are left unchanged when omitted.
+
+        Args:
+            token_id: The token ID
+            begin: New start offset, inclusive (Unicode code points). Omit to leave unchanged.
+            end: New end offset, exclusive (Unicode code points). Omit to leave unchanged.
+            precedence: Ordering precedence. Omit to leave unchanged; pass an
+                int to set; pass ``None`` explicitly to CLEAR it (revert to no
+                explicit ordering).
+        """
+        return self._request('PATCH', f'/api/v1/tokens/{token_id}',
+                             body=_body_of(begin=begin, end=end, precedence=precedence), audit_message=audit_message)
+
+    def delete(self, token_id: str, audit_message=None) -> Any:
+        """Delete a token and remove it from any spans.
+
+        If this causes a span to have no remaining tokens, the span will
+        also be deleted.
+
+        Args:
+            token_id: The token ID
+        """
+        return self._request('DELETE', f'/api/v1/tokens/{token_id}', audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple tokens in a single operation.
@@ -3381,24 +3381,6 @@ class EventsResource(_Resource):
     sends them with :meth:`create`.
     """
 
-    def create(self, project_id: str, events: list) -> Any:
-        """Record events in a project. Requires write access.
-
-        The server stamps the user and its own time. All or nothing: one bad
-        event refuses the request with a 400 naming it.
-
-        Args:
-            project_id: The project the events happened in
-            events: At most 500 dicts, each with ``type`` and optional
-                ``document_id``, ``target_id``, ``data`` (an object) and
-                ``client_ts`` (an ISO-8601 instant)
-
-        Returns:
-            ``{'count': n}``, the number stored
-        """
-        return self._request('POST', f'/api/v1/projects/{project_id}/events',
-                             body=list(events), out_of_band=True)
-
     def list(self, project_id: str, *, types: Any = None, start_time: str | None = None,
              end_time: str | None = None) -> Any:
         """A project's events in arrival order. Maintainer or admin only.
@@ -3449,6 +3431,24 @@ class EventsResource(_Resource):
                           page_size=page_size,
                           query={'types': _csv_param(types), 'start-time': start_time,
                                  'end-time': end_time})
+
+    def create(self, project_id: str, events: list) -> Any:
+        """Record events in a project. Requires write access.
+
+        The server stamps the user and its own time. All or nothing: one bad
+        event refuses the request with a 400 naming it.
+
+        Args:
+            project_id: The project the events happened in
+            events: At most 500 dicts, each with ``type`` and optional
+                ``document_id``, ``target_id``, ``data`` (an object) and
+                ``client_ts`` (an ISO-8601 instant)
+
+        Returns:
+            ``{'count': n}``, the number stored
+        """
+        return self._request('POST', f'/api/v1/projects/{project_id}/events',
+                             body=list(events), out_of_band=True)
 
 
 class OperationGroupsResource(_Resource):
