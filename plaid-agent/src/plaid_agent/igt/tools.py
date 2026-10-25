@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
+from plaid_client.workflows.igt.config import orthography_key
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
@@ -392,7 +393,7 @@ def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, valu
         old = w.orthographies.get(o, '')
         if old == (value or ''):
             continue
-        staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{o}', 'value': value or '',
+        staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': orthography_key(o), 'value': value or '',
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(w.surface)}',
                                   f'{o} ' + (f'{qv(old)} → {qv(value)}' if old else f'= {qv(value)}'))})
     ws.add_ops(staged)

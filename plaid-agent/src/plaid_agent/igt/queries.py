@@ -18,6 +18,8 @@ import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
+from plaid_client.workflows.igt.config import orthography_key
+
 from ..core.bidi import plain_quote, qv
 from ..core.corpus import rx, spread
 from ..core import rules
@@ -1651,7 +1653,7 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
     c = ws.corpus
     where = [c.word('?t')]
     if not overwrite:
-        where.append(['not', ['token', '?t', {'metadata': {f'orthog:{target}': {'regex': '.'}}}]])
+        where.append(['not', ['token', '?t', {'metadata': {orthography_key(target): {'regex': '.'}}}]])
     rows = c.entities(where, ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
     if len(rows) > cap:
         # One pass reads the first `cap` words, in document order. Filling
@@ -1668,15 +1670,15 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
         if not isinstance(tok, dict) or c.ignored(tok.get('value')):
             continue
         meta = tok.get('metadata') or {}
-        cur = meta.get(f'orthog:{target}') or ''
+        cur = meta.get(orthography_key(target)) or ''
         if cur and not overwrite:
             continue
-        value = tok.get('value') if src is None else meta.get(f'orthog:{src}', '')
+        value = tok.get('value') if src is None else meta.get(orthography_key(src), '')
         if not value or value == cur:
             continue
         head = c.label_ref(tok['document'], tok['id'], budget)
         ws.note_metadata(tok['id'], meta)
-        staged.append({'kind': 'set_orthography', 'word_id': tok['id'], 'key': f'orthog:{target}', 'value': value,
+        staged.append({'kind': 'set_orthography', 'word_id': tok['id'], 'key': orthography_key(target), 'value': value,
                        'doc': tok['document'], **labelled(f'{head} {qv(tok.get("value") or "")}', f'{target} = {qv(value)}')})
     return staged
 

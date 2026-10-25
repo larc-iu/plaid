@@ -3,9 +3,9 @@
 The services and the workflows read plaid-igt's own config keys through the
 Python readers, and the app through igtConfig.js, so the two must answer the
 same for every config. It skips where node or plaid-igt is not beside this
-package, and does not skip when the two disagree. The last test keeps every
-other Python reader of the namespace out of the client, the services and
-plaid-agent.
+package, and does not skip when the two disagree. The last two tests keep
+every other Python reader of the namespace, and every hand-spelled
+orthography key, out of the client, the services and plaid-agent.
 """
 
 import json
@@ -60,14 +60,35 @@ def test_each_reader_answers_as_the_apps(js, name, read):
         (c, g, w) for c, g, w in zip(CASES, got, js[name]) if g != w or type(g) is not type(w)]
 
 
-def test_nothing_else_in_the_client_the_services_or_the_agent_reads_the_namespace():
-    """One reader per key: an inline ``.get('igt')`` is where defaults drift."""
-    inline = re.compile(r"""\.get\(\s*['"]igt['"]|\[\s*['"]igt['"]\s*\]""")
+ORTHOGRAPHY_NAMES = ['IPA', '', 'orthog:x', 'Cyrillic (old)']
+ORTHOGRAPHY_KEYS = ['orthog:IPA', 'orthog:', 'Orthog:IPA', 'IPA', '', None, 3]
+
+
+def test_the_orthography_keys_are_the_apps(js):
+    assert [config.orthography_key(n) for n in ORTHOGRAPHY_NAMES] == js['orthographyKey']
+    assert [config.is_orthography_key(k) for k in ORTHOGRAPHY_KEYS] == js['isOrthographyKey']
+    assert [config.orthography_name(config.orthography_key(n)) for n in ORTHOGRAPHY_NAMES] == \
+        js['orthographyName'] == ORTHOGRAPHY_NAMES
+
+
+def _python_sources():
     own = ROOT / 'plaid-client-py' / 'src' / 'plaid_client' / 'workflows' / 'igt' / 'config.py'
     roots = [ROOT / 'plaid-client-py' / 'src', ROOT / 'plaid-agent' / 'src'] + [
         ROOT / app / 'services' for app in ('plaid-igt', 'plaid-ud', 'plaid-umr')]
-    found = [f'{p.relative_to(ROOT)}:{n}'
-             for root in roots for p in sorted(root.rglob('*.py'))
-             if p != own and 'tests' not in p.parts
+    return [p for root in roots for p in sorted(root.rglob('*.py')) if p != own and 'tests' not in p.parts]
+
+
+def test_nothing_else_spells_the_orthography_key():
+    """A word's spelling is stored under orthography_key(name): a key spelled
+    by hand is where a typo stores values nothing reads."""
+    found = [f'{p.relative_to(ROOT)}:{n}' for p in _python_sources()
+             for n, line in enumerate(p.read_text(encoding='utf-8').splitlines(), 1) if 'orthog:' in line]
+    assert not found, found
+
+
+def test_nothing_else_in_the_client_the_services_or_the_agent_reads_the_namespace():
+    """One reader per key: an inline ``.get('igt')`` is where defaults drift."""
+    inline = re.compile(r"""\.get\(\s*['"]igt['"]|\[\s*['"]igt['"]\s*\]""")
+    found = [f'{p.relative_to(ROOT)}:{n}' for p in _python_sources()
              for n, line in enumerate(p.read_text(encoding='utf-8').splitlines(), 1) if inline.search(line)]
     assert not found, found

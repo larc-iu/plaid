@@ -16,7 +16,7 @@ from plaid_client.roles import read_ignored_tokens
 from plaid_client.services import Refusal
 from plaid_client.workflows.messages import setup_incomplete
 
-from .config import read_scope
+from .config import orthography_key, read_scope
 from .ignored import is_token_ignored
 from .senses import entry_morph_types, morpheme_morph_type
 
@@ -140,7 +140,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     text_id = (tl.get('text') or {}).get('id')
     chars = list(body)
     ignored_cfg = read_ignored_tokens(word_layer.get('config'))
-    orth_key = f'orthog:{orthography}' if orthography else None
+    orth_key = orthography_key(orthography) if orthography else None
 
     word_spans = _spans_by_token(word_layer)
     word_links = _links_by_token(word_layer)

@@ -55,6 +55,27 @@ def read_tokenize_new_text(config) -> bool:
     return not (isinstance(igt, dict) and igt.get(TOKENIZE_NEW_TEXT_KEY) is False)
 
 
+#: A word's spelling in an orthography is token metadata under this prefix
+#: plus the orthography's name (igtConfig.js ORTHOGRAPHY_KEY_PREFIX). Every
+#: reader and writer of that key goes through the three helpers below.
+ORTHOGRAPHY_KEY_PREFIX = 'orthog:'
+
+
+def orthography_key(name: str) -> str:
+    """The token-metadata key a word's spelling in orthography ``name`` is stored under."""
+    return f'{ORTHOGRAPHY_KEY_PREFIX}{name}'
+
+
+def is_orthography_key(key) -> bool:
+    """Whether a token-metadata key holds a spelling in some orthography."""
+    return isinstance(key, str) and key.startswith(ORTHOGRAPHY_KEY_PREFIX)
+
+
+def orthography_name(key: str) -> str:
+    """The orthography an orthography key names (the inverse of :func:`orthography_key`)."""
+    return key[len(ORTHOGRAPHY_KEY_PREFIX):]
+
+
 def read_vocab_fields(config):
     """A vocabulary's custom field schema, ``{field: {...}}``, or None."""
     return read_igt(config, 'fields')

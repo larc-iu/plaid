@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role, read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
-from plaid_client.workflows.igt.config import (read_igt, read_lexicon_field, read_scope, read_tokenize_new_text,
+from plaid_client.workflows.igt.config import (orthography_key, read_igt, read_lexicon_field, read_scope, read_tokenize_new_text,
                                                read_vocab_fields)
 from plaid_client.workflows.igt import precedence, read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 # A clitic, as plaid-client-py's glossing reads one (the one Python copy).
@@ -685,8 +685,8 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
             ws.append(Word(
                 id=w['id'], index=len(ws) + 1, surface=surface, begin=w['begin'], end=w['end'],
                 text_id=text.get('id'), metadata=meta,
-                orthographies={o: meta.get(f'orthog:{o}') for o in project.orthographies
-                               if meta.get(f'orthog:{o}')},
+                orthographies={o: meta.get(orthography_key(o)) for o in project.orthographies
+                               if meta.get(orthography_key(o))},
                 fields=word_spans.get(w['id'], {}), morphemes=morphemes, link=word_links.get(w['id']),
                 mwes=list(word_mwes.get(w['id'], []))))
         sentences.append(Sentence(
