@@ -9,7 +9,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]))
 
-(def ^:private tables {:token :token_layers :span :span_layers :relation :relation_layers})
+(def ^:private tables lc/table-of)
 
 (def ^:private nouns {:token "token layer" :span "span layer" :relation "relation layer"})
 

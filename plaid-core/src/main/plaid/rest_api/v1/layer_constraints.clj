@@ -1,7 +1,8 @@
 (ns plaid.rest-api.v1.layer-constraints
   "The layer constraint routes under a token, span or relation layer, and the
   middleware that puts a constraint refusal's violations on the answer."
-  (:require [plaid.rest-api.v1.auth :as pra]
+  (:require [clojure.string :as str]
+            [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.constraints.layer :as lc]
@@ -114,8 +115,8 @@
                                  (throw e)))))}}])
      ["/repair"
       {:conflicting true
-       :post {:summary (str "Apply the remedies of the given constraints' remediable types (coextensive, "
-                            "single-span, single-link, same-ancestor) to every violation in this layer's stored "
+       :post {:summary (str "Apply the remedies of the given constraints' remediable types ("
+                            (str/join ", " lc/remedy-order) ") to every violation in this layer's stored "
                             "data, one operation per document. Body {constraints, document?}. With document, only "
                             "that document is repaired, and a writer may ask. Without it, maintainers only. A "
                             "document another user holds the lock on is left as it is and listed under locked, "

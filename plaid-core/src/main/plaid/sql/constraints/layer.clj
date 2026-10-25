@@ -58,18 +58,7 @@
 ;; Types and their declarations
 ;; ============================================================
 
-(def types-by-kind
-  "The constraint types a layer of each kind may carry."
-  {:token #{"coextensive" "single-link"}
-   :span #{"single-span" "value-set"}
-   :relation #{"max-in-degree" "acyclic" "same-ancestor" "value-set"}})
-
-(def remediable
-  "Types whose violations a structural write gets a remedy for. The others
-  are refused wherever the violation comes from."
-  #{"coextensive" "single-span" "single-link" "same-ancestor"})
-
-(def ^:private remedy-order ["coextensive" "single-span" "single-link" "same-ancestor"])
+(declare registry)
 
 (def max-listed
   "The most violations an answer lists. `violation-count` gives the total."
@@ -80,15 +69,6 @@
 (def reserved-namespaces
   "Names the constraint routes use for themselves."
   #{"check" "repair"})
-
-(def ^:private param-keys
-  {"max-in-degree" #{"max"}
-   "acyclic" #{"self-loops" "except-values"}
-   "same-ancestor" #{"token-layer"}
-   "single-span" #{"join-with"}
-   "value-set" #{"values" "delimiters" "parts"}
-   "coextensive" #{}
-   "single-link" #{}})
 
 (def ^:private max-values 10000)
 
@@ -117,66 +97,12 @@
         t (get c "type")]
     (when-not (string? t)
       (bad (str where " has no type.")))
-    (when-not (contains? (types-by-kind kind) t)
+    (when-not (contains? (:kinds (registry t)) kind)
       (bad (str where ": a " (name kind) " layer cannot carry a " t " constraint"
-                (when-not (param-keys t) " (unknown type)") ".")))
-    (when-let [unknown (seq (remove (conj (param-keys t) "type") (keys c)))]
+                (when-not (contains? registry t) " (unknown type)") ".")))
+    (when-let [unknown (seq (remove (conj (:params (registry t)) "type") (keys c)))]
       (bad (str where " (" t ") has unknown keys: " (str/join ", " (sort unknown)) ".")))
-    (case t
-      "max-in-degree"
-      (let [m (get c "max")]
-        (when-not (and (integer? m) (>= m 1))
-          (bad (str where " (max-in-degree) needs max, an integer of at least 1.")))
-        c)
-
-      "acyclic"
-      (do (when (and (contains? c "self-loops") (not (boolean? (get c "self-loops"))))
-            (bad (str where " (acyclic): self-loops must be true or false.")))
-          (when (and (contains? c "except-values") (not (string-list? (get c "except-values"))))
-            (bad (str where " (acyclic): except-values must be a list of strings.")))
-          c)
-
-      "same-ancestor"
-      (let [tl-id (u (get c "token-layer"))
-            ancestor (when (uuid? tl-id) (psc/fetch-by-id tx :token_layers tl-id))
-            own-tl (when-let [sl (psc/fetch-by-id tx :span_layers (:span_layer_id layer-row))]
-                     (psc/fetch-by-id tx :token_layers (:token_layer_id sl)))]
-        (when-not ancestor
-          (bad (str where " (same-ancestor) needs token-layer, the id of a token layer.")))
-        (when-not (= (str (:text_layer_id ancestor)) (str (:text_layer_id own-tl)))
-          (bad (str where " (same-ancestor): token layer " tl-id
-                    " is not on the text layer this relation layer's spans are on.")))
-        (when-not (#{"partitioning" "non-overlapping"} (:overlap_mode ancestor))
-          (bad (str where " (same-ancestor): token layer " tl-id
-                    " must be partitioning or non-overlapping.")))
-        (assoc c "token-layer" (str tl-id)))
-
-      "single-span"
-      (do (when (and (contains? c "join-with") (not (string? (get c "join-with"))))
-            (bad (str where " (single-span): join-with must be a string.")))
-          c)
-
-      "value-set"
-      (let [values (get c "values")
-            delimiters (get c "delimiters" "")
-            parts (get c "parts" "all")]
-        (when-not (and (string-list? values) (every? #(not (str/blank? %)) values))
-          (bad (str where " (value-set) needs values, a list of non-empty strings.")))
-        (when (> (count values) max-values)
-          (bad (str where " (value-set) lists more than " max-values " values.")))
-        (when-not (and (string? delimiters) (not (re-find #"\s" delimiters)))
-          (bad (str where " (value-set): delimiters must be a string with no whitespace.")))
-        (when-not (#{"all" "first"} parts)
-          (bad (str where " (value-set): parts must be \"all\" or \"first\".")))
-        (assoc c "values" (vec (distinct values))))
-
-      "coextensive"
-      (do (when-not (:parent_token_layer_id layer-row)
-            (bad (str where " (coextensive): the layer has no parent token layer.")))
-          c)
-
-      "single-link"
-      c)))
+    ((:validate (registry t)) tx layer-row where c)))
 
 (defn validate-list
   "Check a declared list for the layer `layer-row` of `kind` (:token, :span,
@@ -209,7 +135,12 @@
 ;; The constrained layers
 ;; ============================================================
 
-(def ^:private table-of {:token :token_layers :span :span_layers :relation :relation_layers})
+(def table-of
+  "The table of the layers of each kind."
+  {:token :token_layers :span :span_layers :relation :relation_layers})
+
+(defn- layer-name [tx kind id]
+  (:name (psc/q1 tx {:select [:name] :from (table-of kind) :where [:= :id id]})))
 
 (defn parse-constraints
   "The `constraints` column read back, namespaces with no entries left out."
@@ -417,6 +348,16 @@
 ;; max-in-degree
 ;; ============================================================
 
+(defn- validate-max-in-degree [_tx _layer-row where c]
+  (let [m (get c "max")]
+    (when-not (and (integer? m) (>= m 1))
+      (bad (str where " (max-in-degree) needs max, an integer of at least 1.")))
+    c))
+
+(defn- phrase-max-in-degree [_tx {:keys [params] :as v} ln _q]
+  (str "A span is the target of " (:count v) " relations in " ln
+       " (at most " (get params "max") " " (if (= 1 (get params "max")) "is" "are") " allowed)."))
+
 (declare import-groups import-set-ids)
 
 (defn- reproduced-ids
@@ -520,6 +461,16 @@
 ;; ============================================================
 ;; acyclic
 ;; ============================================================
+
+(defn- validate-acyclic [_tx _layer-row where c]
+  (when (and (contains? c "self-loops") (not (boolean? (get c "self-loops"))))
+    (bad (str where " (acyclic): self-loops must be true or false.")))
+  (when (and (contains? c "except-values") (not (string-list? (get c "except-values"))))
+    (bad (str where " (acyclic): except-values must be a list of strings.")))
+  c)
+
+(defn- phrase-acyclic [_tx _v ln _q]
+  (str "Relations in " ln " form a cycle."))
 
 (defn- path-ids
   "The edge ids of a path from `from` to `to` among `edges`, or nil."
@@ -725,6 +676,25 @@
 ;; same-ancestor
 ;; ============================================================
 
+(defn- validate-same-ancestor [tx layer-row where c]
+  (let [tl-id (u (get c "token-layer"))
+        ancestor (when (uuid? tl-id) (psc/fetch-by-id tx :token_layers tl-id))
+        own-tl (when-let [sl (psc/fetch-by-id tx :span_layers (:span_layer_id layer-row))]
+                 (psc/fetch-by-id tx :token_layers (:token_layer_id sl)))]
+    (when-not ancestor
+      (bad (str where " (same-ancestor) needs token-layer, the id of a token layer.")))
+    (when-not (= (str (:text_layer_id ancestor)) (str (:text_layer_id own-tl)))
+      (bad (str where " (same-ancestor): token layer " tl-id
+                " is not on the text layer this relation layer's spans are on.")))
+    (when-not (#{"partitioning" "non-overlapping"} (:overlap_mode ancestor))
+      (bad (str where " (same-ancestor): token layer " tl-id
+                " must be partitioning or non-overlapping.")))
+    (assoc c "token-layer" (str tl-id))))
+
+(defn- phrase-same-ancestor [tx {:keys [params]} ln q]
+  (str "A relation in " ln " connects spans that are not in one "
+       (q (layer-name tx :token (u (get params "token-layer")))) "."))
+
 (defn- places
   "Span id -> place (the smallest begin of its tokens) for `span-ids`."
   [tx span-ids]
@@ -841,6 +811,14 @@
 ;; single-span
 ;; ============================================================
 
+(defn- validate-single-span [_tx _layer-row where c]
+  (when (and (contains? c "join-with") (not (string? (get c "join-with"))))
+    (bad (str where " (single-span): join-with must be a string.")))
+  c)
+
+(defn- phrase-single-span [_tx v ln _q]
+  (str "A token has " (count (:ids v)) " values in " ln " (at most 1 is allowed)."))
+
 (defn- check-single-span [{:keys [tx mode] :as ctx} {:keys [layer] :as c}]
   (let [lid (:id layer)
         rows (if (= :all mode)
@@ -869,6 +847,30 @@
 ;; ============================================================
 ;; value-set
 ;; ============================================================
+
+(defn- validate-value-set [_tx _layer-row where c]
+  (let [values (get c "values")
+        delimiters (get c "delimiters" "")
+        parts (get c "parts" "all")]
+    (when-not (and (string-list? values) (every? #(not (str/blank? %)) values))
+      (bad (str where " (value-set) needs values, a list of non-empty strings.")))
+    (when (> (count values) max-values)
+      (bad (str where " (value-set) lists more than " max-values " values.")))
+    (when-not (and (string? delimiters) (not (re-find #"\s" delimiters)))
+      (bad (str where " (value-set): delimiters must be a string with no whitespace.")))
+    (when-not (#{"all" "first"} parts)
+      (bad (str where " (value-set): parts must be \"all\" or \"first\".")))
+    (assoc c "values" (vec (distinct values)))))
+
+(defn- phrase-value-set [_tx v ln q]
+  (let [value (:value v)
+        parts (:parts v)]
+    (cond
+      (not (string? value)) (str "A value in " ln " is not text, and only listed values are allowed.")
+      (or (empty? parts) (= [value] parts)) (str (q value) " is not in the list of values for " ln ".")
+      :else (str (q value) " is not allowed in " ln ": "
+                 (str/join ", " (map q parts))
+                 (if (= 1 (count parts)) " is" " are") " not in its list of values."))))
 
 (def ^:private js-space
   "What JavaScript's String.prototype.trim trims: Unicode White_Space (the
@@ -1032,6 +1034,15 @@
 ;; coextensive
 ;; ============================================================
 
+(defn- validate-coextensive [_tx layer-row where c]
+  (when-not (:parent_token_layer_id layer-row)
+    (bad (str where " (coextensive): the layer has no parent token layer.")))
+  c)
+
+(defn- phrase-coextensive [tx {:keys [layer]} ln q]
+  (str "A token of " ln " does not have the extent of any token of "
+       (q (layer-name tx :token (:parent_token_layer_id layer))) "."))
+
 (defn- orphans-whole
   "Tokens of layer `child` with no token of `parent` of the same extent, in
   every document or in `doc`."
@@ -1085,6 +1096,10 @@
 ;; single-link
 ;; ============================================================
 
+(defn- phrase-single-link [_tx v ln _q]
+  (str "A token of " ln " has " (count (:ids v))
+       " vocabulary links (at most 1 is allowed)."))
+
 (defn- check-single-link [{:keys [tx mode] :as ctx} {:keys [layer] :as c}]
   (let [lid (:id layer)
         rows (if (= :all mode)
@@ -1113,26 +1128,12 @@
 ;; ============================================================
 
 (defn- check-one [ctx c]
-  (case (:type c)
-    "max-in-degree" (check-max-in-degree ctx c)
-    "acyclic" (check-acyclic ctx c)
-    "same-ancestor" (check-same-ancestor ctx c)
-    "single-span" (check-single-span ctx c)
-    "value-set" (check-value-set ctx c)
-    "coextensive" (check-coextensive ctx c)
-    "single-link" (check-single-link ctx c)
+  (if-let [check (:check (registry (:type c)))]
+    (check ctx c)
     []))
 
 (defn- check-all [ctx cs]
   (vec (mapcat #(check-one ctx %) cs)))
-
-(def ^:private direct-spec
-  {"max-in-degree" ["relations" [:edge]]
-   "acyclic" ["relations" [:edge :value]]
-   "same-ancestor" ["relations" [:edge]]
-   "single-span" ["spans" [:tokens]]
-   "coextensive" ["tokens" [:extent]]
-   "single-link" ["vocab_links" [:tokens]]})
 
 (def ^:private own-kind
   {"relations" "relation" "spans" "span" "tokens" "token" "vocab_links" "vocab-link"})
@@ -1141,9 +1142,7 @@
   "Whether a row of the violation was changed, in what the constraint reads,
   by an operation on the row's own kind."
   [ctx v]
-  (let [[table cats] (if (= "value-set" (:type v))
-                       [(if (= :span (:kind (:layer v))) "spans" "relations") [:value]]
-                       (direct-spec (:type v)))
+  (let [[table cats] (when-let [direct (:direct (registry (:type v)))] (direct v))
         own (own-kind table)]
     (boolean (some (fn [id]
                      (let [kinds (get-in ctx [:notes [table id] :kinds])]
@@ -1154,34 +1153,14 @@
 ;; Violations on the wire
 ;; ============================================================
 
-(defn- layer-name [tx kind id]
-  (:name (psc/q1 tx {:select [:name] :from (table-of kind) :where [:= :id id]})))
-
 (defn- phrase
   "The first violation in words that name layers by their names, never apps,
   and read on screen as they are."
-  [tx {:keys [type layer params] :as v}]
+  [tx {:keys [type layer] :as v}]
   (let [ln (str "\"" (:name layer) "\"")
         q (fn [x] (str "\"" x "\""))]
-    (case type
-      "max-in-degree" (str "A span is the target of " (:count v) " relations in " ln
-                           " (at most " (get params "max") " " (if (= 1 (get params "max")) "is" "are") " allowed).")
-      "acyclic" (str "Relations in " ln " form a cycle.")
-      "same-ancestor" (str "A relation in " ln " connects spans that are not in one "
-                           (q (layer-name tx :token (u (get params "token-layer")))) ".")
-      "single-span" (str "A token has " (count (:ids v)) " values in " ln " (at most 1 is allowed).")
-      "value-set" (let [value (:value v)
-                        parts (:parts v)]
-                    (cond
-                      (not (string? value)) (str "A value in " ln " is not text, and only listed values are allowed.")
-                      (or (empty? parts) (= [value] parts)) (str (q value) " is not in the list of values for " ln ".")
-                      :else (str (q value) " is not allowed in " ln ": "
-                                 (str/join ", " (map q parts))
-                                 (if (= 1 (count parts)) " is" " are") " not in its list of values.")))
-      "coextensive" (str "A token of " ln " does not have the extent of any token of "
-                         (q (layer-name tx :token (:parent_token_layer_id layer))) ".")
-      "single-link" (str "A token of " ln " has " (count (:ids v))
-                         " vocabulary links (at most 1 is allowed).")
+    (if-let [f (:phrase (registry type))]
+      (f tx v ln q)
       (str "A rule of " ln " is broken."))))
 
 (defn wire
@@ -1194,7 +1173,7 @@
            :document (some-> (:document v) str)
            :at (some-> (:at v) str)
            :ids (mapv str (:ids v))}
-    (= "value-set" (:type v)) (assoc :value (:value v) :parts (:parts v))))
+    (:wire-extra (registry (:type v))) (merge ((:wire-extra (registry (:type v))) v))))
 
 (defn- dedupe-violations [vs]
   (vals (reduce (fn [m v] (let [k [(:type v) (:ns v) (:id (:layer v)) (:ids v)]]
@@ -1376,12 +1355,71 @@
     (swap! counts update ["same-ancestor" :relations "deleted" (:name layer)] (fnil + 0) (or n 0))))
 
 (defn- remedy! [tx ctx c vs counts]
-  (case (:type c)
-    "coextensive" (remedy-coextensive! tx ctx c vs counts)
-    "single-span" (remedy-single-span! tx ctx c vs counts)
-    "single-link" (remedy-single-link! tx ctx c vs counts)
-    "same-ancestor" (remedy-same-ancestor! tx ctx c vs counts)
-    nil))
+  (when-let [remedy (:remedy (registry (:type c)))]
+    (remedy tx ctx c vs counts)))
+
+;; ============================================================
+;; The rule types
+;; ============================================================
+
+(def registry
+  "Every rule type, by its name, with all that is particular to it:
+    :kinds       the layer kinds that may carry it
+    :params      the keys its declaration may hold beside \"type\"
+    :validate    `(fn [tx layer-row where c])`, the declaration checked
+                 (throws 400) and returned as it is stored
+    :check       `(fn [ctx c])`, its violations
+    :direct      `(fn [violation])`, `[table categories]`: a violation is
+                 direct when a row of `table` changed in one of the
+                 `categories` by an operation on the row's own kind
+    :phrase      `(fn [tx violation layer-name quote])`, it in words
+    :wire-extra  nil, or `(fn [violation])`, keys the wire form adds
+    :remedy      nil when a structural write that breaks it is refused, or
+                 `(fn [tx ctx c violations counts])`
+    :rank        where its remedy runs among the others (nil without one)"
+  {"max-in-degree" {:kinds #{:relation} :params #{"max"}
+                    :validate validate-max-in-degree :check check-max-in-degree
+                    :direct (constantly ["relations" [:edge]]) :phrase phrase-max-in-degree
+                    :wire-extra nil :remedy nil :rank nil}
+   "acyclic" {:kinds #{:relation} :params #{"self-loops" "except-values"}
+              :validate validate-acyclic :check check-acyclic
+              :direct (constantly ["relations" [:edge :value]]) :phrase phrase-acyclic
+              :wire-extra nil :remedy nil :rank nil}
+   "same-ancestor" {:kinds #{:relation} :params #{"token-layer"}
+                    :validate validate-same-ancestor :check check-same-ancestor
+                    :direct (constantly ["relations" [:edge]]) :phrase phrase-same-ancestor
+                    :wire-extra nil :remedy remedy-same-ancestor! :rank 3}
+   "single-span" {:kinds #{:span} :params #{"join-with"}
+                  :validate validate-single-span :check check-single-span
+                  :direct (constantly ["spans" [:tokens]]) :phrase phrase-single-span
+                  :wire-extra nil :remedy remedy-single-span! :rank 1}
+   "value-set" {:kinds #{:span :relation} :params #{"values" "delimiters" "parts"}
+                :validate validate-value-set :check check-value-set
+                :direct (fn [v] [(if (= :span (:kind (:layer v))) "spans" "relations") [:value]])
+                :phrase phrase-value-set
+                :wire-extra (fn [v] {:value (:value v) :parts (:parts v)})
+                :remedy nil :rank nil}
+   "coextensive" {:kinds #{:token} :params #{}
+                  :validate validate-coextensive :check check-coextensive
+                  :direct (constantly ["tokens" [:extent]]) :phrase phrase-coextensive
+                  :wire-extra nil :remedy remedy-coextensive! :rank 0}
+   "single-link" {:kinds #{:token} :params #{}
+                  :validate (fn [_tx _layer-row _where c] c) :check check-single-link
+                  :direct (constantly ["vocab_links" [:tokens]]) :phrase phrase-single-link
+                  :wire-extra nil :remedy remedy-single-link! :rank 2}})
+
+(def types-by-kind
+  "The constraint types a layer of each kind may carry."
+  (reduce-kv (fn [m t {:keys [kinds]}] (reduce #(update %1 %2 (fnil conj #{}) t) m kinds)) {} registry))
+
+(def remediable
+  "Types whose violations a structural write gets a remedy for. The others
+  are refused wherever the violation comes from."
+  (set (keep (fn [[t e]] (when (:remedy e) t)) registry)))
+
+(def remedy-order
+  "The remediable types in the order their remedies run."
+  (mapv key (sort-by (comp :rank val) (filter (comp :remedy val) registry))))
 
 (defn- describe-counts
   [counts]
