@@ -85,13 +85,15 @@ class Slot:
 class RateCap:
     """At most `per_min` sends in any `window` seconds, across every process
     that shares `slot_dir`. `take()` blocks until a send is allowed, records
-    it, and returns the seconds it waited."""
+    it, and returns the seconds it waited. `last_slot` is the time it
+    recorded for that send."""
 
     def __init__(self, per_min=RPM, slot_dir=None, window=RPM_WINDOW_S):
         d = Path(slot_dir or SLOT_DIR)
         d.mkdir(parents=True, exist_ok=True)
         self.per_min, self.window = per_min, window
         self.lock_path, self.log_path = d / 'rpm.lock', d / 'rpm.log'
+        self.last_slot = None
 
     def take(self):
         t0 = time.time()
@@ -110,6 +112,7 @@ class RateCap:
                     tmp = self.log_path.with_suffix('.tmp')
                     tmp.write_text(''.join(f'{t:.3f}\n' for t in sent))
                     os.replace(tmp, self.log_path)
+                    self.last_slot = now
                     return time.time() - t0
                 pause = sent[len(sent) - self.per_min] + self.window - now
             finally:
