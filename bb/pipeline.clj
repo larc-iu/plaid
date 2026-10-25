@@ -167,8 +167,12 @@
 ;; `file:../plaid-ui`, and plaid-igt for plaid-dict, whose `@igt` alias
 ;; compiles plaid-igt's source and so resolves its bare imports from
 ;; plaid-igt's node_modules.
+;; plaid-igt's vitest also runs plaid-ui's top-level tests, and
+;; tailwindPreset.test.js there reads plaid-ud's tailwind config.
 (defn- installs-before [app]
-  (cond-> ["plaid-ui"] (= app "plaid-dict") (conj "plaid-igt")))
+  (cond-> ["plaid-ui"]
+    (= app "plaid-igt") (conj "plaid-ud")
+    (= app "plaid-dict") (conj "plaid-igt")))
 
 (defn- run-js-package!
   "One package of `run-js-tests!` with the build, for a CI matrix job."
