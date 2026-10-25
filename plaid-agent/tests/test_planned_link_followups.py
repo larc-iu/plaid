@@ -367,6 +367,7 @@ def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_
                                             'case_sensitive': False})
     # m-1a "Ali" is the analysis's now. m-4a "Gam" and m-4b "ar" are not.
     # m-1a keeps the form the analysis gives it.
+    assert 'Planned 2 morpheme forms' in out, out
     assert forms_written(applied(w)) == {'m-1a': 'Ali', 'm-4a': 'Gom', 'm-4b': 'or'}, out
     assert '1 morpheme of words whose analysis this plan rewrites was left as planned' in out, out
 
