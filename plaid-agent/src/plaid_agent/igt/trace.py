@@ -11,8 +11,10 @@ from typing import Any, Dict, List, Optional
 
 from ..core.refs import read_ref
 from ..core.scope import is_all
+from ..core.tools import ToolError
 from ..core.trace import META, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
+from .workspace import _refs
 
 
 def _named(a: Dict[str, Any]) -> List[str]:
@@ -62,10 +64,14 @@ _PLACES = (('sentence', 'sentences'), ('word', 'words'), ('morpheme', 'morphemes
 
 def _counted(a: Dict[str, Any]) -> str:
     """The places a call's ``refs`` name, counted by what they are: "2 words",
-    "1 word and 2 morphemes". A reference that does not read as one is
-    counted as a reference."""
+    "1 word and 2 morphemes", cut as the tool cuts them (a document name
+    before one, several in a string). A reference that does not read as one
+    is counted as a reference."""
     refs = a.get('refs')
-    refs = refs if isinstance(refs, list) else [refs] if refs else []
+    try:
+        refs = _refs(refs)
+    except ToolError:
+        refs = refs if isinstance(refs, list) else [refs] if refs else []
     tally: Dict[tuple, int] = {}
     for ref in refs:
         r = read_ref(ref, 'wm')

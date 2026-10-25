@@ -112,6 +112,12 @@ def test_a_plan_names_what_it_counts():
         == 'Planned Gloss = “x” on 1 word'
     assert describe_step('set_field', {'field': 'Gloss', 'value': 'x', 'refs': ['nonsense']}) \
         == 'Planned Gloss = “x” on 1 reference'
+    # Cut as the tool cuts them: the document name a read tool prints before
+    # a reference, and several references in one string.
+    assert describe_step('set_field', {'field': 'Gloss', 'value': 'x', 'refs': ['"Text 1" s3.w2']}) \
+        == 'Planned Gloss = “x” on 1 word'
+    assert describe_step('set_field', {'field': 'Gloss', 'value': 'x', 'refs': 's1.w2, s1.w3.m1'}) \
+        == 'Planned Gloss = “x” on 1 word and 1 morpheme'
 
 
 def test_summary_counts_documents_searches_and_changes():
