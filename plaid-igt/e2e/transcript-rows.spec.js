@@ -1,6 +1,7 @@
 import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, signInAdmin, CORE } from './fixtures.js';
-import { createScratchProject } from './fixtureProject.js';
+import { createScratchProject, roleOf } from './fixtureProject.js';
+import { countingTab } from '../../plaid-ui/e2e/writeDelay.js';
 import { wavBytes } from './bugbash/harness.mjs';
 
 // Two users edit the text of one transcript row. A row's text is saved as the
@@ -11,7 +12,6 @@ import { wavBytes } from './bugbash/harness.mjs';
 // Enter stores the second user's text. A throwaway project and a throwaway
 // second user, both deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 const PASSWORD = 'rows-pass-123';
 
@@ -98,19 +98,10 @@ test.afterAll(async () => {
   if (other) await admin.users.delete(other.email).catch(() => {});
 });
 
-const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const READ_POST = /\/api\/v1\/(query|login)(\?|$)/;
-const isWrite = (req) => WRITE.has(req.method()) && !READ_POST.test(req.url());
-
 // A user's page on the document's Media tab, counting the writes it sends.
 async function openAs(browser, auth = undefined) {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  const tab = { ctx, page, writes: 0 };
-  await page.route(/\/api\/v1\//, async (route) => {
-    if (isWrite(route.request())) tab.writes += 1;
-    await route.continue().catch(() => {});
-  });
+  const tab = await countingTab(browser);
+  const { page } = tab;
   await seedAuth(page, auth);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
   await page.waitForLoadState('networkidle');

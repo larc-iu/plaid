@@ -29,6 +29,7 @@ import {
   UMR_NAMESPACE,
 } from '../src/utils/umrLayerUtils.js';
 import { readToken, CORE } from './fixtures.js';
+import { findProjectByName } from '../../plaid-ui/e2e/appFixtures.js';
 import { isPrivateCore } from './privateCore.js';
 
 const PROJECT_NAME = 'E2E UMR Fixture';
@@ -41,11 +42,6 @@ const SAMPLE = path.join(
   'umr',
   'english_umr-0001.umr',
 );
-
-async function findProjectByName(client, name) {
-  const projects = await client.projects.list();
-  return projects.find((p) => p.name === name) || null;
-}
 
 // The gloss lines a person sets up for the fixture's layers in UMR settings
 // (Propose lines, then Save): a read never proposes them. Written when the

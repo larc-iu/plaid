@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN C5 (grid navigation) auto rows + A4-08: Enter/Tab move along a
 // tier, arrows move between tiers in the column band, the Translation
@@ -8,7 +8,6 @@ import { getFixture } from './fixtureProject.js';
 // cells persist, and Ctrl+Down with no machine chips leaves the browser
 // default alone. Throwaway document in "E2E IGT Fixture", deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 
 let client;
@@ -18,10 +17,7 @@ let ids = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

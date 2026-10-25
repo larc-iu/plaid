@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength, metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN B2 (ranking + search), B3 (keyboard), B4 (link/unlink/relink),
 // B5 (create from the popover) and B6 (two vocabularies) auto rows. A throwaway
@@ -8,7 +8,6 @@ import { getFixture } from './fixtureProject.js';
 // "E2E IGT Fixture" project and removed afterwards; nothing is created in the
 // shared "IGT Lexicon" (LEX-A: all, the, human, be.born, free, equal).
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'derechos. "hola," dog\'s ... 😀 ser hum the';
 const W = { derechos: 0, hola: 1, dogs: 2, dots: 3, emoji: 4, ser: 5, hum: 6, the: 7 };
 
@@ -24,10 +23,7 @@ let SENT_LAYER_ID;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   lexA = full.vocabs.find((v) => v.name === 'IGT Lexicon');
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);

@@ -1,7 +1,7 @@
 import PlaidClient, { ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 
 // The Assistant tab, without a model: conversations are records in the
@@ -17,8 +17,6 @@ import { skipUnlessAgent, startIgtAssistant } from './assistantService.js';
 // the editor), Discard, a turn whose request is gone (Retry offered and the
 // record settled), the tab opening on a new conversation with the sidebar
 // linking each saved one, and Approve.
-
-const roleOf = (l) => l?.config?.plaid?.role;
 
 let client;
 let userId;
@@ -123,10 +121,7 @@ const readPos = async () => {
 test.beforeAll(async () => {
   ({ userId } = readToken());
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const WORD = textLayer.tokenLayers.find((l) => roleOf(l) === ROLES.WORD);

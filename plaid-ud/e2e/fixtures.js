@@ -7,6 +7,7 @@ import {
   tokenFixtures,
   collectClientErrors,
   reportDiagnostics,
+  signInAdmin as signInAdminWith,
 } from '../../plaid-ui/e2e/appFixtures.js';
 import { writeDelayFixtures } from '../../plaid-ui/e2e/writeDelay.js';
 
@@ -27,9 +28,8 @@ export const { readToken, seedAuth } = tokenFixtures(TOKEN_PATH);
 // The core the specs talk to (PLAID_CORE_URL under `bb e2e`, else the dev core).
 export const CORE = coreUrl();
 
-// A signed-in session for a@b.com, for the few calls a named API token is
-// refused (creating an account, minting or revoking API tokens).
-export const signInAdmin = (core) => PlaidClient.login(core, 'a@b.com', 'password');
+// A signed-in session for the admin (see plaid-ui/e2e/appFixtures.js).
+export const signInAdmin = (core) => signInAdminWith(PlaidClient, core);
 
 export { collectClientErrors, reportDiagnostics };
 // PLAID_E2E_WRITE_DELAY_MS holds the page's writes (see plaid-ui/e2e/writeDelay.js).

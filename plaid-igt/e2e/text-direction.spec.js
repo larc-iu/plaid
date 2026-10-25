@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // An Arabic document, in a real browser.
 //
@@ -11,8 +11,6 @@ import { getFixture } from './fixtureProject.js';
 // of a wrapped band, the caret walking one way while the focus walks the other.
 //
 // Throwaway document in "E2E IGT Fixture", deleted afterwards.
-
-const roleOf = (l) => l?.config?.plaid?.role;
 
 // "قرأ الولد الكتاب": read.PST the.boy the.book.
 const BODY = 'قرأ الولد الكتاب';
@@ -29,10 +27,7 @@ let wrapIds = [];
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // The pair picker: a morpheme's link and gloss picked together, from Alt+Down
 // on the gloss and from the link chip, and still there after a reload. A
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // analysis service writes them, its alternatives naming their senses
 // (provDetail.valueLinks).
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const NONCE = Date.now().toString(36);
 const FORM = `kat${NONCE}`;
 const BODY = `${FORM} ${FORM}`;
@@ -25,9 +24,7 @@ let ids = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture();
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

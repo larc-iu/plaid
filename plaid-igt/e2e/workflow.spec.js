@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN surrounding-workflow rows driven end to end on one throwaway
 // document: Baseline save (C3-01 append without a confirm, C3-02 destructive
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // Metadata tab (C2-02). Lives in "E2E IGT Fixture"; the document is deleted by
 // the last test (and again in afterAll, harmlessly).
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const STAMP = Date.now();
 const FORMS = [`zork${STAMP}`, `blip${STAMP}`, `quux${STAMP}`];
 const BODY = `${FORMS[0]} ${FORMS[1]}, ${FORMS[2]}. Adiós!`;
@@ -24,10 +23,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   glossLayerId = textLayer.tokenLayers

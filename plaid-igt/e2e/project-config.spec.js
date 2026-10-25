@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, signInAdmin, CORE } from './fixtures.js';
+import { roleOf } from './fixtureProject.js';
 import { executeProjectSetup } from '../src/components/projects/setup/executeSetup.js';
 
 // TEST_PLAN rows that need their own project configuration: B11 ignored
@@ -9,7 +10,6 @@ import { executeProjectSetup } from '../src/components/projects/setup/executeSet
 // editor). Builds a throwaway project through the wizard's setup helper and
 // deletes it (plus its lexicon) afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'derechos. ¿Qué? ? ... $ 😀 hola';
 const W = { derechos: 0, que: 1, q: 2, dots: 3, dollar: 4, emoji: 5, hola: 6 };
 

@@ -8,6 +8,7 @@
 // keeps yours only with no option highlighted.
 // Seeds 'the dog runs fast' in a throwaway project, deleted afterwards.
 import { test, expect, seedAuth } from './fixtures.js';
+import { countingTab } from '../../plaid-ui/e2e/writeDelay.js';
 import { seedUdDoc } from './seedUdDoc.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 
@@ -39,31 +40,10 @@ const stored = async (morphId, field) => {
   return (layer.spans || []).find((s) => s.tokens[0] === morphId)?.value ?? null;
 };
 
-const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const READ_POST = /\/api\/v1\/(query|login)(\?|$)/;
-const isWrite = (req) => WRITE.has(req.method()) && !READ_POST.test(req.url());
-
 // A tab whose writes can be held (`hold()` answers the release) and counted.
 async function openTab(browser) {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  const tab = { ctx, page, writes: 0, gate: null };
-  await page.route(/\/api\/v1\//, async (route) => {
-    const req = route.request();
-    if (isWrite(req)) {
-      tab.writes += 1;
-      if (tab.gate) await tab.gate;
-    }
-    await route.continue().catch(() => {});
-  });
-  tab.hold = () => {
-    let release;
-    tab.gate = new Promise((r) => (release = r));
-    return () => {
-      tab.gate = null;
-      release();
-    };
-  };
+  const tab = await countingTab(browser);
+  const { page } = tab;
   await seedAuth(page);
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
   await page.locator(`[id="${S.morphIds[0]}-lemma"]`).waitFor({ state: 'visible' });

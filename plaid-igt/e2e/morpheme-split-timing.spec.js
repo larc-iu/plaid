@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, collectClientErrors, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // The split paths that depend on real timing, so a headless DOM cannot vouch
 // for them: a split at the right edge of a form (nothing after the caret yet),
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // the point is that the stored result must not. Throwaway document in "E2E
 // IGT Fixture", deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const NONCE = Date.now().toString(36);
 const W1 = `ngoko${NONCE}`;
 const W2 = `tatami${NONCE}`;
@@ -22,10 +21,7 @@ let ids = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

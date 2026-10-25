@@ -1,5 +1,4 @@
-import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
+import { test, expect, seedAuth } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The "Your last edit" column: it reads the caller's own writes out of the
@@ -11,11 +10,7 @@ const ROUTE = '**/audit/last-edits';
 let projectId;
 
 test.beforeAll(async () => {
-  const client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const fixture = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!fixture) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = fixture.id;
+  ({ projectId } = await getFixture());
 });
 
 test.beforeEach(async ({ page }) => {

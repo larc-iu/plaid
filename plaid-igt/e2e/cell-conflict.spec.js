@@ -1,6 +1,7 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
+import { countingTab } from '../../plaid-ui/e2e/writeDelay.js';
 
 // Luke's ruling Q1: a gloss edit refused because another tab stored another
 // value first. The cell shows the stored value, with the refused one under
@@ -10,7 +11,6 @@ import { getFixture } from './fixtureProject.js';
 // B's goes out on a document that has moved on and the server refuses it.
 // A throwaway document in "E2E IGT Fixture", deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 
 let client;
@@ -20,10 +20,7 @@ let morphs = [];
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
@@ -65,31 +62,10 @@ const glossOf = async (morphId) => {
   return gloss.spans.find((s) => s.tokens[0] === morphId)?.value ?? null;
 };
 
-const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const READ_POST = /\/api\/v1\/(query|login)(\?|$)/;
-const isWrite = (req) => WRITE.has(req.method()) && !READ_POST.test(req.url());
-
 // A tab whose writes can be held (`hold()` answers the release) and counted.
 async function openTab(browser) {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  const tab = { ctx, page, writes: 0, gate: null };
-  await page.route(/\/api\/v1\//, async (route) => {
-    const req = route.request();
-    if (isWrite(req)) {
-      tab.writes += 1;
-      if (tab.gate) await tab.gate;
-    }
-    await route.continue().catch(() => {});
-  });
-  tab.hold = () => {
-    let release;
-    tab.gate = new Promise((r) => (release = r));
-    return () => {
-      tab.gate = null;
-      release();
-    };
-  };
+  const tab = await countingTab(browser);
+  const { page } = tab;
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });

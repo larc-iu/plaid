@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN A2/A4 UI rows: how machine material looks and behaves in the
 // Analyze island (cell classes, one-batch edits, Enter/Backspace review keys on
@@ -9,7 +9,6 @@ import { getFixture } from './fixtureProject.js';
 // e2e/live/provenance-structural.mjs. Uses a throwaway document + throwaway
 // vocab entries in the "E2E IGT Fixture" project; both are deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'alpha beta gamma delta epsilon';
 
 let client;
@@ -20,10 +19,7 @@ let items = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

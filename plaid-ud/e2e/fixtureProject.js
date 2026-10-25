@@ -13,16 +13,12 @@ import PlaidClient from '@larc-iu/plaid-client';
 import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../src/utils/udLayerUtils.js';
 import { readToken, CORE } from './fixtures.js';
+import { findProjectByName } from '../../plaid-ui/e2e/appFixtures.js';
 
 const PROJECT_NAME = 'E2E UD Fixture';
 const DOC_NAME = 'Doc 1';
 const SAMPLE_TEXT =
   'The quick brown fox jumps over the lazy dog. She sells sea shells by the sea shore.';
-
-async function findProjectByName(client, name) {
-  const projects = await client.projects.list();
-  return projects.find((p) => p.name === name) || null;
-}
 
 async function ensureFixture() {
   const { token } = readToken();

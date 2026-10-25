@@ -1,13 +1,12 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN A1: gloss guesses are placeholder suggestions from precedent (this
 // document and the rest of the project). They are written ONLY on Enter (born verified, with
 // provenance); Tab, blur and typing over them never write the guess.
 // Throwaway document in the "E2E IGT Fixture" project, deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 // Guesses draw on precedent across the WHOLE project, and the fixture project
 // is shared with other specs, so every form here is unique to this run.
 const NONCE = Date.now().toString(36);
@@ -23,10 +22,7 @@ let ids = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

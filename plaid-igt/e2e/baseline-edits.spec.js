@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // The Baseline tab saves the edits typed in the box as edits at the caret
 // (texts.edit with the digest of the body they were typed over), so each one
@@ -12,8 +12,6 @@ import { getFixture } from './fixtureProject.js';
 // second with its draft kept. After each save the screen shows what a reload
 // shows. Throwaway documents in "E2E IGT Fixture".
 
-const roleOf = (l) => l?.config?.plaid?.role;
-
 let client;
 let projectId;
 let textLayer;
@@ -23,10 +21,7 @@ const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
 });

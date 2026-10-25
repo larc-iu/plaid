@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 import { delayWrites } from '../../plaid-ui/e2e/writeDelay.js';
 
 // TEST_PLAN B13-02/03: two tabs on one document. The stale tab's write hits
@@ -9,7 +9,6 @@ import { delayWrites } from '../../plaid-ui/e2e/writeDelay.js';
 // linked from both tabs ends up with exactly ONE link. Throwaway document +
 // throwaway lexicon entries in "E2E IGT Fixture", deleted afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -21,10 +20,7 @@ let ids = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

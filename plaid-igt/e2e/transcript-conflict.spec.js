@@ -1,6 +1,7 @@
 import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
+import { countingTab } from '../../plaid-ui/e2e/writeDelay.js';
 import { wavBytes } from './bugbash/harness.mjs';
 
 // Two tabs edit the text of one transcript segment. Tab A's edit lands first,
@@ -10,7 +11,6 @@ import { wavBytes } from './bugbash/harness.mjs';
 // Enter stores B's. A throwaway document in "E2E IGT Fixture", deleted
 // afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'uno dos tres';
 
 let client;
@@ -19,10 +19,7 @@ let documentId;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
@@ -68,19 +65,10 @@ const storedText = async (timeBegin) => {
   return segment ? cpSlice(textLayer.text.body, segment.begin, segment.end) : null;
 };
 
-const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const READ_POST = /\/api\/v1\/(query|login)(\?|$)/;
-const isWrite = (req) => WRITE.has(req.method()) && !READ_POST.test(req.url());
-
 // A tab on the document's Media tab, counting the writes it sends.
 async function openTab(browser) {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  const tab = { ctx, page, writes: 0 };
-  await page.route(/\/api\/v1\//, async (route) => {
-    if (isWrite(route.request())) tab.writes += 1;
-    await route.continue().catch(() => {});
-  });
+  const tab = await countingTab(browser);
+  const { page } = tab;
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
   await page.waitForLoadState('networkidle');

@@ -1,13 +1,11 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // A machine-made sentence value (a proposed translation) renders with the
 // same provenance styling as cells, is a stop in the unverified review
 // sweep, and Ctrl+Enter accepts it as is. Throwaway document in the
 // "E2E IGT Fixture" project.
-
-const roleOf = (l) => l?.config?.plaid?.role;
 
 let client;
 let projectId;
@@ -18,10 +16,7 @@ let spanId;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

@@ -1,13 +1,12 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // TEST_PLAN B7-02 (homonym numbering in the vocabulary view), B9-04 (usage
 // counts and "N use(s)" wording) and B9-01 (deleting a linked entry names the
 // count, then the links are gone). Throwaway lexicon linked to "E2E IGT
 // Fixture" for the run + a throwaway document; both removed afterwards.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'kappa lambda mu nu';
 
 let client;
@@ -18,10 +17,7 @@ let items = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const stamp = Date.now();
   vocab = await client.vocabLayers.create(`vocab-view ${stamp}`);
   items.ser1 = (await client.vocabItems.create(vocab.id, 'ser')).id;

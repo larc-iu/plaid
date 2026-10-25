@@ -17,15 +17,16 @@ const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // networkidle, which then waits past the write as well and hides the race.
 const POST_READS = /\/api\/v1\/(query|invites\/lookup|login)(\?|$)/;
 
+// Whether a request to /api is a write.
+export const isWrite = (req) => WRITES.has(req.method()) && !POST_READS.test(req.url());
+
 const writeDelayMs = () => Number(process.env.PLAID_E2E_WRITE_DELAY_MS) || 0;
 
 // Holds the context's writes to /api for `ms` before sending them on.
 export async function delayWrites(context, ms = writeDelayMs()) {
   if (!ms) return;
   await context.route(/\/api\//, async (route) => {
-    const req = route.request();
-    if (WRITES.has(req.method()) && !POST_READS.test(req.url()))
-      await new Promise((r) => setTimeout(r, ms));
+    if (isWrite(route.request())) await new Promise((r) => setTimeout(r, ms));
     // The page may have closed while the write was held.
     await route.continue().catch(() => {});
   });
@@ -40,3 +41,29 @@ export const writeDelayFixtures = {
     await provide(context);
   },
 };
+
+// A page in a browser context of its own, for a spec with two tabs on one
+// document. `tab.writes` counts the writes it sends, and `tab.hold()` holds
+// every later one until the function it answers is called. The app signs the
+// page in and opens it.
+export async function countingTab(browser) {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const tab = { ctx, page, writes: 0, gate: null };
+  await page.route(/\/api\/v1\//, async (route) => {
+    if (isWrite(route.request())) {
+      tab.writes += 1;
+      if (tab.gate) await tab.gate;
+    }
+    await route.continue().catch(() => {});
+  });
+  tab.hold = () => {
+    let release;
+    tab.gate = new Promise((r) => (release = r));
+    return () => {
+      tab.gate = null;
+      release();
+    };
+  };
+  return tab;
+}

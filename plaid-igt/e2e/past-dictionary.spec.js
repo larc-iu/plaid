@@ -1,13 +1,12 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken, CORE } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, roleOf } from './fixtureProject.js';
 
 // A document viewed as it was in the past reads its vocabulary as it was at
 // the same moment (audit-past-doc-dictionary, ruled b): an entry renamed since
 // shows its old form on the word it was linked from. A throwaway vocabulary
 // and document are made in the "E2E IGT Fixture" project and removed.
 
-const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'fono tama';
 
 let client;
@@ -18,10 +17,7 @@ let wordId;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

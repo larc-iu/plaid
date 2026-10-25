@@ -23,6 +23,17 @@ function parseJwtPayload(token) {
 // talk to the shared dev core.
 export const coreUrl = () => process.env.PLAID_CORE_URL || 'http://localhost:8085';
 
+// A signed-in session for a@b.com, the admin `bb e2e` makes, for the few calls
+// a named API token is refused (creating an account, minting or revoking API
+// tokens). The app passes its PlaidClient, which this file cannot import.
+export const signInAdmin = (PlaidClient, core) => PlaidClient.login(core, 'a@b.com', 'password');
+
+// The project of that name the client can see, or null.
+export async function findProjectByName(client, name) {
+  const projects = await client.projects.list();
+  return projects.find((p) => p.name === name) || null;
+}
+
 // The non-expiring API token for a@b.com, and the two helpers that read it.
 // `bb e2e` passes the token it minted on its own core in PLAID_E2E_TOKEN.
 // Without it the token is the app's own `.token`, beside its package.json.

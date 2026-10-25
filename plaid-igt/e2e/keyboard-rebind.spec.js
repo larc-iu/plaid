@@ -45,10 +45,6 @@ test('a rebound shortcut works, shows in the legend, and survives a reload', asy
   await expect(page.getByRole('status')).toHaveCount(0);
 
   await rebind(page, 'Type a zero morph ∅', 'Alt+9');
-  await page.screenshot({
-    path: '/tmp/claude-1000/-home-luke-local-plaid/0c8e98de-36ac-4d38-b4ca-ba0d45a2d154/scratchpad/keyboard.png',
-    fullPage: true,
-  });
   await expect
     .poll(async () => (await client.userData.get(userId, KEY)).value.metadata)
     .toEqual({ 'analyze.alternatives': ['Alt+l'], 'morph.zero': ['Alt+9'] });

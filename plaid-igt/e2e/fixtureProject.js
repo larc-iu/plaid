@@ -10,12 +10,13 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { ROLES } from '@larc-iu/plaid-client';
 import { readToken, CORE } from './fixtures.js';
+import { findProjectByName } from '../../plaid-ui/e2e/appFixtures.js';
 
 // Editor binds the shared substrate by role (config.plaid.role) and reads its
 // own settings under the `igt` namespace — see src/domain/igtConfig.js. (Pre-
 // 2026-06-06 this used config.plaid.{primary,sentence,morpheme,...}; that is now
 // stale and renders "no primary token layer configured".)
-const roleOf = (l) => l?.config?.plaid?.role;
+export const roleOf = (l) => l?.config?.plaid?.role;
 
 const PROJECT_NAME = 'E2E IGT Fixture';
 const DOC_NAME = 'Sample IGT Document';
@@ -26,11 +27,6 @@ const VOCAB_ITEMS = ['all', 'the', 'human', 'be.born', 'free', 'equal'];
 export function makeClient() {
   const { token } = readToken();
   return new PlaidClient(CORE, token);
-}
-
-async function findProjectByName(client, name) {
-  const projects = await client.projects.list();
-  return projects.find((p) => p.name === name) || null;
 }
 
 async function ensureFixture() {
@@ -182,7 +178,8 @@ async function ensureVocab(client, projectId) {
   return vocab.id;
 }
 
-function resolveLayers(project) {
+// The ids of the baseline text layer and its sentence, word and morpheme layers.
+export function resolveLayers(project) {
   const tl =
     (project.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE) ||
     (project.textLayers || [])[0];
@@ -254,9 +251,17 @@ async function seedTokensIfEmpty(client, documentId, layers) {
   }
 }
 
+// The fixture project and its sample document, built where the database lacks
+// them, once per run: `{ projectId, documentId, client, project, layers }`, with
+// `project` as it stood when built and `layers` its resolveLayers ids.
 let cached = null;
 export async function getFixture() {
-  if (!cached) cached = ensureFixture();
+  if (!cached)
+    cached = ensureFixture().then(async (ids) => {
+      const client = makeClient();
+      const project = await client.projects.get(ids.projectId);
+      return { ...ids, client, project, layers: resolveLayers(project) };
+    });
   return cached;
 }
 

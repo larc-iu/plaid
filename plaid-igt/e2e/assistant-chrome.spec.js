@@ -53,12 +53,8 @@ const seeContent = async (page) =>
 test.beforeAll(async () => {
   ({ userId } = readToken());
   const c = client();
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await c.projects.list()).find((p) => p.name === FIXTURE);
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId, documentId } = await getFixture());
   const docs = await c.projects.listDocuments(projectId);
-  documentId = docs.find((d) => d.name === 'Sample IGT Document').id;
   // A second document to walk to. Reused by name across runs.
   otherDocumentId = (
     docs.find((d) => d.name === SECOND_DOCUMENT) ||

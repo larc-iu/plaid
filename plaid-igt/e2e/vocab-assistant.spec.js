@@ -40,10 +40,7 @@ const client = () => new PlaidClient(CORE, readToken().token);
 
 test.beforeAll(async () => {
   const c = client();
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await c.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
   const vocab = await c.vocabLayers.create(`Panel lexicon ${Date.now()}`);
   vocabularyId = vocab.id;
   await c.projects.linkVocab(projectId, vocabularyId);

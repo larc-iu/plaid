@@ -7,16 +7,11 @@ import { guidelinesTests } from '../../plaid-ui/e2e/guidelines.js';
 // so are the tests that are about it; what this file supplies is where this app
 // serves the tab (a `?tab=`) and which project to put them on.
 
-const FIXTURE = 'E2E IGT Fixture';
-
 let projectId;
 const client = () => new PlaidClient(CORE, readToken().token);
 
 test.beforeAll(async () => {
-  await getFixture(); // builds the fixture project where the database lacks it
-  const project = (await client().projects.list()).find((p) => p.name === FIXTURE);
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
+  ({ projectId } = await getFixture());
 });
 
 test.describe('Guidelines (IGT)', () => {

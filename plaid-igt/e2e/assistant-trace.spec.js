@@ -19,8 +19,7 @@ let projectId;
 test.beforeAll(async () => {
   ({ userId } = readToken());
   client = new PlaidClient(CORE, readToken().token);
-  await getFixture();
-  projectId = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture').id;
+  ({ projectId } = await getFixture());
 });
 
 test.beforeEach(async ({ page }) => {
