@@ -34,7 +34,7 @@ from .project import LEMMA_FROM_FORM, VIRTUAL_PREFIX, is_virtual
 
 from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher,
                          apply_add_comment, apply_restore_document, confirm_note, ConfirmRows,
-                         docs_of_op)
+                         docs_of_op, document_names, document_phrase, executed, executing, summarize_plan)
 from .project import feature_key, load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 from ..core.tools import ValueRefusal
@@ -830,9 +830,6 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
 
 def normalize_ops(ops: List[Dict[str, Any]]):
     """Drop ops a later op supersedes, and say so. Returns (ops, notes)."""
-    notes: List[str] = []
-    out: List[Dict[str, Any]] = []
-    last: Dict[Any, int] = {}
     for op, doomed in zip(ops, ok.doomed_writes(KIND, ops)):
         kind = op.get('kind')
         # A change to something the OTHER ops of this plan delete. A patch of
@@ -845,23 +842,11 @@ def normalize_ops(ops: List[Dict[str, Any]]):
         # card promising it.
         if doomed:
             raise ValueRefusal(f'{op.get("label") or kind}: this plan deletes what it writes to', kind='conflict')
-        # What an op writes to is the registry's own declaration, the same one
-        # the workspace supersedes by while the plan is built. Written here as
-        # well, the two drifted: a kind declared with a target was deduped
-        # while staging and not here.
-        key = ok.target_of(KIND, op)
-        if key is None:
-            out.append(op)
-            continue
-        if key in last:
-            out[last[key]] = op  # last one wins
-            continue
-        last[key] = len(out)
-        out.append(op)
-    dropped = len(ops) - len(out)
-    if dropped:
-        notes.append(f'{dropped} change(s) were superseded by a later change to the same thing')
-    return out, notes
+    # What an op writes to is the registry's own declaration, the same one
+    # the workspace supersedes by while the plan is built. Written here as
+    # well, the two drifted: a kind declared with a target was deduped while
+    # staging and not here.
+    return ok.supersede(KIND, ops)
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
@@ -900,7 +885,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     if project is None:
         raise ValueError('a whole-document review needs the project to read the document with')
     keep = ok.named_beats_scope(KIND, ops, notes, target=entity_of)
-    names = _names(client, project)
+    names = document_names(client, project)
     kept = kept_entities(ops)
 
     def check(op, found):
@@ -927,30 +912,14 @@ def matched(found: List[Dict[str, Any]]) -> List[list]:
     return rules.matched(KIND, found, lambda o: o.get('document_id'), lambda o: int(o.get(work.FLAG) or 0))
 
 
-def _names(client, project):
-    """A document's name by its id, read from the project's list once."""
-    held: Dict[str, str] = {}
-
-    def name_of(did: str) -> str:
-        if not held:
-            held.update({d['id']: d.get('name') or d['id']
-                         for d in client.projects.list_documents(project.id) or []})
-        return held.get(did, did)
-    return name_of
-
-
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
              ids: Optional[Minter] = None, project=None) -> Dict[str, int]:
     # An unknown plan operation kind, one that should have been resolved away,
     # or one staged for a pass below that does not exist refuses before any
     # pass runs rather than being written as nothing under a label saying it
     # was applied.
-    ok.check_applicable(KIND, ops, STAGES, first=0)
-    with client.operation(label):
-        ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker, ids=ids),
-                      project=project)
-        b = ctx.b
-        b.expect(ops)
+    with executing(KIND, client, ops, STAGES, label, tracker=tracker, ids=ids, first=0) as b:
+        ctx = Context(client, ops, stamps, counts, notes, b, project=project)
 
         restores = {id(op) for op in ops if op.get('kind') == 'restore_document'}
 
@@ -990,13 +959,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
         if said:
             notes.append(said)
         unwritten = ctx.confirm_rows.unwritten()
-
-    result = dict(counts)
-    if unwritten:
-        result['unwritten'] = unwritten
-    if notes:
-        result['notes'] = notes
-    return result
+    return executed(counts, notes, unwritten)
 
 
 # --- summary --------------------------------------------------------------------
@@ -1014,11 +977,7 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
     """A plan in one phrase, for the audit label and the applied message. A
     rule is named in its own words (`core.rules.phrase`), as igt names its
     own, and everything else is counted by kind."""
-    named, rest = rules.named(ops)
-    tail = ok.summarize(KIND, rest, ok.stored_count, common_first=True) if rest else ''
-    if named and tail == 'no changes':
-        tail = ''
-    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(KIND, [], ok.stored_count)
+    return summarize_plan(KIND, ops, count_of=ok.stored_count, common_first=True)
 
 
 def _parse(client, op, document_id: str, notes: List[str], b, total: int,
@@ -1045,7 +1004,7 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int,
                                   'overwrite': bool(op.get('overwrite'))},
                                  timeout=PARSE_SILENCE_S, no_operation=True)
     except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
-        name = _doc_name(client, document_id)
+        name = document_phrase(client, document_id)
         if isinstance(e, TimeoutError) or getattr(e, 'pending', False):
             # The request outlives the call: the parse is probably still
             # running, so saying it failed would be worse than saying what is
@@ -1068,7 +1027,7 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int,
                         if counted and moved and one else None) from e
     # An empty run is an ordinary result with a reason code (R23), worded here.
     if isinstance(result, dict) and result.get('reason') == 'no-text':
-        notes.append(f'{_doc_name(client, document_id)} has no text to parse')
+        notes.append(f'{document_phrase(client, document_id)} has no text to parse')
 
 
 def _version(client, document_id: str) -> Optional[int]:
@@ -1077,14 +1036,3 @@ def _version(client, document_id: str) -> Optional[int]:
         return client.documents.get(document_id).get('version')
     except Exception:  # noqa: BLE001 - a missing version only loses the comparison
         return None
-
-
-def _doc_name(client, document_id: str) -> str:
-    """A document as the user knows it, for a line they read: by name, never
-    by id. Only a failure or an empty run asks, so the read is not on the way
-    of a parse."""
-    try:
-        name = client.documents.get(document_id).get('name')
-    except Exception:  # noqa: BLE001 - a name is a nicety, never a second failure
-        name = None
-    return f'"{name}"' if name else 'a document'

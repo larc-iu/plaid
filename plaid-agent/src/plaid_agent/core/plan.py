@@ -32,6 +32,7 @@ from plaid_client.ids import drawn_uuid7
 from plaid_client.service import locked_for_writes
 
 from .keep import is_keep, kept_value
+from . import opkind as ok
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (PROVENANCE_KEYS, PROV_CONFIRMED_KEY, WriterPolicy, stamp_contributed,
@@ -960,6 +961,70 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         raise PlanError(str(e).strip() if authored else 'The assistant stopped on an error.',
                         applied if applied is not None else tracker.applied, len(ops), unknown,
                         written(), members()) from e
+
+
+@contextmanager
+def executing(kind, client, ops: List[Dict[str, Any]], stages, label: str, *, tracker=None,
+              ids: Optional['Minter'] = None, first: int = 1):
+    """The frame of an app's executor, around its own passes: a plan holding
+    a kind no pass of ``stages`` applies is refused before anything is
+    written (:func:`opkind.check_applicable`, its ops numbered from
+    ``first``), and the passes run under one operation labelled ``label``
+    with the :class:`TrackingBatcher` this yields, which expects ``ops``."""
+    ok.check_applicable(kind, ops, stages, first=first)
+    with client.operation(label):
+        b = TrackingBatcher(client, tracker=tracker, ids=ids)
+        b.expect(ops)
+        yield b
+
+
+def executed(counts, notes: List[str], unwritten=None) -> Dict[str, Any]:
+    """What an executor answers: the per-kind counts, the rows a confirmation
+    left unwritten and the notes, each only when there is one."""
+    result = dict(counts)
+    if unwritten:
+        result['unwritten'] = unwritten
+    if notes:
+        result['notes'] = notes
+    return result
+
+
+def summarize_plan(kind, ops: List[Dict[str, Any]], *, count_of=None, common_first: bool = False,
+                   expand=None) -> str:
+    """A plan in one phrase, for the card, the audit label and the applied
+    message. A rule is named in its own words (`core.rules.phrase`), and
+    everything else is counted by kind (:func:`opkind.summarize`, with
+    ``count_of`` and ``common_first``), after ``expand`` when one is given."""
+    from . import rules
+    named, rest = rules.named(ops)
+    tail = ok.summarize(kind, expand(rest) if expand else rest, count_of, common_first=common_first) if rest else ''
+    if named and tail == 'no changes':
+        tail = ''
+    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(kind, [], count_of)
+
+
+def document_names(client, project):
+    """A document's name by its id, read from the project's list the first
+    time one is asked for, and the id itself for one the list lacks."""
+    held: Dict[str, str] = {}
+
+    def name_of(did: str) -> str:
+        if not held:
+            held.update({d['id']: d.get('name') or d['id']
+                         for d in client.projects.list_documents(project.id) or []})
+        return held.get(did, did)
+    return name_of
+
+
+def document_phrase(client, document_id: str) -> str:
+    """A document as the user knows it, for a line they read: by name in
+    quotes, never by id, and "a document" when its name cannot be read. Only
+    a failure or an empty run asks, so the read is never on a write's way."""
+    try:
+        name = client.documents.get(document_id).get('name')
+    except Exception:  # noqa: BLE001 - a name is a nicety, never a second failure
+        name = None
+    return f'"{name}"' if name else 'a document'
 
 
 class Stamps:

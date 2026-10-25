@@ -534,6 +534,31 @@ def target_of(reg: Mapping[str, OpKind], op: Dict[str, Any]):
     return spec.target(op) if spec is not None and spec.target else None
 
 
+def supersede(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Drop each op a later op writing to the same thing supersedes (by
+    :func:`target_of`): the last one wins, in the first one's place. Returns
+    ``(ops, notes)``, a note saying how many went. The backstop of the guard
+    that refuses a plan deleting what it writes to stays with each app, where
+    it raises."""
+    notes: List[str] = []
+    out: List[Dict[str, Any]] = []
+    last: Dict[Any, int] = {}
+    for op in ops:
+        key = target_of(reg, op)
+        if key is None:
+            out.append(op)
+            continue
+        if key in last:
+            out[last[key]] = op  # last one wins
+            continue
+        last[key] = len(out)
+        out.append(op)
+    dropped = len(ops) - len(out)
+    if dropped:
+        notes.append(f'{dropped} change(s) were superseded by a later change to the same thing')
+    return out, notes
+
+
 def summarize(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
               count_of: Optional[Callable[[OpKind, Dict[str, Any]], int]] = None,
               common_first: bool = False) -> str:

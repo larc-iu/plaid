@@ -103,7 +103,8 @@ from plaid_client.service import requester_message
 
 from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
-                         check_reach, confirm_note, ConfirmRows, expand_ops)
+                         check_reach, confirm_note, ConfirmRows, executed, executing, expand_ops,
+                         summarize_plan)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
 from .tagsets import verify_settings
 from .vocab import parent_of
@@ -1641,11 +1642,8 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     # for a pass this executor does not run refuses before the first batch
     # opens rather than being written as nothing under a label saying it was
     # applied.
-    ok.check_applicable(KIND, ops, STAGES)
-    with client.operation(label):
-        ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker, ids=ids))
-        b = ctx.b
-        b.expect(ops)
+    with executing(KIND, client, ops, STAGES, label, tracker=tracker, ids=ids) as b:
+        ctx = Context(client, project, stamps, counts, notes, b)
         # Seeded with what goes without a delete call of its own, so a single
         # delete naming the same id is never issued beside it.
         for _tid in _bulk_gone(ops):
@@ -1756,12 +1754,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         if said:
             notes.append(said)
         unwritten = ctx.confirm_rows.unwritten()
-    result = dict(counts)
-    if unwritten:
-        result['unwritten'] = unwritten
-    if notes:
-        result['notes'] = notes
-    return result
+    return executed(counts, notes, unwritten)
 
 
 def _document_of_text(ops) -> Optional[str]:
@@ -2061,8 +2054,4 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
     """The plan in one phrase, for the card, the audit label and the applied
     message. A rule is named in its own words (`core.rules.phrase`), the
     first few of them, and everything else is counted by kind."""
-    named, rest = rules.named(ops)
-    tail = ok.summarize(KIND, expand_ops(rest)) if rest else ''
-    if named and tail == 'no changes':
-        tail = ''
-    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(KIND, [])
+    return summarize_plan(KIND, ops, expand=expand_ops)

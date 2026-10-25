@@ -24,7 +24,8 @@ from ..core import opkind as ok
 from ..core import rules, work
 from ..core.opkind import OpKind
 from ..core.java_regex import matcher
-from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher, docs_of_op)
+from ..core.plan import (run_plan, Minter, PlanError, Resolution, Stamps, TrackingBatcher, docs_of_op,
+                         document_names, executed, executing, summarize_plan)
 from .project import load_document, node_ref, with_attribute
 from ..core.tools import ValueRefusal
 
@@ -637,23 +638,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
 
 def normalize_ops(ops: List[Dict[str, Any]]):
     """Drop ops a later op supersedes, and say so. Returns (ops, notes)."""
-    notes: List[str] = []
-    out: List[Dict[str, Any]] = []
-    last: Dict[Any, int] = {}
-    for op in ops:
-        key = ok.target_of(KIND, op)
-        if key is None:
-            out.append(op)
-            continue
-        if key in last:
-            out[last[key]] = op  # last one wins
-            continue
-        last[key] = len(out)
-        out.append(op)
-    dropped = len(ops) - len(out)
-    if dropped:
-        notes.append(f'{dropped} change(s) were superseded by a later change to the same thing')
-    return out, notes
+    return ok.supersede(KIND, ops)
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
@@ -693,13 +678,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     if project is None:
         raise ValueError('a change over a whole document needs the project to read it with')
     keep = ok.named_beats_scope(KIND, ops, notes)
-    names: Dict[str, str] = {}
-
-    def name_of(did: str) -> str:
-        if not names:
-            names.update({d['id']: d.get('name') or d['id']
-                          for d in client.projects.list_documents(project.id) or []})
-        return names.get(did, did)
+    name_of = document_names(client, project)
 
     def check(op, found):
         # A rule must find what it found when it was staged
@@ -716,12 +695,8 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
     # An unknown kind, one that should have been resolved away, or one staged
     # for a pass that does not exist refuses before any pass runs, rather than
     # being written as nothing under a label saying it was applied.
-    ok.check_applicable(KIND, ops, STAGES, first=0)
-    with client.operation(label):
-        ctx = Context(client, project, ops, stamps, counts, notes,
-                      TrackingBatcher(client, tracker=tracker, ids=ids))
-        b = ctx.b
-        b.expect(ops)
+    with executing(KIND, client, ops, STAGES, label, tracker=tracker, ids=ids, first=0) as b:
+        ctx = Context(client, project, ops, stamps, counts, notes, b)
 
         # Deletes, values, metadata and every new node, then the relations,
         # which name a new node's span by its id: one batch, unless the
@@ -732,22 +707,14 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
         ok.run_stage(KIND, ctx, ops, ok.BATCH, finish=lambda op: True)
         ok.run_stage(KIND, ctx, ops, LINKS, finish=lambda op: True)
         b.flush()
-
-    result = dict(counts)
-    if notes:
-        result['notes'] = notes
-    return result
+    return executed(counts, notes)
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
     """A plan in one phrase, for the audit label and the applied message. A
     rule is named in its own words (`core.rules.phrase`), as igt names its
     own, and everything else is counted by kind."""
-    named, rest = rules.named(ops)
-    tail = ok.summarize(KIND, rest, ok.stored_count, common_first=True) if rest else ''
-    if named and tail == 'no changes':
-        tail = ''
-    return ', '.join(named + ([tail] if tail else [])) or ok.summarize(KIND, [], ok.stored_count)
+    return summarize_plan(KIND, ops, count_of=ok.stored_count, common_first=True)
 
 
 __all__ = ['KIND', 'STAGES', 'GRAPH_KINDS', 'SCOPES', 'EXCLUSIVE_KINDS', 'Context',
