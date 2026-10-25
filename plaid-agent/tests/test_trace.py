@@ -78,9 +78,9 @@ def test_lines_read_as_sentences():
     assert describe_step('search', {'pattern': 'di', 'where': 'Gloss', 'document': 'Text 1'}) \
         == 'Searched Gloss for “di” in “Text 1”'
     assert describe_step('set_field', {'field': 'Gloss', 'value': 'ERG', 'refs': ['s1.w2', 's1.w3']}) \
-        == 'Planned Gloss = “ERG” on 2 items'
+        == 'Planned Gloss = “ERG” on 2 words'
     assert describe_step('set_field', {'field': 'Gloss', 'value': '', 'refs': ['s1.w2']}) \
-        == 'Planned Gloss = “” on 1 item'
+        == 'Planned Gloss = “” on 1 word'
     # The tools added after the trace first shipped, which used to show raw names.
     assert describe_step('split_word', {'ref': 's1.w2', 'at': 'Ali'}) \
         == 'Planned splitting the word s1.w2 at “Ali”'
@@ -90,6 +90,28 @@ def test_lines_read_as_sentences():
     assert describe_step('confirm', {'document': 'Text 1'}) \
         == 'Planned confirming everything awaiting review in “Text 1”'
     assert describe_step('confirm', {}) == 'Planned confirming everything awaiting review across the project'
+
+
+
+def test_a_plan_names_what_it_counts():
+    """The igt copy rules: never "item", name what is counted, from the
+    references the call named."""
+    assert describe_step('set_field', {'field': 'Gloss', 'value': 'ERG', 'refs': ['s1.w2.m1', 's1.w3.m2']}) \
+        == 'Planned Gloss = “ERG” on 2 morphemes'
+    assert describe_step('set_field', {'values': {'Translation': 'x'}, 'refs': ['s4']}) \
+        == 'Planned Translation = “x” on 1 sentence'
+    assert describe_step('link_entry', {'entry_form': 'kai', 'refs': ['s1.w2', 's2."kai"']}) \
+        == 'Planned linking 2 words to “kai”'
+    assert describe_step('unlink_entry', {'refs': ['s1.w2', 's1.w2.m1', 's1.w3.m2']}) \
+        == 'Planned unlinking 1 word and 2 morphemes'
+    assert describe_step('confirm', {'refs': ['s1.w2.m1'], 'document': 'Text 1'}) \
+        == 'Planned confirming 1 morpheme in “Text 1”'
+    assert describe_step('discard_analysis', {'refs': ['s1', 's2.w1']}) \
+        == 'Planned discarding the unverified analysis of 1 sentence and 1 word'
+    assert describe_step('set_field', {'field': 'Gloss', 'value': 'x', 'refs': 's1.w2'}) \
+        == 'Planned Gloss = “x” on 1 word'
+    assert describe_step('set_field', {'field': 'Gloss', 'value': 'x', 'refs': ['nonsense']}) \
+        == 'Planned Gloss = “x” on 1 reference'
 
 
 def test_summary_counts_documents_searches_and_changes():

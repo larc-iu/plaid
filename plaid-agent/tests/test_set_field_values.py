@@ -71,4 +71,4 @@ def test_the_trace_names_every_field():
     line = describe_step('set_field', {'document': 'd1', 'refs': ['s1.w2', 's1.w1.m2'],
                                        'values': {'Gloss': 'fish', 'Morph Gloss': 'PL'}})
     text = line['text'] if isinstance(line, dict) else str(line)
-    assert text == "Planned Gloss = “fish”, Morph Gloss = “PL” on 2 items in “d1”"
+    assert text == "Planned Gloss = “fish”, Morph Gloss = “PL” on 1 word and 1 morpheme in “d1”"

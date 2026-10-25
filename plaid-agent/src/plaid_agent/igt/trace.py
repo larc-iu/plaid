@@ -9,6 +9,7 @@ declared tool reaches that fallback.
 
 from typing import Any, Dict, List, Optional
 
+from ..core.refs import read_ref
 from ..core.scope import is_all
 from ..core.trace import META, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
@@ -55,6 +56,31 @@ def _held(a: Dict[str, Any]) -> str:
     return ' where ' + ' and '.join(f'{k} is {q(v)}' for k, v in w.items())
 
 
+#: What a reference names, by how deep it goes, singular and plural.
+_PLACES = (('sentence', 'sentences'), ('word', 'words'), ('morpheme', 'morphemes'))
+
+
+def _counted(a: Dict[str, Any]) -> str:
+    """The places a call's ``refs`` name, counted by what they are: "2 words",
+    "1 word and 2 morphemes". A reference that does not read as one is
+    counted as a reference."""
+    refs = a.get('refs')
+    refs = refs if isinstance(refs, list) else [refs] if refs else []
+    tally: Dict[tuple, int] = {}
+    for ref in refs:
+        r = read_ref(ref, 'wm')
+        if r is None:
+            place = ('reference', 'references')
+        else:
+            depth = 2 if r.parts[1] is not None else 1 if (r.parts[0] is not None or r.by_form) else 0
+            place = _PLACES[depth]
+        tally[place] = tally.get(place, 0) + 1
+    if not tally:
+        return plural(0, 'word')
+    parts = [plural(n, one, many) for (one, many), n in tally.items()]
+    return parts[0] if len(parts) == 1 else ', '.join(parts[:-1]) + ' and ' + parts[-1]
+
+
 def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     """One past-tense line for a finished call of a tool of this app's own, or
     None for a shared one (:data:`core.trace.SHARED_DESCRIBE`)."""
@@ -95,12 +121,12 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'sequence_search':
         return f'Searched for a word sequence{in_doc(a)}'
 
-    # --- plans: one item at a time -------------------------------------------
+    # --- plans: one place at a time ------------------------------------------
     if name == 'set_field':
         if isinstance(a.get('values'), dict) and a['values']:
             sets = ', '.join(f'{k} = {q(v)}' for k, v in a['values'].items())
-            return f'Planned {sets} on {plural(count(a), "item")}{in_doc(a)}'
-        return f'Planned {a.get("field")} = {q(a.get("value"))} on {plural(count(a), "item")}{in_doc(a)}'
+            return f'Planned {sets} on {_counted(a)}{in_doc(a)}'
+        return f'Planned {a.get("field")} = {q(a.get("value"))} on {_counted(a)}{in_doc(a)}'
     if name == 'set_analysis':
         many = a.get('analyses') if isinstance(a.get('analyses'), list) else []
         if many and not a.get('ref'):
@@ -119,12 +145,12 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'respell':
         return f'Planned respelling {a.get("ref")} → {q(a.get("new_text"))}{in_doc(a)}'
     if name == 'link_entry':
-        return f'Planned linking {plural(count(a), "item")} to {_entry(a)}{in_doc(a)}'
+        return f'Planned linking {_counted(a)} to {_entry(a)}{in_doc(a)}'
     if name == 'unlink_entry':
-        return f'Planned unlinking {plural(count(a), "item")}{in_doc(a)}'
+        return f'Planned unlinking {_counted(a)}{in_doc(a)}'
     if name == 'confirm':
         what = f' ({a["field"]})' if a.get('field') else ''
-        scope = plural(count(a), 'item') if a.get('refs') else 'everything awaiting review'
+        scope = _counted(a) if a.get('refs') else 'everything awaiting review'
         docs = _named(a)
         if docs and is_all(a['documents']):
             across = ' across the project'
@@ -134,7 +160,7 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
             across = in_doc(a) or (' across the project' if not a.get('refs') else '')
         return f'Planned confirming {scope}{what}{across}'
     if name == 'discard_analysis':
-        return f'Planned discarding the unverified analysis of {plural(count(a), "item")}{in_doc(a)}'
+        return f'Planned discarding the unverified analysis of {_counted(a)}{in_doc(a)}'
 
     # --- plans: across the corpus --------------------------------------------
     if name == 'replace_in_field':
