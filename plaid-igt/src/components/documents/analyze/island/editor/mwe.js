@@ -7,6 +7,7 @@ import { notifyInfo } from '@/utils/feedback';
 import { EMPTY_SET, numHtml, provClass } from './shared.js';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
+import { tokenizeFocus } from '../../../hooks/focusHandoff.js';
 
 // Multi-word expressions: gathering words into one link, the bracket and its
 // lanes, and the popover for the expression as a whole.
@@ -305,10 +306,10 @@ export const mwe = {
 
   // Shift+click (or any click while gathering) on a word's form.
   // Where the Tokenize tab opens next: the sentence of the cell or word form
-  // just focused, and the word's start. Written under a key the Tokenize tab
-  // reads when it mounts, which a tab switch does, so the hand-off works by
-  // the tab as well as by Alt+click. The mirror of what Tokenize writes for
-  // this tab under `igt:focus-sentence`.
+  // just focused, and the word's start. Written to the handoff the Tokenize
+  // tab reads when it mounts (focusHandoff.js tokenizeFocus), which a tab
+  // switch does, so the hand-off works by the tab as well as by Alt+click. The
+  // mirror of what Tokenize writes for this tab (analyzeFocus).
   _rememberForTokenize(el) {
     const sentenceId = el?.closest?.('.igt-sentence')?.dataset?.sentenceId;
     if (!sentenceId) return;
@@ -320,10 +321,7 @@ export const mwe = {
     const sentence = (this.doc.sentences || []).find((s) => s.id === sentenceId);
     const begin = sentence?.tokens?.find((t) => t.id === wordId)?.begin ?? null;
     try {
-      sessionStorage.setItem(
-        'igt:focus-tokenize',
-        JSON.stringify({ docId: this.doc.id, sentenceId, begin }),
-      );
+      tokenizeFocus.write({ docId: this.doc.id, sentenceId, begin });
     } catch {
       /* noop */
     }
@@ -336,7 +334,7 @@ export const mwe = {
       e.preventDefault();
       e.stopPropagation();
       this._rememberForTokenize(e.currentTarget);
-      window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'tokenize' } }));
+      this._navigateTab('tokenize');
       return;
     }
     if (!this._canLinkMwe()) return;

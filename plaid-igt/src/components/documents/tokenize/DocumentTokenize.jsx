@@ -22,6 +22,7 @@ import { TokenizeDialog } from './TokenizeDialog.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 import { countOf, plural } from '@ui/lib/plural.js';
+import { analyzeFocus, tokenizeFocus } from '../hooks/focusHandoff.js';
 
 export function DocumentTokenize() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
@@ -49,7 +50,7 @@ export function DocumentTokenize() {
   useEffect(() => {
     let req = null;
     try {
-      req = JSON.parse(sessionStorage.getItem('igt:focus-tokenize') || 'null');
+      req = tokenizeFocus.read();
     } catch {
       /* noop */
     }
@@ -58,7 +59,7 @@ export function DocumentTokenize() {
     // The key goes only once the landing is done (or given up on): in
     // development React runs a mount effect, cleans it up and runs it again,
     // and a key taken on the first run would leave the second with nothing.
-    const done = () => sessionStorage.removeItem('igt:focus-tokenize');
+    const done = () => tokenizeFocus.clear();
     if (!row) {
       done();
       return undefined;
@@ -614,19 +615,16 @@ export function TokenComponent({
   const handleMouseDown = (e) => {
     if (e.button !== 0) return;
     // The last word pressed here is where the Analyze tab opens next, whether
-    // by Shift+click or by the tab itself: the island reads this key when it
-    // mounts, and a tab switch mounts it. The same key search click-through
+    // by Shift+click or by the tab itself: the island reads this handoff when
+    // it mounts, and a tab switch mounts it. The same one search click-through
     // writes, so the landing (page, scroll, flash, caret) is the same one.
     try {
-      sessionStorage.setItem(
-        'igt:focus-sentence',
-        JSON.stringify({
-          docId: doc.id,
-          sentenceId: sentence.id,
-          begin: piece.begin,
-          level: 'word',
-        }),
-      );
+      analyzeFocus.write({
+        docId: doc.id,
+        sentenceId: sentence.id,
+        begin: piece.begin,
+        level: 'word',
+      });
     } catch {
       /* noop */
     }

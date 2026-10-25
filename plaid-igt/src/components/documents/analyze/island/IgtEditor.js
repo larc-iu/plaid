@@ -52,6 +52,7 @@ import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.j
 import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
 import { saveStateOf } from '@ui/lib/saveState.js';
+import { analyzeFocus } from '../../hooks/focusHandoff.js';
 
 export class IgtEditor {
   constructor(
@@ -66,6 +67,9 @@ export class IgtEditor {
       canDeleteAnyComment = false,
       confirmDeleteComment = null,
       assistantOnline = false,
+      onNavigateTab = null,
+      onOpenAutoAnalyze = null,
+      onAskAssistant = null,
     } = {},
   ) {
     // Event handlers handed to lit templates, bound so `this` survives.
@@ -96,6 +100,13 @@ export class IgtEditor {
     // Whether a sentence offers "Ask". Discovered after mount, so it also has
     // a setter (see editor/assistant.js).
     this.assistantOnline = assistantOnline;
+    // What the island asks of the page around it, which is React and holds the
+    // router, the Auto-analyze dialog and the assistant panel: another tab of
+    // this document by name, the dialog opened, and the panel opened on
+    // `{ ref, label }`. Each may be left out, and the gesture then does nothing.
+    this.onNavigateTab = onNavigateTab;
+    this.onOpenAutoAnalyze = onOpenAutoAnalyze;
+    this.onAskAssistant = onAskAssistant;
     // And whether the window has room for the panel that Ask opens. Read once
     // here so the first paint is right, and kept current by a resize listener
     // below, which is the only thing that repaints this island for the window.
@@ -238,8 +249,6 @@ export class IgtEditor {
       }),
     });
     this._unsubCells = this._cells.subscribe(() => this._render(true));
-    this._onAssistantFocus = this._onAssistantFocus.bind(this);
-    window.addEventListener('igt:focus-sentence', this._onAssistantFocus);
     this._onDockWidth = this._onDockWidth.bind(this);
     window.addEventListener('resize', this._onDockWidth);
     window.addEventListener('scroll', this._onWinChange, true);
@@ -309,22 +318,23 @@ export class IgtEditor {
     this._consumeFocusRequest();
   }
 
-  // Search click-through: a sessionStorage key names a sentence to focus.
-  // Page to it (it may be outside the initially rendered page), scroll it into
-  // view, and flash it. The key is removed only AFTER the element is actually
-  // focused — removing it on read would let React StrictMode's dev-mode
-  // throwaway double-mount consume it before the real mount runs.
+  // Search click-through: the handoff (focusHandoff.js analyzeFocus) names a
+  // sentence to focus. Page to it (it may be outside the initially rendered
+  // page), scroll it into view, and flash it. The request is cleared only AFTER
+  // the element is actually focused — clearing it on read would let React
+  // StrictMode's dev-mode throwaway double-mount consume it before the real
+  // mount runs.
   _consumeFocusRequest() {
     let req = null;
     try {
-      req = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null');
+      req = analyzeFocus.read();
     } catch {
       /* noop */
     }
     if (!req || req.docId !== this.doc.id) return;
     const idx = (this.doc.sentences || []).findIndex((s) => s.id === req.sentenceId);
     if (idx < 0) {
-      sessionStorage.removeItem('igt:focus-sentence'); // stale target — drop it
+      analyzeFocus.clear(); // stale target — drop it
       return;
     }
     this._setPage(Math.floor(idx / this.constructor.PAGE_SIZE));
@@ -333,7 +343,7 @@ export class IgtEditor {
         `.igt-sentence[data-sentence-id="${req.sentenceId}"]`,
       );
       if (!el) return; // throwaway mount already torn down — leave the key for the real one
-      sessionStorage.removeItem('igt:focus-sentence');
+      analyzeFocus.clear();
       el.scrollIntoView({ block: 'center' });
       el.classList.add('igt-sentence--flash');
       setTimeout(() => el.classList.remove('igt-sentence--flash'), 2400);
@@ -437,7 +447,6 @@ export class IgtEditor {
     this._unsubCells?.();
     // The values it holds stay with the document, for the next island on it.
     this._cells.bind({ view: null });
-    window.removeEventListener('igt:focus-sentence', this._onAssistantFocus);
     window.removeEventListener('resize', this._onDockWidth);
     document.removeEventListener('visibilitychange', this._onVisibility);
     this.container.removeEventListener('keydown', this._predictionKeydown);

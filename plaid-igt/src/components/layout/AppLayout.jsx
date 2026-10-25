@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { AppShell } from '@ui/components/shared/AppShell.jsx';
-import { useAskAssistant } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { keys } from '@/lib/keymap.js';
 
@@ -15,23 +14,8 @@ import { keys } from '@/lib/keymap.js';
 // and how to tell that the assistant tab is open. What stays here is what is
 // IGT's to do inside the shell, `ShellBridges`.
 
-// Two listeners that draw nothing, mounted inside the shell because the first
-// needs its assistant context.
+// A listener that draws nothing, mounted inside the shell.
 const ShellBridges = () => {
-  // What the reader pointed at, as {ref, label}. The interlinear grid is a lit
-  // island, so its "Ask" reaches React as a window event, and the shell listens
-  // rather than the document screen: the panel lives here now, and Ask has to
-  // be able to open it. Past that bridge it is the ordinary channel a React
-  // screen uses (`useAskAssistant`), which plaid-ud's editor calls directly.
-  const ask = useAskAssistant();
-  useEffect(() => {
-    const onAsk = (e) => {
-      if (e.detail) ask(e.detail);
-    };
-    window.addEventListener('igt:ask-assistant', onAsk);
-    return () => window.removeEventListener('igt:ask-assistant', onAsk);
-  }, [ask]);
-
   // `/` outside a text box focuses the screen's search box (the first
   // SearchInput on it), the web's own key for that. Nothing when the screen
   // has none, and nothing while typing: a slash in a box is a slash.

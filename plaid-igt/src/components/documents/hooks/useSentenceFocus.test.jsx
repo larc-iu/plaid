@@ -3,6 +3,7 @@ import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { act } from 'react';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useSentenceFocus } from './useSentenceFocus.js';
+import { onSentenceFocus } from './focusHandoff.js';
 
 // Two halves of one gesture, and both are silent when they go wrong: a seed
 // that overwrites a richer request loses the word the reader clicked, and a
@@ -41,17 +42,18 @@ const base = {
   onEditor: true,
 };
 
+// What the island would be asked, as AnalyzeIsland hears it.
 let events;
-const onFocus = (e) => events.push(e.detail);
+let stopListening;
 
 beforeEach(() => {
   sessionStorage.clear();
   events = [];
-  window.addEventListener(KEY, onFocus);
+  stopListening = onSentenceFocus((req) => events.push(req));
 });
 
 afterEach(() => {
-  window.removeEventListener(KEY, onFocus);
+  stopListening();
 });
 
 describe('the ?focusSentence= seed', () => {

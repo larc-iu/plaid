@@ -26,7 +26,6 @@ import { lazyNamed } from '@ui/lib/lazyNamed';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { readOnlyReason } from '@ui/domain/permissions.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
-import { useIslandTabRequests } from './hooks/useIslandTabRequests.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
@@ -162,8 +161,6 @@ const DocumentBody = ({ tab, context }) => {
   const permissions = useDocumentPermissions(project);
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(project);
-  // The island asks for a tab by a window event, having no router to reach.
-  useIslandTabRequests(goToTab);
   const isViewingHistorical = !!asOf;
 
   // A project whose import never finished sends its maintainers back to the
@@ -237,9 +234,8 @@ const DocumentBody = ({ tab, context }) => {
         writeLock: writeLockHeld,
         acquireWriteLock,
         assistantOnline: !!assistantAvailable,
-        // How a tab sends the reader to another tab. The window event the
-        // island uses stays the island's: it is not React and has no context
-        // to read.
+        // How a tab sends the reader to another tab. AnalyzeIsland hands it
+        // to the island, which is not React and has no context to read.
         goToTab,
       }}
     >

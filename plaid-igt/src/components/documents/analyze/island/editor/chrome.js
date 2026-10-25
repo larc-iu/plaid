@@ -396,11 +396,11 @@ export const chrome = {
     this._render(true);
   },
 
-  // Ask the React shell (DocumentDetail) to switch the active editor tab. The
-  // island is framework-agnostic, so this goes out as a DOM CustomEvent the
-  // shell listens for, rather than calling a router directly.
+  // Ask the React shell to switch the active editor tab. The island is
+  // framework-agnostic, so it calls the `onNavigateTab` its mount handed it
+  // (AnalyzeIsland, the document's goToTab) rather than a router.
   _navigateTab(tab) {
-    window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab } }));
+    this.onNavigateTab?.(tab);
   },
 
   _sentence(sentence, index, ctx) {

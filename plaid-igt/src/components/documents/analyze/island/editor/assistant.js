@@ -1,6 +1,7 @@
 import { html } from 'lit-html';
 import { wideEnoughToDock } from '@ui/components/assistant/panelWidth.js';
 import { SENTENCE_ACTION } from '@ui/components/shared/sentenceActions.js';
+import { analyzeFocus } from '../../../hooks/focusHandoff.js';
 
 // The assistant's mark, for lit. The React copy and its reasoning are in
 // plaid-ui/src/components/assistant/PlaidMarks.jsx: keep the two in step,
@@ -35,9 +36,8 @@ const assistantMark = (index) => {
 // Asking the assistant about one sentence.
 //
 // The island cannot reach the docked panel directly (the panel is React, on
-// the page around this), so the gesture goes out as a window event. The SHELL
-// listens for it, because the panel it has to open lives there. Same bridge the
-// auto-analyze opener uses.
+// the page around this), so the gesture goes to the `onAskAssistant` its mount
+// handed it (AnalyzeIsland, which asks the shell's panel).
 //
 // The control is only rendered when an assistant is online AND the window has
 // room for the panel: Ask hands the shell a reference and the shell opens the
@@ -75,15 +75,13 @@ export const assistant = {
   // The other direction: a citation in the panel points into THIS document, so
   // put that sentence in view rather than sending the reader to a second
   // browser tab. The island already knows how -- it is the path a deep link
-  // takes -- so this only has to hand it the same request.
-  _onAssistantFocus(e) {
-    const { documentId, focus, begin } = e.detail || {};
+  // takes -- so this only has to hand it the same request. Called by
+  // AnalyzeIsland with `{ documentId, focus, begin }`.
+  focusSentence(req) {
+    const { documentId, focus, begin } = req || {};
     if (!focus || !this.doc || documentId !== this.doc.id) return;
     try {
-      sessionStorage.setItem(
-        'igt:focus-sentence',
-        JSON.stringify({ docId: this.doc.id, sentenceId: focus, begin: begin ?? null }),
-      );
+      analyzeFocus.write({ docId: this.doc.id, sentenceId: focus, begin: begin ?? null });
     } catch {
       return; // no session storage, no focus: the link still works as a link
     }
@@ -91,16 +89,12 @@ export const assistant = {
   },
 
   _askAssistant(index) {
-    window.dispatchEvent(
-      new CustomEvent('igt:ask-assistant', {
-        detail: {
-          // The addressing the assistant's tools use, and the numbers a read
-          // prints: sentences count from 1.
-          ref: `s${index + 1}`,
-          label: 'Sentence',
-        },
-      }),
-    );
+    this.onAskAssistant?.({
+      // The addressing the assistant's tools use, and the numbers a read
+      // prints: sentences count from 1.
+      ref: `s${index + 1}`,
+      label: 'Sentence',
+    });
   },
 
   // `sentence` is the row this draws for; only its number is needed, and the

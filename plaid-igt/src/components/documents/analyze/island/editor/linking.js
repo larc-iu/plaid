@@ -8,10 +8,11 @@ export const linking = {
   // AnalyzeIsland shell): copy previous analyses → an `analyze` service
   // proposes segmentation + glosses → link to the lexicon (built-in rule or a
   // link-vocab service) — the same service-selection idiom as the
-  // Media/Tokenize tabs. The island only dispatches the open request; results
-  // land via the shared doc's reload.
+  // Media/Tokenize tabs. The island only asks for it to open (the
+  // `onOpenAutoAnalyze` its mount handed it); results land via the shared doc's
+  // reload.
   _openAutoAnalyze() {
-    window.dispatchEvent(new CustomEvent('igt:auto-analyze-open'));
+    this.onOpenAutoAnalyze?.();
   },
 
   // Run a doc mutation with a focus target to re-affirm after the render it

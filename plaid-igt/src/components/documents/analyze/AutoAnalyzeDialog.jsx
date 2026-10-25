@@ -45,7 +45,7 @@ const LINK_BUILTINS = [
 // step's method is the same ServiceMethodRow the others use. What it adds is a
 // step list in the status area, because a four-step run that reports one
 // percentage cannot say which minute of the wait you are in.
-// Opened by the island's toolbar button via the igt:auto-analyze-open event.
+// Opened by the island's toolbar button, through AnalyzeIsland's onOpenAutoAnalyze.
 const readSteps = () => {
   try {
     return JSON.parse(localStorage.getItem(STEPS_STORAGE_KEY) || '{}') || {};

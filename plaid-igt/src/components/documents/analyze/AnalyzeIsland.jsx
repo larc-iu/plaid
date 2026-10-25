@@ -5,6 +5,8 @@ import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { useAskAssistant } from '@ui/components/assistant/subject.js';
+import { onSentenceFocus } from '../hooks/focusHandoff.js';
 
 // Thin React shell around the vanilla IgtEditor island. Consumes the single
 // shared IgtDocument from DocumentContext (the same instance the other tabs use)
@@ -15,18 +17,26 @@ import { canManageVocabulary } from '@ui/domain/permissions.js';
 // doc identity changes and the mount effect below re-mounts the island onto the
 // new historical snapshot automatically. readOnly is synced without remounting.
 export const AnalyzeIsland = () => {
-  const { doc, readOnly, comments, canWrite, canManage, assistantOnline } = useDocumentCtx();
+  const { doc, readOnly, comments, canWrite, canManage, assistantOnline, goToTab } =
+    useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
-  // The island's Auto-analyze toolbar button requests this React-side modal
-  // (service discovery + param forms are React machinery) via a window event.
+  // The island's Auto-analyze toolbar button opens this React-side modal
+  // (service discovery + param forms are React machinery).
   const [autoAnalyzeOpen, setAutoAnalyzeOpen] = useState(false);
 
-  useEffect(() => {
-    const onOpen = () => setAutoAnalyzeOpen(true);
-    window.addEventListener('igt:auto-analyze-open', onOpen);
-    return () => window.removeEventListener('igt:auto-analyze-open', onOpen);
-  }, []);
+  // What the island asks of the page, read through refs because the island is
+  // built once. goToTab changes with the query string it closes over, and a
+  // stale one would write the tab onto an outdated URL. Ask opens the shell's
+  // assistant panel on what was pointed at, the channel a React screen uses.
+  const goToTabRef = useRef(goToTab);
+  goToTabRef.current = goToTab;
+  const ask = useAskAssistant();
+  const askRef = useRef(ask);
+  askRef.current = ask;
+
+  // A citation in the panel into this document, while the grid is up.
+  useEffect(() => onSentenceFocus((req) => editorRef.current?.focusSentence(req)), []);
 
   // An Auto-analyze run keeps going when the dialog is closed, so its status
   // goes onto the toolbar button that opened it.
@@ -71,6 +81,13 @@ export const AnalyzeIsland = () => {
           destructive: true,
         }),
       assistantOnline,
+      onNavigateTab: (tab) => {
+        if (tab) goToTabRef.current?.(tab);
+      },
+      onOpenAutoAnalyze: () => setAutoAnalyzeOpen(true),
+      onAskAssistant: (subject) => {
+        if (subject) askRef.current(subject);
+      },
     });
     return () => {
       if (editorRef.current) {
