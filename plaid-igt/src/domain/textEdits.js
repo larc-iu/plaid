@@ -14,7 +14,9 @@
 // Offsets are Unicode code points throughout, like the tokens they move.
 
 import { cpLength, cpSlice } from '@larc-iu/plaid-client';
-import { applyTokenDelete } from '@ui/domain/annotationLoss.js';
+// By path, not the @ui alias: the agent's text edges mirror runs this file
+// under plain node.
+import { applyTokenDelete } from '../../../plaid-ui/src/domain/annotationLoss.js';
 
 /**
  * Token extents after inserting `count` code points at `index`, the first
