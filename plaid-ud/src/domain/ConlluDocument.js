@@ -15,12 +15,8 @@ import {
   wasReplayed,
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
-import {
-  getUdLayerInfo,
-  containsToken,
-  readProjectLanguage,
-  dependencyRelationLayers,
-} from '../utils/udLayerUtils.js';
+import { getUdLayerInfo, containsToken, dependencyRelationLayers } from '../utils/udLayerUtils.js';
+import { readTokenizerLocale } from './udConfig.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor, suppressorIdsOver } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, recordSettled, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
@@ -379,13 +375,9 @@ export class ConlluDocument extends DocumentModel {
     // Words: Unicode-aware basic tokenization. Punctuation flanked by
     // letters/digits on both sides stays in the word (contractions,
     // hyphenated forms, abbreviations, decimal numbers); edge or standalone
-    // punctuation becomes its own one-character token.
-    // Locale drives Intl.Segmenter's script-specific word segmentation
-    // (esp. ja/zh/th dictionary lookup). The text layer's own locale wins,
-    // since it can carry a script subtag the project language does not
-    // (zh-Hans); otherwise the project's language stands in, and 'und' last.
-    const tokenizerLocale =
-      info.textLayer?.config?.ud?.tokenizerLocale || readProjectLanguage(this._project) || 'und';
+    // punctuation becomes its own one-character token, in the segmenter's
+    // locale (readTokenizerLocale).
+    const tokenizerLocale = readTokenizerLocale(info.textLayer, this._project);
     const wordRanges = gapTokenize(
       body,
       sentenceRanges,
@@ -561,8 +553,7 @@ export class ConlluDocument extends DocumentModel {
     const ranges = sentences.length
       ? [...sentences].sort((a, b) => a.begin - b.begin).map((s) => [s.begin, s.end])
       : newlineSentenceRanges(body || '');
-    const locale =
-      textLayer?.config?.ud?.tokenizerLocale || readProjectLanguage(this._project) || 'und';
+    const locale = readTokenizerLocale(textLayer, this._project);
     return gapTokenize(
       body || '',
       ranges,

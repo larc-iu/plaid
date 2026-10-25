@@ -219,6 +219,3 @@ export const missingUdLayerLabels = (missingKeys) => {
   if (!Array.isArray(missingKeys)) return [];
   return missingKeys.map((key) => UD_LAYER_LABELS[key] || key);
 };
-
-// ConlluDocument.js still imports these from here.
-export { readProjectLanguage } from '../domain/udConfig.js';

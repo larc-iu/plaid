@@ -56,6 +56,14 @@ export const readProjectLanguage = (project) => {
 export const readStoredTokenizerLocale = (textLayer) =>
   readUdConfig(textLayer?.config, TOKENIZER_LOCALE_KEY) || '';
 
+// The locale the segmenter runs with. Locale drives Intl.Segmenter's
+// script-specific word segmentation (esp. ja/zh/th dictionary lookup). The
+// text layer's own locale wins, since it can carry a script subtag the project
+// language does not (zh-Hans), otherwise the project's language stands in,
+// and 'und' last.
+export const readTokenizerLocale = (textLayer, project) =>
+  readStoredTokenizerLocale(textLayer) || readProjectLanguage(project) || 'und';
+
 /** The declared field names for a level, in the order the project set. */
 export function readMetadataFields(config, level) {
   const key = level === 'sentence' ? SENTENCE_METADATA_KEY : DOCUMENT_METADATA_KEY;
