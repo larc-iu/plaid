@@ -68,14 +68,12 @@ from .conversation import ConversationStore, build_meta, pending_kept
 from .ops import ANOTHER_PROJECT, OPS, STALE_PAGE
 from .plan import documents_to_lock
 from .web import WebConfig
-from .version import AGENT_VERSION, agent_sources, agent_version  # noqa: F401 - AGENT_VERSION for the tests
-from .service_cli import ServiceCli, build_web_config, check_hint  # noqa: F401 - re-exported for an app
-from .staleness import changed_sentences, stale_documents  # noqa: F401 - for the tests
-from .turn import THINKING_TAIL, Turn, focus_note, projects_stamped, stamped  # noqa: F401 - for the tests
+from .version import agent_sources, agent_version
+from .service_cli import ServiceCli
+from .turn import Turn, focus_note
 from .record_ops import RecordOps, _Op
-from .approval import (AUDIT_LABEL_MAX, Approving, _failure, _sentence, audit_label,  # noqa: F401 - for the tests
-                       decided_refusal)
-from .page_writes import IN_FORCE, PageWrites  # noqa: F401 - IN_FORCE for the tests
+from .approval import Approving
+from .page_writes import PageWrites
 
 
 class BaseAssistantService(ServiceCli, RecordOps, Approving, PageWrites, Turn, BaseService):

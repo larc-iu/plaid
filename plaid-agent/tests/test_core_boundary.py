@@ -102,7 +102,7 @@ def test_the_focus_note_names_the_document_and_still_allows_the_corpus():
 
     The scope stays SOFT, so a question about the corpus must still be allowed.
     """
-    from plaid_agent.core.service import focus_note
+    from plaid_agent.core.turn import focus_note
 
     note = focus_note('Text 1')
     assert note.count('"Text 1"') >= 2
@@ -205,7 +205,7 @@ def test_a_question_is_stamped_with_where_it_was_asked_only_when_that_changed():
     """A thread holds questions asked from several places once the panel stops
     belonging to one screen. Each question keeps its own place, and a thread
     that has not moved carries the stamp once rather than on every turn."""
-    from plaid_agent.core.service import stamped
+    from plaid_agent.core.turn import stamped
 
     def user(text):
         return {'role': 'user', 'content': text}
@@ -237,7 +237,7 @@ def test_a_question_is_stamped_with_where_it_was_asked_only_when_that_changed():
 def test_nothing_is_stamped_when_there_is_nowhere_to_name():
     """The panel is open on a screen the assistant has no tools for, or on none
     at all. A turn must still run, unstamped."""
-    from plaid_agent.core.service import stamped
+    from plaid_agent.core.turn import stamped
 
     msgs = [{'role': 'user', 'content': 'a question'}]
     assert stamped(msgs, None) is msgs

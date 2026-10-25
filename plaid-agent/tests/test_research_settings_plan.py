@@ -13,7 +13,7 @@ from page_write import page_write
 
 from plaid_agent.core.conversation import (ConversationStore, assistant_item, build_meta, proposed_changes,
                                            settle_plan, user_item)
-from plaid_agent.core.service import audit_label
+from plaid_agent.core.approval import audit_label
 from plaid_agent.igt.project import load_project
 from plaid_agent.igt.service import AssistantService
 from plaid_agent.igt.toolkit import call_tool

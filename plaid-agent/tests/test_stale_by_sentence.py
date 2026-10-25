@@ -22,7 +22,7 @@ from test_service_flow import Helper
 
 from plaid_agent.core.conversation import ConversationStore, assistant_item, build_meta, user_item
 from plaid_agent.core.agent import ModelConfig
-from plaid_agent.core.service import changed_sentences, stale_documents
+from plaid_agent.core.staleness import changed_sentences, stale_documents
 
 
 def _layer(raw, layer_id):

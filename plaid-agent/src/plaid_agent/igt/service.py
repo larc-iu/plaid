@@ -8,7 +8,7 @@ citation resolves to an example card, and how an approved plan is applied.
 
 from typing import Dict, Optional
 
-from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
+from ..core.service import BaseAssistantService
 from ..core.plan import PlanError, PlanOutOfDate
 from . import plan, prompt, toolkit
 from .citations import resolve_citations

@@ -23,7 +23,7 @@ from plaid_agent.core import plan as core_plan
 from plaid_agent.core import service as service_mod
 from plaid_agent.core.conversation import ConversationStore, find_plan
 from plaid_agent.core.plan import WRITING
-from plaid_agent.core.service import _failure
+from plaid_agent.core.approval import _failure
 from plaid_agent.core.plan import PlanError
 from plaid_client.http import PlaidAPIError
 from test_service_flow import Helper

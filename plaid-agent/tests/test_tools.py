@@ -443,7 +443,7 @@ def test_plan_payload_records_the_documents_it_touches_with_versions():
 
 
 def test_stale_documents_refuse_a_plan_made_against_older_data():
-    from plaid_agent.igt.service import stale_documents
+    from plaid_agent.core.staleness import stale_documents
     c = FakeClient()
     assert stale_documents(c, [{'id': 'd1', 'name': 'Text 1', 'version': 7}]) == []
     assert stale_documents(c, [{'id': 'd1', 'name': 'Text 1', 'version': 6}]) == ['document "Text 1" has changed since the plan was made']

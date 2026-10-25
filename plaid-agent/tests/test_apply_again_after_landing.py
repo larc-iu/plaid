@@ -20,7 +20,7 @@ import test_stale_by_sentence as sbs
 
 from plaid_agent.core import plan as core_plan
 from plaid_agent.core.plan import HELD_FROM
-from plaid_agent.core.service import stale_documents
+from plaid_agent.core.staleness import stale_documents
 
 
 def _store(client):

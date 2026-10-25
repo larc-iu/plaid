@@ -441,7 +441,7 @@ def test_the_audit_label_of_a_long_plan_is_cut_and_holds_no_isolates():
     # The summary as the card has it, isolates and all (the suite's fixture
     # takes them out of the bidi module's own).
     FSI, PDI = '\u2068', '\u2069'
-    from plaid_agent.core.service import AUDIT_LABEL_MAX, audit_label
+    from plaid_agent.core.approval import AUDIT_LABEL_MAX, audit_label
     assert audit_label('2 field values') == 'Assistant: 2 field values'
     long = ', '.join(f'Gloss "{FSI}كتاب{i}{PDI}" → "{FSI}كتب{i}{PDI}" (1,000 values)' for i in range(40))
     label = audit_label(long)

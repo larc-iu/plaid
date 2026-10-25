@@ -23,7 +23,7 @@ from test_service_flow import PLAN1, Helper, _request, _seed, _seed_plan, _servi
 from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnCancelled, TurnResult
 from plaid_agent.core.plan import Stamps
-from plaid_agent.core.service import AGENT_VERSION, agent_sources, agent_version
+from plaid_agent.core.version import AGENT_VERSION, agent_sources, agent_version
 from plaid_agent.igt.service import AssistantService as IgtService
 from plaid_agent.ud.service import AssistantService as UdService
 from plaid_agent.umr.service import AssistantService as UmrService

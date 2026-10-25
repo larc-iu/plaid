@@ -197,7 +197,7 @@ changes whenever any of it can have, though not with the project or with
 which tools a turn is offered. A change to the code that leaves all of it
 alone is a new version too. Line endings count as the repository stores
 them. The service computes it at startup (`BaseAssistantService.version`,
-from each app's `prompt_template()` and `core.service.agent_sources`).
+from each app's `prompt_template()` and `core.version.agent_sources`).
 `docs/*/SAMPLE_PROMPT.md` shows the same prompt and tools rendered over the
 test fixture.
 
@@ -377,6 +377,12 @@ fails while any of them is stale.
 
 The modules below are `igt/` unless they say otherwise.
 
+- `core/service.py`: `BaseAssistantService`, assembled from one mixin per job:
+  `core/service_cli.py` (the flags, startup and its pings), `core/record_ops.py`
+  (the record ops and the send that starts a turn), `core/turn.py` (the turn and
+  the stamps on its question), `core/approval.py` (approval, with the staleness
+  check in `core/staleness.py`) and `core/page_writes.py` (the plans a page
+  writes itself). `core/version.py` holds the version each turn records.
 - `core/web.py`: the optional web tools, the URL guard, and HTML to text.
 - `core/workspace.py`: the workspace both apps subclass. What one turn holds
   while its tools run: the document list and how a name resolves against it,

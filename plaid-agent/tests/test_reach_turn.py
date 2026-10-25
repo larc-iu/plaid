@@ -17,7 +17,7 @@ from plaid_agent.core.agent import ModelConfig, TurnResult  # noqa: E402
 from plaid_agent.core.conversation import ConversationStore, build_meta  # noqa: E402
 from plaid_agent.core.limits import OTHER_PROJECT_CHARS  # noqa: E402
 from plaid_agent.core.reach import LOCAL_TOOLS, PLAN_TOOLS  # noqa: E402
-from plaid_agent.core.service import projects_stamped, stamped  # noqa: E402
+from plaid_agent.core.turn import projects_stamped, stamped  # noqa: E402
 
 APPS = ('igt', 'ud', 'umr')
 DOC = {'igt': 'Text 1', 'ud': 'Viaje', 'umr': 'Story'}

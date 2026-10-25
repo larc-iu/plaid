@@ -15,6 +15,7 @@ from plaid_client import PlaidAPIError
 
 from plaid_agent.core import agent
 from plaid_agent.core import service as service_mod
+from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import ModelConfig, Toolkit, TurnCancelled, TurnResult, run_turn, turn_trace
 from plaid_agent.core.conversation import ConversationStore, build_meta, meta_key
 from plaid_agent.core.files import ORPHAN_AGE_S, sweep_orphans
@@ -412,7 +413,7 @@ def test_streamed_reasoning_is_kept_streamed_live_and_moves_onto_its_step(monkey
     svc = flow._service()
     svc.kit = Toolkit(tools_for=lambda ws: [], call_tool=lambda ws, n, a: 'found', tracer=TRACER)
     svc.cfg = ModelConfig(model='fake/model')
-    long = 'x' * (service_mod.THINKING_TAIL + 500)
+    long = 'x' * (turn_mod.THINKING_TAIL + 500)
     script = iter([[_thought_chunk('Pondering '), _thought_chunk('kai.'), _chunk('Looking.'),
                     _tool_chunk('c1', '{"q": "1"}')],
                    [_thought_chunk(long), _thought_chunk('end'), _chunk('Done.')]])
@@ -434,7 +435,7 @@ def test_streamed_reasoning_is_kept_streamed_live_and_moves_onto_its_step(monkey
     assert all(e['message'] != 'Writing…' for e in helper.events if e.get('thinking') and not e.get('text'))
     assert not any(t == 'Pondering kai.' and marks for t, marks in shown), 'the reasoning is on screen once'
     tails = [t for t, _ in shown if t and t.endswith('end')]
-    assert tails and all(len(t) == service_mod.THINKING_TAIL for t in tails)
+    assert tails and all(len(t) == turn_mod.THINKING_TAIL for t in tails)
     first, reply = _rounds(client)
     assert first['thinking'] == 'Pondering kai.' and reply['thinking'] == long + 'end'
     assert not any('reasoning_content' in m for m in sent[1])

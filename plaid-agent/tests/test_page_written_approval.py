@@ -329,7 +329,7 @@ def test_another_plans_page_write_does_not_count(proj):
 
 
 def test_a_plain_approval_over_settings_already_in_force_says_nothing_was_written(proj):
-    from plaid_agent.core.service import IN_FORCE
+    from plaid_agent.core.page_writes import IN_FORCE
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     page_write(proj.client, proj.project_id, ws.ops)  # by hand
@@ -345,7 +345,7 @@ def test_a_plain_approval_over_settings_already_in_force_says_nothing_was_writte
 
 
 def test_approve_again_after_a_lost_answer_is_applied_as_written(proj):
-    from plaid_agent.core.service import IN_FORCE
+    from plaid_agent.core.page_writes import IN_FORCE
     ws, plan = _planned(proj)
     store = _seed(proj, plan)
     assert _ready(_ask(proj, plan, preflight=True))
