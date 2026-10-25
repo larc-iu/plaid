@@ -384,6 +384,15 @@ describe('morph type from the linked lexicon entry', () => {
 });
 
 describe('morpheme structural ops', () => {
+  it('createMorpheme appends with precedence = count + 1', async () => {
+    const doc = makeDoc();
+    await doc.createMorpheme('w-1', 'ka');
+    const ms = doc.sentences[0].tokens[0].morphemes;
+    expect(ms).toHaveLength(2);
+    expect(ms[1].precedence).toBe(2);
+    expect(ms[1].metadata.form).toBe('ka');
+  });
+
   it('splitMorpheme batches setMetadata then shifts then create (create last)', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }],
