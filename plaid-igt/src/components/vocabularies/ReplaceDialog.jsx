@@ -31,7 +31,8 @@ import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { PUBLISHED_STATUS, STATUS_VALUES, statusFieldKey } from '@/domain/vocabDictionary';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
-import { CHUNK } from '@/domain/bulk';
+import { CHUNK, chunk } from '@/domain/bulk';
+import { isKeyReused } from '@ui/lib/errors.js';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { readVocabulary } from '@/domain/vocabCache';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -177,9 +178,12 @@ export const ReplaceDialog = ({
     if (!replaceWrites(chosen, { field: target.name }).length) return;
     setBusy(true);
     let done = 0;
-    let rows = [];
-    let writes = [];
+    // The rows of each request, cut once from the plan, so a resend sends
+    // each under the key it had the first time.
+    let chunks = [];
+    let total = 0;
     let skipped = 0;
+    let reused = false;
     const label = filling
       ? `Set ${target.label} to “${isolate(repl)}” where empty in ${vocabularyName || 'vocabulary'}`
       : `Replace “${isolate(find)}” → “${isolate(repl)}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
@@ -188,17 +192,27 @@ export const ReplaceDialog = ({
         label,
         async () => {
           done = 0;
-          for (let i = 0; i < writes.length; i += CHUNK) {
+          reused = false;
+          for (const rows of chunks) {
+            if (!rows.length) continue;
             // An entry still being made when this was planned is named by the
             // server's id now that its create has landed.
-            const chunk = writes.slice(i, i + CHUNK).map((w) => ({
+            const body = replaceWrites(rows, { field: target.name }).map((w) => ({
               ...w,
               id: settledId(w.id),
               ...(w.metadata ? { metadata: followIds(w.metadata) } : {}),
             }));
-            await client.vocabItems.bulkUpdate(chunk);
-            done += chunk.length;
-            setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
+            try {
+              await client.vocabItems.bulkUpdate(body);
+            } catch (err) {
+              // Its key landed before with another body: this chunk's first
+              // send landed, and the recheck dropped a value someone changed
+              // after it.
+              if (!isKeyReused(err)) throw err;
+              reused = true;
+            }
+            done += body.length;
+            setProgress(`${done.toLocaleString()} of ${total.toLocaleString()}`);
           }
         },
         {
@@ -208,28 +222,40 @@ export const ReplaceDialog = ({
           // wrote is sent again as it was, and answered from what it stored.
           plan: async () => {
             const entries = await readEntries();
-            rows = chosen.filter((r) => valueIn(entries, r.id) === r.old);
-            skipped = chosen.length - rows.length;
-            writes = replaceWrites(rows, { field: target.name });
+            const rows = chosen.filter((r) => valueIn(entries, r.id) === r.old);
+            chunks = chunk(rows, CHUNK);
+            total = rows.length;
+            skipped = chosen.length - total;
           },
           recheck: async () => {
             const entries = await readEntries();
-            rows = rows.filter((r) => [r.old, valueAfter(r)].includes(valueIn(entries, r.id)));
-            skipped = chosen.length - rows.length;
-            writes = replaceWrites(rows, { field: target.name });
+            chunks = chunks.map((rows) =>
+              rows.filter((r) => [r.old, valueAfter(r)].includes(valueIn(entries, r.id))),
+            );
+            total = chunks.flat().length;
+            skipped = chosen.length - total;
           },
           kind: 'bulk-edit',
           ref: 'action:vocab-replace',
         },
       );
       if (landed) {
+        // A chunk that landed before the recheck holds what it wrote, less
+        // what was changed since: the entries say what was replaced.
+        if (reused) {
+          const entries = await readEntries().catch(() => null);
+          if (entries) {
+            total = chosen.filter((r) => valueIn(entries, r.id) === valueAfter(r)).length;
+            skipped = chosen.length - total;
+          }
+        }
         await onApplied();
         const note = skippedNote([[skipped, 'value']]);
-        if (!writes.length && note)
+        if (!total && note)
           notifyWarning(note.trim(), filling ? 'Nothing set' : 'Nothing replaced');
         else
           notifySuccess(
-            `${countOf(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.${note}`,
+            `${countOf(total, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.${note}`,
             filling ? 'Set' : 'Replaced',
           );
         setFind('');
@@ -238,10 +264,7 @@ export const ReplaceDialog = ({
       } else {
         console.error('Replace failed:', error);
         notifyError(
-          humanizeError(
-            error,
-            `Replaced ${done.toLocaleString()} of ${writes.length.toLocaleString()}.`,
-          ),
+          humanizeError(error, `Replaced ${done.toLocaleString()} of ${total.toLocaleString()}.`),
           'Failed to replace',
         );
       }

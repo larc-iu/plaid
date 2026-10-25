@@ -29,6 +29,18 @@ vi.mock('@ui/components/assistant/useDock.js', () => ({ useWideEnoughToDock: () 
 const auth = vi.hoisted(() => ({ client: null, user: { id: 'u', isAdmin: true } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
+// A test may send one entry per request, to see a run of several chunks.
+const chunking = vi.hoisted(() => ({ size: null }));
+vi.mock('@/domain/bulk', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    get CHUNK() {
+      return chunking.size ?? real.CHUNK;
+    },
+  };
+});
+
 const { VocabularyItems } = await import('./VocabularyItems.jsx');
 const { WriteQueue } = await import('@ui/domain/WriteQueue.js');
 const feedback = await import('@/utils/feedback');
@@ -42,35 +54,51 @@ const lost = (method) =>
     method,
   });
 
-// A server holding `initial`. The first bulk write (of `loseKind`, when
-// named) lands and its answer is lost. A request sent again under a key that
-// landed is answered from what it stored, and writes nothing again. With
-// `between`, the first write never reaches the server, and `between(items)`
-// is another maintainer's edit made before the resend.
-const stub = (initial, { loseKind = null, between = null } = {}) => {
+// A server holding `initial`, keyed as core keys: a request sent again under
+// a key that landed is answered from what it stored and writes nothing again,
+// and one with another body under that key is refused 422
+// `idempotency-key-reused`. The first bulk write (of `loseKind`, when named)
+// lands and its answer is lost, and `after(items)` is another maintainer's
+// edit made before it goes again. With `between`, the first write never
+// reaches the server, and `between(items)` is that edit.
+const stub = (initial, { loseKind = null, between = null, after = null } = {}) => {
   const items = structuredClone(initial);
   const sent = [];
-  const landedKeys = new Set();
-  let lose = 1;
+  const stored = new Map();
+  let seeds = 0;
+  let seed = null;
   let n = 0;
+  let lose = 1;
   const keyed = (kind, apply) => async (body) => {
-    const key = `${kind}.${n++}`;
+    const key = `${seed}.${n++}`;
     sent.push({ kind, body: structuredClone(body), key });
     const losing = (!loseKind || kind === loseKind) && lose-- > 0;
     if (losing && between) {
       between(items);
-    } else if (!landedKeys.has(JSON.stringify(body))) {
-      landedKeys.add(JSON.stringify(body));
-      apply(body);
+      throw lost(kind === 'bulkCreate' ? 'POST' : 'PATCH');
     }
-    if (losing) throw lost(kind === 'bulkCreate' ? 'POST' : 'PATCH');
+    if (!stored.has(key)) {
+      stored.set(key, JSON.stringify(body));
+      apply(body);
+    } else if (stored.get(key) !== JSON.stringify(body)) {
+      throw Object.assign(new Error('HTTP 422'), {
+        status: 422,
+        responseData: { error: 'idempotency-key-reused' },
+      });
+    }
+    if (losing) {
+      after?.(items);
+      throw lost(kind === 'bulkCreate' ? 'POST' : 'PATCH');
+    }
     return {};
   };
   const client = {
     ops: [],
-    keySeed: () => ({ seed: 's' }),
+    keySeed: () => ({ seed: `s${seeds++}` }),
     withOperation: async (label, fn, opts) => {
       client.ops.push({ label, opts });
+      seed = opts?.keys?.seed;
+      n = 0;
       return fn(() => {});
     },
     batched(fn) {
@@ -135,6 +163,7 @@ let mounted = null;
 afterEach(async () => {
   await mounted?.unmount();
   mounted = null;
+  chunking.size = null;
   vi.clearAllMocks();
 });
 
@@ -265,6 +294,72 @@ describe('a planned run that fills in entries, whose answer was lost', () => {
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
       'Added 1 entry, filled in 1',
       'Bulk Add complete',
+    );
+  });
+});
+
+// The first send landed and its answer was lost, then another maintainer
+// changed an entry it wrote. The resend drops that entry, so its body is not
+// the one stored under its key, and core refuses it as a key used before:
+// that chunk landed the first time. The run reads the entries back and
+// reports from what they hold.
+describe('a planned run whose answer was lost, then edited by someone else', () => {
+  const replace = async (client, count) => {
+    const view = await mount(client);
+    mounted = view;
+    await view.step(() => button('Replace').click());
+    await view.step(() => setValue(document.getElementById('vocab-replace-find'), 'k'));
+    await view.step(() => setValue(document.getElementById('vocab-replace-with'), 'c'));
+    await view.step(() => button(`Replace ${count}`).click());
+    await drain(view);
+  };
+  const editKat = (now) => {
+    now[0].form = 'kot';
+  };
+
+  it('Replace reports what landed', async () => {
+    const { client, sent, items } = stub(
+      [
+        { id: 'a', form: 'kat', metadata: {} },
+        { id: 'b', form: 'kit', metadata: {} },
+      ],
+      { after: editKat },
+    );
+    await replace(client, 2);
+
+    const updates = sent.filter((s) => s.kind === 'bulkUpdate');
+    expect(updates.map((u) => u.key)).toEqual(['s0.0', 's0.0']);
+    expect(items.map((i) => i.form)).toEqual(['kot', 'cit']);
+    expect(feedback.notifyError).not.toHaveBeenCalled();
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      '1 value replaced in Form. Skipped 1 value changed since the preview.',
+      'Replaced',
+    );
+  });
+
+  it('Replace goes on with the chunks after the one that landed', async () => {
+    chunking.size = 2;
+    const { client, sent, items } = stub(
+      [
+        { id: 'a', form: 'kat', metadata: {} },
+        { id: 'b', form: 'kit', metadata: {} },
+        { id: 'c', form: 'kut', metadata: {} },
+      ],
+      { after: editKat },
+    );
+    await replace(client, 3);
+
+    const updates = sent.filter((s) => s.kind === 'bulkUpdate');
+    expect(updates.map((u) => [u.key, u.body.map((w) => w.form)])).toEqual([
+      ['s0.0', ['cat', 'cit']],
+      ['s0.0', ['cit']],
+      ['s0.1', ['cut']],
+    ]);
+    expect(items.map((i) => i.form)).toEqual(['kot', 'cit', 'cut']);
+    expect(feedback.notifyError).not.toHaveBeenCalled();
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      '2 values replaced in Form. Skipped 1 value changed since the preview.',
+      'Replaced',
     );
   });
 });
