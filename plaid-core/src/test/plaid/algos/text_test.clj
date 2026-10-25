@@ -15,6 +15,7 @@
             [plaid.algos.text.ops :as text-ops]
             [plaid.algos.text.read :as text-read]
             [plaid.algos.text-helpers :as th]
+            [plaid.test-helpers :as h]
             [plaid.util.codepoint :as cp]))
 
 (defn- tok [id begin end]
@@ -833,20 +834,28 @@
     (is (every? (fn [[a b]] (< (:end a) (:start b))) (partition 2 1 edits)) (pr-str ops))
     (is (= "xaaay" (:text/body (:text (apply-all ops old tokens)))))))
 
+(defn- every-50th-typed-over
+  "`n` words, the same words with one edit per 50, and a token per word."
+  [n]
+  (let [words (vec (take n (cycle ["the" "cat" "sat" "ta" "tat" "at"])))]
+    {:old (str/join " " words)
+     :new (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words))
+     :tokens (word-tokens words)}))
+
 (deftest many-edits-over-a-long-text-slide-quickly
-  ;; One edit per 50 words over 50,000 word tokens. Scanning every token for
-  ;; every edit took about 4.5 s here, holding the write lock.
-  (let [words (vec (take 50000 (cycle ["the" "cat" "sat" "ta" "tat" "at"])))
-        old (str/join " " words)
-        new (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words))
-        tokens (word-tokens words)
-        ops (ta/diff old new)
-        t0 (System/nanoTime)
-        slid (ta/slide-to-tokens ops old tokens #{} nil nil)
-        ms (/ (- (System/nanoTime) t0) 1e6)]
+  ;; One edit per 50 words over 50,000 word tokens, against the same over
+  ;; 5,000. Scanning every token for every edit took about 4.5 s here,
+  ;; holding the write lock, and grows a hundredfold from the small case.
+  (let [slide (fn [n]
+                (let [{:keys [old new tokens]} (every-50th-typed-over n)
+                      ops (ta/diff old new)
+                      [slid ms] (h/timed #(ta/slide-to-tokens ops old tokens #{} nil nil) {:warm 1 :runs 3})]
+                  {:old old :new new :ops ops :slid slid :ms ms}))
+        small (slide 5000)
+        {:keys [old new ops slid ms]} (slide 50000)]
     (is (= 1000 (count ops)))
     (is (= new (:text/body (:text (apply-all slid old [])))))
-    (is (< ms 1000) (str ms " ms"))))
+    (h/within-factor-of 30 (:ms small) ms {:floor-ms 5 :label "1,000 edits slid over 50,000 tokens"})))
 
 ;; ---------------------------------------------------------------------------
 ;; A combining mark typed at a word's end joins the word (ruled 2026-09-27).
@@ -1044,22 +1053,23 @@
   ;; One edit per 50 words over 50,000 word tokens and 2,500 sentences.
   ;; Applying each op over the whole text and every token took 11.7 s here,
   ;; holding the write lock.
-  (let [words (vec (take 50000 (cycle ["the" "cat" "sat" "ta" "tat" "at"])))
-        old (str/join " " words)
-        new (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words))
-        tokens (word-tokens words)
-        sentences (map-indexed (fn [i [b e]] (tok [:s i] b e))
-                               (partition 2 1 (concat (take-nth 20 (map :token/begin tokens)) [(count old)])))
-        all (into tokens sentences)
-        ops (ta/diff old new)
-        t0 (System/nanoTime)
-        {:keys [text tokens deleted]} (ta/apply-text-edits ops {:text/body old} all)
-        ms (/ (- (System/nanoTime) t0) 1e6)]
+  ;; Against the same over 5,000 words, a hundredth of that time when each op
+  ;; goes over every token.
+  (let [run (fn [n]
+              (let [{:keys [old new tokens]} (every-50th-typed-over n)
+                    sentences (map-indexed (fn [i [b e]] (tok [:s i] b e))
+                                           (partition 2 1 (concat (take-nth 20 (map :token/begin tokens)) [(count old)])))
+                    all (into tokens sentences)
+                    ops (ta/diff old new)
+                    [r ms] (h/timed #(ta/apply-text-edits ops {:text/body old} all) {:warm 1 :runs 3})]
+                (assoc r :new new :ops ops :ms ms)))
+        small (run 5000)
+        {:keys [text tokens deleted new ops ms]} (run 50000)]
     (is (= 1000 (count ops)))
     (is (= new (:text/body text)))
     (is (= [] deleted))
     (is (= 52500 (count tokens)))
-    (is (< ms 1000) (str ms " ms"))))
+    (h/within-factor-of 30 (:ms small) ms {:floor-ms 5 :label "1,000 edits applied over 52,500 tokens"})))
 
 ;; ---------------------------------------------------------------------------
 ;; A save that changes every word of a long text. Editscript gave up after
@@ -1303,16 +1313,18 @@
   ;; a line retyped almost whole once gave one among 7,000. The whole
   ;; list was applied op by op over every token then: a minute of the write
   ;; lock. Now each run of ops in order is applied in one pass.
-  (let [words (vec (take 50000 (cycle ["the" "cat" "sat" "ta" "tat" "at"])))
-        old (str/join " " words)
-        tokens (word-tokens words)
-        ops (ta/diff old (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words)))
-        ;; an insert back at the start of the text after the 500th op
-        ops (into (conj (subvec ops 0 500) (ta/insert-op 0 "Q")) (map #(update % :index inc) (subvec ops 500)))
-        t0 (System/nanoTime)
-        result (ta/apply-text-edits ops {:text/body old} tokens)
-        ms (/ (- (System/nanoTime) t0) 1e6)]
+  ;; Timed against the same over 5,000 words.
+  (let [run (fn [n]
+              (let [{:keys [old new tokens]} (every-50th-typed-over n)
+                    ops (ta/diff old new)
+                    ;; an insert back at the start of the text after the middle op
+                    half (quot (count ops) 2)
+                    ops (into (conj (subvec ops 0 half) (ta/insert-op 0 "Q")) (map #(update % :index inc) (subvec ops half)))
+                    [result ms] (h/timed #(ta/apply-text-edits ops {:text/body old} tokens) {:warm 1 :runs 3})]
+                {:old old :tokens tokens :ops ops :result result :ms ms}))
+        small (run 5000)
+        {:keys [old tokens ops result ms]} (run 50000)]
     (is (= (edit-outcome apply-text-edits-in-turn ops old tokens)
            (edit-outcome ta/apply-text-edits ops old tokens)))
     (is (= 50000 (count (:tokens result))))
-    (is (< ms 1000) (str ms " ms"))))
+    (h/within-factor-of 30 (:ms small) ms {:floor-ms 5 :label "1,001 edits, one out of order, over 50,000 tokens"})))

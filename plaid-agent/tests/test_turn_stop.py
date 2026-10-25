@@ -36,20 +36,24 @@ def _stop_after(seconds):
 
 
 def test_a_stop_ends_the_turn_while_the_model_is_silent(monkeypatch):
+    # The model answers only once the test lets it, so a turn that waited for
+    # it ends with the call answered. No bound in seconds, which a loaded
+    # runner breaks.
     release = threading.Event()
+    answered = threading.Event()
 
     def silent(**kwargs):
         release.wait(30)
+        answered.set()
         return _resp('late')
 
     monkeypatch.setattr(agent.litellm, 'completion', silent)
-    started = time.monotonic()
     try:
         with pytest.raises(TurnCancelled):
             run_turn(ModelConfig(model='fake/m', stream=False, timeout=120), _kit(), Ws(),
                      'system', [{'role': 'user', 'content': 'hi'}],
                      cancelled=_stop_after(0.3))
-        assert time.monotonic() - started < 2, 'seen within about a second of the stop'
+        assert not answered.is_set(), 'the stop was seen while the model call waited'
     finally:
         release.set()
 

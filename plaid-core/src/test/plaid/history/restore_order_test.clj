@@ -265,14 +265,18 @@
         (assert-no-content (delete-token admin-request (toks 1)))))
     (restore-and-undo! doc-id t at-t)))
 
-(deftest a-large-document-in-time
-  (let [proj (create-test-project admin-request "Large")
+(defn- restore-large!
+  "A document of `n` tokens, one span on each and a relation on every two,
+  after which each relation's source moves to a span on a new token. The
+  document is restored to before the moves, checked, and the restore undone.
+  Returns [the restore's ms, the undo's ms]."
+  [n]
+  (let [proj (create-test-project admin-request (str "Large " n))
         tl (id-of (create-text-layer admin-request proj "Text"))
         word (id-of (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"}))
         sl (id-of (create-span-layer admin-request word "Lemma"))
         rl (id-of (create-relation-layer admin-request sl "Deps"))
         doc-id (create-test-document admin-request proj "Doc")
-        n 3000
         body (clojure.string/join " " (repeat n "ab"))
         text-id (id-of (create-text admin-request tl doc-id body))
         toks (-> (bulk-create-tokens admin-request
@@ -316,7 +320,14 @@
         (spit f (str "restore of " n " tokens, " (count rels) " relations moved back: " (long ms)
                      " ms, undone in " (long undo-ms) " ms\n")
               :append true))
-      (is (< ms 30000))
-      (is (< undo-ms 30000))
       (is (= before (live doc-id)))
-      (check-coherent doc-id "large, undone"))))
+      (check-coherent doc-id "large, undone")
+      [ms undo-ms])))
+
+(deftest a-large-document-in-time
+  ;; 3,000 tokens against 300: a restore that goes over every row for each
+  ;; row it restores grows a hundredfold.
+  (let [[small undo-small] (restore-large! 300)
+        [ms undo-ms] (restore-large! 3000)]
+    (within-factor-of 30 small ms {:floor-ms 50 :label "the restore of 3,000 tokens"})
+    (within-factor-of 30 undo-small undo-ms {:floor-ms 50 :label "its undo"})))

@@ -82,27 +82,36 @@
         (is (= [[tokl doc n]] (-> (counts admin-request [tokl] pattern) :body :results)))
         (is (= n (ql-count tokl pattern)))))))
 
-(deftest a-long-document-counts-fast
-  (let [body (apply str (repeat 20000 "Ana runs, «Ben» said... "))
-        pid (h/create-test-project admin-request "Long")
+(defn- long-document!
+  "A project whose one document repeats a sentence of 8 tokens `n` times,
+  and how long its first count takes. Returns [response, layer, document,
+  ms]."
+  [pname n]
+  (let [body (apply str (repeat n "Ana runs, «Ben» said... "))
+        pid (h/create-test-project admin-request pname)
         txtl (id (h/create-text-layer admin-request pid "text"))
         tokl (id (h/create-token-layer admin-request txtl "words"))
         doc (h/create-test-document admin-request pid "d1")
         text (id (h/create-text admin-request txtl doc body))
         unit [[0 3] [4 8] [8 9] [10 11] [11 14] [14 15] [16 20] [20 23]]
         len 24
-        specs (for [i (range 20000) [b e] unit]
+        specs (for [i (range n) [b e] unit]
                 {:token-layer-id tokl :text text :begin (+ (* i len) b) :end (+ (* i len) e)})]
     (doseq [part (partition-all 500 specs)]
       (let [r (api-call admin-request {:method :post :path "/api/v1/tokens/bulk" :body (vec part)})]
         (is (= 201 (:status r)) (pr-str (:body r)))))
-    (let [t0 (System/nanoTime)
-          resp (counts admin-request [(str tokl)] word-pattern)
-          ms (/ (- (System/nanoTime) t0) 1e6)]
-      (fix/assert-status 200 resp)
-      ;; Ana runs Ben said: 4 words of 8 tokens a unit
-      (is (= [[(str tokl) (str doc) 80000]] (-> resp :body :results)))
-      (is (< ms 5000) (str "took " ms " ms")))))
+    (let [[resp ms] (h/timed #(counts admin-request [(str tokl)] word-pattern))]
+      [resp (str tokl) (str doc) ms])))
+
+(deftest a-long-document-counts-fast
+  ;; 160,000 tokens against 16,000: a count that slices each token out of
+  ;; its text from the start grows a hundredfold.
+  (let [[_ _ _ small] (long-document! "Short" 2000)
+        [resp tokl doc ms] (long-document! "Long" 20000)]
+    (fix/assert-status 200 resp)
+    ;; Ana runs Ben said: 4 words of 8 tokens a unit
+    (is (= [[tokl doc 80000]] (-> resp :body :results)))
+    (h/within-factor-of 30 small ms {:floor-ms 20 :label "counting 160,000 tokens"})))
 
 (deftest only-layers-the-caller-can-read
   (let [{:keys [tokl]} (corpus! "Private" "Ana runs.")]

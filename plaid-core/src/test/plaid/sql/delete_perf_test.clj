@@ -10,30 +10,32 @@
   token layer's delete took minutes. A document's delete was refused with a
   500 on any statistics, since one statement listed all 200,000 of its spans
   twice and passed SQLite's statement length limit. Each delete must finish
-  well inside a minute, which is what holds the write lock."
+  well inside a minute, which is what holds the write lock. A delete of the
+  document or a layer is timed against the same on a document of 5,000
+  words: a scan per row makes the big one a hundred times as slow, where it
+  should be ten. A bulk delete of spans is timed against another of the same
+  size on fresh statistics."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.sql.common :as psc]
             [taoensso.timbre :as log]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [evict-pool! id stale-statistics! create-test-project create-test-document create-text-layer
-                                        create-token-layer-opts create-span-layer create-relation-layer
-                                        create-text]]))
+            [plaid.test-helpers :as h :refer [evict-pool! id stale-statistics! create-test-project create-test-document create-text-layer
+                                              create-token-layer-opts create-span-layer create-relation-layer
+                                              create-text]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
 
 (def ^:private n-words 50000)
+(def ^:private few-words 5000)
 (def ^:private per-sentence 15)
-(def ^:private limit-ms
-  "What a route may spend. They take 3 to 15 s here, the unfixed ones minutes."
-  60000)
 
 (defn- build!
   "The document, put in with plain inserts: what is timed is the delete
   after it, and the rows' audit history plays no part there."
-  []
+  [n-words]
   (let [words (mapv #(str "w" (mod % 97)) (range n-words))
         sentences (partition-all per-sentence words)
         body (str/join "\n" (map #(str (str/join " " %) " .") sentences))
@@ -97,48 +99,73 @@
   (evict-pool!))
 
 (defn- on-stale-statistics
-  "Build the document on stale statistics, then `(f fixture)`, timed.
-  Returns [response ms]."
-  [f]
+  "Build the document of `n` words on stale statistics, then
+  `(f fixture)`, timed. Returns [response ms]."
+  [n f]
   (stale-statistics!)
   (try
-    (let [fx (build!)
+    (let [fx (build! n)
           _ (evict-pool!)
           t (System/nanoTime)
           resp (f fx)]
       [resp (/ (- (System/nanoTime) t) 1e6)])
     (finally (fresh-statistics!))))
 
+(defn- small-then-big
+  "`(f fixture)` timed on stale statistics over 5,000 words, then over
+  50,000, with the database cleaned between. Returns [the big one's
+  response, the big one's ms, the small one's ms], having checked the small
+  one answered `status`."
+  [status f]
+  (let [[small-resp small-ms] (with-clean-db #(on-stale-statistics few-words f))
+        [resp ms] (on-stale-statistics n-words f)]
+    (is (= status (:status small-resp)) (pr-str (:body small-resp)))
+    [resp ms small-ms]))
+
 (defn- in-document [table doc]
   (:n (psc/q1 db [(str "SELECT count(*) AS n FROM " table " WHERE document_id = ?") (str doc)])))
 
 (deftest a-50000-word-document-is-deleted-in-seconds-on-stale-statistics
   (let [doc (atom nil)
-        [resp ms] (on-stale-statistics
-                   (fn [fx]
-                     (reset! doc (:doc fx))
-                     (api-call admin-request {:method :delete :path (str "/api/v1/documents/" (:doc fx))})))]
-    (log/warn (format "Deleting a document of 50,000 words on stale statistics: %.0f ms" ms))
+        [resp ms small-ms] (small-then-big
+                            204
+                            (fn [fx]
+                              (reset! doc (:doc fx))
+                              (api-call admin-request {:method :delete :path (str "/api/v1/documents/" (:doc fx))})))]
+    (log/warn (format "Deleting a document of 50,000 words on stale statistics: %.0f ms (5,000 words: %.0f ms)" ms small-ms))
     (is (= 204 (:status resp)) (pr-str (:body resp)))
-    (is (< ms limit-ms) (str "the delete took " ms " ms"))
+    (h/within-factor-of 30 small-ms ms {:floor-ms 100 :label "the document's delete"})
     (testing "nothing of the document is left"
       (doseq [t ["tokens" "spans" "relations"]]
         (is (zero? (in-document t @doc)) t)))))
 
 (deftest a-token-layer-under-50000-words-is-deleted-in-seconds-on-stale-statistics
-  (let [[resp ms] (on-stale-statistics
-                   (fn [{:keys [swl]}]
-                     (api-call admin-request {:method :delete :path (str "/api/v1/token-layers/" swl)})))]
-    (log/warn (format "Deleting a token layer of 50,000 tokens and 200,000 spans on stale statistics: %.0f ms" ms))
+  (let [[resp ms small-ms] (small-then-big
+                            204
+                            (fn [{:keys [swl]}]
+                              (api-call admin-request {:method :delete :path (str "/api/v1/token-layers/" swl)})))]
+    (log/warn (format "Deleting a token layer of 50,000 tokens and 200,000 spans on stale statistics: %.0f ms (5,000 words: %.0f ms)" ms small-ms))
     (is (= 204 (:status resp)) (pr-str (:body resp)))
-    (is (< ms limit-ms) (str "the delete took " ms " ms"))))
+    (h/within-factor-of 30 small-ms ms {:floor-ms 100 :label "the token layer's delete"})))
 
 (deftest a-bulk-span-delete-seeks-the-relations-on-stale-statistics
-  (let [[resp ms] (on-stale-statistics
-                   (fn [{:keys [spans]}]
-                     (api-call admin-request {:method :delete :path "/api/v1/spans/bulk"
-                                              :body (vec (take 500 (spans "Lemma")))})))]
-    (log/warn (format "Deleting 500 spans among 50,000 relations on stale statistics: %.0f ms" ms))
-    (is (= 204 (:status resp)) (pr-str (:body resp)))
-    ;; 0.2 s here. Each span scanning every relation twice took seconds.
-    (is (< ms 3000) (str "the delete took " ms " ms"))))
+  ;; 0.2 s here, about the same as 500 others of the same document take on
+  ;; statistics of the data. Each span scanning every relation twice took
+  ;; seconds on stale statistics, and as little as the rest on fresh ones.
+  (stale-statistics!)
+  (try
+    (let [{:keys [spans]} (build! n-words)
+          lemma (spans "Lemma")
+          delete! (fn [ids]
+                    (h/timed #(api-call admin-request {:method :delete :path "/api/v1/spans/bulk"
+                                                       :body (vec ids)})))
+          _ (evict-pool!)
+          [resp ms] (delete! (take 500 lemma))
+          _ (fresh-statistics!)
+          [fresh-resp fresh-ms] (delete! (take 500 (drop 500 lemma)))]
+      (log/warn (format "Deleting 500 spans among 50,000 relations on stale statistics: %.0f ms (on fresh ones: %.0f ms)"
+                        ms fresh-ms))
+      (is (= 204 (:status resp)) (pr-str (:body resp)))
+      (is (= 204 (:status fresh-resp)) (pr-str (:body fresh-resp)))
+      (h/within-factor-of 8 fresh-ms ms {:floor-ms 100 :label "500 spans' delete on stale statistics"}))
+    (finally (fresh-statistics!))))

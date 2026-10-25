@@ -8,16 +8,18 @@
   not make its statistics safe first (`plaid.sql.cascade-statistics/prepare!`)
   visits hundreds of millions of rows and takes seconds, where one that does
   takes a fraction of one. Unlinking a vocabulary from a project took 9 s at
-  16,000 links, minutes at the largest vocabulary on prod."
+  16,000 links, minutes at the largest vocabulary on prod. Each route is
+  timed against itself among a hundredth of the bystanders, which a route
+  that scans them per parent takes a hundredth of the time over."
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [evict-pool! id create-test-project create-test-document create-text-layer
-                                        create-token-layer-opts create-span-layer create-relation-layer
-                                        create-text create-vocab-layer create-vocab-item
-                                        link-vocab-to-project]])
+            [plaid.test-helpers :as h :refer [evict-pool! id create-test-project create-test-document create-text-layer
+                                              create-token-layer-opts create-span-layer create-relation-layer
+                                              create-text create-vocab-layer create-vocab-item
+                                              link-vocab-to-project]])
   (:import (java.time Instant)))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
@@ -25,10 +27,13 @@
 
 (def ^:private n-parents 1000)
 (def ^:private bystanders 150000)
-(def ^:private limit-ms
-  "A route here takes 0.05 to 1.2 s (the repair's checks are most of its
-  time). Without `prepare!` each took 8 to 32 s."
-  4000)
+(def ^:private few-bystanders 1500)
+(def ^:private factor
+  "How much longer a route may take among all the bystanders than among a
+  few. A route here takes 0.05 to 1.2 s on either (the repair's checks are
+  most of its time). Without `prepare!` each took 8 to 32 s among all of
+  them."
+  10)
 
 (defn- ids [resp] (assert-status 201 resp) (-> resp :body :ids))
 (defn- call [method path & [body]]
@@ -66,9 +71,9 @@
     (psc/execute! db {:insert-into table :values (vec chunk)})))
 
 (defn- bystanders!
-  "150,000 relations, vocabulary links and link tokens of another document,
+  "`n` relations, vocabulary links and link tokens of another document,
   put in with plain inserts after the statistics were taken."
-  [proj]
+  [proj n]
   (let [v (id (create-vocab-layer admin-request "Other vocab"))
         _ (link-vocab-to-project admin-request proj v)
         {:keys [doc sl rl toks]} (annotated-document proj v "Other" 2)
@@ -76,25 +81,25 @@
         item (id (create-vocab-item admin-request v "y"))
         link (id (call :post "/api/v1/vocab-links" {:vocab-item item :tokens [(first toks)]}))
         new-id #(str (psc/new-uuid))]
-    (insert! :relations (for [_ (range bystanders)]
+    (insert! :relations (for [_ (range n)]
                           {:id (new-id) :relation_layer_id (str rl) :document_id (str doc)
                            :source_span_id (str s1) :target_span_id (str s2) :value (psc/write-json "x")}))
-    (insert! :vocab_links (for [_ (range bystanders)]
+    (insert! :vocab_links (for [_ (range n)]
                             {:id (new-id) :vocab_item_id (str item) :document_id (str doc)}))
-    (insert! :vocab_link_tokens (for [i (range 1 (inc bystanders))]
+    (insert! :vocab_link_tokens (for [i (range 1 (inc n))]
                                   {:vocab_link_id (str link) :token_id (str (first toks)) :order_idx i}))))
 
 (defn- run-route
   "Stale statistics, a project with `n-parents` of something to delete
-  (`setup`), the bystanders, then the route (`route`), timed."
-  [setup route]
+  (`setup`), `n` bystanders, then the route (`route`), timed."
+  [setup route n]
   (stale-statistics!)
   (try
     (let [proj (create-test-project admin-request "P")
           vocab (id (create-vocab-layer admin-request "V"))
           _ (link-vocab-to-project admin-request proj vocab)
           fx (setup (annotated-document proj vocab "D" n-parents))
-          _ (bystanders! proj)
+          _ (bystanders! proj n)
           _ (evict-pool!)
           t (System/nanoTime)
           resp (route (assoc fx :proj proj))]
@@ -149,10 +154,13 @@
 (defmacro ^:private route-test [sym n]
   `(deftest ~sym
      (let [[label# setup# route#] (nth routes ~n)
-           [resp# ms#] (run-route setup# route#)]
+           small# (atom nil)
+           _# (with-clean-db #(reset! small# (run-route setup# route# few-bystanders)))
+           [resp# ms#] (run-route setup# route# bystanders)]
        (testing label#
+         (is (< (:status (first @small#)) 300) (pr-str (:body (first @small#))))
          (is (< (:status resp#) 300) (pr-str (:body resp#)))
-         (is (< ms# limit-ms) (str label# " took " ms# " ms"))))))
+         (h/within-factor-of factor (second @small#) ms# {:floor-ms 100 :label label#})))))
 
 (route-test unlinking-a-vocabulary 0)
 (route-test merging-entries 1)

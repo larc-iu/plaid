@@ -1,5 +1,6 @@
 (ns plaid.test-helpers
   (:require [clojure.string]
+            [clojure.test :refer [is]]
             [mount.core :as mount]
             [ring.mock.request]
             [plaid.fixtures :refer [admin-request api-call assert-created assert-status db]]
@@ -661,6 +662,37 @@
     (assert-status 201 (api-call admin-request {:method :post :path "/api/v1/relations"
                                                 :body {:relation-layer-id rl :source (sps 0) :target (sps 1) :value "x"}}))
     (psc/execute! db ["ANALYZE"])))
+
+;; Timing
+(defn timed
+  "Runs `(f)` and returns [its value, the milliseconds it took]. With
+  `:warm n`, runs it n times first, untimed, so the JIT has compiled it.
+  With `:runs n`, times n runs and keeps the quickest, which a pause for
+  garbage collection or another process touches least. Only for an `f` that
+  can run again."
+  ([f] (timed f {}))
+  ([f {:keys [warm runs] :or {warm 0 runs 1}}]
+   (dotimes [_ warm] (f))
+   (->> (repeatedly runs #(let [t0 (System/nanoTime)
+                                v (f)]
+                            [v (/ (- (System/nanoTime) t0) 1e6)]))
+        (apply min-key second))))
+
+(defn within-factor-of
+  "Asserts that `big-ms` is under `factor` times `small-ms`, two cases timed
+  on the same machine in the same run. A loaded runner slows both, so the
+  bound holds where a fixed number of milliseconds fails (alpha.28 burned a
+  release on one). Pick the cases so that the fault the test guards against
+  grows the ratio well past `factor`: a scan of every row per row, say, goes
+  from 10 to 100 when the big case is ten times the small one. `small-ms`
+  counts as at least `floor-ms` (default 1), so a case too quick to time
+  cannot make the bound nothing. Returns `big-ms`."
+  ([factor small-ms big-ms] (within-factor-of factor small-ms big-ms {}))
+  ([factor small-ms big-ms {:keys [floor-ms label] :or {floor-ms 1}}]
+   (is (< big-ms (* factor (max small-ms floor-ms)))
+       (format "%s%.0f ms, not under %s times the small case's %.0f ms"
+               (if label (str label ": ") "") (double big-ms) factor (double small-ms)))
+   big-ms))
 
 ;; Temporary files
 (defn temp-db-path

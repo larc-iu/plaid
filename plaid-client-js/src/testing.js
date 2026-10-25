@@ -38,6 +38,11 @@
  * What it does not do: keep any state. A write is answered, not applied, and
  * a later read answers what `answer` says. Nor does it learn document
  * versions, lose a lock, retry, or check that an id exists.
+ *
+ * `timed` and `withinFactorOf` bound a slow case against a small one timed
+ * in the same run, where a fixed number of milliseconds fails on a loaded
+ * runner. Their twins are `timed` and `within_factor_of` in
+ * `plaid_client.testing` and in plaid-core's `plaid.test-helpers`.
  */
 
 import { BatchRef } from "./batchRef.js";
@@ -323,4 +328,52 @@ export function fakeClient({
   };
 
   return client;
+}
+
+/**
+ * Runs `f` and gives its value and the milliseconds it took. With `warm`,
+ * runs it that many times first, untimed, so the engine has compiled it.
+ * With `runs`, times that many runs and keeps the quickest, which a pause for
+ * garbage collection or another process touches least. Only for an `f` that
+ * can run again.
+ * @template T
+ * @param {() => T} f
+ * @param {{warm?: number, runs?: number}} [options]
+ * @returns {[T, number]}
+ */
+export function timed(f, { warm = 0, runs = 1 } = {}) {
+  for (let i = 0; i < warm; i++) f();
+  /** @type {[T, number] | null} */
+  let best = null;
+  for (let i = 0; i < runs; i++) {
+    const t = performance.now();
+    const value = f();
+    const ms = performance.now() - t;
+    if (!best || ms < best[1]) best = [value, ms];
+  }
+  return /** @type {[T, number]} */ (best);
+}
+
+/**
+ * Throws unless `bigMs` is under `factor` times `smallMs`, two cases timed on
+ * the same machine in the same run. A loaded runner slows both, so the bound
+ * holds where a fixed number of milliseconds fails. Pick the cases so that
+ * the fault the test guards against grows the ratio well past `factor`: a
+ * scan of every row per row goes from 10 to 100 when the big case is ten
+ * times the small one. `smallMs` counts as at least `floorMs` (default 1),
+ * so a case too quick to time cannot make the bound nothing.
+ * @param {number} factor
+ * @param {number} smallMs
+ * @param {number} bigMs
+ * @param {{floorMs?: number, label?: string}} [options]
+ * @returns {number} `bigMs`
+ */
+export function withinFactorOf(factor, smallMs, bigMs, { floorMs = 1, label } = {}) {
+  if (!(bigMs < factor * Math.max(smallMs, floorMs))) {
+    throw new Error(
+      `${label ? `${label}: ` : ""}${Math.round(bigMs)} ms, not under ${factor} times ` +
+        `the small case's ${Math.round(smallMs)} ms`,
+    );
+  }
+  return bigMs;
 }

@@ -156,9 +156,12 @@ def test_a_stop_ends_a_call_the_provider_never_answers(monkeypatch):
     release = threading.Event()
     started = threading.Event()
 
+    answered = threading.Event()
+
     def completion(**kwargs):
         started.set()
         release.wait(10)
+        answered.set()
         return _response('too late')
 
     _install(monkeypatch, types.SimpleNamespace(completion=completion))
@@ -170,11 +173,12 @@ def test_a_stop_ends_a_call_the_provider_never_answers(monkeypatch):
         stop['asked'] = True
 
     threading.Thread(target=ask_later, daemon=True).start()
-    began = time.monotonic()
     try:
         with pytest.raises(ServiceCancelled):
             llm.ChatModel('openai/x').complete('sys', 'user', should_stop=lambda: stop['asked'])
-        assert time.monotonic() - began < 2
+        # The provider answers only once the test lets it, so a call that
+        # waited out the silence would have its answer.
+        assert not answered.is_set()
     finally:
         release.set()
 
@@ -403,9 +407,9 @@ def test_the_temperature_is_the_providers_unless_the_operator_sets_one(monkeypat
 
 def test_the_deadline_is_a_silence_not_the_length_of_the_reply():
     """Through the real litellm and openai SDK against a local server that
-    streams for three times the deadline, one chunk at a time: the reply is
-    whole. A server that then goes silent for longer than the deadline is a
-    timeout."""
+    streams for over twice the deadline, one chunk each tenth of it: the
+    reply is whole. A server that then goes silent for longer than the
+    deadline is a timeout."""
     litellm = pytest.importorskip('litellm')
     import http.server
     import json as _json
@@ -431,9 +435,9 @@ def test_the_deadline_is_a_silence_not_the_length_of_the_reply():
             if Handler.silent:
                 time.sleep(2.5)
                 return
-            for i in range(12):
+            for i in range(25):
                 send({'reasoning_content': f'step {i}. '})
-                time.sleep(0.25)
+                time.sleep(0.1)
             send({'content': 'done'})
             send({}, 'stop')
             self.wfile.write(b'data: [DONE]\n\n')
@@ -445,7 +449,7 @@ def test_the_deadline_is_a_silence_not_the_length_of_the_reply():
         model = llm.ChatModel('openai/x', api_base=base, api_key='k', timeout=1)
         began = time.monotonic()
         assert model.complete('sys', 'user').text == 'done'
-        assert time.monotonic() - began > 2.5
+        assert time.monotonic() - began > 2
         Handler.silent = True
         with pytest.raises(llm.ModelTimeout):
             llm.ChatModel('openai/x', api_base=base, api_key='k', timeout=1).complete('sys', 'user')

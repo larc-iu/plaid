@@ -1,11 +1,13 @@
 // The annotation grid's rows are built in one sweep of the document, not one
 // filter of every layer per sentence and per word. The sweep must give exactly
 // what the filters gave, on any extents (overlaps, gaps, empty tokens, astral
-// text), and a 20,000-word document must build in well under two seconds. The
-// filters took 68 s on a real one.
+// text), and a 20,000-word document must build in about ten times what one of
+// 2,000 words takes, where the filters took a hundred times as long (68 s on a
+// real one).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { timed, withinFactorOf } from '../../plaid-client-js/src/testing.js';
 import { buildSentenceRows } from '../src/domain/sentenceRows.js';
 
 // The builder as it was before the sweep, kept as the oracle.
@@ -205,8 +207,9 @@ test('the sweep builds the same rows as a filter per sentence and per word', () 
   }
 });
 
-test('a 20,000-word document builds in under two seconds', () => {
-  const words = 20000;
+// A document of `words` words, a sentence per 25, with a morpheme, a lemma
+// and a relation on each word.
+const longDocument = (words) => {
   const parts = [];
   const sentenceTokens = [];
   const wordTokens = [];
@@ -241,11 +244,16 @@ test('a 20,000-word document builds in under two seconds', () => {
     relationLayer: { relations },
     enhancedRelationLayer: { relations: [] },
   };
-  const t = performance.now();
-  const rows = buildSentenceRows(body, info);
-  const ms = performance.now() - t;
+  return { body, info };
+};
+
+test('a 20,000-word document builds in about ten times what 2,000 words take', () => {
+  const build = ({ body, info }) =>
+    timed(() => buildSentenceRows(body, info), { warm: 1, runs: 3 });
+  const [, small] = build(longDocument(2000));
+  const [rows, ms] = build(longDocument(20000));
   assert.equal(rows.length, 800);
   assert.equal(rows[799].tokens[24].tokenForm, 'w19999𐌰');
   assert.equal(rows[799].relations.length, 25);
-  assert.ok(ms < 2000, `took ${Math.round(ms)} ms`);
+  withinFactorOf(30, small, ms, { floorMs: 5, label: '20,000 words' });
 });

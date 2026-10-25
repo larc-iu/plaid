@@ -49,6 +49,14 @@ layer rule's remedy (``same-ancestor``, ``coextensive``) is not modelled.
 It lives in the shipped package rather than beside the tests because a
 test-only copy had no home either app could import from, and the two apps kept
 byte-identical copies of it instead.
+
+Its JavaScript twin is plaid-client-js's ``testing.js``, shipped as
+``@larc-iu/plaid-client/testing``: ``fakeClient`` there is a real
+``PlaidClient`` on a recording transport, as ``FakeClient`` here runs each
+write through the real method first. ``timed`` and ``within_factor_of`` here,
+``timed`` and ``withinFactorOf`` there and in plaid-core's
+``plaid.test-helpers`` bound a slow case against a small one timed in the
+same run, where a fixed number of seconds fails on a loaded runner.
 """
 
 import contextlib
@@ -59,6 +67,7 @@ import inspect
 import itertools
 import json
 import pathlib
+import time
 import types
 import sys
 from datetime import datetime, timezone
@@ -210,6 +219,38 @@ def as_fragment(ops):
             node = node.setdefault(k, {})
         node[last] = op['value'] if op['op'] == 'set' else None
     return out
+
+
+def timed(f, *, warm=0, runs=1):
+    """``(f(), the milliseconds it took)``. With ``warm``, ``f`` runs that many
+    times first, untimed. With ``runs``, that many runs are timed and the
+    quickest kept, which a pause for garbage collection or another process
+    touches least. Only for an ``f`` that can run again."""
+    for _ in range(warm):
+        f()
+    best = None
+    for _ in range(runs):
+        t0 = time.perf_counter()
+        value = f()
+        ms = (time.perf_counter() - t0) * 1000
+        if best is None or ms < best[1]:
+            best = (value, ms)
+    return best
+
+
+def within_factor_of(factor, small_ms, big_ms, *, floor_ms=1, label=None):
+    """Fail unless ``big_ms`` is under ``factor`` times ``small_ms``, two cases
+    timed on the same machine in the same run. A loaded runner slows both, so
+    the bound holds where a fixed number of seconds fails. Pick the cases so
+    that the fault the test guards against grows the ratio well past
+    ``factor``: a scan of every row per row goes from 10 to 100 when the big
+    case is ten times the small one. ``small_ms`` counts as at least
+    ``floor_ms``, so a case too quick to time cannot make the bound nothing.
+    Returns ``big_ms``."""
+    if not big_ms < factor * max(small_ms, floor_ms):
+        raise AssertionError(f'{label + ": " if label else ""}{big_ms:.0f} ms, not under {factor} '
+                             f"times the small case's {small_ms:.0f} ms")
+    return big_ms
 
 
 def _now_iso():

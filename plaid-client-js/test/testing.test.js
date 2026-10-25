@@ -4,7 +4,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defaultAnswer, fakeClient, refusal } from "@larc-iu/plaid-client/testing";
+import {
+  defaultAnswer,
+  fakeClient,
+  refusal,
+  timed,
+  withinFactorOf,
+} from "@larc-iu/plaid-client/testing";
 
 test("a write is recorded with its arguments and answered, a read only answered", async () => {
   const client = fakeClient({
@@ -149,4 +155,21 @@ test("the default answers: a create's id, a bulk create's ids, an empty page for
   assert.equal(defaultAnswer({ kind: "tokens.bulkCreate", method: "POST", body: [{}, {}] }).ids.length, 2);
   assert.deepEqual(defaultAnswer({ kind: "projects.list", method: "GET" }), { entries: [], nextCursor: null });
   assert.deepEqual(defaultAnswer({ kind: "spans.update", method: "PATCH" }), {});
+});
+
+test("timed gives the value and the quickest of its runs, after the warm ones", () => {
+  let n = 0;
+  const [value, ms] = timed(() => ++n, { warm: 2, runs: 3 });
+  assert.equal(n, 5);
+  assert.ok([3, 4, 5].includes(value));
+  assert.ok(ms >= 0);
+});
+
+test("withinFactorOf bounds the big case by the small one, at least the floor", () => {
+  assert.equal(withinFactorOf(10, 5, 49), 49);
+  assert.throws(() => withinFactorOf(10, 5, 50, { label: "the sweep" }), {
+    message: "the sweep: 50 ms, not under 10 times the small case's 5 ms",
+  });
+  assert.equal(withinFactorOf(10, 0, 99, { floorMs: 10 }), 99);
+  assert.throws(() => withinFactorOf(10, 0, 100, { floorMs: 10 }));
 });

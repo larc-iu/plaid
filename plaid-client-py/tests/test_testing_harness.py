@@ -890,3 +890,20 @@ def test_a_fake_batch_hands_out_refs_as_the_real_one_does():
         with pytest.raises(PlaidAPIError):
             b.ref(5)
     assert c.payloads('vocab_links.create')[0]['args'][0] == {'$ref': 0}
+
+
+def test_timed_keeps_the_quickest_run_after_the_warm_ones():
+    n = []
+    value, ms = testing.timed(lambda: n.append(1) or len(n), warm=2, runs=3)
+    assert len(n) == 5
+    assert value in (3, 4, 5)
+    assert ms >= 0
+
+
+def test_within_factor_of_bounds_the_big_case_by_the_small_one_at_least_the_floor():
+    assert testing.within_factor_of(10, 5, 49) == 49
+    with pytest.raises(AssertionError, match="the sweep: 50 ms, not under 10 times the small case's 5 ms"):
+        testing.within_factor_of(10, 5, 50, label='the sweep')
+    assert testing.within_factor_of(10, 0, 99, floor_ms=10) == 99
+    with pytest.raises(AssertionError):
+        testing.within_factor_of(10, 0, 100, floor_ms=10)
