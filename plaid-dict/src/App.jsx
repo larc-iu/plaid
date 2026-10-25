@@ -1,14 +1,18 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CatalogProvider } from '@/contexts/CatalogContext';
-import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { LoginForm } from '@/components/auth/LoginForm';
+import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
+import { LoginForm } from '@ui/components/auth/LoginForm.jsx';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DictionaryProvider } from '@/contexts/DictionaryContext';
 import { Home } from '@/pages/Home';
 import { Setup } from '@/pages/Setup';
 import { FrontPage } from '@/pages/FrontPage';
 import { FormPage } from '@/pages/FormPage';
+
+// Bound at module scope: App renders the AuthProvider, so there is no auth
+// above it to read.
+const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
 
 // Every screen but the login form is inside the catalog, which resolves a slug
 // to the vocabulary behind it.
@@ -25,7 +29,7 @@ function App() {
     <HashRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<LoginForm />} />
+          <Route path="/login" element={<LoginForm tagline="Dictionary reader" homePath="/" />} />
           <Route
             path="/"
             element={

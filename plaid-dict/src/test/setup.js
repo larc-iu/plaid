@@ -4,4 +4,4 @@
 // its sort somewhere nobody chose.
 import { configureUi } from '@ui/lib/uiConfig.js';
 
-configureUi({ appPrefix: 'plaid_dict', configNamespace: 'dict' });
+configureUi({ appName: 'Plaid Dictionary', appPrefix: 'plaid_dict', configNamespace: 'dict' });

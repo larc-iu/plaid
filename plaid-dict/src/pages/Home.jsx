@@ -4,7 +4,8 @@ import { BookOpen, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { classifyVocabularies, canManage } from '@/domain/dictionaries';
+import { classifyVocabularies } from '@/domain/dictionaries';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { readDictRecord, dictTitle } from '@/domain/dictConfig';
 import { dictionaryAddress, dictionaryPath } from '@/domain/paths';
 import { Button } from '@ui/components/ui/button';
@@ -34,7 +35,7 @@ const DictionaryCard = ({ vocab, user, counts }) => {
             .join(' · ')}
         </p>
       </div>
-      {canManage(vocab, user) && (
+      {canManageProject(vocab, user) && (
         <Button asChild variant="ghost" size="sm">
           <Link to={`/setup/${vocab.id}`}>
             <Settings className="mr-1.5 h-4 w-4" />

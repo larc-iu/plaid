@@ -12,7 +12,7 @@ import './index.css';
 // apps decide how each other's lists open, and reads this app's half of a
 // project's config bucket under `configNamespace`. This app binds no compose
 // codes.
-configureUi({ appPrefix: 'plaid_dict', configNamespace: 'dict' });
+configureUi({ appName: 'Plaid Dictionary', appPrefix: 'plaid_dict', configNamespace: 'dict' });
 configureAuth({ loginRoute: '#/login' });
 
 ReactDOM.createRoot(document.getElementById('root')).render(

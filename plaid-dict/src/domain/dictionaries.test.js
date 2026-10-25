@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { canManage, classifyVocabularies, findBySlug, takenSlugs } from './dictionaries.js';
+import { canManageProject } from '@ui/domain/permissions.js';
+import { classifyVocabularies, findBySlug, takenSlugs } from './dictionaries.js';
 
 const vocab = (id, { name = id, dict = null, maintainers = [] } = {}) => ({
   id,
@@ -11,12 +12,12 @@ const vocab = (id, { name = id, dict = null, maintainers = [] } = {}) => ({
 const luke = { id: 'luke@example.org', isAdmin: false };
 const admin = { id: 'root@example.org', isAdmin: true };
 
-describe('canManage', () => {
-  it('is maintainership, or admin', () => {
-    expect(canManage(vocab('v', { maintainers: [luke.id] }), luke)).toBe(true);
-    expect(canManage(vocab('v'), luke)).toBe(false);
-    expect(canManage(vocab('v'), admin)).toBe(true);
-    expect(canManage(vocab('v'), null)).toBe(false);
+describe('who may write a publication record', () => {
+  it('is maintainership of the vocabulary, or admin', () => {
+    expect(canManageProject(vocab('v', { maintainers: [luke.id] }), luke)).toBe(true);
+    expect(canManageProject(vocab('v'), luke)).toBe(false);
+    expect(canManageProject(vocab('v'), admin)).toBe(true);
+    expect(canManageProject(vocab('v'), null)).toBe(false);
   });
 });
 

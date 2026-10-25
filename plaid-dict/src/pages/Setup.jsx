@@ -4,7 +4,8 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { canManage, takenSlugs } from '@/domain/dictionaries';
+import { takenSlugs } from '@/domain/dictionaries';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { dictionaryAddress, dictionaryPath } from '@/domain/paths';
 import {
   dictCollator,
@@ -258,7 +259,7 @@ export const Setup = () => {
     );
   }
 
-  if (!vocab || !canManage(vocab, user)) {
+  if (!vocab || !canManageProject(vocab, user)) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
         <p className="text-sm">This vocabulary cannot be set up as a dictionary.</p>
