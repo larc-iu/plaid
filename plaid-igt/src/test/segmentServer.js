@@ -185,6 +185,14 @@ const writesOn = (raw, { mint, claim }) => {
     }
   };
   const on = {
+    // A document's first text, under the id it names.
+    'texts.create': (layerId, documentId, body, tokenEdges, auditMessage, opts = {}) => {
+      if (textOf(raw)) throw refused(409, { error: 'The document has a text in this layer.' });
+      const id = claim(opts.id) ?? mint();
+      raw.textLayers[0].text = { id, body, digest: digestOf(body), metadata: {} };
+      if (opts.tokenizeLayer) madeWords(raw, id, opts.tokenizeLayer, mint);
+      return { id };
+    },
     'texts.update': (textId, ops, auditMessage, { base, tokenizeLayer } = {}) => {
       checkBase(base);
       const text = textOf(raw);
@@ -305,7 +313,7 @@ const stamped = (kind, args) => {
 
 export function segmentServer(raw) {
   let stored = structuredClone(raw);
-  textOf(stored).digest = digestOf(textOf(stored).body);
+  if (textOf(stored)) textOf(stored).digest = digestOf(textOf(stored).body);
   let version = 1;
   // Every id the server has held, deleted ones too: a create may not reuse one.
   const everHeld = idsIn(stored);
@@ -444,6 +452,7 @@ export function segmentServer(raw) {
     };
 
     const BATCHED = [
+      'texts.create',
       'texts.update',
       'texts.edit',
       'tokens.create',

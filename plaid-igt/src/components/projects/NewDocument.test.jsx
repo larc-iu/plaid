@@ -2,10 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { renderComponent, byText } from '@ui/test/renderComponent.jsx';
 
-// The document is made before its text: a later step that fails must not
-// leave the dialog open, where Create again made a second document
-// (REV2-idempotency). It opens the document made, whose first Baseline save
-// makes the text it lacks.
+// New document makes the document alone and opens it on Baseline. Its text
+// is made by the first write that needs one (A3-8), so nothing after the
+// create can fail and leave the dialog open, where Create again made a second
+// document (REV2-idempotency).
 const feedback = vi.hoisted(() => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
 vi.mock('@/utils/feedback', () => feedback);
 const { NewDocument } = await import('./NewDocument.jsx');
@@ -22,19 +22,11 @@ const Where = ({ onAt }) => {
 };
 
 describe('New document', () => {
-  it('opens the document it made when giving it a text fails', async () => {
+  it('makes the document and no text, and opens it', async () => {
     const client = {
       documents: { create: vi.fn(async (_p, _n, _m, _a, { id }) => ({ id })) },
-      projects: {
-        get: vi.fn(async () => ({
-          textLayers: [{ id: 'tl', config: { plaid: { role: 'baseline' } } }],
-        })),
-      },
-      texts: {
-        create: vi.fn(async () => {
-          throw Object.assign(new Error('HTTP 500'), { status: 500 });
-        }),
-      },
+      projects: { get: vi.fn() },
+      texts: { create: vi.fn() },
     };
     let at = null;
     const v = await renderComponent(
@@ -60,7 +52,8 @@ describe('New document', () => {
     await v.step(async () => {});
     const made = client.documents.create.mock.calls[0][4].id;
     expect(client.documents.create).toHaveBeenCalledTimes(1);
-    expect(client.texts.create).toHaveBeenCalledTimes(1);
+    expect(client.texts.create).not.toHaveBeenCalled();
+    expect(client.projects.get).not.toHaveBeenCalled();
     expect(at).toBe(`/projects/p1/documents/${made}`);
     expect(feedback.notifyError).not.toHaveBeenCalled();
     expect(document.body.querySelector('#doc-name')).toBe(null);

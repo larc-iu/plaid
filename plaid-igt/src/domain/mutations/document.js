@@ -131,10 +131,7 @@ export const documentMutations = {
     const tokenizeLayer = tokenize ? tokenizeLayerOf(info) : undefined;
     return this._queueWrite('Failed to save baseline text', async () => {
       await this._client.batched(async (b) => {
-        b.texts.create(primaryTextLayer.id, this.id, newBody, undefined, undefined, {
-          id: newTextId,
-          tokenizeLayer,
-        });
+        this._ensureText(b, { id: newTextId, body: newBody }, { tokenizeLayer });
         if (cpLength(newBody) > 0) {
           b.tokens.bulkCreate(sentenceSeed(sentenceTokenLayer.id, newTextId, newBody));
         }

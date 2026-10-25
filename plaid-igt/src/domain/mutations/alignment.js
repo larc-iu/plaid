@@ -49,7 +49,7 @@ import {
   wasReplayed,
   PROVENANCE_KEYS,
 } from '@larc-iu/plaid-client';
-import { pendingId, settledId } from '@ui/domain/pendingIds.js';
+import { isPendingId, pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/errors.js';
 import { inferEdit } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
@@ -528,11 +528,9 @@ export const alignmentMutations = {
       this.refuse(notSetUp('Required layers not found'));
       return false;
     }
-    const textId = primaryTextLayer.text?.id;
-    if (!textId) {
-      this.refuse(notSetUp('Text layer not found'));
-      return false;
-    }
+    // A document with no text yet gets one with its first segment
+    // (`_ensureText`), under an id minted here.
+    const textId = primaryTextLayer.text?.id ?? pendingId();
     const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
     if (overlap) {
       this.refuse(overlap);
@@ -1245,6 +1243,11 @@ export const alignmentMutations = {
           : null,
     });
     const show = (m) => (next, infoNext, vocabs) => {
+      // The text a document with none gets with this write, shown empty
+      // for the write's edits to fill.
+      if (!infoNext.primaryTextLayer.text) {
+        infoNext.primaryTextLayer.text = { id: textId, body: '', metadata: {} };
+      }
       if (m.textOps.length) applyTextEditsLocally(next, textId, m.textOps, vocabs);
       pushAlignmentToken(infoNext, { ...m.segment });
       if (m.seeded) infoNext.sentenceTokenLayer.tokens = [{ ...m.seeded }];
@@ -1252,10 +1255,15 @@ export const alignmentMutations = {
     const tokenizeLayer = tokenizeLayerOf(info);
     const send = (m, base) =>
       this._client.batched(async (b) => {
-        // The text write claims the document's version beside its base: a
-        // batch checks the version at the first write that claims one, and
-        // the token after it claims the version from before the batch.
-        if (m.textOps.length) {
+        // A text not made yet is made with the body the edits give it.
+        // Otherwise the text write claims the document's version beside its
+        // base: a batch checks the version at the first write that claims
+        // one, and the token after it claims the version from before the
+        // batch.
+        if (isPendingId(textId)) {
+          const body = applyTextOps(planned.body, m.textOps);
+          this._ensureText(b, { id: textId, body }, { tokenizeLayer });
+        } else if (m.textOps.length) {
           b.texts.update(textId, m.textOps, undefined, { base, versioned: true, tokenizeLayer });
         }
         // Under the ids shown, so a resend of a lost answer names the same rows.
@@ -1289,38 +1297,44 @@ export const alignmentMutations = {
       send: (base) => send(sent, base),
     };
     const write = async () => {
-      const results = !textOps.length
-        ? await send(sent)
-        : await this._sendOverSegmentText(state, {
-            replan: (fresh, updated) => {
-              const again = replan(fresh, updated);
-              if (!again.plan) return again;
-              const m = made(again.plan, sent);
-              sent = m;
-              return {
-                send: (base) => send(m, base),
-                show: () => this._showRead(updated, show(m)),
-              };
-            },
-            // A write whose key was sent before with another request, or
-            // refused after the client sent it again: it landed when the
-            // segment it makes is there.
-            landed: (fresh) => segmentIds(fresh).has(settledId(sent.segment.id)),
-            readOnRefusal: true,
-          });
+      // Judged when it is sent: a text made by a write queued before this one
+      // is the server's by then.
+      const making = isPendingId(textId);
+      const results =
+        making || !textOps.length
+          ? await send(sent)
+          : await this._sendOverSegmentText(state, {
+              replan: (fresh, updated) => {
+                const again = replan(fresh, updated);
+                if (!again.plan) return again;
+                const m = made(again.plan, sent);
+                sent = m;
+                return {
+                  send: (base) => send(m, base),
+                  show: () => this._showRead(updated, show(m)),
+                };
+              },
+              // A write whose key was sent before with another request, or
+              // refused after the client sent it again: it landed when the
+              // segment it makes is there.
+              landed: (fresh) => segmentIds(fresh).has(settledId(sent.segment.id)),
+              readOnRefusal: true,
+            });
       const at = sent.textOps.length ? 1 : 0;
       if (at) this._heardText(textId, results?.[0]?.body);
       const ids = new Map([[sent.segment.id, createdId(results?.[at])]]);
       if (sent.seeded) ids.set(sent.seeded.id, createdIds(results?.[at + 1])[0]);
+      if (making) ids.set(textId, createdId(results?.[0]));
       if ([...ids.values()].some((id) => !id)) {
         await this._reloadInSend(); // the batch answered without the ids the patch needs
       } else {
         this._settle(ids);
         // A replayed answer (this send run again, or the client's own resend)
         // carries the body as it was when the write first landed: what is
-        // stored now is read once the queue has drained. Otherwise the words
-        // the server made are shown from the answer.
-        if (state.again || wasReplayed(results)) this._reloadOnceDrained();
+        // stored now is read once the queue has drained, as is a text made
+        // here, whose create answers its id alone (no digest, no words).
+        // Otherwise the words the server made are shown from the answer.
+        if (making || state.again || wasReplayed(results)) this._reloadOnceDrained();
         else if (at) {
           this._applyRawPatch((next, infoNext) =>
             pushMadeWords(infoNext, textId, results?.[0]?.body),
