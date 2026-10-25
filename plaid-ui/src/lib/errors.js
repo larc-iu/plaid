@@ -54,9 +54,10 @@ export const isUnreachable = (error) => {
 //
 // A few reads go as a POST (a query, a token count, a layer rule check, the
 // values a rule would refuse, signing in, looking an invite up), and saved
-// nothing either way.
+// nothing either way. plaid-client-js's and plaid-client-py's services keep the
+// same list (readPosts.test.js and test_read_posts.py hold the three equal).
 const READ_POSTS =
-  /\/api\/v1\/(query|query\/token-counts|login|invites\/lookup|(?:token|span|relation)-layers\/[^/?#]+\/constraints\/(?:check|refused-values))(?:[?#]|$)/;
+  /\/api\/v1\/(?:query|query\/token-counts|login|invites\/lookup|(?:token|span|relation)-layers\/[^/?#]+\/constraints\/(?:check|refused-values))(?:[?#]|$)/;
 
 export const isUnknownOutcome = (error) => {
   const method = String((error && error.method) || '').toUpperCase();

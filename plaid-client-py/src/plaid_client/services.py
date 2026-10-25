@@ -71,9 +71,11 @@ UNKNOWN_OUTCOME = 'The Plaid server did not answer. This change may or may not h
 #: The server was never reached, so nothing was sent.
 UNREACHABLE = 'The Plaid server could not be reached.'
 
-# A few reads travel as a POST, and saved nothing either way (the JS twin and
-# plaid-ui's errors.js keep the same list).
-_READ_POSTS = re.compile(r'/api/v1/(?:query|login|invites/lookup)(?:[?#]|$)')
+# A few reads travel as a POST (a query, a token count, a layer rule check, the
+# values a rule would refuse, signing in, looking an invite up), and saved
+# nothing either way. The JS twin and plaid-ui's errors.js keep the same list
+# (tests/test_read_posts.py holds the three equal).
+_READ_POSTS = re.compile(r'/api/v1/(?:query|query/token-counts|login|invites/lookup|(?:token|span|relation)-layers/[^/?#]+/constraints/(?:check|refused-values))(?:[?#]|$)')
 
 
 def _never_connected(error) -> bool:

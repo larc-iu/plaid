@@ -37,9 +37,12 @@ export const UNKNOWN_OUTCOME =
 /** The server was never reached, so nothing was sent. */
 export const UNREACHABLE = 'The Plaid server could not be reached.';
 
-// A few reads travel as a POST, and saved nothing either way (the Python twin
-// and plaid-ui's errors.js keep the same list).
-const READ_POSTS = /\/api\/v1\/(?:query|login|invites\/lookup)(?:[?#]|$)/;
+// A few reads travel as a POST (a query, a token count, a layer rule check,
+// the values a rule would refuse, signing in, looking an invite up), and saved
+// nothing either way. The Python twin and plaid-ui's errors.js keep the same
+// list (readPosts.test.js holds the three equal).
+const READ_POSTS =
+  /\/api\/v1\/(?:query|query\/token-counts|login|invites\/lookup|(?:token|span|relation)-layers\/[^/?#]+\/constraints\/(?:check|refused-values))(?:[?#]|$)/;
 
 // Node's fetch (undici) names a connection that never opened by its code: a
 // refused port, a name that did not resolve, a connect timeout. Nothing was
