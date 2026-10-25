@@ -6,7 +6,7 @@ import { RunBarPager } from '@ui/components/shared/RunBar.jsx';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
 import { loadFrames } from '../../../domain/lexicon.js';
-import { EMPTY_LEXICON, loadVocabularies } from '../../../domain/vocabLexicon.js';
+import { EMPTY_LEXICON } from '../../../domain/vocabLexicon.js';
 import { buildAnchorIndex } from '../../../domain/commentAnchors.js';
 import { anchorCaption } from '@ui/domain/commentAnchors';
 
@@ -25,24 +25,6 @@ const useFrames = (languageTag) => {
     };
   }, [languageTag]);
   return frames;
-};
-
-// The project's vocabularies as a lexicon, read once per project. Live
-// even under a past state: what the vocabulary says now is the lexicon.
-const useLexicon = (client, project) => {
-  const [lexicon, setLexicon] = useState(EMPTY_LEXICON);
-  const key = (project?.vocabs || []).map((v) => v.id).join(',');
-  useEffect(() => {
-    let live = true;
-    setLexicon(EMPTY_LEXICON);
-    if (!client || !key) return undefined;
-    loadVocabularies(client, project).then((l) => live && setLexicon(l));
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, key]);
-  return lexicon;
 };
 
 // Scroll a rendered node into view and focus it. The blocks above it are
@@ -105,7 +87,9 @@ export const UmrCanvas = ({
   top = () => null,
 }) => {
   const frames = useFrames(readProjectLanguage(doc.project));
-  const lexicon = useLexicon(doc.client, doc.project);
+  // The project's vocabularies, as the document read them (AnnotationEditor's
+  // loadLexicon), so the pickers and the entry check hold one lexicon.
+  const lexicon = doc.lexicon ?? EMPTY_LEXICON;
   const graph = doc.graph;
   const problems = doc.problemsBySentence;
   const sentences = graph.sentences;

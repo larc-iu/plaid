@@ -34,22 +34,6 @@ export const EMPTY_LEXICON = Object.freeze({
   entryTypes: new Map(),
 });
 
-// Every vocabulary linked to the project, with its items. One that cannot
-// be read is left out, and the rest still load.
-export async function loadVocabularies(client, project) {
-  const ids = (project?.vocabs || []).map((v) => v.id);
-  if (!ids.length) return EMPTY_LEXICON;
-  const got = await Promise.all(
-    ids.map((id) =>
-      client.vocabLayers.get(id, true).catch((err) => {
-        console.warn(`Could not read vocabulary ${id}:`, err);
-        return null;
-      }),
-    ),
-  );
-  return buildLexicon(got.filter(Boolean));
-}
-
 // The entry each item is a sense of, or null, as plaid-igt's vocabulary
 // reads it (vocabDictionary.js validateVocabRefs): its parent while that is
 // another item of the vocabulary and the chain above it reaches an entry. An
