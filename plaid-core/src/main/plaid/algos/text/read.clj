@@ -7,7 +7,7 @@
             [plaid.algos.text.chars :refer [cps->str has-space? punct-only? space? word-letter?]]
             [plaid.algos.text.align :refer [align-to-words]]
             [plaid.algos.text.diff :refer [diff]]
-            [plaid.algos.text.index :refer [lower-bound tokens-near upper-bound]]
+            [plaid.algos.text.index :refer [begin-index lower-bound tokens-near upper-bound]]
             [plaid.algos.text.ops :refer [compose-edits edits->ops ops->edits]]
             [plaid.algos.text.plain :refer [apply-plain-gaps gaps-body typed-to-next? word-token?]]
             [plaid.util.codepoint :as cp]))
@@ -795,8 +795,7 @@
          n (alength o)
          ;; the words' old extents, by begin, and the longest
          words (vec (sort (word-extents tokens partitioning word-layers)))
-         begins (long-array (map first words))
-         longest (reduce max 0 (map (fn [[b e]] (- e b)) words))
+         [^longs begins longest] (begin-index words first second)
          ;; how many words [a, b) touches the inside of, two at most
          over (fn [a b] (let [from (lower-bound begins (- a longest))]
                           (loop [i from k 0]
@@ -834,8 +833,7 @@
          long? #(< 1024 (- (:token/end %) (:token/begin %)))
          longs (filterv long? tokens)
          by-begin (vec (sort-by :token/begin (remove long? tokens)))
-         tbegins (long-array (map :token/begin by-begin))
-         tlongest (reduce max 0 (map #(- (:token/end %) (:token/begin %)) by-begin))
+         [^longs tbegins tlongest] (begin-index by-begin :token/begin :token/end)
          in? (fn [lo hi {:token/keys [begin end]}] (if (= begin end) (<= lo begin hi) (and (< begin hi) (< lo end))))
          cut-one (fn [lo hi tk] (assoc tk :token/begin (- (max lo (:token/begin tk)) lo) :token/end (- (min hi (:token/end tk)) lo)))
          cut (fn [lo hi]
