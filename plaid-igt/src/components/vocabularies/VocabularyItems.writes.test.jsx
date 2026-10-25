@@ -550,7 +550,9 @@ describe('Bulk Add and Replace', () => {
     mounted = view;
     await replaceEdit(view);
     await bulkAdd(view);
-    expect(opts.map(({ kind, ref }) => ({ kind, ref }))).toEqual([
+    // A Replace sends each chunk in an operation of its own keys, which joins
+    // the Replace's and names no kind.
+    expect(opts.filter((o) => o?.kind).map(({ kind, ref }) => ({ kind, ref }))).toEqual([
       { kind: 'bulk-edit', ref: 'action:vocab-replace' },
       { kind: 'import', ref: 'format:table' },
     ]);

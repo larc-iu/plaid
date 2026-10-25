@@ -178,8 +178,9 @@ export const ReplaceDialog = ({
     if (!replaceWrites(chosen, { field: target.name }).length) return;
     setBusy(true);
     let done = 0;
-    // The rows of each request, cut once from the plan, so a resend sends
-    // each under the key it had the first time.
+    // The rows of each request, cut once from the plan, each with a key seed
+    // of its own, so a resend sends each under the key it had the first time
+    // whatever the recheck left in the others.
     let chunks = [];
     let total = 0;
     let skipped = 0;
@@ -193,7 +194,7 @@ export const ReplaceDialog = ({
         async () => {
           done = 0;
           reused = false;
-          for (const rows of chunks) {
+          for (const { rows, keys } of chunks) {
             if (!rows.length) continue;
             // An entry still being made when this was planned is named by the
             // server's id now that its create has landed.
@@ -203,7 +204,9 @@ export const ReplaceDialog = ({
               ...(w.metadata ? { metadata: followIds(w.metadata) } : {}),
             }));
             try {
-              await client.vocabItems.bulkUpdate(body);
+              await client.withOperation(label, () => client.vocabItems.bulkUpdate(body), {
+                keys,
+              });
             } catch (err) {
               // Its key landed before with another body: this chunk's first
               // send landed, and the recheck dropped a value someone changed
@@ -223,16 +226,17 @@ export const ReplaceDialog = ({
           plan: async () => {
             const entries = await readEntries();
             const rows = chosen.filter((r) => valueIn(entries, r.id) === r.old);
-            chunks = chunk(rows, CHUNK);
+            chunks = chunk(rows, CHUNK).map((part) => ({ rows: part, keys: client.keySeed?.() }));
             total = rows.length;
             skipped = chosen.length - total;
           },
           recheck: async () => {
             const entries = await readEntries();
-            chunks = chunks.map((rows) =>
-              rows.filter((r) => [r.old, valueAfter(r)].includes(valueIn(entries, r.id))),
-            );
-            total = chunks.flat().length;
+            chunks = chunks.map(({ rows, keys }) => ({
+              rows: rows.filter((r) => [r.old, valueAfter(r)].includes(valueIn(entries, r.id))),
+              keys,
+            }));
+            total = chunks.reduce((n, { rows }) => n + rows.length, 0);
             skipped = chosen.length - total;
           },
           kind: 'bulk-edit',

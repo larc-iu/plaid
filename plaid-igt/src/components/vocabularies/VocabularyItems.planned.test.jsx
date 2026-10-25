@@ -60,19 +60,22 @@ const lost = (method) =>
 // `idempotency-key-reused`. The first bulk write (of `loseKind`, when named)
 // lands and its answer is lost, and `after(items)` is another maintainer's
 // edit made before it goes again. With `between`, the first write never
-// reaches the server, and `between(items)` is that edit.
-const stub = (initial, { loseKind = null, between = null, after = null } = {}) => {
+// reaches the server, and `between(items)` is that edit. With `loseAt`, the
+// write lost is that one of them (from 0) in place of the first.
+const stub = (initial, { loseKind = null, loseAt = 0, between = null, after = null } = {}) => {
   const items = structuredClone(initial);
   const sent = [];
   const stored = new Map();
   let seeds = 0;
-  let seed = null;
-  let n = 0;
-  let lose = 1;
+  // The key frames open, innermost last: an operation brought its own seed
+  // numbers its requests from 0, and one without joins the frame over it.
+  const frames = [];
+  let matching = 0;
   const keyed = (kind, apply) => async (body) => {
-    const key = `${seed}.${n++}`;
+    const frame = frames.at(-1);
+    const key = `${frame?.seed}.${frame ? frame.n++ : 0}`;
     sent.push({ kind, body: structuredClone(body), key });
-    const losing = (!loseKind || kind === loseKind) && lose-- > 0;
+    const losing = (!loseKind || kind === loseKind) && matching++ === loseAt;
     if (losing && between) {
       between(items);
       throw lost(kind === 'bulkCreate' ? 'POST' : 'PATCH');
@@ -97,9 +100,13 @@ const stub = (initial, { loseKind = null, between = null, after = null } = {}) =
     keySeed: () => ({ seed: `s${seeds++}` }),
     withOperation: async (label, fn, opts) => {
       client.ops.push({ label, opts });
-      seed = opts?.keys?.seed;
-      n = 0;
-      return fn(() => {});
+      const keys = opts?.keys;
+      if (keys) frames.push({ seed: keys.seed, n: 0 });
+      try {
+        return await fn(() => {});
+      } finally {
+        if (keys) frames.pop();
+      }
     },
     batched(fn) {
       return fn(this);
@@ -328,7 +335,7 @@ describe('a planned run whose answer was lost, then edited by someone else', () 
     await replace(client, 2);
 
     const updates = sent.filter((s) => s.kind === 'bulkUpdate');
-    expect(updates.map((u) => u.key)).toEqual(['s0.0', 's0.0']);
+    expect(updates.map((u) => u.key)).toEqual(['s1.0', 's1.0']);
     expect(items.map((i) => i.form)).toEqual(['kot', 'cit']);
     expect(feedback.notifyError).not.toHaveBeenCalled();
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
@@ -351,14 +358,53 @@ describe('a planned run whose answer was lost, then edited by someone else', () 
 
     const updates = sent.filter((s) => s.kind === 'bulkUpdate');
     expect(updates.map((u) => [u.key, u.body.map((w) => w.form)])).toEqual([
-      ['s0.0', ['cat', 'cit']],
-      ['s0.0', ['cit']],
-      ['s0.1', ['cut']],
+      ['s1.0', ['cat', 'cit']],
+      ['s1.0', ['cit']],
+      ['s2.0', ['cut']],
     ]);
     expect(items.map((i) => i.form)).toEqual(['kot', 'cit', 'cut']);
     expect(feedback.notifyError).not.toHaveBeenCalled();
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
       '2 values replaced in Form. Skipped 1 value changed since the preview.',
+      'Replaced',
+    );
+  });
+
+  // The first chunk landed and answered, and the second never arrived. Before
+  // it went again, someone changed both values the first chunk wrote, so the
+  // recheck empties that chunk. The second still goes under its own key, and
+  // lands, where under the first chunk's key it was refused as landed.
+  it('Replace sends a chunk under its own key when the recheck empties one before it', async () => {
+    chunking.size = 2;
+    const { client, sent, items } = stub(
+      [
+        { id: 'a', form: 'kat', metadata: {} },
+        { id: 'b', form: 'ket', metadata: {} },
+        { id: 'c', form: 'kit', metadata: {} },
+        { id: 'd', form: 'kot', metadata: {} },
+        { id: 'e', form: 'kut', metadata: {} },
+      ],
+      {
+        loseAt: 1,
+        between: (now) => {
+          now[0].form = 'xat';
+          now[1].form = 'xet';
+        },
+      },
+    );
+    await replace(client, 5);
+
+    const updates = sent.filter((s) => s.kind === 'bulkUpdate');
+    expect(updates.map((u) => [u.key, u.body.map((w) => w.form)])).toEqual([
+      ['s1.0', ['cat', 'cet']],
+      ['s2.0', ['cit', 'cot']],
+      ['s2.0', ['cit', 'cot']],
+      ['s3.0', ['cut']],
+    ]);
+    expect(items.map((i) => i.form)).toEqual(['xat', 'xet', 'cit', 'cot', 'cut']);
+    expect(feedback.notifyError).not.toHaveBeenCalled();
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      '3 values replaced in Form. Skipped 2 values changed since the preview.',
       'Replaced',
     );
   });
