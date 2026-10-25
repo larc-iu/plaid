@@ -19,6 +19,7 @@ import {
 } from "./http.js";
 import { normalizeUserId } from "./ids.js";
 import { openBatch, postBatch } from "./batch.js";
+import { relationLayersApi, spanLayersApi, textLayersApi, tokenLayersApi } from "./apiLayers.js";
 import { relationsApi, spansApi, tokensApi, vocabLinksApi } from "./apiAnnotations.js";
 import {
   beginOperation,
@@ -33,9 +34,6 @@ import {
   auditMethods,
   metadataMethods,
   configMethods,
-  layerMethods,
-  constraintMethods,
-  valueSetMethods,
 } from "./families.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
 import { recorderFor } from "./events.js";
@@ -567,26 +565,7 @@ class PlaidClient {
 
     this.relations = relationsApi(this);
 
-    this.spanLayers = {
-      ...configMethods(this, "span-layers"),
-      ...constraintMethods(this, "span-layers"),
-      ...valueSetMethods(this, "span-layers"),
-      ...layerMethods(this, "span-layers"),
-      /**
-       * Create a new span layer.
-       * @param {string} tokenLayerId - The token layer ID
-       * @param {string} name - The name
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {object} [opts]
-       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-       * @returns {Promise<Created>}
-       */
-      create: (tokenLayerId, name, auditMessage, { id } = {}) =>
-        this._request("POST", "/api/v1/span-layers", {
-          auditMessage,
-          body: bodyOf({ id, "token-layer-id": tokenLayerId, name }),
-        }),
-    };
+    this.spanLayers = spanLayersApi(this);
 
     this.spans = spansApi(this);
 
@@ -1587,58 +1566,7 @@ class PlaidClient {
       },
     };
 
-    this.tokenLayers = {
-      ...layerMethods(this, "token-layers"),
-      /**
-       * Count, per document, the tokens of each layer whose surface matches a
-       * regex, as a query's `value: {regex}` on a token decides. Each text is
-       * read once, so it stays fast on a long document. Layers you cannot read
-       * are left out.
-       * @param {string[]} layerIds - The token layer ids
-       * @param {{regex: string, flags?: string}} value - The regex spec
-       * @returns {Promise<{results: Array<[string, string, number]>}>} [layerId,
-       *   documentId, count] rows, a document with tokens of the layer and no
-       *   match counting 0.
-       */
-      countMatching: (layerIds, value) =>
-        this._request("POST", "/api/v1/query/token-counts", {
-          body: { layers: layerIds, value },
-          outOfBand: true,
-          timeout: queryTimeout(this),
-          noBusyRetry: true,
-        }),
-      /**
-       * Create a new token layer.
-       * @param {string} textLayerId - The text layer ID
-       * @param {string} name - The name
-       * @param {string} [overlapMode] - Per-layer, immutable token invariant: "any" (default), "non-overlapping", or "partitioning". On partitioning layers, single token create/update/delete are rejected; use bulkCreate plus split/merge/shift.
-       * @param {string} [parentTokenLayerId] - Optional immutable parent token layer. Tokens in this layer must nest within a parent-layer token; the parent layer must be in the same text layer and be "non-overlapping" or "partitioning" (an "any" parent is rejected). A nested layer may be "any" or "non-overlapping" but not "partitioning" (partitioning is only for root layers), e.g. words (non-overlapping, parent=sentences) within sentences (partitioning).
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {object} [opts]
-       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-       * @returns {Promise<Created>}
-       */
-      create: (
-        textLayerId,
-        name,
-        overlapMode,
-        parentTokenLayerId,
-        auditMessage,
-        { id } = {},
-      ) =>
-        this._request("POST", "/api/v1/token-layers", {
-          auditMessage,
-          body: bodyOf({
-            id,
-            "text-layer-id": textLayerId,
-            name,
-            "overlap-mode": overlapMode,
-            "parent-token-layer-id": parentTokenLayerId,
-          }),
-        }),
-      ...configMethods(this, "token-layers"),
-      ...constraintMethods(this, "token-layers"),
-    };
+    this.tokenLayers = tokenLayersApi(this);
 
     this.documents = {
       /**
@@ -2192,24 +2120,7 @@ class PlaidClient {
         }),
     };
 
-    this.textLayers = {
-      ...configMethods(this, "text-layers"),
-      ...layerMethods(this, "text-layers"),
-      /**
-       * Create a new text layer for a project.
-       * @param {string} projectId - The project ID
-       * @param {string} name - The name
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {object} [opts]
-       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-       * @returns {Promise<Created>}
-       */
-      create: (projectId, name, auditMessage, { id } = {}) =>
-        this._request("POST", "/api/v1/text-layers", {
-          auditMessage,
-          body: bodyOf({ id, "project-id": projectId, name }),
-        }),
-    };
+    this.textLayers = textLayersApi(this);
 
     this.vocabItems = {
       ...metadataMethods(this, "vocab-items"),
@@ -2330,26 +2241,7 @@ class PlaidClient {
         }),
     };
 
-    this.relationLayers = {
-      ...layerMethods(this, "relation-layers"),
-      /**
-       * Create a new relation layer.
-       * @param {string} spanLayerId - The span layer ID
-       * @param {string} name - The name
-       * @param {string} [auditMessage] - Audit message for this write
-       * @param {object} [opts]
-       * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-       * @returns {Promise<Created>}
-       */
-      create: (spanLayerId, name, auditMessage, { id } = {}) =>
-        this._request("POST", "/api/v1/relation-layers", {
-          auditMessage,
-          body: bodyOf({ id, "span-layer-id": spanLayerId, name }),
-        }),
-      ...configMethods(this, "relation-layers"),
-      ...constraintMethods(this, "relation-layers"),
-      ...valueSetMethods(this, "relation-layers"),
-    };
+    this.relationLayers = relationLayersApi(this);
 
     this.tokens = tokensApi(this);
 
