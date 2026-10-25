@@ -2,7 +2,8 @@
   "`entity_metadata` has no FK, so every delete path sweeps the metadata of
   the rows it removes by hand. Each case here builds a document whose every
   row carries metadata, runs one delete path, and asserts that no metadata
-  row is left without its parent row."
+  row is left without its parent row. No route writes a layer's metadata,
+  so the layers get theirs by hand."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler admin-request
@@ -14,7 +15,8 @@
 
 (def ^:private parent-table
   {"document" "documents" "text" "texts" "token" "tokens" "span" "spans" "relation" "relations"
-   "vocab-item" "vocab_items" "vocab-link" "vocab_links"})
+   "vocab-item" "vocab_items" "vocab-link" "vocab_links" "text-layer" "text_layers"
+   "token-layer" "token_layers" "span-layer" "span_layers" "relation-layer" "relation_layers"})
 
 (defn- orphans
   "The `[entity_type entity_id]` of every metadata row whose parent row is gone."
@@ -26,6 +28,15 @@
                                        " AND NOT EXISTS (SELECT 1 FROM " table " t WHERE t.id = em.entity_id)")
                                   etype]))))
         parent-table))
+
+(defn- drop-orphans!
+  "Delete every metadata row whose parent row is gone, so that an orphan one
+  case leaves fails that case only."
+  []
+  (doseq [[etype table] parent-table]
+    (psc/execute! db [(str "DELETE FROM entity_metadata WHERE entity_type = ?"
+                           " AND NOT EXISTS (SELECT 1 FROM " table " t WHERE t.id = entity_metadata.entity_id)")
+                      etype])))
 
 (defn- metadata-types
   "The entity types that hold any metadata now."
@@ -44,7 +55,7 @@
   "A project with one document: a text, three word tokens, a span on each
   and a second one on the first (`s4`), two relations, three entries and
   four links (`l4` puts a second entry on the first word), every one of
-  them with metadata."
+  them and each of the four layers with metadata."
   []
   (let [md {"note" "x"}
         proj (create-test-project admin-request (str "Sweep " (random-uuid)))
@@ -75,6 +86,9 @@
     (doseq [r [r1 r2]] (assert-success (update-relation-metadata admin-request r md)))
     (doseq [i [i1 i2 i3]] (assert-success (update-vocab-item-metadata admin-request i md)))
     (doseq [l [l1 l2 l3 l4]] (assert-success (update-vocab-link-metadata admin-request l md)))
+    (doseq [[etype eid] [["text-layer" tl] ["token-layer" wl] ["span-layer" sl] ["relation-layer" rl]]]
+      (psc/execute! db ["INSERT INTO entity_metadata (entity_type, entity_id, key, value) VALUES (?, ?, ?, ?)"
+                        etype (str eid) "note" "\"x\""]))
     {:proj proj :doc doc :tl tl :wl wl :sl sl :rl rl :vocab vocab
      :t1 t1 :s1 s1 :s2 s2 :r1 r1 :r2 r2 :i1 i1 :i2 i2 :l1 l1 :l2 l2}))
 
@@ -114,4 +128,5 @@
         (is (< (entities-with-metadata) before) "the delete removed a row that carried metadata")
         (is (= [] (orphans)))
         ;; The next case starts from nothing.
+        (drop-orphans!)
         (assert-success (delete-test-project admin-request (:proj w)))))))
