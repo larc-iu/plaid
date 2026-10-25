@@ -11,7 +11,8 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
-            [plaid.sql.user :as user])
+            [plaid.sql.user :as user]
+            [plaid.sql.vocab-item :as vocab-item])
   (:refer-clojure :exclude [get merge]))
 
 ;; ============================================================
@@ -397,48 +398,28 @@
                        (let [vi-ids (->> (psc/q tx {:select [:id]
                                                     :from :vocab_items
                                                     :where [:= :vocab_layer_id eid]})
-                                         (mapv :id))
-                             ;; Track which documents lose vocab_links so we
-                             ;; can bump their versions for OCC clients.
-                             ;; The op-attrs carry :document nil,
-                             ;; so the post-body version bump
-                             ;; doesn't fire — we have to walk the affected
-                             ;; docs explicitly.
-                             affected-doc-ids (volatile! [])]
+                                         (mapv :id))]
                          (when (seq vi-ids)
                            (cascade-stats/prepare! tx)
-                           ;; Vocab_links pointing at any of these items —
-                           ;; one bulk DELETE ... RETURNING * collapses the
-                           ;; per-row loop into a single round-trip.
+                           ;; R39: a link in a project being deleted is
+                           ;; removed without an audit row or a version
+                           ;; bump. Nothing travels back to that project,
+                           ;; and the purge never reaches rows written
+                           ;; under this op, which names no project.
                            (let [all-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
                                                           "idx_vocab_links_item" vi-ids)
-                                 ;; R39: a link in a project being deleted is
-                                 ;; removed without an audit row or a version
-                                 ;; bump. Nothing travels back to that project,
-                                 ;; and the purge never reaches rows written
-                                 ;; under this op, which names no project.
                                  hidden (hidden-document-ids tx (map :document_id all-rows))
-                                 {vl-rows false gone-rows true} (group-by #(contains? hidden (:document_id %))
-                                                                          all-rows)
-                                 vl-ids (mapv :id vl-rows)
-                                 gone-ids (mapv :id gone-rows)]
+                                 gone-ids (into [] (comp (filter #(contains? hidden (:document_id %))) (map :id))
+                                                all-rows)]
                              (when (seq gone-ids)
                                (crud/delete-ids-unaudited! tx :vocab_links gone-ids)
-                               (crud/delete-entity-metadata! tx "vocab-link" gone-ids))
-                             (when (seq vl-ids)
-                               ;; Capture the per-link document_ids (may
-                               ;; contain duplicates if multiple items
-                               ;; share a doc) — bump-document-versions!
-                               ;; dedups internally.
-                               (vswap! affected-doc-ids into (mapv :document_id vl-rows))
-                               (crud/delete-entities! tx :vocab_links vl-ids)))
-                           ;; Vocab_items themselves + their metadata.
-                           (crud/delete-entities! tx :vocab_items vi-ids))
-                         ;; Bump versions on every document that lost a
-                         ;; vocab_link — emits :doc-version-bump audit
-                         ;; rows so OCC clients are told their view is
-                         ;; stale.
-                         (op/bump-document-versions! tx @affected-doc-ids))
+                               (crud/delete-entity-metadata! tx "vocab-link" gone-ids)))
+                           ;; The items by the one item delete path: the
+                           ;; other links, audited, a version bump on every
+                           ;; document that lost one (the op-attrs carry
+                           ;; :document nil, so the post-body bump does not
+                           ;; fire), then the items with their metadata.
+                           (vocab-item/delete-items! tx vi-ids)))
                        ;; Snapshot junction-table state BEFORE the row
                        ;; goes away (FK CASCADE would erase
                        ;; vocab_maintainers + project_vocabs rows

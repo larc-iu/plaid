@@ -46,6 +46,8 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op]
+            [plaid.sql.relation :as relation]
+            [plaid.sql.span :as span]
             [plaid.sql.token :as token]
             [plaid.server.locks :as locks]
             [taoensso.timbre :as log])
@@ -1225,25 +1227,18 @@
 ;; Remedies
 ;; ============================================================
 
-(defn- delete-relations! [tx ids]
-  (when (seq ids)
-    (count (crud/delete-entities! tx :relations ids))))
-
-(defn- delete-spans!
-  "Delete spans with the relations on them first, as a span delete does.
-  Each span's delete cascades, so the statistics are made safe for that
-  first (`cascade-stats/prepare!`), and the relations are read end by end,
-  each by its own index."
+(defn- delete-relations!
+  "Delete relations by the one relation delete path, returning how many."
   [tx ids]
   (when (seq ids)
-    (cascade-stats/prepare! tx)
-    (let [ids (vec (distinct ids))
-          rels (->> (concat (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" ids)
-                            (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" ids))
-                    (map :id)
-                    distinct)]
-      (delete-relations! tx rels)
-      (count (crud/delete-entities! tx :spans ids)))))
+    (count (relation/delete-relations! tx ids))))
+
+(defn- delete-spans!
+  "Delete spans with the relations on them by the one span delete path,
+  returning how many spans."
+  [tx ids]
+  (when (seq ids)
+    (count (span/delete-spans! tx ids))))
 
 (defn- remedy-coextensive! [tx _ctx _c vs counts]
   (let [by-id (into {} (map (fn [v] [(first (:ids v)) v])) vs)]

@@ -307,9 +307,7 @@
   entity_metadata, which has no FK, is swept here."
   [tx ids]
   (cascade-stats/prepare! tx)
-  (doseq [eid ids]
-    (crud/delete-by-id! tx :vocab_links eid))
-  (crud/delete-entity-metadata! tx "vocab-link" ids))
+  (crud/delete-entities! tx :vocab_links ids))
 
 (defn delete
   "Delete a vocab-link (see `delete-vocab-links!`)."

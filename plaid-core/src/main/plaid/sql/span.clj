@@ -14,6 +14,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
+            [plaid.sql.relation :as relation]
             [clojure.string])
   (:refer-clojure :exclude [get merge format]))
 
@@ -280,26 +281,26 @@
 ;; Delete
 ;; ============================================================
 
-(defn- delete-spans!
-  "The one delete path of spans, under `delete` and `bulk-delete`, for
-  existing span `ids`. The relations on them go first, audited, since
-  the FK CASCADE on relations would sweep them unaudited, then the spans
-  (the FK CASCADE on span_tokens sweeps the join rows), then the
-  entity_metadata of both, which has no FK."
+(defn delete-spans!
+  "The one delete path of spans, under `delete`, `bulk-delete`, a span
+  layer's cascade and the layer rule remedies, for span `ids`. The
+  relations on them go first, audited (`relation/delete-relations!`),
+  since the FK CASCADE on relations would sweep them unaudited, each end
+  read by its own index, then the spans (the FK CASCADE on span_tokens
+  sweeps the join rows) with their entity_metadata, which has no FK. Each
+  span's delete cascades, so the statistics are made safe for that first
+  (`cascade-stats/prepare!`). Returns the deleted spans' pre-images."
   [tx ids]
   (cascade-stats/prepare! tx)
-  (let [rel-ids (->> (concat
-                      (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" ids)
-                      (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" ids))
-                     (map :id)
-                     distinct
-                     vec)]
-    (doseq [rid rel-ids]
-      (crud/delete-by-id! tx :relations rid))
-    (crud/delete-entity-metadata! tx "relation" rel-ids))
-  (doseq [sid ids]
-    (crud/delete-by-id! tx :spans sid))
-  (crud/delete-entity-metadata! tx "span" ids))
+  (let [ids (vec (distinct ids))]
+    (relation/delete-relations!
+     tx (->> (concat
+              (crud/select-in tx :relations "id" :source_span_id "idx_relations_source" ids)
+              (crud/select-in tx :relations "id" :target_span_id "idx_relations_target" ids))
+             (map :id)
+             distinct
+             vec))
+    (crud/delete-entities! tx :spans ids)))
 
 (defn delete
   "Delete a span and the relations on it (see `delete-spans!`)."

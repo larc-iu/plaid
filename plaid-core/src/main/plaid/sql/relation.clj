@@ -229,15 +229,14 @@
 ;; Delete
 ;; ============================================================
 
-(defn- delete-relations!
-  "The one delete path of relations, under `delete` and `bulk-delete`.
-  Relations are leaves in the entity graph (nothing references them), so
-  each row goes (audited, an id with no row writes nothing) and then
-  their entity_metadata."
+(defn delete-relations!
+  "The one delete path of relations, under `delete`, `bulk-delete`, a span
+  delete, a span layer's cascade and the layer rule remedies. Relations are
+  leaves in the entity graph (nothing references them), so the rows go
+  (audited, an id with no row writes nothing) with their entity_metadata.
+  Returns the deleted pre-images."
   [tx ids]
-  (doseq [rid ids]
-    (crud/delete-by-id! tx :relations rid))
-  (crud/delete-entity-metadata! tx "relation" ids))
+  (crud/delete-entities! tx :relations ids))
 
 (defn delete
   "Delete a relation."

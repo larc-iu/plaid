@@ -7,7 +7,9 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
-            [plaid.sql.operation :as op :refer [submit-operation!]])
+            [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.relation :as relation]
+            [plaid.sql.span :as span])
   (:refer-clojure :exclude [get merge]))
 
 ;; ============================================================
@@ -116,20 +118,21 @@
                      vec)]
     ;; 2. Audit-delete every affected relation BEFORE any
     ;;    relation_layer or span row goes away. Chunked DELETE ...
-    ;;    RETURNING * with per-id audit rows (crud/delete-entities!).
+    ;;    RETURNING * with per-id audit rows (relation/delete-relations!).
     (when (seq rel-ids)
-      (crud/delete-entities! tx :relations rel-ids))
+      (relation/delete-relations! tx rel-ids))
     ;; 3. Relation_layers under this span_layer + their
     ;;    entity_metadata. Relations under them were drained in step 2,
     ;;    so the FK cascade on `relations.relation_layer_id` is a no-op.
     (when (seq rl-ids)
       (crud/delete-where! tx :relation_layers [:in :id rl-ids])
       (crud/delete-entity-metadata! tx "relation-layer" rl-ids))
-    ;; 4. Spans in this layer + their entity_metadata. Relations
-    ;;    referencing these spans were drained in step 2, so FK cascade
-    ;;    on `relations.source_span_id` / `target_span_id` is a no-op.
+    ;; 4. Spans in this layer + their entity_metadata, by the one span
+    ;;    delete path. Relations referencing these spans were drained in
+    ;;    step 2, so it finds none, and the FK cascade on
+    ;;    `relations.source_span_id` / `target_span_id` is a no-op.
     (when (seq span-ids)
-      (crud/delete-entities! tx :spans span-ids)))
+      (span/delete-spans! tx span-ids)))
   ;; 5. The span_layer itself + its own entity_metadata.
   (crud/delete-entity-metadata! tx "span-layer" [eid])
   (crud/delete-by-id! tx :span_layers eid))

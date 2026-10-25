@@ -185,6 +185,22 @@
                          (op/bump-document-versions! tx doc-ids)
                          eid))))
 
+(defn delete-items!
+  "The one delete path of vocab items, for item `ids`: the links pointing
+  at them go first, audited with their metadata (FK ON DELETE CASCADE
+  would sweep them unaudited), each document that held one is bumped,
+  then the items go with their metadata. Each delete cascades, so the
+  statistics are made safe first (`cascade-stats/prepare!`). Touches no
+  vocabulary's `modified_at`, which is the caller's. Returns the deleted
+  items' pre-images."
+  [tx ids]
+  (when (seq ids)
+    (cascade-stats/prepare! tx))
+  (let [links (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id "idx_vocab_links_item" ids)]
+    (crud/delete-entities! tx :vocab_links (mapv :id links))
+    (op/bump-document-versions! tx (mapv :document_id links))
+    (crud/delete-entities! tx :vocab_items ids)))
+
 (defn- delete*
   "The operation of `delete`. `links-found` is an atom it sets to the number
   of links the entry has, read inside the transaction."
@@ -198,21 +214,15 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
                                          {:code 404 :id eid})))
-                       (let [vl-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
-                                                     "idx_vocab_links_item" [eid])
-                             vl-ids (mapv :id vl-rows)]
-                         (reset! links-found (count vl-rows))
+                       (let [vl-count (count (crud/select-in tx :vocab_links "id" :vocab_item_id
+                                                             "idx_vocab_links_item" [eid]))]
+                         (reset! links-found vl-count)
                          (when (and (some? expected-link-count)
-                                    (not= expected-link-count (count vl-rows)))
-                           (throw (ex-info (str "This entry has " (count vl-rows) " links now, not "
+                                    (not= expected-link-count vl-count))
+                           (throw (ex-info (str "This entry has " vl-count " links now, not "
                                                 expected-link-count)
-                                           {:code 409 :id eid :links (count vl-rows)})))
-                         (when (seq vl-ids)
-                           (cascade-stats/prepare! tx))
-                         (crud/delete-entities! tx :vocab_links vl-ids)
-                         (op/bump-document-versions! tx (mapv :document_id vl-rows)))
-                       (crud/delete-entity-metadata! tx "vocab-item" [eid])
-                       (crud/delete-by-id! tx :vocab_items eid)
+                                           {:code 409 :id eid :links vl-count}))))
+                       (delete-items! tx [eid])
                        (op/touch-vocab-layer! tx (:vocab_layer_id existing))
                        eid)))
 
@@ -413,15 +423,7 @@
                              ;; nothing left to read the parent layer off of.
                              layer-ids (get-layer-ids tx existing-ids)]
                          (when (seq existing-ids)
-                           (cascade-stats/prepare! tx)
-                           ;; Descendant vocab_links (audited per row), then their
-                           ;; metadata (unaudited sweep, no FK on entity_metadata).
-                           (let [link-ids (mapv :id (crud/select-in tx :vocab_links "id" :vocab_item_id
-                                                                    "idx_vocab_links_item" existing-ids))
-                                 link-rows (crud/delete-entities! tx :vocab_links link-ids)]
-                             (op/bump-document-versions! tx (mapv :document_id link-rows)))
-                           ;; The items (audited per row) and their own metadata.
-                           (crud/delete-entities! tx :vocab_items existing-ids)
+                           (delete-items! tx existing-ids)
                            (op/touch-vocab-layers! tx layer-ids))
                          existing-ids))))
 
@@ -593,7 +595,7 @@
                                (crud/bulk-update-by-id! tx :vocab_links
                                                         (mapv (fn [id] [id {:vocab_item_id survivor-id}]) moved)))
                              (crud/delete-entities! tx :vocab_links dups)
-                             (crud/delete-entities! tx :vocab_items existing-ids)
+                             (delete-items! tx existing-ids)
                              (let [repointed-docs (if (seq existing-ids)
                                                     (repoint-metadata-refs! tx layer survivor-id existing-ids)
                                                     [])]
