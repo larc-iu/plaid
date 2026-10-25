@@ -125,7 +125,10 @@ def test_a_writer_creates_an_entry_from_a_marked_form_as_the_apps_create_does():
     [made] = [op for op in w.ops if op['kind'] == 'create_entry']
     assert made['form'] == 's' and made['metadata'] == {'morphType': 'suffix'}
     # A type or a field given alongside is still the maintainer's.
-    for args in ({'form': '-s', 'type': 'suffix'}, {'form': '-s', 'fields': {'gloss': 'PL'}}):
+    for args in ({'form': '-s', 'type': 'suffix'}, {'form': '-s', 'fields': {'gloss': 'PL'}},
+                 # A type given as a field is a type given too (REV-R4R R3).
+                 {'form': 's', 'fields': {'morphType': 'stem'}}, {'form': 'kai', 'fields': {'morphType': 'suffix'}},
+                 {'form': '-s', 'fields': {'morphType': 'suffix'}}):
         assert FORM_ONLY in call_tool(w, 'create_entry', args), args
 
 

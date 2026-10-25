@@ -52,14 +52,15 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     if morph:
         metadata['morphType'] = morph_type(morph)
     # Stored without markers, the type from them where they name one and
-    # none was given (R27, R38).
-    form, typed = stored_entry_form(form, metadata.get('morphType'))
+    # none was given (R27, R38). A type given as a field is given too.
+    given = metadata.get('morphType')
+    form, typed = stored_entry_form(form, given)
     if typed:
         metadata['morphType'] = typed
     # A form alone whose markers named its type is what the app's Create
     # sends any writer ("-s" as the suffix "s", vocab.js asEntry), so it is
     # still a form-only create (Workspace.lexicon_maintained_by).
-    from_form = {'typed_from_form': True} if typed and not morph and not metadata.keys() - {'morphType'} else {}
+    from_form = {'typed_from_form': True} if typed and not given and not metadata.keys() - {'morphType'} else {}
     if parent is not None:
         # The tree is the lexicon as the SERVER has it, so the senses this plan
         # has already added to the same entry are counted here as well: without
