@@ -385,7 +385,7 @@ The modules below are `igt/` unless they say otherwise.
   among it, in `core/outcome.py`) and `core/page_writes.py` (the plans a page
   writes itself). `core/version.py` holds the version each turn records.
 - `core/web.py`: the optional web tools, the URL guard, and HTML to text.
-- `core/workspace.py`: the workspace both apps subclass. What one turn holds
+- `core/workspace.py`: the workspace every app subclasses. What one turn holds
   while its tools run: the document list and how a name resolves against it,
   the plan's size budget, the rule that a second change to one target replaces
   the first, the refusals a plan owes itself (a change to something the plan
@@ -397,7 +397,16 @@ The modules below are `igt/` unless they say otherwise.
   the plan deletes out from under. A plan is what one turn stages, and it is
   fixed once the turn ends: within the turn a later change on the same target
   wins and `discard_plan` starts over, and a later message plans again, its
-  plan replacing the card that still waits (Luke 2026-10-17).
+  plan replacing the card that still waits (Luke 2026-10-17). `plan_payload()`
+  is what a plan is stored as for the user to approve, built the same way in
+  every app: a minted plan id, the ops as stored (`settle_for_payload`, which
+  snapshots them, flags each change that replaces a person's work and folds
+  large groups of like ops into one), the card's rows (`describe_changes`),
+  the summary (`summarize`) and the documents with the version each was read
+  at, plus the keys `payload_extra` adds. An app answers `describe_changes`
+  and `summarize`, and may settle more first or add keys of its own. Each
+  app's workspace is its own module: `igt/workspace.py`, `ud/workspace.py`
+  and `umr/workspace.py`.
 - `core/toolkit.py`: the schemas of the tools every app offers (the history,
   the comments, the plan so far, the query language) and the tail of every
   tool table: the guideline, web, file and sandbox tools, which tools plan,
