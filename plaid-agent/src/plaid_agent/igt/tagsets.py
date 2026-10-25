@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.constraints import value_parts, value_set_allows
 from plaid_client.provenance import project_role
+from plaid_client.workflows.igt.config import read_igt, read_igt_namespace, read_scope, read_vocab_fields
 from plaid_client.workflows.igt.glossing import is_lexical_part
 from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset
 
@@ -739,14 +740,9 @@ def settings_ops(ops) -> List[dict]:
     return [op for op in ops if op.get('kind') in SETTINGS_KINDS]
 
 
-def _igt(cfg) -> dict:
-    v = (cfg or {}).get(IGT)
-    return v if isinstance(v, dict) else {}
-
-
 def _span_layers(p) -> List[dict]:
     return [sl for tl in p.get('text_layers') or [] for tk in tl.get('token_layers') or []
-            for sl in tk.get('span_layers') or [] if _igt(sl.get('config')).get('scope')]
+            for sl in tk.get('span_layers') or [] if read_scope(sl.get('config'))]
 
 
 def _norm(raw, name) -> dict:
@@ -771,7 +767,7 @@ def _live(client, project, owner: str):
         p = client.projects.get(project.id)
         return p.get('config') or {}, _span_layers(p), None
     v = client.vocab_layers.get(owner)
-    fields = _igt(v.get('config')).get('fields')
+    fields = read_vocab_fields(v.get('config'))
     return v.get('config') or {}, [], fields if isinstance(fields, dict) else {}
 
 
@@ -779,9 +775,9 @@ def _reference(cfg, layers, entry_fields, op) -> Optional[str]:
     kind, key = op['field_kind'], op['key']
     if kind == SPAN:
         sl = next((sl for sl in layers if sl.get('id') == key), None)
-        name = _igt((sl or {}).get('config')).get('tagset')
+        name = read_igt((sl or {}).get('config'), 'tagset')
     elif kind == METADATA:
-        m = next((m for m in _igt(cfg).get('documentMetadata') or [] if isinstance(m, dict) and m.get('name') == key),
+        m = next((m for m in read_igt(cfg, 'documentMetadata') or [] if isinstance(m, dict) and m.get('name') == key),
                  None)
         name = (m or {}).get('tagset')
     else:
@@ -798,7 +794,7 @@ def _after(cfg, ops):
     """(the owner's tagsets once ``ops`` (its own) are written, as stored,
     and ``final(kind, key, name)``: the tagset a field of that kind and key
     naming ``name`` names after them)."""
-    raw = _igt(cfg).get('tagsets')
+    raw = read_igt(cfg, 'tagsets')
     raw = raw if isinstance(raw, dict) else None
     new = dict(raw or {})
     renames = {}
@@ -829,11 +825,11 @@ def _field_rules(cfg, layers, ops) -> List[dict]:
     layer holds what its settings asked for before the plan)}."""
     ops = [op for op in ops if op['owner'] == PROJECT]
     new, final = _after(cfg, ops)
-    igt = _igt(cfg)
+    igt = read_igt_namespace(cfg)
     after_cfg = {**cfg, IGT: {**igt, 'tagsets': new}}
     out = []
     for sl in layers:
-        lcfg = _igt(sl.get('config'))
+        lcfg = read_igt_namespace(sl.get('config'))
         old = lcfg.get('tagset') if isinstance(lcfg.get('tagset'), str) else None
         name = final(SPAN, sl['id'], (old or '').strip() or None)
         layer_after = {**(sl.get('config') or {}), IGT: {**lcfg, 'tagset': name}}
@@ -852,7 +848,7 @@ def _state(cfg, layers, entry_fields, op) -> str:
     if op['kind'] == 'assign_tagset':
         now = _reference(cfg, layers, entry_fields, op)
         return 'after' if now == op.get('after') else 'before' if now == op.get('before') else 'moved'
-    raw = _igt(cfg).get('tagsets')
+    raw = read_igt(cfg, 'tagsets')
     raw = raw if isinstance(raw, dict) else {}
     named = _comparable(_norm(raw[op['name']], op['name'])) if op['name'] in raw else None
     was = _comparable(_norm(raw[op['was']], op['was'])) if op['was'] in raw else None

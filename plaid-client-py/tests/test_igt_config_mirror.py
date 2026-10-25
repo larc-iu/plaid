@@ -4,7 +4,8 @@ The services and the workflows read plaid-igt's own config keys through the
 Python readers, and the app through igtConfig.js, so the two must answer the
 same for every config. It skips where node or plaid-igt is not beside this
 package, and does not skip when the two disagree. The last test keeps every
-other Python reader of the namespace out of the client and the services.
+other Python reader of the namespace out of the client, the services and
+plaid-agent.
 """
 
 import json
@@ -59,12 +60,12 @@ def test_each_reader_answers_as_the_apps(js, name, read):
         (c, g, w) for c, g, w in zip(CASES, got, js[name]) if g != w or type(g) is not type(w)]
 
 
-def test_nothing_else_in_the_client_or_the_services_reads_the_namespace():
+def test_nothing_else_in_the_client_the_services_or_the_agent_reads_the_namespace():
     """One reader per key: an inline ``.get('igt')`` is where defaults drift."""
     inline = re.compile(r"""\.get\(\s*['"]igt['"]|\[\s*['"]igt['"]\s*\]""")
     own = ROOT / 'plaid-client-py' / 'src' / 'plaid_client' / 'workflows' / 'igt' / 'config.py'
-    roots = [ROOT / 'plaid-client-py' / 'src'] + [ROOT / app / 'services' for app in
-                                                   ('plaid-igt', 'plaid-ud', 'plaid-umr')]
+    roots = [ROOT / 'plaid-client-py' / 'src', ROOT / 'plaid-agent' / 'src'] + [
+        ROOT / app / 'services' for app in ('plaid-igt', 'plaid-ud', 'plaid-umr')]
     found = [f'{p.relative_to(ROOT)}:{n}'
              for root in roots for p in sorted(root.rglob('*.py'))
              if p != own and 'tests' not in p.parts

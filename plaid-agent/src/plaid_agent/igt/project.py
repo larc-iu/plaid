@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role, read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
+from plaid_client.workflows.igt.config import (read_igt, read_lexicon_field, read_scope, read_tokenize_new_text,
+                                               read_vocab_fields)
 from plaid_client.workflows.igt import precedence, read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 # A clitic, as plaid-client-py's glossing reads one (the one Python copy).
 from plaid_client.workflows.igt.glossing import is_clitic
@@ -43,10 +45,6 @@ from .vocab import CORE_VOCAB_FIELDS, ROLE_GLOSS, fields_with_role, normalize_vo
 from ..core.tools import ValueRefusal, overview_documents
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
-
-
-def _igt(cfg, key):
-    return ((cfg or {}).get('igt') or {}).get(key)
 
 
 def joiner(prev_type, next_type):
@@ -322,16 +320,16 @@ def load_project(client, project_id: str) -> IgtProject:
         if not tk:
             continue
         for sl in tk.get('span_layers') or []:
-            scope = _igt(sl.get('config'), 'scope')
+            scope = read_scope(sl.get('config'))
             if scope in SCOPES:
                 tname = read_tagset_name(sl.get('config'))
                 entries.append((sl['name'], sl['id'], scope, tname, tagsets.get(tname) if tname else None,
                                 value_set_rules(sl)))
     fields = _unique_field_names(entries)
     joins = {sl['id']: join_with(sl) for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
-    lexicon_fields = {sl['id']: _igt(sl.get('config'), 'lexiconField')
+    lexicon_fields = {sl['id']: read_lexicon_field(sl.get('config'))
                       for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
-    sentence_roles = {sl['id']: _igt(sl.get('config'), 'sentenceRole')
+    sentence_roles = {sl['id']: read_igt(sl.get('config'), 'sentenceRole')
                       for tk in (sent, word, morph) if tk for sl in tk.get('span_layers') or []}
     for f in fields.values():
         f.join_with = joins.get(f.layer_id, f.join_with)
@@ -339,7 +337,7 @@ def load_project(client, project_id: str) -> IgtProject:
         f.lexicon_field = lf if isinstance(lf, str) and lf else None
         sr = sentence_roles.get(f.layer_id)
         f.sentence_role = sr if f.scope == 'Sentence' and isinstance(sr, str) and sr else None
-    metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
+    metadata = [m for m in (read_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
     metadata_tagsets, metadata_tagset_names = {}, {}
     for m in metadata:
         tname = m.get('tagset')
@@ -353,9 +351,9 @@ def load_project(client, project_id: str) -> IgtProject:
         text_layer_id=text_layer['id'], sentence_layer_id=sent['id'], word_layer_id=word['id'],
         morpheme_layer_id=morph['id'] if morph else None,
         fields=fields,
-        orthographies=[o['name'] for o in (_igt(word.get('config'), 'orthographies') or [])],
+        orthographies=[o['name'] for o in (read_igt(word.get('config'), 'orthographies') or [])],
         ignored_cfg=read_ignored_tokens(word.get('config')),
-        tokenize_new_text=_igt(word.get('config'), 'tokenizeNewText') is not False,
+        tokenize_new_text=read_tokenize_new_text(word.get('config')),
         vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
         document_metadata=[m['name'] for m in metadata],
         metadata_tagsets=metadata_tagsets,
@@ -370,7 +368,7 @@ def _vocab_entry(v: dict) -> dict:
     type, many, scope, and the rest, read the way the app's own editor reads
     them), and for each field a tagset holds, the tagset (the vocabulary's own,
     never the project's)."""
-    fields = normalize_vocab_fields(_igt(v.get('config'), 'fields'))
+    fields = normalize_vocab_fields(read_vocab_fields(v.get('config')))
     tagsets = {}
     for f in fields:
         t = vocab_tagset_for(v, f['name'])

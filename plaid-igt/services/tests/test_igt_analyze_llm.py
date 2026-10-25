@@ -217,8 +217,8 @@ def test_the_lexicon_s_gloss_and_part_of_speech_come_from_stored_settings():
     its part-of-speech-role field. A key called gloss with neither is nothing."""
     vocab = {'config': {'igt': {'fields': {'gloss': {}, 'Meaning': {'role': 'gloss'},
                                            'Category': {'role': 'pos'}, 'pos': {}}}}}
-    assert llm._role_key(vocab, 'gloss') == 'Meaning' and llm._role_key(vocab, 'pos') == 'Category'
-    assert llm._role_key({'config': {}}, 'gloss') is None
+    assert llm.role_field(vocab['config'], 'gloss') == 'Meaning' and llm.role_field(vocab['config'], 'pos') == 'Category'
+    assert llm.role_field({}, 'gloss') is None
     items = [{'id': 'a', 'form': 'ev', 'metadata': {'gloss': 'no', 'Meaning': 'house', 'pos': 'X',
                                                     'Category': 'N', 'gloss (es)': 'casa'}}]
     [e] = llm.vocab_entries(items, 'L', gloss_key='Meaning', pos_key='Category')
@@ -237,6 +237,6 @@ def test_the_core_gloss_field_comes_first_among_the_fields_holding_its_role():
     included, keep the stored order."""
     vocab = {'config': {'igt': {'fields': {'gloss (ru)': {'role': 'gloss'}, 'Category': {'role': 'pos'},
                                            'gloss': {'role': 'gloss'}, 'pos': {'role': 'pos'}}}}}
-    assert llm._role_key(vocab, 'gloss') == 'gloss' and llm._role_key(vocab, 'pos') == 'Category'
+    assert llm.role_field(vocab['config'], 'gloss') == 'gloss' and llm.role_field(vocab['config'], 'pos') == 'Category'
     others = {'config': {'igt': {'fields': {'gloss (ru)': {'role': 'gloss'}, 'gloss (es)': {'role': 'gloss'}}}}}
-    assert llm._role_key(others, 'gloss') == 'gloss (ru)'
+    assert llm.role_field(others['config'], 'gloss') == 'gloss (ru)'

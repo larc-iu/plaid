@@ -54,6 +54,14 @@ from plaid_client.workflows.igt.senses import (  # noqa: F401
 
 from plaid_client.workflows.igt.entry_forms import entry_form
 
+# The field schema is read by the services too, so it lives in the client
+# (one Python reading of it, ``plaid_client.workflows.igt.config``).
+from plaid_client.workflows.igt.config import (  # noqa: F401
+    CORE_VOCAB_FIELDS, ENTRY_ROLES, FIELD_ITEM, FIELD_TEXT, IMPORT_STAMP_KEYS, RESERVED_ITEM_KEYS,
+    ROLE_DEFINITION, ROLE_GLOSS, ROLE_POS, ROLE_STATUS, SCOPE_ENTRY, SCOPE_SENSE, fields_with_role,
+    is_reserved_field_name, normalize_vocab_fields,
+)
+
 
 def stored_entry_form(form: str, morph_type: Optional[str]) -> Tuple[str, Optional[str]]:
     """The form and morph type an entry stores, from a form and type given
@@ -68,39 +76,6 @@ def stored_entry_form(form: str, morph_type: Optional[str]) -> Tuple[str, Option
 HOMOGRAPH_KEY = 'homograph'
 EXAMPLES_KEY = 'examples'
 
-# The source ids the CLDF and native importers stamp on an entry, to find it
-# again on a resumed import.
-IMPORT_STAMP_KEYS = frozenset({'cldfEntry', 'nativeImportId'})
-
-# Keys an entry may carry that are never fields. A schema can never shadow one.
-RESERVED_ITEM_KEYS = frozenset({'form', 'parent', 'senseOrder', 'examples',
-                                'flexEntry', 'flexSense', 'homograph'}) | IMPORT_STAMP_KEYS
-
-FIELD_TEXT = 'text'
-FIELD_ITEM = 'item'
-SCOPE_ENTRY = 'entry'
-SCOPE_SENSE = 'sense'
-
-CORE_VOCAB_FIELDS = (
-    {'name': 'morphType', 'inline': False, 'immutable': True},
-    {'name': 'gloss', 'inline': True, 'immutable': True, 'role': 'gloss'},
-    {'name': 'pos', 'inline': True, 'immutable': False, 'role': 'pos'},
-    {'name': 'definition', 'inline': False, 'immutable': False, 'role': 'definition'},
-)
-
-# What a field's values ARE (``role`` in its config): a gloss, a definition, a
-# part of speech, or the entry's editorial status. Stored, set in the app's
-# field settings and by setup and the importers. A field without one has none,
-# whatever it is called, and several may share one (a gloss per language).
-ROLE_GLOSS = 'gloss'
-ROLE_DEFINITION = 'definition'
-ROLE_POS = 'pos'
-ROLE_STATUS = 'status'
-ENTRY_ROLES = (ROLE_GLOSS, ROLE_DEFINITION, ROLE_POS, ROLE_STATUS)
-_IMMUTABLE = tuple(f['name'] for f in CORE_VOCAB_FIELDS if f['immutable'])
-_CORE_BY_NAME = {f['name']: f for f in CORE_VOCAB_FIELDS}
-
-
 def _str(v) -> str:
     return v.strip() if isinstance(v, str) else ''
 
@@ -111,67 +86,6 @@ def _is_id(v) -> bool:
 
 def _is_num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-
-
-def is_reserved_field_name(name) -> bool:
-    n = str(name or '').strip().lower()
-    return any(k.lower() == n for k in RESERVED_ITEM_KEYS)
-
-
-# ---- the field schema -------------------------------------------------------
-
-def normalize_vocab_fields(raw: Optional[dict]) -> List[dict]:
-    """A vocab layer's ``igt.fields`` config as an ordered list of field specs,
-    guaranteeing the immutable core fields are present. Mirrors normalizeVocabFields in vocabFields.js, so the
-    agent sees exactly the fields the app's own editor does."""
-    out: List[dict] = []
-    seen = set()
-    declared = set(raw.keys()) if isinstance(raw, dict) else set()
-
-    def add(name, cfg):
-        if not name or is_reserved_field_name(name) or name in seen:
-            return
-        seen.add(name)
-        obj = cfg if isinstance(cfg, dict) else None
-        inline = bool(obj.get('inline')) if obj else False
-        immutable = name in _IMMUTABLE
-        # The core fields hold text whatever the config says.
-        ftype = FIELD_TEXT if immutable else (
-            FIELD_ITEM if _str((obj or {}).get('type')) == FIELD_ITEM else FIELD_TEXT)
-        out.append({
-            'name': name,
-            'inline': inline,
-            'immutable': immutable,
-            'tagset': _str((obj or {}).get('tagset')) or None,
-            'lang': _str((obj or {}).get('lang')) or None,
-            'type': ftype,
-            'many': ftype == FIELD_ITEM and bool((obj or {}).get('many')),
-            'scope': SCOPE_ENTRY if _str((obj or {}).get('scope')) == SCOPE_ENTRY else SCOPE_SENSE,
-            'role': _str((obj or {}).get('role')) if _str((obj or {}).get('role')) in ENTRY_ROLES else None,
-            # False for an immutable field the config never named: the app shows
-            # it, but it is not what this vocabulary chose to record.
-            'declared': name in declared,
-        })
-
-    if isinstance(raw, dict):
-        for name, cfg in raw.items():
-            add(name, cfg)
-    for name in _IMMUTABLE:
-        if name not in seen:
-            add(name, {'inline': _CORE_BY_NAME[name]['inline']})
-
-    def core_idx(name):
-        for i, f in enumerate(CORE_VOCAB_FIELDS):
-            if f['name'] == name:
-                return i
-        return len(CORE_VOCAB_FIELDS) + 1
-    pinned = sorted([f for f in out if f['immutable']], key=lambda f: core_idx(f['name']))
-    return pinned + [f for f in out if not f['immutable']]
-
-
-def fields_with_role(fields: List[dict], role: str) -> List[dict]:
-    """The fields that hold ``role``, in the order given. Mirrors fieldsWithRole."""
-    return [f for f in fields or [] if f.get('role') == role]
 
 
 def field_by_name(fields: List[dict], name) -> Optional[dict]:

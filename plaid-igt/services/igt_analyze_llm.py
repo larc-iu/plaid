@@ -50,7 +50,7 @@ from plaid_client import BaseService, TASKS, Param
 from plaid_client.service import requester_message
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
-from plaid_client.workflows.igt.config import read_lexicon_field, read_vocab_fields
+from plaid_client.workflows.igt.config import read_lexicon_field, role_field
 from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
 from plaid_client.workflows.igt import (
     derive, word_state, parse_interleaved, align_words, analysis_for,
@@ -142,23 +142,6 @@ def _field(meta, key):
     return None if v in (None, '') else str(v)
 
 
-#: The entry fields the app's field list pins ahead of the rest, in this order
-#: (the immutable core fields of normalizeVocabFields in vocabFields.js, and of
-#: the agent's twin).
-_PINNED_FIELDS = ('morphType', 'gloss')
-
-
-def _role_key(vocab_layer, role):
-    """The first entry field of a vocabulary holding ``role`` (its stored
-    ``role``), or None, in the app's field order: the pinned core fields
-    first, then the rest as stored. So the core gloss field is read before another gloss,
-    as the agent and the exports read it. Never read from a field's name."""
-    fields = read_vocab_fields(vocab_layer.get('config')) or {}
-    ordered = sorted(fields, key=lambda k: (_PINNED_FIELDS.index(k) if k in _PINNED_FIELDS
-                                            else len(_PINNED_FIELDS)))
-    return next((k for k in ordered if isinstance(fields[k], dict) and fields[k].get('role') == role), None)
-
-
 def lexicon_field_of(project, span_layer_id):
     """The entry field an annotation field pairs with (its stored
     ``igt.lexiconField``), by the field's span layer id, or None."""
@@ -240,7 +223,8 @@ def load_lexicon(client, project, on_progress=None, gloss_lexicon_field=None,
             entry_types.update(entry_types_of([vl]))
         entries.extend(vocab_entries(
             vl.get('items') or [], vl.get('name') or v.get('name'),
-            gloss_key=gloss_lexicon_field or _role_key(vl, 'gloss'), pos_key=_role_key(vl, 'pos')))
+            gloss_key=gloss_lexicon_field or role_field(vl.get('config'), 'gloss'),
+            pos_key=role_field(vl.get('config'), 'pos')))
         try:
             res = client.query({
                 'where': [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']],
