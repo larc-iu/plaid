@@ -1,7 +1,5 @@
 import { markReplayed } from "./replayed.js";
 import { transformRequest, transformResponse } from "./transforms.js";
-import { takeRefs } from "./batchRef.js";
-import { uuidv7 } from "./ids.js";
 import { nextIdempotencyKey } from "./operations.js";
 
 // ---------------------------------------------------------------------------
@@ -677,52 +675,11 @@ async function learnOmittedVersionQuietly(client) {
 }
 
 /**
- * A call made on a batch (see `PlaidClient#batch`). A write of project data is
- * queued as one operation of the batch and answers `{ batched: true }`; its
- * result is the matching entry of what `submit()` resolves to. A read, and a
- * signal marked `outOfBand`, is the client's to make and goes over the wire
- * now, exactly as if it had been made on the client.
- */
-export async function queueRequest(batch, method, path, options = {}) {
-  if (method === "GET" || options.outOfBand) {
-    return batch.client._request(method, path, options);
-  }
-  if (!batch.open) {
-    throw new Error(`This batch was already submitted or aborted: ${path}`);
-  }
-  if (options.noBatch) {
-    throw new Error(`This endpoint cannot be used in a batch: ${path}`);
-  }
-  const { url, requestBody, stampedDocument, stampedGroup } = prepareRequest(
-    batch.client,
-    method,
-    path,
-    options,
-  );
-  const operation = {
-    path: url.replace(batch.client.baseUrl, ""),
-    method: method.toUpperCase(),
-  };
-  if (requestBody !== undefined) {
-    // Each b.ref() in the body goes beside it, as the path to a null the
-    // server fills with the id (batchRef.js).
-    const { body, refs } = takeRefs(batch, requestBody);
-    operation.body = body;
-    if (refs) operation.refs = refs;
-  }
-  batch.operations.push(operation);
-  batch.stampedDocuments.push(stampedDocument);
-  batch.stampedGroups.push(stampedGroup);
-  return { batched: true };
-}
-
-/**
  * One send of a request by fetch, under a fresh timeout signal: an
  * AbortSignal.timeout fires once and stays aborted, so a retry needs its own.
  * `timeoutMs` 0 or null sends with none.
- * @private
  */
-function fetchWithTimeout(url, fetchOptions, timeoutMs) {
+export function fetchWithTimeout(url, fetchOptions, timeoutMs) {
   const signal = timeoutSignal(timeoutMs);
   return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
 }
@@ -731,9 +688,8 @@ function fetchWithTimeout(url, fetchOptions, timeoutMs) {
  * Run `attempt` with the client's retries: a 503 is retried (unless
  * `noBusyRetry`), and a keyed request whose answer was lost is sent again
  * under its key (retryUnknown). Each retry is told to `onRetry` listeners.
- * @private
  */
-function withRetries(client, attempt, { keyed = false, noBusyRetry = false } = {}) {
+export function withRetries(client, attempt, { keyed = false, noBusyRetry = false } = {}) {
   const onRetry = (info) => client._noteRetry?.(info);
   const busy = noBusyRetry ? { onRetry, retries: 0 } : { onRetry };
   return keyed
@@ -748,9 +704,8 @@ function withRetries(client, attempt, { keyed = false, noBusyRetry = false } = {
  * A 401 means the token is missing, expired or invalid. Fire the app's
  * auth-error handler once per client (it discards the token and routes back
  * to login). A 403 (authenticated but not permitted) deliberately does not.
- * @private
  */
-function noteAuthError(client, error) {
+export function noteAuthError(client, error) {
   if (
     error?.status === 401 &&
     typeof client.onAuthError === "function" &&
@@ -762,93 +717,6 @@ function noteAuthError(client, error) {
     } catch (_) {
       /* handler must not mask the original error */
     }
-  }
-}
-
-/**
- * POST one batch request (at most MAX_BATCH_OPS operations) through the same
- * send, retries and version learning as every other request. Resolves to one
- * `{ status, headers, body }` per operation, with only the body recased: the
- * headers keep the server's spelling. `key` is the request's Idempotency-Key:
- * a batch whose answer is lost (no response, 502, 504) is sent again under
- * it, and answered from the first send if that landed. A refused batch wrote
- * nothing (it is atomic), so a 503 is retried too. `timeout` is this
- * request's, in place of `batchTimeout` when given.
- *
- * Each sub-response's `X-Document-Versions` is learned, and the batch's own,
- * which holds each document's version after the whole batch, the layer
- * rules' remedies at its end included (a split that deletes a relation
- * crossing the new boundary moves the version once more). The batch's own
- * `X-Document-Versions-Omitted` is not taken up: each sub-response keeps its
- * own list. The batch does not note the server clock.
- * @param {object} client - PlaidClient instance
- * @param {string} url
- * @param {object[]} body - The operations
- * @param {{key?: string, timeout?: number | null}} [options]
- */
-export async function postBatch(client, url, body, { key = uuidv7(), timeout } = {}) {
-  const fetchOptions = {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${client.token}`,
-      "Content-Type": "application/json",
-      [IDEMPOTENCY_HEADER]: key,
-    },
-    body: JSON.stringify(body),
-  };
-
-  const started = writesStarted(client);
-  try {
-    const attempt = async () => {
-      let res;
-      try {
-        res = await fetchWithTimeout(
-          url,
-          fetchOptions,
-          timeout !== undefined ? timeout : client.batchTimeout,
-        );
-      } catch (e) {
-        throw makeNetworkError(e, url, "POST");
-      }
-      if (!res.ok) {
-        throw makeHttpError(res, await parseErrorBody(res), url, "POST");
-      }
-      return res;
-    };
-    const response = await withRetries(client, attempt, { keyed: true }).catch((error) => {
-      error.idempotencyKey = key;
-      noteAuthError(client, error);
-      throw error;
-    });
-
-    const results = await response.json();
-    // A replayed batch carries the versions right after its first send.
-    const replayed = response.headers?.get?.(REPLAYED_HEADER) === "true";
-    const replayedHeader = replayed ? "true" : null;
-    for (const result of results) {
-      const versions = result.headers?.["X-Document-Versions"] ?? null;
-      extractDocumentVersions(client, {
-        get: (name) =>
-          name === "X-Document-Versions" ? versions : name === REPLAYED_HEADER ? replayedHeader : null,
-      });
-    }
-    extractDocumentVersions(client, {
-      get: (name) =>
-        name === "X-Document-Versions-Omitted" ? null : (response.headers?.get?.(name) ?? null),
-    });
-
-    writesLanded(client, started, replayed);
-
-    const out = results.map((result) => ({
-      ...result,
-      body: transformResponse(result.body),
-    }));
-    return replayed ? markReplayed(out) : out;
-  } catch (error) {
-    if (error.status !== undefined) throw error;
-    throw Object.assign(makeNetworkError(error, url, "POST"), {
-      idempotencyKey: key,
-    });
   }
 }
 
