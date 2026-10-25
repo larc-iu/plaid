@@ -60,7 +60,6 @@ const mount = async () => {
       sentenceTokenLayer: { id: 'sl' },
     },
     reload: vi.fn(async () => {}),
-    reload: vi.fn(async () => {}),
   };
   const lock = { release: vi.fn(), setStatus: () => {} };
   const view = await renderComponent(
