@@ -1048,6 +1048,36 @@ describe('runImport', () => {
     });
   });
 
+  // A FLEx segment can hold several notes. The field holds one value per
+  // sentence, so a sentence's notes in one language land as one note, a line
+  // each (flexAccount counts them so: lamkang's 1246 "lost" notes were these).
+  it("joins a sentence's notes in one language into one value, a line each", async () => {
+    const [doc] = build.documents;
+    const [sentence] = doc.sentences;
+    client = makeFakeClient();
+    await runImport({
+      client,
+      projectId: 'p1',
+      build: {
+        ...build,
+        documents: [
+          {
+            ...doc,
+            sentences: [{ ...sentence, notes: [{ en: 'one' }, { en: 'two' }, { en: 'three' }] }],
+          },
+        ],
+      },
+      lexicon: [],
+      config,
+      vocabId: null,
+    });
+    const notes = client.calls
+      .filter((c) => c.kind === 'spans.bulkCreate')
+      .flatMap((c) => c.args)
+      .filter((sp) => sp.spanLayerId === 'sl-note');
+    expect(notes.map((sp) => sp.value)).toEqual(['one\ntwo\nthree']);
+  });
+
   it('imports a document with the right call shapes', async () => {
     client = makeFakeClient();
     const results = await runImport({

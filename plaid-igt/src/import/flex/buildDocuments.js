@@ -25,6 +25,8 @@ import { matchesAt, makeCpIndexer, composeOnEdges, cutsAWord } from '../align.js
 function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) {
   const words = [];
   const warnings = [];
+  // The word analyses that could not be placed, with all they held.
+  const dropped = [];
   let cursor = begin;
   for (const a of analyses) {
     // `surface` is the form a word is written with in the text, where the IR
@@ -34,6 +36,7 @@ function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) 
     );
     if (!form) {
       warnings.push(`word with no form at offset ${cursor}`);
+      if (a.kind === 'word') dropped.push(a);
       continue;
     }
     while (cursor < end && /\s/.test(body[cursor])) cursor += 1;
@@ -48,6 +51,7 @@ function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) 
       }
       if (matchEnd === false) {
         warnings.push(`could not align ${a.kind} "${form}" after offset ${cursor}`);
+        if (a.kind === 'word') dropped.push(a);
         continue;
       }
       const skipped = body.slice(cursor, at);
@@ -61,7 +65,7 @@ function alignSegment(body, begin, end, analyses, baselineWs, spell = (s) => s) 
     if (a.kind === 'word') words.push({ ...a, beginU16: at, endU16: matchEnd });
     cursor = matchEnd;
   }
-  return { words, warnings };
+  return { words, warnings, dropped };
 }
 
 // A gloss or category as the IR holds it: a string, or one per writing system.
@@ -178,6 +182,12 @@ export function buildDocuments(ir, opts = {}) {
     const toCp = makeCpIndexer(body);
 
     const words = [];
+    // The word analyses this text does not import, as the parser read them:
+    // `unaligned` could not be placed in the text, `punctuation` are words
+    // of punctuation only, left as text. Nothing reads these but the
+    // fidelity account (e2e/fidelity/flexAccount.mjs), which counts what
+    // they held as accounted for and nothing else.
+    const leftOut = { unaligned: [], punctuation: [] };
     let leftAsText = 0;
     for (const s of sentences) {
       if (!s.seg) continue;
@@ -195,12 +205,14 @@ export function buildDocuments(ir, opts = {}) {
       // Said only of one that carried an analysis, which is then lost: a
       // gloss or category on the word, or a gloss, category or link on one of
       // its morphemes (a lone "--" morpheme holding nothing more is none).
+      leftOut.unaligned.push(...r.dropped);
       for (const w of r.words) {
         if (!isTokenIgnored(body.slice(w.beginU16, w.endU16), ignored)) {
           words.push(w);
           continue;
         }
         punctuationWords += 1;
+        leftOut.punctuation.push(w);
         const analyzed =
           hasValue(w.gloss) ||
           hasValue(w.pos) ||
@@ -296,6 +308,7 @@ export function buildDocuments(ir, opts = {}) {
       tokenEdges: composed.tokenEdges,
       sentences: cpSentences.map(moved),
       words: cpWords.map(moved),
+      leftOut,
       warnings,
     });
   }

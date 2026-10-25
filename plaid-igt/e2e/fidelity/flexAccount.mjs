@@ -14,8 +14,10 @@
 //   project  the units the server holds once the engine has run
 //
 // A unit that is in the file and not in the plan is the builder's doing, and
-// the builder has to have SAID so: `unalignedWords` is the one such report it
-// makes, and anything else unaccounted for is a finding. A unit that is in the
+// the builder has to have SAID so: each document's `leftOut` lists the word
+// analyses it does not import (could not place, or punctuation only, left as
+// text), and what those held is accounted for. Anything else unaccounted for
+// is a finding. A unit that is in the
 // plan and not in the project is the engine's doing, and there is no such
 // thing as an acceptable one.
 //
@@ -117,32 +119,53 @@ function textFacts(t) {
   );
 }
 
+/**
+ * What a list of words holds: the words, their glosses and categories, and
+ * their morphemes with theirs. A morph bundle links to the lexicon when it
+ * names a sense the lexicon holds. One that names a sense the file does not
+ * have cannot be linked by anything, so it is not counted as a link that went
+ * missing. The file, the plan and what the builder left out are all counted
+ * by this one reading.
+ */
+function wordCounts(words, ir) {
+  const senseGuids = new Set(
+    ir.lexicon.flatMap((e) => [e.guid, ...(e.senses || []).map((sn) => sn.guid)]),
+  );
+  const morphemes = words.flatMap((w) => w.morphemes || []);
+  return {
+    links: morphemes.filter((m) => m.senseGuid && senseGuids.has(m.senseGuid)).length,
+    words: words.length,
+    morphemes: morphemes.length,
+    wordGlosses: sum(words, (w) => strings(w.gloss).length),
+    wordPos: words.filter((w) => filled(w.pos)).length,
+    morphGlosses: sum(morphemes, (m) => strings(m.gloss).length),
+    morphPos: morphemes.filter((m) => filled(m.pos)).length,
+  };
+}
+
+/**
+ * A sentence's notes, one per writing system that holds any. The import
+ * writes a sentence's notes in one language as one value, a line each
+ * (importEngine.js), so three notes on a sentence are one note in the
+ * project. Counted per note, lamkang.fwbackup read 1246 notes lost that
+ * were all such joins (REV-RT 5).
+ */
+const noteCount = (notes) =>
+  new Set((notes || []).flatMap((n) => Object.keys(n || {}).filter((ws) => filled(n[ws])))).size;
+
 /** What the parser found, over the texts this run imported. */
 function countFile(ir, keptGuids) {
   const texts = ir.texts.filter((t) => keptGuids.has(t.guid));
   const segments = texts.flatMap((t) => t.paragraphs.flatMap((p) => p.segments));
   const analyses = segments.flatMap((s) => s.analyses.filter((a) => a.kind === 'word'));
-  const bundles = analyses.flatMap((a) => a.morphemes || []);
-  // A morph bundle links to the lexicon when it names a sense the lexicon
-  // holds. One that names a sense the file does not have cannot be linked by
-  // anything, so it is not counted as a link that went missing.
-  const senseGuids = new Set(
-    ir.lexicon.flatMap((e) => [e.guid, ...(e.senses || []).map((sn) => sn.guid)]),
-  );
   return {
     textFacts: sum(texts, textFacts),
-    links: bundles.filter((m) => m.senseGuid && senseGuids.has(m.senseGuid)).length,
+    ...wordCounts(analyses, ir),
     documents: texts.length,
     sentences: segments.length,
-    words: analyses.length,
-    morphemes: bundles.length,
-    wordGlosses: sum(analyses, (a) => strings(a.gloss).length),
-    wordPos: analyses.filter((a) => filled(a.pos)).length,
-    morphGlosses: sum(bundles, (m) => strings(m.gloss).length),
-    morphPos: bundles.filter((m) => filled(m.pos)).length,
     translations: sum(segments, (s) => strings(s.freeTranslation).length),
     literalTranslations: sum(segments, (s) => strings(s.literalTranslation).length),
-    notes: sum(segments, (s) => sum(s.notes || [], (n) => strings(n).length)),
+    notes: sum(segments, (s) => noteCount(s.notes)),
     ...lexiconCounts(ir),
   };
 }
@@ -150,12 +173,7 @@ function countFile(ir, keptGuids) {
 /** What the importer decided to write. */
 function countPlan(build, ir) {
   const docs = build.documents;
-  const words = docs.flatMap((d) => d.words);
-  const morphemes = words.flatMap((w) => w.morphemes || []);
   const sentences = docs.flatMap((d) => d.sentences);
-  const senseGuids = new Set(
-    ir.lexicon.flatMap((e) => [e.guid, ...(e.senses || []).map((sn) => sn.guid)]),
-  );
   return {
     textFacts: sum(docs, (d) =>
       textFacts({
@@ -167,18 +185,15 @@ function countPlan(build, ir) {
         notebook: d.notebook,
       }),
     ),
-    links: morphemes.filter((m) => m.senseGuid && senseGuids.has(m.senseGuid)).length,
+    ...wordCounts(
+      docs.flatMap((d) => d.words),
+      ir,
+    ),
     documents: docs.length,
     sentences: sentences.length,
-    words: words.length,
-    morphemes: morphemes.length,
-    wordGlosses: sum(words, (w) => strings(w.gloss).length),
-    wordPos: words.filter((w) => filled(w.pos)).length,
-    morphGlosses: sum(morphemes, (m) => strings(m.gloss).length),
-    morphPos: morphemes.filter((m) => filled(m.pos)).length,
     translations: sum(sentences, (s) => strings(s.freeTranslation).length),
     literalTranslations: sum(sentences, (s) => strings(s.literalTranslation).length),
-    notes: sum(sentences, (s) => sum(s.notes || [], (n) => strings(n).length)),
+    notes: sum(sentences, (s) => noteCount(s.notes)),
     ...lexiconCounts(ir),
   };
 }
@@ -293,22 +308,15 @@ try {
     const file = countFile(parsed.ir, kept);
     const plan = countPlan(parsed.build, parsed.ir);
     const project = countProject(snapshot);
-    // What the builder said it left behind. A word it could not place takes
-    // its glosses, its category and its morphemes with it, so those are
-    // accounted for by the word rather than counted again.
-    const unaligned = file.words - plan.words;
-    // A word made only of punctuation stays text (8aa867863), which the
-    // builder counts apart, so it is no word lost.
-    const said = {
-      words: parsed.stats.unalignedWords + (parsed.stats.punctuationWords ?? 0),
-      // Only meaningful when a word was left behind, and then only as "these
-      // went with it": the file's counts do not say which word held what.
-      morphemes: unaligned ? file.morphemes - plan.morphemes : 0,
-      wordGlosses: unaligned ? file.wordGlosses - plan.wordGlosses : 0,
-      wordPos: unaligned ? file.wordPos - plan.wordPos : 0,
-      morphGlosses: unaligned ? file.morphGlosses - plan.morphGlosses : 0,
-      morphPos: unaligned ? file.morphPos - plan.morphPos : 0,
-    };
+    // What the builder said it left behind, counted from the words it named:
+    // a word it could not place, and a word of punctuation only, which stays
+    // text (8aa867863), each with its glosses, category, morphemes and links.
+    // Only what those words held is allowed, so a gloss dropped from a word
+    // that did land is a finding.
+    const said = wordCounts(
+      parsed.build.documents.flatMap((d) => [...d.leftOut.unaligned, ...d.leftOut.punctuation]),
+      parsed.ir,
+    );
 
     console.log(`\n${label}${docCap ? ` (${docCap} smallest texts)` : ''} (${secs()})`);
     const findings = [];
@@ -322,7 +330,7 @@ try {
       if (lostInBuild > 0) {
         findings.push(
           `${kind}: ${inFile} in the file, ${inPlan} in the plan` +
-            `${allowed ? ` (${allowed} reported as unaligned)` : ''}, ${lostInBuild} unaccounted for`,
+            `${allowed ? ` (${allowed} on words reported left out)` : ''}, ${lostInBuild} unaccounted for`,
         );
       }
       if (lostInEngine > 0) {
