@@ -1314,7 +1314,7 @@ class FakeClient:
             root.reads.append({'id': document_id, 'layers': layers})
             root.record('read', document_id)
             path = f'/api/v1/documents/{document_id}'
-            named = _client._layers_param(layers)
+            named = _client._csv_param(layers)
             if named and not include_body:
                 raise _refusal(root, 400, '?layers= selects which layers a body read returns, '
                                'so it requires include-body=true.', 'GET', path)

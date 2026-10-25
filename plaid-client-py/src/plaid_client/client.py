@@ -346,25 +346,15 @@ class _OperationContext:
             self._group['refined'] = message
 
 
-def _layers_param(layers):
-    """Normalize a ``layers`` filter to the wire's comma-separated form.
-    Accepts a list of layer ids or a ready-made string; anything empty becomes
-    ``None`` so no ``?layers=`` is sent at all.
+def _csv_param(values):
+    """A list filter in the wire's comma-separated form (``layers``,
+    ``op-types``, ``kinds``, an event's ``types``). Accepts a list or a
+    ready-made string, and anything empty becomes ``None`` so the key is not
+    sent at all.
     """
-    if layers is None:
+    if values is None:
         return None
-    joined = layers if isinstance(layers, str) else ','.join(str(x) for x in layers)
-    return joined or None
-
-
-def _op_types_param(op_types):
-    """Normalize an audit ``op_types`` filter to the wire's comma-separated
-    form. Accepts a list of op types or a ready-made string; anything empty
-    becomes ``None`` so no ``?op-types=`` is sent at all.
-    """
-    if op_types is None:
-        return None
-    joined = op_types if isinstance(op_types, str) else ','.join(op_types)
+    joined = values if isinstance(values, str) else ','.join(str(x) for x in values)
     return joined or None
 
 
@@ -377,7 +367,7 @@ def _audit_query(start_time, end_time, op_types, kinds, *, order=None, ops_limit
     a Python parameter name can be passed by keyword, so each resource's
     (``document_id``, ``project_id``, ``user_id``, ``id``) is its own."""
     return {'start-time': start_time, 'end-time': end_time,
-            'op-types': _op_types_param(op_types), 'kinds': _op_types_param(kinds),
+            'op-types': _csv_param(op_types), 'kinds': _csv_param(kinds),
             'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id, 'item-id': item_id}
 
 
@@ -2237,7 +2227,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
         """
         return self._request('GET', f'/api/v1/documents/{document_id}',
                              query_params={'include-body': include_body, 'as-of': as_of,
-                                           'layers': _layers_param(layers)})
+                                           'layers': _csv_param(layers)})
 
     def delete(self, document_id: str, audit_message=None) -> Any:
         """Delete a document and all data contained.
@@ -3539,7 +3529,7 @@ class EventsResource(_Resource):
             end_time: Only events the server stamped at or before this instant
         """
         return list_all(self._client, f'/api/v1/projects/{project_id}/events',
-                        query={'types': _op_types_param(types), 'start-time': start_time,
+                        query={'types': _csv_param(types), 'start-time': start_time,
                                'end-time': end_time})
 
     def list_page(self, project_id: str, *, types: Any = None, start_time: str | None = None,
@@ -3557,7 +3547,7 @@ class EventsResource(_Resource):
         """
         return list_page(self._client, f'/api/v1/projects/{project_id}/events',
                          limit=limit, cursor=cursor,
-                         query={'types': _op_types_param(types), 'start-time': start_time,
+                         query={'types': _csv_param(types), 'start-time': start_time,
                                 'end-time': end_time})
 
     def iter_pages(self, project_id: str, *, types: Any = None, start_time: str | None = None,
@@ -3573,7 +3563,7 @@ class EventsResource(_Resource):
         """
         return iter_pages(self._client, f'/api/v1/projects/{project_id}/events',
                           page_size=page_size,
-                          query={'types': _op_types_param(types), 'start-time': start_time,
+                          query={'types': _csv_param(types), 'start-time': start_time,
                                  'end-time': end_time})
 
 

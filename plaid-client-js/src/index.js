@@ -702,27 +702,14 @@ import {
  * @property {any[][]} [results]
  */
 
-// Helper: normalize a document-read `layers` filter to the wire's
-// comma-separated form. Accepts an array of layer ids or a ready-made string;
-// anything empty becomes undefined so no `?layers=` is sent at all.
-function layersParam(layers) {
-  if (layers === undefined || layers === null) return undefined;
-  const joined = Array.isArray(layers) ? layers.join(",") : String(layers);
+// A list filter in the wire's comma-separated form (`layers`, `op-types`,
+// `kinds`). Accepts an array or a ready-made string, and anything empty
+// becomes undefined so the key is not sent at all.
+function csvParam(values) {
+  if (values === undefined || values === null) return undefined;
+  const joined = Array.isArray(values) ? values.join(",") : String(values);
   return joined.length > 0 ? joined : undefined;
 }
-
-// Helper: normalize an audit `opTypes` filter to the wire's comma-separated
-// form. Accepts an array of op types or a ready-made string; anything empty
-// becomes undefined so no `?op-types=` is sent at all.
-function opTypesParam(opTypes) {
-  if (opTypes === undefined || opTypes === null) return undefined;
-  const joined = Array.isArray(opTypes) ? opTypes.join(",") : String(opTypes);
-  return joined.length > 0 ? joined : undefined;
-}
-
-// The same for an audit `kinds` filter (`?kinds=`): operation kinds, such as
-// "review", in a list or a ready-made string.
-const kindsParam = opTypesParam;
 
 // Helper: build body object, filtering out undefined values
 function bodyOf(obj) {
@@ -2932,7 +2919,7 @@ class PlaidClient {
           queryParams: {
             "include-body": includeBody,
             "as-of": asOf,
-            layers: layersParam(layers),
+            layers: csvParam(layers),
           },
         }),
       /**
@@ -4768,9 +4755,9 @@ function auditQuery({ startTime, endTime, opTypes, itemId, kinds, order, opsLimi
   return {
     "start-time": startTime,
     "end-time": endTime,
-    "op-types": opTypesParam(opTypes),
+    "op-types": csvParam(opTypes),
     "item-id": itemId,
-    kinds: kindsParam(kinds),
+    kinds: csvParam(kinds),
     order,
     "ops-limit": opsLimit,
     "entry-id": entryId,
