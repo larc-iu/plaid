@@ -12,12 +12,11 @@ import {
   findWordTokenLayer,
   findSentenceTokenLayer,
   findMorphemeTokenLayer,
-  readFieldLang,
   readScope,
   readDocumentMetadata,
   readOrthographies,
 } from '../domain/igtConfig.js';
-import { fieldRolesOf } from '../import/elan/fieldTargets.js';
+import { fieldLangsOf, fieldRolesOf } from '../domain/fieldInventory.js';
 
 /**
  * @returns {{ orthographies: string[], wordFields: string[],
@@ -43,14 +42,7 @@ export function discoverExportLayers(project) {
 
   // The writing system each field records, for the exporters that have to tag
   // their output with one. Absent for a field nobody told.
-  const fieldLangs = {};
-  for (const tl of textLayer?.tokenLayers || []) {
-    for (const sl of tl.spanLayers || []) {
-      const scope = readScope(sl.config);
-      const lang = readFieldLang(sl.config);
-      if (scope && lang) fieldLangs[`${scope}:${sl.name}`] = lang;
-    }
-  }
+  const fieldLangs = fieldLangsOf(project);
 
   const fieldRoles = {};
   for (const [scope, byName] of Object.entries(fieldRolesOf(project))) {

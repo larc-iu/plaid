@@ -1,5 +1,6 @@
 // Where an ELAN tier's values land when the import writes into a project that
-// already exists. Pure, except for createFields.
+// already exists. Pure. The project's own inventory is domain/fieldInventory.js,
+// and creating what is missing is createFields in import/project.js.
 //
 // A fresh-project import derives the whole field inventory from the corpus and
 // lets setup create it. A project someone has been working in already HAS
@@ -10,83 +11,13 @@
 // creating a field is the exception that has to be asked for, or a project
 // grows a second Translation every time someone imports.
 
-import {
-  findBaselineTextLayer,
-  findSentenceTokenLayer,
-  findWordTokenLayer,
-  findMorphemeTokenLayer,
-  readOrthographies,
-  readLexiconField,
-  readScope,
-  readSentenceRole,
-  IGT_NAMESPACE,
-} from '../../domain/igtConfig.js';
 import { parseFieldName } from '../../domain/fieldNames.js';
-import { queueNewField } from '../../domain/igtConstraints.js';
-import {
-  entryRolesByKey,
-  lexiconFieldChoices,
-  withLexiconFields,
-} from '../../domain/lexiconField.js';
-import { withSentenceRoles } from '../../domain/sentenceRole.js';
+import { existingFields } from '../../domain/fieldInventory.js';
 
-/** The annotation scopes a span layer can carry, in the order they are shown. */
-const SCOPES = ['Sentence', 'Word', 'Morpheme'];
-
-/**
- * The fields the project already has: {scope: [{name, id}]}, in layer order.
- * Every scope is present, so a caller can index it without checking.
- */
-export function existingFields(project) {
-  const out = Object.fromEntries(SCOPES.map((s) => [s, []]));
-  const textLayer = findBaselineTextLayer(project?.textLayers || []);
-  for (const tl of textLayer?.tokenLayers || []) {
-    for (const sl of tl.spanLayers || []) {
-      const scope = readScope(sl.config);
-      if (out[scope]) out[scope].push({ name: sl.name, id: sl.id });
-    }
-  }
-  return out;
-}
-
-/**
- * Each field's span layer id by scope and name, `{scope: {name: id}}`: what a
- * project's default service fields are stored by.
- */
-export const fieldIdsOf = (project) =>
-  Object.fromEntries(
-    Object.entries(existingFields(project)).map(([scope, fs]) => [
-      scope,
-      Object.fromEntries(fs.map((f) => [f.name, f.id])),
-    ]),
-  );
-
-/** The same, as names only: what a `field` service parameter is chosen from. */
-export const fieldNamesOf = (project) =>
-  Object.fromEntries(
-    Object.entries(existingFields(project)).map(([scope, fs]) => [scope, fs.map((f) => f.name)]),
-  );
-
-/**
- * Each field's role, by scope and name, `{scope: {name: role}}`: what fills a
- * service's `field` parameter that names a role. A word or morpheme field's is
- * the entry role its stored Lexicon field holds (entryRolesByKey), a sentence
- * field's its stored role (readSentenceRole).
- */
-export const fieldRolesOf = (project) => {
-  const roleOfKey = entryRolesByKey(project?.vocabs);
-  const out = {};
-  const textLayer = findBaselineTextLayer(project?.textLayers || []);
-  for (const tl of textLayer?.tokenLayers || []) {
-    for (const sl of tl.spanLayers || []) {
-      const scope = readScope(sl.config);
-      const role =
-        scope === 'Sentence' ? readSentenceRole(sl.config) : roleOfKey[readLexiconField(sl.config)];
-      if (scope && role) (out[scope] ??= {})[sl.name] = role;
-    }
-  }
-  return out;
-};
+// ServicesSettings.jsx still imports these three from here. It belongs to a
+// lane that is running (BH-4a), and this re-export goes when its import line
+// moves to domain/fieldInventory.js.
+export { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '../../domain/fieldInventory.js';
 
 // Names read alike when their base names do, ignoring case, spacing and
 // punctuation: "Translation (nl)", "translation" and "Translation-nl" all fold
@@ -128,81 +59,4 @@ export function missingFields(project, fields) {
     out.push({ name, scope, lang: lang ?? null, similarTo: similarField(existing, scope, name) });
   }
   return out;
-}
-
-/**
- * Create the span layers for fields the project does not have yet, under the
- * token layer their scope belongs to.
- *
- * Deliberately NOT executeProjectSetup, which rewrites the word layer's
- * orthographies and the project's document-metadata configuration wholesale:
- * against a project that was set up by a different importer, running it would
- * throw away the setup that project already has.
- */
-export async function createFields(client, project, fields, onProgress = null) {
-  const textLayer = findBaselineTextLayer(project?.textLayers || []);
-  const tokenLayers = textLayer?.tokenLayers || [];
-  const parentFor = {
-    Sentence: findSentenceTokenLayer(tokenLayers)?.id,
-    Word: findWordTokenLayer(tokenLayers)?.id,
-    Morpheme: findMorphemeTokenLayer(tokenLayers)?.id,
-  };
-  // A field's name proposes its Lexicon field among the project's
-  // vocabularies' fields, and a sentence field's its role, as Settings
-  // proposes them for a field it adds.
-  const proposed = withSentenceRoles(
-    withLexiconFields(fields, lexiconFieldChoices(project?.vocabs)),
-  );
-  const planned = proposed.map((field) => {
-    const parentLayerId = parentFor[field.scope];
-    if (!parentLayerId) {
-      throw new Error(`This project has no ${field.scope.toLowerCase()} layer to add a field to.`);
-    }
-    return { field, parentLayerId };
-  });
-  if (!planned.length) return [];
-  // One batch: each field's layer with its scope, its language (a tier name
-  // says what language it is in, see readFieldLang) and its rules, as Settings
-  // makes a field it adds. A new field has no tagset, and no failure leaves a
-  // field without its rules.
-  onProgress?.(
-    fields.length === 1
-      ? `Adding field ${fields[0].name} (${fields[0].scope})`
-      : `Adding ${fields.length} fields`,
-  );
-  const created = [];
-  await client.batched((b) => {
-    for (const { field, parentLayerId } of planned) {
-      created.push({ ...field, id: queueNewField(b, parentLayerId, field, project?.config) });
-    }
-  });
-  return created;
-}
-
-/**
- * The orthographies an import would have to add to the project. An orthography
- * is not a layer but a name on the word layer's configuration, and the engine
- * writes its values into token metadata under that name either way: a project
- * that does not list it holds the values without showing them anywhere.
- */
-export function missingOrthographies(project, names) {
-  const textLayer = findBaselineTextLayer(project?.textLayers || []);
-  const wordLayer = findWordTokenLayer(textLayer?.tokenLayers || []);
-  const have = new Set((readOrthographies(wordLayer?.config) || []).map((o) => o?.name));
-  return [...new Set(names || [])].filter((n) => n && !have.has(n));
-}
-
-/** Append orthographies to the word layer, keeping the ones already there. */
-export async function addOrthographies(client, project, names) {
-  const missing = missingOrthographies(project, names);
-  if (!missing.length) return [];
-  const textLayer = findBaselineTextLayer(project?.textLayers || []);
-  const wordLayer = findWordTokenLayer(textLayer?.tokenLayers || []);
-  if (!wordLayer) throw new Error('This project has no word layer to add an orthography to.');
-  const current = readOrthographies(wordLayer.config) || [];
-  await client.tokenLayers.setConfig(wordLayer.id, IGT_NAMESPACE, 'orthographies', [
-    ...current,
-    ...missing.map((name) => ({ name })),
-  ]);
-  return missing;
 }

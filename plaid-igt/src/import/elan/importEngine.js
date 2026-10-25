@@ -40,12 +40,8 @@ import {
   writeBuiltDocument,
 } from '../project.js';
 import { mediaUploadFailure } from '../mediaUpload.js';
-import {
-  SENTENCE_ROLES,
-  findBaselineTextLayer,
-  readScope,
-  readSentenceRole,
-} from '../../domain/igtConfig.js';
+import { SENTENCE_ROLES } from '../../domain/igtConfig.js';
+import { fieldRolesOf } from '../../domain/fieldInventory.js';
 
 export { ImportCancelled };
 
@@ -227,14 +223,9 @@ async function runElanImportImpl({
   // stored role is the translation when the tiers name its language, else of
   // the first sentence field they name one for.
   const sentFields = build.schema.fields.filter((f) => f.scope === 'Sentence' && f.lang);
-  const roleOf = new Map();
-  for (const tl of findBaselineTextLayer(project?.textLayers || [])?.tokenLayers || []) {
-    for (const sl of tl.spanLayers || []) {
-      if (readScope(sl.config) === 'Sentence') roleOf.set(sl.name, readSentenceRole(sl.config));
-    }
-  }
+  const sentenceRoles = fieldRolesOf(project).Sentence ?? {};
   const metaField =
-    sentFields.find((f) => roleOf.get(f.name) === SENTENCE_ROLES.TRANSLATION) ?? sentFields[0];
+    sentFields.find((f) => sentenceRoles[f.name] === SENTENCE_ROLES.TRANSLATION) ?? sentFields[0];
   await recordProjectLanguages(client, project, {
     object: build.schema.baselineLang ?? null,
     meta: metaField?.lang ?? null,

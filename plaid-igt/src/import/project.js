@@ -30,9 +30,13 @@ import {
   findMorphemeTokenLayer,
   findSentenceTokenLayer,
   findWordTokenLayer,
+  IGT_NAMESPACE,
+  readOrthographies,
   readScope,
 } from '../domain/igtConfig.js';
+import { queueNewField } from '../domain/igtConstraints.js';
 import { lexiconFieldChoices, withLexiconFields } from '../domain/lexiconField.js';
+import { withSentenceRoles } from '../domain/sentenceRole.js';
 
 /**
  * The setup-wizard input an importer implies, in the shape
@@ -470,4 +474,81 @@ export async function finishDocument({
       importStamp(stamp.metadata, stamp.sourceId, documentId, true),
     );
   }
+}
+
+/**
+ * Create the span layers for fields the project does not have yet, under the
+ * token layer their scope belongs to.
+ *
+ * Deliberately NOT executeProjectSetup, which rewrites the word layer's
+ * orthographies and the project's document-metadata configuration wholesale:
+ * against a project that was set up by a different importer, running it would
+ * throw away the setup that project already has.
+ */
+export async function createFields(client, project, fields, onProgress = null) {
+  const textLayer = findBaselineTextLayer(project?.textLayers || []);
+  const tokenLayers = textLayer?.tokenLayers || [];
+  const parentFor = {
+    Sentence: findSentenceTokenLayer(tokenLayers)?.id,
+    Word: findWordTokenLayer(tokenLayers)?.id,
+    Morpheme: findMorphemeTokenLayer(tokenLayers)?.id,
+  };
+  // A field's name proposes its Lexicon field among the project's
+  // vocabularies' fields, and a sentence field's its role, as Settings
+  // proposes them for a field it adds.
+  const proposed = withSentenceRoles(
+    withLexiconFields(fields, lexiconFieldChoices(project?.vocabs)),
+  );
+  const planned = proposed.map((field) => {
+    const parentLayerId = parentFor[field.scope];
+    if (!parentLayerId) {
+      throw new Error(`This project has no ${field.scope.toLowerCase()} layer to add a field to.`);
+    }
+    return { field, parentLayerId };
+  });
+  if (!planned.length) return [];
+  // One batch: each field's layer with its scope, its language (a tier name
+  // says what language it is in, see readFieldLang) and its rules, as Settings
+  // makes a field it adds. A new field has no tagset, and no failure leaves a
+  // field without its rules.
+  onProgress?.(
+    fields.length === 1
+      ? `Adding field ${fields[0].name} (${fields[0].scope})`
+      : `Adding ${fields.length} fields`,
+  );
+  const created = [];
+  await client.batched((b) => {
+    for (const { field, parentLayerId } of planned) {
+      created.push({ ...field, id: queueNewField(b, parentLayerId, field, project?.config) });
+    }
+  });
+  return created;
+}
+
+/**
+ * The orthographies an import would have to add to the project. An orthography
+ * is not a layer but a name on the word layer's configuration, and the engine
+ * writes its values into token metadata under that name either way: a project
+ * that does not list it holds the values without showing them anywhere.
+ */
+export function missingOrthographies(project, names) {
+  const textLayer = findBaselineTextLayer(project?.textLayers || []);
+  const wordLayer = findWordTokenLayer(textLayer?.tokenLayers || []);
+  const have = new Set((readOrthographies(wordLayer?.config) || []).map((o) => o?.name));
+  return [...new Set(names || [])].filter((n) => n && !have.has(n));
+}
+
+/** Append orthographies to the word layer, keeping the ones already there. */
+export async function addOrthographies(client, project, names) {
+  const missing = missingOrthographies(project, names);
+  if (!missing.length) return [];
+  const textLayer = findBaselineTextLayer(project?.textLayers || []);
+  const wordLayer = findWordTokenLayer(textLayer?.tokenLayers || []);
+  if (!wordLayer) throw new Error('This project has no word layer to add an orthography to.');
+  const current = readOrthographies(wordLayer.config) || [];
+  await client.tokenLayers.setConfig(wordLayer.id, IGT_NAMESPACE, 'orthographies', [
+    ...current,
+    ...missing.map((name) => ({ name })),
+  ]);
+  return missing;
 }

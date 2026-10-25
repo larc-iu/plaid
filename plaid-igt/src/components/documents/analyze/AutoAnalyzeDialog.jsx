@@ -10,7 +10,7 @@ import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
-import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/import/elan/fieldTargets';
+import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/domain/fieldInventory';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { countOf, plural } from '@ui/lib/plural.js';

@@ -44,14 +44,9 @@ import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/util
 import { runElanImport } from '../../import/elan/importEngine';
 import { ImportCancelled, priorImports } from '../../import/resume';
 import { elanTally } from '../../import/elan/tally';
-import {
-  addOrthographies,
-  createFields,
-  existingFields,
-  missingFields,
-  missingOrthographies,
-  similarField,
-} from '../../import/elan/fieldTargets';
+import { missingFields, similarField } from '../../import/elan/fieldTargets';
+import { existingFields } from '../../domain/fieldInventory';
+import { addOrthographies, createFields, missingOrthographies } from '../../import/project';
 import { discoverExportLayers } from '../../export/exportLayers';
 import { nodeLabel } from '../../import/elan/schema';
 import { fieldWorksFieldNames, suggestFieldNames } from '../../import/elan/tierNaming';
