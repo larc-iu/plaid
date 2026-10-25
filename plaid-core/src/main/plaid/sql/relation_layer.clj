@@ -92,15 +92,10 @@
   (cascade-stats/prepare! tx)
   (let [rel-ids (mapv :id (crud/select-in tx :relations "id" :relation_layer_id
                                           "idx_relations_layer_doc" [eid]))]
-    (crud/delete-ids! tx :relations rel-ids)
-    (crud/delete-entity-metadata! tx "relation" rel-ids))
+    (crud/delete-entities! tx :relations rel-ids))
   ;; Sweep entity_metadata for the relation-layer itself (no FK; no
   ;; auto-cascade).
-  (psc/execute! tx
-                {:delete-from :entity_metadata
-                 :where [:and
-                         [:= :entity_type "relation-layer"]
-                         [:= :entity_id eid]]})
+  (crud/delete-entity-metadata! tx "relation-layer" [eid])
   (crud/delete-by-id! tx :relation_layers eid))
 
 (def ^:private spec

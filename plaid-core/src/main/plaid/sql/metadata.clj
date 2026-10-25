@@ -472,19 +472,13 @@
                           pre (get-metadata tx entity-type entity-id)))))
 
 (defn sweep-metadata!
-  "Raw DELETE of all metadata rows for a list of (entity-type, entity-id).
-  Does NOT emit parent-row audit rows — callers use this from cascade
-  paths where the parent has already been audit-deleted (its delete row
-  is the audit-of-record for the metadata going away). Internal helper
-  exposed for use by cascade callers in document.clj / token.clj that
-  previously inlined a raw DELETE on :entity_metadata."
+  "Raw DELETE of all metadata rows for a list of (entity-type, entity-id),
+  as `crud/delete-entity-metadata!`. Does NOT emit parent-row audit rows —
+  callers use this from cascade paths where the parent has already been
+  audit-deleted (its delete row is the audit-of-record for the metadata
+  going away)."
   [tx entity-type entity-ids]
-  (when (seq entity-ids)
-    (psc/execute! tx
-                  {:delete-from :entity_metadata
-                   :where [:and
-                           [:= :entity_type entity-type]
-                           [:in :entity_id (vec entity-ids)]]})))
+  (crud/delete-entity-metadata! tx entity-type entity-ids))
 
 (defn add-metadata-to-response
   "Reader helper. If metadata exists for the entity, assoc it under

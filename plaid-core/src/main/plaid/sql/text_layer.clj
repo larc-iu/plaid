@@ -113,18 +113,9 @@
                       (mapv :id))]
     (doseq [tid text-ids]
       (crud/delete-by-id! tx :texts tid))
-    (when (seq text-ids)
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "text"]
-                             [:in :entity_id text-ids]]})))
+    (crud/delete-entity-metadata! tx "text" text-ids))
   ;; 4. The text_layer's own entity_metadata + row.
-  (psc/execute! tx
-                {:delete-from :entity_metadata
-                 :where [:and
-                         [:= :entity_type "text-layer"]
-                         [:= :entity_id eid]]})
+  (crud/delete-entity-metadata! tx "text-layer" [eid])
   (crud/delete-by-id! tx :text_layers eid))
 
 (def ^:private spec

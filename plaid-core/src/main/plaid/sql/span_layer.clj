@@ -116,32 +116,22 @@
                      vec)]
     ;; 2. Audit-delete every affected relation BEFORE any
     ;;    relation_layer or span row goes away. Chunked DELETE ...
-    ;;    RETURNING * with per-id audit rows (crud/delete-ids!).
+    ;;    RETURNING * with per-id audit rows (crud/delete-entities!).
     (when (seq rel-ids)
-      (crud/delete-ids! tx :relations rel-ids)
-      (crud/delete-entity-metadata! tx "relation" rel-ids))
+      (crud/delete-entities! tx :relations rel-ids))
     ;; 3. Relation_layers under this span_layer + their
     ;;    entity_metadata. Relations under them were drained in step 2,
     ;;    so the FK cascade on `relations.relation_layer_id` is a no-op.
     (when (seq rl-ids)
       (crud/delete-where! tx :relation_layers [:in :id rl-ids])
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "relation-layer"]
-                             [:in :entity_id rl-ids]]}))
+      (crud/delete-entity-metadata! tx "relation-layer" rl-ids))
     ;; 4. Spans in this layer + their entity_metadata. Relations
     ;;    referencing these spans were drained in step 2, so FK cascade
     ;;    on `relations.source_span_id` / `target_span_id` is a no-op.
     (when (seq span-ids)
-      (crud/delete-ids! tx :spans span-ids)
-      (crud/delete-entity-metadata! tx "span" span-ids)))
+      (crud/delete-entities! tx :spans span-ids)))
   ;; 5. The span_layer itself + its own entity_metadata.
-  (psc/execute! tx
-                {:delete-from :entity_metadata
-                 :where [:and
-                         [:= :entity_type "span-layer"]
-                         [:= :entity_id eid]]})
+  (crud/delete-entity-metadata! tx "span-layer" [eid])
   (crud/delete-by-id! tx :span_layers eid))
 
 (def ^:private spec

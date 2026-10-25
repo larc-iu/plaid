@@ -95,9 +95,19 @@
          (group-by jcol)
          (into {} (map (fn [[id rs]] [id (mapv :token_id (sort-by :order_idx rs))]))))))
 
+(def entity-types
+  "The `entity_metadata.entity_type` of the rows of each table, by table."
+  {:projects "project" :documents "document" :texts "text" :tokens "token" :spans "span"
+   :relations "relation" :vocab_items "vocab-item" :vocab_links "vocab-link"
+   :text_layers "text-layer" :token_layers "token-layer" :span_layers "span-layer"
+   :relation_layers "relation-layer"})
+
 (defn delete-entity-metadata!
   "Delete the `entity_metadata` rows of the `entity-type` entities `ids`, by
-  that table's primary key. Unaudited: see the callers."
+  that table's primary key. Unaudited: a row's metadata is part of the row's
+  own audit image, and the row's `:delete` row records it gone.
+  `entity_metadata` has no FK, so every delete of a row that may carry
+  metadata sweeps it, most through `delete-entities!`."
   [tx entity-type ids]
   (in-chunks (fn [chunk]
                (psc/execute! tx (into [(str "DELETE FROM entity_metadata INDEXED BY "
@@ -355,6 +365,18 @@
                                               (map (fn [pre] [(:id pre) pre nil]) pres))
                    pres))
                ids)))
+
+(defn delete-entities!
+  "Delete the rows `ids` of `table` as `delete-ids!` does, audited, then
+  sweep their `entity_metadata` (`delete-entity-metadata!`, by the table's
+  entry in `entity-types`). Returns the deleted pre-images."
+  [tx table ids]
+  (let [pres (delete-ids! tx table ids)]
+    (delete-entity-metadata! tx (or (get entity-types (keyword (name table)))
+                                    (throw (ex-info (str "No entity type for table " (name table))
+                                                    {:code 500 :table table})))
+                             ids)
+    pres))
 
 (defn delete-ids-unaudited!
   "Delete the rows of `table` whose id is one of `ids`, in chunks and by the

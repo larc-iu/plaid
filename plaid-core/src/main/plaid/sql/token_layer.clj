@@ -257,8 +257,7 @@
                       distinct
                       vec)]
       (when (seq vl-ids)
-        (crud/delete-ids! tx :vocab_links vl-ids)
-        (crud/delete-entity-metadata! tx "vocab-link" vl-ids)))
+        (crud/delete-entities! tx :vocab_links vl-ids)))
     ;; Step 2: per-layer span_layers, tokens, then the layer row.
     (doseq [tl-id layer-ids]
       ;; span_layers under this token_layer.
@@ -276,11 +275,7 @@
         (when (seq tok-ids)
           (token/multi-delete! tx tok-ids)))
       ;; Token_layer's own entity_metadata + row.
-      (psc/execute! tx
-                    {:delete-from :entity_metadata
-                     :where [:and
-                             [:= :entity_type "token-layer"]
-                             [:= :entity_id tl-id]]})
+      (crud/delete-entity-metadata! tx "token-layer" [tl-id])
       (crud/delete-by-id! tx :token_layers tl-id))
     (drop-constraints-naming! tx project-id layer-ids)))
 

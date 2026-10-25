@@ -568,8 +568,7 @@
                                    ["relation" :relations "idx_relations_document"]
                                    ["vocab-link" :vocab_links "idx_vocab_links_document"]]]
         (crud/delete-entity-metadata! tx etype (map :id (crud/select-in tx table "id" :document_id index [doc-id]))))
-      (psc/execute! tx {:delete-from :entity_metadata
-                        :where [:and [:= :entity_type "document"] [:= :entity_id doc-id]]})
+      (crud/delete-entity-metadata! tx "document" [doc-id])
       (psc/execute! tx {:delete-from :documents :where [:= :id doc-id]})
       doc-id)))
 
@@ -591,8 +590,7 @@
         (sweep-metadata! tx "token-layer" :token_layers in-project)
         (sweep-metadata! tx "span-layer" :span_layers in-project)
         (sweep-metadata! tx "relation-layer" :relation_layers in-project))
-      (psc/execute! tx {:delete-from :entity_metadata
-                        :where [:and [:= :entity_type "project"] [:= :entity_id pid]]})
+      (crud/delete-entity-metadata! tx "project" [pid])
       (psc/execute! tx {:delete-from :projects :where [:= :id pid]})
       true)))
 
@@ -1162,13 +1160,10 @@
                                         (filterv #(contains? doc-ids (:document_id %))))
                            vl-ids (mapv :id vl-rows)
                            affected-doc-ids (mapv :document_id vl-rows)]
-                       (crud/delete-ids! tx :vocab_links vl-ids)
-                       ;; Sweep orphan entity_metadata rows for those
-                       ;; vocab_links — matches `vocab_layer.clj/delete`.
-                       ;; Intentionally NOT audited:
-                       ;; parent-owned metadata is part of the parent's
-                       ;; audit row.
-                       (crud/delete-entity-metadata! tx "vocab-link" vl-ids)
+                       ;; With their entity_metadata, unaudited, as
+                       ;; `vocab_layer.clj/delete` does: parent-owned
+                       ;; metadata is part of the parent's audit row.
+                       (crud/delete-entities! tx :vocab_links vl-ids)
                        ;; Bump per-doc versions for OCC parity.
                        (op/bump-document-versions! tx affected-doc-ids))
                      ;; Snapshot AFTER vocab_links cleanup but BEFORE the

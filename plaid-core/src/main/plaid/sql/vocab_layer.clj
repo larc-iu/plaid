@@ -431,11 +431,9 @@
                                ;; share a doc) — bump-document-versions!
                                ;; dedups internally.
                                (vswap! affected-doc-ids into (mapv :document_id vl-rows))
-                               (crud/delete-ids! tx :vocab_links vl-ids)
-                               (crud/delete-entity-metadata! tx "vocab-link" vl-ids)))
+                               (crud/delete-entities! tx :vocab_links vl-ids)))
                            ;; Vocab_items themselves + their metadata.
-                           (crud/delete-ids! tx :vocab_items vi-ids)
-                           (crud/delete-entity-metadata! tx "vocab-item" vi-ids))
+                           (crud/delete-entities! tx :vocab_items vi-ids))
                          ;; Bump versions on every document that lost a
                          ;; vocab_link — emits :doc-version-bump audit
                          ;; rows so OCC clients are told their view is

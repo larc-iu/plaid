@@ -1225,14 +1225,9 @@
 ;; Remedies
 ;; ============================================================
 
-(defn- sweep-metadata! [tx entity-type ids]
-  (crud/delete-entity-metadata! tx entity-type ids))
-
 (defn- delete-relations! [tx ids]
   (when (seq ids)
-    (let [gone (crud/delete-ids! tx :relations ids)]
-      (sweep-metadata! tx "relation" (map :id gone))
-      (count gone))))
+    (count (crud/delete-entities! tx :relations ids))))
 
 (defn- delete-spans!
   "Delete spans with the relations on them first, as a span delete does.
@@ -1248,9 +1243,7 @@
                     (map :id)
                     distinct)]
       (delete-relations! tx rels)
-      (let [gone (crud/delete-ids! tx :spans ids)]
-        (sweep-metadata! tx "span" (map :id gone))
-        (count gone)))))
+      (count (crud/delete-entities! tx :spans ids)))))
 
 (defn- remedy-coextensive! [tx _ctx _c vs counts]
   (let [by-id (into {} (map (fn [v] [(first (:ids v)) v])) vs)]
@@ -1379,8 +1372,7 @@
                        (or (first (sort-by str untouched)) (first (sort-by str ids))))
                 others (remove #(= % keep) ids)
                 _ (cascade-stats/prepare! tx)
-                gone (crud/delete-ids! tx :vocab_links others)]
-            (sweep-metadata! tx "vocab-link" (map :id gone))
+                gone (crud/delete-entities! tx :vocab_links others)]
             (vswap! deleted into others)
             (swap! counts update ["single-link" :vocabulary-links "deleted" (:name layer)] (fnil + 0) (count gone))))))))
 

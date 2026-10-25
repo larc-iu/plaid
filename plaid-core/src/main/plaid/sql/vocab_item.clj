@@ -209,14 +209,9 @@
                                            {:code 409 :id eid :links (count vl-rows)})))
                          (when (seq vl-ids)
                            (cascade-stats/prepare! tx))
-                         (crud/delete-ids! tx :vocab_links vl-ids)
-                         (crud/delete-entity-metadata! tx "vocab-link" vl-ids)
+                         (crud/delete-entities! tx :vocab_links vl-ids)
                          (op/bump-document-versions! tx (mapv :document_id vl-rows)))
-                       (psc/execute! tx
-                                     {:delete-from :entity_metadata
-                                      :where [:and
-                                              [:= :entity_type "vocab-item"]
-                                              [:= :entity_id eid]]})
+                       (crud/delete-entity-metadata! tx "vocab-item" [eid])
                        (crud/delete-by-id! tx :vocab_items eid)
                        (op/touch-vocab-layer! tx (:vocab_layer_id existing))
                        eid)))
@@ -423,12 +418,10 @@
                            ;; metadata (unaudited sweep, no FK on entity_metadata).
                            (let [link-ids (mapv :id (crud/select-in tx :vocab_links "id" :vocab_item_id
                                                                     "idx_vocab_links_item" existing-ids))
-                                 link-rows (crud/delete-ids! tx :vocab_links link-ids)]
-                             (crud/delete-entity-metadata! tx "vocab-link" link-ids)
+                                 link-rows (crud/delete-entities! tx :vocab_links link-ids)]
                              (op/bump-document-versions! tx (mapv :document_id link-rows)))
-                           ;; The items' own metadata, then the items (audited per row).
-                           (crud/delete-entity-metadata! tx "vocab-item" existing-ids)
-                           (crud/delete-ids! tx :vocab_items existing-ids)
+                           ;; The items (audited per row) and their own metadata.
+                           (crud/delete-entities! tx :vocab_items existing-ids)
                            (op/touch-vocab-layers! tx layer-ids))
                          existing-ids))))
 
@@ -450,12 +443,6 @@
                                :where [:in :vocab_link_id (vec chunk)]})))
           {}
           (partition-all 4000 link-ids)))
-
-(defn- delete-links!
-  "Delete vocab links by id, audited per row, and sweep their metadata."
-  [tx link-ids]
-  (crud/delete-ids! tx :vocab_links link-ids)
-  (crud/delete-entity-metadata! tx "vocab-link" link-ids))
 
 (defn- repoint-value
   "`v` with every string equal to a key of `from->to` replaced by its value,
@@ -605,9 +592,8 @@
                              (when (seq moved)
                                (crud/bulk-update-by-id! tx :vocab_links
                                                         (mapv (fn [id] [id {:vocab_item_id survivor-id}]) moved)))
-                             (delete-links! tx dups)
-                             (crud/delete-entity-metadata! tx "vocab-item" existing-ids)
-                             (crud/delete-ids! tx :vocab_items existing-ids)
+                             (crud/delete-entities! tx :vocab_links dups)
+                             (crud/delete-entities! tx :vocab_items existing-ids)
                              (let [repointed-docs (if (seq existing-ids)
                                                     (repoint-metadata-refs! tx layer survivor-id existing-ids)
                                                     [])]
