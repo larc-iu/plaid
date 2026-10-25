@@ -9,13 +9,14 @@ the ignored-token rule is :mod:`.ignored`.
 """
 
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from plaid_client.provenance import prov_state, MACHINE
 from plaid_client.roles import read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
 
 from .ignored import is_token_ignored
+from .senses import entry_morph_types, morpheme_morph_type
 
 
 # --- the virtual morpheme (mirrors plaid-igt domain/virtualMorpheme.js) --------
@@ -179,6 +180,55 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
         sentences.append({'id': s['id'], 'translation': (span or {}).get('value') or '',
                           'translation_span': span, 'words': ws})
     return sentences, (gloss_layer['id'] if gloss_layer else None)
+
+
+# --- reading a derived morpheme ----------------------------------------------
+
+def entry_types_of(vocabularies) -> Dict[str, str]:
+    """The morph type each entry goes by, its own or its headword's, by entry
+    id, for the entries that go by one, over every item of each vocabulary
+    (as ``client.vocab_layers.get(id, include_items=True)`` returns it). Built
+    from all the items, never a filtered list: a morpheme may be linked to a
+    headword a prompt leaves out."""
+    out: Dict[str, str] = {}
+    for vocab in vocabularies or []:
+        out.update(entry_morph_types([it for it in (vocab or {}).get('items') or [] if it.get('id')]))
+    return out
+
+
+def project_entry_types(client, project) -> Dict[str, str]:
+    """:func:`entry_types_of` every vocabulary linked to ``project``, one read
+    each."""
+    return entry_types_of(client.vocab_layers.get(v['id'], include_items=True)
+                          for v in project.get('vocabs') or [])
+
+
+def linked_entry_type(w, m, entry_types) -> Optional[str]:
+    """The type of the first entry morpheme ``m`` of derived word ``w`` is
+    linked to that goes by one, or None."""
+    for link in (w.get('morph_links') or {}).get(m['id'], []):
+        v = link.get('vocab_item')
+        t = (entry_types or {}).get(v.get('id') if isinstance(v, dict) else v)
+        if t:
+            return t
+    return None
+
+
+def morph_type(w, m, entry_types=None) -> Optional[str]:
+    """The morph type morpheme ``m`` of derived word ``w`` goes by: the type
+    of an entry it is linked to that goes by one (``entry_types`` is
+    :func:`project_entry_types`), else its own. A linked morpheme stores no
+    copy of its entry's type."""
+    return morpheme_morph_type(m.get('metadata'), linked_entry_type(w, m, entry_types))
+
+
+def gloss_of(w, m, layer_id):
+    """The first span with a value on annotation field ``layer_id`` over
+    morpheme ``m`` of derived word ``w``, or None."""
+    for sl, sp in (w.get('morph_spans') or {}).get(m['id'], []):
+        if sl == layer_id and sp.get('value'):
+            return sp
+    return None
 
 
 # --- the write contract, per word ----------------------------------------------

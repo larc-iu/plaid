@@ -80,10 +80,9 @@ from plaid_client.service import held_run, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, write_analyses, analysis_result, ANALYZE_REQUEST_FIELDS,
-    read_skip_word_ids,
+    read_skip_word_ids, project_entry_types, morph_type, gloss_of,
 )
 from plaid_client.workflows.igt.glossing import is_clitic
-from plaid_client.workflows.igt.senses import entry_morph_types, morpheme_morph_type
 
 CWOMP_COMMIT = 'f095281'
 DEFAULT_HOME = Path.home() / '.cache' / 'plaid' / 'cwomp'
@@ -182,36 +181,6 @@ def igt_layers(project) -> Tuple[str, str, str]:
     raise ValueError('This project has no IGT word, morpheme and sentence layers.')
 
 
-def _gloss_of(w, m, gloss_layer_id):
-    for sl, sp in w['morph_spans'].get(m['id'], []):
-        if sl == gloss_layer_id and sp.get('value'):
-            return sp
-    return None
-
-
-def project_entry_types(client, project) -> Dict[str, str]:
-    """The morph type each entry of the project's vocabularies goes by, its
-    own or its headword's, for the entries that go by one."""
-    out: Dict[str, str] = {}
-    for v in project.get('vocabs') or []:
-        items = (client.vocab_layers.get(v['id'], include_items=True) or {}).get('items') or []
-        out.update(entry_morph_types(items))
-    return out
-
-
-def morph_type_of(w, m, entry_types=None) -> Optional[str]:
-    """The morph type morpheme `m` goes by: the type of an entry it is
-    linked to that goes by one, else its own. A linked morpheme stores no
-    copy of its entry's type."""
-    entry_type = None
-    for link in w['morph_links'].get(m['id'], []):
-        v = link.get('vocab_item')
-        entry_type = (entry_types or {}).get(v.get('id') if isinstance(v, dict) else v)
-        if entry_type:
-            break
-    return morpheme_morph_type(m.get('metadata'), entry_type)
-
-
 def trusted_analysis(w, gloss_layer_id, entry_types=None) -> Optional[List[Tuple[str, str]]]:
     """A word's morphemes as lexicon entries [(form, gloss)] when a person made
     or verified every piece of its analysis and every morpheme has a gloss,
@@ -223,11 +192,11 @@ def trusted_analysis(w, gloss_layer_id, entry_types=None) -> Optional[List[Tuple
         meta = m.get('metadata') or {}
         if not m.get('virtual') and prov_state(meta) not in (HUMAN, VERIFIED):
             return None
-        sp = _gloss_of(w, m, gloss_layer_id)
+        sp = gloss_of(w, m, gloss_layer_id)
         if sp is None or prov_state(sp.get('metadata')) not in (HUMAN, VERIFIED):
             return None
         form = meta.get('form') or w['surface']
-        out.append((encode_form(form, morph_type_of(w, m, entry_types)),
+        out.append((encode_form(form, morph_type(w, m, entry_types)),
                     encode_piece(sp['value'].strip())))
     return out or None
 

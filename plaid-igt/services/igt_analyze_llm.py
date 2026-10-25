@@ -51,11 +51,11 @@ from plaid_client.service import held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
-from plaid_client.workflows.igt.senses import build_sense_tree, entry_morph_types, morph_type_of, morpheme_morph_type
+from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
     ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
-    write_analyses, analysis_result, tagset_for, mode_rule, value_lines,
+    write_analyses, analysis_result, tagset_for, mode_rule, value_lines, entry_types_of, morph_type, gloss_of,
 )
 
 DEFAULT_SERVICE_ID = 'llm-analyzer'
@@ -226,7 +226,7 @@ def load_lexicon(client, project, on_progress=None, gloss_lexicon_field=None,
             on_progress(n, len(vocabs))
         vl = client.vocab_layers.get(v['id'], include_items=True)
         if entry_types is not None:
-            entry_types.update(entry_morph_types(vl.get('items') or []))
+            entry_types.update(entry_types_of([vl]))
         entries.extend(vocab_entries(
             vl.get('items') or [], vl.get('name') or v.get('name'),
             gloss_key=gloss_lexicon_field or _role_key(vl, 'gloss'), pos_key=_role_key(vl, 'pos')))
@@ -274,16 +274,6 @@ def _joiner(morph_type):
     return '=' if 'clitic' in t else '-'
 
 
-def _entry_type(w, m, entry_types):
-    """The type of an entry morpheme `m` is linked to, when it goes by one."""
-    for link in (w.get('morph_links') or {}).get(m['id'], []):
-        v = link.get('vocab_item')
-        t = (entry_types or {}).get(v.get('id') if isinstance(v, dict) else v)
-        if t:
-            return t
-    return None
-
-
 def render_sentence(sentence, gloss_layer_id, entry_types=None) -> Optional[str]:
     """A derived sentence as one interleaved line, or None when any word lacks
     a gloss (an example must be complete to teach anything). `entry_types`
@@ -293,13 +283,11 @@ def render_sentence(sentence, gloss_layer_id, entry_types=None) -> Optional[str]
     for w in sentence['words']:
         pieces = []
         for m in w['morphs']:
-            gloss = next((sp.get('value') for sl, sp in w['morph_spans'].get(m['id'], [])
-                          if sl == gloss_layer_id and sp.get('value')), None)
+            gloss = (gloss_of(w, m, gloss_layer_id) or {}).get('value')
             if not gloss:
                 return None
-            meta = m.get('metadata') or {}
-            seg = meta.get('form') or w['surface']
-            pieces.append((gloss, seg, morpheme_morph_type(meta, _entry_type(w, m, entry_types))))
+            seg = (m.get('metadata') or {}).get('form') or w['surface']
+            pieces.append((gloss, seg, morph_type(w, m, entry_types)))
         if not pieces:
             return None
         s = ''

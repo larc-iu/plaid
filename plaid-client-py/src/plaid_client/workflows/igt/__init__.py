@@ -18,7 +18,8 @@ words (and free translation) into one interleaved line per sentence; see
 """
 
 from .derive import (derive, NoGlossField, precedence, field_layer_id, word_state, select_targets, virtual_morpheme,
-                     ANALYZE_REQUEST_FIELDS, read_skip_word_ids)
+                     ANALYZE_REQUEST_FIELDS, read_skip_word_ids, entry_types_of, project_entry_types,
+                     linked_entry_type, morph_type, gloss_of)
 from .ignored import is_token_ignored
 from .interlinear import (
     ParsedWord,
@@ -49,6 +50,7 @@ from .tagsets import (
 __all__ = [
     'derive', 'NoGlossField', 'precedence', 'field_layer_id', 'word_state', 'select_targets', 'is_token_ignored', 'virtual_morpheme',
     'ANALYZE_REQUEST_FIELDS', 'read_skip_word_ids',
+    'entry_types_of', 'project_entry_types', 'linked_entry_type', 'morph_type', 'gloss_of',
     'ParsedWord', 'parse_interleaved', 'align_words', 'analysis_for', 'similarity',
     'clitic_side_of_boundary', 'clitic_types', 'ALIGN_THRESHOLD',
     'write_analyses', 'chunk_plans', 'analysis_result', 'BATCH_OP_BUDGET',

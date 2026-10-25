@@ -84,8 +84,8 @@ from plaid_client.workflows.umr import (DraftProgress, draft_params, drafting, f
                                         next_variable, run_label, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  can_name_word, gloss_morphemes, line_flags)
-from plaid_client.workflows.igt.senses import (build_sense_tree, entry_morph_types,
-                                               morpheme_morph_type)
+from plaid_client.workflows.igt.derive import entry_types_of
+from plaid_client.workflows.igt.senses import build_sense_tree, morpheme_morph_type
 from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
@@ -391,15 +391,6 @@ def headwords_of(vocabularies) -> Dict[str, str]:
         tree = build_sense_tree(items)
         for it in items:
             out[it['id']] = (tree.entry_of(it['id']) or it).get('form') or it.get('form') or ''
-    return out
-
-
-def entry_types_of(vocabularies) -> Dict[str, str]:
-    """The morph type each entry goes by, its own or its headword's, by entry
-    id, for the entries that go by one (``entry_morph_types``)."""
-    out: Dict[str, str] = {}
-    for vocab in vocabularies or []:
-        out.update(entry_morph_types([it for it in vocab.get('items') or [] if it.get('id')]))
     return out
 
 

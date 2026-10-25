@@ -725,3 +725,41 @@ def test_value_parts_trim_as_the_server_does():
     assert value_parts(' 1SG . NOM', '.') == ['1SG', 'NOM']
     assert value_parts('a..b', '.') == ['a', '', 'b']
     assert value_parts('dog-PL', '') == ['dog-PL']
+
+
+# --- reading a derived morpheme ---------------------------------------------------
+
+def test_project_entry_types_come_from_every_item_of_every_vocabulary():
+    """The map a reader looks a linked morpheme's type up in is built from
+    all the items, a headword with no gloss of its own included (W2A2-6)."""
+    from plaid_client.workflows.igt import project_entry_types
+
+    class VocabLayers:
+        def get(self, vid, include_items=False):
+            assert include_items
+            return {'v1': {'items': [{'id': 'h', 'form': 'ri', 'metadata': {'morphType': 'enclitic'}},
+                                     {'id': 's', 'form': 'ri', 'metadata': {'gloss': 'and', 'parent': 'h'}},
+                                     {'id': 'n', 'form': 'ev', 'metadata': {}}]},
+                    'v2': {'items': [{'id': 'p', 'form': 'ka', 'metadata': {'morphType': 'prefix'}}]}}[vid]
+
+    class Client:
+        vocab_layers = VocabLayers()
+
+    project = {'vocabs': [{'id': 'v1'}, {'id': 'v2'}]}
+    assert project_entry_types(Client(), project) == {'h': 'enclitic', 's': 'enclitic', 'p': 'prefix'}
+
+
+def test_a_derived_morpheme_goes_by_its_entry_s_type_and_its_first_valued_gloss():
+    from plaid_client.workflows.igt import gloss_of, morph_type
+
+    linked = {'id': 'm1', 'metadata': {'morphType': 'suffix'}}
+    own = {'id': 'm2', 'metadata': {'morphType': 'suffix'}}
+    w = {'morph_links': {'m1': [{'vocab_item': {'id': 'x'}}, {'vocab_item': 'h'}], 'm2': []},
+         'morph_spans': {'m1': [('other', {'value': 'NO'}), ('g', {'value': ''}), ('g', {'value': 'and'})],
+                         'm2': []}}
+    types = {'h': 'enclitic'}
+    assert morph_type(w, linked, types) == 'enclitic'
+    assert morph_type(w, own, types) == 'suffix'
+    assert morph_type(w, linked) == 'suffix'
+    assert gloss_of(w, linked, 'g') == {'value': 'and'}
+    assert gloss_of(w, own, 'g') is None

@@ -38,7 +38,7 @@ from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.metadata_ops import metadata_ops
 from plaid_client.provenance import PROVENANCE_KEYS, stamp_inferred, prov_state, MACHINE
-from plaid_client.workflows.igt import NoGlossField, derive, field_layer_id
+from plaid_client.workflows.igt import NoGlossField, derive, field_layer_id, gloss_of
 
 DEFAULT_SERVICE_ID = 'llm-translator'
 DEFAULT_CONTEXT = 2
@@ -100,8 +100,7 @@ def gloss_line(sentence, gloss_layer_id) -> Optional[str]:
     for w in sentence['words']:
         pieces = []
         for m in w['morphs']:
-            gloss = next((sp.get('value') for sl, sp in w['morph_spans'].get(m['id'], [])
-                          if sl == gloss_layer_id and sp.get('value')), None)
+            gloss = (gloss_of(w, m, gloss_layer_id) or {}).get('value')
             seg = (m.get('metadata') or {}).get('form') or w['surface']
             if gloss:
                 any_gloss = True
