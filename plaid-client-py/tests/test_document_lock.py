@@ -367,6 +367,12 @@ class _ManualKeeper:
         self.lost = DocumentLockLost('lapsed', document_id=self.document_id, cause=cause)
         self._on_lost(self.lost)
 
+    def now(self):
+        return 7.0
+
+    def note_write(self, sent_at):
+        self.writes = getattr(self, 'writes', []) + [sent_at]
+
 
 @pytest.fixture(autouse=True)
 def _fresh_keepers():
@@ -679,3 +685,91 @@ def test_the_refusal_names_the_holder_and_no_document_id(monkeypatch):
             pytest.fail('the block ran')
     assert caught.value.status == 423
     assert str(caught.value) == "This document is being edited by me. Try again once they're done."
+
+
+# --- a write the server took renewed the lock too (REV-R4-CORE F4) ----------
+
+def test_an_accepted_write_moves_the_window_a_failing_renewal_counts_against():
+    # Renewals fail with a 5xx from 30 s on while the run's writes land: the
+    # server renews the lock on each, so the keeper must not call it lost at
+    # 60 s, the end of the window its own renewals gave.
+    clock = FakeClock(stop_after=40)
+    lost = []
+    keeper = _keeper(clock, None, lost=lost)
+
+    def refresh(document_id):
+        if clock.t <= 54:
+            keeper.note_write(clock.t - 1)     # a write sent just before
+        raise PlaidAPIError('Bad gateway', status=502)
+    keeper._refresh = refresh
+    keeper.run()
+    # The last write was sent at 53, so the window runs to 113: lost at the
+    # first failed renewal at or past it.
+    assert clock.t == 114.0
+    assert lost == [keeper.lost]
+
+
+def test_a_write_answered_after_the_window_ran_out_moves_nothing():
+    # The server may have taken it after the lock lapsed, when a write by the
+    # holder passes and renews nothing.
+    clock = FakeClock(stop_after=40)
+    keeper = _keeper(clock, _raise(PlaidAPIError('Bad gateway', status=502)))
+    clock.t = 61.0
+    keeper.note_write(10.0)
+    clock.t = 0.0
+    keeper.run()
+    assert clock.t == 60.0
+    assert keeper.lost is not None
+
+
+class _VersionedResp(_Resp):
+    def __init__(self, body, versions, replayed=False):
+        super().__init__(body)
+        self.headers = {'content-type': 'application/json',
+                        'X-Document-Versions': __import__('json').dumps(versions)}
+        if replayed:
+            from plaid_client.http import REPLAYED_HEADER
+            self.headers[REPLAYED_HEADER] = 'true'
+
+
+def _versioned_client(monkeypatch, answers):
+    """A client whose writes are answered, in turn, by ``answers``: (versions,
+    replayed) pairs, for single requests and batches alike."""
+    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    client = PlaidClient('http://plaid.internal:8085', 'tok')
+    queue = list(answers)
+
+    class _Session:
+        def request(self, **kw):
+            if '/lock' in kw.get('url', ''):
+                return _Resp({'lock-id': 'L1', 'user-id': 'me', 'expires-at': 0})
+            versions, replayed = queue.pop(0)
+            return _VersionedResp({'id': 't1'}, versions, replayed)
+
+        def post(self, url, **kw):
+            versions, replayed = queue.pop(0)
+            return _VersionedResp([{'status': 201, 'headers': {}, 'body': {'id': 't1'}}],
+                                  versions, replayed)
+
+        def close(self):
+            pass
+
+    client.session = _Session()
+    return client
+
+
+def test_a_write_that_moves_the_held_documents_version_tells_its_keeper(monkeypatch):
+    client = _versioned_client(monkeypatch, [({'d1': 4}, False), ({'d1': 4}, False),
+                                             ({'d2': 9}, False), ({'d1': 5}, True),
+                                             ({'d1': 6}, False)])
+    client.document_versions['d1'] = 3
+    with client.documents.locked('d1'):
+        keeper = _ManualKeeper.made[0]
+        client.tokens.create('tl1', 't1', 0, 5)       # moved d1: renewed
+        client.tokens.create('tl1', 't1', 0, 5)       # d1 where it was: not a write of it
+        client.tokens.create('tl1', 't1', 0, 5)       # another document
+        client.tokens.create('tl1', 't1', 0, 5)       # replayed: taken before, renews nothing
+        with client.batched() as b:                   # a batch's request counts as well
+            b.tokens.create('tl1', 't1', 0, 5)
+    assert keeper.writes == [7.0, 7.0]
+    assert client.lock_keepers == {}

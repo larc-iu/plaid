@@ -21,6 +21,7 @@ import {
   LockKeeper,
   lockTtlMs,
 } from "../src/documentLock.js";
+import { writesLanded, writesStarted } from "../src/http.js";
 
 // What plaid-core holds a lock for by default.
 const TTL_MS = 60000;
@@ -596,4 +597,132 @@ test("the refusal names the holder and no document id", async () => {
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// --- a write the server took renewed the lock too (REV-R4-CORE F4) ----------
+
+test("an accepted write moves the window a failing renewal counts against", async () => {
+  // Renewals fail with a 5xx from 30 s on while the run's writes land: the
+  // server renews the lock on each, so the keeper must not call it lost at
+  // 60 s, the end of the window its own renewals gave.
+  const clock = new FakeClock(40);
+  const lost = [];
+  const keeper = keeperOn(clock, null, TTL_MS, (l) => lost.push(l));
+  keeper._refresh = async () => {
+    if (clock.t <= 54000) keeper.noteWrite(clock.t - 1000);
+    const err = new Error("Bad gateway");
+    err.status = 502;
+    throw err;
+  };
+  await keeper.run();
+  // The last write was sent at 53 s, so the window runs to 113 s.
+  assert.equal(clock.t, 114000);
+  assert.deepEqual(lost, [keeper.lost]);
+});
+
+test("a write answered after the window ran out moves nothing", async () => {
+  const clock = new FakeClock(40);
+  const err = new Error("Bad gateway");
+  err.status = 502;
+  const keeper = keeperOn(clock, rejectWith(err));
+  clock.t = 61000;
+  keeper.noteWrite(10000);
+  clock.t = 0;
+  await keeper.run();
+  assert.equal(clock.t, 60000);
+  assert.ok(keeper.lost instanceof DocumentLockLost);
+});
+
+test("only a taken write that moved the held document's version tells its keeper", () => {
+  const writes = [];
+  const keeper = {
+    documentId: "d1",
+    now: () => 7,
+    noteWrite: (t) => writes.push(t),
+  };
+  const client = {
+    lockKeepers: new Map([["d1", keeper]]),
+    documentVersions: { d1: 3 },
+  };
+  const land = (versions, replayed = false) => {
+    const started = writesStarted(client);
+    client.documentVersions = { ...client.documentVersions, ...versions };
+    writesLanded(client, started, replayed);
+  };
+  land({ d1: 4 }); // moved d1: renewed
+  land({ d1: 4 }); // d1 where it was
+  land({ d2: 9 }); // another document
+  land({ d1: 5 }, true); // replayed: taken before, renews nothing
+  assert.deepEqual(writes, [7]);
+  assert.deepEqual(writesStarted({ lockKeepers: new Map() }), []);
+});
+
+test("a run whose renewals fail while its writes and batches land keeps the lock", async () => {
+  await withStub(async () => {
+    const client = new PlaidClient("http://plaid.internal:8085", "tok");
+    client.documentVersions = { d1: 3 };
+    let version = 3;
+    let locks = 0;
+    const headers = (extra = {}) => ({
+      get: (n) => {
+        const name = String(n).toLowerCase();
+        if (name === "content-type") return "application/json";
+        if (name === "x-document-versions" && extra.versions)
+          return extra.versions;
+        return null;
+      },
+    });
+    const answer = (status, body, versions) => ({
+      ok: status < 400,
+      status,
+      statusText: "",
+      headers: headers({ versions }),
+      json: async () => body,
+      text: async () => JSON.stringify(body),
+    });
+    globalThis.fetch = async (url, opts = {}) => {
+      const method = opts.method || "GET";
+      const path = new URL(url).pathname;
+      if (path.endsWith("/lock") && method === "POST") {
+        if (locks++ === 0) {
+          return answer(200, {
+            "lock-id": "L1",
+            "user-id": "me",
+            "expires-at": Date.now() + 60000,
+          });
+        }
+        return answer(500, { error: "boom" });
+      }
+      if (path.endsWith("/lock")) return answer(204, {});
+      const versions = JSON.stringify({ d1: ++version });
+      if (path === "/api/v1/batch") {
+        return answer(
+          200,
+          [
+            {
+              status: 201,
+              headers: { "X-Document-Versions": versions },
+              body: { id: "t" },
+            },
+          ],
+          versions,
+        );
+      }
+      return answer(201, { id: "t" }, versions);
+    };
+    await client.documents.locked("d1", async () => {
+      for (let i = 0; i < 9; i++) {
+        await advance(20000);
+        if (i === 4) {
+          const b = client.batch();
+          b.tokens.create("tl1", "t1", 0, 5);
+          await b.submit();
+        } else {
+          await client.tokens.create("tl1", "t1", 0, 5);
+        }
+      }
+    });
+    assert.equal(client.documentLockLost, null);
+    assert.equal(client.lockKeepers.size, 0);
+  });
 });

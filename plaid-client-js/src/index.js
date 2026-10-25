@@ -21,6 +21,8 @@ import {
   DEFAULT_TIMEOUT_MS,
   DEFAULT_BATCH_TIMEOUT_MS,
   queryTimeout,
+  writesStarted,
+  writesLanded,
 } from "./http.js";
 import { uuidv4, uuidv7, normalizeUserId } from "./ids.js";
 import { constraintsBody } from "./constraints.js";
@@ -1028,6 +1030,10 @@ class PlaidClient {
     // documentLock.js.
     /** @type {import("./documentLock.js").DocumentLockLost | null} */
     this.documentLockLost = null;
+    // The keeper of each `documents.locked()` block that renews on a beat, by
+    // document id: a write that lands on a held document renewed its lock,
+    // and the request layer tells that keeper.
+    this.lockKeepers = new Map();
     // The open logical operation (audit-log group), or null. While set, every
     // write is stamped with `?group-id=` (+ `group-message`) so the audit log
     // folds them into ONE expandable entry. See beginOperation / withOperation.
@@ -4679,6 +4685,7 @@ class PlaidClient {
       body: JSON.stringify(body),
     };
 
+    const started = writesStarted(this);
     try {
       // Retry a 503: the batch is atomic, so a refused one wrote nothing and
       // repeating it is safe. A fresh timeout signal per attempt — an
@@ -4773,6 +4780,8 @@ class PlaidClient {
           );
         }
       }
+
+      writesLanded(this, started, replayed);
 
       const out = results.map((result) => ({
         ...result,

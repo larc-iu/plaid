@@ -14,7 +14,8 @@ from urllib.parse import quote, urlencode
 
 import requests as req_lib
 
-from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
+from plaid_client.document_lock import (DocumentLock, LockKeeper, lock_ttl_s, writes_landed,
+                                         writes_started)
 from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, extract_document_versions,
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
@@ -2097,6 +2098,7 @@ class DocumentsResource(_MetadataMethods, _Resource):
                 lambda doc_id: self.renew_lock(doc_id, lock_id), document_id, ttl_s,
                 on_lost=lambda lost: setattr(client, 'document_lock_lost', lost),
                 should_renew=should_renew)
+            client.lock_keepers[document_id] = keeper
             keeper.start()
         raised = False
         try:
@@ -2107,6 +2109,8 @@ class DocumentsResource(_MetadataMethods, _Resource):
         finally:
             if keeper is not None:
                 keeper.stop()
+                if client.lock_keepers.get(document_id) is keeper:
+                    del client.lock_keepers[document_id]
             lost = keeper.lost if keeper is not None else None
             client.document_lock_lost = None
             # Best-effort release: the server TTL reclaims a stranded lock, and
@@ -3685,6 +3689,10 @@ class PlaidClient:
         # keep-alive has failed. Every write raises it until the block exits;
         # see plaid_client.document_lock.
         self.document_lock_lost: Exception | None = None
+        # The keeper of each ``documents.locked()`` block that renews on a
+        # beat, by document id: a write that lands on a held document renewed
+        # its lock, and the request layer tells that keeper.
+        self.lock_keepers: dict = {}
         # The open logical operation (audit-log group), or None. While set, every
         # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
         # log folds them into ONE expandable entry. See begin_operation /
@@ -4161,6 +4169,7 @@ class PlaidClient:
                 # Encoded once, before anything goes: a body that cannot be
                 # sent is the caller's mistake, never an unknown outcome.
                 data = json.dumps(body, default=_unsendable)
+                started = writes_started(self)
 
                 def attempt(data=data, request_headers=request_headers):
                     try:
@@ -4218,6 +4227,8 @@ class PlaidClient:
                                 self.document_versions, versions_map, replayed))
                     except (json.JSONDecodeError, TypeError):
                         pass
+
+                writes_landed(self, started, replayed)
 
                 results_out.extend({**r, 'body': transform_response(r.get('body'))}
                                    if isinstance(r, dict) else r

@@ -775,6 +775,40 @@ export async function queueRequest(batch, method, path, options = {}) {
  *                     where the timeout only fires when the upload stalls;
  *                     elsewhere the callback is ignored and fetch is used.
  */
+/**
+ * What a write about to go out needs to tell the lock keepers it renewed:
+ * each held document's keeper, its version now and the send time. Empty when
+ * no `documents.locked()` block on `client` keeps a lock. The server renews a
+ * live lock on every write its holder makes to the document, so a write that
+ * moved the held document's version renewed it (`writesLanded`).
+ * @private
+ */
+export function writesStarted(client) {
+  const keepers = client.lockKeepers;
+  if (!keepers || keepers.size === 0) return [];
+  return [...keepers.entries()].map(([docId, keeper]) => [
+    keeper,
+    client.documentVersions?.[docId],
+    keeper.now(),
+  ]);
+}
+
+/**
+ * The write `started` was read before has been taken, and its answer's
+ * versions learned. A held document whose version it moved was written by
+ * this run. A replayed answer was not taken again, and renewed nothing.
+ * @private
+ */
+export function writesLanded(client, started, replayed = false) {
+  if (replayed || !started?.length) return;
+  for (const [keeper, before, sent] of started) {
+    const after = client.documentVersions?.[keeper.documentId];
+    if (before != null && after != null && after !== before) {
+      keeper.noteWrite(sent);
+    }
+  }
+}
+
 export async function makeRequest(client, method, path, options = {}) {
   const {
     formData,
@@ -836,6 +870,13 @@ export async function makeRequest(client, method, path, options = {}) {
   // One attempt: a 503, and for a keyed write a 502 or 504, surfaces as a
   // throw so the retries below can see it. Other failures are thrown from
   // the checks after it.
+  // A write that lands on a held document renews its lock on the server, so
+  // its keeper hears of it (writesLanded).
+  const started =
+    method !== "GET" && !options.outOfBand ? writesStarted(client) : [];
+  const landed = (headers) =>
+    writesLanded(client, started, headers.get(REPLAYED_HEADER) === "true");
+
   const attempt = async () => {
     let res;
     try {
@@ -899,6 +940,7 @@ export async function makeRequest(client, method, path, options = {}) {
     // Binary response (getMedia)
     if (binaryResponse) {
       extractDocumentVersions(client, response.headers);
+      landed(response.headers);
       if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       return await response.arrayBuffer();
     }
@@ -910,6 +952,7 @@ export async function makeRequest(client, method, path, options = {}) {
       extractDocumentVersions(client, response.headers, data, {
         historical: /[?&]as-of=/.test(url),
       });
+      landed(response.headers);
       if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       const answer = skipResponseTransform ? data : transformResponse(data);
       return response.headers.get(REPLAYED_HEADER) === "true"
@@ -917,6 +960,7 @@ export async function makeRequest(client, method, path, options = {}) {
         : answer;
     } else {
       extractDocumentVersions(client, response.headers);
+      landed(response.headers);
       if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       return await response.text();
     }

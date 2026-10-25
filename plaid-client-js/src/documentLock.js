@@ -18,10 +18,11 @@ import { uuidv4 } from "./ids.js";
  * id holds, and refuses one somebody else holds (the same user included).
  *
  * The beat is unconditional rather than "only when no write has gone out
- * recently". The request layer knows the method of a call but not which
- * document it touched, so a write to some other document would count as a
- * renewal here and would not be one. Two extra requests a minute is the whole
- * cost.
+ * recently". Two extra requests a minute is the whole cost. A write the server
+ * took that moved the locked document's version renewed the lock as well, and
+ * the request layer tells the keeper (`writesStarted`, `writesLanded` in
+ * http.js), so renewals that fail with something other than a 423 while the
+ * run's writes land do not end the run as a lost lock.
  *
  * A renewal that fails means the block is no longer holding what it asked for,
  * so it stops the run: the loss is recorded on the client and every later write
@@ -109,11 +110,37 @@ export class LockKeeper {
     this._stopped = false;
     this._wake = null;
     this._running = null;
+    // When the window this keeper last saw renewed runs out, on its clock.
+    // Moved by a renewal (run) and by an accepted write (noteWrite).
+    this._deadline = clock() + ttlMs;
     /**
      * The `DocumentLockLost` this keeper raised, or null.
      * @type {DocumentLockLost | null}
      */
     this.lost = null;
+  }
+
+  get documentId() {
+    return this._documentId;
+  }
+
+  /** This keeper's clock, which a write's send time is read on. */
+  now() {
+    return this._clock();
+  }
+
+  /**
+   * A write of the locked document, sent at `sentAt`, was taken. The server
+   * renews a live lock on every write its holder makes to the document, from
+   * when it took the write, which is no earlier than `sentAt`. It counts only
+   * when its answer came back before the window this keeper counts ran out:
+   * the server then still held the lock when it took the write.
+   * @param {number} sentAt
+   */
+  noteWrite(sentAt) {
+    if (this._clock() < this._deadline) {
+      this._deadline = Math.max(this._deadline, sentAt + this._ttlMs);
+    }
   }
 
   /**
@@ -151,9 +178,11 @@ export class LockKeeper {
 
   /** The beat. Resolves when the block exits or the lock is lost. */
   async run() {
-    let deadline = this._clock() + this._ttlMs;
     let delay = this.intervalMs;
     while (!(await this._sleep(delay))) {
+      // The window is counted from when the renewal was sent, since the
+      // server starts it on receipt, not when its answer gets back.
+      const sent = this._clock();
       try {
         await this._refresh(this._documentId);
       } catch (error) {
@@ -161,14 +190,14 @@ export class LockKeeper {
         // expired or was dropped, and the server never takes it back.
         // Anything else may be a blip, and is only fatal once the lock we are
         // renewing has actually run out.
-        if (error?.status === 423 || this._clock() >= deadline) {
+        if (error?.status === 423 || this._clock() >= this._deadline) {
           this._fail(error);
           return;
         }
         delay = this.retryMs;
         continue;
       }
-      deadline = this._clock() + this._ttlMs;
+      this._deadline = Math.max(this._deadline, sent + this._ttlMs);
       delay = this.intervalMs;
     }
   }
@@ -320,6 +349,7 @@ export async function withDocumentLock(
         },
       },
     );
+    client.lockKeepers?.set(documentId, keeper);
     keeper.start();
   }
 
@@ -331,7 +361,11 @@ export async function withDocumentLock(
     threw = true;
     throw error;
   } finally {
-    if (keeper) keeper.stop();
+    if (keeper) {
+      keeper.stop();
+      if (client.lockKeepers?.get(documentId) === keeper)
+        client.lockKeepers.delete(documentId);
+    }
     const lost = keeper ? keeper.lost : null;
     client.documentLockLost = null;
     // Best-effort release: the server TTL reclaims a stranded lock, and we must

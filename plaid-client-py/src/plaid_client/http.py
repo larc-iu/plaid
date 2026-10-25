@@ -7,6 +7,7 @@ import time
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, quote
 
+from plaid_client.document_lock import writes_landed, writes_started
 from plaid_client.ids import uuid7
 from plaid_client.transforms import transform_request, transform_response
 from plaid_client.replayed import mark_replayed
@@ -972,6 +973,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         else:
             kwargs['data'] = json.dumps(request_body, default=_unsendable)
 
+    # A write that lands on a held document renews its lock on the server, so
+    # its keeper hears of it (document_lock.writes_landed).
+    started = writes_started(client) if method != 'GET' and not out_of_band else ()
+
     def attempt():
         if encoded_upload is not None:
             # A fresh body per attempt: a retried upload must start over.
@@ -1018,6 +1023,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     # Binary response
     if binary_response:
         extract_document_versions(client, response.headers)
+        writes_landed(client, started, is_replayed(response.headers))
         if not _learning_omitted_version:
             _learn_omitted_version_quietly(client)
         return response.content
@@ -1028,12 +1034,14 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         data = response.json()
         extract_document_versions(client, response.headers, data,
                                   historical=bool(query_params and query_params.get('as-of')))
+        writes_landed(client, started, is_replayed(response.headers))
         if not _learning_omitted_version:
             _learn_omitted_version_quietly(client)
         answer = data if skip_response_transform else transform_response(data)
         return mark_replayed(answer) if is_replayed(response.headers) else answer
     else:
         extract_document_versions(client, response.headers)
+        writes_landed(client, started, is_replayed(response.headers))
         if not _learning_omitted_version:
             _learn_omitted_version_quietly(client)
         return response.text
