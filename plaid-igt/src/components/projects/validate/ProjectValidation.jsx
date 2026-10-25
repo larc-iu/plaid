@@ -536,11 +536,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                     {rows.map((r, i) => (
                       <li key={`${r.docId}:${r.begin}:${i}`}>
                         <Link
-                          to={
-                            r.sentenceId
-                              ? hitTo(projectId, r.docId, r.sentenceId)
-                              : `/projects/${projectId}/documents/${r.docId}?tab=analyze`
-                          }
+                          to={hitTo(projectId, r.docId, r.sentenceId ?? null)}
                           onClick={() =>
                             r.sentenceId && rememberCaret(r.docId, r.sentenceId, r.begin)
                           }

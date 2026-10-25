@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { SENTENCE_ACTION } from '@ui/components/shared/sentenceActions.js';
 import { notifyError } from '@/utils/feedback';
+import { APP_ROUTES } from '@/appRoutes';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 
 // Copy as IGT: the format menu, the clipboard write, and a sentence's link.
@@ -100,10 +101,7 @@ export const copy = {
     const { origin, pathname } = window.location;
     const base = `${origin}${pathname}`.replace(/\/$/, '');
     const projectId = this.doc?.project?.id ?? this.doc?._projectId;
-    return (
-      `${base}/#/projects/${projectId}/documents/${this.doc.id}` +
-      `?tab=analyze&focusSentence=${encodeURIComponent(sentence.id)}`
-    );
+    return `${base}/#${APP_ROUTES.sentence(projectId, this.doc.id, sentence.id)}`;
   },
 
   async _copySentenceLink(sentence) {

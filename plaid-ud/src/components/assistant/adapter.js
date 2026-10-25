@@ -8,6 +8,7 @@
 import { linkLabel, tableCell } from '@ui/components/assistant/citations.js';
 import { isUdProject } from '@ui/domain/udProject.js';
 import { readProjectLanguage } from '../../domain/udConfig.js';
+import { APP_ROUTES, parseSentenceHref } from '../../appRoutes.js';
 import { documentGroupOf } from '@ui/components/assistant/documentGroup.js';
 import { ExampleCard } from './ExampleCard.jsx';
 import { citationTitle, sentenceHref } from './cite.js';
@@ -30,12 +31,8 @@ export { citationTitle, sentenceHref };
 const changeHref = (projectId, where) => {
   if (!where) return null;
   if (where.kind === 'token')
-    return (
-      `#/projects/${projectId}/documents/${where.documentId}/annotate` +
-      (where.sentenceId ? `?sent=${encodeURIComponent(where.sentenceId)}` : '')
-    );
-  if (where.kind === 'document')
-    return `#/projects/${projectId}/documents/${where.documentId}/annotate`;
+    return `#${APP_ROUTES.sentence(projectId, where.documentId, where.sentenceId)}`;
+  if (where.kind === 'document') return `#${APP_ROUTES.document(projectId, where.documentId)}`;
   return null;
 };
 
@@ -85,10 +82,8 @@ const citationToMarkdown = (c, { origin, projectId }) => {
 // A link back into a document this app is showing: the document it names and
 // the sentence to put in view, or null when it points somewhere else.
 export const parseCitationHref = (href) => {
-  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\/annotate(?:\?sent=([^&]+))?/.exec(
-    href || '',
-  );
-  return m ? { documentId: m[1], focus: m[2] ? decodeURIComponent(m[2]) : null } : null;
+  const link = parseSentenceHref(href);
+  return link && { documentId: link.documentId, focus: link.sentenceId };
 };
 
 export const UD_ASSISTANT = {

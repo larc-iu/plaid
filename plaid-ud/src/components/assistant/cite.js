@@ -4,6 +4,7 @@
 // (a hot update, or another entry order) found the adapter's `ExampleCard`
 // uninitialized and went blank.
 import { citationFocus } from '@ui/components/assistant/citations.js';
+import { APP_ROUTES } from '../../appRoutes.js';
 
 // The sentence in the annotation editor. The route is `annotate`, and the
 // sentence rides in the URL so the link is shareable and a middle-click opens
@@ -12,8 +13,7 @@ import { citationFocus } from '@ui/components/assistant/citations.js';
 // `?sent=` takes the sentence's TOKEN ID. The editor reads a number too, but a
 // number moves when a sentence is split or merged, and an id does not.
 export const sentenceHref = (origin, projectId, c) =>
-  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate` +
-  (c.sentenceId ? `?sent=${encodeURIComponent(c.sentenceId)}` : '');
+  `${origin || ''}#${APP_ROUTES.sentence(projectId, c.documentId, c.sentenceId)}`;
 
 export const citationTitle = (c) => {
   const focus = citationFocus(c);

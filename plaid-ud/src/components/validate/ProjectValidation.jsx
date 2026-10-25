@@ -2,6 +2,7 @@ import { cn } from '@ui/lib/utils';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { APP_ROUTES } from '../../appRoutes.js';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -65,7 +66,7 @@ const Occurrences = ({ found, projectId }) => (
           {doc.sentences.map((sentId, i) => (
             <Link
               key={sentId}
-              to={`/projects/${projectId}/documents/${doc.docId}/annotate?sent=${sentId}`}
+              to={APP_ROUTES.sentence(projectId, doc.docId, sentId)}
               className="rounded bg-background px-1.5 py-0.5 hover:underline"
             >
               occurrence {i + 1}

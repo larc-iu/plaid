@@ -4,6 +4,7 @@
 //
 // This is the whole of IGT's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-ud has an adapter of its own.
+import { APP_ROUTES, parseSentenceHref } from '../../../appRoutes.js';
 import { readInitialized, readLanguages } from '../../../domain/igtConfig.js';
 import { isTagsetPlan, writeTagsetPlan } from '../../../domain/tagsetPlan.js';
 import { putRulesInForce } from '../settings/putRulesInForce.js';
@@ -28,8 +29,8 @@ export { citationHighlights, citationRows, citationTitle, sentenceHref };
 export const changeHref = (projectId, where) => {
   if (!where) return null;
   if (where.kind === 'token') {
-    const at = typeof where.begin === 'number' && where.word ? `&focusWord=${where.begin}` : '';
-    return `#/projects/${projectId}/documents/${where.documentId}?tab=analyze&focusSentence=${where.sentenceId}${at}`;
+    const word = where.word ? where.begin : null;
+    return `#${APP_ROUTES.sentence(projectId, where.documentId, where.sentenceId, { word })}`;
   }
   if (where.kind === 'document') return `#/projects/${projectId}/documents/${where.documentId}`;
   if (where.kind === 'entry' && where.vocabId) return `#/vocabularies/${where.vocabId}`;
@@ -99,14 +100,8 @@ const changePlace = (projectId, where) => {
 // it to land on the cited WORD, so dropping it made an in-place scroll deliver
 // less than opening the very same link in a new tab.
 export const parseCitationHref = (href) => {
-  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\?[^#]*focusSentence=([^&]+)/.exec(href || '');
-  if (!m) return null;
-  const at = /[?&]focusWord=(\d+)/.exec(href);
-  return {
-    documentId: m[1],
-    focus: decodeURIComponent(m[2]),
-    begin: at ? Number(at[1]) : null,
-  };
+  const link = parseSentenceHref(href);
+  return link && { documentId: link.documentId, focus: link.sentenceId, begin: link.word };
 };
 
 export const IGT_ASSISTANT = {

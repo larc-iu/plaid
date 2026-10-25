@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { APP_ROUTES } from '../../appRoutes.js';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -50,7 +51,7 @@ export const TextEditor = () => {
   // Alt+click a token: hand over to Annotate at that sentence, using the same
   // `?sent=` the Search results already land on.
   const openInAnnotate = (sentenceTokenId) =>
-    navigate(`/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceTokenId}`);
+    navigate(APP_ROUTES.sentence(projectId, documentId, sentenceTokenId));
 
   // The other direction: arriving from Annotate with `?sent=`, scroll that
   // sentence's block into view and flash it. Once per id, so a later render

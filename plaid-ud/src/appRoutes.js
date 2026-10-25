@@ -11,8 +11,11 @@ export const APP_ROUTES = {
   profile: '/profile',
   documents: (projectId) => `/projects/${projectId}/documents`,
   document: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}/annotate`,
+  // `?sent=` takes the sentence's TOKEN ID. With no sentence it is the
+  // document's Annotate screen.
   sentence: (projectId, documentId, sentenceId) =>
-    `/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceId}`,
+    `/projects/${projectId}/documents/${documentId}/annotate` +
+    (sentenceId ? `?sent=${encodeURIComponent(sentenceId)}` : ''),
   // What kind of screen a path is, for the shell: whether a project is in
   // scope, whether the width belongs to a document, and whether the assistant
   // already has the whole screen.
@@ -21,4 +24,17 @@ export const APP_ROUTES = {
     document: (path) => /^\/projects\/[^/]+\/documents\/[^/]+/.test(path),
     assistant: (path) => /^\/projects\/[^/]+\/assistant\/?$/.test(path),
   },
+};
+
+/**
+ * A document or sentence link read back, as `APP_ROUTES.sentence` writes it
+ * behind a `#` (with or without an origin before it): `{documentId,
+ * sentenceId}`, `sentenceId` null for the document alone, or null for a link
+ * that is not one.
+ */
+export const parseSentenceHref = (href) => {
+  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\/annotate(?:\?sent=([^&]+))?/.exec(
+    href || '',
+  );
+  return m ? { documentId: m[1], sentenceId: m[2] ? decodeURIComponent(m[2]) : null } : null;
 };

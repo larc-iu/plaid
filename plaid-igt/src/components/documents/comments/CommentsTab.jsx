@@ -4,6 +4,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { buildAnchorIndex } from '@/domain/commentAnchors';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
+import { APP_ROUTES } from '@/appRoutes';
 
 // The document's Comments tab: every thread in the document, described by the
 // shared IgtDocument, with the document's own thread pinned first.
@@ -35,11 +36,8 @@ export const CommentsTab = () => {
       canWrite={canWrite}
       canDeleteAny={canManage}
       // Deep-link into the interlinear editor, focused on the sentence the
-      // thread hangs off. `focusSentence` is the param DocumentDetail already
-      // reads for exactly this.
-      jumpHref={(sentenceId) =>
-        `/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${sentenceId}`
-      }
+      // thread hangs off.
+      jumpHref={(sentenceId) => APP_ROUTES.sentence(projectId, documentId, sentenceId)}
       jumpTitle="Show in the interlinear editor"
       emptyText="Nothing else in this document has comments yet. Add one from the Analyze tab by hovering a word or a sentence."
       positionLabel="In text order"

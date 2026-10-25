@@ -5,6 +5,7 @@
 // hot update, or another entry order) found the adapter's `ExampleCard`
 // uninitialized and went blank.
 import { citationFocus } from '@ui/components/assistant/citations.js';
+import { APP_ROUTES } from '../../../appRoutes.js';
 
 // The sentence in the editor, and the first cited word within it: both ride in
 // the URL, so the link is shareable and a middle-click opens it in a new tab
@@ -12,8 +13,7 @@ import { citationFocus } from '@ui/components/assistant/citations.js';
 export const sentenceHref = (origin, projectId, c) => {
   const [first] = citationFocus(c);
   const word = first && (c.words || []).find((w) => w.index === first.word);
-  const at = typeof word?.begin === 'number' ? `&focusWord=${word.begin}` : '';
-  return `${origin || ''}#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}${at}`;
+  return `${origin || ''}#${APP_ROUTES.sentence(projectId, c.documentId, c.sentenceId, { word: word?.begin })}`;
 };
 
 export const citationTitle = (c) => {

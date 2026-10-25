@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { APP_ROUTES } from '../../appRoutes.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { NotSetUpNotice } from '@ui/components/shared/NotSetUpNotice.jsx';
@@ -268,8 +269,7 @@ export const SearchPage = () => {
   }, [plan, applying, selected, getClient, runPreview]);
 
   const sentenceHref = useCallback(
-    (docId, sentenceId) =>
-      `/projects/${projectId}/documents/${docId}/annotate?sent=${encodeURIComponent(sentenceId)}`,
+    (docId, sentenceId) => APP_ROUTES.sentence(projectId, docId, sentenceId),
     [projectId],
   );
 

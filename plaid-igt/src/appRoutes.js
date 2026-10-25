@@ -13,9 +13,13 @@ export const APP_ROUTES = {
   // The document list is the project screen's first tab, not a route of its own.
   documents: (projectId) => `/projects/${projectId}`,
   document: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}`,
-  // A sentence is reached on the tab that draws it, which is the grid.
-  sentence: (projectId, documentId, sentenceId) =>
-    `/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${sentenceId}`,
+  // A sentence is reached on the tab that draws it, which is the grid, and
+  // `word` (a word's begin offset) puts the caret on that word. With no
+  // sentence it is the document's Analyze tab.
+  sentence: (projectId, documentId, sentenceId, { word } = {}) =>
+    `/projects/${projectId}/documents/${documentId}?tab=analyze` +
+    (sentenceId == null ? '' : `&focusSentence=${encodeURIComponent(sentenceId)}`) +
+    (typeof word === 'number' ? `&focusWord=${word}` : ''),
   // What kind of screen a path is, for a shell: whether a project is in scope,
   // whether the width belongs to a document, and whether the assistant already
   // has the whole screen.
@@ -27,4 +31,20 @@ export const APP_ROUTES = {
     // itself, and it is the only thing here that asks.
     assistant: () => false,
   },
+};
+
+/**
+ * A sentence link read back, as `APP_ROUTES.sentence` writes it behind a `#`
+ * (with or without an origin before it): `{documentId, sentenceId, word}`,
+ * `word` null when the link names none, or null for a link that is not one.
+ */
+export const parseSentenceHref = (href) => {
+  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\?[^#]*focusSentence=([^&]+)/.exec(href || '');
+  if (!m) return null;
+  const at = /[?&]focusWord=(\d+)/.exec(href);
+  return {
+    documentId: m[1],
+    sentenceId: decodeURIComponent(m[2]),
+    word: at ? Number(at[1]) : null,
+  };
 };
