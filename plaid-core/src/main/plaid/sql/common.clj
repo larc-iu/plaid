@@ -451,14 +451,21 @@
           (doseq [[t k] tables]
             (when-let [row (q1 tx {:select [:id] :from [t] :where [:in :id (vec chunk)]})]
               (throw (id-taken k (:id row) false))))
-          (when-let [row (q1 tx {:select [:target_table :target_id]
-                                 :from [:audit_writes]
-                                 :where [:and
-                                         ;; Inline, so SQLite can match the partial
-                                         ;; index idx_audit_writes_deleted.
-                                         [:= :change_type [:inline "delete"]]
-                                         [:in :target_table (mapv (comp name first) tables)]
-                                         [:in :target_id (vec chunk)]]})]
+          ;; One seek of idx_audit_writes_deleted per id and table, whatever
+          ;; its statistics say. SQLite's staleness test watches a table's
+          ;; row count, not a partial index's, and on statistics taken while
+          ;; the index held a few rows SQLite sought it by table alone and
+          ;; read every delete row ever written, under the write lock. The
+          ;; ids go in as one JSON array, the outer loop of a CROSS JOIN, so
+          ;; each is an equality on target_id. `delete` is inline so the
+          ;; partial index applies.
+          (when-let [row (q1 tx (into [(str "SELECT a.target_table, a.target_id FROM json_each(?) AS j "
+                                            "CROSS JOIN audit_writes AS a INDEXED BY idx_audit_writes_deleted "
+                                            "WHERE a.change_type = 'delete' AND a.target_id = j.value "
+                                            "AND a.target_table IN ("
+                                            (str/join ", " (repeat (count tables) "?")) ") LIMIT 1")
+                                       (write-json (vec chunk))]
+                                      (map (comp name first) tables)))]
             (throw (id-taken (get id-tables (keyword (:target_table row)) kind)
                              (:target_id row) true))))))))
 
