@@ -931,10 +931,11 @@ class Compiler {
 
   emitGlobalFlag(item) {
     const name = item.name;
-    // Tree/forest/acyclicity: constant-folded against the UD tree invariant
-    // (one head per word, root self-loop, acyclic by construction).
-    const TRUE = new Set(['is_tree', 'is_forest', 'is_not_cyclic']);
-    const FALSE = new Set(['is_not_tree', 'is_not_forest', 'is_cyclic']);
+    // Forest/acyclicity: constant-folded against the UD tree invariant (one
+    // head per word, root self-loop, acyclic by construction). The parser
+    // refuses is_tree and is_not_tree.
+    const TRUE = new Set(['is_forest', 'is_not_cyclic']);
+    const FALSE = new Set(['is_not_forest', 'is_cyclic']);
     if (TRUE.has(name)) {
       this.warnTreeInvariant();
       return;

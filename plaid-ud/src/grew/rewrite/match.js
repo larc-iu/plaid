@@ -562,10 +562,6 @@ function checkFlag(name, g) {
       return isProjective(g);
     case 'is_not_projective':
       return !isProjective(g);
-    case 'is_tree':
-      return isForest(g) && rootCount(g) === 1;
-    case 'is_not_tree':
-      return !(isForest(g) && rootCount(g) === 1);
     case 'is_forest':
       return isForest(g);
     case 'is_not_forest':
@@ -582,11 +578,6 @@ function checkFlag(name, g) {
 // The tree flags and projectivity read the structure between words; the
 // anchor's root edge is not part of it (every sentence would be non-
 // projective otherwise).
-function rootCount(g) {
-  const withHead = new Set(structureEdges(g).map((e) => e.tgt));
-  return liveWords(g).filter((n) => !withHead.has(n.id)).length;
-}
-
 function isForest(g) {
   const heads = new Map();
   for (const e of structureEdges(g)) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);

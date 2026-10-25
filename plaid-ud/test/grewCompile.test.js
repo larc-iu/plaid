@@ -161,9 +161,9 @@ test('is_not_projective: positive top-level crossing/root-cover or, no negation'
   assert.ok(!flat(query.where).some((c) => c[0] === 'related*'));
 });
 
-test('is_cyclic constant-folds to impossible; is_tree is fine', () => {
+test('is_cyclic constant-folds to impossible; is_forest is fine', () => {
   assert.equal(compile('global { is_cyclic }').impossible, true);
-  assert.equal(compile('global { is_tree }').impossible, false);
+  assert.equal(compile('global { is_forest }').impossible, false);
 });
 
 test('delta = 2 builds a precedes chain with one intermediate', () => {

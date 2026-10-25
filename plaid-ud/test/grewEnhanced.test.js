@@ -288,10 +288,10 @@ test('the same rule finds nothing to do where the edge already is', () => {
   assert.equal(run(ENHANCED, SHARED_SUBJECT).applications.length, 0);
 });
 
-test('an extra edge does not make the tree a non-tree', () => {
+test('an extra edge does not make the tree a non-forest', () => {
   const r = run(
     ENHANCED,
-    'pattern { X [upos=PRON] } without { X [Seen] } global { is_tree; is_projective } commands { X.Seen = Yes }',
+    'pattern { X [upos=PRON] } without { X [Seen] } global { is_forest; is_not_cyclic; is_projective } commands { X.Seen = Yes }',
   );
   assert.equal(r.applications.length, 1);
 });

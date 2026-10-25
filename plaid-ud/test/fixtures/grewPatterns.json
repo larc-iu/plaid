@@ -317,5 +317,9 @@
   "pattern { X [lemma=re\"^.$\"] }",
   "pattern { X [upos=NOUN, !Gender]; X.lemma = lex.noun }",
   "pattern { X [lemma=\"be\"] }",
-  "pattern { X [v=re\"<b>\"] }"
+  "pattern { X [v=re\"<b>\"] }",
+  "pattern { X [upos=VERB] } global { is_forest; is_not_cyclic }",
+  "pattern { X [upos] } global { is_forest }",
+  "pattern { X [] } global { is_not_forest }",
+  "pattern { X [upos=VERB] } without { X -[obj]-> Y } global { is_projective }"
 ]

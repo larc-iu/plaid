@@ -216,8 +216,8 @@ export const GrewHelp = ({ onPick }) => (
           </li>
         </Bullets>
         <p className="text-sm text-muted-foreground">
-          Not supported: grew lexicons and cluster-by, and very large linear distances.{' '}
-          <C>is_tree</C> / <C>is_cyclic</C> assume well-formed UD trees.
+          Not supported: grew lexicons and cluster-by, <C>is_tree</C> / <C>is_not_tree</C>, and very
+          large linear distances. <C>is_forest</C> / <C>is_cyclic</C> assume well-formed UD trees.
         </p>
       </div>
     </Panel>

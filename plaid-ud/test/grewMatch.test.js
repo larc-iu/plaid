@@ -141,10 +141,7 @@ test('global block: projectivity, tree flags, and sentence metadata', () => {
   assert.equal(all(g1, 'pattern { X [upos=VERB] } global { is_projective }').length, 1);
   assert.equal(all(g2, 'pattern { X [upos=VERB] } global { is_projective }').length, 0);
   assert.equal(all(g2, 'pattern { X [upos=VERB] } global { is_not_projective }').length, 1);
-  assert.equal(
-    all(g1, 'pattern { X [upos=VERB] } global { is_tree; is_forest; is_not_cyclic }').length,
-    1,
-  );
+  assert.equal(all(g1, 'pattern { X [upos=VERB] } global { is_forest; is_not_cyclic }').length, 1);
   assert.equal(all(g1, 'pattern { X [upos=VERB] } global { is_cyclic }').length, 0);
   assert.equal(all(g1, 'pattern { X [upos=VERB] } global { sent_id = "s1" }').length, 1);
   assert.equal(all(g1, 'pattern { X [upos=VERB] } global { sent_id <> "s1" }').length, 0);
@@ -152,8 +149,8 @@ test('global block: projectivity, tree flags, and sentence metadata', () => {
   assert.equal(all(g1, 'pattern { X [upos=VERB] } global { !newpar }').length, 1);
   // A dangling head (3 has no node) drops that relation: y is then a root.
   const g3 = graphFromSentence(doc.sentences[2]);
-  assert.equal(all(g3, 'pattern { X [upos] } global { is_tree }').length, 2);
-  assert.equal(all(g3, 'pattern { X [] } global { is_not_tree }').length, 0);
+  assert.equal(all(g3, 'pattern { X [upos] } global { is_forest }').length, 2);
+  assert.equal(all(g3, 'pattern { X [] } global { is_not_forest }').length, 0);
 });
 
 test('edge crossing', () => {

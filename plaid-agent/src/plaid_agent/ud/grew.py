@@ -787,10 +787,11 @@ class _Compiler:
     def emit_global_flag(self, item: Dict[str, Any]) -> None:
         name = item['name']
         # Folded against the UD tree invariant: one head per word, acyclic.
-        if name in ('is_tree', 'is_forest', 'is_not_cyclic'):
+        # The parser refuses is_tree and is_not_tree.
+        if name in ('is_forest', 'is_not_cyclic'):
             self.warn_tree_invariant()
             return
-        if name in ('is_not_tree', 'is_not_forest', 'is_cyclic'):
+        if name in ('is_not_forest', 'is_cyclic'):
             self.warn_tree_invariant()
             self.impossible = True
             return

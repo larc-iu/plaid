@@ -124,11 +124,17 @@ function matched(ast) {
   );
 }
 
-// Gaps found and reported (fixes/W3-E.md), each waiting on a ruling. The
-// compiler folds `is_not_tree` to no match by the UD tree invariant, and an
-// import keeps a word with no head ("now" here), whose sentence the matcher
-// reads as no tree.
-const KNOWN = new Set(['global { is_not_tree }', 'pattern { X [] } global { is_not_tree }']);
+// An import keeps a word with no head ("now" here), so the UD tree invariant
+// cannot answer `is_tree` or `is_not_tree`: the parser refuses both, and they
+// are not compared.
+const TREE_FLAG_PATTERNS = PATTERNS.filter((p) => /\bis_(not_)?tree\b/.test(p));
+
+test('a pattern with is_tree or is_not_tree is refused', () => {
+  expect(TREE_FLAG_PATTERNS.length).toBeGreaterThan(4);
+  for (const pattern of TREE_FLAG_PATTERNS) {
+    expect(() => parse(pattern), pattern).toThrow(GrewUnsupportedError);
+  }
+});
 
 test('every sentence a rule matches locally is one the search finds', async () => {
   test.setTimeout(10 * 60 * 1000);
@@ -160,7 +166,7 @@ test('every sentence a rule matches locally is one the search finds', async () =
     counts.compared += 1;
     if (local.size) counts.matched += 1;
     const lost = [...local].filter((id) => !server.has(id));
-    if (lost.length && !KNOWN.has(pattern)) {
+    if (lost.length) {
       const names = lost.map((id) => S.doc.sentences.find((r) => String(r.id) === id)?.text);
       missed.push(`${pattern}: the search misses ${names.join(' | ')}`);
     }

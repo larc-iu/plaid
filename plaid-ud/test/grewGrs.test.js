@@ -226,6 +226,36 @@ test('errors: unknown command, missing commands, duplicate names, unsupported ke
   );
 });
 
+// An import keeps words with no head, so the search's tree invariant does not
+// hold: folded, `is_not_tree` found nothing and a rule with it rewrote nothing.
+test('is_tree and is_not_tree are refused in a search and in a rewrite', () => {
+  const refused = (fn, flag, line) =>
+    assert.throws(fn, (e) => {
+      assert.ok(e instanceof GrewUnsupportedError);
+      assert.equal(e.feature, flag);
+      assert.equal(e.message, `\`${flag}\` is not supported.`);
+      assert.equal(e.line, line);
+      return true;
+    });
+  refused(() => parse('global { is_not_tree }'), 'is_not_tree', 1);
+  refused(() => parse('pattern { X [] }\nglobal { is_tree; is_projective }'), 'is_tree', 2);
+  refused(
+    () => parseGrs('pattern { X [] } global { is_not_tree } commands { X.Seen = Yes }'),
+    'is_not_tree',
+    1,
+  );
+  refused(
+    () =>
+      parseGrs('rule r { pattern { X [upos=VERB] } global { is_tree } commands { del_node X } }'),
+    'is_tree',
+    1,
+  );
+  // The other whole-sentence checks still parse.
+  for (const flag of ['is_forest', 'is_not_forest', 'is_cyclic', 'is_not_cyclic']) {
+    assert.equal(parse(`global { ${flag} }`).blocks[0].items[0].name, flag);
+  }
+});
+
 test('X > Y and X >> Y are Y < X and Y << X', () => {
   const items = (s) => parse(s).blocks[0].items;
   assert.deepEqual(items('pattern { X > Y }')[0], {

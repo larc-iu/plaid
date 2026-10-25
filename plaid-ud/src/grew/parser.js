@@ -24,6 +24,8 @@ import { splitLabel } from './edgeLabel.js';
 const STRAT_OPS = new Set(['Onf', 'Iter', 'Seq', 'Alt', 'Pick', 'Try', 'Empty']);
 const FIELD_SEP = '\t';
 const GRS_KEYWORDS = new Set(['rule', 'strat', 'commands', 'package', 'include', 'import']);
+// Refused: see parseGlobalItem.
+const TREE_FLAGS = new Set(['is_tree', 'is_not_tree']);
 
 export function parse(src) {
   return createParser(src).request();
@@ -766,6 +768,15 @@ function createParser(src) {
     }
     const idTok = expect(TT.IDENT, 'a global constraint');
     if (/^is_/.test(idTok.value) && !at(TT.EQ) && !at(TT.NEQ)) {
+      // An import keeps words with no head, so whether a sentence is one tree
+      // is a question the search cannot answer from the invariant.
+      if (TREE_FLAGS.has(idTok.value)) {
+        throw new GrewUnsupportedError(
+          idTok.value,
+          `\`${idTok.value}\` is not supported.`,
+          idTok.line,
+        );
+      }
       return { kind: 'globalflag', name: idTok.value, line: idTok.line };
     }
     const op = at(TT.NEQ) ? '<>' : (expect(TT.EQ, "'=' or '<>'"), '=');

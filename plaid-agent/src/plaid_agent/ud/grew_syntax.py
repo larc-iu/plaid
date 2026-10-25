@@ -362,6 +362,8 @@ def lex(src: str) -> List[Dict[str, Any]]:
 
 BLOCK_TYPES = ('pattern', 'with', 'without', 'global')
 GRS_KEYWORDS = ('rule', 'strat', 'commands', 'package', 'include', 'import')
+# Refused: see global_item.
+TREE_FLAGS = ('is_tree', 'is_not_tree')
 _DIST_OPS = {'EQ': '=', 'LT': '<', 'LE': '<=', 'GT': '>', 'GE': '>='}
 
 
@@ -683,6 +685,11 @@ class _Parser:
             return {'kind': 'globalmeta', 'key': key, 'op': 'undefined', 'value': None}
         id_tok = self.expect(IDENT, 'a global constraint')
         if id_tok['value'].startswith('is_') and not self.at('EQ') and not self.at('NEQ'):
+            # An import keeps words with no head, so whether a sentence is one
+            # tree is a question the search cannot answer from the invariant.
+            if id_tok['value'] in TREE_FLAGS:
+                raise GrewUnsupportedError(id_tok['value'], f"`{id_tok['value']}` is not supported.",
+                                           id_tok['line'])
             return {'kind': 'globalflag', 'name': id_tok['value'], 'line': id_tok['line']}
         if self.at('NEQ'):
             op = '<>'

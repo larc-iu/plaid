@@ -146,7 +146,7 @@ test('non-injective $ recorded at request level', () => {
 });
 
 test('multiple blocks', () => {
-  const r = parse('pattern { X [upos=VERB] } without { X -[obj]-> Y } global { is_tree }');
+  const r = parse('pattern { X [upos=VERB] } without { X -[obj]-> Y } global { is_projective }');
   assert.deepEqual(
     r.blocks.map((b) => b.type),
     ['pattern', 'without', 'global'],
