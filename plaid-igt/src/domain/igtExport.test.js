@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatPlain, formatTsv, formatGb4e, formatExpex, formatLeipzig } from './igtExport.js';
-import { parseDelimited } from '../import/delimited.js';
+import { parseDelimited } from '@ui/lib/delimited.js';
 
 const FIELDS = {
   morphFields: ['Gloss'],

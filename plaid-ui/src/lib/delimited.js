@@ -1,5 +1,5 @@
-// Delimited text (CSV, TSV) as rows of cells, for the CLDF reader and the
-// vocabulary bulk import.
+// Delimited text (CSV, TSV) as rows of cells, for igt's CLDF reader and
+// vocabulary bulk import, and the tables an assistant conversation export shows.
 
 /**
  * Split delimited text into rows of cells. Quoting follows RFC 4180 (a quote

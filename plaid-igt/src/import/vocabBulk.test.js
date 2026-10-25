@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDelimited } from './delimited.js';
+import { parseDelimited } from '@ui/lib/delimited.js';
 import {
   FORM,
   IGNORE,

@@ -15,7 +15,7 @@
 
 import { unzipSync } from 'fflate';
 import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
-import { parseDelimited } from '../delimited.js';
+import { parseDelimited } from '@ui/lib/delimited.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
 

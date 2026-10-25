@@ -29,7 +29,7 @@ import { entryForm } from '@larc-iu/plaid-client';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { entryTagsetFor, isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
 import { buildItemNumbers, buildSenseTree, morphTypeOf } from '../domain/vocabDictionary.js';
-import { parseDelimited } from './delimited.js';
+import { parseDelimited } from '@ui/lib/delimited.js';
 import { tsvCell } from '../export/vocabTsv.js';
 
 /** Mapping sentinels: a column becomes the item's form, or is left out. */

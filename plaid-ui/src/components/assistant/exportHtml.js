@@ -28,6 +28,7 @@ import { closedTurns } from './projectReach.js';
 import { roundPrefix, roundsInHand } from './rounds.js';
 import { usedCss } from './exportCss.js';
 import { countOf } from '../../lib/plural.js';
+import { parseDelimited } from '../../lib/delimited.js';
 
 const TOOL_OUTPUT_CHARS = 4000;
 const TOOL_OUTPUT_TOTAL = 1_000_000;
@@ -153,37 +154,8 @@ export const prepareExport = (conv, { projectId, readable, stored = new Map() })
 // delimiter, a doubled quote and line breaks. The first row is the header.
 export const parseTable = (text, name) => {
   const sep = /\.tsv$/i.test(name) ? '\t' : ',';
-  const src = String(text ?? '').replace(/^\uFEFF/, '');
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let quoted = false;
-  for (let i = 0; i < src.length; i += 1) {
-    const ch = src[i];
-    if (quoted) {
-      if (ch === '"' && src[i + 1] === '"') {
-        cell += '"';
-        i += 1;
-      } else if (ch === '"') quoted = false;
-      else cell += ch;
-    } else if (ch === '"' && cell === '') quoted = true;
-    else if (ch === sep) {
-      row.push(cell);
-      cell = '';
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && src[i + 1] === '\n') i += 1;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = '';
-    } else cell += ch;
-  }
-  if (cell !== '' || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-  const [header = [], ...body] = rows;
-  return { header, rows: body };
+  const [header = [], ...rows] = parseDelimited(text, sep, { keepBlank: true }).map((r) => r.cells);
+  return { header, rows };
 };
 
 const TABLE_FILE = /\.(csv|tsv)$/i;
