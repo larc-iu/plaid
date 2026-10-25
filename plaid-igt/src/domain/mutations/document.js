@@ -268,8 +268,9 @@ export const documentMutations = {
   // The edit half of `editBaselineText`, from inside its send. The edit names
   // the word layer of "Tokenize new text" (`tokenizeLayerOf`), and the server
   // makes the words of the text it types, which come in its answer. A text
-  // with no sentences gets its partition in the same batch as the edit,
-  // measured on the body the edit makes. A lost answer is sent again by the
+  // with no token gets its partition in the same batch as the edit, measured
+  // on the body the edit makes, when that body has nothing to compose
+  // (`_planBaselineEdit`). A lost answer is sent again by the
   // queue: the plan is sent again as it was, under its keys, and answered
   // from what the first send stored. Answers whether the document is to be
   // read: a batch is not patched from its answer, and an answer to a request
@@ -292,9 +293,10 @@ export const documentMutations = {
         if (batched) {
           // The tokens after it are stamped with the version from before the
           // batch, so the edit is stamped too, and checked first. The text
-          // holds no token, so the server stores the body composed whole.
+          // holds no token and the new body has nothing to compose, so the
+          // server stores it as sent.
           const info = this.layerInfo;
-          const body = composeText(applyTextOps(plan.base, ops)).text;
+          const body = applyTextOps(plan.base, ops);
           await this._client.batched(async (b) => {
             b.texts.edit(textId, ops, undefined, {
               base: plan.digest,
@@ -358,10 +360,11 @@ export const documentMutations = {
   // onto the stored body (a conflict throws), its digest (a text with none
   // is read once more, then refused), and new keys. And whether the text
   // needs its first sentences in the edit's batch: only when it holds no
-  // token at all. With tokens, where the server's rule leaves their edges
-  // decides which characters it composes, so the body it stores is known only
-  // from its answer, and the sentences are seeded after it
-  // (`_saveBaselineEdit`). False when the gaps change nothing.
+  // token at all and composing the new body changes nothing. Where tokens
+  // are, or the words "Tokenize new text" makes, their edges decide which
+  // characters the server composes, so the body it stores is known only from
+  // its answer, and the sentences are seeded after it (`_saveBaselineEdit`).
+  // False when the gaps change nothing.
   async _planBaselineEdit(plan, stored) {
     const ready = await planOn(plan, stored, {
       read: () => this._readStoredText(),
@@ -369,8 +372,10 @@ export const documentMutations = {
       conflict: BASELINE_CONFLICT,
       unread: NO_DIGEST,
     });
+    const after = applyTextOps(plan.base, gapsToOps(plan.gaps));
     plan.seed =
-      cpLength(applyTextOps(plan.base, gapsToOps(plan.gaps))) > 0 &&
+      cpLength(after) > 0 &&
+      composeText(after).text === after &&
       (this.layerInfo.primaryTextLayer?.tokenLayers || []).every((l) => !l.tokens?.length);
     return ready;
   },

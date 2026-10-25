@@ -197,6 +197,34 @@ describe('editBaselineText', () => {
     expect(seed.map((s) => [s.begin, s.end])).toEqual([[0, 2]]);
   });
 
+  // "Tokenize new text" cuts what it types into words, and its cuts are token
+  // edges too: under the default ignored-tokens rule "=" is a word of its
+  // own, so the server keeps "=" and U+0338 apart, four characters where
+  // the body composed whole has three ("≠").
+  it('seeds the first sentences on the body the server stored when what is typed would compose', async () => {
+    const tokenFree = (body) => {
+      const raw = withDigest(buildDoc({ body, sentences: [], words: [], morphemes: [] }), 'd0');
+      raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL').config.igt.tokenizeNewText = true;
+      return raw;
+    };
+    const stored = 'a=\u0338b';
+    const client = makeFakeClient({ reloadDoc: tokenFree(stored) });
+    client.texts.edit = async (id, ops, auditMessage, options) => {
+      client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });
+      return {
+        id,
+        body: stored,
+        digest: 'd1',
+        reshape: { tokens: [], spans: [], vocabLinks: [], deleted: {} },
+      };
+    };
+    const doc = makeDoc({ raw: tokenFree('a'), client });
+    const gaps = [{ start: 1, end: 1, value: '=\u0338b' }];
+    expect(await doc.editBaselineText({ base: 'a', digest: 'd0', gaps })).toBe(true);
+    const seed = client.calls.find((c) => c.kind === 'tokens.bulkCreate').args[0];
+    expect(seed.map((s) => [s.begin, s.end])).toEqual([[0, 4]]);
+  });
+
   // Sent again under its keys, the answer may be the first send's, replayed:
   // the text is read, and shows what the server stored.
   it('sends an edit whose answer was lost again, the same request, and shows the text stored', async () => {
