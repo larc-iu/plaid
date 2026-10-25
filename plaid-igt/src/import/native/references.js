@@ -10,6 +10,14 @@
 // is written in its place. Only a whole string counts. A key, part of a
 // longer string, or a value of any other type is data, never a reference.
 //
+// Where an id is NOT rewritten: inside a longer string in metadata, in other
+// apps' layer config (restoreOtherLayers rewrites the layer ids there only),
+// and in a vocabulary's config. No app writes an entry or document id in any
+// of these today. Other apps' project settings are rewritten, ids inside
+// longer strings included (otherLayers.js relinkOtherSettings). A writer of
+// ids in one of the three places needs relinkOtherSettings' remap run over it
+// too, and the fidelity snapshot shows such an id raw.
+//
 // See REFERENCE_KINDS for which ids those are. A vocabulary entry is one too:
 // the import makes every entry anew before any document, and the engine's
 // lookup finds those through its entry map.
