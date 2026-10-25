@@ -583,6 +583,17 @@ const PASS_THROUGH = [
   })),
 ];
 
+// Call sites in plaid-ui that only another app's screens reach. The General
+// page's Language card writes under the namespace the mounting app names, and
+// plaid-igt's General settings pass no language.
+const OTHER_APPS_ONLY = [
+  {
+    file: 'plaid-ui/src/components/shared/ProjectGeneralPage.jsx',
+    resource: 'projects',
+    key: "'language'",
+  },
+];
+
 // Keys an entry's metadata reserves for structure (vocabFields.js).
 const RESERVED_ITEM_KEY_COVERAGE = {
   form: notData('the item’s own column, never stored as metadata'),
@@ -633,7 +644,7 @@ describe('what core stores and the app writes', () => {
     for (const call of calls) {
       const file = path.relative(root, call.file);
       if (
-        PASS_THROUGH.some(
+        [...PASS_THROUGH, ...OTHER_APPS_ONLY].some(
           (p) => p.file === file && p.resource === call.resource && p.key === call.key,
         )
       ) {
