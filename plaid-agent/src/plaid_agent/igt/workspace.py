@@ -561,7 +561,8 @@ class Workspace(BaseWorkspace):
                                 and entry_id.strip() in (str(val).strip(), *str(val).strip().split('/')[1:]):
                             name = view.label(it['id'])
                             part = '' if str(val).strip() == entry_id.strip() else 'part of '
-                            raise ToolError(f'"{entry_id}" is {part}the {k} field of {name}, not an id. Name it with '
+                            what = 'import stamp' if k in ENTRY_IMPORT_STAMP_KEYS else 'field'
+                            raise ToolError(f'"{entry_id}" is {part}the {k} {what} of {name}, not an id. Name it with '
                                             f'entry_form {name}, as read_lexicon numbers it. {_ENTRY_ID_IS}',
                                             kind='invalid-argument')
             raise ToolError(f'No lexicon entry with id {entry_id}. {_ENTRY_ID_IS} Name an entry by its form with '
