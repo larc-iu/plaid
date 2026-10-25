@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { isOnline, onOnlineChange, retryingText } from '../../lib/retrying.js';
+import { isOnline, onOnlineChange } from '../../lib/retrying.js';
+import { saveStateOf, saveStateText } from '../../lib/saveState.js';
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => 0;
@@ -19,21 +20,22 @@ export const SaveStatus = ({ doc }) => {
   // The wording names the browser's network, which changes with nothing else.
   useSyncExternalStore(onOnlineChange, isOnline);
   if (!doc) return null;
-  const offline = doc.isSaving && doc.isOffline;
-  const locked = doc.isSaving && !offline && doc.isLocked;
-  const waiting = offline || locked;
+  // A save simply on its way says nothing here, since the edit shows already.
+  const saving = saveStateOf(doc);
+  const waiting = saving === 'offline' || saving === 'locked';
+  const state = waiting ? saving : 'idle';
   return (
     <span
       role="status"
       aria-live="polite"
-      data-state={offline ? 'offline' : locked ? 'locked' : 'idle'}
+      data-state={state}
       className={
         waiting
           ? 'whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
           : undefined
       }
     >
-      {offline ? retryingText() : locked ? 'In use elsewhere, waiting' : ''}
+      {saveStateText(state)}
     </span>
   );
 };

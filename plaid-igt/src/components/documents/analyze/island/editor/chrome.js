@@ -9,7 +9,7 @@ import { humanizeError } from '@/utils/feedback';
 import { provConfidence, provTitle } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
-import { retryingText } from '@ui/lib/retrying.js';
+import { saveStateText } from '@ui/lib/saveState.js';
 import { buttonVariants } from '@ui/components/ui/button.jsx';
 import {
   RUN_BAR,
@@ -54,16 +54,6 @@ const FIRST = svg`<path d="m17 18-6-6 6-6" /><path d="M7 6v12" />`;
 const PREV = svg`<path d="m15 18-6-6 6-6" />`;
 const NEXT = svg`<path d="m9 18 6-6-6-6" />`;
 const LAST = svg`<path d="m7 18 6-6-6-6" /><path d="M17 6v12" />`;
-
-// What the save-status pill says in each state. `offline`: a write or a
-// refetch is being sent again until the server answers. `locked`: a write
-// waits for another writer's lock on the document to go (SaveStatus's words).
-const STATUS_TEXT = {
-  saving: () => 'Saving…',
-  offline: retryingText,
-  locked: () => 'In use elsewhere, waiting',
-  saved: () => 'Saved ✓',
-};
 
 export const chrome = {
   _template() {
@@ -215,7 +205,7 @@ export const chrome = {
   _statusPill() {
     const state = this._statusState || 'idle';
     return html`<span class="igt-status" role="status" aria-live="polite" data-state=${state}
-      >${STATUS_TEXT[state]?.() ?? ''}</span
+      >${saveStateText(state)}</span
     >`;
   },
 

@@ -51,6 +51,7 @@ import { conflicts } from './editor/conflicts.js';
 import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.js';
 import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
+import { saveStateOf } from '@ui/lib/saveState.js';
 
 export class IgtEditor {
   constructor(
@@ -475,13 +476,13 @@ export class IgtEditor {
     this._render();
   }
 
-  // Drive the save-status pill from doc.isSaving, doc.isOffline and
-  // doc.isLocked (no grid re-render). Offline is a save still on its way,
-  // waiting for the server. Locked is one waiting for another writer's lock on
-  // the document to go, which plaid-ui's SaveStatus says in ud and umr.
+  // Drive the save-status pill from the document's save state (plaid-ui
+  // saveState.js, read by SaveStatus in ud and umr too), with no grid
+  // re-render. The island adds the short "Saved" flash after a save lands.
   _syncStatus() {
-    if (this.doc.isSaving) {
-      this._statusState = this.doc.isOffline ? 'offline' : this.doc.isLocked ? 'locked' : 'saving';
+    const now = saveStateOf(this.doc);
+    if (now !== 'idle') {
+      this._statusState = now;
       clearTimeout(this._savedTimer);
     } else if (['saving', 'offline', 'locked'].includes(this._statusState)) {
       // Save just finished: flash "Saved" briefly unless it failed (the error
