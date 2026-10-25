@@ -52,7 +52,7 @@ import { removeTokensLocally } from '../textEdits.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { builtinRun } from '../builtinVersion.js';
-import { isTokenIgnored, readIgnoredTokens } from '../igtConfig.js';
+import { isTokenIgnored, orthographyKey, readIgnoredTokens } from '../igtConfig.js';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../serviceDefaults.js';
 
@@ -99,7 +99,7 @@ export const mergeAbsorbs = (info, body, words) => {
 };
 
 export const tokenMutations = {
-  // Set or update a per-orthography metadata key (`orthog:<name>`) on a word
+  // Set or update a per-orthography metadata key (`orthographyKey(name)`) on a word
   // token. Orthographies derive from the token's metadata at render time, so
   // the patch is the metadata entry alone.
   async updateOrthography(tokenId, orthographyName, value) {
@@ -112,7 +112,7 @@ export const tokenMutations = {
     const label = `Failed to update ${orthographyName}`;
     if (!this._canWrite(label)) return false;
     // The one key, so the token's other metadata is never written from this copy.
-    const ops = [{ op: 'set', path: [`orthog:${orthographyName}`], value }];
+    const ops = [{ op: 'set', path: [orthographyKey(orthographyName)], value }];
     this._applyRawPatch((next, infoNext) => {
       const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
       if (t) t.metadata = applyMetadataOps(t.metadata, ops);

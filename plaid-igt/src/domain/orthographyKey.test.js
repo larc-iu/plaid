@@ -24,12 +24,7 @@ const isTestFile = (rel) =>
   rel.startsWith('test/') ||
   rel === 'export/testFixtures.js';
 
-const ALLOWED = new Set([
-  'domain/igtConfig.js',
-  // Held by a lane still running when this gate landed (BH-3). It goes to
-  // orthographyKey and leaves this list when that lane is done.
-  'domain/mutations/tokens.js',
-]);
+const ALLOWED = new Set(['domain/igtConfig.js']);
 
 describe('the orthography key', () => {
   it('round-trips a name', () => {
