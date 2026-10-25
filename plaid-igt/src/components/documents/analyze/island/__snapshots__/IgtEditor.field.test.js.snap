@@ -1,0 +1,1301 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`_field markup > one-line cell: alternatives 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--alts",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat. Alt+↓ to list 2 values seen for this form",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": "fn",
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": "fn",
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: badge 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face igt-cell__face--badged",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: closed tagset, unknown 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--invalid",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-has-tagset": "1",
+    "data-tagset-delims": ".-",
+    "data-tagset-enforces": "1",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": ""FOO" is not in this field's tagset",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": "closed",
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "FOO",
+}
+`;
+
+exports[`_field markup > one-line cell: closed tagset, valid 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-has-tagset": "1",
+    "data-tagset-delims": ".-",
+    "data-tagset-enforces": "1",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "DET",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": "closed",
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "DET",
+}
+`;
+
+exports[`_field markup > one-line cell: conflict 1`] = `
+{
+  "attrs": {
+    "aria-describedby": "igt-conflict-wa%3Aw-1%3AGloss",
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--conflict",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face igt-cell__face--badged",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: conflict read-only 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "disabled": "",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": true,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: doubtful when empty 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "Gloss",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "",
+}
+`;
+
+exports[`_field markup > one-line cell: empty 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "Gloss",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "",
+}
+`;
+
+exports[`_field markup > one-line cell: extra class and confirm ids 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--x",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-confirm-word": "w-1",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: filled 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: filled read-only 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "disabled": "",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": true,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: guess 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--guess",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-guess-field": "Gloss",
+    "data-guess-source": "doc",
+    "data-guess-target": "w-1",
+    "data-guess-value": "cat",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "placeholder": "cat",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "Guess: cat. Enter to accept it, Ctrl+Enter to accept the whole word, type to replace",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "",
+}
+`;
+
+exports[`_field markup > one-line cell: guess from the lexicon 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--guess",
+      "igt-field--guess-entry",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-guess-field": "Gloss",
+    "data-guess-source": "vocab:entry",
+    "data-guess-target": "w-1",
+    "data-guess-value": "cat",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "placeholder": "cat",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "Guess: cat, from the linked entry, unconfirmed link. Enter to accept it, Ctrl+Enter to accept the whole word, type to replace",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "",
+}
+`;
+
+exports[`_field markup > one-line cell: guess read-only 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "disabled": "",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "Gloss",
+  },
+  "disabled": true,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "",
+}
+`;
+
+exports[`_field markup > one-line cell: held value 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "dog",
+}
+`;
+
+exports[`_field markup > one-line cell: machine 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--machine",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat: machine-made, unverified. Edit to fix, Ctrl+Enter to accept the whole word",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: machine doubtful 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--doubtful",
+      "igt-field--filled",
+      "igt-field--machine",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat: machine-made, unverified, 38% confident. Edit to fix, Ctrl+Enter to accept the whole word",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: one alternative 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": "fn",
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > one-line cell: small caps 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--smallcaps",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "DET",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "DET",
+}
+`;
+
+exports[`_field markup > one-line cell: suggest tagset, stray delimiter 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--invalid",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-has-tagset": "1",
+    "data-tagset-delims": ".-",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "There is a delimiter with nothing beside it",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": "suggest",
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "PL.",
+}
+`;
+
+exports[`_field markup > one-line cell: unsent 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--unsent",
+    ],
+    "data-cell-key": "wa:w-1:Gloss",
+    "data-tier": "wa:Gloss",
+    "dir": "auto",
+    "size": "5",
+    "spellcheck": "false",
+    "title": "cat",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "input",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: alternatives 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": "fn",
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: badge 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: closed tagset, unknown 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--invalid",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-has-tagset": "1",
+    "data-tagset-delims": ".-",
+    "data-tagset-enforces": "1",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+    "title": ""FOO" is not in this field's tagset",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": "closed",
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "FOO",
+}
+`;
+
+exports[`_field markup > sentence cell: closed tagset, valid 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-has-tagset": "1",
+    "data-tagset-delims": ".-",
+    "data-tagset-enforces": "1",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": "closed",
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "DET",
+}
+`;
+
+exports[`_field markup > sentence cell: conflict 1`] = `
+{
+  "attrs": {
+    "aria-describedby": "igt-conflict-sa%3As-1%3ATranslation",
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--conflict",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face igt-cell__face--noted",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: conflict read-only 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "disabled": "",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": true,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: doubtful when empty 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "",
+}
+`;
+
+exports[`_field markup > sentence cell: empty 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "",
+}
+`;
+
+exports[`_field markup > sentence cell: extra class and confirm ids 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+      "igt-field--x",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-confirm-sentence": "s-1",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: filled 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: filled read-only 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "disabled": "",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": true,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: guess 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "",
+}
+`;
+
+exports[`_field markup > sentence cell: guess from the lexicon 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "",
+}
+`;
+
+exports[`_field markup > sentence cell: guess read-only 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--empty",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "disabled": "",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": true,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "",
+}
+`;
+
+exports[`_field markup > sentence cell: held value 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "dog",
+}
+`;
+
+exports[`_field markup > sentence cell: machine 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--machine",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+    "title": "cat: machine-made, unverified. Edit to fix, Ctrl+Enter to accept the whole word. Ctrl+Enter to accept it as is",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: machine doubtful 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--doubtful",
+      "igt-field--filled",
+      "igt-field--machine",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+    "title": "cat: machine-made, unverified, 38% confident. Edit to fix, Ctrl+Enter to accept the whole word. Ctrl+Enter to accept it as is",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: one alternative 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": "fn",
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;
+
+exports[`_field markup > sentence cell: small caps 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "DET",
+}
+`;
+
+exports[`_field markup > sentence cell: suggest tagset, stray delimiter 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--invalid",
+      "igt-field--sentence",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-has-tagset": "1",
+    "data-tagset-delims": ".-",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+    "title": "There is a delimiter with nothing beside it",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": "suggest",
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "PL.",
+}
+`;
+
+exports[`_field markup > sentence cell: unsent 1`] = `
+{
+  "attrs": {
+    "aria-label": "Gloss",
+    "class": [
+      "igt-field",
+      "igt-field--filled",
+      "igt-field--sentence",
+      "igt-field--unsent",
+    ],
+    "data-cell-key": "sa:s-1:Translation",
+    "data-field-name": "Gloss",
+    "data-tier": "sa:Gloss",
+    "dir": "auto",
+    "rows": "1",
+    "spellcheck": "false",
+  },
+  "disabled": false,
+  "face": "igt-cell__face",
+  "igtAlts": null,
+  "igtEntityIds": [
+    "w-1",
+  ],
+  "igtPartAlts": null,
+  "igtTagset": null,
+  "igtWhat": "gloss",
+  "tag": "textarea",
+  "value": "cat",
+}
+`;

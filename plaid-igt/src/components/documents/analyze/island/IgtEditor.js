@@ -703,43 +703,55 @@ export class IgtEditor {
     // _maybeConfirmGuess) and stats/jump still see the cell as empty.
     const g = !sentence && !filled && !this.readOnly && guess ? guess : null;
     if (g && guessTarget) this._guessShown(g, guessTarget, fieldName);
+    // Provenance shows only on a filled cell. A proposed translation is violet
+    // italic until a person edits or Ctrl+Enter-confirms it, as on any cell.
+    const p = filled ? prov : null;
+    // What both controls carry: the classes every cell has and the attributes
+    // and handlers that name it, worked out once for the two templates below.
+    const sharedClass = [
+      'igt-field',
+      filled ? 'igt-field--filled' : 'igt-field--empty',
+      violations.length ? 'igt-field--invalid' : '',
+      provClass('igt-field', p),
+      p && confidence?.doubtful ? 'igt-field--doubtful' : '',
+      conflict ? 'igt-field--conflict' : '',
+      unsent ? 'igt-field--unsent' : '',
+    ];
+    const cls = (...own) => [...sharedClass, ...own, extraClass].filter(Boolean).join(' ');
+    const hasTagset = tagset ? '1' : nothing;
+    const delims = tagset?.delimiters || nothing;
+    const enforces = tagsetEnforces(tagset) ? '1' : nothing;
+    const label = ariaLabel ?? nothing;
+    const describedBy = this._conflictDescribedBy(key);
+    const violationTitle = violations.length ? this._violationText(violations, tagset) : null;
+    const onBlur = (e) => this._commitField(e, apply, tagset);
     // Sentence-scoped fields (e.g. free Translation) are full free-text values —
     // an auto-growing textarea that wraps, rather than a one-line scrolling input.
     if (sentence) {
-      // Provenance renders exactly as on cells (a proposed translation is
-      // violet italic until a person edits or Ctrl+Enter-confirms it).
-      const ps = filled ? prov : null;
-      // Off here too. A free translation is the one field in the grid that is
-      // real prose, but a red wavy underline has to mean exactly one thing in
-      // this app — an off-tagset value — and fieldwork translations are full of
-      // idiomatic renderings and notation a dictionary would reject anyway.
-      // A sentence-scoped field can carry a tagset too (a Genre or Speech-act
-      // field is as controllable as a POS). Same picker, same flagging: only
-      // the control differs, because a Translation still has to wrap.
+      // Spell checking is off here too. A free translation is the one field in
+      // the grid that is real prose, but a red wavy underline has to mean
+      // exactly one thing in this app — an off-tagset value — and fieldwork
+      // translations are full of idiomatic renderings and notation a dictionary
+      // would reject anyway. A sentence-scoped field can carry a tagset too (a
+      // Genre or Speech-act field is as controllable as a POS). Same picker,
+      // same flagging: only the control differs, because a Translation still
+      // has to wrap.
       return html`<span class="igt-cell__face${conflict ? ' igt-cell__face--noted' : ''}">
         <textarea
-          class="igt-field igt-field--sentence ${filled
-            ? 'igt-field--filled'
-            : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
-            'igt-field',
-            ps,
-          )} ${ps && confidence?.doubtful ? 'igt-field--doubtful' : ''} ${conflict
-            ? 'igt-field--conflict'
-            : ''} ${unsent ? 'igt-field--unsent' : ''} ${extraClass}"
+          class=${cls('igt-field--sentence')}
           data-cell-key=${key}
           data-tier=${tier}
-          data-has-tagset=${tagset ? '1' : nothing}
-          data-tagset-delims=${tagset?.delimiters || nothing}
-          data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
+          data-has-tagset=${hasTagset}
+          data-tagset-delims=${delims}
+          data-tagset-enforces=${enforces}
           data-confirm-sentence=${confirmSentence ?? nothing}
           data-field-name=${fieldName ?? nothing}
-          aria-label=${ariaLabel ?? nothing}
-          aria-describedby=${this._conflictDescribedBy(key)}
-          title=${violations.length
-            ? this._violationText(violations, tagset)
-            : ps
-              ? `${this._cellTitle(v, ps, origin, confidence?.note)}. ${keys.words('analyze.accept')} to accept it as is`
-              : nothing}
+          aria-label=${label}
+          aria-describedby=${describedBy}
+          title=${violationTitle ??
+          (p
+            ? `${this._cellTitle(v, p, origin, confidence?.note)}. ${keys.words('analyze.accept')} to accept it as is`
+            : nothing)}
           rows="1"
           spellcheck="false"
           dir="auto"
@@ -752,12 +764,11 @@ export class IgtEditor {
           @focus=${this._onFieldFocus}
           @input=${this._onSentenceInput}
           @keydown=${this._sentenceKeydown}
-          @blur=${(e) => this._commitField(e, apply, tagset)}
+          @blur=${onBlur}
         ></textarea
         >${this._conflictNote(key)}</span
       >`;
     }
-    const p = filled ? prov : null;
     // Alternatives (Alt+↓): computed per render so the list and the caret
     // affordance track the data; the thunk rides on the element for _openAlts.
     // The caret affordance, and only that: the popup itself renders elsewhere
@@ -778,11 +789,11 @@ export class IgtEditor {
         : filled
           ? v
           : (ariaLabel ?? null);
-    const title = violations.length
-      ? this._violationText(violations, tagset)
-      : nAlts > 1
+    const title =
+      violationTitle ??
+      (nAlts > 1
         ? `${baseTitle ? `${baseTitle}. ` : ''}${keys.words('analyze.alternatives')} to list ${altRows[0]?.pair ? 'senses and values' : `${nAlts} values seen for this form`}`
-        : (baseTitle ?? nothing);
+        : (baseTitle ?? nothing));
     // A suggestion out of the lexicon wears the faint teal of a linked
     // morpheme chip, which already means "lexically identified" here. The wash
     // says where the suggestion came from; how far to trust it is the link
@@ -801,26 +812,23 @@ export class IgtEditor {
     // ':' named a token that does not exist, and the domain skipped the
     // adoption in silence (see _wordGuessAdoptions).
     const input = html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${guessCls} ${nAlts > 1
-        ? 'igt-field--alts'
-        : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass('igt-field', p)} ${p &&
-      confidence?.doubtful
-        ? 'igt-field--doubtful'
-        : ''} ${conflict ? 'igt-field--conflict' : ''} ${unsent
-        ? 'igt-field--unsent'
-        : ''} ${smallCaps ? 'igt-field--smallcaps' : ''} ${extraClass}"
+      class=${cls(
+        guessCls,
+        nAlts > 1 ? 'igt-field--alts' : '',
+        smallCaps ? 'igt-field--smallcaps' : '',
+      )}
       data-cell-key=${key}
       data-tier=${tier}
-      data-has-tagset=${tagset ? '1' : nothing}
-      data-tagset-delims=${tagset?.delimiters || nothing}
-      data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
+      data-has-tagset=${hasTagset}
+      data-tagset-delims=${delims}
+      data-tagset-enforces=${enforces}
       data-guess-value=${g ? g.value : nothing}
       data-guess-source=${g ? g.source : nothing}
       data-guess-target=${g && guessTarget ? guessTarget : nothing}
       data-guess-field=${g && fieldName ? fieldName : nothing}
       data-confirm-word=${confirmWord ?? nothing}
-      aria-label=${ariaLabel ?? nothing}
-      aria-describedby=${this._conflictDescribedBy(key)}
+      aria-label=${label}
+      aria-describedby=${describedBy}
       title=${title}
       .igtAlts=${alternatives || null}
       .igtPartAlts=${partAlternatives}
@@ -838,7 +846,7 @@ export class IgtEditor {
       @mouseup=${this._onCellMouseUp}
       @input=${this._onFieldInput}
       @keydown=${this._basicKeydown}
-      @blur=${(e) => this._commitField(e, apply, tagset)}
+      @blur=${onBlur}
     />`;
     // The comment badge hugs the VALUE, not the cell: a cell is as wide as its
     // column and centers its value, so a badge tangent to the cell's edge
