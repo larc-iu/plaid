@@ -324,14 +324,14 @@ export default {
     // Time alignment
     'alignment.provenance': PROVENANCE,
     'alignment.severalInSentence': wart(
-      'A sentence holding several segments gets no speaker prefix, even when every one of them has the same speaker, because only a segment that matches or contains the sentence gives one (flextext.js coveringAlignment). The rule there is never to print a wrong speaker, which one shared speaker would not be.',
+      'A sentence holding several segments gets no speaker prefix, even when every one of them has the same speaker, because only a segment that matches or contains the sentence gives one (sentenceSegments.js coveringAlignment). The rule there is never to print a wrong speaker, which one shared speaker would not be.',
     ),
     'alignment.straddlesSentences': inherent(
-      'The file is laid out by sentence. A segment crossing a boundary matches neither sentence, so it gives neither a speaker (flextext.js: partial overlaps are skipped, alignment is never invented).',
+      'The file is laid out by sentence. A segment crossing a boundary matches neither sentence, so it gives neither a speaker (sentenceSegments.js: partial overlaps are skipped, alignment is never invented).',
     ),
     'alignment.mixedSpeakersInSentence': ruled(
       'A sentence whose segments differ in speaker gets no speaker prefix.',
-      'flextext.js phraseSpeakerFor: "a phrase that straddles a speaker change just gets no speaker rather than a wrong one". plainTextDoc.js uses it so a sentence gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.',
+      'sentenceSegments.js phraseSpeakerFor: "a phrase that straddles a speaker change just gets no speaker rather than a wrong one". plainTextDoc.js uses it so a sentence gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.',
     ),
     'alignment.textAcrossLineBreak': inherent(
       "The file is laid out by sentence and word. The segment's line breaks and runs of spaces are not written.",
@@ -341,7 +341,7 @@ export default {
     ),
     'alignment.speaker': {
       carried: 'changed',
-      how: 'A sentence that one segment matches (an exact extent, else the only segment containing it) gets that segment\'s speaker after its number: "(3) Ada". A segment covering part of a sentence, or two segments over one sentence, gives no speaker (phraseSpeakerFor in flextext.js).',
+      how: 'A sentence that one segment matches (an exact extent, else the only segment containing it) gets that segment\'s speaker after its number: "(3) Ada". A segment covering part of a sentence, or two segments over one sentence, gives no speaker (phraseSpeakerFor in sentenceSegments.js).',
     },
     'alignment.extraMetadata': inherent('Segment metadata other than the speaker is not written.'),
     'alignment.notSentenceExtent': inherent(

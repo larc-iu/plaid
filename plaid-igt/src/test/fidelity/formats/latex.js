@@ -442,14 +442,14 @@ export default {
     // Time alignment
     'alignment.provenance': PROVENANCE,
     'alignment.severalInSentence': wart(
-      'A sentence holding several segments gets no speaker, even when every one of them has the same speaker, because only a segment that matches or contains the sentence gives one (flextext.js coveringAlignment).',
+      'A sentence holding several segments gets no speaker, even when every one of them has the same speaker, because only a segment that matches or contains the sentence gives one (sentenceSegments.js coveringAlignment).',
     ),
     'alignment.straddlesSentences': inherent(
       'The book is laid out by sentence. A segment crossing a boundary matches neither sentence, so it gives neither a speaker.',
     ),
     'alignment.mixedSpeakersInSentence': ruled(
       'A sentence whose segments differ in speaker gets no speaker.',
-      'flextext.js phraseSpeakerFor: "a phrase that straddles a speaker change just gets no speaker rather than a wrong one". latexBook.js uses it as plainTextDoc.js does.',
+      'sentenceSegments.js phraseSpeakerFor: "a phrase that straddles a speaker change just gets no speaker rather than a wrong one". latexBook.js uses it as plainTextDoc.js does.',
     ),
     'alignment.textAcrossLineBreak': inherent(
       "The book is laid out by sentence and word. The segment's line breaks and runs of spaces are not written.",
@@ -459,7 +459,7 @@ export default {
     ),
     'alignment.speaker': {
       carried: 'changed',
-      how: "A sentence that one segment matches (an exact extent, else the only segment containing it) gets that segment's speaker above its lines, in small caps. A segment covering part of a sentence, or two segments over one sentence, gives no speaker (phraseSpeakerFor in flextext.js).",
+      how: "A sentence that one segment matches (an exact extent, else the only segment containing it) gets that segment's speaker above its lines, in small caps. A segment covering part of a sentence, or two segments over one sentence, gives no speaker (phraseSpeakerFor in sentenceSegments.js).",
     },
     'alignment.extraMetadata': inherent('Segment metadata other than the speaker is not written.'),
     'alignment.notSentenceExtent': inherent(
