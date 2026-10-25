@@ -20,10 +20,8 @@ import { isLangTag, parseFieldName } from '../domain/fieldNames.js';
 // - alwaysZip: a zip at every scope, even one document.
 // - media: the preset's includeMedia option applies, so the recordings go in.
 // - vocabularyTsvs: runExport adds the vocabularies as TSV files to a zip when
-//   the preset's includeVocabularies is set.
-// - vocabularyToggle: the preset editor offers that switch. It is off for
-//   ELAN, though runExport would honour the flag there (a preset newPreset
-//   makes has it off).
+//   the preset's includeVocabularies is set, and the preset editor offers that
+//   switch.
 // - archive: the lossless archive, which reads every layer, the guidelines
 //   and the comments, and exports a project with no documents.
 // - keepsMediaName: a recording goes out under the name the document's Media
@@ -46,7 +44,6 @@ const FORMAT_DEFAULTS = {
   alwaysZip: false,
   media: false,
   vocabularyTsvs: false,
-  vocabularyToggle: false,
   archive: false,
   keepsMediaName: false,
   dataset: false,
@@ -62,7 +59,6 @@ export const EXPORT_FORMATS = [
     ext: 'txt',
     defaultName: 'Plain text',
     vocabularyTsvs: true,
-    vocabularyToggle: true,
     options: plainTextOptions,
   },
   {

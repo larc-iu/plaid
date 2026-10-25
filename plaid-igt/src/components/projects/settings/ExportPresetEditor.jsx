@@ -219,7 +219,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
           projectId,
           onChange: (options) => update({ options }),
         })}
-        {exportFormat(draft.format).vocabularyToggle && hasVocabularies && (
+        {exportFormat(draft.format).vocabularyTsvs && hasVocabularies && (
           <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
             <span>
               <span className="font-medium">Include vocabularies as TSV files</span>

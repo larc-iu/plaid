@@ -143,7 +143,7 @@ async function run(format, scope, { media = true, vocabularies = true } = {}) {
 const ROWS = {
   plaintext: {
     screens: {
-      vocabularyToggle: true,
+      vocabularyTsvs: true,
       zipNote: null,
     },
     document: {
@@ -180,7 +180,7 @@ const ROWS = {
   },
   flextext: {
     screens: {
-      vocabularyToggle: false,
+      vocabularyTsvs: false,
       zipNote:
         'This format produces one .flextext for the whole run. With the lexicon included (set in the preset) it becomes a .zip pairing that file with the lexicon as LIFT.',
     },
@@ -227,7 +227,7 @@ const ROWS = {
   },
   cldf: {
     screens: {
-      vocabularyToggle: false,
+      vocabularyTsvs: false,
       zipNote:
         'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the scope. Whether the lexicon is included is set in the preset.',
     },
@@ -294,7 +294,7 @@ const ROWS = {
   },
   elan: {
     screens: {
-      vocabularyToggle: false,
+      vocabularyTsvs: true,
       zipNote: null,
     },
     document: {
@@ -338,7 +338,7 @@ const ROWS = {
   },
   latex: {
     screens: {
-      vocabularyToggle: false,
+      vocabularyTsvs: false,
       zipNote:
         'This format always produces a .zip of LaTeX source, one chapter per document, whatever the scope.',
     },
@@ -395,7 +395,7 @@ const ROWS = {
   },
   'plaid-igt-json': {
     screens: {
-      vocabularyToggle: false,
+      vocabularyTsvs: false,
       zipNote:
         'This format always produces a .zip archive including all vocabularies and the project configuration, whatever the scope.',
     },
@@ -465,8 +465,8 @@ describe('what each export format makes of one project', () => {
 
   for (const { id } of EXPORT_FORMATS) {
     it(`${id}: what the screens say`, () => {
-      const { vocabularyToggle, zipNote } = exportFormat(id);
-      check(id, 'screens', { vocabularyToggle, zipNote });
+      const { vocabularyTsvs, zipNote } = exportFormat(id);
+      check(id, 'screens', { vocabularyTsvs, zipNote });
     });
     it(`${id} at document scope`, async () => {
       check(id, 'document', await run(id, { type: 'document', id: 'd1' }));
