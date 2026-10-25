@@ -297,8 +297,10 @@ try {
     // its glosses, its category and its morphemes with it, so those are
     // accounted for by the word rather than counted again.
     const unaligned = file.words - plan.words;
+    // A word made only of punctuation stays text (8aa867863), which the
+    // builder counts apart, so it is no word lost.
     const said = {
-      words: parsed.stats.unalignedWords,
+      words: parsed.stats.unalignedWords + (parsed.stats.punctuationWords ?? 0),
       // Only meaningful when a word was left behind, and then only as "these
       // went with it": the file's counts do not say which word held what.
       morphemes: unaligned ? file.morphemes - plan.morphemes : 0,
