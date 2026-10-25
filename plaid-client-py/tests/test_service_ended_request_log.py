@@ -90,3 +90,29 @@ def test_another_group_or_status_is_logged_as_it_stands(capsys):
     assert 'had already ended' not in capsys.readouterr().out
     _run('Operation group g1 was started by another user or token.', status=500)
     assert 'had already ended' not in capsys.readouterr().out
+
+
+def test_a_document_another_holds_is_one_line_in_the_log(capsys):
+    # HUNT-recent 20: the lock acquire re-raises the 423 in its own words
+    # ``from`` the server's, and the log printed both tracebacks for a refusal
+    # the service expects.
+    class Writer(BaseService):
+        def process_request(self, request_data, response_helper):
+            try:
+                raise PlaidAPIError('HTTP 423 Locked', status=423,
+                                    response_data={'user-id': 'ana@x.org'})
+            except PlaidAPIError as e:
+                raise PlaidAPIError('This document is being edited by ana@x.org. '
+                                    'Try again once they\'re done.', status=423,
+                                    response_data=e.response_data) from e
+
+    svc = Writer('tok:x', 'Writer', 'x', tasks=[TASKS.TOKENIZE])
+    svc.client = _Client()
+    helper = _Helper()
+    svc.handle_service_request({}, helper).join(5)
+    said = capsys.readouterr()
+    out = said.out
+    assert 'Traceback' not in said.err
+    assert [line for line in out.splitlines() if line.strip()] == [
+        'Writer: This document is being edited by ana@x.org. Try again once they\'re done.']
+    assert helper.errors

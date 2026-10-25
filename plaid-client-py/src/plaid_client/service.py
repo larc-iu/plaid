@@ -596,6 +596,11 @@ class BaseService(ABC):
                 print(f"{self.service_name}: the request had already ended when this service wrote "
                       f"(the connection to Plaid dropped or the server restarted), so its writes "
                       f"from then on were refused. The requester was told it failed.")
+            elif isinstance(e, PlaidAPIError) and e.status == 423:
+                # Somebody else holds the document: a refusal the service
+                # expects, which the lock acquire words itself (from the
+                # server's 423), so one line and no tracebacks.
+                print(f"{self.service_name}: {e}")
             else:
                 import traceback
                 print(f"Error during {self.service_name} processing: {str(e)}")
