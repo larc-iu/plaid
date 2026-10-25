@@ -10,6 +10,7 @@
 // embedded layer tree, so no per-project fetch is needed.
 
 import { IgtDocument } from '@/domain/IgtDocument';
+import { APP_ROUTES } from '@/appRoutes';
 import { documentVocabularies } from '@/domain/documentVocabularies';
 import { buildContextRows } from '@/components/projects/search/searchRunner.js';
 
@@ -95,6 +96,4 @@ export async function loadConcordanceGroups(client, hits, docEntries) {
 // The Analyze-tab link for one sentence of a document, or null when the
 // project is unreadable (there is nowhere to go).
 export const sentenceTo = (projectId, docId, sentenceId) =>
-  projectId
-    ? `/projects/${projectId}/documents/${docId}?tab=analyze&focusSentence=${sentenceId}`
-    : null;
+  projectId ? APP_ROUTES.sentence(projectId, docId, sentenceId) : null;
