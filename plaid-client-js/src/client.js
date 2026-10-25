@@ -19,6 +19,7 @@ import {
 } from "./http.js";
 import { normalizeUserId } from "./ids.js";
 import { openBatch, postBatch } from "./batch.js";
+import { messagesApi } from "./apiMessages.js";
 import { commentsApi, eventsApi, guidelinesApi, operationGroupsApi, projectsApi } from "./apiProject.js";
 import { adminApi, auditApi, serverApi } from "./apiServer.js";
 import { apiTokensApi, authApi, invitesApi, userDataApi, usersApi } from "./apiPeople.js";
@@ -33,16 +34,6 @@ import {
   withOperation,
 } from "./operations.js";
 import { bodyOf } from "./families.js";
-import { createSSEConnection } from "./sse.js";
-import {
-  discoverServices,
-  discardService,
-  releaseService,
-  serve,
-  requestService,
-  attachServiceRequest,
-  cancelServiceRequest,
-} from "./services.js";
 
 // ---- Types --------------------------------------------------------------
 // The shapes the API answers with and takes are in types.js, named here so
@@ -332,211 +323,27 @@ class PlaidClient {
    */
   _installResources() {
     this.vocabLinks = vocabLinksApi(this);
-
     this.vocabLayers = vocabLayersApi(this);
-
     this.relations = relationsApi(this);
-
     this.spanLayers = spanLayersApi(this);
-
     this.spans = spansApi(this);
-
     this.server = serverApi(this);
-
     this.auth = authApi(this);
-
     this.texts = textsApi(this);
-
     this.users = usersApi(this);
-
     this.userData = userDataApi(this);
-
     this.apiTokens = apiTokensApi(this);
-
     this.invites = invitesApi(this);
-
     this.admin = adminApi(this);
-
     this.audit = auditApi(this);
-
     this.tokenLayers = tokenLayersApi(this);
-
     this.documents = documentsApi(this);
-
     this.projects = projectsApi(this);
-
     this.textLayers = textLayersApi(this);
-
     this.vocabItems = vocabItemsApi(this);
-
     this.relationLayers = relationLayersApi(this);
-
     this.tokens = tokensApi(this);
-
-    this.messages = {
-      /**
-       * Open a Server-Sent Events stream for a project.
-       * @param {string} projectId - The UUID of the project to listen to
-       * @param {(eventType: string, data: any) => void | boolean} onEvent - Callback function that receives (eventType, data). If it returns true, listening will stop.
-       * @param {string} [path] - Stream path under baseUrl (defaults to the project /listen bus; service channels pass their own).
-       * @returns {SSEConnection} SSE connection object with .close() and .getStats() methods
-       */
-      listen: (projectId, onEvent, path) =>
-        createSSEConnection(this, projectId, onEvent, path),
-
-      /**
-       * Send a message to project listeners.
-       *
-       * `data` may be any JSON value and is sent VERBATIM (`rawBody`): a
-       * message payload is opaque application data, like `metadata` and
-       * `config`, so its keys must not be re-cased on the way out. Without
-       * this a key such as `case-marker` would reach listeners as
-       * `caseMarker` in JS and `case_marker` in Python. `listen` restores it
-       * verbatim on the way in.
-       *
-       * A message is not saved and writes nothing to History, so it never
-       * joins an open operation (`withOperation`). Made on a batch it still
-       * queues, so a message queued after the writes goes out after them.
-       * @param {string} projectId - The UUID of the project to send to
-       * @param {any} data - The message data to send
-       * @returns {Promise<{success: boolean, message: string}>}
-       */
-      sendMessage: (projectId, data) =>
-        this._request("POST", `/api/v1/projects/${projectId}/message`, {
-          noOperation: true,
-          rawBody: { body: data },
-        }),
-
-      /**
-       * Discover the services seen on a project (synchronous GET). Currently
-       * connected services carry `online: true`; previously-seen offline ones
-       * carry `online: false` plus a `lastSeenAt` stamp.
-       * @param {string} projectId - The UUID of the project to query
-       * @returns {Promise<DiscoveredService[]>} Array of discovered service information
-       */
-      discoverServices: (projectId) => discoverServices(this, projectId),
-
-      /**
-       * Forget a previously-seen (offline) service. Maintainer-only; 409 if
-       * the service is currently connected.
-       * @param {string} projectId - The UUID of the project
-       * @param {string} serviceId - The ID of the service to forget
-       * @returns {Promise<void>}
-       */
-      discardService: (projectId, serviceId) =>
-        discardService(this, projectId, serviceId),
-
-      /**
-       * Release a service id from the account that first registered it on
-       * the project, so the next account to register it claims it.
-       * Admin-only; 409 while the service is connected, 404 when no account
-       * holds it.
-       * @param {string} projectId - The UUID of the project
-       * @param {string} serviceId - The ID of the service to release
-       * @returns {Promise<void>}
-       */
-      releaseService: (projectId, serviceId) =>
-        releaseService(this, projectId, serviceId),
-
-      /**
-       * Register as a service and handle incoming work requests.
-       *
-       * The registration reopens its channel whenever it drops, so a server
-       * restart needs no service restart.
-       * @param {string} projectId - The UUID of the project to serve
-       * @param {ServiceInfo} serviceInfo - Service information {serviceId, serviceName, description}
-       * @param {(data: any, responseHelper: ResponseHelper) => void} onServiceRequest - Callback (data, responseHelper)
-       * @param {Object} [extras] - Optional additional service metadata
-       * @param {(event: ServiceStatusEvent, projectId: string, detail?: string) => void} [onStatus] - Optional callback (event, projectId, detail) for
-       *   connection transitions: 'registered', 'reconnected', 'disconnected',
-       *   and 'stopped' when the server refuses the channel for good, which
-       *   ends the registration
-       * @returns {ServiceRegistration} Service registration with .stop(), .isRunning(), .isConnected()
-       */
-      serve: (projectId, serviceInfo, onServiceRequest, extras, onStatus) =>
-        serve(this, projectId, serviceInfo, onServiceRequest, extras, onStatus),
-
-      /**
-       * Request a service to perform work and await its result.
-       *
-       * The request outlives this call: after a timeout, an abort, or a
-       * dropped connection the service goes on, and `attachServiceRequest`
-       * collects the result given the request id, which `opts.onAccepted`
-       * receives as soon as the server has taken the request. Pass
-       * `opts.requestId` (a UUID you mint) to know the id before submitting;
-       * submitting an id that names a request you already made rejoins it
-       * instead of starting another.
-       * @param {string} projectId - The UUID of the project
-       * @param {string} serviceId - The ID of the service to request
-       * @param {any} data - The request data
-       * @param {number} [timeout=10000] - Timeout in ms
-       * @param {function} [onProgress] - Called with each progress payload {percent, message}
-       * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
-       * @param {{requestId?: string, onAccepted?: (requestId: string) => void, projectIds?: string[], noOperation?: boolean}} [opts] - {requestId, onAccepted, projectIds, noOperation}
-       * @returns {Promise<any>} The service's result
-       */
-      requestService: (
-        projectId,
-        serviceId,
-        data,
-        timeout,
-        onProgress,
-        signal,
-        opts,
-      ) =>
-        requestService(
-          this,
-          projectId,
-          serviceId,
-          data,
-          timeout,
-          onProgress,
-          signal,
-          opts,
-        ),
-
-      /**
-       * Rejoin a service request made earlier and await its result: the
-       * latest progress is replayed, then the result comes, or at once if the
-       * request already finished. Only the user who submitted it (or an
-       * admin). Rejects with an error whose `status` is 404 when the request
-       * is unknown or expired (a finished request's result is kept for a
-       * while, not forever).
-       * @param {string} projectId - The UUID of the project
-       * @param {string} requestId - The request id
-       * @param {number} [timeout=10000] - Timeout in ms
-       * @param {function} [onProgress] - Called with each progress payload
-       * @param {AbortSignal} [signal] - Abort to stop waiting
-       * @returns {Promise<any>} The service's result
-       */
-      attachServiceRequest: (
-        projectId,
-        requestId,
-        timeout,
-        onProgress,
-        signal,
-      ) =>
-        attachServiceRequest(
-          this,
-          projectId,
-          requestId,
-          timeout,
-          onProgress,
-          signal,
-        ),
-
-      /**
-       * Ask the service to stop a request made earlier. The request still
-       * ends with whatever the service then reports, on the stream of whoever
-       * is awaiting it. Rejects with 404 if unknown or expired, 409 once
-       * finished.
-       * @param {string} projectId - The UUID of the project
-       * @param {string} requestId - The request id
-       * @returns {Promise<void>}
-       */
-      cancelServiceRequest: (projectId, requestId) =>
-        cancelServiceRequest(this, projectId, requestId),
-    };
+    this.messages = messagesApi(this);
 
     // outOfBand: a query is a read that travels as a POST (see the note at
     // the top of http.js). Made on a batch it goes over the wire like any
@@ -596,11 +403,8 @@ class PlaidClient {
       });
 
     this.operationGroups = operationGroupsApi(this);
-
     this.comments = commentsApi(this);
-
     this.events = eventsApi(this);
-
     this.guidelines = guidelinesApi(this);
   }
 
