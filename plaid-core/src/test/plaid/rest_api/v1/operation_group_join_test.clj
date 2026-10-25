@@ -149,8 +149,10 @@
     (is (= 201 (:status (write-in p user1-request g "first"))))
     (events/register-service-channel!
      (parse-uuid (str p)) "svc" (Object.)
-     {:service-name "S" :db fix/db
-      :token-id (:id (auth/issue-api-token! fix/db "fake-secret" "admin@example.com" "svc" "admin@example.com"))}
+     {:service-name "S"
+      :opener {:user-id "admin@example.com"
+               :db fix/db
+               :token-id (:id (auth/issue-api-token! fix/db "fake-secret" "admin@example.com" "svc" "admin@example.com"))}}
      "admin@example.com")
     (let [r (call user2-request :post (str "/api/v1/projects/" p "/services/svc/requests")
                   {:operation-group {:id (str g) :message "Work"}})]
@@ -220,8 +222,10 @@
                   :grantee-user "user2@example.com" :grantee-token nil})
     (events/register-service-channel!
      (parse-uuid (str q)) "svc" (Object.)
-     {:service-name "S" :db fix/db
-      :token-id (:id (auth/issue-api-token! fix/db "fake-secret" "admin@example.com" "svc" "admin@example.com"))}
+     {:service-name "S"
+      :opener {:user-id "admin@example.com"
+               :db fix/db
+               :token-id (:id (auth/issue-api-token! fix/db "fake-secret" "admin@example.com" "svc" "admin@example.com"))}}
      "admin@example.com")
     (let [r (call user2-request :post (str "/api/v1/projects/" q "/services/svc/requests")
                   {:operation-group {:id (str g) :message "Work"}})]

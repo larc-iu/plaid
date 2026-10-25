@@ -16,9 +16,27 @@
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
 
+(defn- opener-of
+  "The credential `req` was let in with, as a stream registry keeps it whole
+  under `:opener` for `still-entitled?`: the user, the API token
+  (`:token-id`), a session token's password_changes claim
+  (`:token-version`), the token's `exp` claim (`:token-exp`), a delegated
+  token's `scope/runner` and `delegated/api-token` claims (`:runner`,
+  `:origin-token`) and the database its standing is checked in (`:db`). A
+  service channel's has no `:runner` or `:origin-token`, since a delegated
+  token cannot open one."
+  [req]
+  {:user-id (pra/->user-id req)
+   :token-id (:api-token/id req)
+   :token-version (-> req :jwt-data :version)
+   :token-exp (-> req :jwt-data :exp)
+   :runner (-> req :jwt-data :scope/runner)
+   :origin-token (-> req :jwt-data :delegated/api-token)
+   :db (:db req)})
+
 (defn- still-entitled?
-  "Would the credential that opened this channel still be let in to open it
-  now? The same questions `wrap-read-jwt` and the route's privilege
+  "Would the credential that opened this channel (an entry's `:opener`, see
+  `opener-of`) still be let in to open it now? The same questions `wrap-read-jwt` and the route's privilege
   middleware ask: the user exists and is active, an API token is not
   revoked, a session token's password_changes claim still matches, and the
   user holds `privilege` on the project (`:project/writers` for a service
@@ -33,8 +51,9 @@
   by a request signed with a named API token (`origin-token`, its
   `delegated/api-token` claim) is let in only while that API token is
   active."
-  [{:keys [db project-id user-id token-id token-version token-exp runner origin-token]} privilege]
-  (let [account (user/get-internal db user-id)]
+  [{:keys [project-id opener]} privilege]
+  (let [{:keys [db user-id token-id token-version token-exp runner origin-token]} opener
+        account (user/get-internal db user-id)]
     (boolean
      (and account
           (or (nil? token-exp) (< (quot (System/currentTimeMillis) 1000) token-exp))
@@ -155,18 +174,12 @@
                             ;; Store mapping for cleanup using the channel itself as key,
                             ;; with what opened the stream, so it closes the moment that
                             ;; credential or its user's role no longer would.
-                            (let [opener {:user-id user-id
-                                          :token-id (:api-token/id req)
-                                          :token-version (-> req :jwt-data :version)
-                                          :token-exp (-> req :jwt-data :exp)
-                                          :runner (-> req :jwt-data :scope/runner)
-                                          :origin-token (-> req :jwt-data :delegated/api-token)
-                                          :db db}]
+                            (let [opener (opener-of req)]
                               (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
                               ;; The credential was admitted by the middleware, before this
                               ;; stream registered. A write that took it away in between
                               ;; found no stream to close, so ask again now that there is one.
-                              (when-not (standing-holds? (assoc opener :project-id id) :project/readers)
+                              (when-not (standing-holds? {:project-id id :opener opener} :project/readers)
                                 (close-listen-stream! {:channel channel :project-id id})))))
 
                         :on-close
@@ -230,14 +243,14 @@
 (defn- drop-service-channel!
   "Deregister a service channel whose holder lost the right to it, fail the
   requests routed to it, and close it."
-  [{:keys [db project-id service-id channel]}]
+  [{:keys [opener project-id service-id channel]}]
   (events/unregister-service-channel! project-id service-id channel)
   (try (http-kit/send! channel
                        (sse-event "error" {:error "This connection's credentials no longer allow it"})
                        false)
        (catch Exception _))
   (when-not (events/get-service-channel project-id service-id)
-    (try (service-registry/touch-last-seen! db project-id service-id)
+    (try (service-registry/touch-last-seen! (:db opener) project-id service-id)
          (catch Exception _))
     (doseq [[request-id _] (events/requests-for-service project-id service-id)]
       (finish-request! request-id "error" {:error "Service disconnected"})))
@@ -247,12 +260,12 @@
 
 (defn close-at-expiry!
   "Close service channel `entry` when the token that opened it expires, if
-  it does (`:token-exp`, a delegated token's hour). No write marks that
+  it does (its opener's `:token-exp`, a delegated token's hour). No write marks that
   moment, so `close-lapsed-service-channels!` would not, and the channel
   would go on receiving requests, and a delegating service the requesters'
   tokens, under a credential no longer let in anywhere."
-  [{:keys [token-exp project-id service-id channel] :as entry}]
-  (when token-exp
+  [{:keys [opener project-id service-id channel] :as entry}]
+  (when-let [token-exp (:token-exp opener)]
     (async/go
       (async/<! (async/timeout (max 0 (- (* 1000 (long token-exp)) (System/currentTimeMillis)))))
       (when (identical? channel (events/get-service-channel project-id service-id))
@@ -279,8 +292,8 @@
 
 (defonce ^:private requester-streams
   ;; A requester's stream on a service request (the submit's own, or one
-  ;; attached later) -> what opened it: `{:request-id :project-id :user-id
-  ;; :token-id :token-version :token-exp :runner :origin-token :db}`.
+  ;; attached later) -> what opened it: `{:request-id :project-id :opener}`,
+  ;; `:opener` as `opener-of` makes it.
   (atom {}))
 
 (defn- stream-opener
@@ -289,13 +302,7 @@
   [req project-id request-id]
   {:request-id request-id
    :project-id project-id
-   :user-id (pra/->user-id req)
-   :token-id (:api-token/id req)
-   :token-version (-> req :jwt-data :version)
-   :token-exp (-> req :jwt-data :exp)
-   :runner (-> req :jwt-data :scope/runner)
-   :origin-token (-> req :jwt-data :delegated/api-token)
-   :db (:db req)})
+   :opener (opener-of req)})
 
 (defn- close-request-stream!
   "Close a requester's stream whose opener lost the right to it. The request
@@ -371,10 +378,7 @@
                              (catch Exception _ nil)))
               ;; What opened the channel, so the channel can be closed the
               ;; moment that credential or its user's role no longer would.
-              :token-id (:api-token/id req)
-              :token-version (-> req :jwt-data :version)
-              :token-exp (-> req :jwt-data :exp)
-              :db db}]
+              :opener (opener-of req)}]
     ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
     ;; in :on-open, after which a plain 409 response is no longer possible.
     (cond

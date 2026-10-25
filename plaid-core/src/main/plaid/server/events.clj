@@ -49,7 +49,7 @@
 
 ;; Channel mappings for lifecycle management
 ;; Maps http-kit-channel -> {:client-chan chan :project-id id :stop-chan chan :client-id id
-;; :user-id :token-id :token-version :token-exp :db}, the last five being the opener's credential
+;; :opener}, `:opener` being the credential the stream was opened with
 ;; This allows us to clean up resources when an SSE connection closes
 (defstate channel-mappings
   :start (atom {})
@@ -63,11 +63,9 @@
 
 ;; Connected services: project-id -> {service-id -> entry}, where an entry is
 ;; {:channel <http-kit channel> :service-id :service-name :description :extras
-;; :user-id :token-id :token-version :token-exp :db}. `:token-id` names the API token the
-;; channel was opened with (nil for a session token, whose `:token-version`
-;; is its password_changes claim), `:token-exp` is the token's `exp` claim
-;; (nil for an API token), and `:db` is where its standing is checked:
-;; see `on-standing-change!`. The SERVICE's open inbound SSE channel IS its registration: a
+;; :user-id :opener}. `:opener` is the credential the channel was opened with,
+;; kept whole (`plaid.rest-api.v1.message/opener-of`), and its standing is
+;; checked against it: see `on-standing-change!`. The SERVICE's open inbound SSE channel IS its registration: a
 ;; service is present exactly while this channel is open. Discovery lists these
 ;; entries; routing pushes a request down :channel. There is no separate
 ;; registry, TTL, or heartbeat — opening the channel registers, closing it
@@ -160,16 +158,16 @@
   "Register the relationship between an http-kit channel and its associated
    client channel, project, stop channel, and client ID. This enables proper cleanup
    when the SSE connection closes. `opener` is the credential the stream was
-   opened with, {:user-id :token-id :token-version :token-exp :runner
-   :origin-token :db}, as a service channel records it, so the stream closes
-   the moment its opener could no longer open it (see `on-standing-change!`)."
+   opened with, kept whole under `:opener` as a service channel keeps it, so
+   the stream closes the moment its opener could no longer open it (see
+   `on-standing-change!`)."
   [http-channel client-chan project-id stop-chan client-id opener]
   (swap! channel-mappings assoc http-channel
-         (merge (select-keys opener [:user-id :token-id :token-version :token-exp :runner :origin-token :db])
-                {:client-chan client-chan
-                 :project-id  project-id
-                 :stop-chan   stop-chan
-                 :client-id   client-id}))
+         {:opener      opener
+          :client-chan client-chan
+          :project-id  project-id
+          :stop-chan   stop-chan
+          :client-id   client-id})
   (log/debug "Registered channel mapping for client" client-id "on project" project-id))
 
 (defn live-listen-entries
@@ -223,10 +221,9 @@
   "Record a connected service: its open inbound request channel plus its
   discovery metadata. Opening the channel IS registration. `info` is a map of
   {:service-name :description :extras} plus the credential the channel was
-  opened with, {:token-id :token-version :token-exp :db}. Returns nil."
+  opened with, kept whole under `:opener`. Returns nil."
   [project-id service-id channel info user-id]
-  (let [entry (merge (select-keys info [:service-name :description :extras
-                                        :token-id :token-version :token-exp :db])
+  (let [entry (merge (select-keys info [:service-name :description :extras :opener])
                      {:channel    channel
                       :service-id service-id
                       :user-id    user-id})]
