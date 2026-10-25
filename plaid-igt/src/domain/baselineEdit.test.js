@@ -552,3 +552,33 @@ describe('editBaselineText: what became of a save', () => {
     expect(server.body).toBe('the cat!');
   });
 });
+
+// B5-10: one rule for a text read with no digest, the same in both editors'
+// saves: read once more, then refuse. A refusal after a lost answer used to
+// refuse at once on a read with none.
+describe('editBaselineText with no digest read', () => {
+  it('reads the text once more, and sends with the digest it reads then', async () => {
+    const client = makeFakeClient();
+    const answers = [
+      httpError(0, {}),
+      httpError(409, { error: 'The text was changed', 'text-changed': true }),
+    ];
+    client.texts.edit = async (id, ops, auditMessage, options) => {
+      client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });
+      const next = answers.shift();
+      if (next) throw next;
+      return { id, body: 'the cats', digest: 'd2' };
+    };
+    const digests = [null, 'd1'];
+    client.documents.get = async () =>
+      withDigest(buildRawDoc({ body: 'the cat' }), digests.shift());
+    const doc = makeDoc({ raw: withDigest(buildRawDoc({ body: 'the cat' }), 'd0'), client });
+    doc._writes._retryDelay = () => 5;
+    const errors = [];
+    doc.onError = (message, err) => errors.push(err?.message ?? message);
+    const gaps = [{ start: 7, end: 7, value: 's' }];
+    expect(await doc.editBaselineText({ base: 'the cat', digest: 'd0', gaps })).toBe(true);
+    expect(errors).toEqual([]);
+    expect(edits(client).map((e) => e[3].base)).toEqual(['d0', 'd0', 'd1']);
+  });
+});

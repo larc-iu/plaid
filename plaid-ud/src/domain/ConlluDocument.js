@@ -24,9 +24,12 @@ import {
 import { SUPPRESS_KEY, isSuppressor, suppressorFor, suppressorIdsOver } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, recordSettled, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
-import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
-import { sendTextPlan } from '../../../plaid-ui/src/lib/textSave.js';
-import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
+import {
+  makeTextPlan,
+  planOn,
+  sendTextPlan,
+  sendingPlan,
+} from '../../../plaid-ui/src/lib/textSave.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
 import { joinSpansOn, singleSpanRule } from '../../../plaid-ui/src/domain/mergeRules.js';
@@ -231,17 +234,8 @@ export class ConlluDocument extends DocumentModel {
     if (typeof log === 'string') throw new Error('saveText takes the edits typed (an edit log).');
     const typedBase = log.base ?? '';
     const typedGaps = log.gaps ?? editLogGaps(log);
-    // Not `ready` until it is made to be sent (`_planText`).
-    const plan = {
-      base: typedBase,
-      digest: log.digest ?? null,
-      gaps: typedGaps,
-      keys: null,
-      ready: false,
-      // Sent, with its answer lost: a send of it again may be answered from
-      // its key.
-      lost: false,
-    };
+    // No keys until it is made ready to send (`_planText`).
+    const plan = makeTextPlan({ base: typedBase, digest: log.digest ?? null, gaps: typedGaps });
     return this._queueWrite(
       label,
       () => this._sendText(text, textLayer, plan, label, onStored),
@@ -260,30 +254,24 @@ export class ConlluDocument extends DocumentModel {
       onStored?.(body, null);
       return;
     }
+    // Whether the request last sent went under keys it was sent with before,
+    // so its answer may be the first send's (a lost answer goes to the queue,
+    // which runs this again with the plan as it is).
+    let again = false;
     const result = await sendTextPlan({
-      prepare: async () => {
-        if (plan.ready) return true;
-        plan.lost = false;
-        return this._planText(text.id, plan);
-      },
+      prepare: async () => plan.keys != null || this._planText(text.id, plan),
       send: async () => {
-        try {
-          return await this._client.withOperation(
-            label,
-            () =>
-              this._client.texts.edit(text.id, gapsToOps(plan.gaps), undefined, {
-                base: plan.digest,
-              }),
-            { keys: plan.keys },
-          );
-        } catch (err) {
-          // A lost answer goes to the queue, which runs this again with the
-          // plan as it is, and a send of it then may be answered from its key.
-          if (isUnknownOutcome(err)) plan.lost = true;
-          throw err;
-        }
+        again = sendingPlan(plan);
+        return this._client.withOperation(
+          label,
+          () =>
+            this._client.texts.edit(text.id, gapsToOps(plan.gaps), undefined, {
+              base: plan.digest,
+            }),
+          { keys: plan.keys },
+        );
       },
-      sentBefore: () => plan.lost,
+      sentBefore: () => again,
       readStored: async () => {
         await this._reloadInSend();
         return this._storedText(text.id);
@@ -291,7 +279,7 @@ export class ConlluDocument extends DocumentModel {
       holds: (now) => storedHolds(plan.base, plan.gaps, now.body),
       replan: async (stored) => {
         if (!stored) await this._reloadInSend();
-        plan.ready = false;
+        plan.keys = null;
       },
       conflict: TEXT_CONFLICT,
     });
@@ -309,7 +297,7 @@ export class ConlluDocument extends DocumentModel {
       // sent again here, or by the client inside its own resend. The save
       // has landed either way, so a read that fails leaves the answer on
       // screen.
-      if (plan.lost || wasReplayed(answer)) {
+      if (again || wasReplayed(answer)) {
         try {
           const stored = await this._client.texts.get(text.id);
           if (stored?.digest !== answer.digest) await this._reloadInSend();
@@ -324,29 +312,21 @@ export class ConlluDocument extends DocumentModel {
     onStored?.(now.body, now.digest);
   }
 
-  // Makes `plan` (see saveText) ready to send on the text as last read: its
-  // gaps moved onto that body when it has moved on, the body's digest, which
-  // is read when not known, and a new key seed. False when it changes
-  // nothing. Throws when the gaps cannot be moved or no digest is known.
-  async _planText(textId, plan) {
-    for (let read = false; ; read = true) {
-      const stored = this._storedText(textId);
-      if (stored.body !== plan.base) {
-        const moved = rebaseEdits(plan.base, plan.gaps, stored.body);
-        if (moved.conflict) throw new Error(TEXT_CONFLICT);
-        plan.base = stored.body;
-        plan.gaps = moved.gaps;
-        plan.digest = stored.digest;
-      }
-      plan.digest ??= stored.digest;
-      if (plan.gaps.length === 0) return false;
-      if (plan.digest != null) break;
-      if (read) throw new Error(TEXT_UNREAD);
-      await this._reloadInSend();
-    }
-    plan.keys = this._client.keySeed?.() ?? null;
-    plan.ready = true;
-    return true;
+  // Makes `plan` (see saveText) ready to send on the text as last read, by
+  // plaid-ui's planOn, the rule igt's Baseline plans by too: its gaps moved
+  // onto that body when it has moved on, its digest (with none known the
+  // text is read once more, then the save is refused), and a new key seed.
+  // False when it changes nothing. Throws when the gaps cannot be moved.
+  _planText(textId, plan) {
+    return planOn(plan, this._storedText(textId), {
+      read: async () => {
+        await this._reloadInSend();
+        return this._storedText(textId);
+      },
+      keySeed: () => this._client.keySeed?.(),
+      conflict: TEXT_CONFLICT,
+      unread: TEXT_UNREAD,
+    });
   }
 
   // The body and digest of text `textId` as last read or answered.

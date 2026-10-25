@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { sendTextPlan } from './textSave.js';
+import { makeTextPlan, planOn, sendTextPlan, sendingPlan } from './textSave.js';
 
 const refusal = (status, data = {}) =>
   Object.assign(new Error(`HTTP ${status}`), { status, method: 'POST', responseData: data });
@@ -92,5 +92,76 @@ describe('sendTextPlan', () => {
       throw new Error('offline');
     };
     await expect(sendTextPlan(save)).rejects.toBe(refused);
+  });
+});
+
+describe('planOn', () => {
+  const how = (reads) => ({
+    read: vi.fn(async () => reads.shift()),
+    keySeed: () => 'k',
+    conflict: 'Changed elsewhere',
+    unread: 'Not read',
+  });
+  const plan = () =>
+    makeTextPlan({ base: 'one two', gaps: [{ start: 7, end: 7, value: ' three' }] });
+
+  it('takes the digest of the text stored, and keys', async () => {
+    const p = plan();
+    expect(await planOn(p, { body: 'one two', digest: 'd1' }, how([]))).toBe(true);
+    expect(p).toMatchObject({ base: 'one two', digest: 'd1', keys: 'k' });
+  });
+
+  it('moves the gaps onto a body that moved on, with its digest', async () => {
+    const p = plan();
+    expect(await planOn(p, { body: 'zero one two', digest: 'd2' }, how([]))).toBe(true);
+    expect(p.base).toBe('zero one two');
+    expect(p.gaps).toMatchObject([{ start: 12, end: 12, value: ' three' }]);
+    expect(p.digest).toBe('d2');
+  });
+
+  // One rule for both editors (B5-10): a text with no digest known is read
+  // once more, then the save is refused.
+  it('reads the text once more when no digest is known, then refuses', async () => {
+    const once = how([{ body: 'one two', digest: 'd3' }]);
+    const p = plan();
+    expect(await planOn(p, { body: 'one two', digest: null }, once)).toBe(true);
+    expect(once.read).toHaveBeenCalledTimes(1);
+    expect(p.digest).toBe('d3');
+
+    const never = how([
+      { body: 'one two', digest: null },
+      { body: 'one two', digest: 'late' },
+    ]);
+    await expect(planOn(plan(), { body: 'one two', digest: null }, never)).rejects.toThrow(
+      'Not read',
+    );
+    expect(never.read).toHaveBeenCalledTimes(1);
+    // Read in the first place, it is read no more.
+    const read = how([
+      { body: 'one two', digest: null },
+      { body: 'one two', digest: 'late' },
+    ]);
+    await expect(planOn(plan(), null, read)).rejects.toThrow('Not read');
+    expect(read.read).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a change it cannot move, and is false for gaps that change nothing', async () => {
+    const p = makeTextPlan({ base: 'one two', gaps: [{ start: 4, end: 7, value: 'six' }] });
+    await expect(planOn(p, { body: 'one too', digest: 'd' }, how([]))).rejects.toThrow(
+      'Changed elsewhere',
+    );
+    const none = makeTextPlan({ base: 'one two', gaps: [] });
+    expect(await planOn(none, { body: 'one two', digest: 'd' }, how([]))).toBe(false);
+  });
+});
+
+describe('sendingPlan', () => {
+  it('says a plan went before only under the keys it goes with now', () => {
+    const p = makeTextPlan({ base: '', gaps: [] });
+    p.keys = 'k1';
+    expect(sendingPlan(p)).toBe(false);
+    expect(sendingPlan(p)).toBe(true);
+    p.keys = 'k2';
+    expect(sendingPlan(p)).toBe(false);
   });
 });

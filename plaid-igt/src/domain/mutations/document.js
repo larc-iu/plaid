@@ -19,9 +19,8 @@ import {
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { isTextChanged, statusOf } from '@ui/lib/errors.js';
-import { sendTextPlan } from '@ui/lib/textSave.js';
+import { makeTextPlan, planOn, sendTextPlan, sendingPlan } from '@ui/lib/textSave.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
-import { rebaseEdits } from '@ui/lib/textMerge.js';
 import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
@@ -183,12 +182,8 @@ export const documentMutations = {
     // plan is made on the stored text (`_planBaselineEdit`), and a plan made
     // again after a refusal takes new ones.
     const plan = {
-      base,
-      digest,
-      gaps,
+      ...makeTextPlan({ base, digest, gaps }),
       seed: false,
-      keys: null,
-      sentUnder: null,
       landed: false,
       // The sole morphemes spelled as their word before the edit
       // (`_followSoleForms`), read at the first send.
@@ -267,8 +262,7 @@ export const documentMutations = {
     let batched = false;
     const sendOnce = async () => {
       const ops = gapsToOps(plan.gaps);
-      again = plan.sentUnder === plan.keys && plan.keys != null;
-      plan.sentUnder = plan.keys;
+      again = sendingPlan(plan);
       replayed = false;
       batched = plan.seed;
       const tokenizeLayer = tokenizeLayerOf(this.layerInfo);
@@ -305,16 +299,15 @@ export const documentMutations = {
       });
     };
     const result = await sendTextPlan({
-      prepare: async () => {
-        if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
-        return true;
-      },
+      prepare: async () => plan.keys != null || this._planBaselineEdit(plan, this._storedText()),
       send: sendOnce,
       sentBefore: () => again,
       readStored: () => this._readStoredText(),
       holds: (stored) => storedHolds(plan.base, plan.gaps, stored.body),
-      replan: async (stored) =>
-        this._planBaselineEdit(plan, stored ?? (await this._readStoredText())),
+      replan: async (stored) => {
+        plan.keys = null;
+        await this._planBaselineEdit(plan, stored);
+      },
       conflict: BASELINE_CONFLICT,
     });
     if ('stored' in result) {
@@ -325,10 +318,10 @@ export const documentMutations = {
   },
 
   // The body stored and its digest, from the copy on screen when it knows the
-  // digest of what it shows, else read.
-  async _storedText() {
+  // digest of what it shows, else null: the plan reads it (`planOn`).
+  _storedText() {
     const digest = this.layerInfo.primaryTextLayer?.text?.digest ?? null;
-    return digest ? { body: this.body, digest } : this._readStoredText();
+    return digest ? { body: this.body, digest } : null;
   },
 
   // The document read, from inside a send, and put on screen with the edits
@@ -340,23 +333,22 @@ export const documentMutations = {
     return { body: text?.body ?? '', digest: text?.digest ?? null };
   },
 
-  // `plan` made on `stored` (`{ body, digest }`): its gaps moved onto the
-  // stored body when that is no longer its base (a conflict throws), the
-  // digest of the stored body, whether the text needs its first sentences,
-  // and new keys. Throws rather than let an edit go without a digest.
-  _planBaselineEdit(plan, stored) {
-    if (!stored.digest) throw new Error(NO_DIGEST);
-    if (stored.body !== plan.base) {
-      const moved = rebaseEdits(plan.base, plan.gaps, stored.body);
-      if (moved.conflict) throw new Error(BASELINE_CONFLICT);
-      plan.gaps = moved.gaps;
-      plan.base = stored.body;
-    }
-    plan.digest = stored.digest;
+  // `plan` made ready on `stored` (`{ body, digest }`, or null to read it) by
+  // plaid-ui's planOn, the rule ud's Text Editor plans by too: its gaps moved
+  // onto the stored body (a conflict throws), its digest (a text with none
+  // is read once more, then refused), and new keys. And whether the text
+  // needs its first sentences. False when the gaps change nothing.
+  async _planBaselineEdit(plan, stored) {
+    const ready = await planOn(plan, stored, {
+      read: () => this._readStoredText(),
+      keySeed: () => this._client.keySeed?.(),
+      conflict: BASELINE_CONFLICT,
+      unread: NO_DIGEST,
+    });
     plan.seed =
       cpLength(applyTextOps(plan.base, gapsToOps(plan.gaps))) > 0 &&
       (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
-    plan.keys = this._client.keySeed?.() ?? null;
+    return ready;
   },
 
   // Edit the document's metadata with path ops that name only the keys being
