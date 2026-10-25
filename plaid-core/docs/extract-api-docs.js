@@ -174,7 +174,7 @@ function parseJSDoc(content) {
   // Method helpers like `function metadataMethods(client, kind) { ... }`,
   // whose methods a bundle takes with `...metadataMethods(this, "spans")`.
   const helpers = {};
-  const helperRegex = /^function (\w+Methods)\(client\b[^)]*\) \{\n([\s\S]*?)\n\}$/gm;
+  const helperRegex = /^(?:export )?function (\w+Methods)\(client\b[^)]*\) \{\n([\s\S]*?)\n\}$/gm;
   let helperMatch;
   while ((helperMatch = helperRegex.exec(content)) !== null) {
     helpers[helperMatch[1]] = bundleMethods(helperMatch[2]);
@@ -773,7 +773,10 @@ results = b.results</code></pre>
 
 // Main execution
 function main() {
-  const jsClientPath = path.join(__dirname, '..', '..', 'plaid-client-js', 'src', 'index.js');
+  // The client is index.js and the modules beside it it is built from
+  // (families.js holds the method families a bundle spreads in).
+  const jsClientDir = path.join(__dirname, '..', '..', 'plaid-client-js', 'src');
+  const jsSources = ['index.js', 'families.js'];
   // The resources and the client are in client.py, the client's operations
   // and the batch object in classes of their own modules: each of those is
   // read from its class on, past the module's helper functions.
@@ -791,7 +794,7 @@ function main() {
   }
 
   // Process JavaScript client
-  const jsContent = fs.readFileSync(jsClientPath, 'utf8');
+  const jsContent = jsSources.map((f) => fs.readFileSync(path.join(jsClientDir, f), 'utf8')).join('\n');
   const jsMethods = parseJSDoc(jsContent);
   const jsBundles = groupByBundle(jsMethods, false);
   const jsHTML = generateHTML('JavaScript API', jsBundles, 'js');
