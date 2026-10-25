@@ -16,7 +16,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const UI = resolve(ROOT, "plaid-ui/src");
-const CLIENT = pathToFileURL(resolve(ROOT, "plaid-client-js/src/index.js")).href;
+const CLIENT = pathToFileURL(
+  resolve(ROOT, "plaid-client-js/src/index.js"),
+).href;
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "@larc-iu/plaid-client") return next(CLIENT, context);
@@ -32,5 +34,7 @@ const { fieldConstraints } = await import(
 );
 const cases = JSON.parse(readFileSync(process.argv[2], "utf8"));
 process.stdout.write(
-  JSON.stringify(cases.map(([layer, project]) => fieldConstraints(layer, project))),
+  JSON.stringify(
+    cases.map(([layer, project]) => fieldConstraints(layer, project)),
+  ),
 );
