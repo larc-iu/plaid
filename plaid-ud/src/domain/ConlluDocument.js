@@ -954,6 +954,13 @@ export class ConlluDocument extends DocumentModel {
   // one word. Deleting the token loses them, while retyping its words writes
   // the new forms. `{ annotations, relations, forms }`.
   annotationLossForWord(word) {
+    const { annotations, relations, forms } = this._wordLoss(word);
+    return { annotations, relations: relations.size, forms };
+  }
+
+  // annotationLossForWord's count, with the token's words and the relations
+  // as a set of ids, so a count over several tokens takes each one once.
+  _wordLoss(word) {
     const info = this.layerInfo;
     const morphemes = (info.morphemeTokenLayer?.tokens || []).filter((m) => containsToken(word, m));
     const ids = new Set(morphemes.map((m) => m.id));
@@ -972,10 +979,14 @@ export class ConlluDocument extends DocumentModel {
       on(info.xposLayer).length +
       on(info.featuresLayer).length;
     const lemmaIds = new Set(lemmas.map((s) => s.id));
-    const relations = dependencyRelationLayers(info)
-      .flatMap((layer) => layer.relations || [])
-      .filter((r) => !isSuppressor(r) && (lemmaIds.has(r.source) || lemmaIds.has(r.target))).length;
+    const relations = new Set(
+      dependencyRelationLayers(info)
+        .flatMap((layer) => layer.relations || [])
+        .filter((r) => !isSuppressor(r) && (lemmaIds.has(r.source) || lemmaIds.has(r.target)))
+        .map((r) => r.id),
+    );
     return {
+      words: morphemes.length,
       annotations,
       relations,
       forms:
@@ -983,6 +994,26 @@ export class ConlluDocument extends DocumentModel {
           ? formSpans.length
           : formSpans.filter((s) => s.value != null && s.value !== surface).length,
     };
+  }
+
+  // What a save of the text deletes on this editor's layers, as the Text
+  // Editor asks before it sends one (R44): the tokens wholly inside one of
+  // `ranges` (code points of the stored body, [begin, end)), their words, the
+  // annotations on those words with their forms, and the dependency
+  // relations attached to them. `{ tokens, words, annotations, relations }`.
+  textDeleteLoss(ranges) {
+    const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
+    const tokens = (this.layerInfo.wordTokenLayer?.tokens || []).filter(inside);
+    const relations = new Set();
+    let words = 0;
+    let annotations = 0;
+    for (const token of tokens) {
+      const loss = this._wordLoss(token);
+      words += loss.words;
+      annotations += loss.annotations + loss.forms;
+      for (const id of loss.relations) relations.add(id);
+    }
+    return { tokens: tokens.length, words, annotations, relations: relations.size };
   }
 
   // Delete a word token (cascades its morphemes and their spans + relations

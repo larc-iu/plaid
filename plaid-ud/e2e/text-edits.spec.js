@@ -3,7 +3,8 @@
 // `base`). An edit inside a word or touching it changes that word and keeps
 // its analysis. A space typed inside a word splits it: the larger half keeps
 // the word's token, and the other half is a new word. Backspace over a space
-// joins two words, and both tokens stay.
+// joins two words, and both tokens stay. A save that deletes a token asks
+// first, and Cancel keeps the typed text in the box (R44).
 // Two tabs saving different passages both land, and a tab that changed the
 // passage another tab saved first is refused with its text kept. After each
 // save, what the screen shows is what a reload shows.
@@ -67,6 +68,16 @@ async function caretAt(page, at, length = 0) {
 
 async function save(page) {
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+}
+
+// Save, answering yes to the question a save that deletes tokens asks, which
+// says `says`.
+async function saveDeleting(page, says) {
+  await save(page);
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText(says);
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 }
 
 async function saved(page) {
@@ -208,6 +219,44 @@ test('a letter fixed inside a word and a word typed after it keep the word and i
   await expectScreenIsStored(page, S);
 });
 
+test('a token typed over whole asks first, Cancel keeps the text, and a yes deletes it', async ({
+  page,
+}) => {
+  const body = 'the dog runs';
+  const S = await seed('confirm', body, [
+    [0, 3],
+    [4, 7],
+    [8, 12],
+  ]);
+  await S.client.spans.create(S.layers.upos, [S.morphIds[1]], 'NOUN');
+  const before = await stored(S);
+  await openEditor(page, S, body);
+
+  await caretAt(page, 4, 3);
+  await page.keyboard.type('cat');
+  await save(page);
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('Save text?');
+  await expect(dialog).toContainText('Deletes 1 token and 1 word, with 1 annotation.');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(boxOf(page)).toHaveValue('the cat runs');
+  await expect(page.getByText('Unsaved changes')).toBeVisible();
+  // Nothing was sent.
+  await page.waitForTimeout(800);
+  expect((await stored(S)).body).toBe(body);
+
+  await saveDeleting(page, 'Deletes 1 token and 1 word, with 1 annotation.');
+  await saved(page);
+  await expect.poll(async () => (await stored(S)).body).toBe('the cat runs');
+  const { words } = await stored(S);
+  expect(words.map(([id]) => id)).not.toContain(before.words[1][0]);
+  expect(words.map(([id]) => id)).toEqual(
+    expect.arrayContaining([before.words[0][0], before.words[2][0]]),
+  );
+  await expectScreenIsStored(page, S);
+});
+
 test('two tabs editing different passages both land', async ({ browser }) => {
   const body = 'the dog runs. the cat sleeps.';
   const S = await seed('apart', body, [
@@ -274,14 +323,14 @@ test('a tab that changed the passage another tab saved first is refused, its tex
   try {
     await caretAt(A.page, 4, 3);
     await A.page.keyboard.type('cat');
-    await save(A.page);
+    await saveDeleting(A.page, 'Deletes 1 token and 1 word.');
     await saved(A.page);
     await expect.poll(async () => (await stored(S)).body).toBe('the cat runs');
     await expectScreenIsStored(A.page, S);
 
     await caretAt(B.page, 4, 3);
     await B.page.keyboard.type('cow');
-    await save(B.page);
+    await saveDeleting(B.page, 'Deletes 1 token and 1 word.');
 
     await expect(B.page.getByText('Changed elsewhere in the same passage.')).toBeVisible({
       timeout: 15000,

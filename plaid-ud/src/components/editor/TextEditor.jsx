@@ -5,6 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
+import { removedStretches } from '@ui/lib/editLog.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { countOf, plural } from '@ui/lib/plural.js';
 import { lossPhrase } from '@ui/domain/annotationLoss.js';
@@ -184,6 +185,28 @@ export const TextEditor = () => {
   const saveText = async (at) => {
     if (!doc) return;
     if (!textContent.trim() || doc.isSaving) return;
+    // A save that deletes tokens asks first, naming what goes with them on
+    // this editor's layers (R44). One that only adds text or cuts a token
+    // down asks nothing.
+    const removed = removedStretches(editLog.log.base, editLog.gaps());
+    const loss = removed.length > 0 ? doc.textDeleteLoss(removed) : null;
+    if (loss?.tokens > 0) {
+      const what = listed([
+        countOf(loss.tokens, 'token'),
+        loss.words > 0 && countOf(loss.words, 'word'),
+      ]);
+      const on = listed([
+        loss.annotations > 0 && countOf(loss.annotations, 'annotation'),
+        loss.relations > 0 && countOf(loss.relations, 'relation'),
+      ]);
+      const ok = await confirm({
+        title: 'Save text?',
+        description: `Deletes ${what}${on ? `, with ${on}` : ''}.`,
+        confirmLabel: 'Save',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     const sent = editLog.send();
     at.sent = sent;
     setSending(sent);
