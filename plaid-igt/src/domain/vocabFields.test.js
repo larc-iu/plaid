@@ -16,6 +16,7 @@ import {
   exportedVocabFields,
   fieldsWithRole,
   seedDefaultFields,
+  isReservedFieldName,
 } from './vocabFields.js';
 
 const POS = { delimiters: '', mode: 'closed', values: [{ value: 'n' }, { value: 'v' }] };
@@ -165,6 +166,18 @@ describe('editable and reserved metadata', () => {
       flexSense: 's',
       gloss: 'lion',
     });
+  });
+  // R2-IO-2: the CLDF and native importers stamp an entry with its source id
+  // under these two keys and find it again by them on a resumed import.
+  it('reserves the import stamps the CLDF and native importers write', () => {
+    expect(isReservedFieldName('cldfEntry')).toBe(true);
+    expect(isReservedFieldName('NativeImportId')).toBe(true);
+    const meta = { gloss: 'cat', cldfEntry: 'e1', nativeImportId: 'n1' };
+    expect(editableMetadata(meta)).toEqual({ gloss: 'cat' });
+    expect(reservedMetadata(meta)).toEqual({ cldfEntry: 'e1', nativeImportId: 'n1' });
+    expect(normalizeVocabFields({ cldfEntry: {}, gloss: {} }).map((f) => f.name)).not.toContain(
+      'cldfEntry',
+    );
   });
 });
 

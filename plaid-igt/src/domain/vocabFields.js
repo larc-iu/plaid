@@ -240,8 +240,10 @@ export const FIELD_SCOPES = Object.freeze({ ENTRY: 'entry', SENSE: 'sense' });
 /**
  * Metadata keys an entry may carry that are never fields: the form is the
  * item's own column, and the rest are structure the app reads directly (the
- * sense tree, promoted examples, the FLEx import's identity keys). A field
- * may not take one of these names, so a schema can never shadow them.
+ * sense tree, promoted examples, the FLEx import's identity keys, the source
+ * id the CLDF and native importers stamp and find an entry again by on a
+ * resumed import). A field may not take one of these names, so a schema can
+ * never shadow them.
  */
 export const RESERVED_ITEM_KEYS = new Set([
   'form',
@@ -251,6 +253,8 @@ export const RESERVED_ITEM_KEYS = new Set([
   'flexEntry',
   'flexSense',
   'homograph',
+  'cldfEntry',
+  'nativeImportId',
 ]);
 
 /**

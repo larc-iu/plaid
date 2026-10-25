@@ -123,11 +123,12 @@ the upload's media type is validated from its filename.
   record). Each key is written back as it was, so a dictionary is still one after a
   round trip.
 - Item `metadata` is exported wholesale (custom fields, FLEx guids, examples, …).
-  Seven of its keys are structure rather than fields, never editable as one
+  Nine of its keys are structure rather than fields, never editable as one
   (`RESERVED_ITEM_KEYS` in vocabFields.js): `form`, `parent`, `senseOrder`,
-  `homograph`, `examples`, `flexEntry` and `flexSense`. The importer adds an
-  eighth of its own, `nativeImportId`, which is a stamp rather than data.
-  Two of those hold ids, as does every `type: "item"` field, and the importer
+  `homograph`, `examples`, `flexEntry`, `flexSense`, and the two import stamps
+  `cldfEntry` and `nativeImportId`. The importer writes `nativeImportId` itself,
+  and the exporter leaves it out, since it is a stamp rather than data.
+  `parent` and `examples` hold ids, as does every `type: "item"` field, and the importer
   REWRITES all three, since every id in the archive is replaced on the way in:
   `parent` (the entry this one is a sense of), that field's value, and each
   entry of `examples`,
