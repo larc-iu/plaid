@@ -11,6 +11,16 @@ import { statusOf } from '../lib/errors.js';
  * undefined when the cell is absent (the client sends that as null). */
 export const storedConfig = (entity, namespace, key) => entity?.config?.[namespace]?.[key];
 
+/** A copy of `entity` holding `value` in one cell of its config, the rest of
+ * its config as it was: the optimistic copy after that cell's write. */
+export const withStoredConfig = (entity, namespace, key, value) => ({
+  ...entity,
+  config: {
+    ...entity?.config,
+    [namespace]: { ...entity?.config?.[namespace], [key]: value },
+  },
+});
+
 /** The write options that expect a cell to still hold what `entity` holds. */
 export const expectStored = (entity, namespace, key) => ({
   expected: storedConfig(entity, namespace, key),

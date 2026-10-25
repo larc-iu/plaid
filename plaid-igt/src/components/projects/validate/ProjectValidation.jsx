@@ -8,7 +8,7 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
 import { notifyError, notifyInfo, notifySuccess, humanizeError } from '@/utils/feedback';
-import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
+import { expectStored, isConfigConflict, withStoredConfig } from '@ui/domain/configCells.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { governedFields, offTagsetValues, readTagsetName, readTagsets } from '@/domain/tagsets';
@@ -391,10 +391,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         queueFieldDeclarations(
           b,
           igtFields(getIgtLayerInfo(p)),
-          {
-            ...p?.config,
-            [IGT_NAMESPACE]: { ...p?.config?.[IGT_NAMESPACE], tagsets: next },
-          },
+          withStoredConfig(p, IGT_NAMESPACE, 'tagsets', next).config,
           p?.config,
         );
       });

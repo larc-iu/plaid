@@ -4,6 +4,7 @@
 // NOT part of a preset.
 
 import { statusOf } from '@ui/lib/errors.js';
+import { withStoredConfig } from '@ui/domain/configCells.js';
 import { uuidv4 } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE, SENTENCE_ROLES } from '../domain/igtConfig.js';
 import { ENTRY_ROLES } from '../domain/vocabFields.js';
@@ -210,13 +211,8 @@ export async function updateExportPresets(client, project, change) {
  * does not have to refetch it (or know where presets live) to stay in step with
  * what it just saved.
  */
-export const applyExportPresets = (project, presets) => ({
-  ...project,
-  config: {
-    ...project?.config,
-    [IGT_NAMESPACE]: { ...project?.config?.[IGT_NAMESPACE], export: { presets } },
-  },
-});
+export const applyExportPresets = (project, presets) =>
+  withStoredConfig(project, IGT_NAMESPACE, 'export', { presets });
 
 // Sanitize a language tag-ish string: keep letters/digits/hyphens.
 const tagify = (name) =>

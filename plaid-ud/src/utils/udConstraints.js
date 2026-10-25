@@ -12,6 +12,7 @@ import {
   queueRepairOfBareLayer,
   sameConstraints,
 } from '../../../plaid-ui/src/lib/layerConstraints.js';
+import { withStoredConfig } from '../../../plaid-ui/src/domain/configCells.js';
 
 const UD_NAMESPACE = 'ud';
 
@@ -126,10 +127,7 @@ export const withConfigWrites = (project, writes) => {
   for (const { entity, key, value } of writes) {
     const target = byId.get(entity?.id);
     if (!target) continue;
-    target.config = {
-      ...target.config,
-      [UD_NAMESPACE]: { ...target.config?.[UD_NAMESPACE], [key]: value },
-    };
+    target.config = withStoredConfig(target, UD_NAMESPACE, key, value).config;
   }
   return copy;
 };

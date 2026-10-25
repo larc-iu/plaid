@@ -25,6 +25,7 @@ import {
   isConfigConflict,
   sameConfig,
   storedConfig,
+  withStoredConfig,
 } from '../../domain/configCells.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { configNamespace } from '../../lib/uiConfig.js';
@@ -445,25 +446,12 @@ export const ServiceDefaultsSettings = ({
         if (extraDirty) await saveExtra?.(b, project);
       });
       if (thresholdDirty) {
-        setProject((p) => ({
-          ...p,
-          config: {
-            ...p?.config,
-            [PLAID_NAMESPACE]: {
-              ...p?.config?.[PLAID_NAMESPACE],
-              [CONFIDENCE_KEY]: { threshold: thresholdValue },
-            },
-          },
-        }));
+        setProject((p) =>
+          withStoredConfig(p, PLAID_NAMESPACE, CONFIDENCE_KEY, { threshold: thresholdValue }),
+        );
       }
       if (defaultsChanged) {
-        setProject((p) => ({
-          ...p,
-          config: {
-            ...p?.config,
-            [namespace]: { ...p?.config?.[namespace], serviceDefaults: draft },
-          },
-        }));
+        setProject((p) => withStoredConfig(p, namespace, 'serviceDefaults', draft));
       }
       if (extraDirty) onExtraSaved?.();
       setDirty(!sameConfig(draftNow.current, draft));

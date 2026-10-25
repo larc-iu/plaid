@@ -11,6 +11,7 @@ import {
   isConfigConflict,
   sameConfig,
   storedConfig,
+  withStoredConfig,
 } from '../../../plaid-ui/src/domain/configCells.js';
 
 /** What a save that read the tagsets says when they changed before it landed. */
@@ -57,19 +58,12 @@ export const tagsetsSaveFields = (live, next, renamed = null) => {
   const fields = igtFields(getIgtLayerInfo(live)).map((sl) =>
     renamed && readTagsetName(sl.config) === renamed.from
       ? {
-          ...sl,
+          ...withStoredConfig(sl, IGT_NAMESPACE, 'tagset', renamed.to),
           configBefore: sl.config,
-          config: {
-            ...sl.config,
-            [IGT_NAMESPACE]: { ...sl.config?.[IGT_NAMESPACE], tagset: renamed.to },
-          },
         }
       : sl,
   );
-  const after = {
-    ...live?.config,
-    [IGT_NAMESPACE]: { ...live?.config?.[IGT_NAMESPACE], tagsets: next },
-  };
+  const after = withStoredConfig(live, IGT_NAMESPACE, 'tagsets', next).config;
   return { fields, after };
 };
 
