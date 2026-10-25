@@ -227,8 +227,7 @@ class Approving:
                 contributor = store.user_id if self._reviewed(client, store.project_id, store.user_id) else None
             except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
                 settled()
-                response_helper.error('Nothing was written. The project\'s review settings could not be '
-                                      f'read: {requester_message(e, secrets=self.REQUEST_SECRETS)}')
+                response_helper.error(self._review_unread(e))
                 return
             stamp_mode = ('contributed' if contributor else 'human' if approve.get('as_human')
                           else 'verified')
