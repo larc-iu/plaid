@@ -2028,7 +2028,9 @@ def _edges_after_gaps(tokens, gaps: List[Dict[str, Any]]) -> set:
     are saved: the cuts the server composes the new body by, so a character a
     token edge falls inside stays decomposed (``compose_text``). Text typed
     where one token ends goes to it, as the server's plain rule gives it, so a
-    token that also begins there begins after it."""
+    token that also begins there begins after it. Mirror of plaid-igt's
+    ``domain/textEdits.js`` ``edgesAfterGaps``, compared with it by
+    tests/test_text_edges_mirror.py."""
     ends = {t['end'] for t in tokens}
     out = set()
     for t in tokens:
