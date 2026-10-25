@@ -60,7 +60,7 @@ from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morph
                       load_document, read_view, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .tagsets import SETTINGS_APART
-from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
+from .vocab import IMPORT_STAMP_KEYS, PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 from plaid_client.workflows.igt.senses import entry_morph_types
 
 MAX_DOCS_PER_SEARCH = 1000
@@ -546,15 +546,17 @@ class Workspace(BaseWorkspace):
                                 'the plan that created it. Once that plan is approved, name the entry by its '
                                 'form, with its number if several share it ("gam#2"), as read_lexicon shows it.',
                                 kind='not-found')
-            # A value one of the entry's fields holds, which read_lexicon
-            # prints like an id (an import's "cldfEntry=e107/e107-1"): the
-            # bench saw it passed as entry_id 21 times in two runs.
+            # A value one of the entry's fields holds, which reads like an id,
+            # or the source id an import stamped (an import's
+            # "cldfEntry=e107/e107-1", which read_lexicon printed until the
+            # stamps were reserved): the bench saw it passed as entry_id 21
+            # times in two runs.
             for v in self.project.vocabs:
                 view = self.view(v)
                 for it in view.items:
                     for k, val in (it.get('metadata') or {}).items():
                         # A part of a sense's key ("e236-1" of "e236/e236-1") names it too.
-                        if k not in RESERVED_ITEM_KEYS and isinstance(val, (str, int)) \
+                        if (k not in RESERVED_ITEM_KEYS or k in IMPORT_STAMP_KEYS) and isinstance(val, (str, int)) \
                                 and entry_id.strip() in (str(val).strip(), *str(val).strip().split('/')[1:]):
                             name = view.label(it['id'])
                             part = '' if str(val).strip() == entry_id.strip() else 'part of '

@@ -1,8 +1,9 @@
 """An entry_id that is no id says what it is and how to name the entry.
 
-read_lexicon prints an imported entry as ``t | cldfEntry=e107 | gloss=...``,
-and its senses as ``cldfEntry=e107/e107-1``: a field the CLDF import left,
-which reads exactly like an id. On the bench (build-q38-1,
+read_lexicon printed an imported entry as ``t | cldfEntry=e107 | gloss=...``,
+and its senses as ``cldfEntry=e107/e107-1``: the stamp the CLDF import left,
+which reads exactly like an id. It is reserved now and no longer printed, but
+the model can still have it from the file, so the refusal still names it. On the bench (build-q38-1,
 igt-lex-link-sentence r3 and igt-lex-relink-senses r1) the model passed it as
 entry_id 21 times and was told only "No lexicon entry with id e107/e107-1".
 """

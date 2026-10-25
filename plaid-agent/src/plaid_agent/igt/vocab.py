@@ -68,11 +68,13 @@ def stored_entry_form(form: str, morph_type: Optional[str]) -> Tuple[str, Option
 HOMOGRAPH_KEY = 'homograph'
 EXAMPLES_KEY = 'examples'
 
+# The source ids the CLDF and native importers stamp on an entry, to find it
+# again on a resumed import.
+IMPORT_STAMP_KEYS = frozenset({'cldfEntry', 'nativeImportId'})
+
 # Keys an entry may carry that are never fields. A schema can never shadow one.
-# The last two are the source ids the CLDF and native importers stamp.
 RESERVED_ITEM_KEYS = frozenset({'form', 'parent', 'senseOrder', 'examples',
-                                'flexEntry', 'flexSense', 'homograph',
-                                'cldfEntry', 'nativeImportId'})
+                                'flexEntry', 'flexSense', 'homograph'}) | IMPORT_STAMP_KEYS
 
 FIELD_TEXT = 'text'
 FIELD_ITEM = 'item'
