@@ -249,8 +249,12 @@ def _finish(ws, out, total, limit, noun, unit, morphs=None, empty=None):
     return truncate('\n'.join([head] + out))
 
 
+#: The entries read_lexicon lists when the model names no number.
+READ_LEXICON_LIMIT = 80
+
+
 def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Optional[str] = None,
-                   limit: int = 80) -> str:
+                   limit: int = READ_LEXICON_LIMIT) -> str:
     vocabs = [ws.project.vocab(lexicon)] if lexicon else ws.project.vocabs
     if not vocabs:
         ws.note_read(0, 'entry')
@@ -317,8 +321,12 @@ def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
     return out
 
 
+#: The occurrences concordance lists when the model names no number.
+CONCORDANCE_LIMIT = 60
+
+
 def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document: Optional[str] = None,
-                  regex: bool = False, limit: int = 60, case_sensitive: bool = False) -> str:
+                  regex: bool = False, limit: int = CONCORDANCE_LIMIT, case_sensitive: bool = False) -> str:
     """Every occurrence of a morpheme form, word form, or field value with
     its aligned context: the containing word's segmentation and morpheme
     glosses (hit in brackets) and the neighbouring words, plus a tally of the
@@ -461,8 +469,12 @@ def _spelled_alike(ws: Workspace, form: str, lexicon: Optional[str]):
     return write
 
 
+#: The example occurrences lexicon_entry shows when the model names no number.
+ENTRY_EXAMPLES = 3
+
+
 def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
-                    entry_id: Optional[str] = None, examples: int = 3, entry_gloss: Optional[str] = None) -> str:
+                    entry_id: Optional[str] = None, examples: int = ENTRY_EXAMPLES, entry_gloss: Optional[str] = None) -> str:
     """One lexicon entry in full: every field, where it is linked (words vs
     morphemes, how many), and example occurrences.
 
@@ -481,7 +493,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
 
 
 def _entry_in_full(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
-                   entry_id: Optional[str] = None, examples: int = 3, entry_gloss: Optional[str] = None) -> str:
+                   entry_id: Optional[str] = None, examples: int = ENTRY_EXAMPLES, entry_gloss: Optional[str] = None) -> str:
     """One entry, named exactly, in full (:func:`t_lexicon_entry`)."""
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'new':

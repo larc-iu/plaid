@@ -10,7 +10,7 @@ so nothing here may be imported back by one of them.
 """
 
 from ..core import toolkit, webtools
-from ..core.limits import MAX_SENTENCES_PER_READ
+from ..core.limits import MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ
 from ..core.tools import fn, limit_arg
 
 from .bulk import t_replace_in_field
@@ -119,7 +119,7 @@ TOOLS = [
         'only those words; without, everything in the document that is waiting, as ONE planned change '
         'for the whole document. With field, only that column (deprel is allowed here too); without, '
         'all of them. Give `documents` instead of `document` to cover several at once: a list of '
-        'names, or "all" for every document with something waiting (up to 100).',
+        f'names, or "all" for every document with something waiting (up to {MAX_SCOPE_DOCS}).',
         {'document': _DOC, 'refs': _REFS,
          'documents': {'type': 'array', 'items': {'type': 'string'},
                        'description': 'Several documents, by id or name; or ["all"].'},

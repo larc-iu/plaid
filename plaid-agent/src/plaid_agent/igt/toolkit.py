@@ -13,7 +13,7 @@ import inspect
 from typing import Any, Dict
 
 from ..core import toolkit, webtools
-from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
+from ..core.limits import MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.plan import discard_plan as t_discard_plan, plan_status as t_plan_status
 from ..core.tools import fn, limit_arg
 
@@ -24,7 +24,8 @@ from .lexicon import t_create_entry, t_make_sense_of, t_senses, t_set_entry_fiel
 from .query import t_query, t_query_help
 from ..core.history import (add_comment_on_values as t_add_comment, comments_on_values as t_comments,
                             recent_changes as t_recent_changes)
-from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
+from .reads import (CONCORDANCE_LIMIT, ENTRY_EXAMPLES, MAX_FORMS_PER_CALL, READ_LEXICON_LIMIT,
+                    t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
                     t_list_documents, t_project_overview,
                     t_read_document, t_read_lexicon, t_read_sentences, t_search)
 from .sandbox import t_code_help, t_run_code
@@ -136,7 +137,7 @@ TOOLS = [
         'they are shown with.',
         {'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
          'pattern': {'type': 'string'},
-         'limit': {'type': 'integer', 'description': 'Max entries (default 80).'}},
+         'limit': {'type': 'integer', 'description': f'Max entries (default {READ_LEXICON_LIMIT}).'}},
         []),
     _fn('set_field',
         'PLAN: set a field\'s value on words, morphemes, or sentences (the references must match the field\'s '
@@ -228,14 +229,14 @@ TOOLS = [
         {'pattern': {'type': 'string'},
          'where': {'type': 'string', 'description': '"morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.'},
          'document': _DOC, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60). The value, word and neighbour tallies cover every occurrence.'},
+         'limit': {'type': 'integer', 'description': f'Max occurrences to list (default {CONCORDANCE_LIMIT}). The value, word and neighbour tallies cover every occurrence.'},
          'documents': _DOCS},
         ['pattern']),
     _fn('analyses_of',
         'How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, '
         'glosses, link, position in the word): each distinct analysis with its count and example references. '
         'Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass '
-        'forms (a list, up to 40) to check every word of a sentence in one call. value: also list the references '
+        f'forms (a list, up to {MAX_FORMS_PER_CALL}) to check every word of a sentence in one call. value: also list the references '
         'of the occurrences holding that field value (e.g. a minority gloss).',
         {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC,
          'documents': _DOCS, 'value': {'type': 'string'}}, []),
@@ -245,7 +246,7 @@ TOOLS = [
         'sits, the senses under it, what refers to it, and its '
         'promoted usage examples with their numbers.',
         {'entry_form': _ENTRY_FORM, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
-         'entry_gloss': _GLOSS, 'examples': {'type': 'integer', 'description': 'Example occurrences to show (default 3).'}},
+         'entry_gloss': _GLOSS, 'examples': {'type': 'integer', 'description': f'Example occurrences to show (default {ENTRY_EXAMPLES}).'}},
         []),
     _fn('check_consistency',
         'A consistency report for a field: values that are case/spelling variants of one another, forms that carry '
@@ -280,7 +281,7 @@ TOOLS = [
         'earlier assistant plans; ~ in reads) and contributors\' work (^ in reads); see worklist kind="unverified" / '
         '"contributed". refs: sentences, words, or morphemes (a sentence covers its words); field: only that '
         'field\'s values; no refs: the whole document. Give `documents` instead of `document` to cover '
-        'several at once: a list of names, or ["all"] for every document with something waiting (up to 100).',
+        f'several at once: a list of names, or ["all"] for every document with something waiting (up to {MAX_SCOPE_DOCS}).',
         {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'},
          'documents': {'type': 'array', 'items': {'type': 'string'},
                        'description': 'Several documents, by id or name; or ["all"].'}}, []),

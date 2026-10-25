@@ -18,7 +18,10 @@ from typing import Any, Dict, List
 
 from .args import clamp_limit
 from .tools import ToolError, truncate
-from .web import WebError
+from .web import MAX_RESULTS, WebError
+
+#: The web results a search returns when the model names no number.
+WEB_RESULTS = 5
 
 FENCE_TOP = '--- untrusted text from the web begins ---'
 FENCE_END = '--- untrusted text from the web ends ---'
@@ -87,7 +90,7 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
                             f'the project tools for anything about {subject}.'),
             'parameters': {'type': 'object', 'properties': {
                 'query': {'type': 'string'},
-                'limit': {'type': 'integer', 'description': 'Results to return (default 5, max 10).'}},
+                'limit': {'type': 'integer', 'description': f'Results to return (default {WEB_RESULTS}, max {MAX_RESULTS}).'}},
                 'required': ['query']}}},
         {'type': 'function', 'function': {
             'name': 'read_url',
@@ -102,9 +105,9 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
     ]
 
 
-def web_search(ws, query: str, limit: int = 5) -> str:
+def web_search(ws, query: str, limit: int = WEB_RESULTS) -> str:
     """Search the web. Titles, links and snippets only. Raises WebError."""
-    limit = clamp_limit(limit, 5, 10)
+    limit = clamp_limit(limit, WEB_RESULTS, MAX_RESULTS)
     ws.on_progress(f'Searching the web for "{query}"…')
     results = ws.web.search(query, limit)
     if not results:
