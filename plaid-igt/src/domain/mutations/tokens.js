@@ -1,6 +1,31 @@
 // Mutation mixin: word-token operations. See IgtDocument.js for the `this`
-// API (_queueWrite, _applyRawPatch, _reload, layerInfo, body, etc.) and the
-// splitToken template method.
+// API (_queueWrite, _applyRawPatch, _reload, layerInfo, body, etc.).
+//
+// The first two methods below, updateOrthography and splitToken, are the
+// canonical template for the mutation
+// mixins. Conventions to follow:
+//
+// - Every edit shows before the server answers, creates included. Validate
+//   inputs (id lookups, layer presence) first: guard failures use
+//   `refuse(message) + return false`. Then `_canWrite(label)`, the patch
+//   (`_applyRawPatch`), and `_queueWrite(label, send)` with the server
+//   calls, which runs after any write still in flight.
+// - A row the edit creates goes in under a pending id and `_settle` swaps
+//   the server's in (see mutations/pending.js). The send names every id
+//   through `settledId`: an edit made while an earlier one was queued can
+//   hold that one's pending ids. Ids handed in are settled on the way in
+//   (see the end of IgtDocument.js).
+// - Inside `_applyRawPatch((next, info, vocabs) => ...)`, re-resolve
+//   layers/tokens via `info` — captured outer references point into the
+//   OLD raw doc and mutating through them is a real bug.
+// - Inside `_client.batched(async (b) => ...)`, every write goes on `b`: a
+//   write made on `this._client` there leaves the transaction.
+// - For batched ops, the order matters: the server runs a batch's ops
+//   sequentially, so an op that depends on a prior shift must come AFTER it.
+//
+// updateOrthography — simplest case: single field update with metadata merge.
+// splitToken — complex case: pre-cleanup of dependent tokens, atomic batch
+//              with returned id, multi-step optimistic patch.
 
 import {
   tokenizeText,
@@ -8,8 +33,19 @@ import {
   getIgnoredTokensConfig,
   validateTokenization,
 } from '../../utils/tokenizationUtils.js';
-import { mergeMetadata, metadataOps, createdId, createdIds } from '@larc-iu/plaid-client';
-import { survivingProvenance, survivorPatch } from '../tokenReshape.js';
+import {
+  applyMetadataOps,
+  mergeMetadata,
+  metadataOps,
+  createdId,
+  createdIds,
+} from '@larc-iu/plaid-client';
+import {
+  newHalfMetadata,
+  newHalfOps,
+  survivingProvenance,
+  survivorPatch,
+} from '../tokenReshape.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { applyMergeRules } from '../igtConstraints.js';
 import { removeTokensLocally } from '../textEdits.js';
@@ -63,6 +99,109 @@ export const mergeAbsorbs = (info, body, words) => {
 };
 
 export const tokenMutations = {
+  // Set or update a per-orthography metadata key (`orthog:<name>`) on a word
+  // token. Orthographies derive from the token's metadata at render time, so
+  // the patch is the metadata entry alone.
+  async updateOrthography(tokenId, orthographyName, value) {
+    const info = this.layerInfo;
+    const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    if (!token) {
+      this.refuse('Word not found');
+      return false;
+    }
+    const label = `Failed to update ${orthographyName}`;
+    if (!this._canWrite(label)) return false;
+    // The one key, so the token's other metadata is never written from this copy.
+    const ops = [{ op: 'set', path: [`orthog:${orthographyName}`], value }];
+    this._applyRawPatch((next, infoNext) => {
+      const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
+      if (t) t.metadata = applyMetadataOps(t.metadata, ops);
+    });
+    return this._queueWrite(label, () =>
+      this._client.tokens.patchMetadata(settledId(tokenId), ops),
+    );
+  },
+
+  // Split a word token at `splitOffset` (relative to token.begin). Wipes any
+  // coincident morpheme (same begin/end) in the same atomic batch — the
+  // morpheme's analysis is invalidated by the new boundary and the server-
+  // side cascade-split would otherwise produce two nonsense morphemes.
+  // Returns true on success / false on guard failure or server error.
+  async splitToken(tokenId, splitOffset) {
+    const info = this.layerInfo;
+    const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    if (!token) {
+      this.refuse('Word not found');
+      return false;
+    }
+    const label = 'Failed to split token';
+    if (!this._canWrite(label)) return false;
+    // A split next to whitespace (scissors either side of the space in a word
+    // merged over two) goes around the whole run of it, so neither half
+    // begins or ends with a space: the right half starts after the run and
+    // the left half is trimmed back to its start. Offsets are code points.
+    const at = token.begin + splitOffset + 1;
+    const cps = Array.from(this.body);
+    const ws = (i) => /\s/u.test(cps[i] ?? '');
+    let leftEnd = at;
+    let rightBegin = at;
+    while (leftEnd > token.begin && ws(leftEnd - 1)) leftEnd -= 1;
+    while (rightBegin < token.end && ws(rightBegin)) rightBegin += 1;
+    if (leftEnd === token.begin || rightBegin === token.end) {
+      leftEnd = at;
+      rightBegin = at;
+    }
+    const coincident = (info.morphemeTokenLayer?.tokens || [])
+      .filter((m) => m.begin === token.begin && m.end === token.end)
+      .map((m) => m.id);
+    // What the two halves carry: see domain/tokenReshape.js. The server
+    // leaves the left half's metadata alone and gives the right half only the
+    // provenance its layer preserves on a split, so both halves are stamped
+    // here as one edit, and a transcription of the whole word stays off the
+    // right half.
+    const leftPatch = survivorPatch(token.metadata, {}, (m) => this.editStamp(m));
+    const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
+    const rightId = pendingId();
+
+    const textId = info.primaryTextLayer?.text?.id;
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
+      if (t) {
+        t.end = leftEnd;
+        if (leftPatch) t.metadata = mergeMetadata(t.metadata || {}, leftPatch);
+      }
+      if (infoNext.primaryTokenLayer) {
+        if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
+          infoNext.primaryTokenLayer.tokens = [];
+        infoNext.primaryTokenLayer.tokens.push({
+          id: rightId,
+          begin: rightBegin,
+          end: token.end,
+          metadata: rightMetadata ? { ...rightMetadata } : {},
+        });
+        infoNext.primaryTokenLayer.tokens.sort((a, b) => a.begin - b.begin);
+      }
+      // The coincident morphemes go with their annotations and links
+      // (HUNT-model M5).
+      if (coincident.length > 0) removeTokensLocally(next, textId, coincident, vocabs);
+    });
+
+    // One batch, the halves' metadata with the split: the right half is made
+    // under the id this page minted, so the batch can name it.
+    return this._queueWrite(label, async () => {
+      const id = settledId(tokenId);
+      await this._client.batched(async (b) => {
+        if (coincident.length > 0) b.tokens.bulkDelete(coincident.map(settledId));
+        b.tokens.split(id, rightBegin, undefined, { id: rightId });
+        if (leftEnd < rightBegin) b.tokens.update(id, undefined, leftEnd);
+        if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));
+        const rightOps = newHalfOps(token.metadata, rightMetadata);
+        if (rightOps.length) b.tokens.patchMetadata(rightId, rightOps);
+      });
+      this._settle(new Map([[rightId, rightId]]));
+    });
+  },
+
   // Merge a set of word tokens into the earliest-beginning one, which grows
   // to cover the rest. Coincident morphemes (same begin/end as any merged
   // word token) are deleted in the same atomic batch: their analysis is

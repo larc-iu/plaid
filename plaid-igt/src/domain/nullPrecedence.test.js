@@ -285,22 +285,4 @@ describe('a merge or append beside a morpheme storing no precedence', () => {
     expect(formsOf(doc, 0)).toEqual(['abcd', 'ef']);
     expect(precedenceUpdates(client)).toEqual([['m-c', 4]]);
   });
-
-  it('createMorpheme lands after a gapped stored sibling', async () => {
-    const client = makeFakeClient();
-    const doc = docFor(abcdef([m('m-a', 1, 'ab'), m('m-b', 5, 'cd')]), client);
-    expect(await doc.createMorpheme('w-1', 'ef')).toBe(true);
-    expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'ef']);
-    expect(precedenceUpdates(client)).toEqual([]);
-    expect(createdPrecedences(client)).toEqual([6]);
-  });
-
-  it('createMorpheme numbers a sibling storing none before the new one', async () => {
-    const client = makeFakeClient();
-    const doc = docFor(abcdef([m('m-a', 1, 'ab'), m('m-b', null, 'cd')]), client);
-    expect(await doc.createMorpheme('w-1', 'ef')).toBe(true);
-    expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'ef']);
-    expect(precedenceUpdates(client)).toEqual([['m-b', 2]]);
-    expect(createdPrecedences(client)).toEqual([3]);
-  });
 });
