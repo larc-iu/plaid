@@ -17,6 +17,7 @@ import {
   makeHttpError,
   makeNetworkError,
   noteAuthError,
+  noteServerClock,
   parseErrorBody,
   prepareRequest,
   restampDocumentVersion,
@@ -247,7 +248,8 @@ export async function queueRequest(batch, method, path, options = {}) {
  * rules' remedies at its end included (a split that deletes a relation
  * crossing the new boundary moves the version once more). The batch's own
  * `X-Document-Versions-Omitted` is not taken up: each sub-response keeps its
- * own list. The batch does not note the server clock.
+ * own list. Every answer notes the server's clock, as a single request's
+ * does.
  * @param {object} client - PlaidClient instance
  * @param {string} url
  * @param {object[]} body - The operations
@@ -277,6 +279,7 @@ export async function postBatch(client, url, body, { key = uuidv7(), timeout } =
       } catch (e) {
         throw makeNetworkError(e, url, "POST");
       }
+      noteServerClock(client, res.headers);
       if (!res.ok) {
         throw makeHttpError(res, await parseErrorBody(res), url, "POST");
       }

@@ -2,6 +2,7 @@
 the JS client). A time the server stamped, such as an audit entry's ``ts``, is
 judged against this, never the machine's own clock, which can be minutes off."""
 
+import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -45,3 +46,28 @@ def test_with_no_date_header_seen_server_now_is_this_machines_clock():
     _answer(client, None)
     client.documents.check_lock('d1')
     assert abs((client.server_now() - datetime.now(timezone.utc)).total_seconds()) < 1
+
+
+def test_a_batchs_answer_notes_the_servers_clock_too():
+    client = PlaidClient('http://x', 'tok')
+    server = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    class _BatchResp(_Resp):
+        def __init__(self, ops):
+            super().__init__(format_datetime(server, usegmt=True))
+            self._ops = ops
+
+        def json(self):
+            return [{'status': 200, 'headers': {}, 'body': {}} for _ in self._ops]
+
+    class _Session:
+        def post(self, url, headers=None, data=None, timeout=None):
+            return _BatchResp(json.loads(data))
+
+        def close(self):
+            pass
+
+    client.session = _Session()
+    with client.batched() as b:
+        b.spans.update('s1', 'NOUN')
+    assert abs((client.server_now() - server).total_seconds()) < 2

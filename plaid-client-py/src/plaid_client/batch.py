@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any
 from plaid_client.document_lock import writes_landed, writes_started
 from plaid_client.http import (
     _UNSET, IDEMPOTENCY_HEADER, NO_PIN, REPLAYED_HEADER, PlaidAPIError, build_api_error,
-    extract_document_versions, is_replayed, network_error, next_idempotency_key, prepare_request,
-    restamp_document_version, wire_timeout, with_retries,
+    extract_document_versions, is_replayed, network_error, next_idempotency_key, note_server_clock,
+    prepare_request, restamp_document_version, wire_timeout, with_retries,
 )
 from plaid_client.replayed import mark_replayed, was_replayed
 from plaid_client.transforms import transform_response
@@ -228,7 +228,8 @@ def post_batch(client, url, data, key, timeout):
     rules' remedies at its end included (a split that deletes a relation
     crossing the new boundary moves the version once more). The batch's own
     ``X-Document-Versions-Omitted`` is not taken up: each sub-response keeps
-    its own list. The batch does not note the server clock."""
+    its own list. Every answer notes the server's clock, as a single
+    request's does."""
     headers = {
         'Authorization': f'Bearer {client.token}',
         'Content-Type': 'application/json',
@@ -244,6 +245,7 @@ def post_batch(client, url, data, key, timeout):
             raise
         except Exception as e:
             raise network_error(e, url, 'POST') from e
+        note_server_clock(client, getattr(resp, 'headers', None))
         if not resp.ok:
             raise build_api_error(resp, url, 'POST')
         return resp

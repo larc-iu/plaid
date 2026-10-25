@@ -48,3 +48,28 @@ test("with no Date header seen, serverNow is this machine's clock", async () => 
   }
   assert.ok(Math.abs(client.serverNow().getTime() - Date.now()) < 1000);
 });
+
+test("a batch's answer notes the server's clock too", async () => {
+  const client = new PlaidClient("http://x", "tok");
+  const realFetch = globalThis.fetch;
+  // The server is ten minutes behind this machine.
+  const server = new Date(Date.now() - 10 * 60e3);
+  globalThis.fetch = async (_url, opts) => ({
+    ok: true,
+    status: 200,
+    headers: {
+      get: (n) => (String(n).toLowerCase() === "date" ? server.toUTCString() : null),
+    },
+    json: async () =>
+      JSON.parse(opts.body).map(() => ({ status: 200, headers: {}, body: {} })),
+  });
+  try {
+    await client.batched(async (b) => {
+      b.spans.update("s1", "NOUN");
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const drift = Math.abs(client.serverNow().getTime() - server.getTime());
+  assert.ok(drift < 2000, `off by ${drift} ms`);
+});
