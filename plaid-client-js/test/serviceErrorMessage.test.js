@@ -191,3 +191,33 @@ test("a service reporting its own error is scrubbed too", async () => {
   });
   assert.equal(message, "404 Client Error: Not Found");
 });
+
+test("a document another holds is one line in the log, not the error and its cause", async () => {
+  // HUNT-recent 20: the lock acquire rethrows the server's 423 in its own
+  // words with the first as its cause, and the log printed both.
+  const { registration, deliver } = served(async () => {
+    const server = new Error("HTTP 423 Locked");
+    server.status = 423;
+    const readable = new Error(
+      "This document is being edited by ana@x.org. Try again once they're done.",
+    );
+    readable.status = 423;
+    readable.cause = server;
+    throw readable;
+  });
+  const logged = [];
+  const realError = console.error;
+  console.error = (...args) => logged.push(args);
+  try {
+    deliver();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  } finally {
+    console.error = realError;
+    registration.stop();
+  }
+  assert.deepEqual(logged, [
+    [
+      "Service svc1 failed request r1: This document is being edited by ana@x.org. Try again once they're done.",
+    ],
+  ]);
+});

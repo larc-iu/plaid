@@ -454,7 +454,14 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
         // What reaches the requester is the sanitized half: the raw message
         // names the endpoint the client called, which is the operator's
         // business. The console keeps the whole error.
-        console.error(`Service ${serviceId} failed request ${requestId}:`, error);
+        // Somebody else holding the document is a refusal a service expects,
+        // which the lock acquire words itself (from the server's 423): one
+        // line, not the error and its cause.
+        if (error?.status === 423) {
+          console.error(`Service ${serviceId} failed request ${requestId}: ${error.message}`);
+        } else {
+          console.error(`Service ${serviceId} failed request ${requestId}:`, error);
+        }
         responseHelper.error(serviceErrorMessage(error, serviceName));
       }
     };
