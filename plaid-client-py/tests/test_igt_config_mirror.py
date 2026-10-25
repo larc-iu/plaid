@@ -2,8 +2,9 @@
 
 The services and the workflows read plaid-igt's own config keys through the
 Python readers, and the app through igtConfig.js, so the two must answer the
-same for every config. It skips where node or plaid-igt is not beside this
-package, and does not skip when the two disagree. The last two tests keep
+same for every config. It skips where node, plaid-igt or plaid-igt's
+node_modules is not beside this package (mirror_node), and does not skip when
+the two disagree. The last two tests keep
 every other Python reader of the namespace, and every hand-spelled
 orthography key, out of the client, the services and plaid-agent.
 """
@@ -11,13 +12,14 @@ orthography key, out of the client, the services and plaid-agent.
 import json
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from plaid_client.workflows.igt import config
+
+from mirror_node import IGT_MODULES, node_or_skip
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, 'igt_config_mirror.mjs')
@@ -35,9 +37,7 @@ CASES += [{'igt': {'scope': 'Sentence', 'lang': 'en', 'lexiconField': 'Meaning',
 
 @pytest.fixture(scope='module')
 def js(tmp_path_factory):
-    exe = shutil.which('node')
-    if not exe or not JS.is_file():
-        pytest.skip('node or plaid-igt is not here')
+    exe = node_or_skip(JS, IGT_MODULES)
     cases = tmp_path_factory.mktemp('mirror') / 'cases.json'
     cases.write_text(json.dumps(CASES), encoding='utf-8')
     out = subprocess.run([exe, SCRIPT, str(cases)], capture_output=True, text=True, timeout=60,

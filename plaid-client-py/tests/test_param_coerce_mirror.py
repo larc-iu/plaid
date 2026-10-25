@@ -13,12 +13,13 @@ client); it does not skip when the two disagree.
 
 import json
 import os
-import shutil
 import subprocess
 
 import pytest
 
 from plaid_client.service_schema import coerce
+
+from mirror_node import node_or_skip
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, 'param_coerce_mirror.mjs')
@@ -43,9 +44,7 @@ CASES = ([{'schema': s, 'raw': {'n': r}} for s in SCHEMAS for r in RAWS]
 
 @pytest.fixture(scope='module')
 def js(tmp_path_factory):
-    exe = shutil.which('node')
-    if not exe or not os.path.exists(SCHEMA_JS):
-        pytest.skip('node or plaid-client-js is not here')
+    exe = node_or_skip(SCHEMA_JS)
     cases = tmp_path_factory.mktemp('coerce') / 'cases.json'
     cases.write_text(json.dumps(CASES))
     out = subprocess.run([exe, SCRIPT, str(cases)], capture_output=True, text=True, timeout=60,

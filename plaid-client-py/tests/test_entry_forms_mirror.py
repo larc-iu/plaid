@@ -8,13 +8,14 @@ and does not skip when the two disagree.
 
 import json
 import os
-import shutil
 import subprocess
 
 import pytest
 
 from plaid_client.workflows.igt.entry_forms import (
     MORPH_TYPES, decorate_with_affix_markers, entry_form)
+
+from mirror_node import node_or_skip
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, 'entry_forms_mirror.mjs')
@@ -31,9 +32,7 @@ CASES = [[t, f] for t in TYPES for f in FORMS]
 
 @pytest.fixture(scope='module')
 def js(tmp_path_factory):
-    exe = shutil.which('node')
-    if not exe or not os.path.isfile(JS):
-        pytest.skip('node or plaid-client-js is not here')
+    exe = node_or_skip(JS)
     cases = tmp_path_factory.mktemp('mirror') / 'cases.json'
     cases.write_text(json.dumps(CASES), encoding='utf-8')
     out = subprocess.run([exe, SCRIPT, str(cases)], capture_output=True, text=True, timeout=60,

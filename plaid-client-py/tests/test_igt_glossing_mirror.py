@@ -7,19 +7,20 @@ copy drifts silently: the skeleton once read a caseless-script gloss as an
 abbreviation that igt set as a word. This runs the app's modules over one case
 table and compares every answer.
 
-It skips where it cannot run (no node, or plaid-igt not beside the client); it
-does not skip when the two disagree.
+It skips where it cannot run (no node, or plaid-igt or its node_modules not
+beside the client: mirror_node), and does not skip when the two disagree.
 """
 
 import json
 import os
-import shutil
 import subprocess
 
 import pytest
 
 from plaid_client.workflows.igt import glossing
 from plaid_client.workflows.igt.senses import morpheme_morph_type
+
+from mirror_node import IGT_MODULES, node_or_skip
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, 'igt_glossing_mirror.mjs')
@@ -81,9 +82,7 @@ GOES_BY = [
 
 @pytest.fixture(scope='module')
 def js(tmp_path_factory):
-    exe = shutil.which('node')
-    if not exe or not os.path.isfile(TAGSETS_JS):
-        pytest.skip('node or plaid-igt is not here')
+    exe = node_or_skip(TAGSETS_JS, IGT_MODULES)
     cases = tmp_path_factory.mktemp('mirror') / 'cases.json'
     cases.write_text(json.dumps({
         'values': VALUES, 'scanned': [v for v in VALUES if not any(c.isspace() for c in v)],
