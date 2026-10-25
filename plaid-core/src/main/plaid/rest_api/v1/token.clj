@@ -4,56 +4,22 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.sql.token :as tok]
-            [plaid.sql.token-layer :as tokl]))
+            [plaid.sql.token :as tok]))
 
-(defn get-project-id
-  "The project of the token the path names, or on the create (no token in the
-  path) of the body's token layer. A route that names its token reads only
-  the path, so no body key can choose the project the gate checks."
-  [{db :db params :parameters}]
-  (if-let [token-id (-> params :path :token-id)]
-    (tok/project-id db token-id)
-    (some->> (-> params :body :token-layer-id) (tokl/project-id db))))
+(def ^:private resolvers
+  "The gate and document-version resolvers. A create's project is its token
+  layer's, its document its text's."
+  (pra/entity-resolvers {:table :tokens
+                         :path-key :token-id
+                         :create-layer [:token-layer-id :token_layers]
+                         :create-document [:text :texts]}))
 
-(def bulk-get-project-id
-  "The project the writer gate checks for a bulk create (entries carry
-  `:token-layer-id`) or a bulk delete (an entry is a token id), resolved
-  from the first entry that resolves (`pra/bulk-resolver`)."
-  (pra/bulk-resolver (fn [db entry]
-                       (if-let [tokl-id (:token-layer-id entry)]
-                         (tokl/project-id db tokl-id)
-                         (when (uuid? entry) (tok/project-id db entry))))))
-
-(defn get-document-id [{db :db params :parameters}]
-  (let [token-id (-> params :path :token-id)
-        text-id (-> params :body :text)]
-    (cond
-      token-id (when-let [token (tok/get db token-id)]
-                 (tok/get-doc-id-of-text db (:token/text token)))
-      text-id (tok/get-doc-id-of-text db text-id))))
-
-(def bulk-get-document-id
-  "The document the OCC middleware checks `?document-version=` against, and
-  the one whose new version the response carries. From the first entry that
-  resolves (`pra/bulk-resolver`)."
-  (pra/bulk-resolver (fn [db entry]
-                       (cond
-                         (map? entry) (some->> (:text entry) (tok/get-doc-id-of-text db))
-                         (uuid? entry) (when-let [token (tok/get db entry)]
-                                         (tok/get-doc-id-of-text db (:token/text token)))))))
-
-(def bulk-update-get-project-id
-  "The project the writer gate checks, resolved from the first entry that
-  resolves (`pra/bulk-update-resolver`)."
-  (pra/bulk-update-resolver (fn [db id] (tok/project-id db id))))
-
-(def bulk-update-get-document-id
-  "The document the OCC middleware checks `?document-version=` against. A
-  bulk update reaching more than one document refuses the parameter
-  outright (`plaid.sql.bulk/bulk-update!`). Resolved from the first entry
-  that resolves (`pra/bulk-update-resolver`)."
-  (pra/bulk-update-resolver (fn [db id] (:token/document (tok/get db id)))))
+(def get-project-id (:project-id resolvers))
+(def get-document-id (:document-id resolvers))
+(def ^:private bulk-get-project-id (:bulk-project-id resolvers))
+(def ^:private bulk-get-document-id (:bulk-document-id resolvers))
+(def ^:private bulk-update-get-project-id (:bulk-update-project-id resolvers))
+(def ^:private bulk-update-get-document-id (:bulk-update-document-id resolvers))
 
 (def token-routes
   ["/tokens"

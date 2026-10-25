@@ -8,35 +8,17 @@
             [plaid.sql.vocab-item :as vocab-item]
             [plaid.sql.user :as user]))
 
-(defn get-project-id-from-tokens
-  "Get project ID from tokens (for create operations)"
-  [{db :db params :parameters}]
-  (when-let [tokens (-> params :body :tokens)]
-    (when (seq tokens)
-      (vocab-link/project-id-from-token db (first tokens)))))
+(def ^:private resolvers
+  "The gate and document-version resolvers. A create's document is its first
+  token's, and its project that document's."
+  (pra/entity-resolvers {:table :vocab_links
+                         :path-key :id
+                         :create-document [:tokens :tokens]}))
 
-(defn get-project-id-from-vocab-link
-  "Get project ID from existing vocab-link (for operations on existing vocab-links)"
-  [{db :db params :parameters}]
-  (when-let [vocab-link-id (-> params :path :id)]
-    (when-let [vocab-link-record (vocab-link/get db vocab-link-id)]
-      (when-let [first-token-id (first (:vocab-link/tokens vocab-link-record))]
-        (vocab-link/project-id-from-token db first-token-id)))))
-
-(defn get-document-id-from-tokens
-  "Get document ID from tokens (for create operations)"
-  [{db :db params :parameters}]
-  (when-let [tokens (-> params :body :tokens)]
-    (when (seq tokens)
-      (vocab-link/document-id-from-token db (first tokens)))))
-
-(defn get-document-id-from-vocab-link
-  "Get document ID from existing vocab-link (for operations on existing vocab-links)"
-  [{db :db params :parameters}]
-  (when-let [vocab-link-id (-> params :path :id)]
-    (when-let [vocab-link-record (vocab-link/get db vocab-link-id)]
-      (when-let [first-token-id (first (:vocab-link/tokens vocab-link-record))]
-        (vocab-link/document-id-from-token db first-token-id)))))
+(def ^:private get-project-id-from-tokens (:project-id resolvers))
+(def ^:private get-project-id-from-vocab-link (:project-id resolvers))
+(def ^:private get-document-id-from-tokens (:document-id resolvers))
+(def ^:private get-document-id-from-vocab-link (:document-id resolvers))
 
 (defn- user-can-access-vocab-item?
   "Read access to a vocab item, which is read access to its vocab layer. An
@@ -52,21 +34,8 @@
 ;; a colleague already deleted at the head of the list does not turn the
 ;; call's own answer into a 403. The SQL layer enforces single-document, so
 ;; one resolved entry's project/document covers the whole call.
-(def bulk-get-project-id
-  (pra/bulk-resolver
-   (fn [db item]
-     (cond
-       (and (map? item) (-> item :tokens seq)) (vocab-link/project-id-from-token db (-> item :tokens first))
-       (uuid? item) (vocab-link/project-id db item)
-       :else nil))))
-
-(def bulk-get-document-id
-  (pra/bulk-resolver
-   (fn [db item]
-     (cond
-       (and (map? item) (-> item :tokens seq)) (vocab-link/document-id-from-token db (-> item :tokens first))
-       (uuid? item) (:vocab-link/document (vocab-link/get db item))
-       :else nil))))
+(def ^:private bulk-get-project-id (:bulk-project-id resolvers))
+(def ^:private bulk-get-document-id (:bulk-document-id resolvers))
 
 (defn get-vocab-id-from-vocab-item-body [{:keys [db parameters]}]
   (->> parameters :body :vocab-item (vocab-item/get db) :vocab-item/layer))

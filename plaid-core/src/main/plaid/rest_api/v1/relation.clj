@@ -5,62 +5,22 @@
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.sql.relation :as r]
-            [plaid.sql.relation-layer :as rl]))
+            [plaid.sql.relation :as r]))
 
-(defn get-project-id
-  "The project of the relation the path names, or on the create (no relation
-  in the path) of the body's relation layer. A route that names its relation
-  reads only the path, so no body key can choose the project the gate checks."
-  [{db :db params :parameters}]
-  (if-let [relation-id (-> params :path :relation-id)]
-    (r/project-id db relation-id)
-    (some->> (-> params :body :relation-layer-id) (rl/project-id db))))
+(def ^:private resolvers
+  "The gate and document-version resolvers. A create's project is its
+  relation layer's, its document its source span's."
+  (pra/entity-resolvers {:table :relations
+                         :path-key :relation-id
+                         :create-layer [:relation-layer-id :relation_layers]
+                         :create-document [:source :spans]}))
 
-(def bulk-get-project-id
-  "The project the writer gate checks for a bulk create (entries carry
-  `:relation-layer-id`, as a single create's body does) or a bulk delete (an entry is a relation id),
-  resolved from the first entry that resolves (`pra/bulk-resolver`)."
-  (pra/bulk-resolver (fn [db entry]
-                       (if-let [rl-id (:relation-layer-id entry)]
-                         (rl/project-id db rl-id)
-                         (when (uuid? entry) (r/project-id db entry))))))
-
-(defn get-document-id
-  "The document of the relation the path names (read off its source span),
-  or on the create of the body's source span. Path only when the path names
-  the relation, as `get-project-id`."
-  [{db :db params :parameters}]
-  (if-let [relation-id (-> params :path :relation-id)]
-    (some->> (r/get db relation-id) :relation/source (r/get-doc-id-of-span db))
-    (some->> (-> params :body :source) (r/get-doc-id-of-span db))))
-
-(def bulk-get-document-id
-  "The document of a bulk create or delete, read off a relation's source
-  span, from the first entry that resolves (`pra/bulk-resolver`)."
-  (pra/bulk-resolver
-   (fn [db entry]
-     (cond
-       (:source entry)
-       (r/get-doc-id-of-span db (:source entry))
-
-       (uuid? entry)
-       (when-let [relation (r/get db entry)]
-         (r/get-doc-id-of-span db (:relation/source relation)))
-
-       :else nil))))
-
-(def bulk-update-get-project-id
-  "The project the writer gate checks, resolved from the first entry that
-  resolves (`pra/bulk-update-resolver`)."
-  (pra/bulk-update-resolver (fn [db id] (r/project-id db id))))
-
-(def bulk-update-get-document-id
-  "The document the OCC middleware checks `?document-version=` against. A
-  bulk update reaching more than one document refuses the parameter
-  outright (`plaid.sql.bulk/bulk-update!`). Resolved from the first entry
-  that resolves (`pra/bulk-update-resolver`)."
-  (pra/bulk-update-resolver (fn [db id] (:relation/document (r/get db id)))))
+(def get-project-id (:project-id resolvers))
+(def get-document-id (:document-id resolvers))
+(def ^:private bulk-get-project-id (:bulk-project-id resolvers))
+(def ^:private bulk-get-document-id (:bulk-document-id resolvers))
+(def ^:private bulk-update-get-project-id (:bulk-update-project-id resolvers))
+(def ^:private bulk-update-get-document-id (:bulk-update-document-id resolvers))
 
 (def relation-routes
 

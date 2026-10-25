@@ -5,66 +5,22 @@
             [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.sql.span :as s]
-            [plaid.sql.span-layer :as sl]))
+            [plaid.sql.span :as s]))
 
-(defn get-project-id
-  "The project of the span the path names, or on the create (no span in the
-  path) of the body's span layer. A route that names its span reads only the
-  path, so no body key can choose the project the gate checks."
-  [{db :db params :parameters}]
-  (if-let [span-id (-> params :path :span-id)]
-    (s/project-id db span-id)
-    (some->> (-> params :body :span-layer-id) (sl/project-id db))))
+(def ^:private resolvers
+  "The gate and document-version resolvers. A create's project is its span
+  layer's, its document its first token's."
+  (pra/entity-resolvers {:table :spans
+                         :path-key :span-id
+                         :create-layer [:span-layer-id :span_layers]
+                         :create-document [:tokens :tokens]}))
 
-(def bulk-get-project-id
-  "The project the writer gate checks for a bulk create (entries carry
-  `:span-layer-id`) or a bulk delete (an entry is a span id), resolved from
-  the first entry that resolves (`pra/bulk-resolver`)."
-  (pra/bulk-resolver (fn [db entry]
-                       (if-let [sl-id (:span-layer-id entry)]
-                         (sl/project-id db sl-id)
-                         (when (uuid? entry) (s/project-id db entry))))))
-
-(defn get-document-id
-  "The document of the span the path names, or on the create of the body's
-  first token. Path only when the path names the span, as `get-project-id`."
-  [{db :db params :parameters}]
-  (if-let [span-id (-> params :path :span-id)]
-    (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-id))))
-    (some->> (-> params :body :tokens first) (s/get-doc-id-of-token db))))
-
-(def bulk-get-document-id
-  "The document of a bulk create or delete, from the first entry that
-  resolves (`pra/bulk-resolver`): the OCC middleware checks
-  `?document-version=` against it and the response carries its new version."
-  (pra/bulk-resolver
-   (fn [db span-or-id]
-     (cond
-       ;; For bulk create. The parsed body carries `:tokens` (the wire key),
-       ;; never `:span/tokens`; reading the wrong key here left the document
-       ;; unresolved, so a bulk create under document-version OCC was refused
-       ;; as "no document was found with the provided version".
-       (:tokens span-or-id)
-       (s/get-doc-id-of-token db (first (:tokens span-or-id)))
-
-       ;; For bulk delete (array of IDs)
-       (uuid? span-or-id)
-       (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-or-id))))
-
-       :else nil))))
-
-(def bulk-update-get-project-id
-  "The project the writer gate checks, resolved from the first entry that
-  resolves (`pra/bulk-update-resolver`)."
-  (pra/bulk-update-resolver (fn [db id] (s/project-id db id))))
-
-(def bulk-update-get-document-id
-  "The document the OCC middleware checks `?document-version=` against. A
-  bulk update reaching more than one document refuses the parameter
-  outright (`plaid.sql.bulk/bulk-update!`). Resolved from the first entry
-  that resolves (`pra/bulk-update-resolver`)."
-  (pra/bulk-update-resolver (fn [db id] (:span/document (s/get db id)))))
+(def get-project-id (:project-id resolvers))
+(def get-document-id (:document-id resolvers))
+(def ^:private bulk-get-project-id (:bulk-project-id resolvers))
+(def ^:private bulk-get-document-id (:bulk-document-id resolvers))
+(def ^:private bulk-update-get-project-id (:bulk-update-project-id resolvers))
+(def ^:private bulk-update-get-document-id (:bulk-update-document-id resolvers))
 
 (def span-routes
 

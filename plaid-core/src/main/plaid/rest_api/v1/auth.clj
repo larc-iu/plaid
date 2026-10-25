@@ -956,6 +956,62 @@
   [lookup]
   (bulk-resolver (fn [db entry] (lookup db (:id entry)))))
 
+(defn- column-of
+  "Column `col` of the `table` row whose id is `id`, nil when there is none."
+  [db table col id]
+  (when id
+    (col (psc/q1 db {:select [col] :from [table] :where [:= :id id]}))))
+
+(defn entity-resolvers
+  "The gate and document-version resolvers of a document-scoped kind whose
+  rows carry their own `document_id`, as a map of `:project-id` and
+  `:document-id` (the single routes) and `:bulk-project-id`,
+  `:bulk-document-id`, `:bulk-update-project-id` and
+  `:bulk-update-document-id` (`bulk-resolver` and `bulk-update-resolver`).
+
+  - `table`: the kind's table, read for a row the request names.
+  - `path-key`: the path parameter naming the row. A route that names its
+    row reads only the path, so no body key can choose what the gate checks.
+  - `create-document`: `[body-key table]`, on a create the parent the body
+    names (the first, when the key holds a list) and the table it lives in,
+    whose `document_id` is the new row's document.
+  - `create-layer`: `[body-key table]`, the layer a create names, whose
+    `project_id` is the new row's project. Without it a create's project is
+    its document's.
+
+  A bulk create or update entry is a map read as a create body or by its
+  `:id`, a bulk delete entry is the row's id."
+  [{:keys [table path-key create-document create-layer]}]
+  (let [row-document (fn [db id] (column-of db table :document_id id))
+        project-of-document (fn [db doc-id] (column-of db :documents :project_id doc-id))
+        row-project (fn [db id] (project-of-document db (row-document db id)))
+        body-id (fn [body k]
+                  (let [v (get body k)]
+                    (if (sequential? v) (first v) v)))
+        create-doc (fn [db body]
+                     (let [[k t] create-document]
+                       (column-of db t :document_id (body-id body k))))
+        create-project (fn [db body]
+                         (if-let [[k t] create-layer]
+                           (column-of db t :project_id (body-id body k))
+                           (project-of-document db (create-doc db body))))
+        single (fn [of-row of-body]
+                 (fn [{db :db params :parameters}]
+                   (if-let [id (get-in params [:path path-key])]
+                     (of-row db id)
+                     (of-body db (:body params)))))
+        bulk (fn [of-row of-body]
+               (bulk-resolver (fn [db entry]
+                                (cond
+                                  (map? entry) (of-body db entry)
+                                  (uuid? entry) (of-row db entry)))))]
+    {:project-id (single row-project create-project)
+     :document-id (single row-document create-doc)
+     :bulk-project-id (bulk row-project create-project)
+     :bulk-document-id (bulk row-document create-doc)
+     :bulk-update-project-id (bulk-update-resolver row-project)
+     :bulk-update-document-id (bulk-update-resolver row-document)}))
+
 (defn wrap-bulk-delete-of-nothing
   "Answer a bulk DELETE 204 and write nothing when no id in its body
   resolves (`resolver` is the route's gate resolver, a `bulk-resolver`).
