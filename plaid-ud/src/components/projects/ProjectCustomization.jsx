@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import {
   UPOS_TAGS,
   UNIVERSAL_DEPRELS,
@@ -19,14 +19,14 @@ import {
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
-import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
+import { isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
 import { MetadataFieldList } from '../common/MetadataFieldList.jsx';
 import { VocabModeSwitch } from '../common/VocabModeSwitch.jsx';
 import { DescriptionList } from '../common/DescriptionList.jsx';
 import { MODES, cleanDescriptions } from '../../utils/udVocabMode.js';
-import { queueRuleChanges, withConfigWrites } from '../../utils/udConstraints.js';
+import { queueVocabCells } from '../../domain/udVocabSave.js';
 import { ColorField } from '../common/ColorField.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
@@ -271,23 +271,7 @@ export const ProjectCustomization = () => {
       const changed = configCells(current, info, project).filter(
         (c) => !sameConfig(c.value, loaded.get(c.id)?.value),
       );
-      // A closed list is a rule its layer holds on the server, so the layers
-      // whose rules this save changes take them in the same batch, and a
-      // list the stored values break is refused whole.
-      const after = getUdLayerInfo(withConfigWrites(project, changed));
-      await client.batched((b) => {
-        for (const c of changed) {
-          b[c.bundle].setConfig(
-            c.entity.id,
-            UD_NAMESPACE,
-            c.key,
-            c.value,
-            undefined,
-            expectStored(c.entity, UD_NAMESPACE, c.key),
-          );
-        }
-        queueRuleChanges(b, info, after);
-      });
+      await client.batched((b) => queueVocabCells(b, project, changed));
 
       await fetchProject();
       notifySuccess('UD settings saved');

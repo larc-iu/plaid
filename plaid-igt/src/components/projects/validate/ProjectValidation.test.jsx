@@ -472,6 +472,79 @@ describe('Add to tagset', () => {
   });
 });
 
+// The add's requests: the tagsets as read when the button is pressed with the
+// part at the end of the list, expecting what was read, and once more against
+// what another save left when that one is refused.
+describe('Add to tagset, the requests', () => {
+  it('appends the part, expecting the stored tagsets, and redoes it once after a 409', async () => {
+    const server = structuredClone(project);
+    const sent = [];
+    let refused = false;
+    const client = {
+      ...clientWith([[['1SG.ABL', 3]], [['Song', 4]]]),
+      projects: {
+        get: vi.fn(async () => structuredClone(server)),
+        setConfig: vi.fn((id, ns, key, value, audit, options) => {
+          sent.push(structuredClone([id, ns, key, value, audit, options]));
+          if (!refused) {
+            refused = true;
+            // Another maintainer's save lands first.
+            server.config.igt.tagsets.Leipzig.values.push({ value: 'DU' });
+            throw Object.assign(new Error('changed'), { status: 409 });
+          }
+          server.config[ns][key] = value;
+        }),
+      },
+      spanLayers: {
+        setConstraints: vi.fn(),
+        repairConstraints: vi.fn(),
+        refusedValues: vi.fn(async () => ({ count: 0, valueCount: 0, values: [] })),
+        checkConstraints: vi.fn(async () => ({ violations: [], violationCount: 0 })),
+      },
+      withOperation: async (_m, fn) => fn(),
+      batched: async (fn) => fn(client),
+    };
+    const { container, step, unmount } = await render(client);
+    const add = all(container, 'button').find((b) => b.title === 'Add ABL to Leipzig');
+    await step(async () => {
+      add.click();
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    const tagsets = (values) => ({
+      ...project.config.igt.tagsets,
+      Leipzig: { ...LEIPZIG, values: values.map((value) => ({ value })) },
+    });
+    expect(sent).toEqual([
+      [
+        'p-1',
+        'igt',
+        'tagsets',
+        tagsets(['PL', '1SG', 'ABL']),
+        undefined,
+        { expected: tagsets(['PL', '1SG']) },
+      ],
+      [
+        'p-1',
+        'igt',
+        'tagsets',
+        tagsets(['PL', '1SG', 'DU', 'ABL']),
+        undefined,
+        { expected: tagsets(['PL', '1SG', 'DU']) },
+      ],
+    ]);
+    expect(client.spanLayers.setConstraints.mock.calls[0].slice(0, 3)).toEqual([
+      'msl-0',
+      'igt',
+      [
+        { type: 'single-span' },
+        { type: 'value-set', values: ['PL', '1SG', 'DU', 'ABL'], delimiters: '.', parts: 'all' },
+      ],
+    ]);
+    expect(notifySuccess).toHaveBeenCalledWith('“ABL” added to Leipzig');
+    await unmount();
+  });
+});
+
 // REV3-WIRE-5: the field moved to another tagset after the page was read.
 // Nothing is added to the list it no longer uses.
 describe('Add to tagset, the field moved since the page was read', () => {

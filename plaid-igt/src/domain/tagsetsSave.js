@@ -4,7 +4,7 @@
 // Relative imports only, as igtConstraints.js: plain node runs this too.
 import { IGT_NAMESPACE, readDocumentMetadata } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
-import { governedFields, readTagsetName } from './tagsets.js';
+import { governedFields, readTagsetName, readTagsets } from './tagsets.js';
 import { igtFields, queueFieldDeclarations } from './igtConstraints.js';
 import {
   expectStored,
@@ -139,6 +139,45 @@ export const queueTagsetsSave = (
   }
   queueFieldDeclarations(b, fields, after, live?.config);
   return repointed;
+};
+
+/**
+ * The project's tagsets as `live` holds them with `parts` added at the end of
+ * tagset `tagsetName`'s values, and the parts that were not there yet, as
+ * `{value}` entries (`fresh`, empty when there is nothing to add). Throws
+ * when the tagset is gone.
+ */
+export const tagsetsWithValues = (live, tagsetName, parts) => {
+  const tagsets = readTagsets(live?.config);
+  const t = tagsets[tagsetName];
+  if (!t) throw new Error(`Tagset "${tagsetName}" no longer exists`);
+  const have = new Set(t.values.map((v) => v.value));
+  const fresh = parts.filter((v) => v && !have.has(v)).map((value) => ({ value }));
+  const next = { ...tagsets, [tagsetName]: { ...t, values: [...t.values, ...fresh] } };
+  return { fresh, next };
+};
+
+/**
+ * Queue on batch `b` the tagsets `next` from `tagsetsWithValues(live, ...)`,
+ * expecting the tagsets `live` holds. A closed tagset's list is a rule its
+ * fields hold on the server, so the fields it governs take the new list in the
+ * same batch.
+ */
+export const queueTagsetValuesAdd = (b, projectId, live, next) => {
+  b.projects.setConfig(
+    projectId,
+    IGT_NAMESPACE,
+    'tagsets',
+    next,
+    undefined,
+    expectStored(live, IGT_NAMESPACE, 'tagsets'),
+  );
+  queueFieldDeclarations(
+    b,
+    igtFields(getIgtLayerInfo(live)),
+    withStoredConfig(live, IGT_NAMESPACE, 'tagsets', next).config,
+    live?.config,
+  );
 };
 
 /**

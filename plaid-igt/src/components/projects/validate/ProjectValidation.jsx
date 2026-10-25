@@ -8,11 +8,12 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
 import { notifyError, notifyInfo, notifySuccess, humanizeError } from '@/utils/feedback';
-import { expectStored, isConfigConflict, withStoredConfig } from '@ui/domain/configCells.js';
+import { isConfigConflict } from '@ui/domain/configCells.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
-import { governedFields, offTagsetValues, readTagsetName, readTagsets } from '@/domain/tagsets';
-import { fieldsOutOfForce, igtFields, queueFieldDeclarations } from '@/domain/igtConstraints';
+import { governedFields, offTagsetValues, readTagsetName } from '@/domain/tagsets';
+import { queueTagsetValuesAdd, tagsetsWithValues } from '@/domain/tagsetsSave';
+import { fieldsOutOfForce, igtFields } from '@/domain/igtConstraints';
 import { putRulesInForce } from '../settings/putRulesInForce.js';
 import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
@@ -370,31 +371,9 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       if ((now?.tagsetName ?? null) !== g.tagsetName) {
         throw Object.assign(new Error('Field moved'), { movedTo: now?.tagsetName ?? null });
       }
-      const tagsets = readTagsets(p?.config);
-      const t = tagsets[g.tagsetName];
-      if (!t) throw new Error(`Tagset "${g.tagsetName}" no longer exists`);
-      const have = new Set(t.values.map((v) => v.value));
-      const fresh = parts.filter((v) => v && !have.has(v)).map((value) => ({ value }));
+      const { fresh, next } = tagsetsWithValues(p, g.tagsetName, parts);
       if (!fresh.length) return fresh;
-      const next = { ...tagsets, [g.tagsetName]: { ...t, values: [...t.values, ...fresh] } };
-      // A closed tagset's list is a rule its fields hold on the server, so
-      // the fields it governs take the new list in the same batch.
-      await client.batched((b) => {
-        b.projects.setConfig(
-          projectId,
-          IGT_NAMESPACE,
-          'tagsets',
-          next,
-          undefined,
-          expectStored(p, IGT_NAMESPACE, 'tagsets'),
-        );
-        queueFieldDeclarations(
-          b,
-          igtFields(getIgtLayerInfo(p)),
-          withStoredConfig(p, IGT_NAMESPACE, 'tagsets', next).config,
-          p?.config,
-        );
-      });
+      await client.batched((b) => queueTagsetValuesAdd(b, projectId, p, next));
       return fresh;
     };
     try {
