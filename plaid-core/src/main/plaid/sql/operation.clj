@@ -14,8 +14,7 @@
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
             [taoensso.timbre :as log])
-  (:import [clojure.lang ExceptionInfo]
-           [java.sql SQLException]))
+  (:import [clojure.lang ExceptionInfo]))
 
 (def ^:dynamic *token-id*
   "Id of the named API token (`api_tokens.id`) that authenticated the current
@@ -217,7 +216,7 @@
 
   `:audit/documents` is the union of the op-attrs' single `:document`
   and the docs the body actually version-bumped (`:documents`, recorded
-  by bump-document-version!/bump-document-versions! via the
+  by bump-document-versions! via the
   `:affected-documents` atom in `psaw/*op*`). Multi-document ops like
   vocab/delete and project/remove-vocab carry `:document nil` but bump
   N docs — without the union their events were doc-blind and
@@ -340,60 +339,33 @@
   [tx pre ts]
   (if (repair-op? tx) (:modified_at pre) ts))
 
-(defn- bump-document-version!
-  "Post-body version bump on the operation's :document. Audited under
-  the sentinel `change_type` `:doc-version-bump` (vs. a plain `:update`)
-  so ETL change-tracking on document bodies can distinguish the per-op
-  version bookkeeping from genuine `:document/update` edits — without it,
-  every annotation write would look like a doc-content mutation on the
-  replica. The audit row still carries the full pre/post images (only
-  `:version` + `:modified_at` differ) so replay reproduces the row.
-
-  Uses the row's current version (read inside the tx) to compute the
-  next value — a raw SQL `version = version + 1` would also work but
-  using fetch-by-id + execute! keeps the audit-image construction simple
-  and parallel to update-by-id!.
-
-  No-ops when the row is missing (e.g. for :document/delete, which has
-  already removed it inside the body).
-
-  Skipped entirely when op-attrs carries :skip-doc-version-bump? true.
-  That's the escape hatch for ops whose body already manages the
-  version column directly (:document/create — body INSERTs at v1;
-  :document/update — body sets `(inc version)` itself). Without the
-  skip, those ops would either start documents at v2 or jump v→v+2."
-  [tx doc-id ts]
-  (when-let [pre (psc/fetch-by-id tx :documents doc-id)]
-    (let [post (assoc pre
-                      :version (inc (or (:version pre) 0))
-                      :modified_at (modified-at tx pre ts))]
-      (psc/execute! tx {:update :documents
-                        :set {:version (:version post)
-                              :modified_at (:modified_at post)}
-                        :where [:= :id doc-id]})
-      (psaw/record-audit-write! tx :documents doc-id
-                                psaw/doc-version-bump-change-type
-                                pre post)
-      ;; Record the bump for the op's audit event (see ->audit-event-shape).
-      (when-let [a (:affected-documents psaw/*op*)]
-        (swap! a conj doc-id))
-      (when-let [a (:affected-projects psaw/*op*)]
-        (swap! a update (:project_id pre) (fnil conj #{}) doc-id)))))
-
 (defn bump-document-versions!
-  "Bulk version-bump for a coll of document ids. Use from inside an
+  "Version bump for a coll of document ids. `submit-operation*` calls it
+  after the body on the operation's :document. Call it from inside an
   operation body when the op transitively invalidates client views of
   multiple documents (e.g. vocab/delete wiping vocab_links across many
   documents — the op-attrs carry no single `:document`, so the post-body
-  `bump-document-version!` hook never fires for the affected docs).
+  bump never fires for the affected docs).
 
-  Emits one `:doc-version-bump` audit row per doc (same sentinel as the
-  single-doc helper) so ETL parity is preserved: replicas see the same
-  per-doc version transitions they'd see from a regular per-doc op.
+  Audited under the sentinel `change_type` `:doc-version-bump` (vs. a plain
+  `:update`), one row per doc, so ETL change-tracking on document bodies
+  can distinguish the per-op version bookkeeping from genuine
+  `:document/update` edits — without it, every annotation write would look
+  like a doc-content mutation on the replica. The audit row still carries
+  the full pre/post images (only `:version` + `:modified_at` differ) so
+  replay reproduces the row.
 
-  No-ops on duplicate or unknown ids (mirrors `bump-document-version!`'s
-  missing-row tolerance). Distinct'ed up-front so a caller can pass the
-  raw list of `vocab_link.document_id` values without pre-deduping."
+  The post-body bump is skipped entirely when op-attrs carries
+  :skip-doc-version-bump? true. That's the escape hatch for ops whose body
+  already manages the version column directly (:document/create — body
+  INSERTs at v1; :document/update — body sets `(inc version)` itself).
+  Without the skip, those ops would either start documents at v2 or jump
+  v→v+2.
+
+  No-ops on duplicate or unknown ids (e.g. for :document/delete, which has
+  already removed the row inside the body). Distinct'ed up-front so a
+  caller can pass the raw list of `vocab_link.document_id` values without
+  pre-deduping."
   [tx doc-ids]
   ;; Use the op's monotonic ts (not a fresh now-iso) so `modified_at`
   ;; agrees with the op's `operations.ts` / audit-row ts. A fresh now-iso
@@ -436,7 +408,7 @@
   "Stamp `vocab_layers.modified_at` with the op's ts for each id in
   `vocab-ids`.
 
-  The vocabulary-level counterpart of `bump-document-version!`: an item
+  The vocabulary-level counterpart of `bump-document-versions!`: an item
   write never touches its parent layer row, so without this a vocabulary
   would look untouched no matter how many entries were added, edited, or
   deleted, and a list view could not show when it last changed. Call from
@@ -497,13 +469,13 @@
   AFTER the body runs (via the audited update-by-id! path). Callers
   whose body already manages the version column must pass
   `:skip-doc-version-bump? true` to avoid a double-increment or a
-  duplicate audit row (see `bump-document-version!`).
+  duplicate audit row (see `bump-document-versions!`).
 
   Outer try/catch shape: a single try wraps the entire
   function body: the `with-tx` (whose first step is `check-locks!`), the
   body invocation and post-body bookkeeping. Any
   `ExceptionInfo` thrown WITHIN those bounds — by `check-locks!`, by
-  the body-fn itself, or by `bump-document-version!` — is projected
+  the body-fn itself, or by `bump-document-versions!` — is projected
   to `{:success false :code <ex-data :code or 500> :error <msg>}`.
   Validations OUTSIDE the body-fn (in CALLER code that runs BEFORE
   `submit-operation!` is invoked — typical pattern: a `:project` /
@@ -541,7 +513,7 @@
           ;; still see it.
           op-record* (volatile! nil)
           ;; Documents whose version the body bumps (via
-          ;; bump-document-version!/bump-document-versions!, which read
+          ;; bump-document-versions!, which read
           ;; this atom off psaw/*op*). Unioned into the audit event's
           ;; :audit/documents post-commit — see ->audit-event-shape.
           affected-docs (atom #{})
@@ -569,14 +541,14 @@
                         op-record (assoc op-attrs
                                          :id op-id
                                          :ts ts
-                                         :batch-id (or (:batch-id op-attrs) *current-batch-id*)
+                                         :batch-id *current-batch-id*
                                          ;; Logical-operation grouping (see *current-group-id*).
-                                         :group-id (or (:group-id op-attrs) *current-group-id*)
+                                         :group-id *current-group-id*
                                          ;; Server-authoritative: bound from the
                                          ;; validated JWT claim by wrap-api-token-id.
-                                         :token-id (or (:token-id op-attrs) *token-id*)
+                                         :token-id *token-id*
                                          ;; Likewise: the kind of credential that signed it.
-                                         :credential (or (:credential op-attrs) *credential*)
+                                         :credential *credential*
                                          ;; Client-supplied (templated) audit message
                                          ;; overrides the auto-generated description.
                                          ;; See *custom-description* / wrap-audit-message.
@@ -655,7 +627,7 @@
                         ;; middleware (wrap-document-version) detects stale clients.
                         (when (and (:document op-attrs)
                                    (not (:skip-doc-version-bump? op-attrs)))
-                          (bump-document-version! tx (:document op-attrs) ts))
+                          (bump-document-versions! tx [(:document op-attrs)]))
                         (when (and (:unrecorded-if-empty? op-attrs)
                                    (wrote-nothing? tx op-id ts))
                           (unrecord-operation! tx op-record)
@@ -733,35 +705,22 @@
     ;; check both the result code (SQLITE_BUSY = 5, SQLITE_LOCKED = 6)
     ;; and the message string so the branch still catches the case
     ;; where the driver wrapped the exception (subclass might shadow
-    ;; getResultCode).
-    (catch SQLException e
-      ;; Walk the cause/suppressed chain (not just the top exception) so a
-      ;; busy masked by a "cannot rollback - no transaction is active"
-      ;; rollback failure is still surfaced as a retryable 503 instead of
-      ;; an opaque 500. See `psd/sqlite-busy?`.
-      (if (psd/sqlite-busy? e)
-        (do
-          (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
-          {:success false :error "Database busy, please retry" :code 503})
-        (do
-          (log/error e "Operation failed (SQL):" (ex-message e))
-          ;; Do NOT leak raw SQLException text to the
-          ;; response. The driver message often carries column
-          ;; names, generated SQL fragments, and constraint
-          ;; identifiers — useful for the operator (logged above)
-          ;; but a needless schema-disclosure surface for clients.
-          {:success false :error "Internal error" :code 500})))
+    ;; getResultCode). The cause/suppressed chain is walked (not just the
+    ;; top exception), so a busy masked by a "cannot rollback - no
+    ;; transaction is active" rollback failure, or wrapped in a
+    ;; non-SQLException, is still surfaced as a retryable 503 instead of
+    ;; an opaque 500. See `psd/sqlite-busy?`.
     (catch Exception e
-      ;; A non-SQLException can still WRAP a busy (e.g. a rollback-failure
-      ;; wrapper) — check the chain before falling back to 500.
       (if (psd/sqlite-busy? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})
         (do
-          (log/error e "Operation failed")
-          ;; Same rationale as the SQLException branch — generic message
-          ;; in the response, full stack trace in the log.
+          (log/error e "Operation failed:" (ex-message e))
+          ;; Do NOT leak raw exception text to the response. A driver
+          ;; message often carries column names, generated SQL fragments,
+          ;; and constraint identifiers — useful for the operator (logged
+          ;; above) but a needless schema-disclosure surface for clients.
           {:success false :error "Internal error" :code 500})))))
 
 (defmacro submit-operation!

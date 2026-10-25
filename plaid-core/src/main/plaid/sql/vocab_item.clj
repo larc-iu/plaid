@@ -17,7 +17,7 @@
 ;; Linked documents
 ;;
 ;; An entry is global: its op carries `:project nil :document nil`, so the
-;; post-body `bump-document-version!` hook never fires. But a deep document
+;; post-body version bump never fires. But a deep document
 ;; read embeds the entry's `form` on every vocab_link that points at it
 ;; (`plaid.sql.document/get-with-layer-data`), so a rename makes those
 ;; documents' bodies stale, and a delete removes rows from them outright,

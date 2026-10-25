@@ -1146,7 +1146,7 @@
                      ;; affected document_ids so we can bump their
                      ;; versions for OCC clients — op-attrs
                      ;; carry :document nil, so the post-body
-                     ;; bump-document-version! hook doesn't fire on
+                     ;; version bump does not fire on
                      ;; those docs.
                      ;; Each set is read by its index (the vocab's
                      ;; entries, their links, the project's documents),

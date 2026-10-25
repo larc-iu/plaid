@@ -401,7 +401,7 @@
                              ;; Track which documents lose vocab_links so we
                              ;; can bump their versions for OCC clients.
                              ;; The op-attrs carry :document nil,
-                             ;; so the post-body bump-document-version! hook
+                             ;; so the post-body version bump
                              ;; doesn't fire — we have to walk the affected
                              ;; docs explicitly.
                              affected-doc-ids (volatile! [])]
