@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@ui/components/ui/dialog';
+import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { nameTakenMessage } from '@ui/lib/documentNames.js';
 import { createOnce } from '@ui/lib/createOnce.js';
 
@@ -50,8 +51,20 @@ export const NewDocument = ({ projectId, client, canManage }) => {
       const newDocument = await createOnce(mint, (id) =>
         client.documents.create(projectId, name, undefined, undefined, { id }),
       );
-      // The document is made with no text: the first write that needs one
-      // (a Baseline save, a segment) makes it in its own batch.
+      // The document is made. Its empty text is made in a request of its
+      // own, so a tab opened on it before its first write plans that write
+      // on a text. A failure from here on opens it all the same, textless,
+      // and its first write makes the text: a second press of Create would
+      // make a second document.
+      try {
+        const projectData = await client.projects.get(projectId);
+        const primaryTextLayer = findBaselineTextLayer(projectData?.textLayers);
+        if (primaryTextLayer) {
+          await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
+        }
+      } catch (error) {
+        console.error('Failed to give the new document its text:', error);
+      }
       notifySuccess(`Document “${name}” created`);
       setDocumentName('');
       setOpen(false);

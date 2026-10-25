@@ -262,10 +262,12 @@ export class IgtDocument extends DocumentModel {
   }
 
   // The document's text, made in the batch `b` of the write that first needs
-  // one, when the document has none (a New document makes none, nor does ud's
-  // form or an import with no body): `text` is the text that write shows,
-  // `{ id, body }`, under the id it minted when it found no text, so the rows
-  // the batch makes after it can name it. The caller decides it is needed
+  // one, when the document has none (ud's form, an import with no body, the
+  // API, a New document whose own request for its empty text failed): `text`
+  // is the text that write shows, `{ id, body }`, under the id it minted when
+  // it found no text, so the rows the batch makes after it can name it. A 409
+  // for a text made meanwhile is left as the write's refusal, not planned
+  // again (a rare case, kept simple). The caller decides it is needed
   // when it plans the write, on the copy it shows: a pending id is no sign,
   // since the Baseline save's text keeps the id it was minted under.
   _ensureText(b, { id, body }, { tokenizeLayer } = {}) {
