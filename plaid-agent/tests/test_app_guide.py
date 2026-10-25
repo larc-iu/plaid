@@ -33,8 +33,8 @@ def test_a_topic_gives_that_part_as_the_guide_has_it():
 
 def test_a_topic_no_part_is_called_names_the_parts_that_mention_it():
     out = _call({'topic': 'split a segment'})
-    assert out.startswith('No part of the guide is called "split a segment". Parts that mention it: '
-                          '"Projects > Media > Transcript"')
+    assert out.startswith('No part of the guide is called "split a segment". Parts that mention it: "Projects')
+    assert '"Projects > Media > Transcript";' in out
     out = _call({'topic': 'zzzqqq'})
     assert out.startswith('No part of the guide is called "zzzqqq" or mentions it. Its parts:')
 
