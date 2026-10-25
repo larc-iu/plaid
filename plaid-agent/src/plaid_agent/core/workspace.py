@@ -13,12 +13,14 @@ adds how ITS documents are loaded, what a plan payload looks like, and the
 refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 """
 
+import copy
 import difflib
 import re
 import unicodedata
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional
 
+from plaid_client import uuid7
 from plaid_client.constraints import value_set_allows
 
 from . import docload, fingerprint as fp, garble, opkind, rules, work
@@ -99,6 +101,11 @@ def _unquoted(text: str) -> str:
     """A quoted name without its quotes, an escaped inner quote read back
     (core.bidi.escape_name)."""
     return text[1:-1].strip().replace('\\"', '"')
+
+
+#: The key a staged op carries for its card row while it is in the turn's plan,
+#: built when it was staged and stored in the plan's ``changes`` only.
+CARD = 'card'
 
 
 class BaseWorkspace:
@@ -494,6 +501,47 @@ class BaseWorkspace:
         if comment.get('entity_type') == 'document':
             return '(the document)' if eid == doc.id else None
         return next((f's{self.sentence_shown(doc, s)}' for s in doc.sentences if s.id == eid), None)
+
+    def plan_payload(self) -> Optional[Dict[str, Any]]:
+        """The plan as it is stored for the user to approve, or None when
+        nothing is planned: the ops as stored (:meth:`settle_for_payload`),
+        the card's rows (:meth:`describe_changes`), the summary
+        (:meth:`summarize`) and the documents with their versions, plus what
+        :meth:`payload_extra` adds. A card row built when its change was
+        staged goes in ``changes`` only."""
+        if not self.ops:
+            return None
+        ops = self.settle_for_payload()
+        changes = self.describe_changes(ops)
+        for op in ops:
+            op.pop(CARD, None)
+        out = {'id': uuid7(), 'summary': self.summarize(self.ops), 'ops': ops,
+               'changes': changes,
+               'documents': self.touched_documents()}
+        out.update(self.payload_extra(ops))
+        return out
+
+    def settle_for_payload(self) -> List[Dict[str, Any]]:
+        """The ops as the plan stores them. A snapshot: the payload must not
+        alias the live list, since it is what the user approves later. Each
+        change that replaces a person's work is flagged, and large groups of
+        like ops are stored as one (the summary still counts what they stand
+        for). An app that settles more first says so here."""
+        from .plan import compact_ops
+        return compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)), opkind.compact_spec(self.KIND))
+
+    def describe_changes(self, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """The card's rows for the stored ``ops``: the app's own."""
+        raise NotImplementedError
+
+    def summarize(self, ops: List[Dict[str, Any]]) -> str:
+        """The plan in one phrase: the app's own."""
+        raise NotImplementedError
+
+    def payload_extra(self, ops: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """What the app does to the stored ``ops`` once the card is described,
+        and the keys of its own the payload carries."""
+        return {}
 
     def touched_documents(self) -> List[Dict[str, Any]]:
         """The documents the plan refers to, with the version each was read at,

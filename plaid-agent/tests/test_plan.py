@@ -394,7 +394,7 @@ def test_the_ud_registry_declares_what_every_table_is_read_off():
     from plaid_agent.core import opkind
     from plaid_agent.ud import plan
     from plaid_agent.ud.plan import RESHAPES_DOCUMENT, RESHAPES_TOKEN, SCOPES
-    from plaid_agent.ud.tools import SCOPE_KINDS, compact_spec
+    from plaid_agent.ud.workspace import SCOPE_KINDS, compact_spec
 
     assert plan.KIND['set_head'].required == ('word_id', 'head_id', 'lemma_layer_id',
                                               'relation_layer_id', 'deprel')

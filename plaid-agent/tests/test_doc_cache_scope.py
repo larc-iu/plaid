@@ -10,16 +10,16 @@ import pytest
 from fixtures import FakeClient as IgtClient, document_raw as igt_document, fake_ws
 from ud_fixtures import PID, document_raw, ud_client
 
-from plaid_agent.ud import tools as ud_tools
+from plaid_agent.ud import workspace as ud_workspace
 from plaid_agent.ud.project import load_project
-from plaid_agent.ud.tools import Workspace
+from plaid_agent.ud.workspace import Workspace
 
 
 @pytest.fixture
 def ud_cache():
-    ud_tools._DOC_CACHE.clear()
-    yield ud_tools._DOC_CACHE
-    ud_tools._DOC_CACHE.clear()
+    ud_workspace._DOC_CACHE.clear()
+    yield ud_workspace._DOC_CACHE
+    ud_workspace._DOC_CACHE.clear()
 
 
 def _client(base_url, modified='2026-10-01T10:00:00Z'):

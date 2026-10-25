@@ -19,7 +19,6 @@ import re
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client import uuid7
 from plaid_client.provenance import PROVENANCE_KEYS
 
 from ..core import docload, opkind
@@ -1022,11 +1021,7 @@ class Workspace(BaseWorkspace):
     def planned_respells(self, text_id: str) -> List[tuple]:
         return [(op['begin'], op['end']) for op in self.ops if op.get('kind') == 'respell' and op.get('text_id') == text_id]
 
-    def plan_payload(self) -> Optional[Dict[str, Any]]:
-        if not self.ops:
-            return None
-        from .plan import summarize
-        from .changes import describe_changes
+    def settle_for_payload(self) -> List[Dict[str, Any]]:
         from ..core.plan import compact_ops
         from .bulk import settle_rules
         # Each rule counted as approval writes it, after every change staged
@@ -1061,20 +1056,23 @@ class Workspace(BaseWorkspace):
             docs = set((op.get('items') or {}).get('doc') or []) if op.get('compact') else set()
             if len(docs) == 1:
                 op['doc'] = docs.pop()
+        return ops
+
+    def describe_changes(self, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         # A rule's card row is built when it is staged and goes in `changes`
         # only. `labels` are not written: each row of `changes` has its label.
-        changes = describe_changes(self, ops)
-        for op in ops:
-            op.pop(CARD, None)
-        out = {'id': uuid7(), 'summary': summarize(self.ops), 'ops': ops,
-               'changes': changes,
-               'documents': self.touched_documents()}
+        from .changes import describe_changes
+        return describe_changes(self, ops)
+
+    def summarize(self, ops: List[Dict[str, Any]]) -> str:
+        from .plan import summarize
+        return summarize(ops)
+
+    def payload_extra(self, ops: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Tagset changes are written by the app before their approval, which
         # may come after a discard or a newer plan: their ops stay with the
         # settled plan (core.conversation.compact_plan).
-        if all(op.get('kind') in SETTINGS_KINDS for op in ops):
-            out['page_writes'] = True
-        return out
+        return {'page_writes': True} if all(op.get('kind') in SETTINGS_KINDS for op in ops) else {}
 
     def touched_documents(self) -> List[Dict[str, Any]]:
         """The documents the plan's ops refer to, with the version each was
@@ -1176,10 +1174,6 @@ class Workspace(BaseWorkspace):
                     entry = self.pinned(entry, doc, enumerated[did])
             out.append(entry)
         return out
-
-#: The key a rule op carries for its card row while it is in the turn's plan
-#: (``bulk.CARD``).
-CARD = 'card'
 
 
 def _op_mentions(value, ids: set) -> bool:

@@ -965,12 +965,13 @@ def test_the_reshape_guards_read_the_registry_not_a_kind_name(ws, monkeypatch):
     `kind == 'set_words'` by hand, so such a kind was refused only after the
     user had approved the plan."""
     from plaid_agent.core.opkind import OpKind
-    from plaid_agent.ud import plan, tools
+    from plaid_agent.ud import plan, tools, workspace
 
     monkeypatch.setitem(plan.KIND, 'recut_token', OpKind(
         'recut_token', ('recut token', 'recut tokens'), shape=plan.WORD_SHAPE,
         deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])))
     monkeypatch.setattr(tools, 'RESHAPES_TOKEN', tools.RESHAPES_TOKEN + ('recut_token',))
+    monkeypatch.setattr(workspace, 'RESHAPES_TOKEN', workspace.RESHAPES_TOKEN + ('recut_token',))
     recut = {'kind': 'recut_token', 'document_id': 'ud1', 'token_id': 'ut-1',
              'existing_word_ids': ['uw-1'], 'label': 'recut'}
 

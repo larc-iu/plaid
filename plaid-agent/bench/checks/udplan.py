@@ -21,7 +21,7 @@ def apply(ctx, calls, mode='verified', client=None):
     from plaid_agent.ud.plan import execute_plan
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.toolkit import call_tool
-    from plaid_agent.ud.tools import Workspace
+    from plaid_agent.ud.workspace import Workspace
     # The assistant keeps parsed documents per process, keyed by id and
     # version. validate.py and run.py's setups run many database copies in
     # one process, where the same id and version name different contents.

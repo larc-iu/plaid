@@ -221,7 +221,7 @@ def test_the_compaction_spec_has_one_name_in_both_apps():
     the README named UD's. A reader following either name found half the
     package."""
     from plaid_agent.igt.workspace import compact_spec as igt_spec
-    from plaid_agent.ud.tools import compact_spec as ud_spec
+    from plaid_agent.ud.workspace import compact_spec as ud_spec
     from plaid_agent.igt.plan import KIND as IGT_KIND
     from plaid_agent.ud.plan import KIND as UD_KIND
     assert set(ud_spec(None)) == {n for n, k in UD_KIND.items() if k.compact_each}
