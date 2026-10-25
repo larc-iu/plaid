@@ -120,7 +120,7 @@ const Occurrences = ({ res, projectId }) => (
             <Link
               key={r.sentenceId}
               to={hitTo(projectId, grp.docId, r.sentenceId)}
-              onClick={() => rememberCaret(grp.docId, r.sentenceId, r.hitBegin)}
+              onClick={(e) => rememberCaret(e, grp.docId, r.sentenceId, r.hitBegin)}
               className={cn(
                 'block rounded-sm px-2 py-1 text-sm hover:bg-background',
                 'text-foreground no-underline',
@@ -537,8 +537,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                       <li key={`${r.docId}:${r.begin}:${i}`}>
                         <Link
                           to={hitTo(projectId, r.docId, r.sentenceId ?? null)}
-                          onClick={() =>
-                            r.sentenceId && rememberCaret(r.docId, r.sentenceId, r.begin)
+                          onClick={(e) =>
+                            r.sentenceId && rememberCaret(e, r.docId, r.sentenceId, r.begin)
                           }
                           className="text-foreground hover:underline"
                         >

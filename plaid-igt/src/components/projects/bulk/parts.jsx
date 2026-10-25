@@ -137,7 +137,7 @@ export const MatchGroups = ({
                   {r.sentenceId && (
                     <Link
                       to={hitTo(projectId, r.docId, r.sentenceId)}
-                      onClick={() => rememberCaret(r.docId, r.sentenceId, r.hitBegin ?? null)}
+                      onClick={(e) => rememberCaret(e, r.docId, r.sentenceId, r.hitBegin ?? null)}
                       className="mt-0.5 block text-sm text-muted-foreground hover:text-foreground"
                       title="Open in Analyze"
                     >

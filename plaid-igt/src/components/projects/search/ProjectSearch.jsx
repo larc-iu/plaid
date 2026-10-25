@@ -229,7 +229,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                   <Link
                     key={row.sentenceId}
                     to={hitTo(projectId, g.docId, row.sentenceId)}
-                    onClick={() => rememberCaret(g.docId, row.sentenceId, row.hitBegin ?? null)}
+                    onClick={(e) => rememberCaret(e, g.docId, row.sentenceId, row.hitBegin ?? null)}
                     className="block w-full px-4 py-2 text-left hover:bg-muted/50"
                     title="Open in Analyze"
                   >

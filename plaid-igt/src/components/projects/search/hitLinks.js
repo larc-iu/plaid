@@ -9,6 +9,11 @@ import { APP_ROUTES } from '@/appRoutes';
 export const hitTo = (projectId, docId, sentenceId) =>
   APP_ROUTES.sentence(projectId, docId, sentenceId);
 
-export const rememberCaret = (docId, sentenceId, begin = null) => {
+// Only on a plain left click: a click that opens the link in another tab or
+// window would leave the request in this tab, for its next Analyze tab of
+// that document.
+export const rememberCaret = (event, docId, sentenceId, begin = null) => {
+  const { button = 0, ctrlKey, metaKey, shiftKey, altKey } = event;
+  if (button !== 0 || ctrlKey || metaKey || shiftKey || altKey) return;
   analyzeFocus.write({ docId, sentenceId, begin });
 };
