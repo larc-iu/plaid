@@ -12,7 +12,8 @@
 // it can't.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
-import { readAll, readLayerIds } from '@/domain/documentReads';
+import { readLayerIds } from '@/domain/documentReads';
+import { readAll } from '@ui/lib/documentReads.js';
 import { shareVocabularies } from '@/domain/vocabLookup';
 import { readIgnoredTokens } from '@/domain/igtConfig';
 import { chunk } from '@/domain/bulk';
