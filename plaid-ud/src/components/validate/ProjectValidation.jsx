@@ -198,7 +198,7 @@ export const ProjectValidation = () => {
         const cell = withAddedValues(getUdLayerInfo(proj), field);
         if (field.kind === 'feats') {
           await client.spanLayers.setConfig(
-            field.layerId,
+            cell.entity.id,
             UD_NAMESPACE,
             cell.key,
             cell.value,

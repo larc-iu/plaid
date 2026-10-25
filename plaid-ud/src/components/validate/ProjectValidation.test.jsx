@@ -187,6 +187,32 @@ describe('UD Validation, Add', () => {
     ]);
   });
 
+  // The redo writes to the layer the project read again names, as the vocab
+  // lists do, so a features layer replaced since the scan gets the values.
+  it('redoes the feature inventory on the features layer it read again', async () => {
+    client.current.spanLayers.setConfig = vi.fn(async () => {
+      if (client.current.spanLayers.setConfig.mock.calls.length === 1) {
+        info.current = { ...infoWith(['NOUN', 'VERB']), featuresLayer: layer('feats2', {}) };
+        throw Object.assign(new Error('changed'), { status: 409 });
+      }
+    });
+    view = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation />
+      </MemoryRouter>,
+    );
+    await view.step(settle);
+    const featsAdd = addButtons().at(-1);
+    await view.step(async () => {
+      featsAdd.click();
+      await settle();
+    });
+    expect(client.current.spanLayers.setConfig.mock.calls.map((c) => c[0])).toEqual([
+      'feats',
+      'feats2',
+    ]);
+  });
+
   // The page stays: the project is read again quietly and the check runs
   // again on what it says, so the list no longer shows what was added and
   // nothing else on the page is thrown away.
