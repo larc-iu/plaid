@@ -138,8 +138,29 @@ try {
     'A5-04 sentence-initial Todos links casefolded todos',
   );
   // An ignored token reads as text, not as a word (derive.js), so it is
-  // never a word to link, and the five links above are all the run made.
-  check(!W(d, '...') && !W(d, '$'), 'A5-08 ignored tokens never proposed');
+  // never a word to link: no link names a stored word or morpheme of "..."
+  // or "$".
+  {
+    const raw = await client.documents.get(T1.id, true);
+    const tl = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+    const body = [...tl.text.body];
+    const ignoredIds = new Set(
+      tl.tokenLayers
+        .filter((l) => l.id === L.WORD || l.id === L.MORPHEME)
+        .flatMap((l) => l.tokens)
+        .filter((t) => ['...', '$'].includes(body.slice(t.begin, t.end).join('')))
+        .map((t) => t.id),
+    );
+    const linked = tl.tokenLayers
+      .flatMap((l) => l.vocabs || [])
+      .flatMap((v) => v.vocabLinks || [])
+      .filter((k) => k.tokens.some((id) => ignoredIds.has(id)));
+    check(
+      ignoredIds.size === 4 && linked.length === 0,
+      'A5-08 ignored tokens never proposed',
+      JSON.stringify({ tokens: ignoredIds.size, linked }),
+    );
+  }
   check(
     link(W(d, '😀').morphemes[0])?.id === items.emoji,
     'A5-08 emoji is proposed when an entry exists',

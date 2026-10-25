@@ -10,18 +10,46 @@
 // recording's print (`media`, mediaFingerprint.js), read here from the bytes
 // the Media tab will play, and for the regions, a flat list of begin and end
 // in turn.
+//
+//   PLAID_CORE_URL=http://127.0.0.1:PORT node --import ./e2e/live/aliases.mjs \
+//     e2e/live/vad-restore.mjs PROJECT_ID [DOCUMENT_ID]
+//
+// The document is the given one, else the project's first with a recording.
+// PLAID_APP_URL is where the igt app runs against that core (default http://localhost:5174).
 import { chromium } from '@playwright/test';
 import { makeClient } from '../bugbash/harness.mjs';
 import { mediaFingerprint } from '../../src/domain/media/mediaFingerprint.js';
 
-const PROJECT = '01a043bf-fa13-7aa8-921c-13ff44e74415';
-const DOC = '01a043bf-fcdd-7965-8843-b320a24c10db';
+const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
+const APP = process.env.PLAID_APP_URL || 'http://localhost:5174';
+const [PROJECT, given] = process.argv.slice(2);
+if (!PROJECT) {
+  console.error('usage: node e2e/live/vad-restore.mjs PROJECT_ID [DOCUMENT_ID]');
+  process.exit(2);
+}
 
 const client = makeClient();
+const mediaOf = (id) =>
+  fetch(`${CORE}/api/v1/documents/${id}/media`, {
+    headers: { Authorization: `Bearer ${client.token}` },
+  });
+let DOC = given;
+let media = DOC ? await mediaOf(DOC) : null;
+if (!DOC) {
+  for (const d of (await client.projects.get(PROJECT)).documents || []) {
+    const r = await mediaOf(d.id);
+    if (r.ok) {
+      DOC = d.id;
+      media = r;
+      break;
+    }
+  }
+}
+if (!DOC || !media?.ok) {
+  console.error(`FAIL no document with a recording in project ${PROJECT}`);
+  process.exit(1);
+}
 const before = (await client.documents.get(DOC)).metadata || {};
-const media = await fetch(`http://localhost:8085/api/v1/documents/${DOC}/media`, {
-  headers: { Authorization: `Bearer ${client.token}` },
-});
 const print = await mediaFingerprint(await media.blob());
 console.log('media print:', print);
 
@@ -37,12 +65,12 @@ await client.documents.setMetadata(DOC, {
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await page.goto('http://localhost:5174/#/login');
+await page.goto(`${APP}/#/login`);
 await page.fill('input[type="email"], input[name="username"], input[type="text"]', 'a@b.com');
 await page.fill('input[type="password"]', 'password');
 await page.click('button[type="submit"]');
 await page.waitForTimeout(2000);
-await page.goto(`http://localhost:5174/#/projects/${PROJECT}/documents/${DOC}?tab=media`);
+await page.goto(`${APP}/#/projects/${PROJECT}/documents/${DOC}?tab=media`);
 
 let seen = null;
 for (let i = 0; i < 20; i++) {

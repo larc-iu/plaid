@@ -442,22 +442,24 @@ try {
     W('be') && W('ta') && (await linksOf(betaMorph)).length === 0,
     'B10-02 morpheme link gone after the word split',
   );
-  // B10-03 merge two word-linked words: core moves the merged-away word's link
-  // onto the survivor, so no link is lost. The fixture declares no
-  // single-link rule (setup declares one, and core's merge then keeps only
-  // the survivor's own, igtConstraints.test.js), so both stay here.
+  // B10-03 merge two word-linked words: under the single-link rule setup
+  // declares (and the fixture with it), core's merge keeps the survivor's own
+  // link only.
   const be = W('be');
   const taW = W('ta');
   const beLink = await client.vocabLinks.create(item('free').id, [be.id]);
-  const taLink = await client.vocabLinks.create(item('human').id, [taW.id]);
+  await client.vocabLinks.create(item('human').id, [taW.id]);
   d = await load();
   await d.mergeTokens([be.id, taW.id]);
   ({ d, W } = await fresh());
   let merged = W('beta');
   let ml = await linksOf(merged.id);
   check(
-    merged && ml.length === 2 && [beLink.id, taLink.id].every((id) => ml.some((l) => l.id === id)),
-    'B10-03 the survivor holds its own link and the merged-away word’s',
+    merged &&
+      ml.length === 1 &&
+      ml[0].id === beLink.id &&
+      merged.vocabItem.form === item('free').form,
+    'B10-03 survivor keeps exactly its own link',
     JSON.stringify(ml.map((l) => l.id)),
   );
   // B10-04 morpheme merge where the merged-away morpheme is linked

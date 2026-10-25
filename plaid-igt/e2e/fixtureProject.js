@@ -88,6 +88,13 @@ async function initLayers(client, projectId) {
     wordLayer.id,
   );
   await client.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'role', ROLES.MORPHEME);
+  // One vocabulary link per word and per morpheme, as setup declares
+  // (src/domain/igtConstraints.js wordLayerConstraints, morphemeLayerConstraints:
+  // the morpheme layer's coextensive rule is left out, since scripts seed
+  // morphemes narrower than their word).
+  for (const id of [wordLayer.id, morphemeLayer.id]) {
+    await client.tokenLayers.setConstraints(id, 'igt', [{ type: 'single-link' }]);
+  }
 
   const alignmentLayer = await client.tokenLayers.create(
     textLayer.id,

@@ -120,8 +120,9 @@ try {
   let morphemes = 0;
   let wordGlosses = 0;
   let translations = 0;
-  // Every word the files hold is stored, and the grid reads all but the
-  // ones the ignored-token rule leaves as text (a lone "-").
+  // The build leaves a word the ignored-token rule reads as text (a lone
+  // "-") as text, so every word it holds is stored and the grid reads every
+  // stored one: the two counts are equal, and each is checked on its own.
   let stored = 0;
   let wantWords = 0;
   const glossField = config.fields.find((f) => f.kind === 'wordGloss');

@@ -32,11 +32,12 @@ import { getIgtLayerInfo } from '../../src/domain/layerInfo.js';
 import { searchDomains } from '../../src/components/projects/search/searchQueries.js';
 import { readToken } from '../fixtures.js';
 
-const { token, userId } = readToken();
+const { token } = readToken();
 const client = new PlaidClient(process.env.PLAID_CORE_URL || 'http://localhost:8085', token);
 // The stamp the Bulk Edit panels pass (bulkShared.js useWriter): the token's
-// user is an admin, so a verifier.
-const writer = writerPolicy(userId);
+// user is an admin whose work the script's projects do not review, so a
+// verifier, writerPolicy(null). A user id here would make a contributor.
+const writer = writerPolicy(null);
 const roleOf = (l) => l?.config?.plaid?.role;
 let failures = 0;
 const check = (ok, label, detail = '') => {
