@@ -140,7 +140,8 @@ Tokens follow later edits to the text.
 A change inside a token keeps its annotations, and typing a space inside a token splits it, leaving the new part with no annotations.
 A token all of whose letters you replace, by selecting it and typing or by pasting over it, is deleted with its annotations, even when you type the same text again.
 Deleting the space between two tokens does not merge them, and a token is deleted only when all its text is.
-A save that deletes tokens asks first, with counts.
+A sentence whose exact text you replace keeps its fields. A paste or a retype that covers a whole sentence and more text deletes it with its fields.
+A save that deletes tokens, or a sentence with fields, asks first, with counts.
 
 A document of more than 15,000 words shows **Long document** at the top of this tab and the Annotate tab.
 Editing slows down past that length, so split such a document into shorter ones.

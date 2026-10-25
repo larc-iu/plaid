@@ -962,7 +962,10 @@ A word all of whose letters it replaces is deleted with its annotations, even wh
 A word it replaces only part of keeps its other letters and takes the letters typed against them, and the rest of the new text belongs to no word.
 In `the cat sat`, `cat` replaced by `dog` deletes the word `cat`, and `dog` belongs to no word, while `at s` replaced by `ow r` leaves the words `cow` and `rat`.
 Tokens under a word, such as morphemes, and tokens beside the words on a layer that allows overlap, such as UMR nodes, are deleted the same way when none of their letters is left.
-A sentence or a row (see below) holds the text typed over part of it, and one whose whole text is replaced keeps its place and its annotations on the new text.
+A sentence or a row (see below) holds the text typed over part of it.
+One whose exact text is replaced, with nothing more, keeps its place and its annotations on the new text, and a row its times.
+One that a replacement covers along with more text is deleted with its annotations, as a deletion of it would be.
+In `one two. three four.` pasted over as `uno dos. tres cuatro.`, the two share only the final `.`, so the first sentence lies inside the replacement and is deleted, and the second, which the replacement only cuts, takes the new text.
 
 A next-line character (U+0085) is whitespace to all of these rules, as a line feed is: it parts two words, ends a line, and counts as whitespace at a sentence's or a row's edge.
 
