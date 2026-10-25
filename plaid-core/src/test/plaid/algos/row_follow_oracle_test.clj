@@ -41,7 +41,7 @@
         e (loop [x e] (if (and (> x b) (ws? (aget cs (dec x)))) (recur (dec x)) x))]
     [b e]))
 
-(def ^:private opts {:children #{:m} :exclusive #{:w :r}})
+(def ^:private opts {:partitioning #{:s} :deciders #{:w} :children #{:m} :exclusive #{:w :r}})
 
 (defn- gap-fill
   "The sentences of `r` as the save stores them: each to the next one's
@@ -70,9 +70,9 @@
         ops (ta/gap-ops gaps)
         opts (cond-> opts sos (assoc :split-on-space true))]
     (if (= path :edits)
-      (let [used (ta/plain-edit-gaps o ops tokens #{:s} #{:w} opts)]
-        {:gaps used :r (ta/apply-plain-gaps o tokens used #{:s} #{:w} opts)})
-      (let [[used r] (ta/plain-body-read o (ta/edit-ops-body ops o) tokens #{:s} #{:w} opts)]
+      (let [used (ta/plain-edit-gaps o ops tokens opts)]
+        {:gaps used :r (ta/apply-plain-gaps o tokens used opts)})
+      (let [[used r] (ta/plain-body-read o (ta/edit-ops-body ops o) tokens opts)]
         {:gaps used :r r}))))
 
 (defn violations

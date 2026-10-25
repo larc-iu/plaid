@@ -523,11 +523,10 @@
   "What `ops` do taken exactly as made: each net gap less the text it shares
   with the old at either end, read by the plain rule (REV2-F-TEXT-CORE X)."
   [^String old tokens ops layout]
-  (let [{:keys [partitioning deciders] :as r} (roles layout false)
+  (let [r (roles layout false)
         o (cps old)]
     (ta/apply-plain-gaps old tokens (vec (keep #(#'text-read/trim-gap o %) (ta/compose-edits ops old)))
-                         partitioning deciders
-                         (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
+                         (select-keys r [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers]))))
 
 (defn lost-problems
   "The words and sentences `r` deletes that `x`, the edit taken exactly as
@@ -585,15 +584,15 @@
 (defn server-gaps
   "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
   [old tokens ops layout]
-  (let [{:keys [partitioning deciders] :as r} (roles layout false)]
-    (ta/plain-edit-gaps old ops tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
+  (let [r (roles layout false)]
+    (ta/plain-edit-gaps old ops tokens (select-keys r [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers]))))
 
 (defn save-read
   "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has
   them (see `plain-body-read`)."
   [old new tokens layout split?]
-  (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-    (ta/plain-body-read old new tokens partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers]))))
+  (let [r (roles layout split?)]
+    (ta/plain-body-read old new tokens (select-keys r [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers]))))
 
 (defn save
   "What a whole-body save of `new` does, the layers as `layout` has them."

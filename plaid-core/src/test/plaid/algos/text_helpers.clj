@@ -8,7 +8,7 @@
   `plain-body-read` reads it."
   ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
   ([old new tokens partitioning word-layers opts]
-   (second (ta/plain-body-read old new tokens partitioning word-layers opts))))
+   (second (ta/plain-body-read old new tokens (assoc opts :partitioning partitioning :deciders word-layers)))))
 
 (defn plain-edits
   "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
@@ -16,5 +16,5 @@
   takes it."
   ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
   ([old tokens ops partitioning word-layers opts]
-   (ta/apply-plain-gaps old tokens (ta/plain-edit-gaps old ops tokens partitioning word-layers opts)
-                        partitioning word-layers opts)))
+   (let [roles (assoc opts :partitioning partitioning :deciders word-layers)]
+     (ta/apply-plain-gaps old tokens (ta/plain-edit-gaps old ops tokens roles) roles))))

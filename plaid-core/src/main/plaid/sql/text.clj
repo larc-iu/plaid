@@ -244,23 +244,16 @@
                        (psc/q db {:select [:id :name :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
                                   :where [:= :text_layer_id (:text_layer_id text-row)]}))
-          {:keys [partitioning deciders exclusive] :as roles}
-          (ta/layer-roles (map (fn [r] (let [config (some-> (:config r) psc/parse-config)
-                                             plaid (clojure.core/get config "plaid")]
-                                         {:id (:id r)
-                                          :overlap-mode (:overlap_mode r)
-                                          :parent (:parent_token_layer_id r)
-                                          :split-on-space (true? (clojure.core/get plaid "splitOnSpace"))
-                                          :role (clojure.core/get plaid "role")
-                                          :letter-like (:letter-like (ta/ignored-rule config))}))
+          {:keys [exclusive] :as roles}
+          (ta/layer-roles (map (fn [r] (ta/layer-of (:id r) (:overlap_mode r) (:parent_token_layer_id r)
+                                                    (some-> (:config r) psc/parse-config)))
                                layer-rows))
-          opts (select-keys roles [:split-on-space :children :dealt :exclusive :head-layers :letter-like])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           [gaps {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}]
           (cond
-            edits (let [gaps (ta/plain-edit-gaps old-body edits tokens partitioning deciders opts)]
-                    [gaps (ta/apply-plain-gaps old-body tokens gaps partitioning deciders opts)])
-            (string? new-body-or-ops) (ta/plain-body-read old-body new-body-or-ops tokens partitioning deciders opts)
+            edits (let [gaps (ta/plain-edit-gaps old-body edits tokens roles)]
+                    [gaps (ta/apply-plain-gaps old-body tokens gaps roles)])
+            (string? new-body-or-ops) (ta/plain-body-read old-body new-body-or-ops tokens roles)
             :else [(when tokenize (ta/compose-edits (vec new-body-or-ops) old-body))
                    (ta/apply-text-edits (vec new-body-or-ops) text-map tokens)])
           sent-body (:text/body new-text)

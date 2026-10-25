@@ -3,7 +3,7 @@
   rule (`apply-plain-gaps`), the rows that follow the sentences, a word a
   typed space splits, and the roles a layer's shape gives it in a save
   (`layer-roles`)."
-  (:require [plaid.algos.text.chars :refer [line-break? punct? punct-only? space?]]
+  (:require [plaid.algos.text.chars :refer [ignored-rule line-break? punct? punct-only? space?]]
             [plaid.algos.text.index :refer [upper-bound]]
             [plaid.algos.text.ops :refer [apply-text-edits gap-ops]]
             [plaid.util.codepoint :as cp]))
@@ -392,7 +392,7 @@
              placed)
        :made made})))
 
-(defn word-token?
+(defn- word-token?
   "Whether a token of `tokens` is a word, the one answer every path reads:
   a token on a layer in `word-layers`, or, when no token of `tokens` is on
   one (no word layer, or one that holds no token yet), any token on no
@@ -404,20 +404,70 @@
       #(contains? ws (:token/layer %))
       #(not (contains? ps (:token/layer %))))))
 
+(defn save-roles
+  "What each layer and token of `tokens` is to a save under `roles` (see
+  `layer-roles`), worked out once: `roles` with `:partitioning`,
+  `:deciders`, `:children`, `:dealt` and `:exclusive` as sets, and
+  - `:decides?`: whether a token is a word, which decides where typed text
+    goes (see `word-token?`, so every token on no partition when no token
+    of `tokens` is on a deciding layer).
+  - `:decider-layers`: the layers of the tokens of `tokens` that decide.
+  - `:word?`: whether a token is a word to a split and to a reading's
+    `foreign?` check: one on a deciding layer, or one that decides when the
+    text has no deciding layer. In a text whose word layer holds no token
+    yet the rows decide in the words' place, but they are no words here
+    (REV6-TEXT-1, REV7-TEXT-4).
+  - `:row?`: whether a layer is a row, which forbids overlap and is no
+    partition, no child, and no layer of a token that decides.
+  - `:follower?`: whether a token follows the sentences (see
+    `follow-sentences`): a row's, or, where the text has a deciding layer,
+    one of any other layer that forbids overlap and is no partition, no
+    child and not that layer, so the rows follow the sentences also where
+    the word layer holds no token yet and the rows decide in its place.
+  - `:child?`, `:dealt?`: whether a layer is nested under the words, and
+    whether its tokens are dealt (see `layer-roles`)."
+  [{:keys [partitioning deciders children dealt exclusive] :as roles} tokens]
+  (let [partitioning (set partitioning)
+        word-layers (set deciders)
+        children (set children)
+        dealt (set dealt)
+        exclusive (set exclusive)
+        decides? (word-token? tokens partitioning word-layers)
+        decider-layers (into #{} (comp (filter decides?) (map :token/layer)) tokens)
+        row? (fn [l] (and (contains? exclusive l) (not (partitioning l))
+                          (not (decider-layers l)) (not (contains? children l))))]
+    (assoc roles
+           :partitioning partitioning
+           :deciders word-layers
+           :children children
+           :dealt dealt
+           :exclusive exclusive
+           :decides? decides?
+           :decider-layers decider-layers
+           :word? (if (seq word-layers) #(contains? word-layers (:token/layer %)) decides?)
+           :row? row?
+           :follower? #(let [l (:token/layer %)]
+                         (or (row? l)
+                             (and (seq word-layers) (contains? exclusive l) (not (partitioning l))
+                                  (not (contains? children l)) (not (contains? word-layers l)))))
+           :child? #(contains? children %)
+           :dealt? #(contains? dealt %))))
+
 (defn apply-plain-gaps
   "What `gaps` (old-body code points, in order, never touching, each
   `{:start a :end b :value v}`, see `compose-edits`) do to `old` and to
-  `tokens` taken the plain way. Returns `{:text :tokens :deleted}` as
-  `apply-text-edits` does, with `:heads`, the sentences made over a line
-  typed before the first one, and with `split-on-space`, `:made`, the new
-  tokens of the words a typed space split (see `split-spaced-words`: only
-  tokens on a layer in `word-layers` when it names one, so a text whose
-  word layer holds no token has nothing split), each
-  `{:token/layer :token/begin :token/end}`, a word before the tokens under
-  it. `:dealt` names the layers under the words whose tokens as long as a
-  split word are dealt one to each part (see `split-spaced-words`).
-  `:letter-like` names the code points that are letters to the punctuation
-  rule below (see `punct?`).
+  `tokens` taken the plain way, the layers as `roles` has them (see
+  `layer-roles`, and `save-roles` for what is made of them). Returns
+  `{:text :tokens :deleted}` as `apply-text-edits` does, with `:heads`, the
+  sentences made over a line typed before the first one, and with
+  `:split-on-space`, `:made`, the new tokens of the words a typed space
+  split (see `split-spaced-words`: only tokens on a deciding layer when the
+  text names one, so a text whose word layer holds no token has nothing
+  split), each `{:token/layer :token/begin :token/end}`, a word before the
+  tokens under it. `:dealt` names the layers under the words whose tokens
+  as long as a split word are dealt one to each part (see
+  `split-spaced-words`). `:letter-like` names the code points that are
+  letters to the punctuation rule below (see `punct?`).
 
   For a token with text, [B, E):
   - A gap inside it, or reaching one of its ends from inside, grows or
@@ -432,7 +482,7 @@
     that is exactly a token's text (a word, a sentence with its separator,
     a segment) goes to that token alone, which keeps its place on it.
   - Where new text goes is decided by the words, the tokens on a layer in
-    `word-layers` (else every token on no layer in `partitioning`), and the
+    `:deciders` (else every token on no layer in `:partitioning`), and the
     other tokens follow them, so a sentence or a time-alignment segment
     keeps to the words' edges and no two tokens of a layer overlap.
   - Text a gap only types between two tokens of a partition (sentences)
@@ -454,11 +504,9 @@
     the word on `thung`), and one left with only whitespace is deleted.
 
   A zero-width token is moved as `apply-text-edits` moves it."
-  ([^String old tokens gaps partitioning word-layers {:keys [split-on-space children dealt exclusive head-layers letter-like]}]
+  ([^String old tokens gaps {:keys [split-on-space head-layers letter-like] :as roles}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
-         partitioning (set partitioning)
-         word-layers (set word-layers)
          gaps (vec gaps)
          k (count gaps)
          info (mapv (fn [{:keys [start end value]}]
@@ -484,12 +532,12 @@
 
          zero (filterv #(= (:token/begin %) (:token/end %)) tokens)
         ;; The tokens that decide where new text goes: the words, those on a
-        ;; layer in `word-layers`, else every token on no partition. The
-        ;; others (sentences, time-alignment segments) follow them.
-         decides? (word-token? wide partitioning word-layers)
+        ;; deciding layer, else every token on no partition. The others
+        ;; (sentences, time-alignment segments) follow them.
+         {:keys [partitioning decides? decider-layers row?] word-layers :deciders :as save}
+         (save-roles roles wide)
          punct-word? (fn [t] (and (contains? word-layers (:token/layer t)) (punct-only? o letter-like t)))
          deciders (filterv decides? wide)
-         decider-layers (into #{} (map :token/layer) deciders)
         ;; the tokens whose text is one of a gap's words typed over (see
         ;; `cut-at-words`), a word's: old extent to [gap offset length]. Its
         ;; morphemes as long as it and its nodes go with it.
@@ -539,8 +587,6 @@
         ;; (tokens of a layer that forbids overlap beside the words, the words
         ;; leaving out punctuation) meet at it with no whitespace between,
         ;; else none
-         row? (fn [l] (and (contains? exclusive l) (not (partitioning l))
-                           (not (decider-layers l)) (not (contains? children l))))
          row-ends (into #{} (comp (filter #(row? (:token/layer %))) (map (juxt :token/layer :token/end))) wide)
          sentence-starts (into #{} (comp (filter #(or (partitioning (:token/layer %))
                                                       (row-ends [(:token/layer %) (:token/begin %)])))
@@ -714,17 +760,13 @@
                            (let [na (new-at g)] (dotimes [j (:n (info g))] (aset a (+ na j) true))))
                          a)]
              (split-spaced-words nw wide placed
-                                 ;; only a word is split: a token of a
-                                 ;; word layer, where the text has one. In
-                                 ;; a text whose word layer holds no token
-                                 ;; yet the rows decide in the words' place,
-                                 ;; but a space typed in a row splits
-                                 ;; nothing (REV6-TEXT-1)
-                                 (if (seq word-layers) #(contains? word-layers (:token/layer %)) decides?)
+                                 ;; only a word is split, so a space typed
+                                 ;; in a row splits nothing (see `save-roles`)
+                                 (:word? save)
                                  #(partitioning (:token/layer %))
                                  #(aget typed (int %))
-                                 #(contains? (set children) (:token/layer %))
-                                 #(contains? (set dealt) %)
+                                 #((:child? save) (:token/layer %))
+                                 (:dealt? save)
                                  #(row? (:token/layer %))))
            {:placed placed})
          zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))
@@ -797,13 +839,7 @@
                           x (if (space? (aget o b)) x (loop [x x] (if (and (< x y) (space? (aget nw x))) (recur (inc x)) x)))
                           y (if (space? (aget o (dec e))) y (loop [y y] (if (and (> y x) (space? (aget nw (dec y)))) (recur (dec y)) y)))]
                       (when (< x y) [x y])))))
-         kept (follow-sentences o wide kept heads nw partitioning
-                                ;; a row, also where the text has no word yet
-                                ;; and the rows decide in their place
-                                #(let [l (:token/layer %)]
-                                   (or (row? l)
-                                       (and (seq word-layers) (contains? exclusive l) (not (partitioning l))
-                                            (not (contains? children l)) (not (contains? (set word-layers) l)))))
+         kept (follow-sentences o wide kept heads nw partitioning (:follower? save)
                                 held
                                 ;; the new text of an insert at old x
                                 (fn [x] (let [g (at-or-before x)]
@@ -819,10 +855,23 @@
        ;; the parts of a word split by a typed space (see `split-spaced-words`)
        (seq made) (assoc :made made)))))
 
+(defn layer-of
+  "A token layer as `layer-roles` reads it, from its `id`, its
+  `overlap-mode` as the token layer row has it, its `parent` token layer's
+  id or nil, and its parsed `config`."
+  [id overlap-mode parent config]
+  (let [plaid (get config "plaid")]
+    {:id id
+     :overlap-mode overlap-mode
+     :parent parent
+     :split-on-space (true? (get plaid "splitOnSpace"))
+     :role (get plaid "role")
+     :letter-like (:letter-like (ignored-rule config))}))
+
 (defn layer-roles
   "What each token layer of a text is to a body save, from `layers`, each
-  `{:id :overlap-mode :parent :split-on-space :role :letter-like}`
-  (`:overlap-mode` as the token layer row has it, `:parent` its parent token
+  `{:id :overlap-mode :parent :split-on-space :role :letter-like}` (see
+  `layer-of`, `:overlap-mode` as the token layer row has it, `:parent` its parent token
   layer's id or nil, `:split-on-space` whether its config sets
   `splitOnSpace`, `:role` its `config.plaid.role`, `:letter-like` the code
   points its ignored-tokens rule calls letter-like, see

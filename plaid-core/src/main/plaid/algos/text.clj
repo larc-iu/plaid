@@ -24,6 +24,7 @@
         plaid.algos.text.plain/follow-sentences
         plaid.algos.text.plain/apply-plain-gaps
         plaid.algos.text.plain/layer-roles
+        plaid.algos.text.plain/layer-of
         plaid.algos.text.align/align-to-words
         plaid.algos.text.read/slide-to-tokens
         plaid.algos.text.read/normalize-deletes

@@ -9,7 +9,7 @@
             [plaid.algos.text.diff :refer [diff]]
             [plaid.algos.text.index :refer [begin-index lower-bound tokens-near upper-bound]]
             [plaid.algos.text.ops :refer [compose-edits edits->ops ops->edits]]
-            [plaid.algos.text.plain :refer [apply-plain-gaps gaps-body typed-to-next? word-token?]]
+            [plaid.algos.text.plain :refer [apply-plain-gaps gaps-body save-roles typed-to-next?]]
             [plaid.util.codepoint :as cp]))
 
 ;; ---------------------------------------------------------------------------
@@ -640,10 +640,10 @@
           edits))
 
 (defn- word-extents
-  "The old extents of the words of `tokens`: those on `word-layers`, else
-  every token on no layer in `partitioning`."
-  [tokens partitioning word-layers]
-  (into #{} (comp (filter (word-token? tokens partitioning word-layers))
+  "The old extents of the words of `tokens` under `roles` (see
+  `save-roles`, `:decides?`)."
+  [tokens roles]
+  (into #{} (comp (filter (:decides? (save-roles roles tokens)))
                   (map (juxt :token/begin :token/end)))
         tokens))
 
@@ -697,26 +697,25 @@
           runs)))
 
 (defn- body-word-layers
-  "The layers whose tokens are the words of a whole-body save, as
-  `word-token?` tells them."
-  [tokens partitioning word-layers]
-  (into #{} (comp (filter (word-token? tokens partitioning word-layers)) (map :token/layer)) tokens))
+  "The layers whose tokens are the words of a whole-body save (see
+  `save-roles`, `:decider-layers`)."
+  [tokens roles]
+  (:decider-layers (save-roles roles tokens)))
 
 (defn body-diff-gaps
   "The change a whole-body save of `old` as `new` reads, before it reads any
   stretch as words typed over: the diff, each edit moved to the equivalent
   place that disturbs the fewest `tokens` (see `slide-to-tokens` and
-  `normalize-deletes`), each changed stretch aligned to the words of
-  `word-layers` (see `align-to-words`), and edits that touch one gap. A
-  letter outside these gaps is a letter the save keeps, and no token
-  holding one is deleted. With `align?` false, the stretches are left as
-  the diff spells them. `letter-like` is the code points the text's
-  layers call letter-like (see `layer-roles`)."
-  ([^String old ^String new tokens partitioning word-layers align? letter-like]
+  `normalize-deletes`), each changed stretch aligned to the words (see
+  `align-to-words`), and edits that touch one gap, the layers as `roles`
+  has them (see `layer-roles`). A letter outside these gaps is a letter the
+  save keeps, and no token holding one is deleted. With `align?` false, the
+  stretches are left as the diff spells them."
+  ([^String old ^String new tokens {:keys [partitioning deciders letter-like] :as roles} align?]
    (-> (diff old new)
-       (slide-to-tokens old tokens partitioning word-layers letter-like)
+       (slide-to-tokens old tokens partitioning deciders letter-like)
        (normalize-deletes old tokens)
-       (cond-> align? (align-to-words old tokens (body-word-layers tokens partitioning word-layers) letter-like))
+       (cond-> align? (align-to-words old tokens (body-word-layers tokens roles) letter-like))
        ops->edits
        edits->gaps)))
 
@@ -727,12 +726,12 @@
   types words over words (see `cut-at-words`). Neither step reaches a
   letter outside the diff's gaps but inside the one word it reads as typed
   over, so no word with a letter left is deleted."
-  ([^String old ^String new tokens partitioning word-layers letter-like]
+  ([^String old ^String new tokens roles]
    (let [^ints o (.toArray (.codePoints old))
-         wl (body-word-layers tokens partitioning word-layers)]
-     (-> (body-diff-gaps old new tokens partitioning word-layers true letter-like)
+         wl (body-word-layers tokens roles)]
+     (-> (body-diff-gaps old new tokens roles true)
          (merge-in-words o tokens #(contains? wl (:token/layer %)))
-         (->> (into [] (mapcat #(cut-at-words o letter-like %))))))))
+         (->> (into [] (mapcat #(cut-at-words o (:letter-like roles) %))))))))
 
 (defn- pick-reading
   "`[gaps result]`: of the two readings of a change of `old`, `gaps` (the
@@ -744,10 +743,10 @@
   fewer, else `gaps0`. So a change never deletes a word its own diff keeps
   letters of only to keep another (REV2-one-rule): where two readings each
   delete one word, the diff's is taken."
-  [^String old tokens gaps gaps0 partitioning word-layers opts]
-  (let [run #(apply-plain-gaps old tokens % partitioning word-layers opts)
+  [^String old tokens gaps gaps0 roles]
+  (let [run #(apply-plain-gaps old tokens % roles)
         layer-of (into {} (map (juxt :token/id :token/layer)) tokens)
-        children (set (:children opts))
+        children (set (:children roles))
         counted (fn [r] (into #{} (remove #(children (layer-of %))) (:deleted r)))
         read (run gaps)
         gone (counted read)]
@@ -763,16 +762,15 @@
   "`[gaps result]`: the gaps a whole-body save of `old` as `new` is taken as
   and `apply-plain-gaps` of them, the aligned reading (`plain-body-gaps`) or
   the diff as it stands, as `pick-reading` chooses."
-  [^String old ^String new tokens partitioning word-layers opts]
+  [^String old ^String new tokens roles]
   (pick-reading old tokens
-                (plain-body-gaps old new tokens partitioning word-layers (:letter-like opts))
-                (delay (body-diff-gaps old new tokens partitioning word-layers false (:letter-like opts)))
-                partitioning word-layers opts))
+                (plain-body-gaps old new tokens roles)
+                (delay (body-diff-gaps old new tokens roles false))
+                roles))
 
 (defn plain-edit-gaps
   "The gaps an edit of `old` by `ops` from the caret is taken as, for
-  `tokens` (see `apply-plain-gaps` for `partitioning`, `word-layers` and
-  `opts`): its net change (see `compose-edits`), each gap of it taken apart
+  `tokens` (see `apply-plain-gaps` for `roles`): its net change (see `compose-edits`), each gap of it taken apart
   and as it was made, less the text its new value shares with the old at
   either end. A gap that only deletes or only types carries all it means
   and is always taken so: a word shrinks, and goes only with all its
@@ -790,11 +788,11 @@
   taken unless it leaves a word over a run of typed text of its own with
   whitespace between (`hi` on `Oh my.\nHi`) and the gap as sent does not.
   Otherwise the gap is taken as made."
-  ([^String old ops tokens partitioning word-layers opts]
+  ([^String old ops tokens roles]
    (let [^ints o (.toArray (.codePoints old))
          n (alength o)
          ;; the words' old extents, by begin, and the longest
-         words (vec (sort (word-extents tokens partitioning word-layers)))
+         words (vec (sort (word-extents tokens roles)))
          [^longs begins longest] (begin-index words first second)
          ;; how many words [a, b) touches the inside of, two at most
          over (fn [a b] (let [from (lower-bound begins (- a longest))]
@@ -814,15 +812,13 @@
                     (and (< start end) (pos? (alength v))
                          (or (<= 2 w)
                              (and (= 1 w) (or (<= 2 (runs o start end)) (<= 2 (runs v 0 (alength v)))))))))
-         word? (word-token? tokens partitioning word-layers)
-         ;; a word for `foreign?` below: a token of a word layer, where the
-         ;; text has one. In a text whose word layer holds no token yet the
-         ;; rows decide in the words' place, but a row holds runs of text
-         ;; with whitespace between as a matter of course, so it is never
-         ;; foreign, and the gap is read as a whole-body save reads it
-         ;; (REV7-TEXT-4)
-         word-of-layer? (if (seq word-layers) #(contains? (set word-layers) (:token/layer %)) word?)
-         children (set (:children opts))
+         ;; `word-of-layer?`, a word for `foreign?` below: a token of a word
+         ;; layer, where the text has one. In a text whose word layer holds
+         ;; no token yet the rows decide in the words' place, but a row
+         ;; holds runs of text with whitespace between as a matter of
+         ;; course, so it is never foreign, and the gap is read as a
+         ;; whole-body save reads it (REV7-TEXT-4)
+         {word? :decides? word-of-layer? :word? :keys [children partitioning]} (save-roles roles tokens)
          ;; gap i read as a whole-body save of its window (the text between
          ;; its neighbours) reads it, the tokens cut to the window, when that
          ;; reading deletes no word or sentence the gap as made keeps, or
@@ -857,9 +853,9 @@
                       a (:start g)
                       st-old (cp/cp-subs old a (:end g))
                       st-tokens (cut a (:end g))
-                      aligned (plain-body-gaps st-old (:value g) st-tokens partitioning word-layers (:letter-like opts))
-                      diffed (delay (body-diff-gaps st-old (:value g) st-tokens partitioning word-layers false (:letter-like opts)))
-                      rgaps (first (pick-reading st-old st-tokens aligned diffed partitioning word-layers (dissoc opts :split-on-space)))
+                      aligned (plain-body-gaps st-old (:value g) st-tokens roles)
+                      diffed (delay (body-diff-gaps st-old (:value g) st-tokens roles false))
+                      rgaps (first (pick-reading st-old st-tokens aligned diffed (dissoc roles :split-on-space)))
                       ;; weighed on the window
                       lo (if (pos? i) (inc (:end (gaps (dec i)))) 0)
                       hi (if (< (inc i) k) (dec (:start (gaps (inc i)))) n)
@@ -873,11 +869,11 @@
                       w-made [(-> g (update :start - lo) (update :end - lo))]
                       ;; (a layer that splits on space splits what either
                       ;; reading gives alike, so the choice does not depend on it)
-                      run #(apply-plain-gaps w-old w-tokens % partitioning word-layers (dissoc opts :split-on-space))
+                      run #(apply-plain-gaps w-old w-tokens % (dissoc roles :split-on-space))
                       rr (run w-read)
                       made (run w-made)
                       ;; the words and sentences a reading deletes
-                      counted-ids (into #{} (comp (filter #(or (word? %) (contains? (set partitioning) (:token/layer %))))
+                      counted-ids (into #{} (comp (filter #(or (word? %) (contains? partitioning (:token/layer %))))
                                                   (remove #(children (:token/layer %)))
                                                   (map :token/id))
                                         w-tokens)
