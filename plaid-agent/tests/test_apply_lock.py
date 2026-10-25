@@ -70,14 +70,14 @@ def test_the_staleness_check_reads_under_the_lock(spec, monkeypatch):
     client = spec['client']()
     plan, _ = sbs._plan(spec, client)
     seen = []
-    from plaid_agent.core import service as core_service
-    real = core_service.stale_documents
+    from plaid_agent.core import approval
+    real = approval.stale_documents
 
     def watch(c, documents, **kw):
         seen.append(_lock_state(client, spec['did']))
         return real(c, documents, **kw)
 
-    monkeypatch.setattr(core_service, 'stale_documents', watch)
+    monkeypatch.setattr(approval, 'stale_documents', watch)
     sbs._approve(spec, client, plan)
     assert seen == [True]
 
