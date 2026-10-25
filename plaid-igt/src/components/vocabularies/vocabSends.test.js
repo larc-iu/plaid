@@ -58,6 +58,23 @@ describe('sendKeyed', () => {
     expect(refused).toHaveBeenCalledTimes(1);
     expect(client.ops).toHaveLength(1);
   });
+
+  it("gives the operation its minted ids and tags beside the send's own group and keys", async () => {
+    const client = fakeClient();
+    const queue = new WriteQueue({ retryDelay: () => 0 });
+    await sendKeyed(
+      queue,
+      client,
+      'Bulk Add',
+      async () => {},
+      {},
+      { minted: ['m1'], kind: 'import', ref: 'format:table' },
+    );
+    const [{ opts }] = client.ops;
+    expect(opts).toMatchObject({ minted: ['m1'], kind: 'import', ref: 'format:table' });
+    expect(opts.keys).toEqual({ seed: 'seed1' });
+    expect(typeof opts.groupId).toBe('string');
+  });
 });
 
 describe('sendFieldPrune', () => {

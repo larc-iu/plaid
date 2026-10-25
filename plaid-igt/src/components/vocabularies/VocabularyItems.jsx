@@ -8,7 +8,7 @@ import {
   useReducer,
 } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { createdId, isReviewed, uuidv7 } from '@larc-iu/plaid-client';
+import { createdId, isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle, History } from 'lucide-react';
@@ -16,8 +16,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useTabParam } from '@ui/hooks/useTabParam.js';
-import { notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
-import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
+import { notifyError } from '@/utils/feedback';
+import { statusOf } from '@ui/lib/errors.js';
 import {
   fieldLabel,
   groupFieldsForForm,
@@ -45,17 +45,9 @@ import {
   morphTypeOf,
 } from '@/domain/vocabDictionary';
 import { dropPrecedent } from '@/domain/precedentCache';
-import { metadataPatchTo, metadataUpdates } from '@/domain/metadataPatch';
-import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
+import { metadataPatchTo } from '@/domain/metadataPatch';
 import { dropUnsavedDrafts, useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
-import {
-  followIds,
-  pendingId,
-  recordSettled,
-  settledId,
-  stableKey,
-} from '@ui/domain/pendingIds.js';
-import { CHUNK } from '@/domain/bulk';
+import { followIds, pendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { HomographDialog, ReferencedByPanel, ExamplesPanel } from './DictionaryPanels';
 import { validateValue, changedValuesAllowed, entryTagsetFor } from '@/domain/tagsets';
 import { useItemConcordance } from './useItemConcordance';
@@ -78,6 +70,7 @@ import {
   seedKeyFor,
 } from './vocabItemsState';
 import { useEntryList } from './useEntryList';
+import { useVocabEntries } from './useVocabEntries';
 import { EntryList } from './EntryList';
 import { soleProjectLinking } from '@/domain/vocabProject';
 import { linksUmrProject, readRoleset, rolesetProblem } from '@/domain/vocabUmr';
@@ -90,21 +83,16 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
-import { readVocabulary } from '@/domain/vocabCache';
 import { EntryRestoreDialog } from './EntryRestoreDialog';
 import { countOf } from '@ui/lib/plural.js';
 
-// A past state read with no entry list: one empty list, so the memos over it
-// keep their identity.
-const NO_ENTRIES = Object.freeze([]);
-
-// The Entries screen of a vocabulary. This component owns the data (the
-// entries, their usage counts) and every write, sent through `writes`, the
-// vocabulary's entry WriteQueue, which outlives this screen; the selection
-// lives in the URL; the draft, the list's scope, and the open dialog live in
-// one reducer (vocabItemsState.js); the list's order and paging in
-// useEntryList; and the concordance in useItemConcordance. The panes are
-// EntryList, EntryEditor, ConcordancePanel, and EntryDialogs.
+// The Entries screen of a vocabulary. The data (the entries, their usage
+// counts) and the sends through `writes`, the vocabulary's entry WriteQueue,
+// which outlives this screen, are in useVocabEntries; the selection lives in
+// the URL; the draft, the list's scope, and the open dialog live in one
+// reducer (vocabItemsState.js); the list's order and paging in useEntryList;
+// and the concordance in useItemConcordance. The panes are EntryList,
+// EntryEditor, ConcordancePanel, and EntryDialogs.
 export const VocabularyItems = ({
   vocabularyId,
   vocabulary,
@@ -125,23 +113,9 @@ export const VocabularyItems = ({
   useCommentStore(comments);
   // The assistant's records are keyed by the user whose store they live in.
   const { user } = useAuth();
-  const [liveItems, setItems] = useState([]);
-  // `past` is the vocabulary as the history rail shows it (`{ time,
-  // vocabulary }`): its entries stand in for the live ones, and nothing can be
-  // edited, only put back one entry at a time (EntryRestoreDialog). The
-  // writes below all work on the live list, which stays loaded underneath.
-  const pastTime = past?.time ?? null;
-  const pastItems = past ? past.vocabulary?.items || NO_ENTRIES : null;
-  const items = pastItems ?? liveItems;
   // Read-only from the click on a history entry, before its read lands.
   const canManage = canManageNow && !past && !historyPending;
   const [restoring, setRestoring] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [usageCountsNow, setUsageCounts] = useState(null); // {itemId: n} | null
-  // Uses are counted now, which says nothing about a past state.
-  const usageCounts = past ? null : usageCountsNow;
-  const [usageKinds, setUsageKinds] = useState(null); // {itemId: {word: n, morpheme: n}} | null
 
   const [state, dispatch] = useReducer(reducer, initialState);
   const { draft, scope, dialog } = state;
@@ -182,6 +156,43 @@ export const VocabularyItems = ({
   const goItem = (id, options, parent = null) =>
     setSearchParams(itemQuery(id, parent).replace(/^\?/, ''), options);
 
+  // The open draft holds typing of the user's (set below, once the draft is
+  // read).
+  const typedRef = useRef(false);
+  const {
+    items,
+    liveItems,
+    setItems,
+    pastTime,
+    loading,
+    error,
+    usageCounts,
+    usageKinds,
+    readableProjects,
+    vocabLinked,
+    fetchItems,
+    fetchUsageCounts,
+    bulkRepoint,
+    metadataNow,
+    foldPatches,
+    selectedIdRef,
+    settleEntries,
+    unseedUnlessTyped,
+    sendInTurn,
+    sendPlanned,
+    commitMetadata,
+    commitPatches,
+  } = useVocabEntries({
+    client,
+    vocabularyId,
+    writes,
+    past,
+    selectedId,
+    goItem,
+    dispatch,
+    typedRef,
+  });
+
   // Size the sticky left pane to fit from its own top to the viewport bottom, so
   // its footer is always visible without scrolling. Measured (not a guessed
   // chrome constant) so it is immune to breadcrumb wrapping, zoom, and so on.
@@ -206,29 +217,6 @@ export const VocabularyItems = ({
     // to the guessed constant this exists to replace. Only a window resize
     // ever rescued it.
   }, [loading]);
-
-  // The projects this user can read, one call per vocabulary, shared by the
-  // lookups below, the usage counts and the concordance, which have no project
-  // to look in when nothing links the vocabulary.
-  const projectsRef = useRef(null);
-  const readableProjects = () => {
-    if (projectsRef.current?.key !== vocabularyId) {
-      const promise = client.projects.list();
-      // A failed read is asked again next time rather than remembered.
-      promise.catch(() => {
-        if (projectsRef.current?.promise === promise) projectsRef.current = null;
-      });
-      projectsRef.current = { key: vocabularyId, promise };
-    }
-    return projectsRef.current.promise;
-  };
-  // Whether a readable project links this vocabulary. The usage queries are
-  // refused when none does. A failed read says yes, so the queries still run.
-  const vocabLinked = () =>
-    readableProjects().then(
-      (projects) => projects.some((p) => (p?.vocabs || []).some((v) => v?.id === vocabularyId)),
-      () => true,
-    );
 
   // The open entry's concordance, loaded a batch at a time.
   const conc = useItemConcordance({
@@ -440,213 +428,16 @@ export const VocabularyItems = ({
     selectedId,
   });
 
-  // ---- loading ----
-  // `quiet`: refresh the list without the full-pane spinner. The spinner
-  // replaces the whole two-pane layout, so using it for a refresh AFTER an edit
-  // tears down the list and the open editor, losing scroll position and focus
-  // for a change the user already sees. Only the first load earns it.
-  //
-  // A read waits for the entry writes still queued, and reads again when one
-  // is made while it is on the wire, so the list never drops an edit the
-  // server is still to get. `inTurn` is the refused write's own refetch, which
-  // the queue is waiting on. It throws when it fails, so the queue tries it
-  // again.
-  const fetchItems = async ({ quiet = false, inTurn = false } = {}) => {
-    try {
-      if (!quiet) setLoading(true);
-      if (!client) throw new Error('Not authenticated');
-      if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
-        throw new Error('Invalid vocabulary ID');
-      }
-      // The copy kept since the last read when the vocabulary has not changed
-      // (vocabCache.js): a document opened just before read the same entries.
-      const read = () => readVocabulary(client, vocabularyId);
-      const vocabularyData = await (inTurn ? read() : writes.readWhenIdle(read));
-      const fetched = vocabularyData.items || [];
-      setItems(fetched);
-      setError('');
-      fetchUsageCounts(); // not awaited
-      return fetched;
-    } catch (err) {
-      if (inTurn) throw err;
-      setError('Failed to load entries');
-      console.error('Error fetching vocabulary items:', err);
-      return null;
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  };
-
-  // One grouped aggregate query: links per item AND per token-layer role
-  // across every readable project. The role splits each entry's uses into
-  // words and morphemes (an entry may be linked from both). The `vocab-link`
-  // shorthand counts each word once per entry, even where two links of one
-  // entry name the same word (a multi-word link beside a single-word one).
-  // Naming the link would count each link instead.
-  const fetchUsageCounts = async () => {
-    try {
-      // A vocabulary no project links has no uses, and the query refuses it.
-      if (!(await vocabLinked())) {
-        setUsageCounts(null);
-        setUsageKinds(null);
-        return;
-      }
-      const res = await client.query({
-        where: [
-          ['vocab', '?v', { layer: vocabularyId }],
-          ['vocab-link', '?t', '?v'],
-          ['token', '?t', { layer: '?tl' }],
-          ['token-layer', '?tl', {}],
-        ],
-        return: { group: ['?v', '?tl.config.plaid.role'], aggregates: [['count']] },
-      });
-      const counts = {};
-      const kinds = {};
-      for (const [itemId, role, n] of res?.results || []) {
-        counts[itemId] = (counts[itemId] || 0) + n;
-        if (role === 'word' || role === 'morpheme') {
-          (kinds[itemId] ||= {})[role] = ((kinds[itemId] || {})[role] || 0) + n;
-        }
-      }
-      setUsageCounts(counts);
-      setUsageKinds(kinds);
-    } catch (err) {
-      console.error('Usage-count query failed:', err);
-      setUsageCounts(null);
-      setUsageKinds(null);
-      if (!isPermissionError(err)) {
-        notifyWarning('Usage counts could not be loaded.', 'Usage counts unavailable');
-      }
-    }
-  };
-
-  // ---- writes ----
-  // Write entries' metadata. The plans are whole maps and the write is each
-  // one's patch against what that entry carried when the plan was made, so a
-  // key nobody here changed (one another tab or a service wrote meanwhile) is
-  // left alone. One request is one transaction holding the vocabulary's write
-  // lock, hence the chunks. `metaById` is what the entries hold at the time of
-  // the call, which is not always the list in state: the load-time repair runs
-  // against what it has just fetched. Ids the server has answered for since
-  // go out as the server's.
-  // `to` is the client, or a batch the repoints ride in.
-  const bulkRepoint = async (patches, metaById, to = client) => {
-    const updates = metadataUpdates(patches, metaById).map(({ id, metadata }) => ({
-      id: settledId(id),
-      metadata: followIds(metadata),
-    }));
-    for (let i = 0; i < updates.length; i += CHUNK) {
-      await to.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
-    }
-  };
-  const metadataNow = (list) => new Map((list || []).map((it) => [it.id, it.metadata]));
-  const foldPatches = (patches) => {
-    const byId = new Map(patches.map((p) => [p.id, p.metadata]));
-    setItems((prev) =>
-      prev.map((it) => {
-        if (!byId.has(it.id)) return it;
-        const metadata = byId.get(it.id);
-        const rest = { ...it };
-        delete rest.metadata;
-        return Object.keys(metadata).length ? { ...rest, metadata } : rest;
-      }),
-    );
-  };
-
-  // Every write here shows first and is sent in its turn in `writes`, so two
-  // quick drags reach the server in the order they were made. An entry made
-  // here is in the list under a pending id until the server answers, and
-  // `settleEntries` swaps the server's in, in the list, in any reference to
-  // it, and in `?item=`. A refused write says so and fetches the list again,
-  // which puts back what the screen showed. The writes queued behind it are
-  // still sent, and the list is fetched again once they have landed. Resolves
-  // to whether the write landed.
-  const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
   // The pending id a create has sent the URL to, until a render shows it
   // there: a refusal can arrive first.
   const creatingRef = useRef(null);
   if (creatingRef.current === selectedId) creatingRef.current = null;
-  const settleEntries = (ids) => {
-    const known = new Map([...ids].filter(([, server]) => server));
-    if (!known.size) return;
-    recordSettled(known);
-    setItems((prev) => followIds(prev));
-    const open = selectedIdRef.current;
-    if (open && known.has(open)) goItem(known.get(open), { replace: true });
-  };
-  // Closing the tab asks first while a write is still on its way, and keeps
-  // asking after this screen is left, since the writes go on without it.
-  useSavingGuard(writes);
-  // A refusal's refetch re-seeds the open draft from what the server holds, unless
-  // something is typed into it: the entry open now need not be the one the
-  // refused write was about, and what is typed there is not the server's to
-  // take back. `refused` replaces that step for a write with its own way back.
-  const unseedUnlessTyped = () => {
-    if (!typedRef.current) dispatch({ type: 'draft/unseed' });
-  };
-  const resync = () => fetchItems({ quiet: true, inTurn: true });
-  // A save says nothing when it lands, the way every screen that shows an
-  // edit at once does. A refusal is toasted, unless `answered(err)` says the
-  // write's own `refused` shows it. `resync` stands in for the entries'
-  // refetch, for a save that needs to see what it brought back.
-  // A write whose answer was lost goes again until it is answered, under the
-  // same operation and Idempotency-Key seed (the client's `keySeed`), so what
-  // landed the first time is answered from what it stored and written once.
-  const sendInTurn = (
-    label,
-    write,
-    failure,
-    { refused, answered, resync: reread = resync, minted } = {},
-  ) => {
-    const once = { groupId: uuidv7(), keys: client.keySeed?.(), ...(minted ? { minted } : {}) };
-    return writes.push(() => client.withOperation(label, write, once), {
-      refused: async (err) => {
-        console.error(`${label}:`, err);
-        if (!answered?.(err)) notifyError(err, failure);
-        await (refused || unseedUnlessTyped)(err);
-      },
-      resync: reread,
-      resendWhenBack: isUnknownOutcome,
-    });
-  };
-
-  // Bulk Add and Replace: a run of writes planned against the entries as
-  // shown, which can hold a save still on its way. The run takes its turn
-  // behind that save. Resolves `{ landed, error }`. A refusal re-reads the
-  // entries here, the dialog reports it. `tags` is the operation's kind and
-  // ref (see the client's beginOperation).
-  const sendPlanned = async (label, write, tags) => {
-    let error = null;
-    const once = { ...tags, groupId: uuidv7(), keys: client.keySeed?.() };
-    const landed = await writes.push(() => client.withOperation(label, write, once), {
-      refused: (err) => {
-        error = err;
-        unseedUnlessTyped();
-      },
-      resync,
-      resendWhenBack: isUnknownOutcome,
-    });
-    return { landed, error };
-  };
-
   // The draft as of the latest render, for the async writes below that finish
   // a round trip later and need to know what the form was filled from.
   const draftRef = useRef(draft);
   draftRef.current = draft;
   // A refused new entry's draft, held until the form it goes back to opens.
   const refusedNewRef = useRef(null);
-
-  useEffect(() => {
-    if (vocabularyId && vocabularyId !== 'new') {
-      fetchItems();
-    } else {
-      setLoading(false);
-      setItems([]);
-    }
-    // Runs once per vocabulary; the loader reads the client fresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vocabularyId]);
 
   // The draft follows the selection: seed it from the entry the URL names
   // whenever that changes (and once its data has arrived). The reducer keeps
@@ -744,7 +535,7 @@ export const VocabularyItems = ({
   // Leaving an entry with unsaved edits asks first, whichever way out: a row,
   // a link in a panel, the vocabulary's tabs, the shell, Back, or a closed tab.
   useUnsavedDraft(typed ? 'The entry you have typed' : null);
-  const typedRef = useRef(typed);
+  typedRef.current = typed;
   typedRef.current = typed;
 
   // A bulk import can fill in the very item the detail editor has open, which
@@ -1086,16 +877,6 @@ export const VocabularyItems = ({
   };
 
   // ---- dictionary: placing senses, examples ----
-  // Each of these writes the entry's stored metadata, not the draft: the
-  // draft is re-seeded from the result unless the user has unsaved edits,
-  // which stay theirs.
-  const commitPatches = (patches, label, failure) => {
-    const before = metadataNow(items);
-    foldPatches(patches);
-    return sendInTurn(label, () => bulkRepoint(patches, before), failure);
-  };
-  const commitMetadata = (id, metadata, label, failure) =>
-    commitPatches([{ id, metadata }], label, failure);
   // Make `id` a sense of `parentId` (last), or, with null, its own entry.
   const handleMoveUnder = async (id, parentId) => {
     const moving = tree.byId.get(id);

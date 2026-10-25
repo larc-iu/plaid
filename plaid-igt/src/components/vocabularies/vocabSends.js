@@ -11,10 +11,12 @@ import { fieldPruneWrites } from '@/domain/vocabFieldPrune';
 
 /**
  * Queue `write` on `queue` under the operation `label`. `opts` are the
- * queue's (`refused`, `resync`, `shown`). Resolves to whether it landed.
+ * queue's (`refused`, `resync`, `shown`). `operation` goes to the operation
+ * beside its group and keys (`minted`, the `kind` and `ref` tags). Resolves
+ * to whether it landed.
  */
-export const sendKeyed = (queue, client, label, write, opts = {}) => {
-  const once = { groupId: uuidv7(), keys: client.keySeed?.() };
+export const sendKeyed = (queue, client, label, write, opts = {}, operation = {}) => {
+  const once = { ...operation, groupId: uuidv7(), keys: client.keySeed?.() };
   return queue.push(() => client.withOperation(label, write, once), {
     ...opts,
     resendWhenBack: isUnknownOutcome,
