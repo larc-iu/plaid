@@ -322,11 +322,10 @@ export const editLogGaps = (log) => composeTextEdits(log.base, log.ops);
 /**
  * The stretches of `base` (code points, `[begin, end, typed]`) that `gaps`
  * take away: each gap's old text less what it gives back at its front and
- * end, and whether text is typed in its place. A gap that only adds to its
- * old text takes nothing: it is an insert. A word that lies wholly inside one
- * of these goes with a save of the gaps, and so does a sentence or a row,
- * unless the stretch is exactly its text and `typed` (the core's plain rule,
- * R42 and R45).
+ * end, and whether a letter (anything but whitespace) is typed in its place.
+ * A gap that only adds to its old text takes nothing: it is an insert. A word
+ * that lies wholly inside one of these goes with a save of the gaps. For a
+ * sentence or a row see `deletesSentenceOrRow`.
  */
 export function removedStretches(base, gaps) {
   const cps = Array.from(base);
@@ -344,19 +343,42 @@ export function removedStretches(base, gaps) {
       back += 1;
     }
     return front + back < old.length
-      ? [[start + front, end - back, front + back < typed.length]]
+      ? [
+          [
+            start + front,
+            end - back,
+            typed.slice(front, typed.length - back).some((c) => !/\s/u.test(c)),
+          ],
+        ]
       : [];
   });
 }
 
 /**
- * Whether a save that takes away `stretches` (`removedStretches`) deletes a
- * sentence or a row over [begin, end): it lies wholly inside one, and that
- * one is not exactly its text with text typed in its place, which keeps it.
+ * Whether a save that takes away `stretches` (`removedStretches`) of `body`
+ * deletes a sentence or a row over [begin, end), by the core's plain rule
+ * (R42, R45): every letter of it (whitespace aside) lies inside a stretch,
+ * and no stretch that types a letter is exactly its text or reaches into it
+ * without covering it and more, since such a stretch leaves the text it types
+ * in it. One with no letter goes only when a stretch covers it whole. A
+ * stretch that begins before it, types letters and ends inside it, leaving
+ * only its whitespace, deletes it in the core and is read here as keeping it
+ * (rare, REV-DUMB round 2).
  */
-export const deletesSentenceOrRow = (stretches, { begin, end }) =>
-  begin < end &&
-  stretches.some(([b, e, typed]) => b <= begin && end <= e && !(typed && b === begin && e === end));
+export const deletesSentenceOrRow = (stretches, { begin, end }, body) => {
+  if (begin >= end) return false;
+  const cps = Array.from(body ?? '');
+  const inside = (i) => stretches.some(([b, e]) => b <= i && i < e);
+  let letters = false;
+  for (let i = begin; i < end; i += 1) {
+    if (/\s/u.test(cps[i] ?? ' ')) continue;
+    letters = true;
+    if (!inside(i)) return false;
+  }
+  if (!letters) return stretches.some(([b, e]) => b <= begin && end <= e);
+  const coversMore = (b, e) => b <= begin && end <= e && (b < begin || end < e);
+  return !stretches.some(([b, e, typed]) => typed && b < end && begin < e && !coversMore(b, e));
+};
 
 /**
  * Split the log at a send. `sent` is what to send: the base, its digest and

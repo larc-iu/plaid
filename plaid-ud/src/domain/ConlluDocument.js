@@ -1006,8 +1006,9 @@ export class ConlluDocument extends DocumentModel {
   // `ranges` (plaid-ui removedStretches: code points of the stored body,
   // `[begin, end, typed]`), their words, the annotations on those words with
   // their forms, and the dependency relations attached to them, and the
-  // sentences the save deletes with their fields (R45: one wholly inside a
-  // stretch goes, unless the stretch is exactly its text typed over). A
+  // sentences the save deletes with their fields (R45, see plaid-ui
+  // deletesSentenceOrRow: one whose letters all go, unless a stretch that
+  // types letters is exactly its text or reaches into it). A
   // sentence's fields are its metadata lines but `sent_id`, `text` and
   // provenance. `{ tokens, words, annotations, relations, sentences,
   // sentenceFields }`.
@@ -1015,7 +1016,7 @@ export class ConlluDocument extends DocumentModel {
     const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
     const tokens = (this.layerInfo.wordTokenLayer?.tokens || []).filter(inside);
     const sentences = (this.layerInfo.sentenceTokenLayer?.tokens || []).filter((t) =>
-      deletesSentenceOrRow(ranges, t),
+      deletesSentenceOrRow(ranges, t, this.body),
     );
     const sentenceFields = sentences.reduce(
       (n, t) =>

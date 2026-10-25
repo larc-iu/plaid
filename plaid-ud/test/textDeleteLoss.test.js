@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { withOps } from './helpers/stubClient.js';
+import { removedStretches } from '../../plaid-ui/src/lib/editLog.js';
 
 // she 0-3, came 4-8, and 9-12, left 13-17, home 18-22, . 23-24
 const INPUT = [
@@ -112,4 +113,26 @@ test('a sentence a stretch covers whole goes with its fields, and one typed over
   assert.equal(kept.sentenceFields, 0);
   // exactly the first sentence, deleted with nothing typed: it goes
   assert.equal(doc.textDeleteLoss([[s1.begin, s1.end, false]]).sentences, 1);
+});
+
+test('a sentence whose text is deleted, its line break left, goes with its fields, and so does one blanked (REV-DUMB round 2)', () => {
+  const doc = open(TWO);
+  const [s1] = doc.layerInfo.sentenceTokenLayer.tokens;
+  const letters = s1.begin + [...'hi .'].length;
+  // H1: `hi .` deleted, what follows it left
+  const h1 = doc.textDeleteLoss(
+    removedStretches(doc.body, [{ start: s1.begin, end: letters, value: '' }]),
+  );
+  assert.equal(h1.sentences, 1);
+  assert.equal(h1.sentenceFields, 1);
+  // H3: the sentence typed over exactly with a space
+  const h3 = doc.textDeleteLoss(
+    removedStretches(doc.body, [{ start: s1.begin, end: s1.end, value: ' ' }]),
+  );
+  assert.equal(h3.sentences, 1);
+  // letters typed over it exactly keep it
+  const kept = doc.textDeleteLoss(
+    removedStretches(doc.body, [{ start: s1.begin, end: s1.end, value: 'yo' }]),
+  );
+  assert.equal(kept.sentences, 0);
 });

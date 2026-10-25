@@ -6,7 +6,7 @@ import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { deletesSentenceOrRow, removedStretches } from '@ui/lib/editLog.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { countTextDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { countDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
 import { countOf } from '@ui/lib/plural.js';
 import {
   SENTENCE_ROLES,
@@ -45,9 +45,10 @@ const listed = (parts) => {
 // What a save that takes away `ranges` (plaid-ui removedStretches) deletes,
 // as a sentence for its question, or '' when it deletes nothing that asks:
 // - the words wholly inside a removed stretch
-// - the sentences and segments it deletes, by the rule core takes (R45): one
-//   wholly inside a stretch goes, unless the stretch is exactly its text typed
-//   over, which keeps it and what is on it (R42 Q1)
+// - the sentences and segments it deletes, by the rule core takes (R45, see
+//   plaid-ui deletesSentenceOrRow): one whose letters all go, unless a
+//   stretch that types letters is exactly its text or reaches into it, which
+//   keeps it and what is on it (R42 Q1)
 // - each sentence's translations, and each segment's times
 // - the shared loss counter's count of what else hangs off every token that
 //   goes, and what is only cut down
@@ -72,19 +73,24 @@ export function baselineLossSentence(doc, ranges) {
     [info?.sentenceTokenLayer?.id, info?.alignmentTokenLayer?.id].filter(Boolean),
   );
   const inside = (t) => ranges.some(([b, e]) => b <= t.begin && t.end <= e);
-  const except = tokenLayers.flatMap((tl) =>
+  const goes = (t) => deletesSentenceOrRow(ranges, t, doc.body);
+  // What goes: a sentence or a segment by the rule core takes, every other
+  // token wholly inside a removed stretch (a point strictly inside), as
+  // countTextDeleteLoss reads it, less the ignored words and what is in them
+  const dying = tokenLayers.flatMap((tl) =>
     (tl.tokens || []).filter((t) => {
-      if (tl.id === layer?.id) return !shown.includes(t);
-      // a sentence or a segment typed over exactly is kept
-      if (held.has(tl.id)) return inside(t) && !deletesSentenceOrRow(ranges, t);
-      return inIgnored(t);
+      if (held.has(tl.id)) return goes(t);
+      if (tl.id === layer?.id && !shown.includes(t)) return false;
+      if (tl.id !== layer?.id && inIgnored(t)) return false;
+      return t.begin === t.end ? ranges.some(([b, e]) => b < t.begin && t.end < e) : inside(t);
     }),
   );
-  const loss = countTextDeleteLoss(tokenLayers, ranges, {
-    vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
-    except: except.map((t) => t.id),
-  });
-  const gone = (tl) => (tl?.tokens || []).filter((t) => deletesSentenceOrRow(ranges, t));
+  const loss = countDeleteLoss(
+    tokenLayers,
+    dying.map((t) => t.id),
+    { vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []) },
+  );
+  const gone = (tl) => (tl?.tokens || []).filter(goes);
   const sentences = gone(info?.sentenceTokenLayer).length;
   const segments = gone(info?.alignmentTokenLayer);
   const timed = segments.some((t) => t.metadata?.timeBegin != null);

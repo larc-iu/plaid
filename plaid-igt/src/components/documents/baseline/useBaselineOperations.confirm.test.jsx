@@ -289,6 +289,78 @@ describe('baselineLossSentence, sentences and segments', () => {
   });
 });
 
+// REV-DUMB round 2: a sentence goes when all its letters do, its line break
+// left or not, and a segment or sentence typed over exactly with only
+// whitespace goes too (H1 to H3). `a b.\nc d.\ne f.`: three sentences with a
+// translation each, three segments with times, and (with `words`) six words.
+describe('baselineLossSentence, a line deleted or blanked', () => {
+  const threeLines = (words = true) => {
+    const t = (id, begin, end, extra = {}) => ({ id, begin, end, ...extra });
+    const wordLayer = {
+      id: 'w',
+      tokens: words
+        ? [
+            t('w1', 0, 1),
+            t('w2', 2, 4),
+            t('w3', 5, 6),
+            t('w4', 7, 9),
+            t('w5', 10, 11),
+            t('w6', 12, 14),
+          ]
+        : [],
+      spanLayers: [],
+    };
+    const sentences = {
+      id: 's',
+      overlapMode: 'partitioning',
+      tokens: [t('s1', 0, 5), t('s2', 5, 10), t('s3', 10, 14)],
+      spanLayers: [
+        {
+          id: 'tr',
+          config: { igt: { sentenceRole: 'translation' } },
+          spans: ['s1', 's2', 's3'].map((id) => ({ id: `t-${id}`, tokens: [id], value: id })),
+        },
+      ],
+    };
+    const times = (i) => ({ metadata: { timeBegin: i, timeEnd: i + 1 } });
+    const segments = {
+      id: 'a',
+      tokens: [t('a1', 0, 4, times(0)), t('a2', 5, 9, times(1)), t('a3', 10, 14, times(2))],
+      spanLayers: [],
+    };
+    return fakeDocument({
+      body: 'a b.\nc d.\ne f.',
+      layerInfo: {
+        primaryTextLayer: {
+          id: 'tl-1',
+          text: { id: 't-1', digest: 'd0' },
+          tokenLayers: [sentences, wordLayer, segments],
+        },
+        primaryTokenLayer: wordLayer,
+        sentenceTokenLayer: sentences,
+        alignmentTokenLayer: segments,
+      },
+    });
+  };
+  const said = (doc, gaps) => baselineLossSentence(doc, removedStretches(doc.body, gaps));
+  const H = 'Deletes 1 sentence with 1 translation, 1 segment with its times and 2 words.';
+
+  it("H1: a line's text deleted, its line break left, deletes the sentence", () => {
+    expect(said(threeLines(), [{ start: 5, end: 9, value: '' }])).toBe(H);
+  });
+
+  it('H2: a line selected with its line break and Enter typed is the same', () => {
+    expect(said(threeLines(), [{ start: 5, end: 10, value: '\n' }])).toBe(H);
+  });
+
+  it('H3: a segment typed over exactly with a space deletes it and its sentence', () => {
+    expect(said(threeLines(), [{ start: 5, end: 9, value: ' ' }])).toBe(H);
+    expect(said(threeLines(false), [{ start: 5, end: 9, value: ' ' }])).toBe(
+      'Deletes 1 sentence with 1 translation and 1 segment with its times.',
+    );
+  });
+});
+
 describe('removesText', () => {
   it('is false for inserts and for what a replace gives back at its ends', () => {
     expect(removesText('ab cd', [{ start: 2, end: 2, value: ' x' }])).toBe(false);
