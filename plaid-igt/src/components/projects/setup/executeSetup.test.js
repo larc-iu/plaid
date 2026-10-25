@@ -881,3 +881,87 @@ describe('executeProjectSetup with substrateOnly', () => {
     expect(calls.constraints ?? []).toEqual([]);
   });
 });
+
+// A field's record (scope, language, Lexicon field, a sentence field's role)
+// is written cell by cell: whole on a layer setup makes, and all but the scope
+// on one an earlier run made, which is found by its scope.
+describe("setup writes each field's record", () => {
+  const FIELDS = [
+    { name: 'Gloss', scope: 'Word', lang: 'en', lexiconField: 'gloss' },
+    { name: 'Free', scope: 'Sentence', lang: 'fr', sentenceRole: 'translation' },
+    { name: 'Morph gloss', scope: 'Morpheme', lexiconField: 'gloss', sentenceRole: 'note' },
+  ];
+  const tokenLayers = (word, sentence, morpheme) =>
+    withText([
+      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: sentence },
+      { id: 'tk-word', name: 'Main Tokens', config: tagged(ROLES.WORD), spanLayers: word },
+      {
+        id: 'tk-morph',
+        name: 'Main Morphemes',
+        config: tagged(ROLES.MORPHEME),
+        spanLayers: morpheme,
+      },
+      {
+        id: 'tk-align',
+        name: 'Time Alignment',
+        config: tagged(ROLES.TIME_ALIGNMENT),
+        spanLayers: [],
+      },
+    ]);
+  const setUp = (client) =>
+    executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: 'p1',
+      setupData: { ...SETUP_DATA, vocabulary: { vocabularies: [] }, fields: { fields: FIELDS } },
+      onProgress: () => {},
+    });
+  const spanCells = (calls) =>
+    calls.config
+      .filter((c) => c.kind === 'span')
+      .map((c) => [c.ns, c.key, c.value]);
+
+  it('writes the whole record on each layer it makes, under the scope’s token layer', async () => {
+    const { client, calls } = stub(tokenLayers([], [], []));
+    const result = await setUp(client);
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'span').map((c) => [c.name, c.under])).toEqual([
+      ['Gloss', 'tk-word'],
+      ['Free', 'tk-sent'],
+      ['Morph gloss', 'tk-morph'],
+    ]);
+    expect(spanCells(calls)).toEqual([
+      [IGT_NAMESPACE, 'scope', 'Word'],
+      [IGT_NAMESPACE, 'lang', 'en'],
+      [IGT_NAMESPACE, 'lexiconField', 'gloss'],
+      [IGT_NAMESPACE, 'scope', 'Sentence'],
+      [IGT_NAMESPACE, 'lang', 'fr'],
+      [IGT_NAMESPACE, 'sentenceRole', 'translation'],
+      [IGT_NAMESPACE, 'scope', 'Morpheme'],
+      [IGT_NAMESPACE, 'lexiconField', 'gloss'],
+    ]);
+  });
+
+  it('writes all but the scope on a layer an earlier run made', async () => {
+    const layer = (id, name, scope) => ({ id, name, config: { [IGT_NAMESPACE]: { scope } } });
+    const { client, calls } = stub(
+      tokenLayers(
+        [layer('sl-gloss', 'Gloss', 'Word')],
+        [layer('sl-free', 'Free', 'Sentence')],
+        [layer('sl-mg', 'Morph gloss', 'Morpheme')],
+      ),
+    );
+    const result = await setUp(client);
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'span')).toEqual([]);
+    expect(
+      calls.config.filter((c) => c.kind === 'span').map((c) => [c.id, c.key, c.value]),
+    ).toEqual([
+      ['sl-gloss', 'lang', 'en'],
+      ['sl-gloss', 'lexiconField', 'gloss'],
+      ['sl-free', 'lang', 'fr'],
+      ['sl-free', 'sentenceRole', 'translation'],
+      ['sl-mg', 'lexiconField', 'gloss'],
+    ]);
+  });
+});

@@ -11,7 +11,7 @@
 // Relative imports only: project setup (executeSetup.js) runs this from plain
 // node too.
 import { uuidv7 } from '@larc-iu/plaid-client';
-import { IGT_NAMESPACE, LEXICON_FIELD_KEY, SENTENCE_ROLE_KEY, readScope } from './igtConfig.js';
+import { IGT_NAMESPACE, fieldConfigCells, readScope } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { findDoubles } from './doubles.js';
 import { MODES, readTagsetName, resolveTagset } from './tagsets.js';
@@ -69,13 +69,8 @@ export const wordLayerConstraints = () => [{ type: 'single-link' }];
 export const queueNewField = (b, parentLayerId, field, projectConfig) => {
   const id = uuidv7();
   b.spanLayers.create(parentLayerId, field.name, undefined, { id });
-  b.spanLayers.setConfig(id, IGT_NAMESPACE, 'scope', field.scope);
-  if (field.lang) b.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', field.lang);
-  if (field.lexiconField) {
-    b.spanLayers.setConfig(id, IGT_NAMESPACE, LEXICON_FIELD_KEY, field.lexiconField);
-  }
-  if (field.scope === 'Sentence' && field.sentenceRole) {
-    b.spanLayers.setConfig(id, IGT_NAMESPACE, SENTENCE_ROLE_KEY, field.sentenceRole);
+  for (const [key, value] of fieldConfigCells(field)) {
+    b.spanLayers.setConfig(id, IGT_NAMESPACE, key, value);
   }
   b.spanLayers.setConstraints(
     id,

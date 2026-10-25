@@ -16,6 +16,7 @@ import {
   readTokenizeNewText,
   TOKENIZE_NEW_TEXT_KEY,
   IGT_NAMESPACE,
+  parentLayerFor,
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
 import {
@@ -203,12 +204,11 @@ export const FieldsSettings = ({
       if (layerIds.has(fieldKey(field))) continue;
       // Choose parent layer based on field scope (Morpheme fields used to
       // be wrongly parented under the word layer, breaking annotation).
-      const parentLayerId =
-        field.scope === 'Sentence'
-          ? sentence?.id
-          : field.scope === 'Morpheme'
-            ? morpheme?.id
-            : primary.id;
+      const parentLayerId = parentLayerFor(field.scope, {
+        sentence: sentence?.id,
+        morpheme: morpheme?.id,
+        word: primary.id,
+      });
       if (!parentLayerId) {
         throw new Error(
           notSetUp(`No ${field.scope.toLowerCase()} token layer found for field ${field.name}`),

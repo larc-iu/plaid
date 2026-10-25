@@ -22,6 +22,7 @@ import { coreSchema, setConfigCalls } from './schema.js';
 import { MODULES, expectRoundTrip, moduleGaps } from './expect/index.js';
 import { finalize, removeTokens } from './expect/snap.js';
 import { RESERVED_ITEM_KEYS } from '../../domain/vocabFields.js';
+import { fieldConfigCells } from '../../domain/igtConfig.js';
 
 // Built with path, not `new URL`: the test environment's URL is happy-dom's.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -596,6 +597,17 @@ const OTHER_APPS_ONLY = [
   },
 ];
 
+// Call sites that write a field's record cell by cell from fieldConfigCells
+// (igtConfig.js). Its keys are checked against CONFIG_KEYS below.
+const FIELD_RECORD = [
+  { file: 'plaid-igt/src/domain/igtConstraints.js', resource: 'spanLayers', key: 'key' },
+  {
+    file: 'plaid-igt/src/components/projects/setup/executeSetup.js',
+    resource: 'spanLayers',
+    key: 'key',
+  },
+];
+
 // Keys an entry's metadata reserves for structure (vocabFields.js).
 const RESERVED_ITEM_KEY_COVERAGE = {
   form: notData('the item’s own column, never stored as metadata'),
@@ -646,7 +658,7 @@ describe('what core stores and the app writes', () => {
     for (const call of calls) {
       const file = path.relative(root, call.file);
       if (
-        [...PASS_THROUGH, ...OTHER_APPS_ONLY].some(
+        [...PASS_THROUGH, ...OTHER_APPS_ONLY, ...FIELD_RECORD].some(
           (p) => p.file === file && p.resource === call.resource && p.key === call.key,
         )
       ) {
@@ -666,6 +678,20 @@ describe('what core stores and the app writes', () => {
       }
     }
     expect([...new Set(problems)]).toEqual([]);
+  });
+
+  it('accounts for every key of a field record', () => {
+    const cells = fieldConfigCells({
+      name: 'Translation',
+      scope: 'Sentence',
+      lang: 'en',
+      lexiconField: 'gloss',
+      sentenceRole: 'translation',
+    });
+    expect(cells.length).toBe(4);
+    expect(cells.map(([key]) => key).filter((k) => !CONFIG_KEYS[`spanLayers igt.${k}`])).toEqual(
+      [],
+    );
   });
 
   it('accounts for every reserved entry key', () => {

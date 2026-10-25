@@ -89,6 +89,31 @@ export const readSentenceRole = (config) => {
 };
 
 /** A word token layer's non-baseline orthographies: [{name}], or null. */
+/**
+ * A field's record as the `[key, value]` cells of its span layer's `igt`
+ * config, in the order they are written: its scope, its language when
+ * `field.lang` says one, its Lexicon field when `field.lexiconField` names
+ * one, and its role when a sentence field's `sentenceRole` names one. Every
+ * path that makes a field writes these, so a key added to the record is added
+ * here once.
+ */
+export const fieldConfigCells = (field) => {
+  const cells = [['scope', field.scope]];
+  if (field.lang) cells.push(['lang', field.lang]);
+  if (field.lexiconField) cells.push([LEXICON_FIELD_KEY, field.lexiconField]);
+  if (field.scope === 'Sentence' && field.sentenceRole) {
+    cells.push([SENTENCE_ROLE_KEY, field.sentenceRole]);
+  }
+  return cells;
+};
+
+/**
+ * The token layer a field of `scope` is made under: the sentence layer, the
+ * morpheme layer or the word layer, of `ids` ({sentence, morpheme, word}).
+ */
+export const parentLayerFor = (scope, ids) =>
+  scope === 'Sentence' ? ids.sentence : scope === 'Morpheme' ? ids.morpheme : ids.word;
+
 export const readOrthographies = (config) => readIgt(config, 'orthographies') ?? null;
 
 /**

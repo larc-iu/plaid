@@ -42,8 +42,8 @@ import {
 // scripts, which drive the real setup against the live core.
 import {
   IGT_NAMESPACE,
-  LEXICON_FIELD_KEY,
-  SENTENCE_ROLE_KEY,
+  fieldConfigCells,
+  parentLayerFor,
   readImportState,
   readInitialized,
   findBaselineTextLayer,
@@ -357,12 +357,11 @@ async function executeProjectSetupImpl({
       // here, where it is made.
       for (const field of withSentenceRoles(setupData.fields.fields)) {
         try {
-          const parentLayerId =
-            field.scope === 'Sentence'
-              ? sentenceTokenLayerId
-              : field.scope === 'Morpheme'
-                ? morphemeLayerId
-                : tokenLayerId;
+          const parentLayerId = parentLayerFor(field.scope, {
+            sentence: sentenceTokenLayerId,
+            morpheme: morphemeLayerId,
+            word: tokenLayerId,
+          });
 
           updateProgress(50, `Creating span layer: ${field.name} (${field.scope})…`);
           const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
@@ -374,24 +373,10 @@ async function executeProjectSetupImpl({
           // names) is the only one that does.
           let spanLayer = existing;
           if (existing) {
-            if (field.lang) {
-              await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, 'lang', field.lang);
-            }
-            if (field.lexiconField) {
-              await client.spanLayers.setConfig(
-                existing.id,
-                IGT_NAMESPACE,
-                LEXICON_FIELD_KEY,
-                field.lexiconField,
-              );
-            }
-            if (field.scope === 'Sentence' && field.sentenceRole) {
-              await client.spanLayers.setConfig(
-                existing.id,
-                IGT_NAMESPACE,
-                SENTENCE_ROLE_KEY,
-                field.sentenceRole,
-              );
+            // Found by its scope, so the rest of the record is what it needs.
+            for (const [key, value] of fieldConfigCells(field)) {
+              if (key === 'scope') continue;
+              await client.spanLayers.setConfig(existing.id, IGT_NAMESPACE, key, value);
             }
           } else {
             // Made in one batch with its scope, language, Lexicon field, role
