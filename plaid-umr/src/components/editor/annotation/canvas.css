@@ -17,9 +17,9 @@
      dyes (plaid-ui's domain/dyes.js): indigo, green and madder. Never violet
      or amber, which are the machine's and the contributor's (plaid-ui's
      provenance tokens), and never the teal, which is the primary. */
-  --umr-doc: #43678a;
-  --umr-doc-temporal: #4f7a55;
-  --umr-doc-coref: #9a4b2c;
+  --umr-doc: var(--plaid-dye-indigo);
+  --umr-doc-temporal: var(--plaid-dye-green);
+  --umr-doc-coref: var(--plaid-dye-madder);
   /* A validation warning, in the shared burnt orange. Red is an error. */
   --umr-warning: hsl(var(--warning));
 }

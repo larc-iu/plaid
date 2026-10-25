@@ -45,7 +45,7 @@ import { SENTENCE_ACTION, SENTENCE_REVIEW } from '@ui/components/shared/sentence
 import { cn } from '@ui/lib/utils.js';
 import { Parentheses } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
-import { CATEGORICAL } from '@ui/domain/dyes.js';
+import { CATEGORICAL, DYES } from '@ui/domain/dyes.js';
 import './canvas.css';
 import { countOf } from '@ui/lib/plural.js';
 
@@ -83,7 +83,7 @@ const Arrow = ({ id, color }) => (
 // categorical palette), which hold no red (an error), violet or amber (the
 // machine's and the contributor's). Less the teal, which is the primary and
 // lights the selection, and the madder, which is the coreference family.
-const CHAIN_COLORS = CATEGORICAL.filter((c) => c !== '#2a5c57' && c !== '#9a4b2c');
+const CHAIN_COLORS = CATEGORICAL.filter((c) => c !== DYES.teal && c !== DYES.madder);
 const chainColor = (index) => CHAIN_COLORS[index % CHAIN_COLORS.length];
 
 // The actions that need no focused node, and of them the two that walk the

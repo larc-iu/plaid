@@ -221,6 +221,17 @@ body {
 }
 
 :root {
+  /* The cloth's dyes, by name: DYES in domain/dyes.js, which dyes.test.js
+     holds these to. */
+  --plaid-dye-indigo: #43678a;
+  --plaid-dye-madder: #9a4b2c;
+  --plaid-dye-teal: #2a5c57;
+  --plaid-dye-olive: #6b6d34;
+  --plaid-dye-navy: #22364f;
+  --plaid-dye-green: #4f7a55;
+  --plaid-dye-walnut: #8a6a45;
+  --plaid-dye-stone: #6f6a63;
+
   /* Machine-made material, until a person confirms it. */
   --plaid-machine: #6d28d9;
   --plaid-machine-soft: #c4b5fd;

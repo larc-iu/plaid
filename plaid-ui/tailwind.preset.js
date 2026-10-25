@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DYES } from './src/domain/dyes.js';
 
 // The Tailwind theme every app that mounts this package shares, plus the glob
 // that makes the package's own classes reach the stylesheet.
@@ -77,6 +78,9 @@ export default {
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
         // The one mark for "this matched": a search hit, a cited word.
         highlight: 'hsl(var(--plaid-highlight))',
+        // The cloth's dyes by name (`text-dye-madder`, `bg-dye-indigo/10`), as
+        // hex so an opacity modifier works.
+        dye: { ...DYES },
       },
       // The colour of a bare `border`, which preflight sets on every element.
       // Here rather than in a base rule, since preflight comes after plaid-ui's

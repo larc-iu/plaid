@@ -10,7 +10,7 @@
 // can safely be object keys, even hyphenated custom ones.
 
 // By real path, so the node suite loads it (no `@ui` alias there).
-import { CATEGORICAL } from '../../../plaid-ui/src/domain/dyes.js';
+import { CATEGORICAL, DYES } from '../../../plaid-ui/src/domain/dyes.js';
 import { MODES, cleanDescriptions } from './udVocabMode.js';
 import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from './udVocabDescriptions.js';
 import { readUdConfig } from '../domain/udConfig.js';
@@ -160,8 +160,7 @@ export const baseRel = (deprel) => (deprel || '').split(':')[0];
 // values in every app, and none is a red, which reads as an error. The teal is
 // left out here: it is plaid-ui's `--primary` (174 37% 26%), which marks the
 // arc being worked on.
-const PRIMARY_DYE = '#2a5c57';
-const AUTO_PALETTE = Object.freeze(CATEGORICAL.filter((c) => c !== PRIMARY_DYE));
+const AUTO_PALETTE = Object.freeze(CATEGORICAL.filter((c) => c !== DYES.teal));
 
 // FNV-1a — stable across sessions/users so a given label always maps to the
 // same palette slot (Math.imul keeps it in 32-bit range).

@@ -45,8 +45,8 @@ import { humanizeError } from '../../utils/feedback.jsx';
 // class names from the source. Never amber, the contributor's colour.
 const MARK_CLASS = {
   missing:
-    'rounded bg-[#43678a]/10 px-0.5 text-foreground outline-dashed outline-1 outline-[#43678a]',
-  differs: 'rounded bg-[#9a4b2c]/10 px-0.5 text-foreground outline outline-1 outline-[#9a4b2c]',
+    'rounded bg-dye-indigo/10 px-0.5 text-foreground outline-dashed outline-1 outline-dye-indigo',
+  differs: 'rounded bg-dye-madder/10 px-0.5 text-foreground outline outline-1 outline-dye-madder',
 };
 export const CompareEditor = () => {
   const { projectId, documentId, doc, project, services, writeLockHeld } = useDocumentEditor();
@@ -291,7 +291,7 @@ function SentenceComparison({ sentence, row, left, right, otherName, thisHref, o
 function Pair({ match, withConcepts = false }) {
   return (
     <span
-      className={`mr-3 inline-block whitespace-nowrap font-mono ${withConcepts ? 'text-[#9a4b2c]' : ''}`}
+      className={`mr-3 inline-block whitespace-nowrap font-mono ${withConcepts ? 'text-dye-madder' : ''}`}
       data-pair={match.this}
     >
       {match.this}

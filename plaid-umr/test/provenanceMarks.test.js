@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { CATEGORICAL } from '../../plaid-ui/src/domain/dyes.js';
+import { CATEGORICAL, DYES } from '../../plaid-ui/src/domain/dyes.js';
 
 const css = await readFile(
   fileURLToPath(new URL('../src/components/editor/annotation/canvas.css', import.meta.url)),
@@ -34,10 +34,13 @@ test('a machine or contributed node has a dashed border in its hue and no fill',
 // primary and lights the selection.
 test('the document graph takes its colours from the shared dyes', () => {
   for (const name of ['--umr-doc', '--umr-doc-temporal', '--umr-doc-coref']) {
-    const m = css.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6})`, 'i'));
-    assert.ok(m, `${name} is a hex colour`);
-    assert.ok(CATEGORICAL.includes(m[1].toLowerCase()), `${name} ${m[1]} is one of the dyes`);
-    assert.notEqual(m[1].toLowerCase(), '#2a5c57', `${name} is not the primary's teal`);
+    const m = css.match(
+      new RegExp(`${name}:\\s*(?:(#[0-9a-f]{6})|var\\(--plaid-dye-([a-z]+)\\))`, 'i'),
+    );
+    assert.ok(m, `${name} is a hex colour or a named dye`);
+    const hex = (m[1] ?? DYES[m[2]]).toLowerCase();
+    assert.ok(CATEGORICAL.includes(hex), `${name} ${hex} is one of the dyes`);
+    assert.notEqual(hex, '#2a5c57', `${name} is not the primary's teal`);
   }
 });
 

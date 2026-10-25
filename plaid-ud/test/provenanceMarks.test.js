@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { autoColor } from '../src/utils/udVocab.js';
-import { CATEGORICAL } from '../../plaid-ui/src/domain/dyes.js';
+import { CATEGORICAL, DYES } from '../../plaid-ui/src/domain/dyes.js';
 
 const read = (rel) => readFile(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const rowCss = await read('../src/components/editor/annotation/SentenceRow.css');
@@ -86,12 +86,15 @@ const saturation = (hex) => {
   return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
 };
 
-// The Grew query box's syntax colours are the cloth's dyes.
+// The Grew query box's syntax colours are the cloth's dyes, a hex value or a
+// dye named through plaid-ui's `--plaid-dye-*`.
 test('the Grew syntax colours are dyes, with no violet and no amber', async () => {
   const appCss = await read('../src/index.css');
-  const colours = [...appCss.matchAll(/--grew-([a-z]+):\s*(#[0-9a-f]{6})/gi)];
+  const colours = [
+    ...appCss.matchAll(/--grew-([a-z]+):\s*(?:(#[0-9a-f]{6})|var\(--plaid-dye-([a-z]+)\))/gi),
+  ].map(([, name, hex, dye]) => [name, hex ?? DYES[dye]]);
   assert.ok(colours.length >= 5, 'the Grew palette is found');
-  for (const [, name, hex] of colours) {
+  for (const [name, hex] of colours) {
     const h = hue(hex);
     if (h === null) continue;
     assert.ok(

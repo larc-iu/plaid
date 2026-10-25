@@ -14,11 +14,11 @@
        the theme's muted ink. Never violet or amber, which mean a machine's
        and a contributor's values on every annotation surface, and never the
        teal, which is the primary. */
-    --grew-keyword: #43678a;
-    --grew-global: #4f7a55;
-    --grew-string: #9a4b2c;
-    --grew-number: #6b6d34;
-    --grew-operator: #22364f;
+    --grew-keyword: var(--plaid-dye-indigo);
+    --grew-global: var(--plaid-dye-green);
+    --grew-string: var(--plaid-dye-madder);
+    --grew-number: var(--plaid-dye-olive);
+    --grew-operator: var(--plaid-dye-navy);
     --grew-punct: hsl(var(--muted-foreground));
     --grew-comment: hsl(var(--muted-foreground));
   }

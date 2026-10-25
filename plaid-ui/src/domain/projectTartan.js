@@ -13,8 +13,10 @@
 // machine's and a contributor's work on every annotation surface, and none is
 // oxblood, which is the product mark's own.
 
-const DARK = ['#2a2d31', '#22364f', '#2e5539', '#4a3526', '#264b47'];
-const MID = ['#43678a', '#9a4b2c', '#6b6d34', '#8a6a45', '#85817a', '#4f7a55'];
+import { DYES } from './dyes.js';
+
+const DARK = ['#2a2d31', DYES.navy, '#2e5539', '#4a3526', '#264b47'];
+const MID = [DYES.indigo, DYES.madder, DYES.olive, DYES.walnut, '#85817a', DYES.green];
 const LIGHT = ['#c7a042', '#e8dfc6', '#9db6c9', '#b5bf8f'];
 
 // FNV-1a over the id, then mulberry32.
@@ -133,7 +135,7 @@ export const tartanRects = (id, size) => {
 // from the same cloth, picked by a hash of the user's id, so the same person
 // wears the same colour everywhere. Only dyes white initials read on, and no
 // grey.
-const PERSON_DYES = ['#43678a', '#9a4b2c', '#6b6d34', '#8a6a45', '#4f7a55', '#264b47'];
+const PERSON_DYES = [DYES.indigo, DYES.madder, DYES.olive, DYES.walnut, DYES.green, '#264b47'];
 export const personDye = (id) => PERSON_DYES[fnv(String(id)) % PERSON_DYES.length];
 
 /**
