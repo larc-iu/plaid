@@ -117,7 +117,7 @@ try {
   );
   console.log('  result', JSON.stringify(result));
 
-  const doc = await IgtDocument.load(client, PID, d.id);
+  const doc = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const ws = doc.sentences.flatMap((s) => s.tokens);
   for (const w of ws) {
     console.log(

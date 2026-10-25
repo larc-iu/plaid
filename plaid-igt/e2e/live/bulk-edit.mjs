@@ -123,7 +123,7 @@ try {
     return { id: d.id, textId, words, wordIds, morphIds, body };
   };
 
-  const load = (id) => IgtDocument.load(client, PID, id);
+  const load = (id) => IgtDocument.load(client, { projectId: PID, documentId: id });
   const wordsOf = (d) => d.sentences.flatMap((s) => s.tokens);
   const project2 = () => client.projects.get(PID);
   const info = () => getIgtLayerInfo(project);

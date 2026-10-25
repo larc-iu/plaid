@@ -96,7 +96,7 @@ function rangeOf(body, needle, nth = 0) {
 }
 
 async function reload(client, projectId, documentId, user = null) {
-  return IgtDocument.load(client, projectId, documentId, null, { user });
+  return IgtDocument.load(client, { projectId, documentId, user });
 }
 
 function layerIds(project) {

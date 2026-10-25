@@ -83,7 +83,7 @@ const IGT_SHELL = {
   // the project reviews (plaid.review) is a contributor, whose edits are
   // stamped as such (IgtDocument.contributorId).
   loadDocument: ({ client, projectId, documentId, project, user }) =>
-    IgtDocument.load(client, projectId, documentId, null, { user, project }),
+    IgtDocument.load(client, { projectId, documentId, user, project }),
   // A refusal the document makes before anything is sent (a guard, a check)
   // comes without a label: nothing was written, which is the fact. A link edit
   // refused because someone changed what it changes first is said as a cell's

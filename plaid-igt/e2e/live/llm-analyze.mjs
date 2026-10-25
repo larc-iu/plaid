@@ -191,7 +191,7 @@ try {
   );
   console.log('  result', JSON.stringify(result));
 
-  const doc = await IgtDocument.load(client, PID, target.id);
+  const doc = await IgtDocument.load(client, { projectId: PID, documentId: target.id });
   const ws = doc.sentences.flatMap((s) => s.tokens);
   const show = (w) =>
     w.morphemes

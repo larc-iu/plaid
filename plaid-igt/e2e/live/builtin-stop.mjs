@@ -28,7 +28,7 @@ if (!documentId) {
   console.log(`${docs.length} document(s) on the project; using ${documentId}`);
 }
 
-const doc = await IgtDocument.load(client, projectId, documentId);
+const doc = await IgtDocument.load(client, { projectId, documentId });
 const copyAll = { segmentation: true, links: true, fields: true };
 
 // Count what the phase actually reads, and refuse every write.

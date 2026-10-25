@@ -84,7 +84,7 @@ try {
   const b = (await client.vocabItems.create(VID, 'roa', { morphType: 'root' })).id;
 
   // ---- linkVocabMany: one bulk create, ids read out of {ids: [...]} ----
-  let doc = await IgtDocument.load(client, PID, d.id);
+  let doc = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const ok = await doc.linkVocabMany(morphIds, a);
   check(ok === true, 'linkVocabMany reports success', String(ok));
   const localLinks = doc.sentences
@@ -97,7 +97,7 @@ try {
     JSON.stringify(localLinks),
   );
   // And the server agrees, id for id.
-  const fresh = await IgtDocument.load(client, PID, d.id);
+  const fresh = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const serverLinks = fresh.sentences
     .flatMap((s) => s.tokens)
     .flatMap((t) => t.morphemes)
@@ -124,19 +124,19 @@ try {
 
   // ---- bulkLinkVocab: the REPLACEMENT path (bulk delete + bulk create) ----
   // Make the existing links machine-made so auto-link is allowed to replace them.
-  doc = await IgtDocument.load(client, PID, d.id);
+  doc = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const linkIds = doc.sentences
     .flatMap((s) => s.tokens)
     .flatMap((t) => t.morphemes)
     .map((m) => m.vocabItem.linkId);
   for (const id of linkIds) await client.vocabLinks.setMetadata(id, stampInferred('test'));
-  doc = await IgtDocument.load(client, PID, d.id);
+  doc = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const n = await doc.bulkLinkVocab(
     morphIds.map((id) => ({ tokenId: id, vocabItemId: b })),
     'test:replace',
   );
   check(n === 3, 'bulkLinkVocab replaced every machine link', String(n));
-  const after = await IgtDocument.load(client, PID, d.id);
+  const after = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const ms = after.sentences.flatMap((s) => s.tokens).flatMap((t) => t.morphemes);
   check(
     ms.every((m) => m.vocabItem?.id === b),

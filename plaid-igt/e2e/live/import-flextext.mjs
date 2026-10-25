@@ -135,7 +135,7 @@ try {
       check(false, `document "${target.name}" exists`);
       continue;
     }
-    const doc = await IgtDocument.load(client, projectId, entry.id);
+    const doc = await IgtDocument.load(client, { projectId, documentId: entry.id });
     if (doc.body === target.body) bodies += 1;
     const tokens = doc.sortedSentences.flatMap((s) => s.tokens);
     words += tokens.length;

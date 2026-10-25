@@ -141,14 +141,14 @@ export async function freshDoc(client, projectId, opts = {}) {
     }
   }
 
-  const doc = await IgtDocument.load(client, projectId, docId);
+  const doc = await IgtDocument.load(client, { projectId, documentId: docId });
   return { doc, documentId: docId };
 }
 
 // Load a brand-new IgtDocument instance from the server — "ground truth" for
 // comparing against an optimistically-patched doc.
 export async function reloadFresh(client, projectId, documentId) {
-  return IgtDocument.load(client, projectId, documentId);
+  return IgtDocument.load(client, { projectId, documentId });
 }
 
 export async function cleanupDoc(client, documentId) {

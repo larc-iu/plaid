@@ -86,7 +86,7 @@ export const CompareEditor = () => {
     setOther(null);
     setOtherError(null);
     if (!otherId) return undefined;
-    UmrDocument.load({ client, documentId: otherId, projectId, project, user })
+    UmrDocument.load(client, { documentId: otherId, projectId, project, user })
       .then((loaded) => live && setOther(loaded))
       .catch((error) => live && setOtherError(humanizeError(error, 'Failed to load it.')));
     return () => {

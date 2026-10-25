@@ -165,7 +165,7 @@ test('a rule that relabels in the enhanced graph suppresses the tree edge, and D
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.getByText('Changed 1 sentence in 1 document.')).toBeVisible();
 
-  const doc = await ConlluDocument.load(S.client, S.projectId, S.docId);
+  const doc = await ConlluDocument.load(S.client, { projectId: S.projectId, documentId: S.docId });
   // Both sentences have an "and" row. The rule named the second one's verb.
   const row = doc
     .toConllu()

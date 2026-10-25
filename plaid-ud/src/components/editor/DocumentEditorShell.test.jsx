@@ -25,6 +25,11 @@ vi.mock('@ui/contexts/useAuth.js', () => ({ useAuth: () => auth }));
 const docs = vi.hoisted(() => []);
 vi.mock('../../domain/ConlluDocument.js', () => ({
   ConlluDocument: class {
+    // DocumentModel.load's reads, which the shell's loadDocument makes.
+    static async load(client, { projectId, documentId, project, user }) {
+      const [read, raw] = await Promise.all([project, client.documents.get(documentId, true)]);
+      return new this({ raw, client, projectId, project: read, user });
+    }
     constructor({ raw }) {
       this.raw = raw;
       this.isSaving = false;

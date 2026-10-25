@@ -84,7 +84,7 @@ try {
     );
     return c.id;
   };
-  const load = () => IgtDocument.load(client, project.id, DOC);
+  const load = () => IgtDocument.load(client, { projectId: project.id, documentId: DOC });
   // Fresh-from-server view of a word by its (current) content, morphemes sorted.
   const words = (d) => d.sentences.flatMap((s) => s.tokens);
   const fresh = async () => {
@@ -545,7 +545,7 @@ try {
   section('A8-04 export, B9-01 item delete');
   // A8-04 plain-text export prints machine and human values alike (no marker).
   DOC2 = await seedDoc(`prov-struct-2 ${Date.now()}`, 'kappa lambda mu nu');
-  d = await IgtDocument.load(client, project.id, DOC2);
+  d = await IgtDocument.load(client, { projectId: project.id, documentId: DOC2 });
   const withMorphs = words(d).filter((t) => t.morphemes.length);
   const gW = withMorphs[0];
   await client.spans.create(
@@ -581,7 +581,7 @@ try {
   const doomed = await client.vocabItems.create(vocab.id, `doomed-${stamp}`);
   const targets = withMorphs.slice(0, 3).map((t) => t.morphemes[0].id);
   for (const tid of targets) await client.vocabLinks.create(doomed.id, [tid]);
-  d = await IgtDocument.load(client, project.id, DOC2);
+  d = await IgtDocument.load(client, { projectId: project.id, documentId: DOC2 });
   check(
     targets.every((tid) =>
       words(d).some(
@@ -600,7 +600,7 @@ try {
       JSON.stringify(Object.values(d._vocabularies).map((v) => (v.vocabLinks || []).length)),
   );
   await client.vocabItems.delete(doomed.id);
-  d = await IgtDocument.load(client, project.id, DOC2);
+  d = await IgtDocument.load(client, { projectId: project.id, documentId: DOC2 });
   check(
     targets.every(
       (tid) => !words(d).some((t) => t.morphemes[0]?.id === tid && t.morphemes[0].vocabItem),

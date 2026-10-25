@@ -13,7 +13,7 @@ import { compareNotice } from '../../domain/compareNotice.js';
 // another tab.
 const UMR_SHELL = {
   loadDocument: async ({ client, projectId, documentId, project, user }) =>
-    UmrDocument.load({ client, documentId, projectId, project: await project, user }),
+    UmrDocument.load(client, { documentId, projectId, project: await project, user }),
   useServices: useUmrServices,
   // A Draft or Compare rejoined after a reload words its counts as the spot does.
   runNotices: { [DRAFT_SPOT.key]: draftNotice, [COMPARE_SPOT.key]: compareNotice },

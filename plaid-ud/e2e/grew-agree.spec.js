@@ -87,7 +87,11 @@ test.beforeAll(async () => {
   const project = await createUdProject(client, `Grew agreement e2e ${Date.now()}`);
   S.projectId = project.id;
   const res = await ConlluDocument.importFromConllu(client, project.id, 'agree-doc', CONLLU);
-  S.doc = await ConlluDocument.load(client, project.id, res.documentId, { project });
+  S.doc = await ConlluDocument.load(client, {
+    projectId: project.id,
+    documentId: res.documentId,
+    project,
+  });
   S.limits = await client.server.limits();
 });
 

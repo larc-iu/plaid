@@ -49,7 +49,7 @@ test('a file lands on the words of a document that has them', async () => {
     layerInfo,
   );
   try {
-    let doc = await UmrDocument.load({ client, documentId: first.document.id, projectId });
+    let doc = await UmrDocument.load(client, { documentId: first.document.id, projectId });
     expect(doc.sentences[0].nodes.length).toBe(0);
     expect(doc.sentences[0].words.map((w) => w.text)).toEqual(['Dogs', 'bark', '.']);
 
@@ -59,7 +59,7 @@ test('a file lands on the words of a document that has them', async () => {
     });
     expect(second.attached).toBe(true);
     expect(second.document.id).toBe(first.document.id);
-    doc = await UmrDocument.load({ client, documentId: first.document.id, projectId });
+    doc = await UmrDocument.load(client, { documentId: first.document.id, projectId });
     const s1 = doc.sentences[0];
     expect(s1.nodes.map((n) => n.concept).sort()).toEqual(['bark-01', 'dog']);
     expect(s1.roots[0].concept).toBe('bark-01');

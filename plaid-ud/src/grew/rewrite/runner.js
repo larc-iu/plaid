@@ -85,7 +85,7 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
   let loaded = 0;
   onProgress?.(`Loading document 1 of ${docIds.length}…`);
   const loading = mapPool(docIds, LOAD_CONCURRENCY, async (docId) => {
-    const doc = await ConlluDocument.load(client, projectId, docId, { project, user });
+    const doc = await ConlluDocument.load(client, { projectId, documentId: docId, project, user });
     loaded += 1;
     if (loaded < docIds.length) onProgress?.(`Loading document ${loaded + 1} of ${docIds.length}…`);
     return doc;

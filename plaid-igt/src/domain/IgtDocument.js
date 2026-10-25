@@ -134,32 +134,20 @@ export class IgtDocument extends DocumentModel {
     this._emit();
   }
 
-  // Convenience factory: fetch document + project + project vocabularies and
-  // wrap them in an IgtDocument. Mirror of plaid-ud's ConlluDocument.load.
-  // `asOf` (an ISO timestamp) loads a historical snapshot for time-travel /
-  // read-only viewing; omit/null for the live document.
-  // `project` is a read of the project the caller already started (the
-  // document screen reads it beside the document), as a promise.
-  static async load(
-    client,
-    projectId,
-    documentId,
-    asOf = null,
-    { user = null, project: projectRead = null } = {},
-  ) {
-    const at = asOf || undefined;
-    // A past state reads the document and its vocabularies at the same time,
-    // so a gloss shows as it read then. The project has no past state (a
-    // project read refuses as-of), and its layers never change.
-    // The vocabularies need only the project, so they download alongside the
-    // document instead of after it (a large document is seconds of transfer).
-    const projectP = projectRead ?? client.projects.get(projectId);
-    const [raw, project, { vocabularies }] = await Promise.all([
-      client.documents.get(documentId, true, at),
+  // Beside the document (DocumentModel.load): the project, read here when the
+  // caller has not, and the project's vocabularies.
+  // A past state reads the document and its vocabularies at the same time,
+  // so a gloss shows as it read then. The project has no past state (a
+  // project read refuses as-of), and its layers never change.
+  // The vocabularies need only the project, so they download alongside the
+  // document instead of after it (a large document is seconds of transfer).
+  static async _loadBeside(client, { projectId, asOf, project: projectRead }) {
+    const projectP = Promise.resolve(projectRead ?? client.projects.get(projectId));
+    const [project, { vocabularies }] = await Promise.all([
       projectP,
       projectP.then((project) => loadProjectVocabularies(client, project, asOf)),
     ]);
-    return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf, user });
+    return { project, vocabularies };
   }
 
   // The document as it was at `asOf`, beside its vocabularies as they were

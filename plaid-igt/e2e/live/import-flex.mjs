@@ -172,7 +172,7 @@ try {
     build.documents.find((d) => d.names?.en === 'The Sea Princess') ?? build.documents[0];
   const docEntry = docs.find((d) => d.name === target.name);
   check(!!docEntry, `document "${target.name}" exists`);
-  const doc = await IgtDocument.load(client, projectId, docEntry.id);
+  const doc = await IgtDocument.load(client, { projectId, documentId: docEntry.id });
 
   check(doc.body === target.body, 'body round-trips exactly');
   const sentences = doc.sortedSentences;

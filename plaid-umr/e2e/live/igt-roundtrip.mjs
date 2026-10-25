@@ -142,7 +142,7 @@ try {
   let project = await client.projects.get(projectId);
   await adoptSubstrate(client, project);
   project = await client.projects.get(projectId);
-  const loadUmr = () => UmrDocument.load({ client, documentId, projectId, project });
+  const loadUmr = () => UmrDocument.load(client, { documentId, projectId, project });
   let umr = await loadUmr();
   check(umr.sentences.length >= SENTENCES, `UMR reads ${umr.sentences.length} sentences`);
 
@@ -222,7 +222,7 @@ try {
 
   // ---- 3. IGT edits the substrate, last sentence first ----------------------
 
-  const loadIgt = () => IgtDocument.load(client, projectId, documentId);
+  const loadIgt = () => IgtDocument.load(client, { projectId, documentId });
   let igt = await loadIgt();
   const sentenceIds = [...igt.layerInfo.sentenceTokenLayer.tokens]
     .sort((a, b) => a.begin - b.begin)
@@ -427,7 +427,7 @@ try {
 
   const copied = await client.documents.copy(documentId, 'second annotator');
   const copyId = copied?.id || copied;
-  const loadCopy = () => UmrDocument.load({ client, documentId: copyId, projectId, project });
+  const loadCopy = () => UmrDocument.load(client, { documentId: copyId, projectId, project });
   let copy = await loadCopy();
   const healedCopy = await copy.reconcileOnOpen();
   // Core's copy rewrites the ids the rows' metadata names, so the copy has
@@ -474,8 +474,7 @@ try {
   const projectB = await client.projects.get(setupB.projectId);
   const [{ id: documentB }] = await client.projects.listDocuments(setupB.projectId);
   const loadB = () =>
-    UmrDocument.load({
-      client,
+    UmrDocument.load(client, {
       documentId: documentB,
       projectId: setupB.projectId,
       project: projectB,

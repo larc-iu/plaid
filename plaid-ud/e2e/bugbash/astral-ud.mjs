@@ -36,7 +36,7 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 async function freshDoc(client, projectId, name) {
   const d = await client.documents.create(projectId, name);
-  return ConlluDocument.load(client, projectId, d.id);
+  return ConlluDocument.load(client, { projectId, documentId: d.id });
 }
 
 const client = await PlaidClient.login(API, 'a@b.com', 'password');
@@ -56,7 +56,7 @@ try {
     await doc.saveText({ base: '', digest: null, gaps: [{ start: 0, end: 0, value: text }] });
     const ok1 = await doc.createWord(1, 4, text); // "the"
     check('createWord("the") succeeds', ok1 === true, doc.error);
-    const v = await ConlluDocument.load(client, project.id, doc.id);
+    const v = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     check(
       'covering sentence is [0, cpLength)',
       eq(ranges(v.layerInfo.sentenceTokenLayer.tokens), [[0, 8]]),
@@ -76,7 +76,7 @@ try {
     // Second word lands inside the now-existing sentence; lemma crosses an astral char.
     const ok2 = await doc.createWord(5, 8, text); // "𝔡og"
     check('createWord("𝔡og") succeeds', ok2 === true, doc.error);
-    const v2 = await ConlluDocument.load(client, project.id, doc.id);
+    const v2 = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     check(
       'astral lemma value is "𝔡og"',
       v2.layerInfo.lemmaLayer.spans.some((s) => s.value === '𝔡og'),
@@ -86,10 +86,10 @@ try {
     // ---- C: setWordMorphemes (MWT split) on the astral word ----
     console.log('C: setWordMorphemes MWT split of "𝔡og"');
     const word = v2.layerInfo.wordTokenLayer.tokens.find((w) => w.begin === 5);
-    const doc2 = await ConlluDocument.load(client, project.id, doc.id);
+    const doc2 = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     const okC = await doc2.setWordMorphemes(word, ['𝔡', 'og']);
     check('setWordMorphemes succeeds', okC === true, doc2.error);
-    const vc = await ConlluDocument.load(client, project.id, doc.id);
+    const vc = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     const mwtMorphs = vc.layerInfo.morphemeTokenLayer.tokens.filter((m) => m.begin === 5);
     check(
       'both MWT morphemes are full-width [5,8]',
@@ -119,7 +119,7 @@ try {
     await doc.saveText({ base: '', digest: null, gaps: [{ start: 0, end: 0, value: text }] });
     const okB = await doc.tokenize(text);
     check('tokenize succeeds', okB === true, doc.error);
-    const v = await ConlluDocument.load(client, project.id, doc.id);
+    const v = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     const len = cpLength(text);
     const sents = ranges(v.layerInfo.sentenceTokenLayer.tokens);
     check(
@@ -150,10 +150,10 @@ try {
     // ---- D: toggleSentenceBoundary at a code-point position past an astral char ----
     const splitAt = expectedWords[1][0]; // begin of "cat"
     console.log(`D: toggleSentenceBoundary at cp ${splitAt}`);
-    const doc2 = await ConlluDocument.load(client, project.id, doc.id);
+    const doc2 = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     const okD = await doc2.toggleSentenceBoundary(splitAt);
     check('split succeeds', okD === true, doc2.error);
-    const vd = await ConlluDocument.load(client, project.id, doc.id);
+    const vd = await ConlluDocument.load(client, { projectId: project.id, documentId: doc.id });
     const sd = ranges(vd.layerInfo.sentenceTokenLayer.tokens);
     check(
       'split produced a boundary at the code-point position',

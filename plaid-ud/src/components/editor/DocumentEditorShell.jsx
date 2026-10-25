@@ -15,10 +15,8 @@ const UD_SHELL = {
   // The project and the user ride along so the document writes as this person
   // (provenance convention: see ConlluDocument.writer). The document is read
   // beside the project.
-  loadDocument: async ({ client, projectId, documentId, project, user }) => {
-    const [projectData, raw] = await Promise.all([project, client.documents.get(documentId, true)]);
-    return new ConlluDocument({ raw, client, projectId, project: projectData, user });
-  },
+  loadDocument: ({ client, projectId, documentId, project, user }) =>
+    ConlluDocument.load(client, { projectId, documentId, project, user }),
   useServices: useEditorServices,
   // A Parse or Tokenize rejoined after a reload words its counts as its spot does.
   runNotices: { [TASKS.PARSE]: parseNotice, [TASKS.TOKENIZE]: tokenizeNotice },

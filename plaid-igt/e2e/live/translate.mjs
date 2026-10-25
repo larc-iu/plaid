@@ -156,7 +156,7 @@ try {
 
   const r1 = await request();
   console.log('  run 1', JSON.stringify(r1));
-  let doc = await IgtDocument.load(client, PID, d.id);
+  let doc = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   const tr = (i) => doc.sentences[i].annotations.Translation;
   for (let i = 0; i < 3; i++)
     console.log(`  S${i + 1}: ${JSON.stringify(tr(i)?.value)}`, tr(i)?.metadata?.prov ?? 'human');
@@ -188,7 +188,7 @@ try {
   );
 
   const r2 = await request();
-  doc = await IgtDocument.load(client, PID, d.id);
+  doc = await IgtDocument.load(client, { projectId: PID, documentId: d.id });
   check(
     r2.sentencesWritten === 2 && r2.sentencesReplaced === 2 && r2.skipped?.protected === 1,
     'run 2: machine drafts replaced, human one still skipped',

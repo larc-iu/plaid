@@ -68,13 +68,6 @@ const TEXT_UNREAD = 'The saved text could not be read. Try again.';
 const gapsBody = (base, gaps) => applyTextOps(base, gapsToOps(gaps));
 
 export class ConlluDocument extends DocumentModel {
-  // Convenience factory: fetch a document by id and wrap it. `project` and
-  // `user`, when given, make the document write as that person (see `writer`).
-  static async load(client, projectId, documentId, { project = null, user = null } = {}) {
-    const raw = await client.documents.get(documentId, true);
-    return new ConlluDocument({ raw, client, projectId, project, user });
-  }
-
   // Import a CoNLL-U text into a new document in the given project. The work
   // is `importConlluDocument`, which reads no loaded document at all: this is
   // the name every caller knows it by.

@@ -195,11 +195,6 @@ export class UmrDocument extends DocumentModel {
     this._editScopes = new WeakMap();
   }
 
-  static async load({ client, documentId, projectId, project = null, user = null }) {
-    const raw = await client.documents.get(documentId, true);
-    return new UmrDocument({ raw, client, projectId, project, user });
-  }
-
   _own() {
     return { lexicon: this._lexicon };
   }

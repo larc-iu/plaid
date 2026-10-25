@@ -176,6 +176,30 @@ export class DocumentModel {
     }
   }
 
+  // Read a document and what it is shown beside, and wrap them in this class.
+  // `project` is the project, a read of it the caller already started (a
+  // promise), or null. `asOf` (an ISO timestamp) reads a past state for
+  // read-only viewing, null the live document. `user` makes the document
+  // write as that person (see `writer`). The document is read beside what
+  // `_loadBeside` reads.
+  static async load(
+    client,
+    { projectId, documentId, asOf = null, project = null, user = null } = {},
+  ) {
+    const beside = this._loadBeside(client, { projectId, asOf, project });
+    const read = asOf
+      ? client.documents.get(documentId, true, asOf)
+      : client.documents.get(documentId, true);
+    const [own, raw] = await Promise.all([beside, read]);
+    return new this({ raw, client, projectId, user, asOf, ...own });
+  }
+
+  // What a subclass reads beside the document as it loads, as constructor
+  // arguments, the project among them. By default only the project, as given.
+  static async _loadBeside(client, { project }) {
+    return { project: await project };
+  }
+
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     this._raw = raw;
     this._client = client;

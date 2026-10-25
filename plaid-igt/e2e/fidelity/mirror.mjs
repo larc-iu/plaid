@@ -371,7 +371,7 @@ try {
   for (const [name, scenario] of Object.entries(SCENARIOS)) {
     const id = await makeDocument(client, env, name);
     const before = await client.documents.get(id, true);
-    const doc = await IgtDocument.load(client, env.projectId, id, null, { user });
+    const doc = await IgtDocument.load(client, { projectId: env.projectId, documentId: id, user });
     const asked = scenario.ask ? scenario.ask(doc) : null;
     const result = await scenario.run(doc);
     await doc.whenSaved();

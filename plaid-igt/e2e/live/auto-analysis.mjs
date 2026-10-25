@@ -105,7 +105,7 @@ try {
     );
     return { id: d.id, textId };
   };
-  const load = (id) => IgtDocument.load(client, PID, id);
+  const load = (id) => IgtDocument.load(client, { projectId: PID, documentId: id });
   const words = (d) => d.sentences.flatMap((s) => s.tokens);
   const W = (d, content, i = 0) => words(d).filter((t) => t.content === content)[i];
   const link = (m) => m?.vocabItem || null;

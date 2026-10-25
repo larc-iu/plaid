@@ -77,7 +77,9 @@ const exportDocuments = async ({ client, projectId, onProgress }) => {
   const skipped = [];
   // Four reads at a time (readInOrder's bound), the documents taken in the
   // project's order.
-  const reads = readInOrder(docs, (d) => ConlluDocument.load(client, projectId, d.id));
+  const reads = readInOrder(docs, (d) =>
+    ConlluDocument.load(client, { projectId, documentId: d.id }),
+  );
   let done = 0;
   for await (const { id: d, value: doc, error } of reads) {
     try {
