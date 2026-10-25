@@ -217,3 +217,54 @@
     (is (empty? (:deleted pasted)))
     (is (= (extents exact) (extents pasted)))
     (is (= [2 4] (get (extents pasted) [:w 2])))))
+
+;; REV-PASTE F1: a selection typed over that ends inside a word, with a line
+;; break typed. `the cat, mat th` of ` the cat, mat the` is typed over as `Oh.`
+;; and a line break, and a node lies over the last word. The stretch reading
+;; took the stretch's end for the text's end, so the line break typed before
+;; the `e` beyond it cost nothing inside the word: it stood inside `the`'s
+;; token and the node, the first sentence and its word were deleted, and
+;; the sentences no longer split there. The word runs across the stretch's
+;; end, and the aligner now reads the letter beyond it, as a whole-body save
+;; of the same change does.
+(deftest a-line-break-typed-before-the-rest-of-a-word-beyond-the-stretch-splits-there
+  (let [old " the cat, mat the"
+        t (fn [id layer b e] {:token/id id :token/layer layer :token/begin b :token/end e})
+        tokens [(t [:s 0] :s 0 4) (t [:s 1] :s 4 17) (t [:w 1] :w 1 4) (t [:w 2] :w 5 9) (t [:w 3] :w 10 13)
+                (t [:w 4] :w 14 17) (t [:u 1] :u 14 17)]
+        r (run old tokens [{:type :replace :index 1 :length 15 :value "Oh.\n"}])
+        texts (fn [r] (let [nb (:text/body (:text r)) gone (set (:deleted r))]
+                        (into (sorted-map) (keep #(when-not (gone (:token/id %)) [(:token/id %) (cp/cp-subs nb (:token/begin %) (:token/end %))]))
+                              (:tokens r))))]
+    (is (= " Oh.\ne" (:text/body (:text r))))
+    (is (= [[:w 2] [:w 3]] (sort (:deleted r))))
+    (is (= {[:s 0] " Oh." [:s 1] "e" [:u 1] "e" [:w 1] "Oh." [:w 4] "e"} (texts r)))
+    (is (= (texts (save old (:text/body (:text r)) tokens)) (texts r)))))
+
+;; REV-PASTE F1, the second shape (seed 6000 and up of the edge oracle's
+;; sentences-meet test): `cat, a\nth` typed over as `Oh.` and a line break, the
+;; stretch ending inside `thung ki`. The stretch reading gave `Oh.` and the
+;; line break to `thung ki` and deleted both `cat,` and `a`. It now keeps
+;; `Oh.` in the second sentence, on a word of its own, and deletes `a` alone.
+(deftest a-line-break-typed-before-the-rest-of-a-word-beyond-the-stretch-keeps-the-sentences
+  (let [old " cat. kai\t(ab) sat cat, a\nthung ki\tə́múk   su\t(ab) talu lei  mat"
+        tokens (mapv (fn [[id layer b e]] {:token/id id :token/layer layer :token/begin b :token/end e})
+                     [[[:w 1] :w 1 4] [[:m 1 0] :m 1 4] [[:a 0 0] :a 1 4] [[:ap 0 4] :a 4 4] [[:s 0] :s 0 6] [[:rw 0] :rw 0 6]
+                      [[:as 0] :ss 1 4] [[:w 2] :w 6 9] [[:m 2 0] :m 6 9] [[:w 3] :w 10 14] [[:m 3 0] :m 10 14] [[:m 3 1] :m 10 14]
+                      [[:w 4] :w 15 18] [[:m 4 0] :m 15 18] [[:m 4 1] :m 15 18] [[:w 5] :w 19 23] [[:m 5 0] :m 19 23] [[:w 6] :w 24 25]
+                      [[:m 6 0] :m 24 25] [[:un 1 0 3] :u 6 18] [[:un 1 1 3] :u 10 18] [[:un 1 2 4] :u 15 23] [[:u 1 3] :u 19 23] [[:u 1 4] :u 24 25]
+                      [[:a 1 0] :a 6 14] [[:s 1] :s 6 26] [[:rw 1] :rw 6 26] [[:as 1] :ss 6 25] [[:w 7] :w 26 34] [[:m 7 0] :m 26 34]
+                      [[:m 7 1] :m 26 34] [[:m 7 2] :m 26 34] [[:w 8] :w 35 45] [[:m 8 0] :m 35 45] [[:w 9] :w 46 50] [[:m 9 0] :m 46 50]
+                      [[:w 10] :w 51 59] [[:m 10 0] :m 51 59] [[:m 10 1] :m 51 59] [[:m 10 2] :m 51 59] [[:w 11] :w 61 64] [[:m 11 0] :m 61 64]
+                      [[:m 11 1] :m 61 64] [[:m 11 2] :m 61 64] [[:u 2 0] :u 26 34] [[:u 2 1] :u 35 45] [[:u 2 2] :u 46 50] [[:un 2 2 4] :u 46 59]
+                      [[:u 2 4] :u 61 64] [[:a 2 2] :a 46 50] [[:a 2 3] :a 51 64] [[:ap 2 34] :a 34 34] [[:s 2] :s 26 64] [[:rw 2] :rw 26 64]
+                      [[:as 2] :ss 26 64]])
+        r (run old tokens [{:type :delete :index 5 :value 6} {:type :replace :index 13 :length 9 :value "Oh.\n"}
+                           {:type :delete :index 23 :value 6}])
+        nb (:text/body (:text r))
+        gone (set (:deleted r))
+        text (fn [id] (some #(when (and (= id (:token/id %)) (not (gone id))) (cp/cp-subs nb (:token/begin %) (:token/end %))) (:tokens r)))]
+    (is (= [[:w 2] [:w 6]] (sort (filter #(#{:w :s} (first %)) (:deleted r)))))
+    (is (= "ab) sat Oh.\n" (text [:s 1])))
+    (is (= "Oh." (text [:w 5])))
+    (is (= "ung ki" (text [:w 7])))))

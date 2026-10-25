@@ -861,7 +861,19 @@
                       ;; the aligner does not read them as the text's ends
                       ;; (REV-W2-TEXT N2: a paste over `你好你` before `。`)
                       beyond (fn [p] (when (< -1 p n) (if (space? (aget o p)) :space :text)))
-                      outside {:start (beyond (dec a)) :end (beyond (:end g))}
+                      ;; An edge a word's token runs across is read as the
+                      ;; text's end, as before R40: read as the inside of the
+                      ;; text, a line break typed before the rest of the word
+                      ;; cost nothing, and stood inside the word's token in
+                      ;; place of splitting the sentences (REV-PASTE F1, ` the
+                      ;; cat, mat the` with `the cat, mat th` typed over as
+                      ;; `Oh.` and a line break)
+                      across? (fn [e] (let [from (lower-bound begins (- e longest))]
+                                        (loop [i from]
+                                          (when (and (< i (count words)) (< (aget begins i) e))
+                                            (if (< e (second (words i))) true (recur (inc i)))))))
+                      edge (fn [e p] (when-not (across? e) (beyond p)))
+                      outside {:start (edge a (dec a)) :end (edge (:end g) (:end g))}
                       aligned (plain-body-gaps st-old (:value g) st-tokens roles outside)
                       diffed (delay (body-diff-gaps st-old (:value g) st-tokens roles false outside))
                       rgaps (first (pick-reading st-old st-tokens aligned diffed (dissoc roles :split-on-space)))
