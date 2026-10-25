@@ -84,12 +84,13 @@ def read_vocab_fields(config):
 # ---- a vocabulary's field schema (vocabFields.js) ---------------------------
 
 # The source ids the CLDF and native importers stamp on an entry, to find it
-# again on a resumed import.
-IMPORT_STAMP_KEYS = frozenset({'cldfEntry', 'nativeImportId'})
+# again on a resumed import. Not plaid-igt resume.js IMPORT_STAMP_KEYS, the
+# marks an import leaves on a document.
+ENTRY_IMPORT_STAMP_KEYS = frozenset({'cldfEntry', 'nativeImportId'})
 
 # Keys an entry may carry that are never fields. A schema can never shadow one.
 RESERVED_ITEM_KEYS = frozenset({'form', 'parent', 'senseOrder', 'examples',
-                                'flexEntry', 'flexSense', 'homograph'}) | IMPORT_STAMP_KEYS
+                                'flexEntry', 'flexSense', 'homograph'}) | ENTRY_IMPORT_STAMP_KEYS
 
 FIELD_TEXT = 'text'
 FIELD_ITEM = 'item'

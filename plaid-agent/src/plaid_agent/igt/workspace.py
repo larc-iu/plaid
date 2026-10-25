@@ -61,7 +61,7 @@ from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morph
                       load_document, read_view, render_document, resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .tagsets import SETTINGS_APART
-from .vocab import IMPORT_STAMP_KEYS, PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
+from .vocab import ENTRY_IMPORT_STAMP_KEYS, PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 from plaid_client.workflows.igt.senses import entry_morph_types
 
 MAX_DOCS_PER_SEARCH = 1000
@@ -557,7 +557,7 @@ class Workspace(BaseWorkspace):
                 for it in view.items:
                     for k, val in (it.get('metadata') or {}).items():
                         # A part of a sense's key ("e236-1" of "e236/e236-1") names it too.
-                        if (k not in RESERVED_ITEM_KEYS or k in IMPORT_STAMP_KEYS) and isinstance(val, (str, int)) \
+                        if (k not in RESERVED_ITEM_KEYS or k in ENTRY_IMPORT_STAMP_KEYS) and isinstance(val, (str, int)) \
                                 and entry_id.strip() in (str(val).strip(), *str(val).strip().split('/')[1:]):
                             name = view.label(it['id'])
                             part = '' if str(val).strip() == entry_id.strip() else 'part of '

@@ -57,7 +57,7 @@ from plaid_client.workflows.igt.entry_forms import entry_form
 # The field schema is read by the services too, so it lives in the client
 # (one Python reading of it, ``plaid_client.workflows.igt.config``).
 from plaid_client.workflows.igt.config import (  # noqa: F401
-    CORE_VOCAB_FIELDS, ENTRY_ROLES, FIELD_ITEM, FIELD_TEXT, IMPORT_STAMP_KEYS, RESERVED_ITEM_KEYS,
+    CORE_VOCAB_FIELDS, ENTRY_ROLES, FIELD_ITEM, FIELD_TEXT, ENTRY_IMPORT_STAMP_KEYS, RESERVED_ITEM_KEYS,
     ROLE_DEFINITION, ROLE_GLOSS, ROLE_POS, ROLE_STATUS, SCOPE_ENTRY, SCOPE_SENSE, fields_with_role,
     is_reserved_field_name, normalize_vocab_fields,
 )
