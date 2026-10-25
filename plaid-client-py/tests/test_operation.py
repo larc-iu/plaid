@@ -673,7 +673,7 @@ def test_begin_operation_takes_every_kind_the_server_takes():
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 _KIND_SOURCES = {
     'js': 'plaid-client-js/src/index.js',
-    'python': 'plaid-client-py/src/plaid_client/client.py',
+    'python': 'plaid-client-py/src/plaid_client/operations.py',
     'manual': 'plaid-core/docs/manual.adoc',
     'ui': 'plaid-ui/src/lib/auditText.js',
 }

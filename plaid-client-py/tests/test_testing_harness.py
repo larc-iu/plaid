@@ -543,6 +543,7 @@ def test_the_fake_methods_take_the_real_signatures():
     here rather than in a caller the fake let through."""
     import inspect
     from plaid_client import client as real
+    from plaid_client import operations
 
     def shape(fn):
         # The default too: a fake that defaults keep_alive or dry_run the
@@ -558,7 +559,7 @@ def test_the_fake_methods_take_the_real_signatures():
              (testing.FakeClient._VocabLayers, real.VocabLayersResource),
              (testing.FakeClient._VocabItems, real.VocabItemsResource),
              (testing._BatchUserData, real.UserDataResource),
-             (testing._Operation, real._OperationContext)]
+             (testing._Operation, operations._OperationContext)]
     for fake, real_cls in pairs:
         own = [n for n, v in vars(fake).items() if callable(v) and not n.startswith('_')]
         assert own, fake

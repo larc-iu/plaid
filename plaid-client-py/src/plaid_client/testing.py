@@ -65,6 +65,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from plaid_client import client as _client
+from plaid_client import operations as _operations
 from plaid_client.document_lock import DocumentLock
 from plaid_client.batch import BatchRef
 from plaid_client.http import PlaidAPIError
@@ -1262,7 +1263,7 @@ class FakeClient:
     @contextlib.contextmanager
     def operation(self, message, *, kind=None, ref=None, group_id=None, keys=None, minted=None):
         # The real client refuses a kind the server would, before the block.
-        _client._check_operation_kind(kind)
+        _operations._check_operation_kind(kind)
         self.operations.append(message)
         self.operation_tags.append({'kind': kind, 'ref': ref})
         self.operation_labels.append(message)
