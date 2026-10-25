@@ -14,21 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
 from plaid_client.http import extract_document_versions
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-
-    def __init__(self, body, headers):
-        self._body = body
-        self.headers = {'content-type': 'application/json', **headers}
-        self.text = json.dumps(body)
-        self.content = self.text.encode()
-
-    def json(self):
-        return self._body
+from plaid_client.testing import recording_session
 
 
 def _stub_server(client, doc_version=42, fail_read=False):
@@ -36,22 +22,20 @@ def _stub_server(client, doc_version=42, fail_read=False):
     document's version, anything else with a plain 200."""
     calls = []
 
-    class _Session:
-        def request(self, **kw):
-            url = urlparse(kw['url'])
-            method = kw['method']
-            version = parse_qs(url.query).get('document-version', [None])[0]
-            calls.append((method, url.path, version))
-            if method == 'GET' and fail_read:
-                raise ConnectionError('fetch failed')
-            if url.path.endswith('/bulk'):
-                return _Resp({'count': 60}, {'X-Document-Versions-Omitted': '60'})
-            if method == 'GET' and url.path.startswith('/api/v1/documents/'):
-                return _Resp({'document/id': url.path.rsplit('/', 1)[1],
-                              'document/version': doc_version}, {})
-            return _Resp({}, {})
+    def answer(request):
+        url = urlparse(request['url'])
+        method = request['method']
+        version = parse_qs(url.query).get('document-version', [None])[0]
+        calls.append((method, url.path, version))
+        if method == 'GET' and fail_read:
+            raise ConnectionError('fetch failed')
+        if url.path.endswith('/bulk'):
+            return (200, {'count': 60}, {'X-Document-Versions-Omitted': '60'})
+        if method == 'GET' and url.path.startswith('/api/v1/documents/'):
+            return {'document/id': url.path.rsplit('/', 1)[1], 'document/version': doc_version}
+        return {}
 
-    client.session = _Session()
+    client.session = recording_session(answer)
     return calls
 
 

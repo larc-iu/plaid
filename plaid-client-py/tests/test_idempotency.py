@@ -11,42 +11,29 @@ import time
 
 import pytest
 import requests as requests_lib
-from requests.structures import CaseInsensitiveDict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import uuid7, was_replayed
 from plaid_client.client import MAX_BATCH_OPS, PlaidClient
 from plaid_client.http import PlaidAPIError, is_unknown_outcome, retry_unknown
+from plaid_client.testing import Response, recording_session
 
 KEY = 'Idempotency-Key'
 
 FAST = {'retry_delays': [0, 0, 0]}
 
 
-class _Resp:
-    def __init__(self, status, body=None, headers=None):
-        self.status_code = status
-        self.ok = 200 <= status < 300
-        self.reason = str(status)
-        self._body = {} if body is None else body
-        self.headers = CaseInsensitiveDict({'content-type': 'application/json', **(headers or {})})
-        self.text = json.dumps(self._body)
-        self.content = self.text.encode()
-
-    def json(self):
-        return self._body
-
-
-def _stub_server(client, answer=lambda request, n: _Resp(200, {'id': 'x'})):
+def _stub_server(client, answer=lambda request, n: Response(200, {'id': 'x'})):
     """Records every request and answers with ``answer(request, n)``, a
     response or an exception to raise (a lost answer)."""
     requests = []
 
-    def handle(method, url, headers, data):
-        request = {'url': url, 'method': method, 'key': (headers or {}).get(KEY),
-                   'auth': (headers or {}).get('Authorization'),
-                   'content_type': (headers or {}).get('Content-Type'),
+    def handle(kw):
+        headers, data = kw['headers'] or {}, kw['data']
+        request = {'url': kw['url'], 'method': kw['method'], 'key': headers.get(KEY),
+                   'auth': headers.get('Authorization'),
+                   'content_type': headers.get('Content-Type'),
                    'body': json.loads(data) if isinstance(data, str) else None}
         requests.append(request)
         r = answer(request, len(requests) - 1)
@@ -54,17 +41,7 @@ def _stub_server(client, answer=lambda request, n: _Resp(200, {'id': 'x'})):
             raise r
         return r
 
-    class _Session:
-        def request(self, method=None, url=None, headers=None, data=None, **kw):
-            return handle(method, url, headers, data)
-
-        def post(self, url, headers=None, data=None, timeout=None):
-            return handle('POST', url, headers, data)
-
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(handle)
     return requests
 
 
@@ -82,7 +59,7 @@ def test_every_write_carries_a_key_a_read_does_not():
 
 def test_signals_uploads_and_minted_secrets_carry_none():
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(
+    requests = _stub_server(client, lambda r, n: Response(
         200, {'lock-id': 'l', 'id': 'x', 'token': 't', 'code': 'c'}))
     client.documents.acquire_lock('d')
     client.api_tokens.create('u@x', 'name')
@@ -94,7 +71,7 @@ def test_signals_uploads_and_minted_secrets_carry_none():
 
 def test_a_queued_op_has_no_key_of_its_own_its_batch_request_has_one():
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(
+    requests = _stub_server(client, lambda r, n: Response(
         200, [{'status': 201, 'headers': {}, 'body': {'id': 'x'}} for _ in r['body']]))
     with client.batched() as b:
         b.spans.create('L', ['t'], 'A')
@@ -107,12 +84,12 @@ def test_a_queued_op_has_no_key_of_its_own_its_batch_request_has_one():
 @pytest.mark.parametrize('lost', [
     lambda: requests_lib.ConnectionError('Connection refused'),
     lambda: requests_lib.ReadTimeout('timed out'),
-    lambda: _Resp(502, {'error': 'Bad gateway'}),
-    lambda: _Resp(504, {'error': 'Gateway timeout'}),
+    lambda: Response(502, {'error': 'Bad gateway'}),
+    lambda: Response(504, {'error': 'Gateway timeout'}),
 ], ids=['no response', 'timeout', '502', '504'])
 def test_a_write_whose_answer_is_lost_is_sent_again_under_the_same_key(lost):
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: lost() if n < 2 else _Resp(201, {'id': 's1'}))
+    requests = _stub_server(client, lambda r, n: lost() if n < 2 else Response(201, {'id': 's1'}))
     result = client.spans.create('L', ['t'], 'N')
     assert result['id'] == 's1'
     assert len(requests) == 3
@@ -123,7 +100,7 @@ def test_a_write_whose_answer_is_lost_is_sent_again_under_the_same_key(lost):
 
 def test_three_resends_then_the_error_escapes_with_the_key():
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(502, {}))
+    requests = _stub_server(client, lambda r, n: Response(502, {}))
     with pytest.raises(PlaidAPIError) as caught:
         client.spans.update('s', 'V')
     assert caught.value.status == 502
@@ -133,8 +110,8 @@ def test_three_resends_then_the_error_escapes_with_the_key():
 
 def test_a_refusal_is_not_resent_and_a_read_is_never_resent():
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(502, {}) if r['method'] == 'GET'
-                            else _Resp(409, {'error': 'no'}))
+    requests = _stub_server(client, lambda r, n: Response(502, {}) if r['method'] == 'GET'
+                            else Response(409, {'error': 'no'}))
     with pytest.raises(PlaidAPIError) as refused:
         client.spans.update('s', 'V')
     assert refused.value.status == 409
@@ -146,7 +123,7 @@ def test_a_refusal_is_not_resent_and_a_read_is_never_resent():
 
 def test_an_unkeyed_write_is_not_resent():
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(502, {}))
+    requests = _stub_server(client, lambda r, n: Response(502, {}))
     with pytest.raises(PlaidAPIError):
         client.api_tokens.create('u@x', 'name')
     assert len(requests) == 1
@@ -183,8 +160,8 @@ def test_a_batch_past_the_cap_takes_one_key_per_request_and_a_lost_second_reques
     def answer(r, n):
         if len(r['body']) == 1 and not lost:
             lost.append(1)
-            return _Resp(504, {})
-        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {}} for _ in r['body']])
+            return Response(504, {})
+        return Response(200, [{'status': 200, 'headers': {}, 'body': {}} for _ in r['body']])
 
     requests = _stub_server(client, answer)
     with client.batched() as b:
@@ -214,7 +191,7 @@ def test_a_lost_batch_escapes_with_its_key_and_what_was_saved():
 def test_a_batch_whose_answers_stay_lost_escapes_with_its_key_and_so_does_a_refused_one():
     for status, sends in [(502, 4), (400, 1)]:
         client = PlaidClient('http://x', 'tok', **FAST)
-        requests = _stub_server(client, lambda r, n: _Resp(status, {'error': 'no'}))
+        requests = _stub_server(client, lambda r, n: Response(status, {'error': 'no'}))
         b = client.batch()
         b.spans.update('s', 'V')
         with pytest.raises(PlaidAPIError) as caught:
@@ -232,7 +209,7 @@ def test_every_request_and_the_batch_post_say_who_and_json():
     batch POST. The JS twin is "every request and the batch POST carry the
     token and say JSON"."""
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(
+    requests = _stub_server(client, lambda r, n: Response(
         200, [{'status': 200, 'headers': {}, 'body': {}}] if isinstance(r['body'], list) else {'id': 'x'}))
     client.documents.get('d')
     client.spans.update('s', 'V')
@@ -257,7 +234,7 @@ def test_inside_an_operation_with_keys_the_nth_write_takes_seed_n_and_its_first_
     client.document_versions = {'d1': 5}
     keys = client.key_seed()
     group_id = uuid7()
-    requests = _stub_server(client, lambda r, n: _Resp(
+    requests = _stub_server(client, lambda r, n: Response(
         200, {'id': 'x'}, {'X-Document-Versions': '{"d1": 6}'}))
 
     def run():
@@ -321,7 +298,7 @@ def test_a_comment_made_while_an_operation_is_open_takes_none_of_its_keys_and_jo
     # REV-idempotency F2.
     client = PlaidClient('http://x', 'tok', **FAST)
     keys = client.key_seed()
-    requests = _stub_server(client, lambda request, n: _Resp(201, {'id': 'x'}))
+    requests = _stub_server(client, lambda request, n: Response(201, {'id': 'x'}))
     with client.operation('Gloss', keys=keys):
         client.spans.update('s1', 'A')
         client.comments.create('span', 's1', 'hmm')
@@ -337,7 +314,7 @@ def test_a_batch_in_a_keyed_operation_takes_its_key_and_pins_its_claim():
     client.enter_strict_mode('d1')
     client.document_versions = {'d1': 5}
     keys = client.key_seed()
-    requests = _stub_server(client, lambda r, n: _Resp(200, [
+    requests = _stub_server(client, lambda r, n: Response(200, [
         {'status': 200, 'headers': {'X-Document-Versions': '{"d1": 6}'}, 'body': {}}
         for _ in r['body']]))
 
@@ -358,7 +335,7 @@ def test_a_batch_in_a_keyed_operation_takes_its_key_and_pins_its_claim():
 def test_a_replayed_answer_only_raises_a_version_the_client_holds():
     client = PlaidClient('http://x', 'tok', **FAST)
     client.document_versions = {'d1': 9, 'd2': 1}
-    _stub_server(client, lambda r, n: _Resp(200, {'id': 'x'}, {
+    _stub_server(client, lambda r, n: Response(200, {'id': 'x'}, {
         'X-Document-Versions': '{"d1": 7, "d2": 3}', 'Idempotent-Replayed': 'true'}))
     client.spans.update('s', 'V')
     assert client.document_versions == {'d1': 9, 'd2': 3}
@@ -367,7 +344,7 @@ def test_a_replayed_answer_only_raises_a_version_the_client_holds():
 def test_a_fresh_answer_is_learned_as_it_comes():
     client = PlaidClient('http://x', 'tok', **FAST)
     client.document_versions = {'d1': 9}
-    _stub_server(client, lambda r, n: _Resp(200, {'id': 'x'}, {
+    _stub_server(client, lambda r, n: Response(200, {'id': 'x'}, {
         'X-Document-Versions': '{"d1": 7}'}))
     client.spans.update('s', 'V')
     assert client.document_versions == {'d1': 7}
@@ -376,7 +353,7 @@ def test_a_fresh_answer_is_learned_as_it_comes():
 def test_a_replayed_batch_only_raises_a_version_too():
     client = PlaidClient('http://x', 'tok', **FAST)
     client.document_versions = {'d1': 9}
-    _stub_server(client, lambda r, n: _Resp(
+    _stub_server(client, lambda r, n: Response(
         200, [{'status': 200, 'headers': {'X-Document-Versions': '{"d1": 7}'}, 'body': {}}],
         {'Idempotent-Replayed': 'true'}))
     with client.batched() as b:
@@ -434,7 +411,7 @@ CREATES = [
 def test_a_create_sends_the_id_it_is_given(name, call):
     client = PlaidClient('http://x', 'tok', **FAST)
     new_id = uuid7()
-    requests = _stub_server(client, lambda r, n: _Resp(201, {'id': new_id}))
+    requests = _stub_server(client, lambda r, n: Response(201, {'id': new_id}))
     call(client, id=new_id)
     call(client)
     assert requests[0]['body']['id'] == new_id
@@ -443,7 +420,7 @@ def test_a_create_sends_the_id_it_is_given(name, call):
 
 def test_a_split_sends_keep_only_when_it_is_given():
     client = PlaidClient('http://x', 'tok', **FAST)
-    requests = _stub_server(client, lambda r, n: _Resp(201, {'id': 'l'}))
+    requests = _stub_server(client, lambda r, n: Response(201, {'id': 'l'}))
     client.tokens.split('t', 3, keep='right')
     client.tokens.split('t', 3)
     assert requests[0]['body'] == {'keep': 'right', 'position': 3}
@@ -453,7 +430,7 @@ def test_a_split_sends_keep_only_when_it_is_given():
 def test_a_bulk_create_passes_the_ids_in_its_items_through():
     client = PlaidClient('http://x', 'tok', **FAST)
     ids = [uuid7(), uuid7()]
-    requests = _stub_server(client, lambda r, n: _Resp(201, {'ids': ids}))
+    requests = _stub_server(client, lambda r, n: Response(201, {'ids': ids}))
     client.spans.bulk_create([{'id': i, 'span_layer_id': 'sl', 'tokens': ['t'], 'value': 'N'}
                               for i in ids])
     assert [item['id'] for item in requests[0]['body']] == ids
@@ -501,8 +478,8 @@ def test_an_id_taken_for_an_id_the_operation_minted_answers_as_made_and_the_rest
 
     def answer(request, n):
         if request['method'] == 'POST':
-            return _Resp(409, {'error': 'id-taken', 'id-taken': True, 'id': new_id})
-        return _Resp(200, {})
+            return Response(409, {'error': 'id-taken', 'id-taken': True, 'id': new_id})
+        return Response(200, {})
 
     requests = _stub_server(client, answer)
     with client.operation('Gloss', keys=client.key_seed(), minted={new_id}):
@@ -519,7 +496,7 @@ def test_a_bulk_create_refused_id_taken_is_a_refusal_even_for_an_id_the_operatio
     # REV3 H7.
     client = PlaidClient('http://x', 'tok', **FAST)
     a, b = uuid7(), uuid7()
-    _stub_server(client, lambda request, n: _Resp(409, {'error': 'id-taken', 'id-taken': True, 'id': a}))
+    _stub_server(client, lambda request, n: Response(409, {'error': 'id-taken', 'id-taken': True, 'id': a}))
     with pytest.raises(PlaidAPIError) as e:
         with client.operation('Gloss', minted=[a, b]):
             client.spans.bulk_create([
@@ -536,7 +513,7 @@ def test_an_id_taken_for_a_deleted_row_is_a_refusal_even_for_an_id_the_operation
     # REV3 H8: the row is gone, so there is nothing to answer as made.
     client = PlaidClient('http://x', 'tok', **FAST)
     new_id = uuid7()
-    _stub_server(client, lambda request, n: _Resp(
+    _stub_server(client, lambda request, n: Response(
         409, {'error': 'id-taken', 'id-taken': True, 'id': new_id, 'deleted': True}))
     with pytest.raises(PlaidAPIError) as e:
         with client.operation('Gloss', minted=[new_id]):
@@ -552,7 +529,7 @@ def test_an_answer_replayed_from_a_keys_first_send_is_marked_replayed():
     def answer(request, n):
         if n == 0:
             return requests_lib.ConnectionError('reset')
-        return _Resp(201, {'id': 's1'}, {'Idempotent-Replayed': 'true'})
+        return Response(201, {'id': 's1'}, {'Idempotent-Replayed': 'true'})
 
     _stub_server(client, answer)
     made = client.spans.create('L', ['t'], 'N')
@@ -561,7 +538,7 @@ def test_an_answer_replayed_from_a_keys_first_send_is_marked_replayed():
     assert made == {'id': 's1'}
     assert isinstance(made, dict)
     assert json.dumps(made) == '{"id": "s1"}'
-    _stub_server(client, lambda request, n: _Resp(201, {'id': 's2'}))
+    _stub_server(client, lambda request, n: Response(201, {'id': 's2'}))
     fresh = client.spans.create('L', ['t'], 'M')
     assert not was_replayed(fresh)
     assert not was_replayed(None)
@@ -570,7 +547,7 @@ def test_an_answer_replayed_from_a_keys_first_send_is_marked_replayed():
 
 def test_a_replayed_list_answer_is_marked():
     client = PlaidClient('http://x', 'tok', **FAST)
-    _stub_server(client, lambda request, n: _Resp(200, [{'id': 'a'}], {'Idempotent-Replayed': 'true'}))
+    _stub_server(client, lambda request, n: Response(200, [{'id': 'a'}], {'Idempotent-Replayed': 'true'}))
     answer = client._request('POST', '/api/v1/batch', body=[])
     assert was_replayed(answer)
     assert answer == [{'id': 'a'}]
@@ -586,7 +563,7 @@ def test_a_replayed_batchs_results_are_marked():
     def answer(request, n):
         if n == 0:
             return requests_lib.ConnectionError('reset')
-        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {'id': 's'}}],
+        return Response(200, [{'status': 200, 'headers': {}, 'body': {'id': 's'}}],
                      {'Idempotent-Replayed': 'true'})
 
     _stub_server(client, answer)
@@ -599,7 +576,7 @@ def test_a_replayed_batchs_results_are_marked():
 
 def test_a_fresh_batchs_results_are_not_marked():
     client = PlaidClient('http://x', 'tok', **FAST)
-    _stub_server(client, lambda r, n: _Resp(200, [{'status': 200, 'headers': {}, 'body': {}}]))
+    _stub_server(client, lambda r, n: Response(200, [{'status': 200, 'headers': {}, 'body': {}}]))
     b = client.batch()
     b.spans.update('s', 'V')
     assert not was_replayed(b.submit())
@@ -608,7 +585,7 @@ def test_a_fresh_batchs_results_are_not_marked():
 def _split_answer(replayed_when):
     def answer(r, n):
         headers = {'Idempotent-Replayed': 'true'} if replayed_when(r) else {}
-        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {}} for _ in r['body']], headers)
+        return Response(200, [{'status': 200, 'headers': {}, 'body': {}} for _ in r['body']], headers)
     return answer
 
 
@@ -633,7 +610,7 @@ def test_what_a_failed_split_batch_saved_is_marked_when_a_saved_request_was_repl
 
     def answer(r, n):
         if len(r['body']) == 1:
-            return _Resp(409, {'error': 'conflict'})
+            return Response(409, {'error': 'conflict'})
         return _split_answer(lambda r: True)(r, n)
 
     _stub_server(client, answer)

@@ -29,6 +29,7 @@ from plaid_client.document_lock import (  # noqa: E402
     DocumentLockLost, LockKeeper, lock_ttl_s,
 )
 from plaid_client.http import PlaidAPIError  # noqa: E402
+from plaid_client.testing import Response, recording_session  # noqa: E402
 
 
 class FakeClock:
@@ -302,19 +303,8 @@ def _raise(error):
 
 # --- what a lost lock does to the block that was holding it ------------------
 
-class _Resp:
-    ok = True
-    status_code = 200
-    headers = {'content-type': 'application/json'}
-    text = '{}'
-    content = b'{}'
-    reason = 'OK'
-
-    def __init__(self, body):
-        self._body = body
-
-    def json(self):
-        return self._body
+def _Resp(body, headers=None):
+    return Response(200, body, headers)
 
 
 def _client(monkeypatch, keeper_cls=None):
@@ -324,17 +314,13 @@ def _client(monkeypatch, keeper_cls=None):
     client = PlaidClient('http://plaid.internal:8085', 'tok')
     sent = []
 
-    class _Session:
-        def request(self, **kw):
-            sent.append((kw.get('method'), kw.get('url', '')))
-            if '/lock' in kw.get('url', ''):
-                return _Resp({'lock-id': 'L1', 'user-id': 'me', 'expires-at': 0})
-            return _Resp({})
+    def answer(request):
+        sent.append((request['method'], request['url']))
+        if '/lock' in request['url']:
+            return {'lock-id': 'L1', 'user-id': 'me', 'expires-at': 0}
+        return {}
 
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(answer)
     if keeper_cls is not None:
         monkeypatch.setattr('plaid_client.document_lock.LockKeeper', keeper_cls)
     return client, sent
@@ -444,15 +430,8 @@ class _PerHolderCore:
         pass
 
 
-class _Denied423:
-    ok = False
-    status_code = 423
-    headers = {'content-type': 'application/json'}
-    text = '{}'
-    reason = 'Locked'
-
-    def json(self):
-        return {'error': 'Document is locked', 'user-id': 'me'}
+def _Denied423():
+    return Response(423, {'error': 'Document is locked', 'user-id': 'me'}, reason='Locked')
 
 
 def test_a_second_block_of_the_same_user_is_refused_and_cannot_release_the_first(monkeypatch):
@@ -547,14 +526,7 @@ def test_the_window_is_read_off_the_acquire_response(monkeypatch):
 
     client = PlaidClient('http://plaid.internal:8085', 'tok')
 
-    class _Session:
-        def request(self, **kw):
-            return _Resp({'user-id': 'me', 'expires-at': 1_000_000 + 20_000})
-
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session([{'user-id': 'me', 'expires-at': 1_000_000 + 20_000}])
     monkeypatch.setattr(client_mod.time, 'time', lambda: 1000.0)
     monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     with client.documents.locked('d1'):
@@ -566,24 +538,7 @@ def test_the_window_is_read_off_the_acquire_response(monkeypatch):
 def test_another_users_lock_still_refuses_before_the_block_runs(monkeypatch):
     client = PlaidClient('http://plaid.internal:8085', 'tok')
 
-    class _Denied:
-        ok = False
-        status_code = 423
-        headers = {'content-type': 'application/json'}
-        text = '{}'
-        reason = 'Locked'
-
-        def json(self):
-            return {'user-id': 'someone@else.com'}
-
-    class _Session:
-        def request(self, **kw):
-            return _Denied()
-
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session([Response(423, {'user-id': 'someone@else.com'}, reason='Locked')])
     ran = []
     with pytest.raises(PlaidAPIError) as caught:
         with client.documents.locked('d1'):
@@ -655,15 +610,13 @@ def test_a_server_clock_half_an_hour_ahead_does_not_stretch_the_window(monkeypat
     monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     server_now = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=30)
 
-    class _Skewed(_Resp):
-        headers = {'content-type': 'application/json', 'Date': format_datetime(server_now, usegmt=True)}
-
     class _Core(_PerHolderCore):
         def request(self, **kw):
             resp = super().request(**kw)
-            body = resp.json() if isinstance(resp, _Resp) else None
+            body = resp.json() if resp.ok else None
             if kw.get('method') == 'POST' and body and 'lock-id' in body:
-                return _Skewed(dict(body, **{'expires-at': int(server_now.timestamp() * 1000) + 60_000}))
+                return _Resp(dict(body, **{'expires-at': int(server_now.timestamp() * 1000) + 60_000}),
+                             {'Date': format_datetime(server_now, usegmt=True)})
             return resp
 
     client = PlaidClient('http://plaid.internal:8085', 'tok')
@@ -722,14 +675,12 @@ def test_a_write_answered_after_the_window_ran_out_moves_nothing():
     assert keeper.lost is not None
 
 
-class _VersionedResp(_Resp):
-    def __init__(self, body, versions, replayed=False):
-        super().__init__(body)
-        self.headers = {'content-type': 'application/json',
-                        'X-Document-Versions': __import__('json').dumps(versions)}
-        if replayed:
-            from plaid_client.http import REPLAYED_HEADER
-            self.headers[REPLAYED_HEADER] = 'true'
+def _VersionedResp(body, versions, replayed=False):
+    from plaid_client.http import REPLAYED_HEADER
+    headers = {'X-Document-Versions': __import__('json').dumps(versions)}
+    if replayed:
+        headers[REPLAYED_HEADER] = 'true'
+    return _Resp(body, headers)
 
 
 def _versioned_client(monkeypatch, answers):
@@ -739,22 +690,15 @@ def _versioned_client(monkeypatch, answers):
     client = PlaidClient('http://plaid.internal:8085', 'tok')
     queue = list(answers)
 
-    class _Session:
-        def request(self, **kw):
-            if '/lock' in kw.get('url', ''):
-                return _Resp({'lock-id': 'L1', 'user-id': 'me', 'expires-at': 0})
-            versions, replayed = queue.pop(0)
-            return _VersionedResp({'id': 't1'}, versions, replayed)
+    def answer(request):
+        if '/lock' in request['url']:
+            return {'lock-id': 'L1', 'user-id': 'me', 'expires-at': 0}
+        versions, replayed = queue.pop(0)
+        if request['url'].endswith('/api/v1/batch'):
+            return _VersionedResp([{'status': 201, 'headers': {}, 'body': {'id': 't1'}}], versions, replayed)
+        return _VersionedResp({'id': 't1'}, versions, replayed)
 
-        def post(self, url, **kw):
-            versions, replayed = queue.pop(0)
-            return _VersionedResp([{'status': 201, 'headers': {}, 'body': {'id': 't1'}}],
-                                  versions, replayed)
-
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(answer)
     return client
 
 

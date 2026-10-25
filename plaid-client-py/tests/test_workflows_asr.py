@@ -5,7 +5,6 @@ The 700 lines that every transcribe service runs had no test of their own. Run::
     cd plaid-client-py && python -m pytest tests/ -q
 """
 
-import contextlib
 import os
 import sys
 
@@ -13,6 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from plaid_client import testing  # noqa: E402
 from plaid_client.service import locked_for_writes  # noqa: E402
 from plaid_client.workflows.asr import Alignment, AlignmentProcessor  # noqa: E402
 
@@ -21,135 +21,45 @@ ALIGN_LAYER = 'align-layer'
 SENTENCE_LAYER = 'sentence-layer'
 
 
-class _Helper:
-    def __init__(self):
-        self.errors = []
-        self.done = []
+class _FakeClient(testing.FakeClient):
+    """plaid_client.testing's FakeClient, with its log read back as these
+    tests ask it: ``('bulk_create', ops)``, ``('bulk_delete', ids)``,
+    ``('split', token_id, position, id, keep)``, ``('text_update', ops)``,
+    ``('text_create', body)``, the lock and its release, and the word layer
+    each text update named for "Tokenize new text"."""
 
-    def progress(self, percent, msg='', **extra):
-        pass
+    @property
+    def calls_made(self):
+        return _logged(self.calls)
 
-    def complete(self, data=None):
-        self.done.append(data)
-
-    def error(self, err):
-        self.errors.append(str(err))
-
-    @contextlib.contextmanager
-    def critical(self):
-        yield
+    @property
+    def tokenize_layers(self):
+        return [_call(payload)[1].get('tokenize_layer')
+                for kind, payload in self.calls if kind == 'texts.update']
 
 
-class _Batch:
-    """What ``batched()`` yields: the client's resources bound to this batch,
-    so a write made on it queues until ``submit`` and a read still reaches the
-    fixture. Everything the batch does not have itself is the client's."""
-
-    def __init__(self, client):
-        self.client = client
-        self.queued = []
-        self.results = []
-        self.documents = client._Documents(self)
-        self.tokens = client._Tokens(self)
-        self.texts = client._Texts(self)
-
-    def __getattr__(self, name):
-        return getattr(self.client, name)
-
-    def _record(self, call):
-        self.queued.append(call)
-
-    def submit(self):
-        queued, self.queued = self.queued, []
-        self.client.calls.extend(queued)
-        self.results = [{'body': {'id': f'new-{i}'}} for i in range(len(queued))]
-        return self.results
-
-    def abort(self):
-        self.queued = []
+def _call(payload):
+    """A recorded call's positional and keyword arguments."""
+    if isinstance(payload, dict) and set(payload) == {'args', 'kwargs'}:
+        return tuple(payload['args']), payload['kwargs']
+    return (payload if isinstance(payload, tuple) else (payload,)), {}
 
 
-class _FakeClient:
-    """A client that models the two things a test of this code must get right:
-    a batch that ABORTS on an exception writes nothing at all, and a write made
-    on the CLIENT goes out at once whatever batches are open."""
-
-    # strict mode, as the real client keeps it
-    strict_mode_document_id = None
-
-    def enter_strict_mode(self, document_id):
-        self.strict_mode_document_id = document_id
-
-    def __init__(self, documents):
-        # the word layer each text update named for "Tokenize new text"
-        self.tokenize_layers = []
-        self.document_versions = {}
-        self._documents = list(documents)
-        self.token = 'tok'
-        self.base_url = 'http://plaid.test'
-        self.calls = []
-        self.reads = []
-        self.documents = self._Documents(self)
-        self.tokens = self._Tokens(self)
-        self.texts = self._Texts(self)
-
-    def _record(self, call):
-        self.calls.append(call)
-
-    def batch(self):
-        return _Batch(self)
-
-    @contextlib.contextmanager
-    def batched(self):
-        batch = _Batch(self)
-        try:
-            yield batch
-        except BaseException:
-            batch.abort()                # aborted: nothing reaches the server
-            raise
-        batch.submit()
-
-    class _Documents:
-        def __init__(self, client):
-            self._client = client
-
-        def get(self, document_id, include_body=None, layers=None):
-            self._client.reads.append({'layers': layers})
-            index = min(len(self._client.reads) - 1, len(self._client._documents) - 1)
-            return self._client._documents[index]
-
-        @contextlib.contextmanager
-        def locked(self, document_id, should_renew=None):
-            self._client._record(('lock', document_id))
-            try:
-                yield
-            finally:
-                self._client._record(('unlock', document_id))
-
-    class _Tokens:
-        def __init__(self, client):
-            self._client = client
-
-        def bulk_create(self, ops):
-            self._client._record(('bulk_create', list(ops)))
-
-        def bulk_delete(self, ids):
-            self._client._record(('bulk_delete', list(ids)))
-
-        def split(self, token_id, position, audit_message=None, *, id=None, keep=None):
-            self._client._record(('split', token_id, position, id, keep))
-
-    class _Texts:
-        def __init__(self, client):
-            self._client = client
-
-        def update(self, text_id, ops, tokenize_layer=None):
-            self._client._record(('text_update', list(ops)))
-            self._client.tokenize_layers.append(tokenize_layer)
-
-        def create(self, layer_id, document_id, body):
-            self._client._record(('text_create', body))
-            return {'id': 'text-1'}
+def _logged(entries):
+    out = []
+    for kind, payload in entries:
+        args, kwargs = _call(payload)
+        if kind in ('lock', 'unlock'):
+            out.append((kind, payload))
+        elif kind in ('tokens.bulk_create', 'tokens.bulk_delete'):
+            out.append((kind.removeprefix('tokens.'), list(payload)))
+        elif kind == 'tokens.split':
+            out.append(('split', args[0], args[1], kwargs.get('id'), kwargs.get('keep')))
+        elif kind == 'texts.update':
+            out.append(('text_update', list(args[1])))
+        elif kind == 'texts.create':
+            out.append(('text_create', args[2]))
+    return out
 
 
 def _document(body, *, sentences=(), align=(), sentence_spans=()):
@@ -178,8 +88,8 @@ def test_the_processor_refuses_to_write_a_document_nobody_holds():
     with pytest.raises(RuntimeError):
         AlignmentProcessor().process_alignments(
             client, 'd1', [Alignment(text='hello', start=0.0, end=1.0)],
-            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper())
-    assert [c for c in client.calls if c[0] in ('text_update', 'bulk_create')] == []
+            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper())
+    assert [c for c in client.calls_made if c[0] in ('text_update', 'bulk_create')] == []
 
 
 def _held_alignments(client, document_id, *args, **kwargs):
@@ -192,7 +102,7 @@ def _held_alignments(client, document_id, *args, **kwargs):
 def _run(client, helper=None):
     return _held_alignments(
         client, 'd1', [Alignment(text='hello there', start=0.0, end=1.5)],
-        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, helper or _Helper(),
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, helper or testing.Helper(),
         prov_source='service:asr:test')
 
 
@@ -200,7 +110,7 @@ def test_a_transcription_is_stamped_machine_made_and_lands_in_one_batch():
     client = _FakeClient([_document('')])
     created = _run(client)
     assert created == 1
-    writes = [c for c in client.calls if c[0] in ('text_update', 'bulk_create', 'bulk_delete')]
+    writes = [c for c in client.calls_made if c[0] in ('text_update', 'bulk_create', 'bulk_delete')]
     kinds = [c[0] for c in writes]
     assert kinds[0] == 'text_update'
     token_ops = next(c[1] for c in writes if c[0] == 'bulk_create'
@@ -219,8 +129,8 @@ def test_a_persons_sentence_work_stays_and_the_new_segment_is_split_out():
     client = _FakeClient([_document('already here', sentences=[(0, 12)],
                                     align=[(0, 12, 5.0, 6.0)], sentence_spans=[human])])
     assert _run(client) == 1
-    assert not any(c[0] == 'bulk_delete' for c in client.calls)
-    [split] = [c for c in client.calls if c[0] == 'split']
+    assert not any(c[0] == 'bulk_delete' for c in client.calls_made)
+    [split] = [c for c in client.calls_made if c[0] == 'split']
     assert split[1:3] == ('s0', 11)  # "hello there" put before "already here"
 
 
@@ -243,9 +153,9 @@ def test_a_segment_that_cannot_be_put_in_time_order_is_refused_before_the_write(
     with pytest.raises(ValueError) as caught:
         _held_alignments(
             client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
-            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(), prov_source='service:asr:test')
     assert 'time order' in str(caught.value)
-    assert [c for c in client.calls if c[0] in ('text_update', 'bulk_create', 'bulk_delete')] == []
+    assert [c for c in client.calls_made if c[0] in ('text_update', 'bulk_create', 'bulk_delete')] == []
 
 
 def test_a_segment_in_time_order_is_written():
@@ -253,7 +163,7 @@ def test_a_segment_in_time_order_is_written():
                                     align=[(0, 5, 1.0, 2.0), (6, 11, 5.0, 6.0)])])
     assert _held_alignments(
         client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
-        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test') == 1
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(), prov_source='service:asr:test') == 1
 
 
 def test_segments_the_model_gives_out_of_order_are_written_in_time_order():
@@ -264,9 +174,9 @@ def test_segments_the_model_gives_out_of_order_are_written_in_time_order():
     starts = [1.5, 1, 20, 5, 0.25]
     n = _held_alignments(
         client, 'd1', [Alignment(text=f'w{s}', start=s, end=s + 0.1) for s in starts],
-        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(), prov_source='service:asr:test')
     assert n == 5
-    made = next(c[1] for c in client.calls if c[0] == 'bulk_create' and c[1][0]['token_layer_id'] == ALIGN_LAYER)
+    made = next(c[1] for c in client.calls_made if c[0] == 'bulk_create' and c[1][0]['token_layer_id'] == ALIGN_LAYER)
     by_pos = sorted(made, key=lambda t: t['begin'])
     assert [t['metadata']['timeBegin'] for t in by_pos] == sorted(starts)
 
@@ -277,7 +187,7 @@ def test_the_time_order_refusal_names_the_document_segment_in_the_way():
     with pytest.raises(ValueError) as caught:
         _held_alignments(
             client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
-            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(), prov_source='service:asr:test')
     assert str(caught.value) == ('The new segment at 3 s has no place in time order: the document\'s segment '
                                  'at 1 s stands after it in the text. Put the document\'s segments in time '
                                  'order first. Nothing was written.')

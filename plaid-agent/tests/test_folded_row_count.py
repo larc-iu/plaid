@@ -8,6 +8,7 @@ the model is told the row was written in part.
 """
 
 import pytest
+from plaid_client.testing import FakeClient
 
 import test_stale_by_sentence as sbs
 from test_one_change_per_batch import _budget, _nth_send_fails
@@ -26,13 +27,7 @@ def test_a_folded_row_expands_to_members_that_know_their_place():
 
 
 def test_the_batcher_counts_the_members_of_a_row_that_stand():
-    class _Client:
-        def batch(self):
-            class _B:
-                def submit(self):
-                    return []
-            return _B()
-    b = core_plan.TrackingBatcher(_Client())
+    b = core_plan.TrackingBatcher(FakeClient([]))
     ops = [{ROW: 0, MEMBER: i} for i in range(3)] + [{ROW: 1}]
     b.expect(ops)
     for op in ops[:2]:

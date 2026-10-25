@@ -4,7 +4,6 @@ answer is recased, its URL resolved against the client's base URL, and the
 call is a read that travels as a POST: no Idempotency-Key, and on a batch it
 goes over the wire."""
 
-import json
 import os
 import sys
 
@@ -14,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError
+from plaid_client.testing import recording_session
 
 LINK = {
     'url': '/api/v1/documents/d1/media?v=1-10&media-token=abc.def.ghi',
@@ -21,29 +21,10 @@ LINK = {
 }
 
 
-class _Resp:
-    def __init__(self, status, body):
-        self.status_code = status
-        self.ok = status < 300
-        self.reason = ''
-        self.headers = {'content-type': 'application/json'}
-        self.content = json.dumps(body).encode()
-        self.text = json.dumps(body)
-        self._body = body
-
-    def json(self):
-        return self._body
-
-
 def _answer(client, status, body):
-    seen = []
-
-    def request(**kw):
-        seen.append(kw)
-        return _Resp(status, body)
-
-    client.session.request = request
-    return seen
+    session = recording_session([(status, body)])
+    client.session.request = session.request
+    return session.sent
 
 
 def test_media_link_answers_an_absolute_url_and_expires_at():

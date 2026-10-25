@@ -5,7 +5,6 @@ minted near the end of a login), and a change of the
 client's login token drops it. users.avatar_url puts that token, never the
 login token, in the picture's URL."""
 
-import json
 import os
 import sys
 import threading
@@ -18,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError
+from plaid_client.testing import recording_session
 
 
 def _in_hours(h):
@@ -29,32 +29,15 @@ def _minted(token, expires_at=None):
     return 200, {'token': token, 'expires-at': expires_at or _in_hours(24)}
 
 
-class _Resp:
-    def __init__(self, status, body):
-        self.status_code = status
-        self.ok = status < 300
-        self.reason = ''
-        self.headers = {'content-type': 'application/json'}
-        self.content = json.dumps(body).encode()
-        self.text = json.dumps(body)
-        self._body = body
-
-    def json(self):
-        return self._body
-
-
 def _answer(client, *answers, delay=0):
-    seen = []
-
-    def request(**kw):
-        seen.append(kw)
+    def answer(request):
         if delay:
             time.sleep(delay)
-        status, body = answers[min(len(seen) - 1, len(answers) - 1)]
-        return _Resp(status, body)
+        return answers[min(len(session.sent), len(answers)) - 1]
 
-    client.session.request = request
-    return seen
+    session = recording_session(answer)
+    client.session.request = session.request
+    return session.sent
 
 
 def _auth(call):

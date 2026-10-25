@@ -15,31 +15,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
+from plaid_client.testing import recording_session
 
 
 def _client():
     return PlaidClient('http://localhost:0', 'dummy-token')
 
 
-class _Resp:
-    ok = True
-
-    def __init__(self, n):
-        self._n = n
-
-    def json(self):
-        return [{'status': 201, 'headers': {}, 'body': {'id': 'x'}}] * self._n
-
-
 def _recording(monkeypatch, client):
+    """Each batch request's ops, as sent."""
     sent = []
 
-    def post(url, headers=None, data=None, timeout=None):
-        body = json.loads(data)
+    def answer(request):
+        body = json.loads(request['data'])
         sent.append(body)
-        return _Resp(len(body))
+        return [{'status': 201, 'headers': {}, 'body': {'id': 'x'}}] * len(body)
 
-    monkeypatch.setattr(client.session, 'post', post)
+    monkeypatch.setattr(client.session, 'post', recording_session(answer).post)
     return sent
 
 

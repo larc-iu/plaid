@@ -907,3 +907,25 @@ def test_within_factor_of_bounds_the_big_case_by_the_small_one_at_least_the_floo
     assert testing.within_factor_of(10, 0, 99, floor_ms=10) == 99
     with pytest.raises(AssertionError):
         testing.within_factor_of(10, 0, 100, floor_ms=10)
+
+
+def test_a_recording_session_keeps_each_request_and_answers_in_turn():
+    from plaid_client.client import PlaidClient
+    client = PlaidClient('http://x', 'tok')
+    client.session = testing.recording_session([{'id': 'p1'}, (404, {'error': 'Not found'})])
+    assert client.projects.get('p1') == {'id': 'p1'}
+    for _ in range(2):
+        with pytest.raises(PlaidAPIError) as caught:
+            client.projects.get('p2')
+        assert caught.value.status == 404
+    sent = client.session.sent
+    assert [r['method'] for r in sent] == ['GET', 'GET', 'GET']
+    assert sent[0]['url'] == 'http://x/api/v1/projects/p1' and sent[0]['json'] is None
+
+
+def test_a_response_reads_its_headers_case_blind_and_has_no_body_unless_given():
+    r = testing.Response(204, headers={'X-Document-Versions': '{}'})
+    assert r.headers['x-document-versions'] == '{}' and r.content == b''
+    with pytest.raises(ValueError):
+        r.json()
+    assert testing.Response(200, [1]).json() == [1]

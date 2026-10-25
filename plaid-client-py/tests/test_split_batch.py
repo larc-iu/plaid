@@ -10,24 +10,12 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import MAX_BATCH_OPS, PlaidClient
+from plaid_client.testing import Response, recording_session
 
 
 def _version_of(path):
     values = parse_qs(urlparse(path).query).get('document-version')
     return values[0] if values else None
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-    headers = {'content-type': 'application/json'}
-
-    def __init__(self, results):
-        self._results = results
-
-    def json(self):
-        return self._results
 
 
 def _stub_batch_server(client, start):
@@ -37,26 +25,22 @@ def _stub_batch_server(client, start):
     requests = []
     version = [start]
 
-    class _Session:
-        def post(self, url, headers=None, data=None, timeout=None):
-            ops = json.loads(data)
-            requests.append(ops)
-            results = []
-            for _ in ops:
-                version[0] += 1
-                results.append({
-                    'status': 200,
-                    'headers': {'X-Document-Versions': json.dumps({'d1': version[0]}),
-                                'Content-Type': 'application/json'},
-                    'body': {'token/id': 't1', 'token/begin': 0,
-                             'document/version': version[0]},
-                })
-            return _Resp(results)
+    def answer(request):
+        ops = json.loads(request['data'])
+        requests.append(ops)
+        results = []
+        for _ in ops:
+            version[0] += 1
+            results.append({
+                'status': 200,
+                'headers': {'X-Document-Versions': json.dumps({'d1': version[0]}),
+                            'Content-Type': 'application/json'},
+                'body': {'token/id': 't1', 'token/begin': 0,
+                         'document/version': version[0]},
+            })
+        return (200, results)
 
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(answer)
     return requests
 
 
@@ -91,19 +75,6 @@ def test_a_batch_result_keeps_its_status_and_headers_and_only_its_body_is_recase
     assert result['status'] == 200
 
 
-class _FailResp:
-    ok = False
-    reason = 'Not Found'
-    headers = {'content-type': 'application/json'}
-
-    def __init__(self, status):
-        self.status_code = status
-        self.text = json.dumps({'error': 'Token t2400 not found'})
-
-    def json(self):
-        return {'error': 'Token t2400 not found'}
-
-
 def _submit_failing(op_count, ok_requests, status):
     """Submit ``op_count`` deletes to a server that answers the first
     ``ok_requests`` batch POSTs and fails the next, with ``status`` or, when it
@@ -115,21 +86,16 @@ def _submit_failing(op_count, ok_requests, status):
     client = PlaidClient('http://x', 'tok', retry_delays=[0, 0, 0])
     sent = []
 
-    class _Session:
-        def post(self, url, headers=None, data=None, timeout=None):
-            ops = json.loads(data)
-            sent.append(ops)
-            if len(sent) > ok_requests:
-                if status == 0:
-                    raise requests_lib.ConnectionError('Connection refused')
-                return _FailResp(status)
-            return _Resp([{'status': 204, 'headers': {}, 'body': {'token/id': 't'}}
-                          for _ in ops])
+    def answer(request):
+        ops = json.loads(request['data'])
+        sent.append(ops)
+        if len(sent) > ok_requests:
+            if status == 0:
+                raise requests_lib.ConnectionError('Connection refused')
+            return Response(status, {'error': 'Token t2400 not found'}, reason='Not Found')
+        return (200, [{'status': 204, 'headers': {}, 'body': {'token/id': 't'}} for _ in ops])
 
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(answer)
     b = client.batch()
     for i in range(op_count):
         b.tokens.delete(f't{i}')

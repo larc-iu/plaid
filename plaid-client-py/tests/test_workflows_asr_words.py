@@ -12,8 +12,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.workflows.asr import Alignment  # noqa: E402
-from test_workflows_asr import (_held_alignments, ALIGN_LAYER, SENTENCE_LAYER, TEXT_LAYER, _Batch,  # noqa: E402
-                                _document, _FakeClient, _Helper)
+from plaid_client import testing  # noqa: E402
+from test_workflows_asr import (_held_alignments, ALIGN_LAYER, SENTENCE_LAYER, TEXT_LAYER,  # noqa: E402
+                                _document, _FakeClient)
 
 WORD_LAYER = 'word-layer'
 
@@ -30,18 +31,18 @@ def _with_words(doc, words=(), tokenize=None):
 
 def _run(client, alignments, word_layer=WORD_LAYER):
     return _held_alignments(
-        client, 'd1', alignments, TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(),
+        client, 'd1', alignments, TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(),
         prov_source='service:asr:test', word_token_layer_id=word_layer)
 
 
 def _word_rows(client):
-    return [op for c in client.calls if c[0] == 'bulk_create' for op in c[1]
+    return [op for c in client.calls_made if c[0] == 'bulk_create' for op in c[1]
             if op['token_layer_id'] == WORD_LAYER]
 
 
 def _body_after(client, before):
     body = before
-    for c in client.calls:
+    for c in client.calls_made:
         if c[0] == 'text_update':
             for op in c[1]:
                 body = body[:op['index']] + op['value'] + body[op['index']:]
@@ -57,7 +58,7 @@ def test_the_text_update_names_the_word_layer():
 
 
 def _segments(client):
-    return [op for c in client.calls if c[0] == 'bulk_create' for op in c[1]
+    return [op for c in client.calls_made if c[0] == 'bulk_create' for op in c[1]
             if op['token_layer_id'] == ALIGN_LAYER]
 
 
@@ -71,7 +72,7 @@ def test_a_segments_text_never_runs_into_the_text_beside_it():
                        Alignment(text='two', start=3.0, end=4.0),
                        Alignment(text='two more', start=4.0, end=4.5),
                        Alignment(text='four', start=7.0, end=8.0)],
-        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(), prov_source='service:asr:test')
     body = _body_after(client, 'one\nthree')
     assert body == 'zero one two two more\nthree four'
     # Each segment covers its own text and no space.
@@ -82,7 +83,7 @@ def test_the_first_text_of_an_empty_document_gets_no_space():
     client = _FakeClient([_document('')])
     _held_alignments(
         client, 'd1', [Alignment(text='a b', start=0.0, end=1.0), Alignment(text='c', start=1.0, end=2.0)],
-        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, testing.Helper(), prov_source='service:asr:test')
     assert _body_after(client, '') == 'a b c'
 
 
@@ -181,7 +182,7 @@ def test_a_transcription_keeps_every_word_and_gloss_already_there():
         doc = _glossed()
         client = _FakeClient([doc])
         _run(client, [Alignment(text='three', start=3.0, end=4.0)], word_layer=word_layer)
-        after = _replay(doc, client.calls)
+        after = _replay(doc, client.calls_made)
         tl = after['text_layers'][0]
         body = tl['text']['body']
         layers = {layer['id']: layer for layer in tl['token_layers']}
@@ -196,7 +197,7 @@ def test_a_transcription_keeps_every_word_and_gloss_already_there():
         sentences = sorted(layers[SENTENCE_LAYER]['tokens'], key=lambda t: t['begin'])
         assert [(t['id'] == 's0', body[t['begin']:t['end']]) for t in sentences] == [
             (True, 'one two'), (False, ' three')]
-        assert not any(c[0] == 'bulk_delete' for c in client.calls)
+        assert not any(c[0] == 'bulk_delete' for c in client.calls_made)
 
 
 def test_a_segment_put_between_two_gets_a_sentence_of_its_own():
@@ -204,7 +205,7 @@ def test_a_segment_put_between_two_gets_a_sentence_of_its_own():
                                 align=[(0, 3, 0.0, 1.0), (4, 9, 4.0, 5.0)]), words=[(0, 3), (4, 9)])
     client = _FakeClient([doc])
     _run(client, [Alignment(text='two', start=2.0, end=3.0)])
-    after = _replay(doc, client.calls)
+    after = _replay(doc, client.calls_made)
     tl = after['text_layers'][0]
     body = tl['text']['body']
     layers = {layer['id']: layer for layer in tl['token_layers']}
@@ -239,17 +240,17 @@ def test_text_put_before_a_sentence_leaves_its_translation_on_its_own_text():
     doc = _translated('Good morning, friend.', [(0, 21)], align=[(0, 21, 5.0, 7.0)])
     client = _FakeClient([doc])
     _run(client, [Alignment(text='Hello there', start=1.0, end=2.5)])
-    sentences = _sentences_of(_replay(doc, client.calls))
+    sentences = _sentences_of(_replay(doc, client.calls_made))
     assert [text for _, text in sentences] == ['Hello there', ' Good morning, friend.']
     assert sentences[1][0] == 's0'
-    assert [c[4] for c in client.calls if c[0] == 'split'] == ['right']
+    assert [c[4] for c in client.calls_made if c[0] == 'split'] == ['right']
 
 
 def test_text_put_after_a_sentences_leading_space_leaves_it_its_id():
     doc = _translated('one. two.', [(0, 4), (4, 9)], align=[(0, 5, 0.0, 1.0), (5, 9, 4.0, 5.0)])
     client = _FakeClient([doc])
     _run(client, [Alignment(text='mid', start=2.0, end=3.0)])
-    after = _replay(doc, client.calls)
+    after = _replay(doc, client.calls_made)
     sentences = _sentences_of(after)
     assert after['text_layers'][0]['text']['body'] == 'one. mid two.'
     assert ('s1', ' two.') in sentences
@@ -262,7 +263,7 @@ def test_every_new_segment_gets_a_sentence_of_its_own():
     doc = _translated('Good morning, friend.', [(0, 21)])
     client = _FakeClient([doc])
     _run(client, [Alignment(text='Hello there', start=1.0, end=2.5), Alignment(text='Bye', start=3.0, end=3.5)])
-    sentences = _sentences_of(_replay(doc, client.calls))
+    sentences = _sentences_of(_replay(doc, client.calls_made))
     assert [text for _, text in sentences] == ['Good morning, friend.', ' Hello there', ' Bye']
     assert sentences[0][0] == 's0'
 
@@ -273,7 +274,7 @@ def test_a_segment_ending_inside_a_word_puts_the_new_text_after_the_word():
                                 align=[(0, 3, 0.0, 1.0), (7, 12, 5.0, 6.0)]), words=[(0, 6), (7, 12)])
     client = _FakeClient([doc])
     _run(client, [Alignment(text='x', start=2.0, end=3.0)])
-    after = _replay(doc, client.calls)
+    after = _replay(doc, client.calls_made)
     tl = after['text_layers'][0]
     body = tl['text']['body']
     assert body == 'onetwo x three'
@@ -287,9 +288,9 @@ def test_a_document_with_no_text_yet_gets_one_and_its_sentences():
     doc['text_layers'][0]['text'] = None
     client = _FakeClient([doc])
     assert _run(client, [Alignment(text='a b', start=0.0, end=1.0), Alignment(text='c', start=1.0, end=2.0)]) == 2
-    assert ('text_create', '') in client.calls
+    assert ('text_create', '') in client.calls_made
     doc['text_layers'][0]['text'] = {'id': 'text-1', 'body': ''}
-    after = _replay(doc, client.calls)
+    after = _replay(doc, client.calls_made)
     assert [text for _, text in _sentences_of(after)] == ['a b', ' c']
     # the words are the server's, for the text update that names their layer
     assert client.tokenize_layers == [WORD_LAYER]

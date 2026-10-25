@@ -6,11 +6,12 @@ Run with::
     cd plaid-client-py && python -m pytest tests/ -q
 """
 
-import contextlib
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from plaid_client import testing  # noqa: E402
 
 from plaid_client.workflows.igt import (
     field_layer_id,
@@ -317,61 +318,22 @@ def test_write_analyses_says_where_it_is_between_batches():
     writing. The requester heard nothing between "Writing analyses" and "Done",
     which is exactly how a working run looks like a wedged one."""
     seen = []
-
-    class _Resource:
-        def __init__(self, log, name):
-            self._log, self._name = log, name
-
-        def __getattr__(self, method):
-            def call(*a, **k):
-                self._log.append((self._name, method))
-            return call
-
-    class _Batch:
-        """A write made on the batch queues; its results land when it submits."""
-
-        def __init__(self):
-            self.queued = []
-            self.results = []
-            self.tokens = _Resource(self.queued, 'tokens')
-            self.spans = _Resource(self.queued, 'spans')
-
-        def submit(self):
-            self.results = [{'body': {'id': f'new-{i}'}} for i in range(len(self.queued))]
-            return self.results
-
-    class _Client:
-        """A write made on the client goes out at once, whatever batches are
-        open, so anything written here rather than on the batch never reached
-        the transaction."""
-
-        def __init__(self):
-            self.direct = []
-            self.batches = []
-            self.tokens = _Resource(self.direct, 'tokens')
-            self.spans = _Resource(self.direct, 'spans')
-
-        @contextlib.contextmanager
-        def batched(self):
-            batch = _Batch()
-            self.batches.append(batch)
-            yield batch
-            batch.submit()
-
     plans = [_plan(f'w{i}') for i in range(5)]
-    client = _Client()
+    client = testing.FakeClient([])
     write_analyses(client, plans, 'gloss-layer', 'morph-layer', 'service:x', {},
                    on_progress=lambda done, total: seen.append((done, total)))
     assert seen and seen[0][0] == 0 and seen[-1] == (seen[-1][1], seen[-1][1])
     assert all(0 <= done <= total for done, total in seen)
-    assert client.direct == []  # every write went on the batch
-    # One batch makes the morphemes and their glosses together.
+    # One batch makes the morphemes and their glosses together, and every
+    # write went on it.
     assert len(client.batches) == 1
+    assert len(client.batches[0]) == len(client.writes)
+    queued = [c[:2] for c in _batch_log(client)[0]]
     # Each word's one stored morpheme is the word itself: patched in place.
-    assert client.batches[0].queued.count(('tokens', 'delete')) == 0
-    assert client.batches[0].queued.count(('tokens', 'patch_metadata')) == 5
-    assert client.batches[0].queued.count(('tokens', 'create')) == 5
-    assert client.batches[0].queued.count(('spans', 'create')) == 10
+    assert queued.count(('tokens', 'delete')) == 0
+    assert queued.count(('tokens', 'patch_metadata')) == 5
+    assert queued.count(('tokens', 'create')) == 5
+    assert queued.count(('spans', 'create')) == 10
 
 
 def _plan(word_id):
@@ -390,39 +352,14 @@ def test_write_analyses_makes_the_first_morpheme_of_a_word_nobody_segmented():
     is created under a minted id, and its gloss names that id in the same
     batch. Patching the virtual id reached the server as a token that does
     not exist."""
-    class _Batch:
-        def __init__(self, log):
-            self.log = log
-            self.results = []
-            self.tokens = _Rec(log, 'tokens')
-            self.spans = _Rec(log, 'spans')
-
-    class _Rec:
-        def __init__(self, log, name):
-            self._log, self._name = log, name
-
-        def __getattr__(self, method):
-            return lambda *a, **k: self._log.append((self._name, method, a, k))
-
-    class _Client:
-        def __init__(self):
-            self.batches = []
-
-        @contextlib.contextmanager
-        def batched(self):
-            b = _Batch([])
-            self.batches.append(b)
-            yield b
-            b.results = [{'body': {'id': f'new-{i}'}} for i in range(len(b.log))]
-
     m0 = virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3})
     plan = {'word': {'text_id': 't1', 'morphs': [m0], 'morph_spans': {m0['id']: []},
                      'token': {'id': 'w1', 'begin': 0, 'end': 3}},
             'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': ['stem', None],
                          'joiners': ['-'], 'surface_mismatch': False, 'degraded': False}}
-    client = _Client()
+    client = testing.FakeClient([])
     write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {})
-    first = client.batches[0].log
+    first = _batch_log(client)[0]
     creates = [c for c in first if c[:2] == ('tokens', 'create')]
     assert len(creates) == 2 and not [c for c in first if c[1] == 'patch_metadata']
     made = creates[0][3]['id']
@@ -434,45 +371,22 @@ def test_write_analyses_makes_the_first_morpheme_of_a_word_nobody_segmented():
     assert [g[2][:3] for g in glosses] == [('gloss-layer', [made], 'A'),
                                            ('gloss-layer', [creates[1][3]['id']], 'C')]
     assert not [c for c in first if c[:2] == ('tokens', 'delete')]  # nothing stored to delete
-    assert all('virtual:' not in repr(c) for b in client.batches for c in b.log)
+    assert all('virtual:' not in repr(c) for b in _batch_log(client) for c in b)
 
 
 
 def test_write_analyses_puts_each_segment_probability_on_its_morpheme_and_gloss():
     """A proposer's per-segment ``probs`` reach both cells as provProb, and a
     segment with None gets none."""
-    class _Batch:
-        def __init__(self, log):
-            self.log = log
-            self.tokens = _Rec(log, 'tokens')
-            self.spans = _Rec(log, 'spans')
-
-    class _Rec:
-        def __init__(self, log, name):
-            self._log, self._name = log, name
-
-        def __getattr__(self, method):
-            return lambda *a, **k: self._log.append((self._name, method, a, k))
-
-    class _Client:
-        def __init__(self):
-            self.batches = []
-
-        @contextlib.contextmanager
-        def batched(self):
-            b = _Batch([])
-            self.batches.append(b)
-            yield b
-
     m0 = virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3})
     plan = {'word': {'text_id': 't1', 'morphs': [m0], 'morph_spans': {m0['id']: []},
                      'token': {'id': 'w1', 'begin': 0, 'end': 3}},
             'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': [None, None],
                          'joiners': ['-'], 'surface_mismatch': False, 'degraded': False,
                          'probs': [0.38, None]}}
-    client = _Client()
+    client = testing.FakeClient([])
     write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {})
-    log = client.batches[0].log
+    log = _batch_log(client)[0]
     morphs = [c[3]['metadata'] for c in log if c[:2] == ('tokens', 'create')]
     glosses = [c[2][3] for c in log if c[:2] == ('spans', 'create')]
     assert morphs[0]['provProb'] == 0.38 and glosses[0]['provProb'] == 0.38
@@ -482,27 +396,6 @@ def test_write_analyses_puts_each_segment_probability_on_its_morpheme_and_gloss(
 def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
     """A proposer's per-segment ``links`` become machine-made links on the new
     morphemes, with its probability, and count toward the batch budget."""
-    class _Batch:
-        def __init__(self, log):
-            self.tokens = _Rec(log, 'tokens')
-            self.spans = _Rec(log, 'spans')
-            self.vocab_links = _Rec(log, 'vocab_links')
-
-    class _Rec:
-        def __init__(self, log, name):
-            self._log, self._name = log, name
-
-        def __getattr__(self, method):
-            return lambda *a, **k: self._log.append((self._name, method, a, k))
-
-    class _Client:
-        def __init__(self):
-            self.log = []
-
-        @contextlib.contextmanager
-        def batched(self):
-            yield _Batch(self.log)
-
     m0 = virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3})
     plan = {'word': {'text_id': 't1', 'morphs': [m0], 'morph_spans': {m0['id']: []},
                      'token': {'id': 'w1', 'begin': 0, 'end': 3}},
@@ -510,20 +403,21 @@ def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
                          'joiners': ['-'], 'surface_mismatch': False, 'degraded': False,
                          'probs': [0.8, 0.3], 'form_probs': [0.9, 0.3], 'links': ['item-ab', None],
                          'gloss_details': [{'valueProbs': {'A': 0.8, 'B': 0.1}}, None]}}
-    client = _Client()
+    client = testing.FakeClient([])
     write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {'model': 'm'})
-    made = [c[3]['id'] for c in client.log if c[:2] == ('tokens', 'create')]
-    [link] = [c for c in client.log if c[:2] == ('vocab_links', 'create')]
+    log = [c for b in _batch_log(client) for c in b]
+    made = [c[3]['id'] for c in log if c[:2] == ('tokens', 'create')]
+    [link] = [c for c in log if c[:2] == ('vocab_links', 'create')]
     item, tokens, meta = link[2]
     assert (item, tokens) == ('item-ab', [made[0]])
     assert meta['prov'] == 'inferred' and meta['provSource'] == 'service:x' and meta['provProb'] == 0.8
     assert meta['provDetail'] == {'model': 'm', 'vocabItem': 'item-ab'}
     assert link[3]['id']
-    spans = [c[2][3] for c in client.log if c[:2] == ('spans', 'create')]
+    spans = [c[2][3] for c in log if c[:2] == ('spans', 'create')]
     assert spans[0]['provDetail'] == {'model': 'm', 'valueProbs': {'A': 0.8, 'B': 0.1}, 'value': 'A'}
     assert spans[0]['provProb'] == 0.8
     # The morpheme carries its form's probability, the gloss its entry's.
-    assert [c[3]['metadata']['provProb'] for c in client.log if c[:2] == ('tokens', 'create')] == [0.9, 0.3]
+    assert [c[3]['metadata']['provProb'] for c in log if c[:2] == ('tokens', 'create')] == [0.9, 0.3]
     assert spans[1]['provDetail'] == {'model': 'm', 'value': 'C'}
     from plaid_client.workflows.igt.write import _ops_for
     assert _ops_for(plan) == 5
@@ -533,32 +427,15 @@ def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
 PRECEDENT = {'prov': 'inferred', 'provSource': 'rule:analysis-precedent'}
 
 
-class _RecBatch:
-    def __init__(self, log):
-        self.log = log
-        self.results = []
-        self.tokens = _RecResource(log, 'tokens')
-        self.spans = _RecResource(log, 'spans')
-
-
-class _RecResource:
-    def __init__(self, log, name):
-        self._log, self._name = log, name
-
-    def __getattr__(self, method):
-        return lambda *a, **k: self._log.append((self._name, method, a, k))
-
-
-class _RecClient:
-    def __init__(self):
-        self.batches = []
-
-    @contextlib.contextmanager
-    def batched(self):
-        b = _RecBatch([])
-        self.batches.append(b)
-        yield b
-        b.results = [{'body': {'id': f'new-{i}'}} for i in range(len(b.log))]
+def _batch_log(client):
+    """Each batch the fake client sent, as ``(resource, method, args,
+    kwargs)`` per write."""
+    def entry(kind, payload):
+        resource, method = kind.split('.', 1)
+        if isinstance(payload, dict) and set(payload) == {'args', 'kwargs'}:
+            return resource, method, tuple(payload['args']), payload['kwargs']
+        return resource, method, payload if isinstance(payload, tuple) else (payload,), {}
+    return [[entry(kind, payload) for kind, payload in b] for b in client.batches]
 
 
 def _analyzed_word(m0_meta, m1_meta, gloss_meta, link_meta, pos_meta):
@@ -601,14 +478,14 @@ def test_a_word_copied_from_precedent_is_left_to_its_precedent():
 def _rewrite(word, reply):
     from plaid_client.workflows.igt import ParsedWord as _P
     word = {**word, 'text_id': 't1', 'token': {'id': 'w1', 'begin': 0, 'end': 4}}
-    client = _RecClient()
+    client = testing.FakeClient([])
     write_analyses(client, [{'word': word, 'analysis': analysis_for('dogs', _P(reply))}],
                    'glossL', 'morphL', 'service:x', {})
     return client
 
 
 def _deleted(client):
-    return {c[2][0] for b in client.batches for c in b.log if c[:2] == ('tokens', 'delete')}
+    return {c[2][0] for b in _batch_log(client) for c in b if c[:2] == ('tokens', 'delete')}
 
 
 def test_a_rewrite_discards_the_old_first_morpheme_with_its_link_and_fields():
@@ -621,7 +498,7 @@ def test_a_rewrite_discards_the_old_first_morpheme_with_its_link_and_fields():
                  _analyzed_word({}, {}, {}, {}, {})):  # Overwrite over a person's work
         client = _rewrite(word, 'dogs(dogs)')
         assert _deleted(client) == {'m0', 'm1'}
-        log = [c for b in client.batches for c in b.log]
+        log = [c for b in _batch_log(client) for c in b]
         assert not [c for c in log if c[1] == 'patch_metadata']
         [made] = [c for c in log if c[:2] == ('tokens', 'create')]
         assert made[3]['id'] not in ('m0', 'm1')
@@ -636,7 +513,7 @@ def test_overwrite_leaves_nothing_verified_on_what_it_rewrites():
     verified, and a later machine run treated the word as protected."""
     word = _analyzed_word(VERIFIED, VERIFIED, VERIFIED, VERIFIED, VERIFIED)
     client = _rewrite(word, 'dog(dog)-PL(s)')
-    log = [c for b in client.batches for c in b.log]
+    log = [c for b in _batch_log(client) for c in b]
     made = [c[3]['metadata'] for c in log if c[:2] == ('tokens', 'create')]
     glosses = [c[2][3] for c in log if c[:2] == ('spans', 'create')]
     assert len(made) == 2 and len(glosses) == 2
@@ -658,7 +535,7 @@ def test_an_unanalyzed_words_stored_morpheme_is_patched_in_place_with_what_else_
     word = _word('dogs', [m0])  # a comment anchored on m0 lives as long as m0 does
     assert word_state(word) == 'unanalyzed'
     client = _rewrite(word, 'dog(dog)-PL(s)')
-    log = [c for b in client.batches for c in b.log]
+    log = [c for b in _batch_log(client) for c in b]
     assert len(client.batches) == 1
     assert not [c for c in log if c[:2] == ('tokens', 'delete')]
     [patch] = [c for c in log if c[:2] == ('tokens', 'patch_metadata')]
@@ -683,9 +560,9 @@ def test_a_kept_morpheme_takes_no_form_prob_outside_zero_to_one():
     word = {**_word('dogs', [m0]), 'text_id': 't1', 'token': {'id': 'w1', 'begin': 0, 'end': 4}}
     for bad in (2, -0.1, 'x', True):
         analysis = {**analysis_for('dogs', _P('dog(dog)-PL(s)')), 'form_probs': [bad, bad]}
-        client = _RecClient()
+        client = testing.FakeClient([])
         write_analyses(client, [{'word': word, 'analysis': analysis}], 'glossL', 'morphL', 'service:x', {})
-        log = [c for b in client.batches for c in b.log]
+        log = [c for b in _batch_log(client) for c in b]
         [patch] = [c for c in log if c[:2] == ('tokens', 'patch_metadata')]
         assert 'provProb' not in apply_metadata_ops(m0['metadata'], patch[2][1]), bad
         [made] = [c for c in log if c[:2] == ('tokens', 'create')]
@@ -734,19 +611,13 @@ def test_project_entry_types_come_from_every_item_of_every_vocabulary():
     all the items, a headword with no gloss of its own included (W2A2-6)."""
     from plaid_client.workflows.igt import project_entry_types
 
-    class VocabLayers:
-        def get(self, vid, include_items=False):
-            assert include_items
-            return {'v1': {'items': [{'id': 'h', 'form': 'ri', 'metadata': {'morphType': 'enclitic'}},
+    client = testing.FakeClient([], vocabularies={
+        'v1': {'id': 'v1', 'items': [{'id': 'h', 'form': 'ri', 'metadata': {'morphType': 'enclitic'}},
                                      {'id': 's', 'form': 'ri', 'metadata': {'gloss': 'and', 'parent': 'h'}},
                                      {'id': 'n', 'form': 'ev', 'metadata': {}}]},
-                    'v2': {'items': [{'id': 'p', 'form': 'ka', 'metadata': {'morphType': 'prefix'}}]}}[vid]
-
-    class Client:
-        vocab_layers = VocabLayers()
-
+        'v2': {'id': 'v2', 'items': [{'id': 'p', 'form': 'ka', 'metadata': {'morphType': 'prefix'}}]}})
     project = {'vocabs': [{'id': 'v1'}, {'id': 'v2'}]}
-    assert project_entry_types(Client(), project) == {'h': 'enclitic', 's': 'enclitic', 'p': 'prefix'}
+    assert project_entry_types(client, project) == {'h': 'enclitic', 's': 'enclitic', 'p': 'prefix'}
 
 
 def test_a_derived_morpheme_goes_by_its_entry_s_type_and_its_first_valued_gloss():

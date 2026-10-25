@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import pytest
 from plaid_client import PlaidClient, PlaidAPIError
+from plaid_client.testing import Response, recording_session
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 
@@ -37,33 +38,9 @@ def _params(path):
     return {k: v[0] for k, v in parse_qs(urlparse(path).query).items()}
 
 
-class _Resp:
-    def __init__(self, status=200, body=None):
-        self.ok = status < 400
-        self.status_code = status
-        self.reason = 'OK' if self.ok else 'Not Found'
-        self.headers = {'Content-Type': 'application/json'}
-        self._body = body if body is not None else {}
-        self.text = json.dumps(self._body)
-        self.content = self.text.encode()
-
-    def json(self):
-        return self._body
-
-
 def _stub_session(client, status=200):
-    calls = []
-
-    class _Sess:
-        def request(self, **kw):
-            calls.append(kw)
-            return _Resp(status, {'error': 'Operation group not found'} if status == 404 else {})
-
-        def close(self):
-            pass
-
-    client.session = _Sess()
-    return calls
+    client.session = recording_session([(status, {'error': 'Operation group not found'} if status == 404 else {})])
+    return client.session.sent
 
 
 def test_begin_operation_stamps_group_id_and_message():
@@ -161,29 +138,9 @@ def test_get_requests_never_carry_group_id():
     # A read never joins a batch, so the URL is observed on the wire.
     client = _client()
     client.begin_operation('x')
-    urls = []
-
-    class _Resp:
-        ok = True
-        status_code = 200
-        headers = {}
-        text = '{}'
-        content = b'{}'
-        reason = 'OK'
-
-        def json(self):
-            return {}
-
-    class _Session:
-        def request(self, **kw):
-            urls.append(kw.get('url', ''))
-            return _Resp()
-
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session()
     client.spans.get('S1')
+    urls = [request['url'] for request in client.session.sent]
     assert len(urls) == 1
     assert 'group-id' not in urls[0]
     assert client._operation_group['written'] is False
@@ -409,7 +366,7 @@ def test_an_operation_that_only_sends_messages_asks_for_no_relabel():
 
     def post(url, headers=None, data=None, timeout=None):
         batches.append([op['path'] for op in json.loads(data)])
-        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {}}])
+        return Response(200, [{'status': 200, 'headers': {}, 'body': {}}])
 
     client.session.post = post
     with client.operation('Parse') as op:
@@ -542,24 +499,15 @@ def test_base_service_joins_the_requesters_kind_and_ref():
 # (conc-2026-09-29, the Python twin of plaid-client-js b31e9f4b)
 
 def _batch_session(client, status):
-    calls = []
+    def answer(request):
+        if not request['url'].endswith('/api/v1/batch'):
+            return {}
+        body = json.loads(request['data'])
+        return (status, [{'status': 200, 'headers': {}, 'body': {}} for _ in body]
+                if status < 400 else {'error': 'Document version mismatch'})
 
-    class _Sess:
-        def request(self, **kw):
-            calls.append(kw)
-            return _Resp(200)
-
-        def post(self, url, **kw):
-            calls.append({'method': 'POST', 'url': url, **kw})
-            body = json.loads(kw['data'])
-            return _Resp(status, [{'status': 200, 'headers': {}, 'body': {}} for _ in body]
-                         if status < 400 else {'error': 'Document version mismatch'})
-
-        def close(self):
-            pass
-
-    client.session = _Sess()
-    return calls
+    client.session = recording_session(answer)
+    return client.session.sent
 
 
 def test_an_operation_whose_only_write_was_refused_is_not_relabelled():
@@ -609,19 +557,10 @@ def test_a_refused_relabel_does_not_replace_the_error_the_block_raised():
     # plan's own error, and the card said "Applying did not finish" with an
     # Apply again, where it should have said Partly applied.
     client = _client()
-    calls = []
-
-    class _Sess:
-        def request(self, **kw):
-            calls.append(kw)
-            if kw['method'] == 'PATCH':
-                return _Resp(403, {'error': 'This token reaches only the projects it was issued for.'})
-            return _Resp(200, {})
-
-        def close(self):
-            pass
-
-    client.session = _Sess()
+    client.session = recording_session(
+        lambda request: (403, {'error': 'This token reaches only the projects it was issued for.'})
+        if request['method'] == 'PATCH' else {})
+    calls = client.session.sent
     with pytest.raises(RuntimeError, match='plan failed'):
         with client.operation('Assistant: 3 changes') as op:
             client.spans.set_metadata('S1', {'a': 1})
@@ -636,7 +575,7 @@ def test_a_refused_relabel_after_a_block_that_ended_well_still_raises():
     _stub_session(client, status=200)
 
     def patch_refused(**kw):
-        return _Resp(403 if kw['method'] == 'PATCH' else 200, {'error': 'no'})
+        return Response(403 if kw['method'] == 'PATCH' else 200, {'error': 'no'})
 
     client.session.request = patch_refused
     with pytest.raises(PlaidAPIError):

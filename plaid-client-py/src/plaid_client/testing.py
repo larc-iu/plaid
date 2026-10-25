@@ -57,6 +57,12 @@ write through the real method first. ``timed`` and ``within_factor_of`` here,
 ``timed`` and ``withinFactorOf`` there and in plaid-core's
 ``plaid.test-helpers`` bound a slow case against a small one timed in the
 same run, where a fixed number of seconds fails on a loaded runner.
+
+A test of the client itself, below the bundles, puts a ``recording_session``
+on a real ``PlaidClient``: each request is kept as ``requests`` was given it
+and answered with a ``Response``, nothing sent. ``FakeCore`` is a small core
+over a real socket, for what only one shows: a stream that drops, a cap that
+changes across a restart.
 """
 
 import contextlib
@@ -67,11 +73,14 @@ import inspect
 import itertools
 import json
 import pathlib
+import threading
 import time
 import types
 import sys
 from datetime import datetime, timezone
 from urllib.parse import quote
+
+from requests.structures import CaseInsensitiveDict
 
 from plaid_client import client as _client
 from plaid_client import operations as _operations
@@ -1838,3 +1847,191 @@ class _BatchUserData:
                   limit=None, cursor=None):
         return self._store.list_page(user_id, prefix=prefix, pattern=pattern,
                                      include_values=include_values, limit=limit, cursor=cursor)
+
+
+# -- the wire, for a test of the client itself --
+
+class Response:
+    """An answer as ``requests`` gives it, as much of one as
+    ``plaid_client.http`` reads: ``status_code``, ``ok``, ``reason``,
+    ``headers`` (as case-blind as requests'), ``text``, ``content``, ``json()``
+    and ``iter_content()``. A
+    dict or list ``body`` goes as JSON, ``bytes`` as they are, and no body as
+    none, whose ``json()`` raises as an empty answer's does."""
+
+    def __init__(self, status=200, body=None, headers=None, *, reason=None, chunks=None):
+        self.status_code = status
+        self.ok = status < 400
+        self.reason = reason if reason is not None else ('OK' if self.ok else 'Error')
+        self._body = body
+        if chunks is not None:
+            self.content = b''.join(chunks)
+        elif isinstance(body, bytes):
+            self.content = body
+        elif body is None:
+            self.content = b''
+        else:
+            self.content = json.dumps(body).encode()
+        self._chunks = chunks if chunks is not None else [self.content]
+        self.text = self.content.decode('utf-8', errors='replace')
+        json_body = body is not None and not isinstance(body, bytes) and chunks is None
+        self.headers = CaseInsensitiveDict(
+            {**({'content-type': 'application/json'} if json_body else {}), **(headers or {})})
+
+    def json(self):
+        if self._body is None or isinstance(self._body, bytes):
+            return json.loads(self.text)
+        return self._body
+
+    def iter_content(self, chunk_size=None):
+        yield from self._chunks
+
+
+class RecordingSession:
+    """A ``requests`` session that sends nothing. Each request is kept in
+    ``sent`` as the keywords the client gave ``requests``, with ``method``,
+    ``url``, ``params``, ``json``, ``data`` and ``headers`` always there (None
+    when not given), and answered by ``answers``:
+
+    - nothing: an empty 200 JSON object;
+    - a function of the request (the same dict ``sent`` keeps), which returns
+      an answer;
+    - a list: each request takes the next, and the last is repeated.
+
+    An answer is a ``Response``, a ``(status, body)`` or ``(status, body,
+    headers)`` tuple, or a body alone, answered 200. A function may also
+    raise, which is a request that never came back.
+
+    Put it on a client with ``client.session = recording_session(...)``."""
+
+    def __init__(self, answers=None):
+        self.sent = []
+        self._answers = answers
+
+    def request(self, **kw):
+        request = {'method': None, 'url': '', 'params': None, 'json': None, 'data': None,
+                   'headers': None, **kw}
+        self.sent.append(request)
+        answers = self._answers
+        if callable(answers):
+            answer = answers(request)
+        elif isinstance(answers, list):
+            answer = answers[min(len(self.sent), len(answers)) - 1]
+        else:
+            answer = {} if answers is None else answers
+        if isinstance(answer, Response):
+            return answer
+        if isinstance(answer, tuple):
+            return Response(*answer)
+        return Response(200, answer)
+
+    def post(self, url, **kw):
+        return self.request(method='POST', url=url, **kw)
+
+    def close(self):
+        pass
+
+
+def recording_session(answers=None):
+    """A ``RecordingSession`` answering ``answers``."""
+    return RecordingSession(answers)
+
+
+class FakeCore:
+    """A small core over real HTTP, for what only a socket shows: a stream
+    that drops, a cap that changes across a restart. ``GET /api/v1/info``
+    answers ``cap`` as the user-data value limit, a ``.../listen`` stream
+    stays open until :meth:`restart` ends it, and one user's private data
+    (``/data/<key>``) is kept, refused with 413 over ``cap`` and with 409 on
+    a stale ``version``, as core refuses it. ``info_reads`` counts the info
+    reads and ``refused`` the 413s."""
+
+    def __init__(self, cap):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from urllib.parse import parse_qs, unquote, urlparse
+
+        self.cap = cap
+        self.info_reads = 0
+        self.refused = 0
+        self.data = {}
+        self.restarted = threading.Event()
+        core = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.0'
+
+            def log_message(self, *args):
+                pass
+
+            def _json(self, status, body):
+                out = json.dumps(body).encode()
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+
+            def _key(self):
+                path = urlparse(self.path)
+                return unquote(path.path.rsplit('/data/', 1)[-1]), parse_qs(path.query)
+
+            def do_GET(self):
+                if self.path == '/api/v1/info':
+                    core.info_reads += 1
+                    return self._json(200, {'version': 't', 'limits': {'user-data-value-bytes': core.cap}})
+                if self.path.endswith('/listen'):
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/event-stream')
+                    self.end_headers()
+                    try:
+                        self.wfile.write(b'event: connected\ndata: {"client-id": "c"}\n\n')
+                        self.wfile.flush()
+                        while not core.restarted.wait(0.05):
+                            self.wfile.write(b': keepalive\n\n')
+                            self.wfile.flush()
+                    except OSError:
+                        pass
+                    return
+                key, _ = self._key()
+                if key not in core.data:
+                    return self._json(404, {'error': 'not found'})
+                version, value = core.data[key]
+                self._json(200, {'key': key, 'version': version, 'value': value})
+
+            def do_PUT(self):
+                key, query = self._key()
+                raw = self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                if len(raw) > core.cap:
+                    core.refused += 1
+                    return self._json(413, {'error': f'Value exceeds {core.cap} bytes'})
+                version = core.data.get(key, (0, None))[0]
+                if 'version' in query and int(query['version'][0]) != version:
+                    return self._json(409, {'error': 'version-mismatch', 'version': version})
+                core.data[key] = (version + 1, json.loads(raw))
+                self._json(200, {'key': key, 'version': version + 1})
+
+            def do_DELETE(self):
+                key, _ = self._key()
+                core.data.pop(key, None)
+                self._json(200, {})
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server.daemon_threads = True
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def restart(self, cap):
+        """Every open stream ends, and core comes back with ``cap``."""
+        self.cap = cap
+        self.restarted.set()
+        time.sleep(0.2)
+        self.restarted.clear()
+
+    def stored_bytes(self, key):
+        """How many bytes the value stored under ``key`` takes as JSON."""
+        return len(json.dumps(self.data[key][1]).encode())
+
+    def close(self):
+        self.restarted.set()
+        self.server.shutdown()
+        self.server.server_close()

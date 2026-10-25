@@ -11,25 +11,11 @@ from email.utils import format_datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-
-    def __init__(self, date):
-        self.headers = {'content-type': 'application/json'}
-        if date:
-            self.headers['Date'] = date
-        self.content = b'{}'
-
-    def json(self):
-        return {}
+from plaid_client.testing import Response, recording_session
 
 
 def _answer(client, date):
-    client.session.request = lambda **kw: _Resp(date)
+    client.session = recording_session([(200, {}, {'Date': date} if date else {})])
 
 
 def test_server_now_reads_the_servers_clock_from_the_last_response():
@@ -52,22 +38,11 @@ def test_a_batchs_answer_notes_the_servers_clock_too():
     client = PlaidClient('http://x', 'tok')
     server = datetime.now(timezone.utc) - timedelta(minutes=10)
 
-    class _BatchResp(_Resp):
-        def __init__(self, ops):
-            super().__init__(format_datetime(server, usegmt=True))
-            self._ops = ops
+    def answer(request):
+        return Response(200, [{'status': 200, 'headers': {}, 'body': {}} for _ in json.loads(request['data'])],
+                        {'Date': format_datetime(server, usegmt=True)})
 
-        def json(self):
-            return [{'status': 200, 'headers': {}, 'body': {}} for _ in self._ops]
-
-    class _Session:
-        def post(self, url, headers=None, data=None, timeout=None):
-            return _BatchResp(json.loads(data))
-
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(answer)
     with client.batched() as b:
         b.spans.update('s1', 'NOUN')
     assert abs((client.server_now() - server).total_seconds()) < 2

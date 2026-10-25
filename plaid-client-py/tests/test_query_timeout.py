@@ -14,29 +14,13 @@ from plaid_client.client import PlaidClient
 from plaid_client.http import (
     DEFAULT_QUERY_TIMEOUT_S, DEFAULT_TIMEOUT_S, PlaidAPIError, query_timeout,
 )
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-    headers = {'content-type': 'application/json'}
-
-    def json(self):
-        return {'results': [], 'columns': [], 'count': 0}
+from plaid_client.testing import Response, recording_session
 
 
 def _sent_timeouts(client, call):
-    seen = []
-
-    class _Session:
-        def request(self, **kw):
-            seen.append(kw.get('timeout'))
-            return _Resp()
-
-    client.session = _Session()
+    client.session = recording_session([{'results': [], 'columns': [], 'count': 0}])
     call(client)
-    return seen
+    return [request.get('timeout') for request in client.session.sent]
 
 
 def test_the_query_timeout_is_longer_than_cores_limit():
@@ -75,24 +59,9 @@ def test_a_query_refused_503_is_not_retried():
     # REV-R4-UD R1: core's full queue of large queries. Asking again at once
     # only joins the same queue.
     client = PlaidClient('http://x', 't')
-    calls = []
-
-    class _Busy(_Resp):
-        ok = False
-        status_code = 503
-        reason = 'Service Unavailable'
-        text = '{"error": "busy"}'
-
-        def json(self):
-            return {'error': 'The server is busy with other large queries.'}
-
-    class _Session:
-        def request(self, **kw):
-            calls.append(kw['url'])
-            return _Busy()
-
-    client.session = _Session()
+    client.session = recording_session([Response(
+        503, {'error': 'The server is busy with other large queries.'}, reason='Service Unavailable')])
     with pytest.raises(PlaidAPIError) as e:
         client.query({'where': []})
     assert e.value.status == 503
-    assert len(calls) == 1
+    assert len(client.session.sent) == 1

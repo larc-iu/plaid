@@ -12,7 +12,7 @@ question twice. The save said "could not be reached.." with two periods.
 
 import pytest
 
-from plaid_client import PlaidAPIError
+from plaid_client import PlaidAPIError, testing
 
 import test_stale_by_sentence as sbs
 from fixtures import FakeClient
@@ -320,25 +320,8 @@ def test_a_new_document_is_written_without_the_held_documents_version():
 
 # --- which changes a plan that stopped partway wrote (Luke's ruling Q4) ------
 
-class _Batch:
-    def __init__(self, sent):
-        self.sent = sent
-
-    def submit(self):
-        self.sent.append(1)
-        return [{}]
-
-
-class _Client:
-    def __init__(self):
-        self.sent = []
-
-    def batch(self):
-        return _Batch(self.sent)
-
-
 def test_a_change_is_written_once_every_batch_holding_it_committed():
-    b = core_plan.TrackingBatcher(_Client())
+    b = core_plan.TrackingBatcher(testing.FakeClient([]))
     ops = [{'_row': 0}, {'_row': 1}, {'_row': 1}, {'_row': 2}]
     b.expect(ops)
     b.add(lambda batch: None)

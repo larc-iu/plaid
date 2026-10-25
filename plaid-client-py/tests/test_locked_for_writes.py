@@ -20,50 +20,29 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient  # noqa: E402
 from plaid_client.service import locked_for_writes  # noqa: E402
-from plaid_client.testing import FakeClient  # noqa: E402
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-
-    def __init__(self, body, headers=None):
-        self._body = body
-        self.headers = {'content-type': 'application/json', **(headers or {})}
-        self.text = json.dumps(body)
-        self.content = self.text.encode()
-
-    def json(self):
-        return self._body
+from plaid_client.testing import FakeClient, recording_session  # noqa: E402
 
 
 def _server(version):
     """A stub session that holds the lock and answers a document read with
-    ``version``, a write by moving the version on. Returns the requests sent."""
+    ``version``, a write by moving the version on. Returns the session and
+    the requests sent, as {'method', 'url'}."""
     sent = []
     state = {'version': version}
 
-    class _Session:
-        def request(self, **kw):
-            method, url = kw.get('method'), kw.get('url', '')
-            sent.append({'method': method, 'url': url})
-            path = urlparse(url).path
-            if path.endswith('/lock'):
-                return _Resp({'lock-id': 'L1', 'expires-at': int(time.time() * 1000) + 60_000}
-                             if method == 'POST' else {})
-            if method == 'GET':
-                return _Resp({'document/id': 'd1', 'document/version': state['version']})
-            state['version'] += 1
-            return _Resp({}, {'X-Document-Versions': json.dumps({'d1': state['version']})})
+    def answer(request):
+        method, url = request['method'], request['url']
+        sent.append({'method': method, 'url': url})
+        path = urlparse(url).path
+        if path.endswith('/lock'):
+            return ({'lock-id': 'L1', 'expires-at': int(time.time() * 1000) + 60_000}
+                    if method == 'POST' else {})
+        if method == 'GET':
+            return {'document/id': 'd1', 'document/version': state['version']}
+        state['version'] += 1
+        return (200, {}, {'X-Document-Versions': json.dumps({'d1': state['version']})})
 
-        def post(self, url, **kw):
-            return self.request(method='POST', url=url, **kw)
-
-        def close(self):
-            pass
-
-    return _Session(), sent
+    return recording_session(answer), sent
 
 
 def _version_of(url):

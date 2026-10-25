@@ -8,33 +8,12 @@ rest with a stale one, which strict mode then refuses.
 import json
 
 from plaid_client.client import PlaidClient
-
-
-class FakeResponse:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-
-    def __init__(self, versions):
-        self.headers = {'content-type': 'application/json',
-                        'X-Document-Versions': json.dumps(versions)}
-        self.text = '{"count": 2}'
-
-    def json(self):
-        return {'count': 2}
-
-
-class FakeSession:
-    def __init__(self, versions):
-        self.versions = versions
-
-    def request(self, **kwargs):
-        return FakeResponse(self.versions)
+from plaid_client.testing import recording_session
 
 
 def make_client(versions):
     client = PlaidClient('http://plaid.test', 'tok')
-    client.session = FakeSession(versions)
+    client.session = recording_session([(200, {'count': 2}, {'X-Document-Versions': json.dumps(versions)})])
     return client
 
 

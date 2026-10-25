@@ -2,89 +2,17 @@
 have changed, and only then: after the client's connection to the server
 dropped and came back (a core restart always drops it, and a restart is the
 only way the limits change), and after a user-data write refused as too large.
-Read against a small fake core over HTTP, whose cap changes across a
-simulated restart. The JS client's twin is test/serverLimitsRefresh.test.js."""
+Read against a small fake core over HTTP (``plaid_client.testing.FakeCore``),
+whose cap changes across a simulated restart. The JS client's twin is test/serverLimitsRefresh.test.js."""
 
-import json
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError
 from plaid_client.service import BaseService
-
-
-class FakeCore:
-    """``/api/v1/info`` answering ``cap``, a project ``/listen`` stream that
-    stays open until :meth:`restart` ends it, and a user-data PUT refused
-    with 413 over ``cap``."""
-
-    def __init__(self, cap):
-        self.cap = cap
-        self.info_reads = 0
-        self.restarted = threading.Event()
-        core = self
-
-        class Handler(BaseHTTPRequestHandler):
-            protocol_version = 'HTTP/1.0'
-
-            def log_message(self, *args):
-                pass
-
-            def _json(self, status, body):
-                data = json.dumps(body).encode()
-                self.send_response(status)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Content-Length', str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-            def do_GET(self):
-                if self.path == '/api/v1/info':
-                    core.info_reads += 1
-                    self._json(200, {'version': 't', 'limits': {'user-data-value-bytes': core.cap}})
-                elif self.path.endswith('/listen'):
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'text/event-stream')
-                    self.end_headers()
-                    try:
-                        self.wfile.write(b'event: connected\ndata: {"client-id": "c"}\n\n')
-                        self.wfile.flush()
-                        while not core.restarted.wait(0.05):
-                            self.wfile.write(b': keepalive\n\n')
-                            self.wfile.flush()
-                    except OSError:
-                        pass
-                else:
-                    self._json(404, {'error': 'not found'})
-
-            def do_PUT(self):
-                n = int(self.headers.get('Content-Length') or 0)
-                self.rfile.read(n)
-                if n > core.cap:
-                    self._json(413, {'error': f'Value exceeds {core.cap} bytes'})
-                else:
-                    self._json(200, {'key': 'k', 'version': 1})
-
-        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-        self.server.daemon_threads = True
-        self.url = f'http://127.0.0.1:{self.server.server_address[1]}'
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-
-    def restart(self, cap):
-        """Every open stream ends, and the core comes back with ``cap``."""
-        self.cap = cap
-        self.restarted.set()
-        time.sleep(0.2)
-        self.restarted.clear()
-
-    def close(self):
-        self.restarted.set()
-        self.server.shutdown()
-        self.server.server_close()
+from plaid_client.testing import FakeCore
 
 
 @pytest.fixture

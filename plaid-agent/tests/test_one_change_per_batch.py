@@ -11,53 +11,39 @@ in a later batch said "0 of N changes written" over nodes that stood.
 
 import pytest
 from plaid_client import PlaidAPIError
+from plaid_client.testing import FakeClient
 
 from plaid_agent.core import plan as core_plan
 
 
-class _Client:
-    def __init__(self):
-        self.sent = []
-
-    def batch(self):
-        client = self
-
-        class _Batch:
-            def __init__(self):
-                self.ops = []
-
-            def ref(self, op, index=None):
-                return {'$ref': op}
-
-            def submit(self):
-                client.sent.append(self.ops)
-                return [{'id': f'id-{len(client.sent)}-{i}'} for i in range(len(self.ops))]
-        return _Batch()
+def _sent(client):
+    """Each batch the client sent, as the span id each of its deletes named."""
+    return [[payload for _, payload in b] for b in client.batches]
 
 
 def test_one_change_goes_in_one_batch_whatever_the_budget():
-    c = _Client()
+    c = FakeClient([])
     b = core_plan.Batcher(c, budget=2)
     with b.writing_for({'kind': 'x'}):
         for k in range(3):
-            b.add(lambda batch, k=k: batch.ops.append(k))
-        assert c.sent == [], 'nothing is sent in the middle of a change'
-    assert c.sent == [[0, 1, 2]], 'the budget is checked once the change ends'
+            b.add(lambda batch, k=k: batch.spans.delete(f'sp{k}'))
+        assert _sent(c) == [], 'nothing is sent in the middle of a change'
+    assert _sent(c) == [['sp0', 'sp1', 'sp2']], 'the budget is checked once the change ends'
     with b.writing_for({'kind': 'x'}):
-        b.add(lambda batch: batch.ops.append('a'))
-    assert c.sent == [[0, 1, 2]]
+        b.add(lambda batch: batch.spans.delete('a'))
+    assert _sent(c) == [['sp0', 'sp1', 'sp2']]
     b.flush()
-    assert c.sent == [[0, 1, 2], ['a']]
+    assert _sent(c) == [['sp0', 'sp1', 'sp2'], ['a']]
 
 
 def test_a_change_past_the_servers_cap_is_cut_there():
-    c = _Client()
+    c = FakeClient([])
     b = core_plan.Batcher(c, budget=2)
     with b.writing_for({'kind': 'x'}):
         for k in range(core_plan.MAX_BATCH_OPS + 1):
-            b.add(lambda batch, k=k: batch.ops.append(k))
+            b.add(lambda batch, k=k: batch.spans.delete(f'sp{k}'))
     b.flush()
-    assert [len(ops) for ops in c.sent] == [core_plan.MAX_BATCH_OPS, 1]
+    assert [len(ops) for ops in _sent(c)] == [core_plan.MAX_BATCH_OPS, 1]
 
 
 def _budget(monkeypatch, n):

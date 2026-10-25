@@ -8,32 +8,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    headers = {'content-type': 'application/json'}
-
-    def __init__(self, body):
-        self._body = body
-
-    def json(self):
-        return self._body
+from plaid_client.testing import recording_session
 
 
 def _client(bodies):
     client = PlaidClient('http://x', 'tok')
-    sent = []
     bodies = iter(bodies)
-
-    class _Session:
-        def request(self, **kw):
-            sent.append(kw)
-            return _Resp(next(bodies))
-
-    client.session = _Session()
-    return client, sent
+    client.session = recording_session(lambda request: next(bodies))
+    return client, client.session.sent
 
 
 def test_list_pages_through_a_projects_events_with_its_filters():

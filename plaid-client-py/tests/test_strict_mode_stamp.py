@@ -16,33 +16,12 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    headers = {}
-    text = '{}'
-    content = b'{}'
-    reason = 'OK'
-
-    def json(self):
-        return {'entries': [], 'next-cursor': None}
+from plaid_client.testing import recording_session
 
 
 def _stub_session(client):
-    sent = []
-
-    class _Session:
-        def request(self, **kw):
-            sent.append({'method': kw.get('method'), 'url': kw.get('url', '')})
-            return _Resp()
-
-        def close(self):
-            pass
-
-    client.session = _Session()
-    return sent
+    client.session = recording_session([{'entries': [], 'next-cursor': None}])
+    return client.session.sent
 
 
 def _strict_client():

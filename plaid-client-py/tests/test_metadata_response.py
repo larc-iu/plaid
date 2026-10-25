@@ -8,27 +8,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
-
-
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-    headers = {'content-type': 'application/json'}
-
-    def json(self):
-        return {'token/id': 'e1', 'token/begin': 0,
-                'metadata': {'kebab-key': 1, 'ns/k': 2}}
+from plaid_client.testing import recording_session
 
 
 def test_every_metadata_write_answers_the_recased_entity():
     client = PlaidClient('http://x', 'tok')
-
-    class _Session:
-        def request(self, **kw):
-            return _Resp()
-
-    client.session = _Session()
+    client.session = recording_session([{'token/id': 'e1', 'token/begin': 0,
+                                         'metadata': {'kebab-key': 1, 'ns/k': 2}}])
     resources = {name: r for name, r in vars(client).items()
                  if callable(getattr(r, 'set_metadata', None))}
     assert len(resources) == 7, 'the seven entity types with metadata'

@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
+from plaid_client.testing import recording_session
 from plaid_client.http import PlaidAPIError
 from plaid_client.services import (cancel_service_request, discard_service,
                                    discover_services, _report_event)
@@ -33,35 +34,10 @@ _STREAM_METHODS = {
 }
 
 
-class _Resp:
-    """Answers anything with an empty paginated envelope, so a probe of a read
-    method runs to completion whatever shape it expects."""
-
-    ok = True
-    status_code = 200
-    headers = {}
-    text = '{}'
-    content = b'{}'
-    reason = 'OK'
-
-    def json(self):
-        return {'entries': [], 'next-cursor': None}
-
-
 def _stub_session(client):
     """Replace the client's HTTP session; return the list its requests land in."""
-    sent = []
-
-    class _Session:
-        def request(self, **kw):
-            sent.append({'method': kw.get('method'), 'url': kw.get('url', '')})
-            return _Resp()
-
-        def close(self):
-            pass
-
-    client.session = _Session()
-    return sent
+    client.session = recording_session([{'entries': [], 'next-cursor': None}])
+    return client.session.sent
 
 
 def test_a_write_made_on_the_client_goes_over_the_wire_while_a_batch_is_open():

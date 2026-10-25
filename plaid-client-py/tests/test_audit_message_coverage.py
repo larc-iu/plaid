@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
+from plaid_client.testing import recording_session
 
 WRITE = {'POST', 'PUT', 'PATCH', 'DELETE'}
 SENT = 'COVPROBE'
@@ -29,31 +30,10 @@ READ_POSTS = {
 }
 
 
-class _Resp:
-    ok = True
-    status_code = 200
-    headers = {}
-    text = ''
-    content = b''
-
-    def json(self):
-        return {}
-
-
 def test_every_write_method_threads_audit_message():
     client = PlaidClient('http://x', 'tok')
+    client.session = recording_session()
     last = {}
-
-    class _Sess:
-        def request(self, **kw):
-            last.clear()
-            last.update(kw)
-            return _Resp()
-
-        def close(self):
-            pass
-
-    client.session = _Sess()
     checked = []
 
     def call(method, **kw):
@@ -63,10 +43,13 @@ def test_every_write_method_threads_audit_message():
                     and p.kind in (p.POSITIONAL_OR_KEYWORD, p.POSITIONAL_ONLY)
                     and p.name != 'self']
         last.clear()
+        sent = len(client.session.sent)
         try:
             method(*(['x'] * len(required)), **kw)
         except Exception:
             return None
+        if len(client.session.sent) > sent:
+            last.update(client.session.sent[-1])
         return last.get('method')
 
     def probe(label, method):

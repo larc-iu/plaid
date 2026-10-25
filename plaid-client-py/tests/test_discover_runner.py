@@ -2,13 +2,13 @@
 caller's requests, recased like every other key (the JS twin is
 plaid-client-js/test/discoverRunner.test.js)."""
 
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
+from plaid_client.testing import recording_session
 
 _BODY = [{
     'service-id': 'igt:assistant',
@@ -22,21 +22,9 @@ _BODY = [{
 }]
 
 
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-    headers = {'content-type': 'application/json'}
-    content = json.dumps(_BODY).encode()
-    text = json.dumps(_BODY)
-
-    def json(self):
-        return json.loads(self.text)
-
-
 def test_discover_services_hands_back_runner_name_run_by_you_and_serves_you():
     client = PlaidClient('http://x', 'tok')
-    client.session.request = lambda **kw: _Resp()
+    client.session = recording_session([(200, _BODY)])
     found = client.messages.discover_services('p1')
     assert found[0]['runner_name'] == 'Ana'
     assert found[0]['run_by_you'] is False

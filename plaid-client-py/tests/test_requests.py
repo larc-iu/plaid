@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import PlaidClient
+from plaid_client.testing import recording_session
 
 FIXTURE = os.path.join(os.path.dirname(__file__), '..', '..', 'plaid-client-js', 'test',
                        'fixtures', 'requests.json')
@@ -49,37 +50,21 @@ def _expand(case):
 EXPANDED = [c for case in CASES for c in _expand(case)]
 
 
-class _Resp:
-    ok = True
-    status_code = 200
-    reason = 'OK'
-    headers = {'content-type': 'application/json'}
-    text = json.dumps({'entries': [], 'next-cursor': None})
-    content = text.encode()
-
-    def json(self):
-        return json.loads(self.text)
-
-
 def _sent(call, kwargs):
     client = PlaidClient('http://example.test', 'tok')
     out = []
 
-    class _Session:
-        def request(self, **kw):
-            url = urlsplit(kw['url'])
-            request = {'method': kw['method'], 'path': url.path}
-            if url.query:
-                request['query'] = dict(parse_qsl(url.query, keep_blank_values=True))
-            if 'data' in kw:
-                request['body'] = json.loads(kw['data'])
-            out.append(request)
-            return _Resp()
+    def answer(kw):
+        url = urlsplit(kw['url'])
+        request = {'method': kw['method'], 'path': url.path}
+        if url.query:
+            request['query'] = dict(parse_qsl(url.query, keep_blank_values=True))
+        if kw['data'] is not None:
+            request['body'] = json.loads(kw['data'])
+        out.append(request)
+        return {'entries': [], 'next-cursor': None}
 
-        def close(self):
-            pass
-
-    client.session = _Session()
+    client.session = recording_session(answer)
     name, *args = call
     bundle, method = name.split('.')
     result = getattr(getattr(client, bundle), method)(*args, **kwargs)
