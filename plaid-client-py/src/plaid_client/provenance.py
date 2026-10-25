@@ -444,8 +444,14 @@ class WriterPolicy:
         there is nothing for this writer to confirm."""
         if not self.reviewable(metadata):
             return None
+        return self.confirm_fragment()
+
+    def confirm_fragment(self):
+        """The fragment this writer's confirm merges over whatever it confirms,
+        read without an entity: :meth:`confirm_stamp` of anything reviewable.
+        For a gesture that confirms many entities with one stamp."""
         if self.is_contributor:
-            return contribute_on_edit(metadata, self.contributor_id)
+            return contribute_on_edit(None, self.contributor_id)
         return {PROV_CONFIRMED_KEY: True}
 
     def adopt_stamp(self, source, detail=None):

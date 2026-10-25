@@ -788,7 +788,7 @@ export const analysisCopyMutations = {
     if (!words.length) return null;
     const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf(words);
     if (!spanIds.length && !tokenIds.length && !linkIds.length) return null;
-    const confirm = this.confirmStamp(stampInferred('any'));
+    const confirm = this.writer.confirmFragment();
     const spanSet = new Set(spanIds);
     const tokenSet = new Set(tokenIds);
     const linkSet = new Set(linkIds);
@@ -871,7 +871,7 @@ export const analysisCopyMutations = {
       return false;
     }
     // One writer, one stamp: what it merges does not depend on the entity.
-    const confirm = this.confirmStamp(stampInferred('any'));
+    const confirm = this.writer.confirmFragment();
     const confirmOps = metadataOps(confirm);
     const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf([token]);
 

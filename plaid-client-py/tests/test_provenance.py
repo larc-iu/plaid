@@ -155,6 +155,17 @@ def test_value_edit_stamp_matches_the_js_client():
 # R5 and REV-PROV-3: provProb is the producer's probability for the value now
 # held, however it was entered, read from the entity's own distribution.
 # Mirrors provenance.test.js row for row.
+def test_confirm_fragment_is_what_confirm_stamp_merges_over_anything_reviewable():
+    v = WriterPolicy(None)
+    assert v.confirm_fragment() == {'provConfirmed': True}
+    assert v.confirm_fragment() == v.confirm_stamp(stamp_inferred('x'))
+    assert v.confirm_fragment() == v.confirm_stamp(CONTRIB)
+    c = WriterPolicy('ann@x.com')
+    assert c.confirm_fragment() == {**CONTRIB, 'provConfirmed': None}
+    assert c.confirm_fragment() == c.confirm_stamp(stamp_inferred('x'))
+
+
+# Mirrors provenance.test.js row for row.
 def test_value_edit_stamp_reads_the_producers_probability_for_the_new_value():
     v = WriterPolicy(None)
     m = stamp_inferred('service:x', prob=0.6, detail={

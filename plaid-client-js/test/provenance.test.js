@@ -235,6 +235,18 @@ test('valueEditStamp: a typed change drops provProb, a pick writes its own, a re
   assert.equal('provDetail' in v.valueEditStamp(machine), false);
 });
 
+// The fragment a confirm writes, read without an entity, is confirmStamp of
+// anything reviewable. Mirrored row for row in test_provenance.py.
+test('confirmFragment is what confirmStamp merges over anything reviewable', () => {
+  const v = writerPolicy(null);
+  assert.deepEqual(v.confirmFragment(), PROV_CONFIRMED);
+  assert.deepEqual(v.confirmFragment(), v.confirmStamp(stampInferred('x')));
+  assert.deepEqual(v.confirmFragment(), v.confirmStamp(CONTRIBUTED));
+  const c = writerPolicy('ann@x.com');
+  assert.deepEqual(c.confirmFragment(), { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(c.confirmFragment(), c.confirmStamp(stampInferred('x')));
+});
+
 // R5 and REV-PROV-3: provProb is the producer's probability for the value now
 // held, however it was entered, read from the entity's own distribution.
 // Mirrored row for row in test_provenance.py.
