@@ -86,15 +86,12 @@ const sendSpan = async (doc, layerId, plan, ids) => {
   if (plan.kind === 'delete') {
     await doc._client.spans.delete(serverId(plan.span.id));
   } else if (plan.kind === 'update') {
-    const id = serverId(plan.span.id);
-    if (plan.fragment) {
-      await doc._client.batched(async (b) => {
-        b.spans.update(id, plan.value);
-        b.spans.patchMetadata(id, metadataOps(plan.fragment));
-      });
-    } else {
-      await doc._client.spans.update(id, plan.value);
-    }
+    await doc._sendValueEdit(
+      'span',
+      serverId(plan.span.id),
+      plan.value,
+      metadataOps(plan.fragment),
+    );
   } else {
     const result = await doc._client.spans.create(
       layerId,
