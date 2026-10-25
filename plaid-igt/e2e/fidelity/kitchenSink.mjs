@@ -847,6 +847,16 @@ async function buildBlacklist(client, name) {
   await must(doc, 'blacklist baseline', doc.saveBaselineText('uno -- dos'));
   doc = await reload(client, setup.projectId, created.id);
   await must(doc, 'blacklist tokenize', doc.tokenize());
+  // The word the rule skips, which Tokenize no longer makes (8ff02fbc5) and
+  // another app's tokenizer does, as plaid-ud's makes punctuation tokens.
+  await client.tokens.bulkCreate([
+    {
+      tokenLayerId: byRole('word').id,
+      text: doc.layerInfo.primaryTextLayer.text.id,
+      begin: 4,
+      end: 6,
+    },
+  ]);
   return setup.projectId;
 }
 
