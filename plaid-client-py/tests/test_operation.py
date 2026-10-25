@@ -673,6 +673,7 @@ def test_begin_operation_takes_every_kind_the_server_takes():
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 _KIND_SOURCES = {
     'js': 'plaid-client-js/src/index.js',
+    'js_types': 'plaid-client-js/src/types.js',
     'python': 'plaid-client-py/src/plaid_client/operations.py',
     'manual': 'plaid-core/docs/manual.adoc',
     'ui': 'plaid-ui/src/lib/auditText.js',
@@ -682,7 +683,7 @@ _KIND_SOURCES = {
 def _kind_lists(texts):
     """Each written list of operation kinds, read out of its file's text."""
     js_array = re.search(r'const OPERATION_KINDS = \[([^\]]*)\]', texts['js']).group(1)
-    js_type = re.search(r'@typedef \{([^}]*)\} OperationKind', texts['js']).group(1)
+    js_type = re.search(r'@typedef \{([^}]*)\} OperationKind', texts['js_types']).group(1)
     py = re.search(r'_OPERATION_KINDS = \(([^)]*)\)', texts['python']).group(1)
     section = texts['manual'].split('=== Kinds of operation', 1)[1]
     table = section.split('|===', 2)[1]
