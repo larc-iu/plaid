@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { appTrees, repoRoot } from '../../test/apps.js';
 
 // Invariants every DataTable call site has to hold, checked against the source
 // rather than by rendering. Both DataTable bugs that reached master were of
@@ -14,26 +14,15 @@ import { fileURLToPath } from 'node:url';
 // "this prop is present at this call site", which is exactly what a reader of
 // the source can see and a renderer cannot.
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-
-// The repo root, found rather than counted: this package is reached through a
-// node_modules symlink, so how many levels up it sits depends on which app's
-// test run this is.
-const repoRoot = () => {
-  let dir = here;
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, 'plaid-igt', 'src'))) return dir;
-    dir = path.dirname(dir);
-  }
-  throw new Error(`No repo root above ${here}`);
-};
 const repo = repoRoot();
 
 // Every app that draws this table, not just the one whose test run this is.
-// The table moved into a shared package, and a call site in EITHER app can
-// break these invariants; a test that read only its own tree would go on
-// passing while the other app grew an unnamed table.
-const APPS = ['plaid-igt/src', 'plaid-ud/src', 'plaid-dict/src'];
+// The table moved into a shared package, and a call site in ANY app can break
+// these invariants, and a test that read only its own tree would go on passing
+// while another app grew an unnamed table. The apps come from the shared
+// roster, so a new app is judged here the day it joins, plus plaid-dict,
+// which is not on the roster but still draws tables.
+const TREES = [...appTrees('src'), 'plaid-dict/src'];
 
 const sources = (dir) =>
   fs.existsSync(dir)
@@ -46,7 +35,7 @@ const sources = (dir) =>
 
 // Every `<DataTable ... />` across the apps, as {file, line, props-text}.
 const callSites = () =>
-  APPS.flatMap((app) => sources(path.join(repo, app))).flatMap((file) => {
+  TREES.flatMap((tree) => sources(path.join(repo, tree))).flatMap((file) => {
     const text = fs.readFileSync(file, 'utf8');
     return [...text.matchAll(/<DataTable\b([\s\S]*?)\/>/g)]
       .filter((m) => !m[1].includes('{...props}'))
@@ -112,7 +101,7 @@ describe('DataTable call sites', () => {
     // most screens declare `columns` outside the JSX entirely, so both would
     // hide from anything simpler.
     const offenders = [];
-    for (const file of APPS.flatMap((app) => sources(path.join(repo, app)))) {
+    for (const file of TREES.flatMap((tree) => sources(path.join(repo, tree)))) {
       const text = fs.readFileSync(file, 'utf8');
       if (!text.includes('<DataTable')) continue;
       for (const block of objectLiterals(text)) {
