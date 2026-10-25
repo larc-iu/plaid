@@ -672,7 +672,7 @@ def test_begin_operation_takes_every_kind_the_server_takes():
 # alone, or to the manual alone, passed everything.
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 _KIND_SOURCES = {
-    'js': 'plaid-client-js/src/index.js',
+    'js': 'plaid-client-js/src/operations.js',
     'js_types': 'plaid-client-js/src/types.js',
     'python': 'plaid-client-py/src/plaid_client/operations.py',
     'manual': 'plaid-core/docs/manual.adoc',

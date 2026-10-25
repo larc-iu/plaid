@@ -2,6 +2,7 @@ import { markReplayed } from "./replayed.js";
 import { transformRequest, transformResponse } from "./transforms.js";
 import { takeRefs } from "./batchRef.js";
 import { uuidv7 } from "./ids.js";
+import { nextIdempotencyKey } from "./operations.js";
 
 // ---------------------------------------------------------------------------
 // Batches: which calls a batch carries, and which go over the wire anyway.
@@ -336,29 +337,6 @@ export async function retryUnknown(
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-}
-
-/**
- * The key for the next keyed request, and the strict-mode stamp it must
- * claim when an earlier run of its operation already sent it. `joins` says
- * whether the request joins the open logical operation.
- * Returns `{ key, pin, record }`: `pin` is undefined when nothing is pinned,
- * and `record(version)` pins what this request claimed, the first time.
- */
-export function nextIdempotencyKey(client, joins) {
-  const frame = joins ? client.operationGroup?.frames.at(-1) : null;
-  const keys = frame?.keys;
-  if (!keys) return { key: uuidv7(), pin: undefined, record: () => {} };
-  const n = frame.count;
-  frame.count += 1;
-  const pinned = keys.stamps.has(n);
-  return {
-    key: `${keys.seed}.${n}`,
-    pin: pinned ? keys.stamps.get(n) : undefined,
-    record: (version) => {
-      if (!pinned) keys.stamps.set(n, version ?? null);
-    },
-  };
 }
 
 /**

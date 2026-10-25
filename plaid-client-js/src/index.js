@@ -12,13 +12,19 @@ import {
   makeHttpError,
   makeNetworkError,
   timeoutSignal,
-  nextIdempotencyKey,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_BATCH_TIMEOUT_MS,
   queryTimeout,
 } from "./http.js";
-import { uuidv4, uuidv7, normalizeUserId } from "./ids.js";
+import { normalizeUserId } from "./ids.js";
 import { constraintsBody } from "./constraints.js";
+import {
+  beginOperation,
+  endOperation,
+  keySeed,
+  nextIdempotencyKey,
+  withOperation,
+} from "./operations.js";
 import {
   csvParam,
   bodyOf,
@@ -176,21 +182,6 @@ async function anonymousRequest(method, baseUrl, path, body, options = {}) {
  * A batch queued past it is submitted as consecutive requests.
  */
 const MAX_BATCH_OPS = 1000;
-
-/**
- * The kinds an operation may say it is (`?group-kind=`), the server's closed
- * list (plaid.sql.operation-group/kinds). An operation of any other kind is
- * refused when it begins, before it writes anything.
- */
-const OPERATION_KINDS = [
-  "assistant-plan",
-  "service-run",
-  "import",
-  "bulk-edit",
-  "guess-adoption",
-  "repair",
-  "review",
-];
 
 /**
  * How long `admin.backup()` waits for the server to finish writing a backup:
@@ -357,17 +348,6 @@ async function sendChunks(
       if (groups[j]) groups[j].written = true;
     }
   }
-}
-
-/**
- * End the key frame `frame` of `group`, wherever it is among the frames open:
- * the frame under it, or the one open over it, numbers from then on. A plain
- * function, so a caller that borrows withOperation onto another object
- * (test doubles do) keeps it.
- */
-function dropFrame(group, frame) {
-  if (!group || !frame || group.frames[0] === frame) return;
-  group.frames = group.frames.filter((f) => f !== frame);
 }
 
 /** The query of an events read: `types` as the wire's comma-separated list. */
@@ -3686,45 +3666,7 @@ class PlaidClient {
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { groupId, kind, ref, keys, minted } = {}) {
-    if (kind != null && !OPERATION_KINDS.includes(String(kind))) {
-      throw new Error(
-        `Unknown operation kind "${kind}". It is one of: ${OPERATION_KINDS.join(", ")}.`,
-      );
-    }
-    const frame = {
-      keys: keys || null,
-      count: 0,
-      // Any iterable of ids (a Set, an array).
-      minted: minted ? new Set(minted) : null,
-      depth: 1,
-    };
-    const open = this.operationGroup;
-    this._openedFrame = null;
-    if (open) {
-      // A nested operation joins the outer one. When it brings its own key
-      // seed or ids (a queued edit run inside a longer operation), it numbers
-      // the keys in a frame of its own until it ends, then the frame under it
-      // numbers again.
-      open.depth += 1;
-      if (keys || minted) {
-        frame.depth = open.depth;
-        open.frames.push(frame);
-        this._openedFrame = frame;
-      }
-      return open.id;
-    }
-    this.operationGroup = {
-      id: groupId ? String(groupId) : uuidv4(),
-      message: message == null ? null : String(message),
-      kind: kind == null ? null : String(kind),
-      ref: ref == null ? null : String(ref),
-      depth: 1,
-      written: false,
-      refined: undefined,
-      frames: [frame],
-    };
-    this._openedFrame = frame;
-    return this.operationGroup.id;
+    return beginOperation(this, message, { groupId, kind, ref, keys, minted });
   }
 
   /**
@@ -3734,7 +3676,7 @@ class PlaidClient {
    * @returns {KeySeed}
    */
   keySeed() {
-    return { seed: uuidv7(), stamps: new Map() };
+    return keySeed();
   }
 
   /**
@@ -3747,29 +3689,7 @@ class PlaidClient {
    * @returns {Promise<void>}
    */
   async endOperation(message) {
-    const group = this.operationGroup;
-    if (!group) return;
-    if (group.depth > 1) {
-      // A frame begun at this depth by hand (beginOperation) ends here. One
-      // begun by withOperation is ended by that call itself (_dropFrame).
-      const top = group.frames.at(-1);
-      if (group.frames.length > 1 && !top.owned && top.depth === group.depth) {
-        group.frames.pop();
-      }
-      group.depth -= 1;
-      return;
-    }
-    this.operationGroup = null;
-    const refined = message !== undefined ? message : group.refined;
-    if (refined !== undefined && group.written) {
-      try {
-        await this.operationGroups.update(group.id, refined);
-      } catch (e) {
-        // 404: the group never materialized server-side (every tagged write
-        // failed or a batch was aborted). Nothing to relabel — not an error.
-        if (e.status !== 404) throw e;
-      }
-    }
+    return endOperation(this, message);
   }
 
   /**
@@ -3793,33 +3713,7 @@ class PlaidClient {
    * @returns {Promise<T>} Whatever `fn` resolves to.
    */
   async withOperation(message, fn, { kind, ref, groupId, keys, minted } = {}) {
-    this.beginOperation(message, { kind, ref, groupId, keys, minted });
-    const group = this.operationGroup;
-    // The key frame this call opened is ended by this call, whatever else
-    // began or ended meanwhile, not by whichever end comes at its depth.
-    const frame = this._openedFrame;
-    if (frame) frame.owned = true;
-    const setMessage = (msg) => {
-      if (group.depth === 1) group.refined = msg;
-    };
-    let result;
-    try {
-      result = await fn(setMessage);
-    } catch (e) {
-      // A relabel the server refuses (a token scoped to projects may not
-      // relabel a group, which names none) must not take the place of the
-      // error `fn` threw: the caller answers for that one.
-      dropFrame(group, frame);
-      try {
-        await this.endOperation();
-      } catch (relabel) {
-        console.warn('The operation was not relabelled:', relabel);
-      }
-      throw e;
-    }
-    dropFrame(group, frame);
-    await this.endOperation();
-    return result;
+    return withOperation(this, message, fn, { kind, ref, groupId, keys, minted });
   }
 
 
