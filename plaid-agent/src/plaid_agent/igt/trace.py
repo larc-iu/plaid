@@ -7,27 +7,34 @@ no line of its own falls back to its name, and ``test_trace.py`` fails if any
 declared tool reaches that fallback.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+from ..core.scope import is_all
 from ..core.trace import META, READ, count, in_doc as _in_one_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
+
+
+def _named(a: Dict[str, Any]) -> List[str]:
+    """The documents a call's ``documents`` names when it gives no
+    ``document``, each once. A name given twice, or in another case, is one
+    document. The turn hands over the documents as resolved (core.agent), so
+    an id and a name of one document are one too."""
+    docs = a.get('documents')
+    if not docs or a.get('document'):
+        return []
+    docs = [docs] if isinstance(docs, str) else list(docs) if isinstance(docs, list) else []
+    named: Dict[str, str] = {}
+    for d in docs:
+        named.setdefault(str(d).strip().casefold(), str(d).strip())
+    return list(named.values())
 
 
 def in_doc(a: Dict[str, Any]) -> str:
     """' in "<document>"', ' in 3 documents' for a read held to several
     (core/scope.py), or nothing when the call was project-wide."""
-    docs = a.get('documents')
-    if docs and not a.get('document'):
-        docs = [docs] if isinstance(docs, str) else list(docs) if isinstance(docs, list) else []
-        # A name given twice, or in another case, is one document to the read.
-        # The turn hands over the documents as resolved (core.agent), so an
-        # id and a name of one document are one too.
-        named: Dict[str, str] = {}
-        for d in docs:
-            named.setdefault(str(d).strip().casefold(), str(d).strip())
-        docs = list(named.values())
-        if docs:
-            return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
+    docs = _named(a)
+    if docs:
+        return f' in {q(docs[0])}' if len(docs) == 1 else f' in {plural(len(docs), "document")}'
     return _in_one_doc(a)
 
 
@@ -118,10 +125,11 @@ def _own(name: str, a: Dict[str, Any]) -> Optional[str]:
     if name == 'confirm':
         what = f' ({a["field"]})' if a.get('field') else ''
         scope = plural(count(a), 'item') if a.get('refs') else 'everything awaiting review'
-        docs = a.get('documents')
-        if docs and not a.get('document'):
-            across = (' across the project' if isinstance(docs, str) or (len(docs) == 1 and str(docs[0]).lower() == 'all')
-                      else f' across {plural(len(docs), "document")}')
+        docs = _named(a)
+        if docs and is_all(a['documents']):
+            across = ' across the project'
+        elif len(docs) > 1:
+            across = f' across {plural(len(docs), "document")}'
         else:
             across = in_doc(a) or (' across the project' if not a.get('refs') else '')
         return f'Planned confirming {scope}{what}{across}'

@@ -19,7 +19,7 @@ from ..core import history, keep, opkind
 from ..core.keep import is_keep
 from ..core.bidi import plain_quote, qv
 from ..core.workspace import name_fold
-from ..core.limits import MAX_SCOPE_DOCS
+from ..core.scope import review_documents
 from ..core.plan import by_document, change_of, confirm_preview, held_changes, labelled
 from ..core.provenance import unmark
 from ..core.refs import read_ref, same_form
@@ -1045,40 +1045,17 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
     refs = _refs(refs)
     if refs and not document:
         raise ToolError('refs need a document', kind='invalid-argument')
-    if isinstance(documents, list) and len(documents) == 1 and str(documents[0]).strip().lower() == 'all':
-        documents = 'all'
-    # Only the WORD "all" means the whole project. The branch below tested the
-    # type alone, so documents="Text 3" staged a review of every document that
-    # had anything waiting, which is the plan the explicit-all ruling exists to
-    # stop being staged by accident. A bare name is one document, as in UD.
-    if isinstance(documents, str) and documents.strip().lower() != 'all':
-        documents = [documents]
     if not document and not documents:
         raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
                         'annotations awaiting review.', kind='invalid-argument')
     if not document:
-        # The documents with reviewable spans or morphemes by query, then
+        # Only the WORD "all" means the whole project (core.scope.is_all). The
+        # documents with reviewable spans or morphemes are found by query, then
         # each is read so links and multi-word expressions count too.
-        if isinstance(documents, str):
-            from .queries import q_review_docs
-            ids = q_review_docs(ws, f)
-            if len(ids) > MAX_SCOPE_DOCS:
-                raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
-                                f'{MAX_SCOPE_DOCS} one plan covers; confirm document by document, or narrow with field.',
-                                kind='too-large')
-            docs = [ws.doc(i) for i in ids]
-        else:
-            # By id, so a list that names one document twice (by name and by
-            # id, or by two spellings of the name) reviews it once.
-            ids = []
-            for d in documents:
-                did = ws.resolve_document_id(str(d))
-                if did not in ids:
-                    ids.append(did)
-            if len(ids) > MAX_SCOPE_DOCS:
-                raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers.',
-                                kind='too-large')
-            docs = [ws.doc(did) for did in ids]
+        from .queries import q_review_docs
+        ids = review_documents(ws, documents, lambda: q_review_docs(ws, f),
+                               'Confirm document by document, or narrow with field.')
+        docs = [ws.doc(i) for i in ids]
         for doc in docs:
             op = _document_confirm_op(ws, doc, f, left)
             if op:

@@ -10,6 +10,7 @@ if any declared tool reaches that fallback.
 import re
 from typing import Any, Dict, List, Optional
 
+from ..core.scope import is_all
 from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
@@ -34,13 +35,18 @@ def in_docs(a: Dict[str, Any]) -> str:
 
 
 def across(a: Dict[str, Any]) -> str:
-    """The documents a review covers when several are named at once."""
+    """The documents a review covers when ``documents`` names them: the
+    one, how many, or every document waiting for "all" (core.scope.is_all,
+    the only word that means the project)."""
     docs = a.get('documents')
     if not docs or a.get('document'):
         return ''
-    if isinstance(docs, str) or (len(docs) == 1 and str(docs[0]).lower() == 'all'):
+    if is_all(docs):
         return ' across every document with something waiting'
-    return f' across {plural(len(_named(docs)), "document")}'
+    named = _named(docs)
+    if len(named) == 1:
+        return f' in {q(named[0])}'
+    return f' across {plural(len(named), "document")}'
 
 
 # What frequency_list ranks, in the plural ("Ranked UPOS tags").

@@ -22,6 +22,7 @@ from ..core.history import doc_label, doc_labels, plain_quote
 from ..core.plan import MANY, by_document, confirm_preview
 from ..core.provenance import unmark
 from ..core.refs import clip, read_ref
+from ..core.scope import review_documents
 from ..core.tools import ToolError, server_refused
 from .plan import (RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_taking)
@@ -835,10 +836,9 @@ def _refs_need_a_document(document, refs) -> None:
 
 def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> List[str]:
     """The document ids a many-document review covers: the ones named, or
-    every document with something waiting when ``documents`` is "all"."""
-    if isinstance(documents, list) and len(documents) == 1 and str(documents[0]).strip().lower() == 'all':
-        documents = 'all'
-    if isinstance(documents, str) and documents.strip().lower() == 'all':
+    every document with something waiting when ``documents`` is "all"
+    (core.scope.is_all)."""
+    def waiting() -> List[str]:
         c = ws.corpus
         stamps = [{'prov': 'inferred'}] + ([{'prov': 'contributed'}] if kind == 'confirm' else [])
         ids: List[str] = []
@@ -856,21 +856,8 @@ def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> 
                         ids.append(did)
         if not ids:
             raise ToolError('Nothing is waiting for review anywhere in the project.', kind='not-found')
-    else:
-        if isinstance(documents, str):
-            documents = [documents]
-        ids = []
-        for d in documents or []:
-            did = ws.resolve_document_id(str(d))
-            if did not in ids:
-                ids.append(did)
-        if not ids:
-            raise ToolError('Name the documents as a list, or "all" for every document with something waiting.',
-                            kind='invalid-argument')
-    if len(ids) > MAX_SCOPE_DOCS:
-        raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers. Go in passes: '
-                        f'worklist lists them by document.', kind='too-large')
-    return ids
+        return ids
+    return review_documents(ws, documents, waiting, 'Go in passes: worklist lists them by document.')
 
 
 def _many(ws: Workspace, documents, field: str, one) -> str:
