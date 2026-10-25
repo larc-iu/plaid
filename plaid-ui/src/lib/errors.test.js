@@ -282,8 +282,9 @@ describe('a write whose answer was lost', () => {
     expect(humanizeError(e, 'Failed to post the comment.')).toBe('Failed to post the comment.');
   });
 
-  // A few reads are POSTs: a query, signing in, looking an invite up. Nothing
-  // can have been saved by them.
+  // A few reads are POSTs: a query, a token count, a layer rule check, the
+  // values a rule would refuse, signing in, looking an invite up. Nothing can
+  // have been saved by them.
   it('is not a read sent as a POST', () => {
     const at = (url, message = 'Network error: Failed to fetch') =>
       Object.assign(new Error(`${message} at ${url}`), { status: 0, method: 'POST', url });
@@ -292,6 +293,15 @@ describe('a write whose answer was lost', () => {
     expect(isUnknownOutcome(at('http://x/api/v1/login', 'Request timed out'))).toBe(false);
     expect(isUnknownOutcome(at('http://x/api/v1/invites/lookup'))).toBe(false);
     expect(signInError(at('http://x/api/v1/login'))).toMatch(/Failed to reach the server/);
+    expect(isUnknownOutcome(at('http://x/api/v1/query/token-counts'))).toBe(false);
+    for (const kind of ['token-layers', 'span-layers', 'relation-layers']) {
+      expect(isUnknownOutcome(at(`http://x/api/v1/${kind}/L1/constraints/check`))).toBe(false);
+    }
+    expect(isUnknownOutcome(at('http://x/api/v1/span-layers/L1/constraints/refused-values'))).toBe(
+      false,
+    );
+    expect(isUnknownOutcome(at('http://x/api/v1/span-layers/L1/constraints/repair'))).toBe(true);
+    expect(isUnknownOutcome(at('http://x/api/v1/span-layers/L1/constraints/igt'))).toBe(true);
     expect(isUnknownOutcome(at('http://x/api/v1/invites/redeem'))).toBe(true);
     expect(isUnknownOutcome(at('http://x/api/v1/query-log'))).toBe(true);
   });

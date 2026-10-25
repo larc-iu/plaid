@@ -125,7 +125,11 @@ class _ConstraintMethods:
         body = {'constraints': constraints}
         if limit is not None:
             body['limit'] = limit
-        return self._request('POST', f'{self._constraints_path(layer_id)}/check', body=body)
+        # out_of_band: a read that travels as a POST (see the note at the top
+        # of http.py), so it goes over the wire from a batch, takes no key and
+        # never joins an open operation.
+        return self._request('POST', f'{self._constraints_path(layer_id)}/check', body=body,
+                             out_of_band=True)
 
     def repair_constraints(self, layer_id: str, constraints: list, audit_message=None,
                            document: str = None) -> Any:
@@ -173,7 +177,9 @@ class _ValueSetMethods:
         body = {k: rule[k] for k in ('values', 'delimiters', 'parts') if rule.get(k) is not None}
         if limit is not None:
             body['limit'] = limit
-        return self._request('POST', f'/api/v1/{self._kind}/{layer_id}/constraints/refused-values', body=body)
+        # out_of_band, as check_constraints.
+        return self._request('POST', f'/api/v1/{self._kind}/{layer_id}/constraints/refused-values', body=body,
+                             out_of_band=True)
 
 
 class _MetadataMethods:

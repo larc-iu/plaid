@@ -109,13 +109,20 @@ def test_a_read_or_a_signal_shaped_like_a_write_goes_over_the_wire_from_a_batch(
     sent = _stub_session(client)
     b = client.batch()
 
-    # None of these is a GET. The first is a read that travels as a POST. The
+    # None of these is a GET. The first six are reads that travel as a POST. The
     # rest are out-of-band signals: shaped like a write, carrying no project
     # data, and worth having only if they happen now. Queued, each would
     # happen when the batch submits, or never if the batch aborts, while its
     # caller read success.
     signals = [
         ('run a query', lambda: b.query({'find': ['?t'], 'where': []})),
+        ('check token layer rules', lambda: b.token_layers.check_constraints('L1', [])),
+        ('check span layer rules', lambda: b.span_layers.check_constraints('L1', [])),
+        ('check relation layer rules', lambda: b.relation_layers.check_constraints('L1', [])),
+        ("list a span layer's refused values",
+         lambda: b.span_layers.refused_values('L1', {'values': ['N']})),
+        ("list a relation layer's refused values",
+         lambda: b.relation_layers.refused_values('L1', {'values': ['N']})),
         ('cancel a service request', lambda: cancel_service_request(b, 'p1', 'r1')),
         ('report a service request event',
          lambda: _report_event(b, 'p1', 'r1', {'status': 'progress'})),

@@ -69,6 +69,23 @@ def test_signals_uploads_and_minted_secrets_carry_none():
     assert [r['key'] for r in requests] == [None] * 5
 
 
+def test_a_read_sent_as_a_post_carries_none_inside_an_operation_too():
+    client = PlaidClient('http://x', 'tok', **FAST)
+    requests = _stub_server(client, lambda r, n: Response(
+        200, {'violations': [], 'violation-count': 0, 'count': 0, 'values': []}))
+    with client.operation('Set up'):
+        client.token_layers.check_constraints('L', [])
+        client.span_layers.check_constraints('L', [])
+        client.relation_layers.check_constraints('L', [])
+        client.span_layers.refused_values('L', {'values': ['N']})
+        client.relation_layers.refused_values('L', {'values': ['N']})
+        client.spans.update('s', 'V')
+    assert [r['key'] for r in requests[:5]] == [None] * 5
+    assert all('group-id=' not in r['url'] for r in requests[:5])
+    assert requests[5]['key'], 'the write after them still carries one'
+    assert 'group-id=' in requests[5]['url']
+
+
 def test_a_queued_op_has_no_key_of_its_own_its_batch_request_has_one():
     client = PlaidClient('http://x', 'tok', **FAST)
     requests = _stub_server(client, lambda r, n: Response(

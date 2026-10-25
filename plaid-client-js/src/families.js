@@ -329,8 +329,12 @@ export function constraintMethods(client, kind) {
      * @param {{limit?: number}} [options] - `limit`: how many violations to list (default 100)
      * @returns {Promise<{violations: ConstraintViolation[], violationCount: number}>}
      */
+    // outOfBand: a read that travels as a POST (see the note at the top of
+    // http.js), so it goes over the wire from a batch, takes no key and never
+    // joins an open operation.
     checkConstraints: (layerId, constraints, options) =>
       client._request("POST", `${base(layerId)}/check`, {
+        outOfBand: true,
         body: {
           constraints,
           ...(options?.limit != null ? { limit: options.limit } : {}),
@@ -377,8 +381,10 @@ export function valueSetMethods(client, kind) {
      *   (default 20, at most 100)
      * @returns {Promise<RefusedValues>}
      */
+    // outOfBand, as checkConstraints.
     refusedValues: (layerId, rule, options) =>
       client._request("POST", `/api/v1/${kind}/${layerId}/constraints/refused-values`, {
+        outOfBand: true,
         body: bodyOf({
           values: rule?.values,
           delimiters: rule?.delimiters,

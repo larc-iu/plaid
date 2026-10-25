@@ -52,9 +52,11 @@ export const isUnreachable = (error) => {
 // and when the server stored the write and then dropped the connection, and
 // nothing in the answer tells the two apart.
 //
-// A few reads go as a POST (a query, signing in, looking an invite up), and
-// saved nothing either way.
-const READ_POSTS = /\/api\/v1\/(query|login|invites\/lookup)(?:[?#]|$)/;
+// A few reads go as a POST (a query, a token count, a layer rule check, the
+// values a rule would refuse, signing in, looking an invite up), and saved
+// nothing either way.
+const READ_POSTS =
+  /\/api\/v1\/(query|query\/token-counts|login|invites\/lookup|(?:token|span|relation)-layers\/[^/?#]+\/constraints\/(?:check|refused-values))(?:[?#]|$)/;
 
 export const isUnknownOutcome = (error) => {
   const method = String((error && error.method) || '').toUpperCase();

@@ -2,7 +2,8 @@
 compare-and-set's ``expected``, ``violations_of``, and the fake's methods.
 The server's side is plaid-core's layer-constraints-test, the JS side
 ``plaid-client-js/test/constraints.test.js``. Network-free: a batch queues
-the op exactly as it would go out."""
+a write exactly as it would go out, and a read sent as a POST goes to a
+recording session."""
 
 import json
 import os
@@ -14,7 +15,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import PlaidAPIError, PlaidClient, value_set_allows, violation_count_of, violations_of
-from plaid_client.testing import FakeClient
+from plaid_client.testing import FakeClient, recording_session
 
 BUNDLES = {'token_layers': 'token-layers', 'span_layers': 'span-layers', 'relation_layers': 'relation-layers'}
 
@@ -26,6 +27,22 @@ def _queued(fn):
     ops = [dict(op) for op in b.operations]
     b.abort()
     return ops
+
+
+def _sent(fn):
+    """The requests ``fn(client)`` sent over the wire, as method, path (with
+    its query) and body."""
+    from urllib.parse import urlsplit
+    client = PlaidClient('http://x', 'tok')
+    client.session = recording_session()
+    fn(client)
+    out = []
+    for r in client.session.sent:
+        url = urlsplit(r['url'])
+        body = json.loads(r['data']) if isinstance(r['data'], str) else r['json']
+        out.append({'method': r['method'],
+                    'path': url.path + (f'?{url.query}' if url.query else ''), 'body': body})
+    return out
 
 
 @pytest.mark.parametrize('bundle,kind', BUNDLES.items())
@@ -58,9 +75,11 @@ def test_delete_constraints_sends_expected_only_when_given(bundle):
 
 @pytest.mark.parametrize('bundle,kind', BUNDLES.items())
 def test_check_and_repair_post_the_list(bundle, kind):
-    check, repair = _queued(lambda b: (
-        getattr(b, bundle).check_constraints('L1', [{'type': 'value-set', 'values': ['N', 'V']}]),
-        getattr(b, bundle).repair_constraints('L1', [{'type': 'same-ancestor', 'token_layer': 'S'}])))
+    [check] = _sent(lambda c: getattr(c, bundle).check_constraints(
+        'L1', [{'type': 'value-set', 'values': ['N', 'V']}]))
+    [repair] = _queued(lambda b: getattr(b, bundle).repair_constraints(
+        'L1', [{'type': 'same-ancestor', 'token_layer': 'S'}]))
+    assert check['method'] == 'POST'
     assert check['path'].startswith(f'/api/v1/{kind}/L1/constraints/check')
     assert check['body'] == {'constraints': [{'type': 'value-set', 'values': ['N', 'V']}]}
     assert repair['path'].startswith(f'/api/v1/{kind}/L1/constraints/repair')
@@ -69,7 +88,7 @@ def test_check_and_repair_post_the_list(bundle, kind):
 
 @pytest.mark.parametrize('bundle', BUNDLES)
 def test_check_sends_a_limit_when_given_one(bundle):
-    [check] = _queued(lambda b: getattr(b, bundle).check_constraints(
+    [check] = _sent(lambda c: getattr(c, bundle).check_constraints(
         'L1', [{'type': 'single-span'}], limit=250))
     assert check['body'] == {'constraints': [{'type': 'single-span'}], 'limit': 250}
 

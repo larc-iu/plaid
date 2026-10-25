@@ -90,6 +90,34 @@ test("signals, uploads and minted secrets carry none", async () => {
   );
 });
 
+test("a read sent as a POST carries none, inside an operation too", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer(() =>
+    response(200, { violations: [], violationCount: 0, count: 0, values: [] }),
+  );
+  try {
+    await client.withOperation("Set up", async () => {
+      await client.tokenLayers.checkConstraints("L", []);
+      await client.spanLayers.checkConstraints("L", []);
+      await client.relationLayers.checkConstraints("L", []);
+      await client.spanLayers.refusedValues("L", { values: ["N"] });
+      await client.relationLayers.refusedValues("L", { values: ["N"] });
+      await client.spans.update("s", "V");
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    requests.slice(0, 5).map((r) => r.key),
+    [undefined, undefined, undefined, undefined, undefined],
+  );
+  assert.ok(requests[5].key, "the write after them still carries one");
+  assert.ok(requests[5].url.includes("group-id="), requests[5].url);
+  for (const r of requests.slice(0, 5)) {
+    assert.ok(!r.url.includes("group-id="), r.url);
+  }
+});
+
 test("a queued op has no key of its own, its batch request has one", async () => {
   const client = new PlaidClient("http://x", "tok", fast);
   const { requests, restore } = stubServer((r) =>

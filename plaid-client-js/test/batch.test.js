@@ -127,13 +127,18 @@ test("a read or a signal shaped like a write goes over the wire from a batch", a
   stubFetch(sent);
   const b = client.batch();
 
-  // None of these is a GET. The first is a read that travels as a POST. The
+  // None of these is a GET. The first six are reads that travel as a POST. The
   // rest are out-of-band signals: shaped like a write, carrying no project
   // data, and worth having only if they happen now. Queued, each would happen
   // when the batch submits, or never if the batch aborts, while its caller
   // read success.
   const signals = [
     ["run a query", () => b.query({ find: ["?t"], where: [] })],
+    ["check token layer rules", () => b.tokenLayers.checkConstraints("L1", [])],
+    ["check span layer rules", () => b.spanLayers.checkConstraints("L1", [])],
+    ["check relation layer rules", () => b.relationLayers.checkConstraints("L1", [])],
+    ["list a span layer's refused values", () => b.spanLayers.refusedValues("L1", { values: ["N"] })],
+    ["list a relation layer's refused values", () => b.relationLayers.refusedValues("L1", { values: ["N"] })],
     ["cancel a service request", () => cancelServiceRequest(b, "p1", "r1")],
     [
       "report a service request event",

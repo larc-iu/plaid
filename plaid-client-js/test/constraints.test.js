@@ -1,6 +1,7 @@
 // Layer constraint writes: paths, bodies and kebab keys on the wire, the
-// compare-and-set's `expected`, and violationsOf. The server's side is
-// plaid-core's layer-constraints-test.
+// compare-and-set's `expected`, and violationsOf. A write is read off a
+// batch's queue, a read that travels as a POST off the wire. The server's
+// side is plaid-core's layer-constraints-test.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,6 +15,31 @@ function queued(fn) {
   const ops = b.operations.map((op) => ({ ...op }));
   b.abort();
   return ops;
+}
+
+// What `fn(client)` sent over the wire, as method, path (with its query) and
+// body: the reads that travel as a POST never queue.
+async function sent(fn) {
+  const client = new PlaidClient("http://x", "tok");
+  const requests = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = new URL(String(url));
+    requests.push({ method: opts.method, path: u.pathname + u.search, body: opts.body ? JSON.parse(opts.body) : undefined });
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === "content-type" ? "application/json" : null) },
+      json: async () => ({}),
+      text: async () => "{}",
+    };
+  };
+  try {
+    await fn(client);
+  } finally {
+    globalThis.fetch = real;
+  }
+  return requests;
 }
 
 const BUNDLES = { tokenLayers: "token-layers", spanLayers: "span-layers", relationLayers: "relation-layers" };
@@ -47,21 +73,22 @@ for (const [bundle, kind] of Object.entries(BUNDLES)) {
     assert.deepEqual(cas.body, { expected: [{ type: "coextensive" }] });
   });
 
-  test(`${bundle}.checkConstraints and repairConstraints post the list`, () => {
-    const [check, repair] = queued((b) => {
-      b[bundle].checkConstraints("L1", [{ type: "value-set", values: ["N", "V"], parts: "all" }]);
+  test(`${bundle}.checkConstraints and repairConstraints post the list`, async () => {
+    const [check] = await sent((c) =>
+      c[bundle].checkConstraints("L1", [{ type: "value-set", values: ["N", "V"], parts: "all" }]),
+    );
+    const [repair] = queued((b) => {
       b[bundle].repairConstraints("L1", [{ type: "sameAncestor", tokenLayer: "S" }]);
     });
+    assert.equal(check.method, "POST");
     assert.ok(check.path.startsWith(`/api/v1/${kind}/L1/constraints/check`));
     assert.deepEqual(check.body, { constraints: [{ type: "value-set", values: ["N", "V"], parts: "all" }] });
     assert.ok(repair.path.startsWith(`/api/v1/${kind}/L1/constraints/repair`));
     assert.deepEqual(repair.body.constraints[0]["token-layer"], "S");
   });
 
-  test(`${bundle}.checkConstraints sends a limit when given one`, () => {
-    const [check] = queued((b) => {
-      b[bundle].checkConstraints("L1", [{ type: "single-span" }], { limit: 250 });
-    });
+  test(`${bundle}.checkConstraints sends a limit when given one`, async () => {
+    const [check] = await sent((c) => c[bundle].checkConstraints("L1", [{ type: "single-span" }], { limit: 250 }));
     assert.deepEqual(check.body, { constraints: [{ type: "single-span" }], limit: 250 });
   });
 }
@@ -129,15 +156,15 @@ test("valueSetAllows reads a value as the server does, trimming what trim() trim
 });
 
 for (const [bundle, kind] of [["spanLayers", "span-layers"], ["relationLayers", "relation-layers"]]) {
-  test(`${bundle}.refusedValues posts the rule and the limit, values as given`, () => {
-    const [op] = queued((b) =>
-      b[bundle].refusedValues("L1", { values: ["snake_case", "1SG"], delimiters: ".", parts: "all" }, { limit: 5 }),
+  test(`${bundle}.refusedValues posts the rule and the limit, values as given`, async () => {
+    const [op] = await sent((c) =>
+      c[bundle].refusedValues("L1", { values: ["snake_case", "1SG"], delimiters: ".", parts: "all" }, { limit: 5 }),
     );
     assert.equal(op.method, "POST");
     assert.ok(op.path.startsWith(`/api/v1/${kind}/L1/constraints/refused-values`), op.path);
     assert.ok(!op.path.includes("audit-message"), op.path);
     assert.deepEqual(op.body, { values: ["snake_case", "1SG"], delimiters: ".", parts: "all", limit: 5 });
-    const [plain] = queued((b) => b[bundle].refusedValues("L1", { values: ["N"] }));
+    const [plain] = await sent((c) => c[bundle].refusedValues("L1", { values: ["N"] }));
     assert.deepEqual(plain.body, { values: ["N"] });
   });
 }
