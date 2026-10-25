@@ -1,4 +1,7 @@
-{plaid.algos.plain-edits-oracle-test 502828,
+{plaid.algos.plain-edits-edge-oracle-test 66043,
+ plaid.algos.plain-edits-oracle 0,
+ plaid.algos.plain-edits-oracle-test 301571,
+ plaid.algos.plain-edits-paste-oracle-test 135214,
  plaid.algos.plain-edits-test 13117,
  plaid.algos.row-follow-oracle-test 7328,
  plaid.algos.text-edits-test 187,
