@@ -16,6 +16,8 @@
 // from. A UMR-only entries screen would have meant a second copy of this
 // editor, its list and its sense tree.
 
+import { NOT_IN_UMR_CONCEPT, isUmrProject } from '../../../plaid-ui/src/domain/umrProject.js';
+
 const UMR_NAMESPACE = 'umr';
 
 /** The `umr` object of an entry's metadata, always an object. */
@@ -30,15 +32,10 @@ export const readRoleset = (metadata) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-// What a UMR concept cannot hold, as plaid-umr's `conceptProblem`
-// (`src/domain/format/penman.js`) has it: the characters PENMAN cannot carry
-// in a concept. plaid-umr's `test/pickers.test.js` holds the two together.
-const NOT_IN_ROLESET = /[\s():#"]/u;
-
 /** Why `name` cannot be a roleset, or null when it can. */
 export const rolesetProblem = (name) => {
   const text = String(name ?? '').trim();
-  return NOT_IN_ROLESET.test(text)
+  return NOT_IN_UMR_CONCEPT.test(text)
     ? `A roleset cannot hold spaces, brackets, colons, quotes or #: ${text}`
     : null;
 };
@@ -145,19 +142,11 @@ export const writeUmr = (fields, { roleset, args }) => {
 };
 
 /**
- * Is this vocabulary linked to a project set up for UMR? A UMR project is
- * known by its LAYERS: `createUmrProject` flags the node token layer
- * `config.umr.nodes` and writes no project-level config at all, so a project
- * that has never had a language or a gloss-line mapping set still counts.
- *
- * `projects.list()` carries each project's vocabs and its layer tree, so this
- * asks the call the screen already makes.
+ * Is this vocabulary linked to a project set up for UMR (`isUmrProject`, which
+ * knows a UMR project by its layers)? `projects.list()` carries each project's
+ * vocabs and its layer tree, so this asks the call the screen already makes.
  */
 export const linksUmrProject = (projects, vocabularyId) =>
   (projects || []).some(
-    (p) =>
-      (p?.vocabs || []).some((v) => v?.id === vocabularyId) &&
-      (p?.textLayers || []).some((tl) =>
-        (tl?.tokenLayers || []).some((t) => t?.config?.[UMR_NAMESPACE]?.nodes === true),
-      ),
+    (p) => (p?.vocabs || []).some((v) => v?.id === vocabularyId) && isUmrProject(p),
   );

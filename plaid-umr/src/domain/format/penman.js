@@ -13,6 +13,7 @@
 // silent atom.
 
 import { CYCLE_ROLES } from './inventory.js';
+import { NOT_IN_UMR_CONCEPT } from '../../../../plaid-ui/src/domain/umrProject.js';
 
 /**
  * `text` in Unicode NFC, which the format requires of the whole file
@@ -35,11 +36,9 @@ const TIME = /^[0-9]+:[0-9]+(?![^\s()#])/;
 // starts a string. Written anyway, `10:30` read back as `10` and `C#` as `C`
 // with no error. The picker offers a word's form as its concept, and forms
 // hold all of these.
-const NOT_IN_CONCEPT = /[\s():#"]/u;
-
 /** Why `concept` cannot be written, or null when it can. */
 export const conceptProblem = (concept) =>
-  NOT_IN_CONCEPT.test(concept)
+  NOT_IN_UMR_CONCEPT.test(concept)
     ? `A concept cannot hold spaces, brackets, colons, quotes or #: ${concept}`
     : null;
 
@@ -83,7 +82,7 @@ export const attrValueProblem = (value) => {
   }
   if (text.includes('"')) return `A value holds a quote only around the whole of it: ${text}`;
   if (TIME.exec(text)?.[0] === text) return null;
-  if (NOT_IN_CONCEPT.test(text)) {
+  if (NOT_IN_UMR_CONCEPT.test(text)) {
     return `A value cannot hold spaces, brackets, colons or #, unless it is quoted: ${text}`;
   }
   // Read back as a reference to a node, not as the value.
@@ -105,7 +104,7 @@ export const variableFormProblem = (variable) => {
   const text = typeof variable === 'string' ? variable : '';
   if (!text) return 'A node needs a variable.';
   const front = VARIABLE_PREFIX.exec(text)?.[0];
-  return NOT_IN_CONCEPT.test(text) || text.includes('/') || (front && front !== text)
+  return NOT_IN_UMR_CONCEPT.test(text) || text.includes('/') || (front && front !== text)
     ? `A variable cannot be written as it is: ${text}`
     : null;
 };

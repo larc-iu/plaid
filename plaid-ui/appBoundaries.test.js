@@ -35,11 +35,6 @@ const ALLOWED = [
     why: 'the UMR and IGT live round trip drives igt’s importers, setup and exports',
   },
   {
-    from: 'plaid-umr/test/pickers.test.js',
-    to: ['plaid-igt/src/domain/vocabUmr.js'],
-    why: 'holds igt’s copy of the concept characters to umr’s until A2-4 moves them into plaid-ui',
-  },
-  {
     from: 'plaid-ui/tailwindPreset.test.js',
     to: ['plaid-igt/tailwind.config.js', 'plaid-ud/tailwind.config.js'],
     why: 'the shared preset is checked in each app’s resolved config',

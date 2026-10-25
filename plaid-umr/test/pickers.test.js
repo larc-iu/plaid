@@ -13,7 +13,7 @@ import {
   docRelationOptions,
   readAttrLine,
 } from '../src/components/editor/annotation/pickers.js';
-import { rolesetProblem } from '../../plaid-igt/src/domain/vocabUmr.js';
+import { NOT_IN_UMR_CONCEPT } from '../../plaid-ui/src/domain/umrProject.js';
 
 const lex = buildLexicon([
   {
@@ -52,9 +52,9 @@ test('the concept picker offers no entry whose concept a graph cannot hold', () 
   );
 });
 
-// igt, where a roleset is written, refuses what a UMR graph cannot hold. It
-// cannot import this app's rule, so it keeps its own, held to this one here.
-test("igt's roleset rule is UMR's concept rule", () => {
+// A concept is refused for exactly the characters of the shared class, which
+// is also what refuses a roleset where a vocabulary entry is written.
+test('the concept rule is the shared concept class', () => {
   const samples = [
     'leave-02',
     'look after-01',
@@ -69,7 +69,7 @@ test("igt's roleset rule is UMR's concept rule", () => {
     'have-91',
   ];
   for (const s of samples) {
-    assert.equal(!!rolesetProblem(s), !!conceptProblem(s.trim()), s);
+    assert.equal(NOT_IN_UMR_CONCEPT.test(s.trim()), !!conceptProblem(s.trim()), s);
   }
 });
 

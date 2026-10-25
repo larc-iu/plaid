@@ -25,3 +25,9 @@ export const isUmrProject = (project) => {
   }
   return false;
 };
+
+// What a UMR concept cannot hold: the characters PENMAN cannot carry in a
+// concept. plaid-umr's `conceptProblem` refuses a concept by it, and
+// plaid-igt's `rolesetProblem` a roleset written on a vocabulary entry, since
+// a roleset becomes a concept on the canvas.
+export const NOT_IN_UMR_CONCEPT = /[\s():#"]/u;
