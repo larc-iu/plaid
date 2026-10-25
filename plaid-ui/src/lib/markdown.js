@@ -15,6 +15,7 @@
 
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { htmlText } from './html.js';
 
 // The allowlist IS the dialect: one place to look when asking "does X work in
 // Markdown here". Deliberately generous about structure (GFM tables, headings,
@@ -202,9 +203,6 @@ export function markdownToSafeHtml(text, { quotedForms = false } = {}) {
   } catch (err) {
     console.error('Failed to render Markdown:', err);
     // Escape, so a failure cannot turn into the injection this exists to stop.
-    return source.replace(
-      /[&<>"']/g,
-      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-    );
+    return htmlText(source);
   }
 }

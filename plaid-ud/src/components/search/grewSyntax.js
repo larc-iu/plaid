@@ -6,6 +6,8 @@
 // The colors are named once in src/index.css, as the `--grew-*` variables, so
 // the palette is in one place and the highlighter stays a pure string function.
 
+import { htmlText } from '../../../../plaid-ui/src/lib/html.js';
+
 const COLORS = {
   keyword: 'var(--grew-keyword)',
   global: 'var(--grew-global)',
@@ -34,8 +36,6 @@ const SPEC = [
   ['plain', /[\s\S]/y], // any single leftover char
 ];
 
-const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 export function highlightGrew(code) {
   let out = '';
   let i = 0;
@@ -45,7 +45,7 @@ export function highlightGrew(code) {
       re.lastIndex = i;
       const m = re.exec(code);
       if (!m || m.index !== i) continue;
-      const text = escapeHtml(m[0]);
+      const text = htmlText(m[0]);
       if (cls === 'plain') {
         out += text;
       } else {
@@ -58,7 +58,7 @@ export function highlightGrew(code) {
       break;
     }
     if (!matched) {
-      out += escapeHtml(code[i]);
+      out += htmlText(code[i]);
       i += 1;
     } // safety net
   }

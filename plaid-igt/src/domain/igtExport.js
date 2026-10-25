@@ -22,6 +22,7 @@ import { canNameWord, joinMorphemes } from './affixMarkers.js';
 import { boundByPieces, glossSmallCaps } from './tagsets.js';
 import { isTexSpecial, texEscape, texLine } from './tex.js';
 import { displayWidth, padToWidth } from '../../../plaid-ui/src/lib/displayWidth.js';
+import { htmlText } from '../../../plaid-ui/src/lib/html.js';
 import { tsvCell } from '../export/vocabTsv.js';
 import { translationFieldOf } from './sentenceRole.js';
 
@@ -288,12 +289,6 @@ export function formatExpex(sentence, fields) {
 }
 
 // ---- HTML (leipzig.js) ------------------------------------------------------
-const htmlEscape = (s) =>
-  String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
 // leipzig.js: <div data-gloss> with one <p> per aligned line + a final <p>
 // for the free translation. leipzig.js splits a line into words with
 // /{(.*?)}|([^\s]+)/g, so a blank cell is `{}` and a cell holding whitespace
@@ -302,10 +297,10 @@ const htmlEscape = (s) =>
 // holding one still breaks the alignment ("{x" and "y}" side by side read as
 // one word, a cell "{y}" loses its braces). Left so (REV-R4-IGT E2).
 export function formatLeipzig(sentence, fields) {
-  const cell = (s) => (s === '' || /\s/.test(s) ? `{${htmlEscape(s)}}` : htmlEscape(s));
+  const cell = (s) => (s === '' || /\s/.test(s) ? `{${htmlText(s)}}` : htmlText(s));
   const lines = tiers(sentence, fields).map((l) => `  <p>${l.cells.map(cell).join(' ')}</p>`);
   const tr = freeTranslation(sentence, fields);
-  if (tr) lines.push(`  <p>‘${htmlEscape(tr)}’</p>`);
+  if (tr) lines.push(`  <p>‘${htmlText(tr)}’</p>`);
   return ['<div data-gloss>', ...lines, '</div>'].join('\n');
 }
 

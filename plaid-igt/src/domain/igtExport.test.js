@@ -170,6 +170,15 @@ describe('formatLeipzig', () => {
     expect(out).toContain('<p>{a &lt;b&gt; &amp; c}</p>');
   });
 
+  it('escapes both quotes, as every HTML writer here does', () => {
+    const s = {
+      annotations: {},
+      tokens: [{ content: 'x', annotations: { POS: span(`"a'b"`) }, morphemes: [] }],
+    };
+    const out = formatLeipzig(s, { morphFields: [], wordFields: ['POS'], sentFields: [] });
+    expect(out).toContain('<p>&quot;a&#39;b&quot;</p>');
+  });
+
   // HUNT-igt R2: leipzig.js splits a line with /{(.*?)}|([^\s]+)/g, and \s
   // matches U+00A0, so a blank cell written as NBSP vanished and an NBSP-joined
   // cell split in two, shifting the rest of the line left.
