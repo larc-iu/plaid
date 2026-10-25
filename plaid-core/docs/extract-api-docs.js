@@ -774,7 +774,11 @@ results = b.results</code></pre>
 // Main execution
 function main() {
   const jsClientPath = path.join(__dirname, '..', '..', 'plaid-client-js', 'src', 'index.js');
-  const pyClientPath = path.join(__dirname, '..', '..', 'plaid-client-py', 'src', 'plaid_client', 'client.py');
+  // The resources and the client are in client.py, the client's operations
+  // and the batch object in classes of their own modules: each of those is
+  // read from its class on, past the module's helper functions.
+  const pyClientDir = path.join(__dirname, '..', '..', 'plaid-client-py', 'src', 'plaid_client');
+  const pySources = [['client.py', null], ['operations.py', 'class _OperationContext:'], ['batch.py', 'class PlaidBatch:']];
   // In CI the site root is at the repo root; locally it's under plaid-core/
   const repoRoot = path.join(__dirname, '..', '..');
   const outputDir = fs.existsSync(path.join(repoRoot, '_site'))
@@ -794,7 +798,12 @@ function main() {
   fs.writeFileSync(path.join(outputDir, 'api-js.html'), jsHTML);
 
   // Process Python client
-  const pyContent = fs.readFileSync(pyClientPath, 'utf8');
+  const pyContent = pySources
+    .map(([file, from]) => {
+      const text = fs.readFileSync(path.join(pyClientDir, file), 'utf8');
+      return from ? text.slice(text.indexOf(from)) : text;
+    })
+    .join('\n');
   const pyMethods = parsePythonDoc(pyContent);
   const pyBundles = groupByBundle(pyMethods, true);
   const pyHTML = generateHTML('Python API', pyBundles, 'py');
