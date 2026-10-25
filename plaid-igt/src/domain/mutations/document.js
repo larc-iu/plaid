@@ -24,7 +24,6 @@ import { pendingId } from '@ui/domain/pendingIds.js';
 import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
-import { edgesAfterGaps } from '../textEdits.js';
 import { readTokenizeNewText } from '../igtConfig.js';
 import { underKeys } from './alignment.js';
 import { VAD_METADATA_KEY } from '../media/speechDetectionKey.js';
@@ -292,12 +291,10 @@ export const documentMutations = {
       await underKeys(this._client, plan.keys, async () => {
         if (batched) {
           // The tokens after it are stamped with the version from before the
-          // batch, so the edit is stamped too, and checked first.
+          // batch, so the edit is stamped too, and checked first. The text
+          // holds no token, so the server stores the body composed whole.
           const info = this.layerInfo;
-          const body = composeText(
-            applyTextOps(plan.base, ops),
-            edgesAfterGaps(info.primaryTextLayer?.tokenLayers, plan.gaps),
-          ).text;
+          const body = composeText(applyTextOps(plan.base, ops)).text;
           await this._client.batched(async (b) => {
             b.texts.edit(textId, ops, undefined, {
               base: plan.digest,
@@ -360,7 +357,11 @@ export const documentMutations = {
   // plaid-ui's planOn, the rule ud's Text Editor plans by too: its gaps moved
   // onto the stored body (a conflict throws), its digest (a text with none
   // is read once more, then refused), and new keys. And whether the text
-  // needs its first sentences. False when the gaps change nothing.
+  // needs its first sentences in the edit's batch: only when it holds no
+  // token at all. With tokens, where the server's rule leaves their edges
+  // decides which characters it composes, so the body it stores is known only
+  // from its answer, and the sentences are seeded after it
+  // (`_saveBaselineEdit`). False when the gaps change nothing.
   async _planBaselineEdit(plan, stored) {
     const ready = await planOn(plan, stored, {
       read: () => this._readStoredText(),
@@ -370,7 +371,7 @@ export const documentMutations = {
     });
     plan.seed =
       cpLength(applyTextOps(plan.base, gapsToOps(plan.gaps))) > 0 &&
-      (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
+      (this.layerInfo.primaryTextLayer?.tokenLayers || []).every((l) => !l.tokens?.length);
     return ready;
   },
 

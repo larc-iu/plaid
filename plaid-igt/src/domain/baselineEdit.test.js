@@ -170,6 +170,33 @@ describe('editBaselineText', () => {
     expect(doc.body).toBe('one\ntwo');
   });
 
+  // Which token takes a typed mark, and so whether the server composes it
+  // with the letter before, is the server's rule to say: here the segment
+  // takes it and the server stores "ká", one character shorter than typed.
+  it('seeds the first sentences on the body the server stored when the text holds other tokens', async () => {
+    const segment = { id: 'a-1', text: 'text-1', begin: 0, end: 2 };
+    const textless = (body, sentences = []) =>
+      withDigest(
+        buildRawDoc({ body, sentences, words: [], morphemes: [], alignmentTokens: [segment] }),
+        'd0',
+      );
+    const client = makeFakeClient({ reloadDoc: textless('ká') });
+    client.texts.edit = async (id, ops, auditMessage, options) => {
+      client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });
+      return {
+        id,
+        body: 'ká',
+        digest: 'd1',
+        reshape: { tokens: [segment], spans: [], vocabLinks: [], deleted: {} },
+      };
+    };
+    const doc = makeDoc({ raw: textless('ka.'), client });
+    const gaps = [{ start: 2, end: 3, value: '́' }];
+    expect(await doc.editBaselineText({ base: 'ka.', digest: 'd0', gaps })).toBe(true);
+    const seed = client.calls.find((c) => c.kind === 'tokens.bulkCreate').args[0];
+    expect(seed.map((s) => [s.begin, s.end])).toEqual([[0, 2]]);
+  });
+
   // Sent again under its keys, the answer may be the first send's, replayed:
   // the text is read, and shows what the server stored.
   it('sends an edit whose answer was lost again, the same request, and shows the text stored', async () => {
