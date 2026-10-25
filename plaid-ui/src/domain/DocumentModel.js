@@ -7,8 +7,8 @@
 // mutation) is the subclass's.
 //
 // Imports siblings with no imports but each other's, lib/errors.js, which has
-// none, and plaid-client's provenance.js by path, which has none either, and
-// nothing else: plaid-ud's node suite reaches this file by relative path,
+// none, and plaid-client's provenance.js and metadataOps.js by path, which
+// import only each other and roles.js, which imports nothing, and nothing else: plaid-ud's node suite reaches this file by relative path,
 // where no alias and no package resolves. Errors leave through `onError`.
 
 import {
@@ -34,7 +34,12 @@ import {
   readConfidenceThreshold,
   writerPolicy,
 } from '../../../plaid-client-js/src/provenance.js';
-import { newId, recordSettled, settleIds } from './pendingIds.js';
+import {
+  applyMetadataOps,
+  mergeMetadata,
+  metadataOps,
+} from '../../../plaid-client-js/src/metadataOps.js';
+import { newId, recordSettled, settleIds, settledId } from './pendingIds.js';
 import { sameConfig } from './configCells.js';
 import { DOCUMENT_DELETED, asDeletedDocument } from './permissions.js';
 import {
@@ -45,6 +50,11 @@ import {
   pendingIdsOf,
   resendable,
 } from './rebase.js';
+
+// The row lists a layer holds, and the client resource each kind of row is
+// written through (`_rowsById`, `_sendValue`, `_stampRows`).
+const ROW_LISTS = ['tokens', 'spans', 'relations'];
+const ROW_KINDS = { text: 'texts', token: 'tokens', span: 'spans', relation: 'relations' };
 
 // A copy of a document read from the server, which is plain JSON. A walk
 // rather than a JSON round trip, which took five times as long on a document
@@ -718,6 +728,116 @@ export class DocumentModel {
   _invalidate(...keys) {
     if (keys.length === 0) this._derivedCache.clear();
     else for (const key of keys) this._derivedCache.delete(key);
+  }
+
+  // ----- row writes every model makes the same way -----
+  // Keyed on a row's id and the kind of row it is, which is structure: no
+  // helper here reads what a layer means.
+
+  // The rows of `raw` under `ids` (an id or several), by id: a text, a token,
+  // a span or a relation, at any depth of the layer tree. A row not found is
+  // left out. Stops walking once every id is found.
+  _rowsById(raw, ids) {
+    const want = new Set(typeof ids === 'string' ? [ids] : ids);
+    const found = new Map();
+    const take = (row) => {
+      if (row && want.has(row.id) && !found.has(row.id)) found.set(row.id, row);
+    };
+    const walk = (layers) => {
+      for (const layer of Array.isArray(layers) ? layers : []) {
+        if (found.size === want.size) return;
+        if (!layer || typeof layer !== 'object') continue;
+        take(layer.text);
+        for (const key of ROW_LISTS) {
+          const rows = layer[key];
+          if (Array.isArray(rows)) for (const row of rows) take(row);
+        }
+        for (const [key, value] of Object.entries(layer)) {
+          if (key.endsWith('Layers')) walk(value);
+        }
+      }
+    };
+    if (want.size) walk(raw?.textLayers);
+    return found;
+  }
+
+  // A person's edit of row values, shown in one patch: each `{ id, value,
+  // ops }` sets the row's value (left as it is when `value` is undefined)
+  // and applies the metadata ops (the writer's stamp and the edit's own) to
+  // the row it shows, as the server applies them to the one it keeps.
+  _showValues(writes) {
+    this._applyRawPatch((next) => {
+      const rows = this._rowsById(
+        next,
+        writes.map((w) => w.id),
+      );
+      for (const { id, value, ops } of writes) {
+        const row = rows.get(id);
+        if (!row) continue;
+        if (value !== undefined) row.value = value;
+        if (ops?.length) row.metadata = applyMetadataOps(row.metadata, ops);
+      }
+    });
+  }
+
+  // The server half of one row's value edit, on a client or a batch `c`: the
+  // update (none when `value` is undefined), then the metadata ops. Answers
+  // what the update answered. A caller sending ops on a client batches them.
+  _sendValue(c, kind, id, value, ops) {
+    const api = c[ROW_KINDS[kind]];
+    const sent = value === undefined ? undefined : api.update(id, value);
+    if (ops?.length) api.patchMetadata(id, ops);
+    return sent;
+  }
+
+  // One row's value edit sent on the client: the update alone, or the update
+  // and the metadata ops in one batch when there are ops, so the document's
+  // version bumps once. `id` is the server's.
+  _sendValueEdit(kind, id, value, ops) {
+    return ops?.length
+      ? this._client.batched(async (b) => {
+          this._sendValue(b, kind, id, value, ops);
+        })
+      : this._sendValue(this._client, kind, id, value, ops);
+  }
+
+  // One row's value edit made whole: shown at once (`_showValues`), then
+  // sent (`_sendValueEdit`). `id` may be pending.
+  _writeValue(kind, id, value, ops, label, operation, options) {
+    this._showValues([{ id, value, ops }]);
+    return this._queueWrite(
+      label,
+      () => this._sendValueEdit(kind, settledId(id), value, ops),
+      operation,
+      options,
+    );
+  }
+
+  // Stamps merged over rows, `[kind, id, fragment]` each (a confirm's, from
+  // the writer's confirmStamp): shown in one patch, sent as one batch of
+  // metadata patches in the order given.
+  _stampRows(entries, label, operation, options) {
+    this._applyRawPatch((next) => {
+      const rows = this._rowsById(
+        next,
+        entries.map(([, id]) => id),
+      );
+      for (const [, id, fragment] of entries) {
+        const row = rows.get(id);
+        if (row) row.metadata = mergeMetadata(row.metadata, fragment);
+      }
+    });
+    return this._queueWrite(
+      label,
+      () =>
+        this._client.batched(async (b) => {
+          for (const [kind, id, fragment] of entries) {
+            b[ROW_KINDS[kind]].patchMetadata(settledId(id), metadataOps(fragment));
+          }
+        }),
+      operation,
+      options,
+    );
   }
 
   // ----- mutation infrastructure -----
