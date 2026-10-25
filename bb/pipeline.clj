@@ -107,34 +107,83 @@
     (p/shell {:dir "plaid-core"} "clojure" "-M:test" "--shard" shard)
     (p/shell {:dir "plaid-core"} "clojure" "-M:test" "--jobs" "auto")))
 
-(defn- run-js-tests!
-  "Lint, install and test every JavaScript package, and with `build?` also
-  build each SPA, which is the check that every module still parses."
-  [build?]
-  (ensure-node!)
+(defn- lint-ui! []
   (step "Lint the shared UI package (plaid-ui)")
   (p/shell {:dir "plaid-ui"} "npm" "ci")
-  (p/shell {:dir "plaid-ui"} "npm" "run" "lint")
-  (doseq [app js-suites]
-    (step (str "Run the JavaScript test suite and lint (" app ")"))
-    (p/shell {:dir app} "npm" "ci")
-    (p/shell {:dir app} "npm" "test")
-    ;; Lint is part of the gate too: plaid-igt fails on any warning, so the
-    ;; tree cannot drift the way it did when nothing ran it. It is the GATE's
-    ;; step rather than each app's `npm test`, so every app is linted exactly
-    ;; once and the gate says in one place what it is. plaid-ud and plaid-umr
-    ;; used to lint here and again inside their own `npm test`.
-    (p/shell {:dir app} "npm" "run" "lint")
-    (when build?
-      (p/shell {:dir app} "npm" "run" "build")))
-  ;; The JS client's own suite (the request layer, batching, OCC stamps,
-  ;; pagination, service RPC). It was never in the gate either.
-  ;; The client has no runtime dependencies, but its suite type-checks the
-  ;; generated declarations with TypeScript, a dev dependency, so install
-  ;; from the lockfile first.
+  (p/shell {:dir "plaid-ui"} "npm" "run" "lint"))
+
+(defn- test-app!
+  "One app's install, tests and lint, and with `build?` its Vite build, which
+  is the check that every module still parses."
+  [app build?]
+  (step (str "Run the JavaScript test suite and lint (" app ")"))
+  (p/shell {:dir app} "npm" "ci")
+  (p/shell {:dir app} "npm" "test")
+  ;; Lint is part of the gate too: plaid-igt fails on any warning, so the
+  ;; tree cannot drift the way it did when nothing ran it. It is the GATE's
+  ;; step rather than each app's `npm test`, so every app is linted exactly
+  ;; once and the gate says in one place what it is. plaid-ud and plaid-umr
+  ;; used to lint here and again inside their own `npm test`.
+  (p/shell {:dir app} "npm" "run" "lint")
+  (when build?
+    (p/shell {:dir app} "npm" "run" "build")))
+
+;; The JS client's own suite (the request layer, batching, OCC stamps,
+;; pagination, service RPC). It was never in the gate either.
+;; The client has no runtime dependencies, but its suite type-checks the
+;; generated declarations with TypeScript, a dev dependency, so install
+;; from the lockfile first.
+(defn- test-client-js! []
   (step "Run the JavaScript test suite (plaid-client-js)")
   (p/shell {:dir "plaid-client-js"} "npm" "ci")
   (p/shell {:dir "plaid-client-js"} "npm" "test"))
+
+(defn- run-js-tests!
+  "Lint, install and test every JavaScript package, and with `build?` also
+  build each SPA."
+  [build?]
+  (ensure-node!)
+  (lint-ui!)
+  (doseq [app js-suites] (test-app! app build?))
+  (test-client-js!))
+
+;; Every JavaScript package `bb ci-fast js <package>` takes, one CI job each.
+(def ^:private js-packages (vec (concat ["plaid-ui"] js-suites ["plaid-client-js"])))
+
+;; ci.yml's js matrix names the packages by hand. A package missing there
+;; would go untested on every push, so each job checks the list first.
+(defn- check-js-matrix! []
+  (let [listed (some->> (re-find (re-pattern "(?m)^\\s*package:\\s*\\[([^\\]]*)\\]")
+                                 (slurp ".github/workflows/ci.yml"))
+                        second
+                        (re-seq (re-pattern "[\\w-]+"))
+                        set)]
+    (when (not= listed (set js-packages))
+      (fail (str "ci.yml's js matrix lists " (pr-str (sort listed)) ", the pipeline's packages are "
+                 (pr-str (sort js-packages)) ": correct the matrix")))))
+
+;; What an app's own job installs before it, which the serial run installs
+;; anyway: plaid-ui for every app, since each depends on it as
+;; `file:../plaid-ui`, and plaid-igt for plaid-dict, whose `@igt` alias
+;; compiles plaid-igt's source and so resolves its bare imports from
+;; plaid-igt's node_modules.
+(defn- installs-before [app]
+  (cond-> ["plaid-ui"] (= app "plaid-dict") (conj "plaid-igt")))
+
+(defn- run-js-package!
+  "One package of `run-js-tests!` with the build, for a CI matrix job."
+  [pkg]
+  (when-not (some #{pkg} js-packages)
+    (fail (str "unknown JavaScript package '" pkg "': use one of " (str/join ", " js-packages))))
+  (check-js-matrix!)
+  (ensure-node!)
+  (cond
+    (= pkg "plaid-ui") (lint-ui!)
+    (= pkg "plaid-client-js") (test-client-js!)
+    :else (do (doseq [d (installs-before pkg)]
+                (step (str "Install " d))
+                (p/shell {:dir d} "npm" "ci"))
+              (test-app! pkg true))))
 
 ;; The Python source trees, each compiled by the gate.
 (def ^:private python-trees
@@ -198,19 +247,19 @@
 ;; each SPA, without the fidelity round trips, the e2e suites or the jar. CI
 ;; runs one part per job, in parallel, and the core suite in shards. With no
 ;; part it runs all of them in turn, the way a developer would.
-(defn run-fast-checks! [[part shard]]
+(defn run-fast-checks! [[part arg]]
   (ensure-repo-root!)
   (let [cljfmt! (fn []
                   (step "Check the Clojure formatting (plaid-core)")
                   (p/shell {:dir "plaid-core"} "clojure" "-M:format" "check"))]
     (case part
       "cljfmt" (cljfmt!)
-      "core"   (run-core-tests! shard)
-      "js"     (run-js-tests! true)
+      "core"   (run-core-tests! arg)
+      "js"     (if arg (run-js-package! arg) (run-js-tests! true))
       ;; On its own, the Python part installs the JavaScript packages first,
       ;; for the mirror tests.
       "python" (do (ensure-node!)
-                   (doseq [d (concat ["plaid-ui"] js-suites ["plaid-client-js"])]
+                   (doseq [d js-packages]
                      (step (str "Install " d))
                      (p/shell {:dir d} "npm" "ci"))
                    (run-python-tests!))

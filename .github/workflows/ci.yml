@@ -2,8 +2,8 @@ name: CI
 
 # The per-push check, on every push to master and every pull request:
 # Clojure formatting, the Clojure suite in four shards, every JavaScript
-# package's lint, tests and Vite build, and the Python suites (with every
-# Python tree compiled on 3.12 and on the 3.11 floor). Every job calls
+# package's lint, tests and Vite build (a job each), and the Python suites
+# (with every Python tree compiled on 3.12 and on the 3.11 floor). Every job calls
 # `bb ci-fast` (bb/pipeline.clj), so a developer runs the same thing locally.
 #
 # What runs elsewhere:
@@ -60,10 +60,16 @@ jobs:
         run: bb ci-fast core ${{ matrix.shard }}/4
 
   # Lint, tests and a Vite build of every JavaScript package, and the JS
-  # client's suite.
+  # client's suite, one job per package. `bb ci-fast js <package>` fails when
+  # this list and the pipeline's packages differ.
   js:
+    name: js (${{ matrix.package }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [plaid-ui, plaid-ud, plaid-igt, plaid-dict, plaid-umr, plaid-client-js]
     steps:
       - uses: actions/checkout@v6
       - uses: DeLaGuardo/setup-clojure@13.6.1
@@ -75,8 +81,8 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: '*/package-lock.json'
-      - name: Lint, test and build the JavaScript packages
-        run: bb ci-fast js
+      - name: Lint, test and build ${{ matrix.package }}
+        run: bb ci-fast js ${{ matrix.package }}
 
   # cljfmt, then the Python suites. The assistant's suite boots a private
   # plaid-core from source (hence Java and Clojure) and runs the apps' domain
