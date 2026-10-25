@@ -15,7 +15,7 @@ def _ws(maintainers, requester='writer@x.org', admin=False):
     c = FakeClient(project=p)
     w = fake_ws(c)
     w.requester_id = requester
-    w._requester_admin = admin
+    w.requester_is_admin = lambda: admin
     return w
 
 
@@ -63,7 +63,7 @@ def test_a_corpus_wide_respelling_worked_out_at_approval_leaves_them_too():
     w = _ws(['owner@x.org'])
     rep = lambda s: s.replace('g', 'gh')  # noqa: E731
     writer = Resolution(w.client, w.project, 'writer@x.org').ws
-    writer._requester_admin = False
+    writer.requester_is_admin = lambda: False
     assert writer.requester_id == 'writer@x.org' and _lexicon_renames(writer, rep) == []
     owner = Resolution(w.client, w.project, 'owner@x.org').ws
     assert [op['kind'] for op in _lexicon_renames(owner, rep)] == ['rename_entry'] * 2

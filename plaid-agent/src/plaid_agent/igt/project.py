@@ -21,7 +21,7 @@ from ..core.limits import MAX_SENTENCES_PER_READ
 from ..core.project import declares, find_layer, join_with, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.bidi import plain_quote, visible
 from ..core.refs import clip, read_ref, same_form
-from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
+from ..core.provenance import CONTRIBUTED, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role, read_ignored_tokens

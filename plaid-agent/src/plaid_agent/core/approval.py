@@ -6,13 +6,13 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import DocumentLockLost, service_source
 from plaid_client.http import PlaidAPIError
-from plaid_client.provenance import is_reviewed
 from plaid_client.service import requester_message
 
 from .conversation import ConversationStore, find_plan, now_iso, plan_settling
 from .ops import busy_why
 from . import rules
 from .opkind import ROW
+from .provenance import Requester
 from .plan import (EXPANSION, WRITING, DocumentsBusy, Expansion, ExpansionUnreadable, PlanError, PlanMovedOn,
                    PlanOutOfDate, RecordFull, ScopeMoved, expanding, forget_held, holding, plan_changes, stamp_of,
                    writing)
@@ -154,17 +154,10 @@ class Approving:
 
     @staticmethod
     def _reviewed(client, project_id: str, user_id: str) -> bool:
-        """Whether the approver's work is reviewed in the project (its
-        ``plaid.review`` lists, by name or by role), read from the server. An
-        administrator with no role of their own counts as a maintainer, as
-        everywhere else. A token that may not read the user says nothing about
-        that, so they then count by their listed role alone."""
+        """Whether the approver's work is reviewed in the project, read from
+        the server (:meth:`Requester.reviewed`)."""
         project = client.projects.get(project_id)
-        try:
-            is_admin = bool((client.users.get(user_id) or {}).get('is_admin'))
-        except Exception:  # noqa: BLE001 - a delegated token may not read users
-            is_admin = False
-        return is_reviewed(project, user_id, is_admin=is_admin)
+        return Requester(client, user_id).reviewed(project)
 
     def _apply(self, client, project, store, conv_id, conv, meta, approve: dict, request_id, response_helper) -> None:
         plan_id = approve.get('plan_id')

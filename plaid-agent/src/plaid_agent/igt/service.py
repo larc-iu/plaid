@@ -8,6 +8,9 @@ citation resolves to an example card, and how an approved plan is applied.
 
 from typing import Dict, Optional
 
+from plaid_client.provenance import project_role
+
+from ..core.provenance import Requester
 from ..core.service import BaseAssistantService
 from ..core.plan import PlanError, PlanOutOfDate
 from . import plan, prompt, toolkit
@@ -98,18 +101,15 @@ class AssistantService(BaseAssistantService):
         # tagsets they are. An administrator may approve any.
         if not ops or not all(op.get('kind') in SETTINGS_KINDS for op in ops):
             return None
-        try:
-            if (client.users.get(user_id) or {}).get('is_admin'):
-                return None
-        except Exception:  # noqa: BLE001 - a delegated token may not read users: counted by role
-            pass
+        if Requester(client, user_id).is_admin():
+            return None
         for owner in dict.fromkeys(op.get('owner') for op in ops):
             if owner == 'project':
                 held, what = client.projects.get(project_id) or {}, 'this project'
             else:
                 held = client.vocab_layers.get(owner) or {}
                 what = f'the lexicon "{held.get("name") or owner}"'
-            if user_id not in (held.get('maintainers') or []):
+            if project_role(held, user_id) != 'maintainer':
                 return (f'Only a maintainer of {what} may approve its tagset changes. '
                         'Nothing was written.')
         return None

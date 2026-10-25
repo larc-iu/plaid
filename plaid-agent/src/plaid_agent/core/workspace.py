@@ -29,6 +29,7 @@ from .java_regex import matcher
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .plan import (PLAN_MAX_OPS, PlanFull, docs_of_op, keep_waiting, kept_values, plan_changes,
                    reserve as core_reserve, waiting_phrase)
+from .provenance import Requester
 from .tools import ToolError
 from .trace import note as trace_note
 
@@ -154,7 +155,7 @@ class BaseWorkspace:
         # The user the turn acts for, set by the service. None (a script, a
         # test) asks no question of who may do what: the server still does.
         self.requester_id: Optional[str] = None
-        self._requester_admin: Optional[bool] = None
+        self._requester: Optional[Requester] = None
         self._requester_reviewed: Optional[bool] = None
         self._doc_list: Optional[List[dict]] = None
         self._docs: Dict[str, Any] = {}
@@ -721,33 +722,32 @@ class BaseWorkspace:
             return None
         return next((i for i, prev in enumerate(self.ops) if self.op_target(prev) == key), None)
 
+    @property
+    def requester(self) -> Requester:
+        """The user the turn acts for (:class:`core.provenance.Requester`),
+        whose administrator flag is asked of the server once."""
+        if self._requester is None or self._requester.id != self.requester_id:
+            self._requester = Requester(self.client, self.requester_id)
+        return self._requester
+
     def requester_is_admin(self) -> bool:
-        """Whether the user the turn acts for is an administrator, asked of
-        the server once. A read that fails answers no, so a tool refuses
-        rather than plan what the server would refuse."""
-        if self.requester_id is None:
-            return False
-        if self._requester_admin is None:
-            try:
-                self._requester_admin = bool((self.client.users.get(self.requester_id) or {}).get('is_admin'))
-            except Exception:
-                self._requester_admin = False
-        return self._requester_admin
+        """Whether the user the turn acts for is an administrator. A read
+        that fails answers no, so a tool refuses rather than plan what the
+        server would refuse."""
+        return self.requester.is_admin()
 
     def requester_reviewed(self) -> bool:
         """Whether the work of the user the turn acts for is reviewed in this
         project (its ``plaid.review`` lists), asked of the server once. Their
         approval is then their own contribution, not a verification. The
-        approval asks again (core/service.py ``_reviewed``): this is for what
+        approval asks again (core/approval.py ``_reviewed``): this is for what
         a tool tells the model. A read that fails answers no."""
         if self.requester_id is None:
             return False
         if self._requester_reviewed is None:
             try:
-                from plaid_client.provenance import is_reviewed
                 project = self.client.projects.get(self.project.id)
-                self._requester_reviewed = bool(is_reviewed(project, self.requester_id,
-                                                            is_admin=self.requester_is_admin()))
+                self._requester_reviewed = self.requester.reviewed(project)
             except Exception:  # noqa: BLE001 - the tool's wording only
                 self._requester_reviewed = False
         return self._requester_reviewed

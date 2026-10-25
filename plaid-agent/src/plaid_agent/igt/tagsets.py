@@ -20,6 +20,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.constraints import value_parts, value_set_allows
+from plaid_client.provenance import project_role
 from plaid_client.workflows.igt.glossing import is_lexical_part
 from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset
 
@@ -398,15 +399,14 @@ def _require_maintainer(ws, lexicon: Optional[dict]) -> None:
     if uid is None or ws.requester_is_admin():
         return
     if lexicon is not None:
-        maintainers = lexicon.get('maintainers') or []
-        what = f'the lexicon {qv(lexicon["name"])}'
+        held, what = lexicon, f'the lexicon {qv(lexicon["name"])}'
     else:
         try:
-            maintainers = ws.client.projects.get(ws.project.id).get('maintainers') or []
+            held = ws.client.projects.get(ws.project.id)
         except Exception:  # noqa: BLE001 - unreadable: the server decides at approval
             return
         what = 'this project'
-    if uid not in maintainers:
+    if project_role(held, uid) != 'maintainer':
         raise ToolError(f'Only a maintainer of {what} may change its tagsets, and the user is not one. '
                         'Tell them who can.', kind='not-allowed')
 

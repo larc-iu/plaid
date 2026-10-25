@@ -19,7 +19,7 @@ import re
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client.provenance import PROVENANCE_KEYS
+from plaid_client.provenance import PROVENANCE_KEYS, project_role
 
 from ..core import docload, opkind
 from ..core.bidi import plain_quote, qname, qv
@@ -767,7 +767,7 @@ class Workspace(BaseWorkspace):
         the app."""
         if self.requester_id is None:
             return True
-        return self.requester_id in (v.get('maintainers') or []) or self.requester_is_admin()
+        return project_role(v, self.requester_id) == 'maintainer' or self.requester_is_admin()
 
     def op_fields(self, op: Dict[str, Any]) -> set:
         # An orthography is named as the tools take it, without its key's prefix.

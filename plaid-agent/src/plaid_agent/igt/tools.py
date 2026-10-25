@@ -13,7 +13,7 @@ import copy
 from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
-from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, MACHINE
+from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
@@ -26,7 +26,7 @@ from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError, kind_of
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
-from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref, REVIEWABLE,
+from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref, resolve, mwe_ref,
                       join_morphemes, plain_ref, planned_word_count, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
@@ -918,15 +918,6 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
     return ws.planned_note(1) + f' ({len(sents)} sentences, {words} words will be tokenized.)'
 
 
-def _is_machine(meta) -> bool:
-    return prov_state(meta) == MACHINE
-
-
-def _needs_review(meta) -> bool:
-    """Unconfirmed machine output, or a contributor's unreviewed work."""
-    return prov_state(meta) in REVIEWABLE
-
-
 PIECE_KEYS = ('span_ids', 'token_ids', 'link_ids')
 
 
@@ -954,7 +945,7 @@ def _review_pieces(obj, f=None, into=None, project=None) -> Dict[str, list]:
     own confirm leaves it."""
     out = into if into is not None else _empty_pieces()
     for name, sp in obj.fields.items():
-        if (f is None or name == f.name) and _needs_review(sp.metadata):
+        if (f is None or name == f.name) and needs_review(sp.metadata):
             field = project.field_by_layer(sp.layer_id) if project is not None else None
             if field is not None and not all(value_set_allows(c, sp.value) for c in field.value_sets):
                 out['left'].append((sp.value, name, _what(obj)[:40]))
@@ -971,15 +962,15 @@ def _review_pieces(obj, f=None, into=None, project=None) -> Dict[str, list]:
                 _review_pieces(w, f, out, project)
         return out
     if f is None:
-        if obj.link and _needs_review(obj.link.metadata):
+        if obj.link and needs_review(obj.link.metadata):
             out['link_ids'].append(obj.link.id)
             _note_contributed(out, obj.link.id, obj.link.metadata)
             out['on'][obj.link.id] = obj.id
         for l in getattr(obj, 'mwes', ()):
-            if _needs_review(l.metadata) and l.id not in out['link_ids']:
+            if needs_review(l.metadata) and l.id not in out['link_ids']:
                 out['link_ids'].append(l.id)
                 _note_contributed(out, l.id, l.metadata)
-        if _needs_review(obj.metadata):
+        if needs_review(obj.metadata):
             out['token_ids'].append(obj.id)
             _note_contributed(out, obj.id, obj.metadata)
     if isinstance(obj, Word):
@@ -1125,18 +1116,18 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
         reset_first = None
 
         def attached(t):
-            if t.link and _is_machine(t.link.metadata):
+            if t.link and is_machine(t.link.metadata):
                 link_ids.append(t.link.id)
-            span_ids.extend(sp.id for sp in t.fields.values() if _is_machine(sp.metadata))
+            span_ids.extend(sp.id for sp in t.fields.values() if is_machine(sp.metadata))
         attached(w)
         survivors = []
         for i, m in enumerate(w.morphemes):
-            if _is_machine(m.metadata) and i > 0:
+            if is_machine(m.metadata) and i > 0:
                 morpheme_ids.append(m.id)  # spans and links cascade with the token
                 continue
             survivors.append(m)
             attached(m)
-            if _is_machine(m.metadata):
+            if is_machine(m.metadata):
                 reset_first = m.id
         renumber = [{'id': m.id, 'precedence': i + 1} for i, m in enumerate(survivors) if m.index != i + 1]
         if not (link_ids or span_ids or morpheme_ids or reset_first):
