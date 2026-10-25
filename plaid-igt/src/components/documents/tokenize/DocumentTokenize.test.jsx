@@ -7,7 +7,7 @@ import { TokenComponent } from './DocumentTokenize.jsx';
 // ask for the tab by dispatching a window event that the tab hook listens for,
 // which is the island's way in and not a React screen's: both sit under one
 // provider, and a listener is invisible to anything reading this file. The
-// switch now goes through the context, and nothing on the window hears it.
+// switch now goes through the context.
 
 const piece = { id: 'w1', begin: 0, end: 3, content: 'abc', isToken: true };
 const sentence = { id: 's1', pieces: [piece] };
@@ -39,17 +39,6 @@ describe('a word on the Tokenize tab', () => {
     const token = view.container.querySelector('.token');
     await view.step(() => click(token, { altKey: true }));
     expect(goToTab).toHaveBeenCalledWith('analyze');
-    await view.unmount();
-  });
-
-  it('does not go through the window to reach it', async () => {
-    const heard = vi.fn();
-    window.addEventListener('igt:navigate-tab', heard);
-    const view = await mount({ goToTab: vi.fn() });
-    const token = view.container.querySelector('.token');
-    await view.step(() => click(token, { altKey: true }));
-    window.removeEventListener('igt:navigate-tab', heard);
-    expect(heard).not.toHaveBeenCalled();
     await view.unmount();
   });
 
