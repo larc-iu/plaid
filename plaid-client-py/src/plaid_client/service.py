@@ -139,7 +139,7 @@ def check_unchanged(client, document_id, version, current=None) -> None:
     no such check. ``current`` saves a round trip when the caller has just
     read the document anyway.
 
-    Raises ``ValueError`` (the authored-refusal shape) when it differs, so
+    Raises :class:`Refusal` when it differs, so
     nothing is written at all.
     """
     if not version:
@@ -532,10 +532,11 @@ class BaseService(ABC):
     def request_error_message(self, error) -> str:
         """What the requester is told when a request fails.
 
-        A ``ValueError`` is an authored refusal — its message was written for
-        the person who asked (no gloss field by that name, the document
-        changed, human work would be lost) — so it goes out as it stands.
-        Anything else is a fault in the service, named by the service.
+        A :class:`Refusal` is authored: its message was written for the person
+        who asked (no gloss field by that name, the document changed, human
+        work would be lost), so it goes out as it stands. Anything else, a
+        bare ValueError included, is a fault in the service, named by the
+        service.
         """
         return service_error_message(error, self.service_name,
                                      secrets=self.REQUEST_SECRETS)
@@ -656,6 +657,9 @@ class BaseService(ABC):
                 print(f"{self.service_name}: the request had already ended when this service wrote "
                       f"(the connection to Plaid dropped or the server restarted), so its writes "
                       f"from then on were refused. The requester was told it failed.")
+            elif isinstance(e, Refusal):
+                # Written for the person who asked, and expected: one line.
+                print(f"{self.service_name}: {e}")
             elif isinstance(e, PlaidAPIError) and e.status == 423:
                 # Somebody else holds the document: a refusal the service
                 # expects, which the lock acquire words itself (from the

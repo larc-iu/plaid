@@ -10,6 +10,7 @@ import pathlib
 
 import pytest
 from plaid_client import testing as servicetest
+from plaid_client.workflows.igt import analyze as analyze_workflow
 from plaid_client.workflows.llm import ModelTimeout, Reply
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
@@ -154,3 +155,31 @@ def test_the_document_is_held_from_the_read_through_every_model_call_and_write(m
     [result] = helper.results
     assert 'message' not in result and 'notice' not in result
     assert result['sentences_failed'] == []
+
+
+def _broken_derive(*_args, **_kwargs):
+    raise ValueError('not enough values to unpack (expected 2, got 1)')
+
+
+@pytest.mark.parametrize('module, cls, name, patched', [
+    (translate, 'LLMTranslateService', 'LLM translation', translate),
+    (analyze, 'LLMAnalyzeService', 'LLM glossing', analyze_workflow),
+])
+def test_a_stray_valueerror_while_reading_the_document_is_a_fault_named_by_the_service(
+        module, cls, name, patched, monkeypatch):
+    # Only a Refusal is written for the person who asked. A ValueError from
+    # anywhere else is the service failing, and says whose.
+    monkeypatch.setattr(patched, 'derive', _broken_derive)
+    service = _service(module, cls, [])
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == [f'{name}: not enough values to unpack (expected 2, got 1)']
+    assert helper.results == []
+
+
+@pytest.mark.parametrize('module, cls, reply', SERVICES_UNDER_TEST)
+def test_a_layer_the_document_lacks_is_still_refused_in_its_own_words(module, cls, reply):
+    from plaid_client.workflows.messages import SETUP_INCOMPLETE
+    service = _service(module, cls, [])
+    helper = servicetest.run(service, {**REQUEST, 'word_token_layer_id': 'nope'})
+    refusals = helper.errors + [r.get('refusal') for r in helper.results if r.get('refusal')]
+    assert refusals == [SETUP_INCOMPLETE]

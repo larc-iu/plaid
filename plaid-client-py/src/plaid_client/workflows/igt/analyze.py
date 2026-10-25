@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from plaid_client.provenance import service_source
-from plaid_client.service import PhasedProgress, held_run, HeldRun
+from plaid_client.service import PhasedProgress, Refusal, held_run, HeldRun
 from plaid_client.workflows.requester import Requester, requester_of
 
 from .derive import derive, field_layer_id, read_skip_word_ids, select_targets
@@ -151,7 +151,7 @@ def begin_analysis(client, response_helper, request: AnalysisRequest, *,
         try:
             sentences, gloss_layer_id = derive(doc, *request.layers, gloss_field=request.gloss_field,
                                                translation_field=request.translation_field)
-        except ValueError as e:
+        except Refusal as e:
             held.refusal = str(e)
             yield None
             return

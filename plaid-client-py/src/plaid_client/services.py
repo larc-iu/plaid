@@ -111,25 +111,27 @@ def _network_failure(error) -> str:
 class Refusal(ValueError):
     """A request refused in words written for the person who asked (no gloss
     field by that name, the document changed, human work would be lost).
-    Raise it, never a bare ValueError, for such a refusal. A ValueError, so
-    every handler that takes a ValueError as authored takes this one too
-    (:func:`service_error_message`)."""
+    Only a Refusal is authored (:func:`service_error_message`): a bare
+    ValueError is some library failing (a bad unpack, ``int('x')``, a JSON
+    decode), so it reaches the requester as a fault named by the service. A
+    Refusal is logged as one line, with no traceback. It is a ValueError so
+    that code which catches one, as it did before Refusal, still catches it."""
 
 
 def service_error_message(error, service_name='', secrets=()) -> str:
     """What the requester is told when a request fails, named by the service.
 
-    A ``ValueError`` is an authored refusal — its message was written for the
-    person who asked (no gloss field by that name, the document changed, human
-    work would be lost) — so it goes out as it stands. Anything else is a fault
-    in the service, named by the service.
+    A :class:`Refusal` is authored: its message was written for the person who
+    asked (no gloss field by that name, the document changed, human work would
+    be lost), so it goes out as it stands. Anything else, a bare ValueError
+    included, is a fault in the service, named by the service.
 
     Every path that reports a failed request goes through here: ``BaseService``
     for a service built on it, and ``serve``'s own fallback for one written
     directly against the channel.
     """
     text = requester_message(error, secrets=secrets)
-    if isinstance(error, ValueError) or not service_name:
+    if isinstance(error, Refusal) or not service_name:
         return text
     return f'{service_name}: {text}'
 
@@ -616,6 +618,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             # Asked to stop, and it did. Not a failure: the requester already
             # knows, and whatever was written before the checkpoint stands.
             helper.stopped()
+        except Refusal as e:
+            # Written for the person who asked, and expected: one line.
+            logger.info('Service %s refused request %s: %s', service_id, req_id, e)
+            helper.error(service_error_message(e, service_name))
         except Exception as e:
             # What reaches the requester is the sanitized half: the raw text
             # names the endpoint the client called and, for an exception with

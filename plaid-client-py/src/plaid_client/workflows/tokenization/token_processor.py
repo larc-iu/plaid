@@ -49,7 +49,7 @@ class TokenProcessor:
         through these writes. Re-tokenizing deletes + recreates tokens (and
         cascade-deletes their spans/relations). It refuses to run unheld.
 
-        A refusal RAISES ``ValueError`` with the reason, and never reports it
+        A refusal RAISES :class:`Refusal` with the reason, and never reports it
         itself: only the caller knows whether anything else has already been
         said about this request. Reporting here and returning zero counts sent
         the requester an error and then, from the caller's unconditional
@@ -78,7 +78,7 @@ class TokenProcessor:
             Dictionary with counts of tokens created/deleted
 
         Raises:
-            ValueError: the run is refused, with the reason for the requester
+            Refusal: the run is refused, with the reason for the requester
         """
         require_held(client, document_id)
         # Get document with layers

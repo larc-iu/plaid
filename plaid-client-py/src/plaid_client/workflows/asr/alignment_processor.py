@@ -125,7 +125,7 @@ class AlignmentProcessor:
             Path to downloaded file
             
         Raises:
-            ValueError: If the download fails, with a reason the requester reads
+            Refusal: If the download fails, with a reason the requester reads
             RuntimeError: Called with no document held. The media is part of
                 what the run reads, so it is read under the lock the run
                 writes under, and a service file older than this client

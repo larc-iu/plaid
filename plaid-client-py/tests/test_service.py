@@ -23,7 +23,7 @@ from plaid_client.service_schema import (  # noqa: E402
     TASKS, Param, build_extras, default_values, coerce,
 )
 from plaid_client.service import (  # noqa: E402
-    BaseService, requester_message, UNKNOWN_FAILURE, progress_heartbeat, check_unchanged,
+    BaseService, Refusal, requester_message, UNKNOWN_FAILURE, progress_heartbeat, check_unchanged,
 )
 from plaid_client.http import PlaidAPIError  # noqa: E402
 from plaid_client.services import (  # noqa: E402
@@ -1226,8 +1226,31 @@ def test_the_failure_funnel_prefixes_a_fault_and_passes_a_refusal_through():
     assert helper.errors == ['Tok: HTTP 500 nope']
 
     helper = _Helper()
-    svc.handle_service_request({'boom': ValueError('No field named "Gloss".')}, helper).join(5)
+    svc.handle_service_request({'boom': Refusal('No field named "Gloss".')}, helper).join(5)
     assert helper.errors == ['No field named "Gloss".']
+
+    # A ValueError a library raised was written for nobody: a fault.
+    helper = _Helper()
+    svc.handle_service_request({'boom': ValueError("invalid literal for int() with base 10: 'x'")},
+                               helper).join(5)
+    assert helper.errors == ["Tok: invalid literal for int() with base 10: 'x'"]
+
+
+def test_a_refusal_is_logged_without_a_traceback_and_a_fault_with_one(capsys):
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            raise request_data['boom']
+
+    svc = MyService('tok:x', 'Tok', 'x', tasks=[TASKS.TOKENIZE])
+    svc.client = object()
+    svc.handle_service_request({'boom': Refusal('Choose the gloss field.')}, _Helper()).join(5)
+    out = capsys.readouterr()
+    assert 'Tok: Choose the gloss field.' in out.out
+    assert 'Traceback' not in out.out + out.err
+
+    svc.handle_service_request({'boom': ValueError('not enough values to unpack')}, _Helper()).join(5)
+    out = capsys.readouterr()
+    assert 'Traceback' in out.out + out.err
 
 
 def test_the_funnel_redacts_the_services_own_secrets():
@@ -1416,9 +1439,26 @@ def test_an_authored_refusal_keeps_its_own_words():
     said = 'No gloss field by that name.'
 
     def handler(_data, _helper):
-        raise ValueError(said)
+        raise Refusal(said)
 
     assert _reported_error(handler) == said
+
+
+def test_serves_fallback_names_the_service_for_a_stray_valueerror():
+    def handler(_data, _helper):
+        raise ValueError('Expecting value: line 1 column 1 (char 0)')
+
+    assert _reported_error(handler) == 'Punkt tokenizer: Expecting value: line 1 column 1 (char 0)'
+
+
+def test_serves_fallback_logs_a_refusal_without_a_traceback(caplog):
+    def handler(_data, _helper):
+        raise Refusal('Choose the gloss field.')
+
+    with caplog.at_level('INFO', logger='plaid_client.services'):
+        assert _reported_error(handler) == 'Choose the gloss field.'
+    [record] = [r for r in caplog.records if 'Choose the gloss field.' in r.getMessage()]
+    assert record.exc_info is None
 
 
 def test_a_refusal_is_the_authored_valueerror_every_shared_refusal_raises():

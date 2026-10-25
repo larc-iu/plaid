@@ -3,7 +3,7 @@ import stanza
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           is_protected, service_source)
 from plaid_client.provenance import PROVENANCE_KEYS
-from plaid_client.service import (PhasedProgress, batch_body_budget, locked_for_writes,
+from plaid_client.service import (PhasedProgress, Refusal, batch_body_budget, locked_for_writes,
                                   partly_written, progress_heartbeat,
                                   requester_message)
 from plaid_client.workflows.messages import setup_incomplete
@@ -956,7 +956,7 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
         # other apps' layers included — so the guard walks the whole tree.
         protected, breakdown = count_protected_annotations(token_layers)
         if protected and not overwrite:
-            raise RuntimeError(format_protected_error(
+            raise Refusal(format_protected_error(
                 protected, breakdown,
                 "on this document (they may belong to other apps sharing the project)"))
         if protected:

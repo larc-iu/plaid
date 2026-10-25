@@ -431,7 +431,8 @@ def test_human_work_a_full_reparse_would_destroy_refuses_the_run_once():
 
     assert len(helper.errors) == 1
     text = helper.errors[0]
-    assert '2 human-made or human-verified annotation(s)' in text
+    # A refusal written for the person who asked, so not named as a fault.
+    assert text.startswith('2 human-made or human-verified annotation(s)')
     assert 'Morphemes/Lemma: 1' in text and 'Morphemes/UPOS: 1' in text
     assert 'Overwrite human-edited annotations' in text
     assert service.client.writes == []

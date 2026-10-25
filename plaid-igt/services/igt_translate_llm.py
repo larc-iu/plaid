@@ -32,7 +32,7 @@ import argparse
 from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import PhasedProgress, held_run, requester_message
+from plaid_client.service import PhasedProgress, Refusal, held_run, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -251,7 +251,7 @@ class LLMTranslateService(BaseService):
                     gloss_missing = gloss_field
                     sentences, _ = derive(doc, *layers, gloss_field=None,
                                           translation_field=translation_field, orthography=orthography)
-            except ValueError as e:
+            except Refusal as e:
                 run.refusal = str(e)
                 return
             # The field derive read the translations from, by the same rule.
