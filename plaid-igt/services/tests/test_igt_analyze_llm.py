@@ -228,3 +228,15 @@ def test_the_lexicon_s_gloss_and_part_of_speech_come_from_stored_settings():
     project = {'text_layers': [{'token_layers': [{'span_layers': [
         {'id': 'g', 'config': {'igt': {'lexiconField': 'gloss (es)'}}}, {'id': 'h', 'config': {}}]}]}]}
     assert llm.lexicon_field_of(project, 'g') == 'gloss (es)' and llm.lexicon_field_of(project, 'h') is None
+
+
+def test_the_core_gloss_field_comes_first_among_the_fields_holding_its_role():
+    """Two fields with the gloss role: the core gloss field is the one read,
+    wherever the config stores it, as the agent and the exports read it. The
+    app pins only the immutable core fields, so the rest, the core pos field
+    included, keep the stored order."""
+    vocab = {'config': {'igt': {'fields': {'gloss (ru)': {'role': 'gloss'}, 'Category': {'role': 'pos'},
+                                           'gloss': {'role': 'gloss'}, 'pos': {'role': 'pos'}}}}}
+    assert llm._role_key(vocab, 'gloss') == 'gloss' and llm._role_key(vocab, 'pos') == 'Category'
+    others = {'config': {'igt': {'fields': {'gloss (ru)': {'role': 'gloss'}, 'gloss (es)': {'role': 'gloss'}}}}}
+    assert llm._role_key(others, 'gloss') == 'gloss (ru)'

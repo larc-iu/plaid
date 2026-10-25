@@ -142,11 +142,21 @@ def _field(meta, key):
     return None if v in (None, '') else str(v)
 
 
+#: The entry fields the app's field list pins ahead of the rest, in this order
+#: (the immutable core fields of normalizeVocabFields in vocabFields.js, and of
+#: the agent's twin).
+_PINNED_FIELDS = ('morphType', 'gloss')
+
+
 def _role_key(vocab_layer, role):
     """The first entry field of a vocabulary holding ``role`` (its stored
-    ``role``), or None. Never read from a field's name."""
+    ``role``), or None, in the app's field order: the pinned core fields
+    first, then the rest as stored. So the core gloss field is read before another gloss,
+    as the agent and the exports read it. Never read from a field's name."""
     fields = read_vocab_fields(vocab_layer.get('config')) or {}
-    return next((k for k, cfg in fields.items() if isinstance(cfg, dict) and cfg.get('role') == role), None)
+    ordered = sorted(fields, key=lambda k: (_PINNED_FIELDS.index(k) if k in _PINNED_FIELDS
+                                            else len(_PINNED_FIELDS)))
+    return next((k for k in ordered if isinstance(fields[k], dict) and fields[k].get('role') == role), None)
 
 
 def lexicon_field_of(project, span_layer_id):
