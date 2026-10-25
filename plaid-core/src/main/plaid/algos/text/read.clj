@@ -4,7 +4,7 @@
   its stretches aligned to the words (`plain-body-read`), and the net
   change of an editor's edits (`plain-edit-gaps`)."
   (:require [clojure.set :as set]
-            [plaid.algos.text.chars :refer [punct-only? space? word-letter?]]
+            [plaid.algos.text.chars :refer [cps->str has-space? punct-only? space? word-letter?]]
             [plaid.algos.text.align :refer [align-to-words]]
             [plaid.algos.text.diff :refer [diff]]
             [plaid.algos.text.index :refer [lower-bound tokens-near upper-bound]]
@@ -173,32 +173,29 @@
   stand for the same resulting string without reaching `lo` or `hi`, the
   nearest first on each side, with the edit itself at the head."
   [^ints o edit lo hi]
-  (let [cps->s (fn [xs] (let [sb (StringBuilder.)]
-                          (doseq [c xs] (.appendCodePoint sb (int c)))
-                          (.toString sb)))]
-    (if (= :delete (:kind edit))
-      (let [left (->> edit
-                      (iterate (fn [{s :start e :end :as d}]
-                                 (when (and d (> s lo) (= (aget o (dec s)) (aget o (dec e))))
-                                   (assoc d :start (dec s) :end (dec e)))))
-                      (drop 1) (take-while some?) (take slide-reach))
-            right (->> edit
-                       (iterate (fn [{s :start e :end :as d}]
-                                  (when (and d (< e hi) (= (aget o s) (aget o e)))
-                                    (assoc d :start (inc s) :end (inc e)))))
-                       (drop 1) (take-while some?) (take slide-reach))]
-        (concat [edit] left right))
-      (let [v (vec (.toArray (.codePoints ^String (:value edit))))
-            step-left (fn [[a v]]
-                        (when (and v (> a lo) (= (aget o (dec a)) (peek v)))
-                          [(dec a) (into [(aget o (dec a))] (pop v))]))
-            step-right (fn [[a v]]
-                         (when (and v (< a hi) (= (aget o a) (first v)))
-                           [(inc a) (conj (subvec v 1) (aget o a))]))
-            places (fn [step] (->> [(:at edit) v] (iterate step) (drop 1)
-                                   (take-while some?) (take slide-reach)
-                                   (map (fn [[a v]] (assoc edit :at a :value (cps->s v))))))]
-        (concat [edit] (places step-left) (places step-right))))))
+  (if (= :delete (:kind edit))
+    (let [left (->> edit
+                    (iterate (fn [{s :start e :end :as d}]
+                               (when (and d (> s lo) (= (aget o (dec s)) (aget o (dec e))))
+                                 (assoc d :start (dec s) :end (dec e)))))
+                    (drop 1) (take-while some?) (take slide-reach))
+          right (->> edit
+                     (iterate (fn [{s :start e :end :as d}]
+                                (when (and d (< e hi) (= (aget o s) (aget o e)))
+                                  (assoc d :start (inc s) :end (inc e)))))
+                     (drop 1) (take-while some?) (take slide-reach))]
+      (concat [edit] left right))
+    (let [v (vec (.toArray (.codePoints ^String (:value edit))))
+          step-left (fn [[a v]]
+                      (when (and v (> a lo) (= (aget o (dec a)) (peek v)))
+                        [(dec a) (into [(aget o (dec a))] (pop v))]))
+          step-right (fn [[a v]]
+                       (when (and v (< a hi) (= (aget o a) (first v)))
+                         [(inc a) (conj (subvec v 1) (aget o a))]))
+          places (fn [step] (->> [(:at edit) v] (iterate step) (drop 1)
+                                 (take-while some?) (take slide-reach)
+                                 (map (fn [[a v]] (assoc edit :at a :value (cps->str v))))))]
+      (concat [edit] (places step-left) (places step-right)))))
 
 (defn- join-at-token-edges
   "`edits` (old-body coordinates over the code points `o`) with each delete
@@ -218,9 +215,7 @@
   from the others, since edits that touch are one stretch. `near` gives the
   tokens that begin or end in a stretch (see `tokens-near`)."
   [^ints o near edits]
-  (let [blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
-                                                            (test [_ c] (space? c)))))
-        ;; [s e) slid by k code points, left when k is negative, when each
+  (let [;; [s e) slid by k code points, left when k is negative, when each
         ;; step keeps the resulting string
         slid (fn [s e k]
                (if (neg? k)
@@ -242,7 +237,7 @@
           (cond
             ;; insert at a, kept [a s), delete [s e)
             (and (= :insert (:kind x)) (= :delete (:kind y)) (< (:at x) (:start y))
-                 (not (blank? (:value x)))
+                 (not (has-space? (:value x)))
                  ;; edits touching the edit before or after are part of
                  ;; its stretch, and stay with it
                  (not (some-> (peek out) reach (>= (:at x))))
@@ -276,7 +271,7 @@
 
             ;; delete [s e), kept [e b), insert at b
             (and (= :delete (:kind x)) (= :insert (:kind y)) (< (:end x) (:at y))
-                 (not (blank? (:value y)))
+                 (not (has-space? (:value y)))
                  (not (some-> (peek out) reach (>= (:start x))))
                  (not (some-> (get edits (+ i 2)) start (<= (:at y)))))
             (let [b (:at y)
@@ -668,14 +663,13 @@
         word-of (fn [{:keys [start end]}]
                   (let [i (dec (upper-bound begins start))]
                     (when (>= i 0) (let [w (words i)] (when (<= end (:token/end w)) w)))))
-        blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate (test [_ c] (space? c)))))
         apart? (fn [x y] (some #(space? (aget o %)) (range (:end x) (:start y))))
         ;; runs of gaps in one word with no whitespace between
         runs (reduce (fn [out g]
                        (let [w (word-of g)
                              [pw run] (peek out)]
-                         (if (and w pw (= (:token/id w) (:token/id pw)) (not (blank? (:value g)))
-                                  (not (blank? (:value (peek run)))) (not (apart? (peek run) g)))
+                         (if (and w pw (= (:token/id w) (:token/id pw)) (not (has-space? (:value g)))
+                                  (not (has-space? (:value (peek run)))) (not (apart? (peek run) g)))
                            (conj (pop out) [pw (conj run g)])
                            (conj out [w [g]]))))
                      [] gaps)

@@ -5,7 +5,9 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(defn cps->str [cps]
+(defn cps->str
+  "The string of the code points `cps`."
+  [cps]
   (let [sb (StringBuilder.)]
     (doseq [c cps] (.appendCodePoint sb (int c)))
     (.toString sb)))
@@ -44,6 +46,11 @@
   (let [c (int c)]
     (and (not (<= 0x1C c 0x1F))
          (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF) (= c 0x85)))))
+
+(defn has-space?
+  "Whether string `v` holds a code point `space?` reads as whitespace."
+  [^String v]
+  (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate (test [_ c] (space? c)))))
 
 (defn line-break?
   "Whether code point `c` ends a line."
