@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { unzipSync } from 'fflate';
 import { runExport, ExportCancelled } from './runExport.js';
-import { READS_IN_FLIGHT } from '../domain/documentReads.js';
+import { READS_IN_FLIGHT } from '@ui/lib/documentReads.js';
 import { discoverExportLayers } from './exportLayers.js';
 import { newPreset } from './presets.js';
 

@@ -1,5 +1,4 @@
 import { setupHref } from './setup.jsx';
-import JSZip from 'jszip';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { importErrorText } from '../../domain/conlluImport.js';
 import { splitConlluByNewdoc } from '../../utils/conlluParser.js';
@@ -7,27 +6,14 @@ import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { humanizeError } from '../../utils/feedback.jsx';
 import { NOT_SET_UP_FILE, NOT_TOKENIZED_FILE } from '../../domain/conlluSerialize.js';
 import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExportPage.jsx';
+import { zip, unzip } from '@ui/lib/zip.js';
+import { readInOrder } from '@ui/lib/documentReads.js';
 import { ProjectTabs } from './ProjectTabs.jsx';
 
 // `toConllu()` returns a `#`-prefixed sentinel (not a throw) for documents that
 // can't be serialized (project unconfigured or no tokenized content). A real
 // export begins with `# newdoc id = …`.
 const isExportError = (t) => t === NOT_SET_UP_FILE || t === NOT_TOKENIZED_FILE;
-
-// Run `fn` over `items` with at most `limit` in flight. `onProgress(done)`
-// fires after each completion.
-async function mapWithConcurrency(items, limit, fn, onProgress) {
-  let next = 0;
-  let done = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      await fn(items[i], i);
-      onProgress(++done);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-}
 
 // Per document of a file, the id its new document is created under, kept
 // while the page is open across every import of that file (the same name,
@@ -89,39 +75,26 @@ const exportDocuments = async ({ client, projectId, onProgress }) => {
   onProgress(0, docs.length);
   const entries = [];
   const skipped = [];
-  await mapWithConcurrency(
-    docs,
-    5,
-    async (d) => {
-      try {
-        const doc = await ConlluDocument.load(client, projectId, d.id);
-        const t = doc.toConllu();
-        if (isExportError(t)) {
-          skipped.push({ name: d.name, reason: t.replace(/^#\s*/, '') });
-        } else {
-          entries.push({ name: d.name, text: t });
-        }
-      } catch (err) {
-        skipped.push({ name: d.name, reason: humanizeError(err, 'Failed to load it.') });
+  // Five reads at a time, the documents taken in the project's order.
+  const reads = readInOrder(docs, (d) => ConlluDocument.load(client, projectId, d.id), {
+    inFlight: 5,
+  });
+  let done = 0;
+  for await (const { id: d, value: doc, error } of reads) {
+    try {
+      if (error) throw error;
+      const t = doc.toConllu();
+      if (isExportError(t)) {
+        skipped.push({ name: d.name, reason: t.replace(/^#\s*/, '') });
+      } else {
+        entries.push({ name: d.name, text: t });
       }
-    },
-    (done) => onProgress(done, docs.length),
-  );
+    } catch (err) {
+      skipped.push({ name: d.name, reason: humanizeError(err, 'Failed to load it.') });
+    }
+    onProgress(++done, docs.length);
+  }
   return { documents: docs.length, entries, skipped };
-};
-
-const zip = (files) => {
-  const archive = new JSZip();
-  for (const f of files) archive.file(f.path, f.text);
-  return archive.generateAsync({ type: 'blob' });
-};
-
-const unzip = async (file) => {
-  const archive = await JSZip.loadAsync(file);
-  const entries = Object.values(archive.files).filter((e) => !e.dir);
-  return Promise.all(
-    entries.map(async (e) => ({ path: e.name, bytes: await e.async('uint8array') })),
-  );
 };
 
 const FORMAT = {

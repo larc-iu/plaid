@@ -2,7 +2,7 @@
 // plaid-ui's sanitizeFilename, and saved by its saveBlob.
 
 import { zip } from 'fflate';
-import { readAll } from '../domain/documentReads.js';
+import { readAll } from '@ui/lib/documentReads.js';
 
 /**
  * Dedupe by inserting " (2)", " (3)", … before the extension. Suffixed names

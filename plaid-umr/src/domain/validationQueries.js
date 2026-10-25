@@ -17,11 +17,8 @@
 import { UmrDocument, readEntryLexicon } from './UmrDocument.js';
 import { writtenIds } from './sentenceGraph.js';
 import { parsePenman } from './format/penman.js';
-
-// How many document reads are in flight at once. Enough to cover the round
-// trip on a remote server, few enough that a scan does not monopolise the
-// connection or the server's readers while somebody else is annotating.
-const READERS = 4;
+// By real path, so the node suite loads it (no `@ui` alias there).
+import { readInOrder } from '../../../plaid-ui/src/lib/documentReads.js';
 
 /**
  * The ids of the project's documents that hold at least one UMR node, from
@@ -45,20 +42,6 @@ export const documentsWithWords = (projectId, wordLayerId) => ({
   return: { group: ['?d'], aggregates: [['count']] },
   scope: { projectIds: [projectId] },
 });
-
-/**
- * Run `work` over `items` with at most `limit` in flight, keeping the
- * results in the order of the input.
- */
-async function mapLimit(items, limit, work) {
-  const out = new Array(items.length);
-  let next = 0;
-  const runner = async () => {
-    for (let i = next++; i < items.length; i = next++) out[i] = await work(items[i], i);
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
-  return out;
-}
 
 /**
  * One document's rows, in sentence order (the checks that walk the whole
@@ -217,9 +200,14 @@ export async function validateProject(
     );
     candidates = docs.filter((d) => worthReading.has(String(d.id)));
   }
+  // Four reads in flight (readInOrder's bound): enough to cover the round
+  // trip on a remote server, few enough that a scan does not monopolise the
+  // server's readers while somebody else is annotating.
   let done = 0;
-  const perDocument = await mapLimit(candidates, READERS, async (summary) => {
-    const raw = await client.documents.get(summary.id, true);
+  const perDocument = [];
+  const reads = readInOrder(candidates, (summary) => client.documents.get(summary.id, true));
+  for await (const { id: summary, value: raw, error } of reads) {
+    if (error) throw error;
     const doc = new UmrDocument({ raw, client, projectId, lexicon });
     const rows = reportOf(doc).map((p) => ({
       documentId: summary.id,
@@ -235,8 +223,8 @@ export async function validateProject(
       ...(p.details ? { details: p.details } : {}),
     }));
     onProgress?.(++done, candidates.length, summary.name);
-    return rows;
-  });
+    perDocument.push(rows);
+  }
   onProgress?.(candidates.length, candidates.length, null);
   return perDocument.flat();
 }

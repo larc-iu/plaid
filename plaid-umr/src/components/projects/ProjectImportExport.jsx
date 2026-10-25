@@ -1,30 +1,16 @@
 import { setupHref } from './setup.jsx';
-import JSZip from 'jszip';
 import { exportProjectUmr } from '../../domain/umrExport.js';
 import { UnwritableUmrError } from '../../domain/format/umrFile.js';
 import { ExportProblems } from '../editor/ExportProblems.jsx';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExportPage.jsx';
+import { zip, unzip } from '@ui/lib/zip.js';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { prepareImport } from './prepareUmrImport.js';
 
 const exportDocuments = async ({ client, project, projectId, onProgress }) => {
   const entries = (await exportProjectUmr(client, projectId, project, { onProgress })) || [];
   return { documents: entries.length, entries, skipped: [] };
-};
-
-const zip = (files) => {
-  const archive = new JSZip();
-  for (const f of files) archive.file(f.path, f.text);
-  return archive.generateAsync({ type: 'blob' });
-};
-
-const unzip = async (file) => {
-  const archive = await JSZip.loadAsync(file);
-  const entries = Object.values(archive.files).filter((e) => !e.dir);
-  return Promise.all(
-    entries.map(async (e) => ({ path: e.name, bytes: await e.async('uint8array') })),
-  );
 };
 
 // A value a .umr file cannot hold refuses the whole export, and the page lists

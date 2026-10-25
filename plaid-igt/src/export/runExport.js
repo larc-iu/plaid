@@ -20,7 +20,8 @@
 // from a document that could not be read. Cancellation throws ExportCancelled.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
-import { readInOrder, readLayerIds } from '../domain/documentReads.js';
+import { readLayerIds } from '../domain/documentReads.js';
+import { readInOrder } from '@ui/lib/documentReads.js';
 import { shareVocabularies } from '../domain/vocabLookup.js';
 import {
   MEDIA_FILE_FIELD,
