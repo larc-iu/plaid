@@ -34,6 +34,8 @@ that is missing somewhere.
 import logging
 import threading
 import time
+import uuid
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -262,4 +264,93 @@ class DocumentLock:
     def raise_if_lost(self) -> None:
         lost = self.lost
         if lost is not None:
+            raise lost
+
+
+#: The pause before sending again an acquire whose outcome is unknown, which
+#: grows by this much each time (three sends in all).
+LOCK_ACQUIRE_RETRY_S = 0.5
+
+
+def take_lock(documents, document_id: str, lock_id: str):
+    """The acquire of a ``locked()`` block, under the holder id it minted.
+    ``documents`` is the client's (or a batch's) documents resource.
+
+    An acquire whose outcome is unknown (no answer, a timeout, a 502 or a
+    504) may have taken the lock. It is sent again under the same id as any
+    write is (``retry_unknown``), which the server answers 200 while that
+    holder has it. When every send is unknown, the lock it may hold is
+    released on the way out, so it does not stand in everyone's way until it
+    expires.
+    """
+    # Here, not at the top: the request layer imports this module.
+    from plaid_client import http
+
+    try:
+        return http.retry_unknown(
+            lambda: documents.acquire_lock(document_id, new_lock_id=lock_id),
+            delays=[LOCK_ACQUIRE_RETRY_S, 2 * LOCK_ACQUIRE_RETRY_S])
+    except http.PlaidAPIError as e:
+        if e.status == 423:
+            data = e.response_data or {}
+            holder = data.get('user-id') or data.get('user_id') or 'another user'
+            raise http.PlaidAPIError(
+                f"This document is being edited by {holder}. "
+                f"Try again once they're done.",
+                status=423, url=e.url, method=e.method,
+                response_data=e.response_data, status_text=e.status_text,
+                original_error=e) from e
+        if http.is_unknown_outcome(e):
+            try:
+                documents.release_lock(document_id, lock_id)
+            except Exception as release_err:
+                logger.warning(
+                    "Failed to release lock on document %s: %s", document_id, release_err)
+        raise
+
+
+@contextmanager
+def with_document_lock(documents, document_id: str, *, keep_alive: bool = True,
+                       should_renew=None):
+    """The body of ``documents.locked()``, which documents what the block
+    does: take the lock under a minted holder id, renew it on a beat while the
+    block runs, and release it on the way out."""
+    minted = str(uuid.uuid4())
+    info = take_lock(documents, document_id, minted)
+    client = documents._client
+    lock_id = (info or {}).get('lock_id') or minted
+    keeper = None
+    if keep_alive:
+        ttl_s = lock_ttl_s((info or {}).get('expires_at'), client.server_now().timestamp())
+        client.document_lock_lost = None
+        keeper = LockKeeper(
+            lambda doc_id: documents.renew_lock(doc_id, lock_id), document_id, ttl_s,
+            on_lost=lambda lost: setattr(client, 'document_lock_lost', lost),
+            should_renew=should_renew)
+        client.lock_keepers[document_id] = keeper
+        keeper.start()
+    raised = False
+    try:
+        yield DocumentLock(document_id, keeper, lock_id)
+    except BaseException:
+        raised = True
+        raise
+    finally:
+        if keeper is not None:
+            keeper.stop()
+            if client.lock_keepers.get(document_id) is keeper:
+                del client.lock_keepers[document_id]
+        lost = keeper.lost if keeper is not None else None
+        client.document_lock_lost = None
+        # Best-effort release: the server TTL reclaims a stranded lock, and
+        # we must not let a release failure mask the real error from the body.
+        try:
+            documents.release_lock(document_id, lock_id)
+        except Exception as release_err:
+            logger.warning(
+                "Failed to release lock on document %s: %s", document_id, release_err)
+        # A block that ran to the end without the lock it asked for did not
+        # do what it says it did. Only raise when nothing else is already
+        # propagating, so the real failure is never masked.
+        if lost is not None and not raised:
             raise lost

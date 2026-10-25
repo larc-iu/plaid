@@ -14,7 +14,7 @@ from urllib.parse import quote, urlencode
 
 import requests as req_lib
 
-from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
+from plaid_client.document_lock import with_document_lock
 from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, post_batch, network_error,
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
@@ -1909,11 +1909,6 @@ class TokenLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Re
                                            parent_token_layer_id=parent_token_layer_id), audit_message=audit_message)
 
 
-#: The pause before sending again an acquire whose outcome is unknown, which
-#: grows by this much each time (three sends in all).
-LOCK_ACQUIRE_RETRY_S = 0.5
-
-
 class DocumentsResource(_MetadataMethods, _Resource):
     _kind = 'documents'
 
@@ -1985,38 +1980,6 @@ class DocumentsResource(_MetadataMethods, _Resource):
                              query_params={'lock-id': lock_id},
                              audit_message=audit_message, out_of_band=True)
 
-    def _take_lock(self, document_id: str, lock_id: str) -> Any:
-        """The acquire of a :meth:`locked` block, under the holder id it minted.
-
-        An acquire whose outcome is unknown (no answer, a timeout, a 502 or a
-        504) may have taken the lock. It is sent again under the same id as
-        any write is (``retry_unknown``), which the server answers 200 while
-        that holder has it. When every send is unknown, the lock it may hold
-        is released on the way out, so it does not stand in everyone's way
-        until it expires.
-        """
-        try:
-            return retry_unknown(
-                lambda: self.acquire_lock(document_id, new_lock_id=lock_id),
-                delays=[LOCK_ACQUIRE_RETRY_S, 2 * LOCK_ACQUIRE_RETRY_S])
-        except PlaidAPIError as e:
-            if e.status == 423:
-                data = e.response_data or {}
-                holder = data.get('user-id') or data.get('user_id') or 'another user'
-                raise PlaidAPIError(
-                    f"This document is being edited by {holder}. "
-                    f"Try again once they're done.",
-                    status=423, url=e.url, method=e.method,
-                    response_data=e.response_data, status_text=e.status_text,
-                    original_error=e) from e
-            if is_unknown_outcome(e):
-                try:
-                    self.release_lock(document_id, lock_id)
-                except Exception as release_err:
-                    logging.getLogger(__name__).warning(
-                        "Failed to release lock on document %s: %s", document_id, release_err)
-            raise
-
     @contextmanager
     def locked(self, document_id: str, *, keep_alive: bool = True, should_renew=None):
         """Hold this document's server-enforced lock for a ``with`` block,
@@ -2079,45 +2042,9 @@ class DocumentsResource(_MetadataMethods, _Resource):
           which also holds the document in strict mode, so such a write is
           refused with a 409.
         """
-        minted = str(uuid.uuid4())
-        info = self._take_lock(document_id, minted)
-        client = self._client
-        lock_id = (info or {}).get('lock_id') or minted
-        keeper = None
-        if keep_alive:
-            ttl_s = lock_ttl_s((info or {}).get('expires_at'), client.server_now().timestamp())
-            client.document_lock_lost = None
-            keeper = LockKeeper(
-                lambda doc_id: self.renew_lock(doc_id, lock_id), document_id, ttl_s,
-                on_lost=lambda lost: setattr(client, 'document_lock_lost', lost),
-                should_renew=should_renew)
-            client.lock_keepers[document_id] = keeper
-            keeper.start()
-        raised = False
-        try:
-            yield DocumentLock(document_id, keeper, lock_id)
-        except BaseException:
-            raised = True
-            raise
-        finally:
-            if keeper is not None:
-                keeper.stop()
-                if client.lock_keepers.get(document_id) is keeper:
-                    del client.lock_keepers[document_id]
-            lost = keeper.lost if keeper is not None else None
-            client.document_lock_lost = None
-            # Best-effort release: the server TTL reclaims a stranded lock, and
-            # we must not let a release failure mask the real error from the body.
-            try:
-                self.release_lock(document_id, lock_id)
-            except Exception as release_err:
-                logging.getLogger(__name__).warning(
-                    "Failed to release lock on document %s: %s", document_id, release_err)
-            # A block that ran to the end without the lock it asked for did not
-            # do what it says it did. Only raise when nothing else is already
-            # propagating, so the real failure is never masked.
-            if lost is not None and not raised:
-                raise lost
+        with with_document_lock(self, document_id, keep_alive=keep_alive,
+                                should_renew=should_renew) as lock:
+            yield lock
 
     def get_media(self, document_id: str) -> bytes:
         """Get the media file for a document.

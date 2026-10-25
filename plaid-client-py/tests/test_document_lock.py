@@ -336,7 +336,7 @@ def _client(monkeypatch, keeper_cls=None):
 
     client.session = _Session()
     if keeper_cls is not None:
-        monkeypatch.setattr('plaid_client.client.LockKeeper', keeper_cls)
+        monkeypatch.setattr('plaid_client.document_lock.LockKeeper', keeper_cls)
     return client, sent
 
 
@@ -459,7 +459,7 @@ def test_a_second_block_of_the_same_user_is_refused_and_cannot_release_the_first
     # Two approvals by one person on one document at once. Each is its own
     # holder, so the second gets the 423 instead of sharing the lock, and its
     # way out does not release the lock from under the first.
-    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     core = _PerHolderCore()
     first = PlaidClient('http://plaid.internal:8085', 'tok')
     second = PlaidClient('http://plaid.internal:8085', 'tok')
@@ -556,7 +556,7 @@ def test_the_window_is_read_off_the_acquire_response(monkeypatch):
 
     client.session = _Session()
     monkeypatch.setattr(client_mod.time, 'time', lambda: 1000.0)
-    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     with client.documents.locked('d1'):
         pass
     # 20 seconds of window, not the 60-second default.
@@ -615,8 +615,8 @@ class _LostAnswerCore(_PerHolderCore):
 
 
 def _lost_answer_client(monkeypatch, lose):
-    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
-    monkeypatch.setattr('plaid_client.client.LOCK_ACQUIRE_RETRY_S', 0)
+    monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.document_lock.LOCK_ACQUIRE_RETRY_S', 0)
     core = _LostAnswerCore(lose)
     client = PlaidClient('http://plaid.internal:8085', 'tok')
     client.session = core
@@ -652,7 +652,7 @@ def test_a_server_clock_half_an_hour_ahead_does_not_stretch_the_window(monkeypat
     # of a one-minute lock.
     from datetime import datetime, timedelta, timezone
     from email.utils import format_datetime
-    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     server_now = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=30)
 
     class _Skewed(_Resp):
@@ -675,7 +675,7 @@ def test_a_server_clock_half_an_hour_ahead_does_not_stretch_the_window(monkeypat
 
 
 def test_the_refusal_names_the_holder_and_no_document_id(monkeypatch):
-    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     core = _PerHolderCore()
     core.holder = 'someone-else'
     client = PlaidClient('http://plaid.internal:8085', 'tok')
@@ -735,7 +735,7 @@ class _VersionedResp(_Resp):
 def _versioned_client(monkeypatch, answers):
     """A client whose writes are answered, in turn, by ``answers``: (versions,
     replayed) pairs, for single requests and batches alike."""
-    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.document_lock.LockKeeper', _ManualKeeper)
     client = PlaidClient('http://plaid.internal:8085', 'tok')
     queue = list(answers)
 
