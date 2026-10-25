@@ -34,7 +34,7 @@ class AgentFakeClient(testing.FakeClient):
     no_doc_cache = True
 
     def __init__(self, project, documents, audit=None, guidelines=None, comments=None,
-                 restore_summary=RESTORE_SUMMARY, fails=None, projects=None, services=None):
+                 restore_summary=RESTORE_SUMMARY, fails=None, projects=None, services=None, admins=()):
         super().__init__(documents, fails, project=project, audit=audit, guidelines=guidelines,
                          comments=comments, restore_summary=restore_summary, projects=projects,
-                         services=services)
+                         services=services, admins=admins)

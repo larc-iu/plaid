@@ -41,3 +41,21 @@ def test_a_tool_check_counts_a_failed_admin_read_as_no():
     assert Requester(client, 'u@x').is_admin() is False
     with pytest.raises(PlaidAPIError):
         Requester(client, 'u@x', strict=True).is_admin()
+
+
+@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('admin', [True, False])
+def test_an_administrator_with_no_role_approves_as_a_maintainer_would(app, admin):
+    # The project reviews maintainers' work, and the approver holds no role
+    # in it: an administrator counts as a maintainer, so their approval is a
+    # contribution, and anyone else's is verified.
+    spec = sbs.APPS[app]()
+    client = spec['client'](admins=['u@x'] if admin else ())
+    client.project['config'].setdefault('plaid', {})['review'] = {'users': [], 'roles': ['maintainer']}
+    assert 'u@x' not in str([client.project.get(k) for k in ('maintainers', 'writers', 'readers')])
+    plan, store = sbs._plan(spec, client)
+    helper = sbs._approve(spec, client, plan)
+    assert helper.errors == [] and helper.done[0]['kind'] == 'applied', (helper.errors, helper.done)
+    item = store.load('c1')[0]['display'][1]
+    assert item['status'] == 'applied'
+    assert bool(item.get('contributed')) is admin, item
