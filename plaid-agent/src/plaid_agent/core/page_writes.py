@@ -51,8 +51,13 @@ class PageWrites:
             # The page writes next: a discard of the plan from now on asks
             # whether it did (`_op_discard`), and records it as this approval
             # would have: the box as ticked, the approver's review as read now.
-            facts = {'as_human': bool(ctx.data.get('as_human')),
-                     'reviewed': self._reviewed_now(ctx)}
+            # A review that cannot be read refuses, as the approval does.
+            try:
+                reviewed = self._reviewed_now(ctx, None)
+            except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
+                ctx.helper.error(self._review_unread(e))
+                return
+            facts = {'as_human': bool(ctx.data.get('as_human')), 'reviewed': reviewed}
             if not self._set_mark(ctx, plan_id, facts):
                 self._refuse(ctx, 'gone')
                 return
@@ -113,12 +118,19 @@ class PageWrites:
                 self._set_mark(ctx, plan_id, None)
             self._done(ctx, ctx.store.meta(ctx.conv_id) or meta)
 
-    def _reviewed_now(self, ctx) -> bool:
-        try:
-            return bool(self._reviewed(ctx.client, ctx.store.project_id, ctx.store.user_id))
-        except Exception:  # noqa: BLE001 - unreadable: recorded by the box, as an unreviewed approver's
-            traceback.print_exc()
-            return False
+    def _reviewed_now(self, ctx, item) -> bool:
+        """Whether the approver's work is reviewed: as the preflight's mark on
+        ``item`` stored it, else read now (`_reviewed`, which raises on a
+        failed read)."""
+        facts = ((item or {}).get('plan') or {}).get(PAGE_WRITING)
+        if isinstance(facts, dict) and 'reviewed' in facts:
+            return bool(facts['reviewed'])
+        return bool(self._reviewed(ctx.client, ctx.store.project_id, ctx.store.user_id))
+
+    def _review_unread(self, e) -> str:
+        """The refusal of an approval whose review settings could not be read."""
+        return ('Nothing was written. The project\'s review settings could not be read: '
+                f'{requester_message(e, secrets=self.REQUEST_SECRETS)}')
 
     def _page_wrote(self, ctx, item) -> Optional[Dict[str, int]]:
         """:meth:`page_wrote` of a plan item, None on any failure to tell."""
@@ -160,7 +172,13 @@ class PageWrites:
         counts = self._page_wrote(ctx, item)
         if not counts or self._page_operation(ctx, item, plan_id) is not False:
             return False
-        if self._settle_written(ctx, item, plan_id, note=f'(note) The plan was approved. {IN_FORCE}') is None:
+        try:
+            reviewed = self._reviewed_now(ctx, item)
+        except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
+            ctx.helper.error(self._review_unread(e))
+            return True
+        if self._settle_written(ctx, item, plan_id, reviewed=reviewed,
+                                note=f'(note) The plan was approved. {IN_FORCE}') is None:
             self._refuse(ctx, 'gone')
             return True
         ctx.helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'message': IN_FORCE})
@@ -199,9 +217,11 @@ class PageWrites:
                         reviewed: Optional[bool] = None, note: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Settle a plan its page wrote as applied, recorded as the
         approval's own path records it: by this approval's box and the
-        approver's review now, or by ``as_human`` and ``reviewed`` as the
-        preflight of an approval that never came stored them. The sidebar
-        entry as written, or None when the conversation is gone."""
+        approver's review as the preflight's mark stored it (read now when
+        there is no mark, raising on a failed read), or by ``as_human`` and
+        ``reviewed`` as the preflight of an approval that never came stored
+        them. The sidebar entry as written, or None when the conversation is
+        gone."""
         plan = item['plan']
         ops = plan.get('ops') or []
         summary = plan.get('summary') or self.summarize(ops)
@@ -209,7 +229,7 @@ class PageWrites:
         # Recorded as the approval's own path records it: a reviewed
         # approver's approval is a contribution, whatever the box said.
         if reviewed is None:
-            reviewed = self._reviewed_now(ctx)
+            reviewed = self._reviewed_now(ctx, item)
         if as_human is None:
             as_human = bool(ctx.data.get('as_human'))
         earlier = stamp_of(plan.get(WRITING))

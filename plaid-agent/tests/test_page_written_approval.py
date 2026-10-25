@@ -354,3 +354,47 @@ def test_approve_again_after_a_lost_answer_is_applied_as_written(proj):
     h = _ask(proj, plan, request_id='r11')  # the page's second write wrote nothing
     assert _applied(h) and h.done[0]['message'] != IN_FORCE and h.done[0]['message'].startswith('Applied'), h.done
     assert _item(store)[0]['status'] == 'applied'
+
+
+# --- a review read that fails (REV-W2-FIX F2) ------------------------------------------
+
+UNREAD = "Nothing was written. The project's review settings could not be read: the review read failed"
+
+
+def _unreadable(svc):
+    """The approver's review, as approval reads it, failing to read."""
+    def fail(*_args):
+        raise RuntimeError('the review read failed')
+    svc._reviewed = fail
+    return svc
+
+
+def test_the_preflight_refuses_when_the_review_settings_cannot_be_read(proj):
+    _ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    h = _ask(proj, plan, svc=_unreadable(_service()), preflight=True)
+    assert h.errors == [UNREAD] and not h.done, (h.errors, h.done)
+    item, _ = _item(store)
+    assert item['status'] is None and 'page_writing' not in item['plan'], 'not marked: the page does not write'
+
+
+def test_a_page_written_approval_is_recorded_by_the_review_its_preflight_read(proj):
+    from plaid_client.provenance import REVIEW_KEY
+    proj.client.projects.set_config(proj.project_id, 'plaid', REVIEW_KEY, {'users': [_Session.user], 'roles': []})
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    assert _ready(_ask(proj, plan, preflight=True))
+    _page_write(proj, ws, plan)
+    h = _ask(proj, plan, svc=_unreadable(_service()), request_id='r10', wrote_first=True)
+    assert _applied(h), (h.errors, h.done)
+    item, _ = _item(store)
+    assert item['status'] == 'applied' and item.get('contributed') is True, item
+
+
+def test_an_approval_over_settings_in_force_refuses_when_the_review_settings_cannot_be_read(proj):
+    ws, plan = _planned(proj)
+    store = _seed(proj, plan)
+    page_write(proj.client, proj.project_id, ws.ops)  # by hand, with no preflight
+    h = _ask(proj, plan, svc=_unreadable(_service()))
+    assert h.errors == [UNREAD] and not h.done, (h.errors, h.done)
+    assert _item(store)[0]['status'] is None
