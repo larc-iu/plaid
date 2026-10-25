@@ -18,13 +18,14 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .args import clamp_limit
 from .bidi import plain_quote
-from .limits import READ_LIMITS
+from .limits import QUERY_ROWS, QUERY_SECONDS, READ_LIMITS
 from .tools import ToolError, engine_refusal_kind, truncate
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 LAYER_SLOTS = ('layer', 'token-layer', 'text-layer', 'parent-token-layer', 'span-layer',
                'vocab-layer')
 
+_SHOWN, _CAP = READ_LIMITS['query']
 HELP = '''\
 PLAID QUERY LANGUAGE (project-scoped; read-only; results limited)
 Request: {"find": ["?a", ...], "where": [clause, ...], "return": "entities"|"ids"|"count"|aggregate, "limit": n,
@@ -67,9 +68,11 @@ Sequences over one token layer (adjacent tokens):
 Return shapes: "ids" (default), "entities" (full objects), "count" (distinct find tuples),
   aggregate {"group": ["?d"], "aggregates": [["count"], ["min","?b"], ["max","?b"], ["avg","?b"]]} (group by
   bound variables; no find and no order_by with aggregates; extra joins inflate counts).
-Limits: "ids" and "entities" stop at 1000 rows, and past that the answer is cut ("truncated"): count with
+''' + f'''\
+Limits: "ids" and "entities" stop at {QUERY_ROWS} rows, and past that the answer is cut ("truncated"): count with
   "count" or an aggregate return instead, or split the where (by document, say). This tool shows the
-  number of rows its own limit argument says, or else the query's "limit", default 50, up to 500. 30 s per query.
+  number of rows its own limit argument says, or else the query's "limit", default {_SHOWN}, up to {_CAP}. \
+{QUERY_SECONDS} s per query.
 '''
 
 
@@ -280,7 +283,7 @@ def run(client, q: Dict[str, Any], project_id: str) -> Dict[str, Any]:
         # The model writes this object, so the limit inside it is as likely to
         # be "20 or so" as a number.
         try:
-            q['limit'] = clamp_limit(q.get('limit'), 1000, 1000)
+            q['limit'] = clamp_limit(q.get('limit'), QUERY_ROWS, QUERY_ROWS)
         except ValueError as e:
             raise QueryRefused(str(e)) from None
     try:

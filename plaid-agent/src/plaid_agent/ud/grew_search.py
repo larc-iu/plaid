@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core.args import clamp_limit
 from ..core.corpus import spread
-from ..core.limits import READ_LIMITS
+from ..core.limits import QUERY_SECONDS, READ_LIMITS
 from ..core.tools import ToolError, truncate
 from .corpus import RENDER_DOC_BUDGET
 from .grew import GrewParseError, GrewUnsupportedError, layers_of, parse_and_compile
@@ -141,7 +141,7 @@ def t_grew_search(ws: Workspace, pattern: str = None, document: str = None, limi
             res = c.run(q)
         except ToolError as e:
             if getattr(e.__context__, 'status', None) == 408:
-                raise ToolError('The engine gave up on this pattern after 30 s. Name a document, or '
+                raise ToolError(f'The engine gave up on this pattern after {QUERY_SECONDS} s. Name a document, or '
                                 'constrain the nodes more (a upos, a lemma, an edge label).',
                                 kind=e.kind) from None
             raise

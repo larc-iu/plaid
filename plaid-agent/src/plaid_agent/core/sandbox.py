@@ -25,7 +25,7 @@ import re
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
-from .limits import MAX_RESULT_CHARS, cuts, forget_cuts, note_cut
+from .limits import MAX_RESULT_CHARS, QUERY_ROWS, cuts, forget_cuts, note_cut
 from .tools import ToolError, kind_of
 
 # Characters of output handed back. Literally every tool result's budget, not
@@ -462,7 +462,7 @@ The project reaches the code through the functions here and any named further do
                                  (the default), [id] for "ids". An aggregate's row is its group values
                                  then its aggregates, e.g. ["NOUN", 412]. "count" gives {{"count": n}}
                                  and no rows. "truncated" is true when rows were cut: "ids" and
-                                 "entities" stop at 1000, so count with an aggregate return, or split
+                                 "entities" stop at {query_rows}, so count with an aggregate return, or split
                                  the where and query once per part.
   plan(tool, **args)          -> stage a proposal through a plan tool by name, with the same arguments
                                  the tool takes; returns the tool's own reply as text. Nothing is written:
@@ -495,6 +495,7 @@ def help_text(app_half: str, extra: str = '', ws=None, shape: str = '') -> str:
     projects the turn may read, when there are any."""
     from . import filetools
     out = (HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX, turn_seconds=TURN_EXEC_SECONDS,
+                       query_rows=QUERY_ROWS,
                        shape='{shape}').replace('{shape}\n', shape.strip('\n') + '\n\n' if shape else '')
            + app_half + extra + filetools.save_help(ws))
     reach = getattr(ws, 'reach', None)

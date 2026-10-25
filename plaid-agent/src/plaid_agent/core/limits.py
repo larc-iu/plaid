@@ -48,6 +48,13 @@ RENDER_BUDGET = MAX_RESULT_CHARS - RENDER_HEADER_ROOM
 GROUP_LIMIT = 100000
 ROW_LIMIT = 100000
 
+# What the query tool and run_code's query() ask the engine for: the rows of
+# an "ids" or "entities" answer before it is cut, and core's own time limit for
+# one query (`*query-timeout-ms*` in plaid.sql.query.exec, which a test holds
+# this to). The help texts read both from here.
+QUERY_ROWS = 1000
+QUERY_SECONDS = 30
+
 #: The longest comment a plan may post, in characters.
 COMMENT_MAX_CHARS = 10000
 

@@ -19,12 +19,12 @@ SCHEMA_MODULES = ('core/toolkit.py', 'core/webtools.py', 'core/filetools.py',
 NUMBER = re.compile(r'\b(default|up to|max) (?!1\b)\d')
 
 
-def typed_numbers(source: str):
+def typed_numbers(source: str, pattern=NUMBER):
     tree = ast.parse(source)
     formatted = {id(n) for f in ast.walk(tree) if isinstance(f, ast.JoinedStr) for n in ast.walk(f)}
     return [(n.lineno, n.value) for n in ast.walk(tree)
             if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in formatted
-            and NUMBER.search(n.value)]
+            and pattern.search(n.value)]
 
 
 def test_schema_numbers_come_from_names():
