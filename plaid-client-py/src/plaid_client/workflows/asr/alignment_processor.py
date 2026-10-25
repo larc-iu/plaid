@@ -16,7 +16,8 @@ from plaid_client.ids import uuid7
 from plaid_client.service import require_held, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.partition import partition
-from plaid_client.workflows.igt.word_breaks import is_js_space, tokenize_new_text
+from plaid_client.workflows.igt.config import read_tokenize_new_text
+from plaid_client.workflows.igt.word_breaks import is_js_space
 
 from .asr_model import Alignment
 
@@ -357,7 +358,7 @@ class AlignmentProcessor:
         None when there is none or its config has the setting off."""
         layer = next((tl for tl in text_layer.get("token_layers", [])
                       if word_token_layer_id and tl.get("id") == word_token_layer_id), None)
-        return word_token_layer_id if layer is not None and tokenize_new_text(layer.get("config")) else None
+        return word_token_layer_id if layer is not None and read_tokenize_new_text(layer.get("config")) else None
 
     def _write(self, client, document, text_id, text_modifications, new_alignment_tokens, tokenize_layer,
                existing_alignment_tokens, current_text, new_text, sentence_token_layer_id,

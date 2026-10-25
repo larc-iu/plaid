@@ -51,6 +51,7 @@ from plaid_client.service import PhasedProgress, held_run, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
+from plaid_client.workflows.igt.config import read_lexicon_field, read_vocab_fields
 from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
@@ -144,7 +145,7 @@ def _field(meta, key):
 def _role_key(vocab_layer, role):
     """The first entry field of a vocabulary holding ``role`` (its stored
     ``role``), or None. Never read from a field's name."""
-    fields = ((vocab_layer.get('config') or {}).get('igt') or {}).get('fields') or {}
+    fields = read_vocab_fields(vocab_layer.get('config')) or {}
     return next((k for k, cfg in fields.items() if isinstance(cfg, dict) and cfg.get('role') == role), None)
 
 
@@ -155,7 +156,7 @@ def lexicon_field_of(project, span_layer_id):
         for tk in tl.get('token_layers') or []:
             for sl in tk.get('span_layers') or []:
                 if sl.get('id') == span_layer_id:
-                    v = ((sl.get('config') or {}).get('igt') or {}).get('lexiconField')
+                    v = read_lexicon_field(sl.get('config'))
                     return v if isinstance(v, str) and v else None
     return None
 

@@ -15,6 +15,7 @@ from plaid_client.provenance import prov_state, MACHINE
 from plaid_client.roles import read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
 
+from .config import read_scope
 from .ignored import is_token_ignored
 from .senses import entry_morph_types, morpheme_morph_type
 
@@ -57,7 +58,7 @@ def _span_layer(token_layer, name, scope=None):
     for sl in token_layer.get('span_layers', []):
         if sl['name'] != name:
             continue
-        s = ((sl.get('config') or {}).get('igt') or {}).get('scope')
+        s = read_scope(sl.get('config'))
         if scope is None or s is None or s == scope:
             return sl
     return None

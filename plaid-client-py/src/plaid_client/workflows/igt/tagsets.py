@@ -31,16 +31,14 @@ A tagset's ``mode`` is one of three, from advice to rule:
 
 from typing import Dict, Iterator, List, Optional
 
+from .config import read_igt, read_scope, read_vocab_fields
+
 SUGGEST, CLOSED, MIXED = 'suggest', 'closed', 'mixed'
 MODES = (SUGGEST, CLOSED, MIXED)
 
 
 def _str(v) -> str:
     return v if isinstance(v, str) else ''
-
-
-def _igt(cfg, key):
-    return ((cfg or {}).get('igt') or {}).get(key)
 
 
 def normalize_tagset(raw, name: Optional[str] = None) -> dict:
@@ -75,7 +73,7 @@ def normalize_tagset(raw, name: Optional[str] = None) -> dict:
 
 def read_tagsets(config) -> Dict[str, dict]:
     """A project's (or a vocabulary's) tagsets by name, normalized."""
-    raw = _igt(config, 'tagsets')
+    raw = read_igt(config, 'tagsets')
     out: Dict[str, dict] = {}
     if isinstance(raw, dict):
         for name, t in raw.items():
@@ -87,7 +85,7 @@ def read_tagsets(config) -> Dict[str, dict]:
 
 def read_tagset_name(layer_config) -> Optional[str]:
     """The tagset name a field's span layer references, or None."""
-    return _str(_igt(layer_config, 'tagset')).strip() or None
+    return _str(read_igt(layer_config, 'tagset')).strip() or None
 
 
 def resolve_tagset(layer_config, config) -> Optional[dict]:
@@ -134,7 +132,7 @@ def vocab_tagset_for(vocab_layer, field_name) -> Optional[dict]:
     ``client.vocab_layers.get`` (or a project's ``vocabs`` entry) returns
     it. A vocabulary keeps its own tagsets because it is shared across
     projects, so a project tagset of the same name is never the answer."""
-    fields = _igt(vocab_layer.get('config'), 'fields')
+    fields = read_vocab_fields(vocab_layer.get('config'))
     f = fields.get(field_name) if isinstance(fields, dict) else None
     name = _str(f.get('tagset')).strip() if isinstance(f, dict) else ''
     return read_tagsets(vocab_layer.get('config')).get(name) if name else None
@@ -151,9 +149,9 @@ def governed_fields(project) -> List[dict]:
         name = read_tagset_name(sl.get('config'))
         t = tagsets.get(name) if name else None
         if t:
-            out.append({'kind': 'span', 'name': sl.get('name'), 'scope': _igt(sl.get('config'), 'scope'),
+            out.append({'kind': 'span', 'name': sl.get('name'), 'scope': read_scope(sl.get('config')),
                         'layer_id': sl.get('id'), 'tagset': t})
-    for m in _igt(project.get('config'), 'documentMetadata') or []:
+    for m in read_igt(project.get('config'), 'documentMetadata') or []:
         if not isinstance(m, dict) or not m.get('name'):
             continue
         name = _str(m.get('tagset')).strip()

@@ -86,9 +86,3 @@ def _trimmed(text, b, e):
     while e > b and text[e - 1] in _JS_SPACE:
         e -= 1
     return (b, e)
-
-
-def tokenize_new_text(word_layer_config) -> bool:
-    """The word layer's "Tokenize new text": on unless set to ``false``."""
-    igt = (word_layer_config or {}).get('igt') if isinstance(word_layer_config, dict) else None
-    return not (isinstance(igt, dict) and igt.get('tokenizeNewText') is False)

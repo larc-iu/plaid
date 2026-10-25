@@ -31,6 +31,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional
 
 from plaid_client.roles import ROLES, find_by_role
+from plaid_client.workflows.igt.config import read_field_lang, read_scope
 from plaid_client.workflows.messages import setup_incomplete
 
 #: The app's private config namespace.
@@ -136,12 +137,11 @@ def gloss_layers_of(sentence_layer, word_layer, morpheme_layer) -> List[GlossLay
         for layer in (token_layer or {}).get('span_layers') or []:
             if owns_umr(layer):
                 continue
-            igt = ((layer.get('config') or {}).get('igt') or {})
-            declared = str(igt.get('scope') or '').lower()
+            declared = str(read_scope(layer.get('config')) or '').lower()
             out.append(GlossLayer(
                 id=layer['id'], name=layer.get('name') or '',
                 scope=declared or default_scope,
-                lang=igt.get('lang') or None, layer=layer))
+                lang=read_field_lang(layer.get('config')) or None, layer=layer))
     return out
 
 
