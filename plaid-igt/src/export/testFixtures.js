@@ -267,6 +267,7 @@ export const makeNativeProject = () => ({
   name: 'Proj',
   config: {
     igt: {
+      initialized: true,
       documentMetadata: [{ name: 'Source' }],
       autoAnalysis: { enabled: false },
     },

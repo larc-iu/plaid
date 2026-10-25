@@ -38,6 +38,7 @@ import {
   readFieldLang,
   readLexiconField,
   readSentenceRole,
+  readInitialized,
 } from '../domain/igtConfig.js';
 import { ROLES } from '@larc-iu/plaid-client';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
@@ -165,12 +166,13 @@ export function buildProjectFile({
     formatVersion: NATIVE_FORMAT_VERSION,
     exportedAt,
     asOf: asOf ?? null,
-    // `igt`: whether this app set the project up, so an import of a project
-    // only another app did makes no igt setup of its own (Luke's ruling R37).
+    // `igt`: whether this app set the project up, read as the import's end
+    // reads it, so an import of a project only another app did makes no igt
+    // setup of its own (Luke's ruling R37).
     project: {
       id: project?.id ?? null,
       name: project?.name ?? null,
-      igt: nonEmpty(project?.config?.[IGT_NAMESPACE]),
+      igt: readInitialized(project?.config),
     },
     schema: {
       orthographies: readOrthographies(wordLayer?.config) ?? [],

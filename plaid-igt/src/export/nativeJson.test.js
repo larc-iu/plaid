@@ -443,6 +443,21 @@ describe('buildProjectFile', () => {
       exportedAt: 'x',
     });
     expect(noIgt.project).toEqual({ id: 'p2', name: 'Other', igt: false });
+    // Nor does one holding igt keys that igt never finished setting up: an
+    // export preset written by a script, or a setup that failed partway
+    // (REV-RT 2). The import's end reads the same flag.
+    const unfinished = buildProjectFile({
+      project: {
+        id: 'p3',
+        name: 'Unfinished',
+        config: { igt: { export: { format: 'cldf' } } },
+        textLayers: [],
+      },
+      documents: [],
+      vocabularies: [],
+      exportedAt: 'x',
+    });
+    expect(unfinished.project).toEqual({ id: 'p3', name: 'Unfinished', igt: false });
     expect(out.schema).toEqual({
       orthographies: [{ name: 'Translit' }],
       fields: {
