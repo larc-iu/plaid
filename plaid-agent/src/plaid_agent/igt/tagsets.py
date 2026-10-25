@@ -23,7 +23,8 @@ from plaid_client.constraints import value_parts, value_set_allows
 from plaid_client.provenance import project_role
 from plaid_client.workflows.igt.config import read_igt, read_igt_namespace, read_scope, read_vocab_fields
 from plaid_client.workflows.igt.glossing import is_lexical_part
-from plaid_client.workflows.igt.tagsets import CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset
+from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, MODES, field_constraints, mode_rule, normalize_tagset,
+                                                strip_space)
 
 from ..core.bidi import qv
 from ..core.tools import ToolError, kind_of
@@ -490,7 +491,7 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
         raw = changes['delimiters']
         # A model may list them (['.', ':']) rather than write them as one string.
         raw = ''.join(str(x) for x in raw) if isinstance(raw, list) else str(raw or '')
-        d = ''.join(dict.fromkeys(''.join(raw.split())))
+        d = ''.join(dict.fromkeys(strip_space(raw)))
         if d != t['delimiters']:
             said.append(f'delimiters {qv(d) if d else "none"}')
         t['delimiters'] = d

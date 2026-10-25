@@ -234,6 +234,14 @@ def test_delimiters_given_as_a_list_are_the_characters():
     assert ws.ops[-1]['after']['delimiters'] == '.()'
 
 
+def test_delimiters_drop_the_whitespace_the_app_drops():
+    """igt's settings drop what JavaScript calls whitespace (a byte order mark
+    too), and keep NEL and the separators, which Python calls whitespace."""
+    ws = Workspace(FakeClient(), load_project(FakeClient(), 'p1'))
+    call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'T', 'changes': {'delimiters': '. \ufeff\x85\x1c:\u3000'}})
+    assert ws.ops[-1]['after']['delimiters'] == '.\x85\x1c:'
+
+
 def test_approval_reads_back_what_the_app_wrote_and_never_writes(proj):
     ws = ws_of(proj)
     call_tool(ws, 'tagsets', {'action': 'edit', 'tagset': 'Leipzig', 'changes': {'add': ['NOM']}})

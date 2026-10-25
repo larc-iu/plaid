@@ -31,6 +31,12 @@ def _project(**tagsets):
     return {'igt': {'tagsets': tagsets}}
 
 
+# Characters one of Python and JavaScript calls whitespace and the other does
+# not (the file and group separators and NEL are Python's, the byte order
+# mark JavaScript's), and some both call it, or neither.
+AMBIGUOUS_SPACE = ['\x1c', '\x1d', '\x1e', '\x1f', '\x85', '﻿', ' ', ' ', '　', '᠎',
+                   '​']
+
 GLOSSES = {'mode': 'closed', 'delimiters': '.-', 'values': [{'value': 'PL'}, {'value': 'SG'}]}
 CASES = [
     # no tagset, and one the project no longer has
@@ -60,6 +66,12 @@ CASES = [
     # delimiters: whitespace is never one
     [_field('g'), _project(g={**GLOSSES, 'delimiters': ' . : > '})],
     [_field('g'), _project(g={**GLOSSES, 'delimiters': '.\t-\n='})],
+    # whitespace is what JavaScript calls whitespace, in the delimiters, a
+    # value and a name alike: these differ between the two languages
+    *[[_field('g'), _project(g={**GLOSSES, 'delimiters': f'.{c}-'})] for c in AMBIGUOUS_SPACE],
+    *[[_field('g'), _project(g={'mode': 'closed', 'values': [{'value': f'{c}PL{c}'}, {'value': c}]})]
+      for c in AMBIGUOUS_SPACE],
+    *[[_field(f'{c}g'), _project(**{f'g{c}': GLOSSES})] for c in AMBIGUOUS_SPACE],
     [_field('g'), _project(g={**GLOSSES, 'delimiters': None})],
     [_field('g'), _project(g={**GLOSSES, 'delimiters': 5})],
     # the stored shapes no app writes

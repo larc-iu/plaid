@@ -31,6 +31,7 @@ A tagset's ``mode`` is one of three, from advice to rule:
 
 from typing import Dict, Iterator, List, Optional
 
+from ...constraints import _JS_SPACE
 from .config import read_igt, read_scope, read_vocab_fields
 
 SUGGEST, CLOSED, MIXED = 'suggest', 'closed', 'mixed'
@@ -41,9 +42,26 @@ def _str(v) -> str:
     return v if isinstance(v, str) else ''
 
 
+def trim(s: str) -> str:
+    """``s`` less the whitespace at its two ends, as the app trims it
+    (JavaScript's ``trim``). Python's ``str.strip`` also strips NEL and the
+    four information separators, which the app keeps, and keeps the byte
+    order mark, which the app strips."""
+    return s.strip(_JS_SPACE)
+
+
+def strip_space(s: str) -> str:
+    """``s`` with all its whitespace taken out, as the app takes it out of a
+    tagset's delimiters (``stripSpace``), whitespace as :func:`trim` reads it."""
+    return s.translate(_NO_SPACE)
+
+
+_NO_SPACE = dict.fromkeys(map(ord, _JS_SPACE))
+
+
 def normalize_tagset(raw, name: Optional[str] = None) -> dict:
     """One tagset as ``{name, delimiters, mode, values}``, plus ``ordered:
-    True`` when it is stored so. Whitespace is never
+    True`` when it is stored so. Whitespace (:func:`trim`) is never
     a delimiter, an unknown mode reads as ``suggest``, and a value record must
     carry a non-empty string ``value`` (the first record wins a duplicate).
     Every other key a record carries is kept, ``description`` being the one
@@ -54,7 +72,7 @@ def normalize_tagset(raw, name: Optional[str] = None) -> dict:
     for rec in raw.get('values') or []:
         if not isinstance(rec, dict):
             continue
-        value = _str(rec.get('value')).strip()
+        value = trim(_str(rec.get('value')))
         if not value or value in seen:
             continue
         seen.add(value)
@@ -62,7 +80,7 @@ def normalize_tagset(raw, name: Optional[str] = None) -> dict:
     mode = raw.get('mode')
     return {
         'name': name,
-        'delimiters': ''.join(_str(raw.get('delimiters')).split()),
+        'delimiters': strip_space(_str(raw.get('delimiters'))),
         'mode': mode if mode in MODES else SUGGEST,
         'values': values,
         # Values listed in the stored order rather than sorted (the Status
@@ -77,7 +95,7 @@ def read_tagsets(config) -> Dict[str, dict]:
     out: Dict[str, dict] = {}
     if isinstance(raw, dict):
         for name, t in raw.items():
-            key = _str(name).strip()
+            key = trim(_str(name))
             if key:
                 out[key] = normalize_tagset(t, key)
     return out
@@ -85,7 +103,7 @@ def read_tagsets(config) -> Dict[str, dict]:
 
 def read_tagset_name(layer_config) -> Optional[str]:
     """The tagset name a field's span layer references, or None."""
-    return _str(read_igt(layer_config, 'tagset')).strip() or None
+    return trim(_str(read_igt(layer_config, 'tagset'))) or None
 
 
 def resolve_tagset(layer_config, config) -> Optional[dict]:
@@ -134,7 +152,7 @@ def vocab_tagset_for(vocab_layer, field_name) -> Optional[dict]:
     projects, so a project tagset of the same name is never the answer."""
     fields = read_vocab_fields(vocab_layer.get('config'))
     f = fields.get(field_name) if isinstance(fields, dict) else None
-    name = _str(f.get('tagset')).strip() if isinstance(f, dict) else ''
+    name = trim(_str(f.get('tagset'))) if isinstance(f, dict) else ''
     return read_tagsets(vocab_layer.get('config')).get(name) if name else None
 
 
@@ -154,7 +172,7 @@ def governed_fields(project) -> List[dict]:
     for m in read_igt(project.get('config'), 'documentMetadata') or []:
         if not isinstance(m, dict) or not m.get('name'):
             continue
-        name = _str(m.get('tagset')).strip()
+        name = trim(_str(m.get('tagset')))
         t = tagsets.get(name) if name else None
         if t:
             out.append({'kind': 'metadata', 'name': m['name'], 'scope': 'document', 'layer_id': None, 'tagset': t})
