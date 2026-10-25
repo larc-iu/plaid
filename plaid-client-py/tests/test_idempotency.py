@@ -45,6 +45,8 @@ def _stub_server(client, answer=lambda request, n: _Resp(200, {'id': 'x'})):
 
     def handle(method, url, headers, data):
         request = {'url': url, 'method': method, 'key': (headers or {}).get(KEY),
+                   'auth': (headers or {}).get('Authorization'),
+                   'content_type': (headers or {}).get('Content-Type'),
                    'body': json.loads(data) if isinstance(data, str) else None}
         requests.append(request)
         r = answer(request, len(requests) - 1)
@@ -207,6 +209,41 @@ def test_a_lost_batch_escapes_with_its_key_and_what_was_saved():
     assert caught.value.idempotency_key == requests[0]['key']
     assert caught.value.committed == 0
     assert len(requests) == 4
+
+
+def test_a_batch_whose_answers_stay_lost_escapes_with_its_key_and_so_does_a_refused_one():
+    for status, sends in [(502, 4), (400, 1)]:
+        client = PlaidClient('http://x', 'tok', **FAST)
+        requests = _stub_server(client, lambda r, n: _Resp(status, {'error': 'no'}))
+        b = client.batch()
+        b.spans.update('s', 'V')
+        with pytest.raises(PlaidAPIError) as caught:
+            b.submit()
+        assert caught.value.status == status
+        assert requests[0]['key']
+        assert caught.value.idempotency_key == requests[0]['key']
+        assert caught.value.committed == 0
+        assert len(requests) == sends
+
+
+def test_every_request_and_the_batch_post_say_who_and_json():
+    """The wire snapshot holds no headers, so this pins what goes with the
+    body: the token and that the body is JSON, on a read, a write and the
+    batch POST. The JS twin is "every request and the batch POST carry the
+    token and say JSON"."""
+    client = PlaidClient('http://x', 'tok', **FAST)
+    requests = _stub_server(client, lambda r, n: _Resp(
+        200, [{'status': 200, 'headers': {}, 'body': {}}] if isinstance(r['body'], list) else {'id': 'x'}))
+    client.documents.get('d')
+    client.spans.update('s', 'V')
+    b = client.batch()
+    b.spans.update('s', 'W')
+    b.submit()
+    assert len(requests) == 3
+    assert requests[2]['url'].endswith('/api/v1/batch')
+    for r in requests:
+        assert r['auth'] == 'Bearer tok', r['url']
+        assert r['content_type'] == 'application/json', r['url']
 
 
 def _version_of(url):

@@ -38,6 +38,8 @@ function stubServer(answer = () => response(200, { id: "x" })) {
       url: String(url),
       method: opts.method,
       key: headerOf(opts, KEY),
+      auth: headerOf(opts, "authorization"),
+      contentType: headerOf(opts, "content-type"),
       body: opts.body ? JSON.parse(opts.body) : undefined,
     };
     requests.push(request);
@@ -145,6 +147,59 @@ test("three resends, then the error escapes with the key", async () => {
     restore();
   }
   assert.equal(requests.length, 4);
+});
+
+// The wire snapshot holds no headers, so these two pin what goes with the
+// body: the token and that the body is JSON, on a read, a write and the
+// batch POST. The Python twin is test_every_request_and_the_batch_post_say_who_and_json.
+test("every request and the batch POST carry the token and say JSON", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer((r) =>
+    Array.isArray(r.body)
+      ? response(
+          200,
+          r.body.map(() => ({ status: 200, headers: {}, body: {} })),
+        )
+      : response(200, { id: "x" }),
+  );
+  try {
+    await client.documents.get("d");
+    await client.spans.update("s", "V");
+    await client.batched((b) => b.spans.update("s", "W"));
+  } finally {
+    restore();
+  }
+  assert.equal(requests.length, 3);
+  assert.ok(requests[2].url.endsWith("/api/v1/batch"));
+  for (const r of requests) {
+    assert.equal(r.auth, "Bearer tok", r.url);
+    assert.equal(r.contentType, "application/json", r.url);
+  }
+});
+
+test("a batch whose answers stay lost escapes with its key, and so does a refused one", async () => {
+  for (const [label, status, sends] of [
+    ["lost", 502, 4],
+    ["refused", 400, 1],
+  ]) {
+    const client = new PlaidClient("http://x", "tok", fast);
+    const { requests, restore } = stubServer(() => response(status, { error: "no" }));
+    try {
+      await assert.rejects(
+        client.batched((b) => b.spans.update("s", "V")),
+        (e) => {
+          assert.equal(e.status, status, label);
+          assert.ok(requests[0].key, label);
+          assert.equal(e.idempotencyKey, requests[0].key, label);
+          assert.equal(e.committed, 0, label);
+          return true;
+        },
+      );
+    } finally {
+      restore();
+    }
+    assert.equal(requests.length, sends, label);
+  }
 });
 
 test("a refusal is not resent, and a read is never resent", async () => {
