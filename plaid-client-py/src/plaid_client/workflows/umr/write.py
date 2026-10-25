@@ -27,7 +27,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, PROVENANCE_KEYS, service_source
-from plaid_client.service import (batch_body_budget, held_run, partly_written, progress_heartbeat,
+from plaid_client.service import (PhasedProgress, batch_body_budget, held_run, partly_written,
                                   require_held)
 from plaid_client.service_schema import Param
 
@@ -55,38 +55,16 @@ def anchor_pieces(ranges, words, sentence_extent) -> List[Tuple[int, int]]:
     return pieces or [tuple(sentence_extent)]
 
 
-class DraftProgress:
+class DraftProgress(PhasedProgress):
     """A fixed percentage budget over the phases, so the bar moves for the same
     reason on every document:
 
         2-10    reading the document and the project
         10-85   drafting
         85-100  writing
-
-    ``report`` is a CANCELLATION CHECKPOINT (``ResponseHelper.progress`` raises),
-    so every call in the write phase sits inside ``critical()``.
     """
 
     READ, DRAFT, WRITE = (2, 10), (10, 85), (85, 100)
-
-    def __init__(self, helper=None):
-        self._helper = helper
-
-    @staticmethod
-    def _percent(phase, fraction):
-        low, high = phase
-        return int(low + (high - low) * min(max(fraction, 0.0), 1.0))
-
-    def report(self, phase, fraction, message):
-        if self._helper:
-            self._helper.progress(self._percent(phase, fraction), message)
-
-    def heartbeat(self, phase, fraction, message):
-        """Keep saying ``message`` through one model call, which reports nothing
-        of its own and can outlast a requester's patience with silence."""
-        if not self._helper:
-            return contextlib.nullcontext()
-        return progress_heartbeat(self._helper, self._percent(phase, fraction), message)
 
 
 def _count(n: int, noun: str) -> str:

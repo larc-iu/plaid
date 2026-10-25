@@ -49,7 +49,7 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, Param, TASKS, service_source, uuid7
-from plaid_client.service import held_run
+from plaid_client.service import PhasedProgress, held_run
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (DOC_CONSTANTS, UMR_NAMESPACE, Graph, file_numbers,
                                         group_of, penman_nodes, reachable_from_root,
@@ -771,31 +771,16 @@ def check_same_words(this_words, other_words, this_name, other_name) -> None:
 
 # --- progress --------------------------------------------------------------------
 
-class ScoreProgress:
+class ScoreProgress(PhasedProgress):
     """A fixed percentage budget over the phases, so the bar moves for the same
     reason on every document:
 
         2-30    reading both documents
         30-85   rendering and scoring
         85-100  writing the report
-
-    `report` is a CANCELLATION CHECKPOINT (ResponseHelper.progress raises), so
-    every call in the write phase sits inside `critical()`.
     """
 
     READ, SCORE, WRITE = (2, 30), (30, 85), (85, 100)
-
-    def __init__(self, helper=None):
-        self._helper = helper
-
-    @staticmethod
-    def _percent(phase, fraction):
-        low, high = phase
-        return int(low + (high - low) * min(max(fraction, 0.0), 1.0))
-
-    def report(self, phase, fraction, message):
-        if self._helper:
-            self._helper.progress(self._percent(phase, fraction), message)
 
 
 # --- the service -----------------------------------------------------------------

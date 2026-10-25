@@ -84,6 +84,50 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
         thread.join()
 
 
+class PhasedProgress:
+    """Progress reporting for a run in phases, each a fixed ``(low, high)``
+    stretch of the bar, so the bar moves for the same reason on every
+    document. A subclass declares its phases as class attributes
+    (``READ, WRITE = (2, 10), (10, 100)``) and is built over the request's
+    ``ResponseHelper``.
+
+    Without a helper (a script calling the work directly) every method is a
+    no-op, so no call site checks for one. ``report`` and ``count`` are
+    CANCELLATION CHECKPOINTS (``ResponseHelper.progress`` raises), so every
+    report in a write phase sits inside :meth:`critical`.
+    """
+
+    def __init__(self, helper=None):
+        self._helper = helper
+
+    @staticmethod
+    def _percent(phase, fraction):
+        low, high = phase
+        return int(low + (high - low) * min(max(fraction, 0.0), 1.0))
+
+    def report(self, phase, fraction, message):
+        """Report ``message`` at ``fraction`` (0..1) through ``phase``."""
+        if self._helper:
+            self._helper.progress(self._percent(phase, fraction), message)
+
+    def count(self, phase, done, total, message):
+        """Report ``message`` at ``done`` of ``total`` through ``phase``."""
+        if self._helper:
+            low, high = phase
+            self._helper.progress(low + int((high - low) * done / max(total, 1)), message)
+
+    def critical(self):
+        """The writes: a stretch that must finish once begun."""
+        return self._helper.critical() if self._helper else contextlib.nullcontext()
+
+    def heartbeat(self, phase, fraction, message):
+        """Keep saying ``message`` through one blocking call that reports
+        nothing of its own (:func:`progress_heartbeat`)."""
+        if not self._helper:
+            return contextlib.nullcontext()
+        return progress_heartbeat(self._helper, self._percent(phase, fraction), message)
+
+
 def check_unchanged(client, document_id, version, current=None) -> None:
     """Refuse to write when the document is no longer at ``version``.
 

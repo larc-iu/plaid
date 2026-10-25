@@ -49,7 +49,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import held_run, machine_detail
+from plaid_client.service import PhasedProgress, held_run, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
@@ -160,6 +160,13 @@ class PolyGlossModel:
 
 # --- the service ---------------------------------------------------------------
 
+class AnalyzeProgress(PhasedProgress):
+    """The bar's stretches for the first pass over the sentences, the
+    continuations of the ones cut short, and the write."""
+
+    ANALYZE, CONTINUE, WRITE = (15, 80), (80, 88), (88, 99)
+
+
 class PolyGlossService(BaseService):
     def __init__(self):
         super().__init__(
@@ -205,6 +212,7 @@ class PolyGlossService(BaseService):
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
         requester = requester_of(self.client, request_data)
+        progress = AnalyzeProgress(response_helper)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -271,11 +279,10 @@ class PolyGlossService(BaseService):
                     translation = (s['translation'] or '').strip() or 'None'
                     prompts.append(PROMPT.format(lang=language, metalang=metalanguage,
                                                  transcription=transcription, translation=translation))
-                lo, hi = (15, 80) if passes == 0 else (80, 88)
+                phase = AnalyzeProgress.ANALYZE if passes == 0 else AnalyzeProgress.CONTINUE
 
                 def on_batch(done, total):
-                    response_helper.progress(lo + int((hi - lo) * done / total),
-                                             f'Analyzing sentences ({done}/{total} batches)…')
+                    progress.count(phase, done, total, f'Analyzing sentences ({done}/{total} batches)…')
                 results = self.model.predict(prompts, on_batch=on_batch)
                 next_pending = []
                 for (s, start), (text, truncated) in zip(pending, results):
@@ -317,9 +324,8 @@ class PolyGlossService(BaseService):
                 with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)'),
                                            kind='service-run', ref=service_source(self.service_id)):
                     def wrote(done, total):
-                        response_helper.progress(
-                            88 + int(11 * done / max(total, 1)),
-                            f'Writing analyses ({done}/{total} batches)…')
+                        progress.count(AnalyzeProgress.WRITE, done, total,
+                                       f'Writing analyses ({done}/{total} batches)…')
 
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)

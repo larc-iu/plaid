@@ -686,13 +686,17 @@ def test_the_model_load_and_the_parse_both_keep_talking_while_they_run():
     into steps. The heartbeat is all that stands between a working run and a
     requester who gives up on the silence."""
     import threading
+    import plaid_client.service as service_module
 
     beaten = threading.Event()
-    real_heartbeat = ud.progress_heartbeat
+    real_heartbeat = service_module.progress_heartbeat
     # The beat's interval is an argument, so a test can ask for it in
-    # milliseconds rather than waiting out the real 20 seconds.
-    ud.progress_heartbeat = (lambda helper, percent, message, interval_s=0.01:
-                             real_heartbeat(helper, percent, message, interval_s=0.01))
+    # milliseconds rather than waiting out the real 20 seconds. The parse's
+    # beats come from PhasedProgress in plaid_client.service, the parser load's
+    # from the service module itself.
+    fast = (lambda helper, percent, message, interval_s=0.01:
+            real_heartbeat(helper, percent, message, interval_s=0.01))
+    service_module.progress_heartbeat = ud.progress_heartbeat = fast
     try:
         service = _service(provider=_PipelineProvider(on_parse=lambda: beaten.wait(5)))
 
@@ -704,7 +708,7 @@ def test_the_model_load_and_the_parse_both_keep_talking_while_they_run():
 
         helper = servicetest.run(service, REQUEST, _Counting())
     finally:
-        ud.progress_heartbeat = real_heartbeat
+        service_module.progress_heartbeat = ud.progress_heartbeat = real_heartbeat
 
     assert beaten.is_set(), 'the parse went quiet'
     assert helper.messages.count('Parsing 13 characters…') >= 3

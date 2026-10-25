@@ -47,7 +47,7 @@ import difflib
 from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import held_run, machine_detail, requester_message
+from plaid_client.service import PhasedProgress, held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -373,6 +373,13 @@ def build_user_prompt(language, metalanguage, words, translation, entries, examp
 
 # --- the service ---------------------------------------------------------------
 
+class AnalyzeProgress(PhasedProgress):
+    """The bar's stretches for reading the lexicon, collecting the examples,
+    glossing the sentences and the write."""
+
+    LEXICON, EXAMPLES, GLOSS, WRITE = (5, 8), (8, 20), (20, 85), (88, 99)
+
+
 class LLMAnalyzeService(BaseService):
     def __init__(self):
         super().__init__(
@@ -412,6 +419,7 @@ class LLMAnalyzeService(BaseService):
         document_id = request_data.get('document_id')
         project_id = request_data.get('project_id')
         requester = requester_of(self.client, request_data)
+        progress = AnalyzeProgress(response_helper)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -472,14 +480,14 @@ class LLMAnalyzeService(BaseService):
             lexicon = load_lexicon(
                 self.client, project, gloss_lexicon_field=lexicon_field_of(project, gloss_layer_id),
                 entry_types=entry_types,
-                on_progress=lambda n, total: response_helper.progress(
-                    5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
+                on_progress=lambda n, total: progress.count(
+                    AnalyzeProgress.LEXICON, n, total, f'Reading the lexicon ({n + 1}/{total})…'))
             pool = load_examples(
                 self.client, project_id, layers, gloss_field, translation_field,
                 exclude_doc_id=document_id,
                 entry_types=entry_types,
-                on_progress=lambda n, total: response_helper.progress(
-                    8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
+                on_progress=lambda n, total: progress.count(
+                    AnalyzeProgress.EXAMPLES, n, total, f'Collecting analyzed sentences ({n}/{total} documents)…'),
             ) if n_examples else []
 
             # One model call per sentence.
@@ -495,7 +503,7 @@ class LLMAnalyzeService(BaseService):
             # every sentence with the document locked.
             unanswered = UnansweredRun()
             for n, (s, idxs) in enumerate(targets):
-                response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})…')
+                progress.count(AnalyzeProgress.GLOSS, n, total, f'Glossing sentences ({n + 1}/{total})…')
                 words = [w['surface'] for w in s['words']]
                 entries = matching_entries(lexicon, words)
                 examples = rank_examples(pool, words, n_examples) if n_examples else []
@@ -550,9 +558,8 @@ class LLMAnalyzeService(BaseService):
                 with self.client.operation(requester.label(f'LLM glossing ({len(plans)} words)'),
                                            kind='service-run', ref=service_source(self.service_id)):
                     def wrote(done, total):
-                        response_helper.progress(
-                            88 + int(11 * done / max(total, 1)),
-                            f'Writing analyses ({done}/{total} batches)…')
+                        progress.count(AnalyzeProgress.WRITE, done, total,
+                                       f'Writing analyses ({done}/{total} batches)…')
 
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)

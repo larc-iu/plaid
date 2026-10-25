@@ -32,7 +32,7 @@ import argparse
 from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import held_run, machine_detail, requester_message
+from plaid_client.service import PhasedProgress, held_run, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -158,6 +158,12 @@ def translation_result(document_id, sentences, skipped, *, written=0, replaced=0
         'gloss_field_missing': gloss_missing,
     }
 
+class TranslateProgress(PhasedProgress):
+    """The bar's stretch for translating the sentences."""
+
+    TRANSLATE = (5, 85)
+
+
 class LLMTranslateService(BaseService):
     def __init__(self):
         super().__init__(
@@ -198,6 +204,7 @@ class LLMTranslateService(BaseService):
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
         requester = requester_of(self.client, request_data)
+        progress = TranslateProgress(response_helper)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -286,7 +293,8 @@ class LLMTranslateService(BaseService):
             # every sentence with the document locked.
             unanswered = UnansweredRun()
             for n, (i, s, span) in enumerate(targets):
-                response_helper.progress(5 + int(80 * n / len(targets)), f'Translating sentences ({n + 1}/{len(targets)})…')
+                progress.count(TranslateProgress.TRANSLATE, n, len(targets),
+                               f'Translating sentences ({n + 1}/{len(targets)})…')
                 words = [w['text'] for w in s['words']]
                 context = []
                 for c in sentences[max(0, i - n_context):i]:

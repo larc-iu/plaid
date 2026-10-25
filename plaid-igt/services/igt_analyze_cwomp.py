@@ -76,7 +76,7 @@ from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.provenance import (
     prov_state, read_confidence_threshold, HUMAN, PROV_SOURCE_KEY, VERIFIED)
 from plaid_client.roles import ROLES, find_by_role
-from plaid_client.service import held_run, machine_detail
+from plaid_client.service import PhasedProgress, held_run, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, write_analyses, analysis_result, ANALYZE_REQUEST_FIELDS,
@@ -679,6 +679,12 @@ def train(args) -> None:
 
 # --- the service ---------------------------------------------------------------
 
+class AnalyzeProgress(PhasedProgress):
+    """The bar's stretches for the model's pass over the words and the write."""
+
+    ANALYZE, WRITE = (25, 85), (88, 99)
+
+
 class CwompService(BaseService):
     def __init__(self):
         super().__init__(
@@ -752,6 +758,7 @@ class CwompService(BaseService):
         document_id = request_data.get('document_id')
         project_id = request_data.get('project_id')
         requester = requester_of(self.client, request_data)
+        progress = AnalyzeProgress(response_helper)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -845,7 +852,7 @@ class CwompService(BaseService):
             plans, replaced = [], 0
             for n, ((s, i, _), emb) in enumerate(zip(jobs, embs)):
                 if n % 50 == 0:
-                    response_helper.progress(25 + int(60 * n / len(jobs)), f'Analyzing words ({n}/{len(jobs)})…')
+                    progress.count(AnalyzeProgress.ANALYZE, n, len(jobs), f'Analyzing words ({n}/{len(jobs)})…')
                 picked = model.analyze_full(emb)
                 w = s['words'][i]
                 if not picked:
@@ -870,8 +877,8 @@ class CwompService(BaseService):
                 with self.client.operation(requester.label(f'CWoMP analysis ({len(plans)} words)'),
                                            kind='service-run', ref=service_source(self.service_id)):
                     def wrote(done, total):
-                        response_helper.progress(88 + int(11 * done / max(total, 1)),
-                                                 f'Writing analyses ({done}/{total} batches)…')
+                        progress.count(AnalyzeProgress.WRITE, done, total,
+                                       f'Writing analyses ({done}/{total} batches)…')
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)
             run.result = analysis_result(document_id, len(sentences), len(targets), skipped,

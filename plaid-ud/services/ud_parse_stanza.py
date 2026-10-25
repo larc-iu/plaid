@@ -1,11 +1,11 @@
-import contextlib
 import json
 import stanza
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 from plaid_client.provenance import PROVENANCE_KEYS
-from plaid_client.service import (batch_body_budget, locked_for_writes, machine_detail,
-                                  partly_written, progress_heartbeat, requester_message)
+from plaid_client.service import (PhasedProgress, batch_body_budget, locked_for_writes,
+                                  machine_detail, partly_written, progress_heartbeat,
+                                  requester_message)
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import Requester, requester_of
 
@@ -292,7 +292,7 @@ def protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent):
     return protected
 
 
-class ParseProgress:
+class ParseProgress(PhasedProgress):
     """Progress reporting and cancellation for one parse.
 
     `parse_document` is also callable from a script, where there is no request
@@ -306,37 +306,12 @@ class ParseProgress:
         20-60  parsing
         60-100 writing
 
-    `report` is a CANCELLATION CHECKPOINT (ResponseHelper.progress raises), so
-    every call inside the write phase must sit inside `critical()`.
+    A model download and a whole-document parse are both single calls that can
+    outlast the requester's patience with silence, and neither can be broken
+    into steps, so each runs under `heartbeat`.
     """
 
     FETCH, LOAD, PARSE, WRITE = (2, 10), (10, 20), (20, 60), (60, 100)
-
-    def __init__(self, helper=None):
-        self._helper = helper
-
-    def report(self, phase, fraction, message):
-        """Report `message` at `fraction` (0..1) through `phase`."""
-        if not self._helper:
-            return
-        low, high = phase
-        percent = int(low + (high - low) * min(max(fraction, 0.0), 1.0))
-        self._helper.progress(percent, message)
-
-    def critical(self):
-        """The writes: a stretch that must finish once begun."""
-        return self._helper.critical() if self._helper else contextlib.nullcontext()
-
-    def heartbeat(self, phase, fraction, message):
-        """Keep saying `message` through one blocking call that reports
-        nothing of its own. A model download and a whole-document parse are
-        both single calls that can outlast the requester's patience with
-        silence, and neither can be broken into steps."""
-        if not self._helper:
-            return contextlib.nullcontext()
-        low, high = phase
-        percent = int(low + (high - low) * min(max(fraction, 0.0), 1.0))
-        return progress_heartbeat(self._helper, percent, message)
 
 
 # How many sentences to hand Stanza at once when re-parsing an already
