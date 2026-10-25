@@ -232,7 +232,7 @@ export class IgtEditor {
       announce: announceCells({
         client: doc.client,
         documentId: doc.id,
-        me: doc._user?.id,
+        me: doc.user?.id,
         warn: (message) => notifyWarning(message),
         error: (message, title) => notifyError(message, title),
       }),

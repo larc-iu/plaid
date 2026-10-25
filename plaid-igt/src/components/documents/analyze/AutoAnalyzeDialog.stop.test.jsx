@@ -62,7 +62,7 @@ const mount = async () => {
       sentenceTokenLayer: { id: 'sl' },
     },
     reload: vi.fn(async () => {}),
-    _reload: vi.fn(async () => {}),
+    reload: vi.fn(async () => {}),
   };
   const lock = { release: vi.fn(), setStatus: () => {} };
   const view = await renderComponent(
@@ -92,9 +92,9 @@ describe('an Auto-analyze step that was stopped', () => {
     await view.step(() => view.container.querySelector('[data-run]').click());
     await view.step(async () => {});
     expect(requestService).toHaveBeenCalledTimes(1);
-    expect(doc._reload).toHaveBeenCalledTimes(1);
+    expect(doc.reload).toHaveBeenCalledTimes(1);
     expect(lock.release).toHaveBeenCalledTimes(1);
-    expect(doc._reload.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(doc.reload.mock.invocationCallOrder[0]).toBeLessThan(
       lock.release.mock.invocationCallOrder[0],
     );
     await view.unmount();

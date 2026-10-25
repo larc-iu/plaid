@@ -244,7 +244,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     const reload = async () => {
       progress.report({ percent: null, message: 'Loading results…' });
       lock.setStatus('Loading results…');
-      await reloadAfterRun(() => doc._reload());
+      await reloadAfterRun(() => doc.reload());
       // The step is done and collected; nothing left for a reload to rejoin.
       clearRunRecord(doc.id);
     };

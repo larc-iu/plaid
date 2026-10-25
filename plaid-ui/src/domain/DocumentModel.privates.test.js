@@ -62,9 +62,6 @@ describe('DocumentModel privates', () => {
   it('no screen reads a document model private user or reload', () => {
     expect(
       hits(/(?<!\bthis)\._(user\b|reload\()/, [
-        // Left for the island lane (W2-D): doc.user and doc.reload().
-        'plaid-igt/src/components/documents/analyze/island/IgtEditor.js',
-        'plaid-igt/src/components/documents/analyze/AutoAnalyzeDialog.jsx',
         // Outside this lane: doc.reload() when its owner next touches it.
         'plaid-ui/src/hooks/useResumedRun.js',
       ]),
