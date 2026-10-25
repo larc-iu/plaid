@@ -383,6 +383,20 @@
                    pres))
                ids)))
 
+(defn delete-ids-unaudited!
+  "Delete the rows of `table` whose id is one of `ids`, in chunks and by the
+  primary key's index, writing no audit row. Only for rows no as-of read can
+  reach again, as those in a project being deleted. Returns nil."
+  [tx table ids]
+  (let [index (when (seq ids) (pk-index tx table))]
+    (in-chunks (fn [chunk]
+                 (psc/execute! tx (into [(str "DELETE FROM " (name table) " INDEXED BY " index
+                                              " WHERE id IN (" (placeholders (count chunk)) ")")]
+                                        (map str chunk)))
+                 nil)
+               ids)
+    nil))
+
 ;; ============================================================
 ;; Join-table write helpers (unaudited; the parent entity audits cover them)
 ;; ============================================================

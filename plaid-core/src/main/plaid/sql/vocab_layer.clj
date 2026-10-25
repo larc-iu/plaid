@@ -352,11 +352,26 @@
             post-image (assoc vl-row :maintainers post-maintainers)]
         (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
 
+(defn- hidden-document-ids
+  "The set of `doc-ids` whose project is being deleted (`projects.deleted_at`
+  stamped, the background removal not yet done)."
+  [tx doc-ids]
+  (into #{}
+        (comp (mapcat (fn [chunk]
+                        (psc/q tx {:select [:d.id]
+                                   :from [[:documents :d]]
+                                   :join [[:projects :p] [:= :p.id :d.project_id]]
+                                   :where [:and [:in :d.id (map str chunk)] [:<> :p.deleted_at nil]]})))
+              (map :id))
+        (partition-all psc/bulk-chunk-size (distinct doc-ids))))
+
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items
   and the vocab_links each item is referenced by) and audits each row
   deletion through the audited helpers so audit_writes captures every
   change — FK ON DELETE CASCADE would otherwise silently sweep them.
+  The exception is a link in a project being deleted (R39): it is removed
+  unaudited, with no version bump, since nothing travels back to it.
 
   Junction-table cascades: `vocab_maintainers` and
   `project_vocabs` would also FK-CASCADE silently. Two synthetic
@@ -395,9 +410,21 @@
                            ;; Vocab_links pointing at any of these items —
                            ;; one bulk DELETE ... RETURNING * collapses the
                            ;; per-row loop into a single round-trip.
-                           (let [vl-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
-                                                         "idx_vocab_links_item" vi-ids)
-                                 vl-ids (mapv :id vl-rows)]
+                           (let [all-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
+                                                          "idx_vocab_links_item" vi-ids)
+                                 ;; R39: a link in a project being deleted is
+                                 ;; removed without an audit row or a version
+                                 ;; bump. Nothing travels back to that project,
+                                 ;; and the purge never reaches rows written
+                                 ;; under this op, which names no project.
+                                 hidden (hidden-document-ids tx (map :document_id all-rows))
+                                 {vl-rows false gone-rows true} (group-by #(contains? hidden (:document_id %))
+                                                                          all-rows)
+                                 vl-ids (mapv :id vl-rows)
+                                 gone-ids (mapv :id gone-rows)]
+                             (when (seq gone-ids)
+                               (crud/delete-ids-unaudited! tx :vocab_links gone-ids)
+                               (crud/delete-entity-metadata! tx "vocab-link" gone-ids))
                              (when (seq vl-ids)
                                ;; Capture the per-link document_ids (may
                                ;; contain duplicates if multiple items
