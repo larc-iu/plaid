@@ -310,8 +310,9 @@
       (doseq [{:token/keys [id layer begin end]} tokens
               :let [want (keep-want [begin end])]
               :when (and want
-                         ;; a row over a sentence follows it (REV3)
-                         (not (and (#{:a :ss} layer)
+                         ;; a row over a sentence follows it (REV3), the
+                         ;; row over it with its whitespace too (REV2-TEXT-1)
+                         (not (and (#{:a :ss :rw} layer)
                                    (some #(and (= :s (:token/layer %))
                                                (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])))
                                          tokens))))]

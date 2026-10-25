@@ -480,6 +480,31 @@
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
 
+(deftest a-row-over-a-one-word-sentence-typed-over-follows-the-sentence
+  ;; REV-W2-TEXT N2, seed 2034 of the test above, past its default seeds: a
+  ;; paste over `kai` (a sentence of one word, under a row over the whole
+  ;; sentence) and into the next sentence types `kai` over as `Q`. The word
+  ;; and its sentence go to `Q`, and the row follows the sentence edge by
+  ;; edge to where the next one begins, over `Q\nR`. The judge read the row
+  ;; as a word typed over, since its text is the word's, where a row over a
+  ;; sentence follows it as the other rows do.
+  (let [body "ə́múk   su  dog\n  kai  thee da\t你好 a café"
+        tokens (vec (for [[id layer begin end] [[[:s 0] :s 0 18] [[:s 1] :s 18 21] [[:s 2] :s 21 40]
+                                                [[:rw 0] :rw 0 18] [[:rw 1] :rw 18 21] [[:rw 2] :rw 21 40]
+                                                [[:w 1] :w 0 10] [[:w 2] :w 12 15] [[:w 3] :w 18 21] [[:w 4] :w 23 30]
+                                                [[:w 5] :w 31 33] [[:w 6] :w 34 35] [[:w 7] :w 36 40]]]
+                      {:token/id id :token/layer layer :token/begin begin :token/end end}))
+        ops (ta/gap-ops [{:start 18 :end 35 :value "Q\nR"}])
+        server (server-gaps body tokens ops :apps)
+        r (run body tokens ops)
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+    (is (= [18 19] (at [:w 3])))
+    (is (= [18 19] (at [:s 1])))
+    (is (= [18 21] (at [:rw 1])))
+    (is (= [21 26] (at [:rw 2])))
+    (is (empty? (problems body tokens server r)))
+    (is (empty? (follow-checks body tokens server r)))))
+
 ;; ---------------------------------------------------------------- the side the caret is on
 
 (deftest text-typed-where-two-words-meet-goes-to-the-side-it-says
