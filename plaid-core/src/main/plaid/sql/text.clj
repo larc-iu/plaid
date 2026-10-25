@@ -556,23 +556,21 @@
         live (fn [table f] (vec (keep (fn [k] (let [{:keys [deleted? inserted? post]} (last-of k)]
                                                 (when (and (not deleted?) post)
                                                   (f (second k) (cond-> post inserted? (assoc ::inserted true))))))
-                                      (of table))))
-        get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))
-        contains-key? (fn [m k] (or (contains? m k) (contains? m (keyword k))))]
+                                      (of table))))]
     ;; a token the save made (a sentence over a line typed before the first
     ;; one, a part of a split word) comes with its layer, text, precedence
     ;; and metadata (what preserveOnSplit gave it), for a read to take it in
-    {:tokens (live "tokens" (fn [id p] (cond-> {:id id :begin (get* p "begin") :end (get* p "end_")}
+    {:tokens (live "tokens" (fn [id p] (cond-> {:id id :begin (:begin p) :end (:end_ p)}
                                          (::inserted p)
-                                         (assoc :layer (get* p "token_layer_id") :text (get* p "text_id")
-                                                :precedence (get* p "precedence")
+                                         (assoc :layer (:token_layer_id p) :text (:text_id p)
+                                                :precedence (:precedence p)
                                                 :metadata (metadata/get-metadata db "token" id)))))
      ;; with the value, which a layer rule's remedy may have rewritten
-     :spans (live "spans" (fn [id p] (when (or (some? (get* p "tokens")) (contains-key? p "value"))
+     :spans (live "spans" (fn [id p] (when (or (some? (:tokens p)) (contains? p :value))
                                        (cond-> {:id id}
-                                         (some? (get* p "tokens")) (assoc :tokens (vec (get* p "tokens")))
-                                         (contains-key? p "value") (assoc :value (some-> (get* p "value") psc/read-json))))))
-     :vocab-links (live "vocab_links" (fn [id p] (when (some? (get* p "tokens")) {:id id :tokens (vec (get* p "tokens"))})))
+                                         (some? (:tokens p)) (assoc :tokens (vec (:tokens p)))
+                                         (contains? p :value) (assoc :value (some-> (:value p) psc/read-json))))))
+     :vocab-links (live "vocab_links" (fn [id p] (when (some? (:tokens p)) {:id id :tokens (vec (:tokens p))})))
      :deleted {:tokens (gone "tokens")
                :spans (gone "spans")
                :relations (gone "relations")

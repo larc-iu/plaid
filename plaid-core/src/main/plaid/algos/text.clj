@@ -95,22 +95,21 @@
   boundary falls mid-code-point. Diffing the proxy strings instead (one BMP char
   per code point) makes the diff CODE-POINT granular: op boundaries always land
   on code-point boundaries, so offsets/token shifts are correct and the body
-  reconstructs exactly. Returns nil when there are more distinct code points than
-  the BMP proxy pool can hold (caller falls back) — unreachable for real text."
+  reconstructs exactly. `middle-diff` hands it at most `hunk-limit` code points,
+  so the pool always holds one proxy for each."
   [^String old ^String new]
   (let [ocps (vec (.toArray (.codePoints old)))
         ncps (vec (.toArray (.codePoints new)))
         dcps (vec (distinct (concat ocps ncps)))
         n (count dcps)
-        pool (->> (range 1 0x10000) (remove surrogate?) (take n) vec)]
-    (when (= n (count pool))
-      (let [pchars (mapv char pool)
-            cp->px (zipmap dcps pchars)
-            px->cp (zipmap pchars dcps)
-            ->px (fn [cps] (apply str (map cp->px cps)))
-            decode (fn [^String s]
-                     (apply str (map #(String. (Character/toChars (int (px->cp %)))) s)))]
-        {:old* (->px ocps) :new* (->px ncps) :decode decode}))))
+        pool (->> (range 1 0x10000) (remove surrogate?) (take n) vec)
+        pchars (mapv char pool)
+        cp->px (zipmap dcps pchars)
+        px->cp (zipmap pchars dcps)
+        ->px (fn [cps] (apply str (map cp->px cps)))
+        decode (fn [^String s]
+                 (apply str (map #(String. (Character/toChars (int (px->cp %)))) s)))]
+    {:old* (->px ocps) :new* (->px ncps) :decode decode}))
 
 (defn- cps->str [cps]
   (let [sb (StringBuilder.)]
@@ -493,11 +492,6 @@
       (and (string? type) (keyword type))
       type))
 
-(defn- op-json
-  "`op` as JSON in a refusal: `plaid.util.op-json/op-json`."
-  [op]
-  (op-json/op-json op))
-
 (defn- check-op!
   "The 400s `apply-text-edits` throws, for `op` applied to a text of `len`
   code points."
@@ -509,19 +503,19 @@
     (when-not (or (and (= type :insert) (integer? index) (string? value))
                   (and (= type :delete) (integer? index) (integer? value))
                   (and (= type :replace) (integer? index) (integer? length) (string? value)))
-      (throw (ex-info (str "Malformed text edit operation: " (op-json op)
+      (throw (ex-info (str "Malformed text edit operation: " (op-json/op-json op)
                            ". Expected {type: \"insert\", index: int, value: string},"
                            " {type: \"delete\", index: int, value: int}"
                            " or {type: \"replace\", index: int, length: int, value: string}")
                       {:code 400 :op op})))
     (when-not (contains? #{nil "before" "after" :before :after} (:side op))
-      (throw (ex-info (str "A text edit's side is \"before\" or \"after\": " (op-json op))
+      (throw (ex-info (str "A text edit's side is \"before\" or \"after\": " (op-json/op-json op))
                       {:code 400 :op op})))
     (when-not (case type
                 :insert (<= 0 index len)
                 :delete (and (<= 0 index) (<= 0 value) (<= (+ index value) len))
                 :replace (and (<= 0 index) (<= 0 length) (<= (+ index length) len)))
-      (throw (ex-info (str "Text edit operation out of bounds: " (op-json op)
+      (throw (ex-info (str "Text edit operation out of bounds: " (op-json/op-json op)
                            " (text length is " len " code points)")
                       {:code 400 :op op :text-length len})))
     type))
@@ -1108,12 +1102,10 @@
   `word-layers`, or with none, nothing tells the words, and the ops are
   left as they are. A code point in `letter-like` (see `layer-roles`) is a
   letter of a word."
-  ([ops old tokens] (align-to-words ops old tokens nil))
-  ([ops old tokens word-layers] (align-to-words ops old tokens word-layers nil))
-  ([ops old tokens word-layers letter-like]
-   (if (empty? word-layers)
-     ops
-     (align-to-words* ops old tokens word-layers (or letter-like #{})))))
+  [ops old tokens word-layers letter-like]
+  (if (empty? word-layers)
+    ops
+    (align-to-words* ops old tokens word-layers (or letter-like #{}))))
 
 (defn- align-to-words*
   [ops old tokens word-layers letter-like]
@@ -2573,8 +2565,6 @@
     the word on `thung`), and one left with only whitespace is deleted.
 
   A zero-width token is moved as `apply-text-edits` moves it."
-  ([old tokens gaps partitioning word-layers]
-   (apply-plain-gaps old tokens gaps partitioning word-layers nil))
   ([^String old tokens gaps partitioning word-layers {:keys [split-on-space children dealt exclusive head-layers letter-like]}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
@@ -2582,17 +2572,16 @@
          word-layers (set word-layers)
          gaps (vec gaps)
          k (count gaps)
-         ws? (fn [c] (space? c))
          info (mapv (fn [{:keys [start end value]}]
                       (let [^ints v (.toArray (.codePoints ^String value))
                             n (alength v)
-                            run (fn [idx] (loop [i 0] (if (and (< i n) (not (ws? (aget v (int (idx i)))))) (recur (inc i)) i)))
+                            run (fn [idx] (loop [i 0] (if (and (< i n) (not (space? (aget v (int (idx i)))))) (recur (inc i)) i)))
                             lead (run identity)
                             trail (run #(- n 1 %))]
                         {:a start :b end :n n :v v :delta (- n (- end start))
                          :lead lead :trail trail :word? (= lead n)
-                         :before-ok (and (pos? lead) (pos? start) (not (ws? (aget o (dec start)))))
-                         :after-ok (and (pos? trail) (< end len) (not (ws? (aget o end))))}))
+                         :before-ok (and (pos? lead) (pos? start) (not (space? (aget o (dec start)))))
+                         :after-ok (and (pos? trail) (< end len) (not (space? (aget o end))))}))
                     gaps)
          new-body (gaps-body old gaps)
          ^ints nw (.toArray (.codePoints ^String new-body))
@@ -2684,7 +2673,7 @@
          side-of (fn [g]
                    (let [{:keys [a b]} (info g)]
                      (when (and (= a b) (pos? a) (< a len)
-                                (not (ws? (aget o (dec a)))) (not (ws? (aget o a)))
+                                (not (space? (aget o (dec a)))) (not (space? (aget o a)))
                                 (or (and (flag? g :before) (flag? g :after))
                                     (sentence-starts a)))
                        (or (:side (gaps g))
@@ -2731,8 +2720,8 @@
         ;; moves to the gap's new text.
          next-letter (mapv (fn [g]
                              (let [{:keys [a]} (info g)]
-                               (when (and (to-next-sentence? g) (ws? (aget o (dec a))))
-                                 (loop [x a] (if (ws? (aget o x)) (recur (inc x)) x)))))
+                               (when (and (to-next-sentence? g) (space? (aget o (dec a))))
+                                 (loop [x a] (if (space? (aget o x)) (recur (inc x)) x)))))
                            (range k))
         ;; the first gap of the run of such gaps that `g` ends, every one
         ;; of them typing before the same letter: their text goes to the
@@ -2819,17 +2808,17 @@
                                      :else (+ end (aget shift (inc ge))))]
                             (if (and nb ne (< nb ne))
                            ;; off whitespace it did not have at that edge
-                              (let [nb (if (ws? (aget o begin))
+                              (let [nb (if (space? (aget o begin))
                                          nb
-                                         (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
-                                    ne (if (ws? (aget o (dec end)))
+                                         (loop [x nb] (if (and (< x ne) (space? (aget nw x))) (recur (inc x)) x)))
+                                    ne (if (space? (aget o (dec end)))
                                          ne
-                                         (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
+                                         (loop [x ne] (if (and (> x nb) (space? (aget nw (dec x)))) (recur (dec x)) x)))]
                                 ;; one left with only whitespace, that had
                                 ;; letters, is gone
                                 (if (and (< nb ne)
-                                         (not (and (every? #(ws? (aget nw %)) (range nb ne))
-                                                   (some #(not (ws? (aget o %))) (range begin end)))))
+                                         (not (and (every? #(space? (aget nw %)) (range nb ne))
+                                                   (some #(not (space? (aget o %))) (range begin end)))))
                                   (assoc t :token/begin nb :token/end ne)
                                   (assoc t ::gone true)))
                               (assoc t ::gone true)))))
@@ -2892,7 +2881,7 @@
                                        (or (< (:token/begin t) head-end)
                                            (some #(= (:token/id %) (:token/id t)) firsts)))
                                 (let [e (:token/end t)
-                                      b (loop [x head-end] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x))]
+                                      b (loop [x head-end] (if (and (< x e) (space? (aget nw x))) (recur (inc x)) x))]
                                   (assoc t :token/begin (min b (dec e))))
                                 t))
                       kept)
@@ -2920,9 +2909,9 @@
                     (let [x (reduce min (map first xs)) y (reduce max (map second xs))
                           ;; and past a line made a sentence of its own, as
                           ;; every token reaching over it
-                          x (if head-end (max x (loop [x head-end] (if (and (< x (alength nw)) (ws? (aget nw x))) (recur (inc x)) x))) x)
-                          x (if (ws? (aget o b)) x (loop [x x] (if (and (< x y) (ws? (aget nw x))) (recur (inc x)) x)))
-                          y (if (ws? (aget o (dec e))) y (loop [y y] (if (and (> y x) (ws? (aget nw (dec y)))) (recur (dec y)) y)))]
+                          x (if head-end (max x (loop [x head-end] (if (and (< x (alength nw)) (space? (aget nw x))) (recur (inc x)) x))) x)
+                          x (if (space? (aget o b)) x (loop [x x] (if (and (< x y) (space? (aget nw x))) (recur (inc x)) x)))
+                          y (if (space? (aget o (dec e))) y (loop [y y] (if (and (> y x) (space? (aget nw (dec y)))) (recur (dec y)) y)))]
                       (when (< x y) [x y])))))
          kept (follow-sentences o wide kept heads nw partitioning
                                 ;; a row, also where the text has no word yet
@@ -3025,9 +3014,6 @@
   holding one is deleted. With `align?` false, the stretches are left as
   the diff spells them. `letter-like` is the code points the text's
   layers call letter-like (see `layer-roles`)."
-  ([old new tokens partitioning] (body-diff-gaps old new tokens partitioning nil))
-  ([old new tokens partitioning word-layers] (body-diff-gaps old new tokens partitioning word-layers true))
-  ([old new tokens partitioning word-layers align?] (body-diff-gaps old new tokens partitioning word-layers align? nil))
   ([^String old ^String new tokens partitioning word-layers align? letter-like]
    (-> (diff old new)
        (slide-to-tokens old tokens partitioning word-layers letter-like)
@@ -3043,8 +3029,6 @@
   types words over words (see `cut-at-words`). Neither step reaches a
   letter outside the diff's gaps but inside the one word it reads as typed
   over, so no word with a letter left is deleted."
-  ([old new tokens partitioning] (plain-body-gaps old new tokens partitioning nil))
-  ([old new tokens partitioning word-layers] (plain-body-gaps old new tokens partitioning word-layers nil))
   ([^String old ^String new tokens partitioning word-layers letter-like]
    (let [^ints o (.toArray (.codePoints old))
          wl (body-word-layers tokens partitioning word-layers)]
@@ -3108,7 +3092,6 @@
   taken unless it leaves a word over a run of typed text of its own with
   whitespace between (`hi` on `Oh my.\nHi`) and the gap as sent does not.
   Otherwise the gap is taken as made."
-  ([old ops tokens partitioning word-layers] (plain-edit-gaps old ops tokens partitioning word-layers nil))
   ([^String old ops tokens partitioning word-layers opts]
    (let [^ints o (.toArray (.codePoints old))
          n (alength o)
