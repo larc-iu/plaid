@@ -5,7 +5,6 @@ import logging
 import re
 import threading
 import time
-import urllib.parse
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -14,23 +13,18 @@ from urllib.parse import quote, urlencode
 
 import requests as req_lib
 
+from plaid_client import services as svc
+from plaid_client.batch import MAX_BATCH_OPS, PlaidBatch, send_chunks
 from plaid_client.document_lock import with_document_lock
 from plaid_client.http import (
-    PlaidAPIError, make_request, queue_request, post_batch, network_error,
-    restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
-    build_api_error,
-    retry_unknown, is_unknown_outcome, next_idempotency_key, NO_PIN,
+    _UNSET as _HTTP_UNSET, PlaidAPIError, make_request, build_api_error, network_error,
     DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
 )
 from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.pagination import iter_pages, list_all, list_page
-from plaid_client.replayed import mark_replayed, was_replayed
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
 
-# The server's cap on operations per batch request (plaid.rest-api.v1.batch).
-# A batch queued past it is submitted as consecutive requests.
-MAX_BATCH_OPS = 1000
 # How long ``admin.backup()`` waits for the server to finish writing a backup:
 # minutes on a large database, past the usual per-request timeout.
 BACKUP_TIMEOUT_S = 30 * 60
@@ -48,9 +42,6 @@ def _check_operation_kind(kind) -> None:
                          f'{", ".join(_OPERATION_KINDS)}.')
 
 
-from plaid_client import services as svc
-
-
 # Sentinel for "argument not supplied". The clients follow a three-state
 # convention that mirrors the server: an omitted argument is left out of the
 # request body entirely (the server leaves that field unchanged), an explicit
@@ -59,7 +50,7 @@ from plaid_client import services as svc
 # value distinct from "not supplied", so every optional/nullable body parameter
 # defaults to ``_UNSET`` rather than ``None``. (This matches the JS client,
 # where ``undefined`` is omitted and ``null`` is sent through.)
-_UNSET = object()
+_UNSET = _HTTP_UNSET
 
 
 def _body_of(**kwargs):
@@ -3549,13 +3540,6 @@ def _install_resources(target):
     target.operation_groups = OperationGroupsResource(target)
 
 
-def _claimed_version(path):
-    """The document-version an op's path claims, as an int, or None."""
-    query = path.split('?', 1)[1] if '?' in path else ''
-    values = urllib.parse.parse_qs(query).get('document-version')
-    return int(values[0]) if values else None
-
-
 class PlaidClient:
     def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S,
                  batch_timeout: float | None = _UNSET, retry_delays: list[float] | None = None):
@@ -4002,88 +3986,8 @@ class PlaidClient:
         joined it takes the operation's next key and claims the version its
         first run claimed. ``timeout`` is each request's, in place of
         ``batch_timeout`` when given."""
-        url = f'{self.base_url}/api/v1/batch'
         budget = self.batch_timeout if timeout is _UNSET else timeout
-        # Each request is atomic, the whole is not: a failure leaves the
-        # requests before it saved. The error says so, as ``committed`` (how
-        # many operations were saved) and ``committed_results`` (their
-        # results, in queue order), so a caller can tell a partial write from
-        # a batch that saved nothing. The failed request itself counts as
-        # unsaved, even when its answer was lost.
-        # The results are marked replayed (see replayed.py) when any request
-        # was: then some of the batch stored nothing new, which is what a
-        # caller reading the mark needs to know. The same holds for
-        # ``committed_results``.
-        results_out: list[Any] = []
-        try:
-            # The server caps a batch at MAX_BATCH_OPS so one transaction
-            # cannot hold the write lock without bound. A larger batch goes
-            # as consecutive requests, results concatenated in queue order:
-            # it could not have been one transaction anyway, and a repair or
-            # bulk edit over a big document must not fail on its size alone.
-            # Past the first request, a strict-mode stamp claims the version
-            # the requests before it left (learned from their results), not
-            # the one the document had when the op was queued, which the first
-            # request has already moved on.
-            stamps = stamped_documents or [None] * len(ops)
-            # A ref counts ops within one request, so each later request's
-            # refs count from its own first op. Every chunk is checked before
-            # the first request goes, so refs that cannot resolve write nothing.
-            chunks = [[{**op, 'refs': rebase_refs(op['refs'], start)}
-                       if start > 0 and 'refs' in op else op
-                       for op in ops[start:start + MAX_BATCH_OPS]]
-                      for start in range(0, len(ops), MAX_BATCH_OPS)]
-            groups = stamped_groups or [None] * len(ops)
-            for start, body in zip(range(0, len(ops), MAX_BATCH_OPS), chunks):
-                chunk_stamps = stamps[start:start + MAX_BATCH_OPS]
-                # One Idempotency-Key per request, minted as the request is
-                # formed. Inside an operation opened with keys, a request
-                # whose ops joined it takes the operation's next key and
-                # claims the version its first run claimed.
-                group = self._operation_group
-                joins = group is not None and any(
-                    g is group for g in groups[start:start + MAX_BATCH_OPS])
-                key, pin, record = next_idempotency_key(self, joins)
-
-                def claim(doc_id, pin=pin):
-                    return pin if pin is not NO_PIN else self.document_versions.get(doc_id)
-
-                if start > 0 or pin is not NO_PIN:
-                    body = [
-                        {**op, 'path': restamp_document_version(op['path'], claim(doc_id))}
-                        if doc_id else op
-                        for op, doc_id in zip(body, chunk_stamps)
-                    ]
-                # Pin what the request actually claims: the first stamped
-                # op's version as its path now carries it.
-                stamped = next((op for op, d in zip(body, chunk_stamps) if d), None)
-                record(_claimed_version(stamped['path']) if stamped else None)
-                # Encoded once, before anything goes: a body that cannot be
-                # sent is the caller's mistake, never an unknown outcome.
-                data = json.dumps(body, default=_unsendable)
-                results, replayed = post_batch(self, url, data, key, budget)
-                # The server took the request, so each operation it joined exists.
-                for group in (stamped_groups or [])[start:start + MAX_BATCH_OPS]:
-                    if group is not None:
-                        group['written'] = True
-
-                results_out.extend({**r, 'body': transform_response(r.get('body'))}
-                                   if isinstance(r, dict) else r
-                                   for r in results)
-                if replayed and not was_replayed(results_out):
-                    results_out = mark_replayed(results_out)
-            return results_out
-        except PlaidAPIError as e:
-            e.committed = len(results_out)
-            e.committed_results = results_out
-            raise
-        except Exception as e:
-            error = PlaidAPIError(f'Network error: {e} at {self.base_url}/api/v1/batch',
-                                  url=f'{self.base_url}/api/v1/batch', method='POST',
-                                  original_error=e)
-            error.committed = len(results_out)
-            error.committed_results = results_out
-            raise error
+        return send_chunks(self, ops, stamped_documents, stamped_groups, budget)
 
     @contextmanager
     def batched(self, *, timeout: float | None = _UNSET):
@@ -4265,83 +4169,3 @@ class PlaidClient:
         token = data.get('token', '')
         return cls(base_url, token, timeout=timeout, batch_timeout=batch_timeout,
                    retry_delays=retry_delays)
-
-
-class PlaidBatch:
-    """One batch of writes, opened by :meth:`PlaidClient.batch`.
-
-    The same resources as the client (``documents``, ``tokens``, ...), built
-    on this object, so a write made through them queues instead of going out.
-    Everything else (the token and base URL, strict mode and the document
-    versions it tracks, the open logical operation, ``query``) is the client's
-    and resolves to it.
-    """
-
-    def __init__(self, client: PlaidClient, *, timeout: float | None = _UNSET):
-        self.client = client
-        #: this batch's own timeout per request, in place of the client's
-        #: ``batch_timeout`` (unset: the client's)
-        self.timeout = timeout
-        self.operations: list[dict] = []
-        #: the document each queued op's strict-mode stamp is for (None for
-        #: none), index for index with ``operations``
-        self.stamped_documents: list[str | None] = []
-        #: the logical operation each queued op joined (None for none), index
-        #: for index with ``operations``
-        self.stamped_groups: list[dict | None] = []
-        self.open = True
-        self.results: list[Any] = []
-        _install_resources(self)
-
-    def __getattr__(self, name):
-        # Only reached for what the batch does not have itself.
-        return getattr(self.client, name)
-
-    def _request(self, method, path, **kwargs):
-        return queue_request(self, method, path, **kwargs)
-
-    def batch(self):
-        raise PlaidAPIError('A batch is not nestable: queue on the batch you have')
-
-    def batched(self):
-        raise PlaidAPIError('A batch is not nestable: queue on the batch you have')
-
-    def submit(self) -> list[Any]:
-        """Send the queued operations and return one result per operation, in
-        order (also kept on ``.results``). Up to MAX_BATCH_OPS operations go
-        as one atomic request. A larger batch goes as consecutive requests,
-        each atomic on its own, so a failure in a later one leaves the earlier
-        ones committed. The error then carries ``committed``, how many
-        operations were saved (0 when none were), and ``committed_results``,
-        their results in queue order."""
-        if not self.open:
-            raise PlaidAPIError('This batch was already submitted or aborted')
-        self.open = False
-        ops, self.operations = self.operations, []
-        stamps, self.stamped_documents = self.stamped_documents, []
-        groups, self.stamped_groups = self.stamped_groups, []
-        self.results = self.client._post_batch(ops, stamps, groups, timeout=self.timeout) if ops else []
-        return self.results
-
-    def abort(self) -> None:
-        """Drop the queued operations without sending them."""
-        self.operations = []
-        self.stamped_documents = []
-        self.stamped_groups = []
-        self.open = False
-
-    def ref(self, op_index: int = -1, index: int | None = None) -> BatchRef:
-        """A stand-in for the id a queued operation will create, to put in a
-        later operation's body on this batch, so a create and the write that
-        uses it go in one transaction: op n's ``id``, or with ``index`` the
-        k-th of the ``ids`` a bulk create answers. ``op_index`` counts from 0,
-        or from the end when negative (-1, the default, is the op queued
-        last), and is fixed when ``ref`` is called. It goes only in the body
-        of a later write on this batch, at any depth. Anywhere else (a path,
-        another batch, a call made on the client) the client refuses it::
-
-            with client.batched() as b:
-                b.vocab_items.create(vocab_id, 'dog')
-                b.vocab_links.create(b.ref(), [token_id])
-        """
-        return make_batch_ref(self, op_index, index)

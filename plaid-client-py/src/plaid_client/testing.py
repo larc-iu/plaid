@@ -66,7 +66,8 @@ from urllib.parse import quote
 
 from plaid_client import client as _client
 from plaid_client.document_lock import DocumentLock
-from plaid_client.http import BatchRef, PlaidAPIError
+from plaid_client.batch import BatchRef
+from plaid_client.http import PlaidAPIError
 from plaid_client.ids import normalize_user_id, uuid7
 from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, is_machine, is_protected

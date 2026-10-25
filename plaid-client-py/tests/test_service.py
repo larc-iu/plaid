@@ -1182,7 +1182,7 @@ def test_a_refusal_the_client_makes_itself_is_not_called_a_network_failure():
     """The client raises a status-0 PlaidAPIError for its own refusals too,
     before anything is sent (conc-2026-09-29 REV-F-PY R4). Only one with the
     network's error under it is a network failure."""
-    from plaid_client.http import _MISPLACED_REF
+    from plaid_client.batch import _MISPLACED_REF
     misplaced = PlaidAPIError(_MISPLACED_REF, status=0)
     assert requester_message(misplaced) == _MISPLACED_REF
     twice = PlaidAPIError('This batch was already submitted or aborted', status=0)
