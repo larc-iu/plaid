@@ -14,6 +14,7 @@ from plaid_client import PlaidAPIError
 from test_service_flow import PLAN1, Helper, _seed_plan, _service
 
 from plaid_agent.core import conversation as conversation_mod
+from plaid_agent.core import record_ops
 from plaid_agent.core import service as service_mod
 from plaid_agent.core import turn as turn_mod
 from plaid_agent.core.agent import TurnResult
@@ -179,7 +180,7 @@ def test_h10_record_5_a_send_or_retry_on_a_deleted_conversation_is_refused_as_de
 def test_a_message_too_big_for_the_record_is_refused_and_nothing_is_written(monkeypatch):
     client = FakeClient()
     _answering(monkeypatch)
-    monkeypatch.setattr(service_mod, 'value_cap', lambda c: 20_000)
+    monkeypatch.setattr(record_ops, 'value_cap', lambda c: 20_000)
     monkeypatch.setattr(conversation_mod, 'value_cap', lambda c: 20_000)
     svc = _service()
     _send(svc, client, text='short')
@@ -193,7 +194,7 @@ def test_a_message_too_big_for_the_record_is_refused_and_nothing_is_written(monk
 def test_a_full_conversation_refuses_a_message(monkeypatch):
     client = FakeClient()
     _answering(monkeypatch, text='y' * 18_000)
-    monkeypatch.setattr(service_mod, 'value_cap', lambda c: 20_000)
+    monkeypatch.setattr(record_ops, 'value_cap', lambda c: 20_000)
     monkeypatch.setattr(conversation_mod, 'value_cap', lambda c: 20_000)
     svc = _service()
     _send(svc, client, text='short')
