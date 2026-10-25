@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyWarning } from '../../lib/notify.js';
 import { textIncludes } from '../../domain/collation.js';
+import { wordCountsByDocument } from '../../domain/layerCounts.js';
 import { PendingCell } from './PendingCell.jsx';
 import { EmptyState } from './EmptyState.jsx';
 
@@ -57,10 +58,10 @@ export const DocumentTable = ({
   // By value: the app may build the spec anew each render.
   const wordValueKey = JSON.stringify(wordValue ?? null);
 
-  // Per-document word counts: an aggregate query over the layer's tokens,
-  // grouped by document, and the seed layer's for a document with no words. Sub-word units are on another layer and would inflate
-  // the count, which is why the caller names the layer rather than this
-  // counting everything.
+  // Per-document word counts (wordCountsByDocument): the layer's tokens
+  // grouped by document, and the seed layer's for a document with no words.
+  // Sub-word units are on another layer and would inflate the count, which is
+  // why the caller names the layer rather than this counting everything.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -74,25 +75,12 @@ export const DocumentTable = ({
         return;
       }
       try {
-        // A word value spec is counted by core's token count, which reads
-        // each text once (see wordCountsByProject): rows [layer, doc, n].
-        const countPerDoc = async (layer, value = null) => {
-          if (!value) {
-            return client.query({
-              where: [['token', '?t', { layer, doc: { var: '?d' } }]],
-              return: { group: ['?d'], aggregates: [['count']] },
-            });
-          }
-          const res = await client.tokenLayers.countMatching([layer], value);
-          return { results: (res?.results || []).map(([, doc, n]) => [doc, n]) };
-        };
-        const [res, seeds] = await Promise.all([
-          countPerDoc(wordLayerId, JSON.parse(wordValueKey)),
-          seedLayerId ? countPerDoc(seedLayerId) : null,
-        ]);
-        const byDoc = {};
-        for (const [docId, n] of seeds?.results || []) byDoc[docId] = n;
-        for (const [docId, n] of res?.results || []) if (n > 0) byDoc[docId] = n;
+        const byDoc = await wordCountsByDocument(
+          client,
+          wordLayerId,
+          seedLayerId,
+          JSON.parse(wordValueKey),
+        );
         if (!cancelled) {
           setHasWordLayer(true);
           setWordCounts(byDoc);

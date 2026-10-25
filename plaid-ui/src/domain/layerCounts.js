@@ -91,14 +91,55 @@ export const wordCountsByProject = async (
     byLayerDoc.get(layerId).set(docId, n);
   }
   for (const { p, id, seed } of short) {
-    const words = byLayerDoc.get(id) ?? new Map();
-    const seeds = byLayerDoc.get(seed) ?? new Map();
+    const perDoc = withSeedCounts(byLayerDoc.get(id), byLayerDoc.get(seed));
     let total = 0;
-    for (const docId of new Set([...words.keys(), ...seeds.keys()])) {
-      const n = words.get(docId) ?? 0;
-      total += n > 0 ? n : (seeds.get(docId) ?? 0);
-    }
+    for (const n of perDoc.values()) total += n;
     byProject[p.id] = total;
   }
   return byProject;
+};
+
+/**
+ * Each document's word count: its words, or its seed layer's tokens when it
+ * has no words yet (see `seedLayerId` above). Both are maps from document id
+ * to count, and a document in neither is absent.
+ */
+const withSeedCounts = (words, seeds) => {
+  const byDoc = new Map(seeds ?? []);
+  for (const [docId, n] of words ?? []) if (n > 0) byDoc.set(docId, n);
+  return byDoc;
+};
+
+/**
+ * How many words each document of a word layer holds, as `{documentId: n}`,
+ * by the rules `wordCountsByProject` counts a project by: a word value spec
+ * is counted by core's token count, and a document with no words counts its
+ * seed layer's tokens. A document with no tokens is absent. Unlike the list's
+ * short-project path, which counts per document unfiltered, the spec is
+ * applied here.
+ */
+export const wordCountsByDocument = async (
+  client,
+  wordLayerId,
+  seedLayerId = null,
+  wordValue = null,
+) => {
+  // Rows [doc, n] either way.
+  const countPerDoc = async (layer, value = null) => {
+    if (!value) {
+      return client.query({
+        where: [['token', '?t', { layer, doc: { var: '?d' } }]],
+        return: { group: ['?d'], aggregates: [['count']] },
+      });
+    }
+    const res = await client.tokenLayers.countMatching([layer], value);
+    return { results: (res?.results || []).map(([, doc, n]) => [doc, n]) };
+  };
+  const [res, seeds] = await Promise.all([
+    countPerDoc(wordLayerId, wordValue),
+    seedLayerId ? countPerDoc(seedLayerId) : null,
+  ]);
+  return Object.fromEntries(
+    withSeedCounts(new Map(res?.results || []), new Map(seeds?.results || [])),
+  );
 };
