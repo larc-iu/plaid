@@ -10,6 +10,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
+            [plaid.algos.text.index :as text-index]
             [plaid.algos.text.diff :as text-diff]
             [plaid.algos.text.ops :as text-ops]
             [plaid.algos.text.read :as text-read]
@@ -1217,7 +1218,7 @@
 
 (defn- normalize-deletes-counting-every-token [ops old tokens]
   (let [edits (text-ops/ops->edits ops)
-        near (#'text-read/tokens-near tokens (count edits))
+        near (text-index/tokens-near tokens (count edits))
         cut-count (fn [ranges]
                     (count (filter (fn [{:token/keys [begin end]}]
                                      (and (< begin end)
