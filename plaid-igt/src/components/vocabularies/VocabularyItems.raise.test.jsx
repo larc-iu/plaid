@@ -43,8 +43,13 @@ const stub = ({ refuseRepoint = false } = {}) => {
   // Every write the server holds, and the batches they went in.
   const stored = [];
   const batches = [];
+  const ops = [];
   const client = {
-    withOperation: (_label, fn) => fn(),
+    ops,
+    withOperation: (label, fn, opts) => {
+      ops.push({ label, opts });
+      return fn();
+    },
     query: async () => ({ results: [] }),
     vocabLayers: {
       get: async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: ITEMS }),
@@ -130,6 +135,10 @@ describe('Add headword', () => {
     expect(created[1]).toBe('kai');
     expect(created[2]).toMatch(/^[0-9a-f-]{36}$/);
     expect(stored.find((w) => w[0] === 'bulkUpdate')[1]).toEqual(['kai']);
+    // A3-1: the operation names the id it mints, as "Add entry" does, so a
+    // create refused id-taken after a lost answer answers as made.
+    const op = client.ops.find((o) => o.label.startsWith('Add a headword'));
+    expect([...op.opts.minted]).toEqual([created[2]]);
     await view.unmount();
   });
 

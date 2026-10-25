@@ -110,6 +110,7 @@ export function useSenseMoves({
         settleEntries(new Map([[headId, headId]]));
       },
       'Failed to add the headword',
+      { minted: [headId] },
     );
   };
   // A drop in the sense tree: before or after a sense, into one, or out.
