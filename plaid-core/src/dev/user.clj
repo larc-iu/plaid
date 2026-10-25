@@ -68,7 +68,7 @@
 (comment
   ;; Browse audit log for the first project we can find
   (def prj-id (-> (psc/q1 db {:select [:id] :from [:projects] :limit 1}) :id))
-  (mapv :op/description (pxa/get-project-audit-log db prj-id))
+  (:entries (pxa/get-project-audit-log db prj-id nil nil nil))
 
   ;; Create a full layer stack
   (do

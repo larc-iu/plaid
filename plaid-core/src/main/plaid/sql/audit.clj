@@ -416,15 +416,11 @@
                             (let [u (peek units)] [(:position u) (str (:unit u))]))}))))))
 
 (defn get-project-audit-log
-  ([db project-id]
-   (get-project-audit-log db project-id nil nil nil))
-  ([db project-id start-time end-time]
-   (get-project-audit-log db project-id start-time end-time nil))
-  ([db project-id start-time end-time opts]
-   (audit-page db {:source [:operations]
-                   :where [:= :project_id project-id]
-                   :member? [:= (no-index :project_id) project-id]}
-               [start-time end-time] opts)))
+  [db project-id start-time end-time opts]
+  (audit-page db {:source [:operations]
+                  :where [:= :project_id project-id]
+                  :member? [:= (no-index :project_id) project-id]}
+              [start-time end-time] opts))
 
 (defn- document-ops-source
   "A UNION subquery yielding every operations row that affects `document-id`,
@@ -466,24 +462,20 @@
 
   A unit (group/batch) that spans documents shows here with only the
   members that affect THIS document — the fold is within scope."
-  ([db document-id]
-   (get-document-audit-log db document-id nil nil nil))
-  ([db document-id start-time end-time]
-   (get-document-audit-log db document-id start-time end-time nil))
-  ([db document-id start-time end-time opts]
-   (audit-page db {:source (document-ops-source document-id)
-                   ;; The second arm is a list built once per query, not a
-                   ;; probe per row: the documents row of a long-edited
-                   ;; document has a row for every op on it, and a probe
-                   ;; walked all of them for each candidate.
-                   :member? [:or
-                             [:= (no-index :document_id) document-id]
-                             [:in :id {:select [:op_id]
-                                       :from [:audit_writes]
-                                       :where [:and
-                                               [:= :target_table "documents"]
-                                               [:= :target_id document-id]]}]]}
-               [start-time end-time] opts)))
+  [db document-id start-time end-time opts]
+  (audit-page db {:source (document-ops-source document-id)
+                  ;; The second arm is a list built once per query, not a
+                  ;; probe per row: the documents row of a long-edited
+                  ;; document has a row for every op on it, and a probe
+                  ;; walked all of them for each candidate.
+                  :member? [:or
+                            [:= (no-index :document_id) document-id]
+                            [:in :id {:select [:op_id]
+                                      :from [:audit_writes]
+                                      :where [:and
+                                              [:= :target_table "documents"]
+                                              [:= :target_id document-id]]}]]}
+              [start-time end-time] opts))
 
 (defn- vocab-writes-where
   "The audit_writes rows that wrote vocabulary `vocab-id`, or with `item-id`
@@ -521,27 +513,21 @@
   document) shows here with only its members that wrote the vocabulary.
   `:item-id` in `opts` narrows it to the changes that wrote that one entry,
   each unit with only its members that did."
-  ([db vocab-id]
-   (get-vocab-audit-log db vocab-id nil nil nil))
-  ([db vocab-id start-time end-time {:keys [item-id] :as opts}]
-   (audit-page db {:source (vocab-ops-source vocab-id item-id)
-                   :member? [:exists {:select [1]
-                                      :from [:audit_writes]
-                                      :where [:and
-                                              [:= :audit_writes.op_id :operations.id]
-                                              (vocab-writes-where vocab-id item-id)]}]}
-               [start-time end-time] opts)))
+  [db vocab-id start-time end-time {:keys [item-id] :as opts}]
+  (audit-page db {:source (vocab-ops-source vocab-id item-id)
+                  :member? [:exists {:select [1]
+                                     :from [:audit_writes]
+                                     :where [:and
+                                             [:= :audit_writes.op_id :operations.id]
+                                             (vocab-writes-where vocab-id item-id)]}]}
+              [start-time end-time] opts))
 
 (defn get-user-audit-log
-  ([db user-id]
-   (get-user-audit-log db user-id nil nil nil))
-  ([db user-id start-time end-time]
-   (get-user-audit-log db user-id start-time end-time nil))
-  ([db user-id start-time end-time opts]
-   (audit-page db {:source [:operations]
-                   :where [:= :user_id user-id]
-                   :member? [:= (no-index :user_id) user-id]}
-               [start-time end-time] opts)))
+  [db user-id start-time end-time opts]
+  (audit-page db {:source [:operations]
+                  :where [:= :user_id user-id]
+                  :member? [:= (no-index :user_id) user-id]}
+              [start-time end-time] opts))
 
 (defn- not-repair
   "WHERE that leaves out an operation in a group of kind `repair`: an app's
@@ -588,10 +574,8 @@
   filter as the per-project read, only the entity scope is dropped. The walk
   goes through `idx_operations_ts`, so a page costs about its own size here
   too. The route is admin-only."
-  ([db] (get-audit-log db nil nil nil))
-  ([db start-time end-time] (get-audit-log db start-time end-time nil))
-  ([db start-time end-time opts]
-   (audit-page db {:source [:operations]} [start-time end-time] opts)))
+  [db start-time end-time opts]
+  (audit-page db {:source [:operations]} [start-time end-time] opts))
 
 (defn- tally-scope
   "WHERE for the aggregate reads: an optional project scope plus the window,

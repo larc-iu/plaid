@@ -312,23 +312,15 @@
                     {:code 500
                      :message "write helper called outside submit-operation!"}))))
 
-(def audit-change-types
-  "The full set of `change_type` values that may appear in audit_writes.
-  Kept in sync with the CHECK constraint in the initial-schema migration.
-
-  - :insert / :update / :delete — row-level writes captured by the
-    audit helpers (insert!, update-by-id!, delete-by-id!, merge*).
-  - :doc-version-bump — sentinel for the post-body `documents.version`
-    increment emitted by `plaid.sql.operation/bump-document-version!`.
-    Distinguished from a normal :update so ETL change-tracking on
-    document bodies can ignore the per-op version bump without missing
-    user-initiated `:document/update` rows. Still applied during replay
-    (carries pre/post images with the version + modified_at transition)."
-  #{:insert :update :delete :doc-version-bump})
-
 (def doc-version-bump-change-type
-  "Sentinel `change_type` for the per-op documents.version bump. See
-  `audit-change-types`."
+  "Sentinel `change_type` for the post-body `documents.version` increment
+  emitted by `plaid.sql.operation/bump-document-versions!`. Distinguished
+  from a normal :update so ETL change-tracking on document bodies can ignore
+  the per-op version bump without missing user-initiated `:document/update`
+  rows. Still applied during replay (carries pre/post images with the
+  version + modified_at transition). The CHECK constraint in the
+  initial-schema migration holds the full set of `change_type` values:
+  :insert, :update, :delete and this one."
   :doc-version-bump)
 
 ;; ----------------------------------------------------------------
@@ -402,9 +394,8 @@
   (dissoc image :id :document_id))
 
 (defn- audit-row-values
-  "Build the column-keyed value map for one audit_writes row. Shared by the
-  single-row (`record-audit-write!`) and batched (`record-audit-writes!`)
-  entry points so the two stay identical except for how the INSERT is issued.
+  "Build the column-keyed value map for one audit_writes row, for
+  `record-audit-writes!` and `record-whole!`.
 
   `pre-image` is NOT persisted — the audit log is post-image-only (see the
   comment block above). It is still passed in because callers compute it for
@@ -600,55 +591,6 @@
                                " without ensure-recorded! first")
                           {:code 500 :target t :id id})))))))
 
-(defn record-audit-write!
-  "Emit an audit_writes row for `target-table`/`target-id` with the given
-  change-type and post-image. `pre-image` is taken but NOT persisted (used
-  only for no-op detection upstream and the delete-row `document_id` stamp —
-  see `audit-row-values`). Requires *op* to be bound (or ::skip).
-
-  Most callers should go through the higher-level `insert!`/`update-by-id!`/
-  `delete-by-id!`/`merge*` helpers — those capture the post-image automatically
-  from the row state. This raw entry point exists for the handful of writes
-  whose meaningful change isn't a single row (e.g. span/set-tokens, where
-  the change lives in the `span_tokens` junction table but conceptually
-  belongs on the parent span's audit row). See the comment block above for
-  the post-image-only log + synthetic-parent-row pattern.
-
-  The per-op `:seq` ordinal is pulled from the counter atom in *op* so that
-  every audit_writes row in the same op has a unique (op_id, seq) tuple.
-  This is load-bearing for as-of ordering: all rows in one op share the same
-  `:ts` (taken once in submit-operation*), so `seq` is what disambiguates
-  the order of multiple writes to the same target row inside one op
-  (e.g. bump-document-version! plus a body update on the same document).
-
-  For high-volume same-table deletes/inserts prefer `record-audit-writes!`,
-  which batches into chunked multi-row INSERTs."
-  [tx target-table target-id change-type pre-image post-image]
-  (ensure-op-bound!)
-  (let [op *op*]
-    (cond
-      (nil? op)
-      (throw (ex-info (str "Audited write to " target-table " " target-id
-                           " outside of submit-operation!. Wrap the call, or pass"
-                           " {:audit ::skip} for bootstrap-only writes.")
-                      {:code 500 :target target-table :id target-id}))
-
-      (= op ::skip)
-      nil
-
-      :else
-      (do
-        (check-ensured! op target-table change-type [target-id])
-        (when-not (unrecorded-insert? tx op target-table change-type post-image)
-          (jdbc/execute-one!
-           tx
-           (psc/format-sql
-            {:insert-into :audit_writes
-             :values [(audit-row-values op (reserve-seqs! op 1)
-                                        target-table target-id change-type
-                                        pre-image post-image)]})))
-        (note! op target-table target-id change-type pre-image post-image)))))
-
 (defn record-audit-writes!
   "Batched form of `record-audit-write!` for many rows that share one
   `target-table` and `change-type`. `entries` is a seq of
@@ -658,8 +600,8 @@
   `jdbc/execute-one!` round-trip per row. The per-row path dominates large
   cascade deletes: a ~200-document project delete emits ~188k audit rows,
   i.e. ~188k serial INSERTs. Per-op `:seq` ordinals are reserved in
-  `entries` order, so the result is identical to calling
-  `record-audit-write!` once per entry — just far fewer round-trips.
+  `entries` order, so the result is the same as one `record-audit-write!`
+  per entry, in far fewer round-trips.
 
   No-op when `entries` is empty or *op* is ::skip."
   [tx target-table change-type entries]
@@ -668,12 +610,6 @@
         entries (vec entries)]
     (cond
       (empty? entries) nil
-
-      (nil? op)
-      (throw (ex-info (str "Audited write to " target-table
-                           " outside of submit-operation!. Wrap the call, or pass"
-                           " {:audit ::skip} for bootstrap-only writes.")
-                      {:code 500 :target target-table}))
 
       (= op ::skip)
       nil
@@ -696,3 +632,28 @@
         (when *pending*
           (doseq [[target-id pre-image post-image] entries]
             (note! op target-table target-id change-type pre-image post-image)))))))
+
+(defn record-audit-write!
+  "Emit an audit_writes row for `target-table`/`target-id` with the given
+  change-type and post-image. `pre-image` is taken but NOT persisted (used
+  only for no-op detection upstream and the delete-row `document_id` stamp —
+  see `audit-row-values`). Requires *op* to be bound (or ::skip).
+
+  Most callers should go through the higher-level `insert!`/`update-by-id!`/
+  `delete-by-id!` helpers — those capture the post-image automatically
+  from the row state. This raw entry point exists for the handful of writes
+  whose meaningful change isn't a single row (e.g. span/set-tokens, where
+  the change lives in the `span_tokens` junction table but conceptually
+  belongs on the parent span's audit row). See the comment block above for
+  the post-image-only log + synthetic-parent-row pattern.
+
+  The per-op `:seq` ordinal is pulled from the counter atom in *op* so that
+  every audit_writes row in the same op has a unique (op_id, seq) tuple.
+  This is load-bearing for as-of ordering: all rows in one op share the same
+  `:ts` (taken once in submit-operation*), so `seq` is what disambiguates
+  the order of multiple writes to the same target row inside one op
+  (e.g. a document's version bump plus a body update on the same document).
+
+  `record-audit-writes!` with one entry."
+  [tx target-table target-id change-type pre-image post-image]
+  (record-audit-writes! tx target-table change-type [[target-id pre-image post-image]]))

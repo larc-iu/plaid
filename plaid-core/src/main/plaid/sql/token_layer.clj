@@ -53,14 +53,6 @@
   [db id]
   (layer/project-id db :token_layers id))
 
-(defn overlap-mode
-  "Returns the keyword overlap-mode for a token layer (default :any)."
-  [db id]
-  (or (some-> (psc/fetch-by-id db :token_layers id)
-              :overlap_mode
-              keyword)
-      :any))
-
 (defn sort-token-records
   "Pure helper: deterministically sort token records. Ordering matches the SQL ORDER BY in get-with-layer-data, the
   canonical token order, in which precedence OUTRANKS

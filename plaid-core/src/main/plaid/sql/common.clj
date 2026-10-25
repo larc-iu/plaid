@@ -233,7 +233,7 @@
 (defn- canonical-json
   "Render `v` to JSON with map keys sorted at every level. A stable
   serialization is load-bearing for the no-op update skip in
-  `update-by-id!` / `merge*`: those compare the raw pre-image string
+  `update-by-id!`: it compares the raw pre-image string
   against the post-image string, so any reordering of keys (e.g.
   hash-map vs array-map ordering, or `assoc`-induced repr flips) would
   defeat the skip and emit spurious audit rows."
@@ -606,7 +606,7 @@
   "Run an INSERT/UPDATE/DELETE that uses `RETURNING *` (or another :returning
   shape) and return the single coerced row, or nil if no row was affected.
   Use for the single-row audited write helpers (insert!, update-by-id!,
-  delete-by-id!, merge*)."
+  delete-by-id!)."
   [db query]
   (let [sql-vec (if (map? query) (format-sql query) query)]
     (with-slow-query-warn

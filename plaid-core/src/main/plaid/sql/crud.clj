@@ -1,8 +1,8 @@
 (ns plaid.sql.crud
   "The audited row primitives every entity namespace writes through.
 
-  One helper per shape of change — `insert!`, `update-by-id!`, `delete-by-id!`,
-  `merge*` for a single row; `insert-many!`, `bulk-update-by-id!`,
+  One helper per shape of change — `insert!`, `update-by-id!`, `delete-by-id!`
+  for a single row; `insert-many!`, `bulk-update-by-id!`,
   `delete-where!` for many — each capturing the post-image and emitting the
   matching `audit_writes` row. They require `plaid.sql.audit-write/*op*` to be
   bound, i.e. that the caller is inside `submit-operation!`.
@@ -170,32 +170,6 @@
        (psaw/record-audit-write! tx table id :delete pre nil)
        pre))))
 
-(defn merge*
-  "Read-modify-write helper. Validates the row exists, applies `attrs`
-  (column-keyed map), and audits the update. Throws ex-info with :code 404
-  when the row is missing. Returns the post-image row. Pre-image still
-  requires a SELECT (we need it to 404 before the UPDATE), but the
-  post-image is captured via `UPDATE ... RETURNING *` in the same
-  round-trip as the write. Skips the audit_writes row when the post-image
-  equals the pre-image (caller wrote the same values back) — matches the
-  `update-by-id!` contract and keeps no-op updates out of the audit log."
-  ([tx table id attrs]
-   (merge* tx table id attrs {}))
-  ([tx table id attrs {:keys [id-col not-found-kind] :or {id-col :id}}]
-   (psaw/ensure-op-bound!)
-   (psaw/ensure-recorded! tx table [id])
-   (let [pre (psc/fetch-by-id tx table id-col id)]
-     (when (nil? pre)
-       (throw (ex-info (psc/err-msg-not-found (or not-found-kind (name table)) id)
-                       {:id id :code 404})))
-     (let [post (psc/execute-returning-one! tx {:update table
-                                                :set attrs
-                                                :where [:= id-col id]
-                                                :returning [:*]})]
-       (when (not= pre post)
-         (psaw/record-audit-write! tx table id :update pre post))
-       post))))
-
 ;; ============================================================
 ;; Bulk write helpers
 ;; ============================================================
@@ -247,8 +221,7 @@
   Rows may supply different columns. A column some row of the chunk
   leaves out gets a flag beside its value, and such a row keeps the
   column's existing value. Per-id no-ops (pre == post for the supplied
-  attrs) are skipped from the audit log, matching `update-by-id!` /
-  `merge*`.
+  attrs) are skipped from the audit log, matching `update-by-id!`.
 
   NOTE: values are written as given, so columns whose write path expects
   pre-serialized JSON (notably `:config`) must be serialized by the caller
