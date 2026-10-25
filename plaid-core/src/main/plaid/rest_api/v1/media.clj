@@ -123,15 +123,6 @@
                            {::deletes document-id})))
      result)))
 
-(defn get-project-id-from-document
-  "Get project ID from document ID for auth middleware"
-  [{db :db params :parameters :as request}]
-  (let [doc-id (or (-> params :path :document-id)
-                   (-> request :path-params (get "document-id")))]
-    (when doc-id
-      (let [doc-uuid (if (uuid? doc-id) doc-id (java.util.UUID/fromString doc-id))]
-        (-> (doc/get db doc-uuid) :document/project)))))
-
 (defn- parse-byte-range [range-header size]
   (when-let [[_ start-str end-str]
              (and (not (str/includes? range-header ","))
@@ -233,7 +224,11 @@
   [{:keys [last-modified size]}]
   (str "\"" last-modified "-" size "\""))
 
-(def media-routes
+(defn media-routes
+  "The media routes under a document. `get-project-id` is the document
+  routes' own resolver: no media route takes `?as-of=`, so it reads the
+  path's document."
+  [get-project-id]
   ["/media"
    {:parameters {:path [:map [:document-id :uuid]]}}
 
@@ -247,7 +242,7 @@
            ;; `wrap-read-jwt` reads `?media-token=` here and on no other route.
            :plaid/link-token pra/media-audience
            :parameters {:query [:map [:media-token {:optional true} string?]]}
-           :middleware [[pra/wrap-reader-required get-project-id-from-document]]
+           :middleware [[pra/wrap-reader-required get-project-id]]
            :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers
                           query-params :query-params}]
                       (let [result (media/get-media-file document-id)
@@ -275,7 +270,7 @@
                          "A WAV whose samples are not PCM, 32-bit float, A-law or mu-law (IMA or MS ADPCM, GSM, "
                          "64-bit float and the rest), which browsers cannot play, is refused 415 with an "
                          "<body>error</body> naming its coding.")
-           :middleware [[pra/wrap-writer-required get-project-id-from-document]]
+           :middleware [[pra/wrap-writer-required get-project-id]]
            :parameters {:path [:map [:document-id :uuid]]}
            :openapi {:requestBody {:content {"multipart/form-data"
                                              {:schema {:type "object"
@@ -315,7 +310,7 @@
                             "<body>media-url</body>: when the stored recording is another one, the "
                             "delete is refused 409 with <body>media-changed</body> and the current "
                             "<body>media-url</body>. Without it the stored recording is deleted.")
-              :middleware [[pra/wrap-writer-required get-project-id-from-document]]
+              :middleware [[pra/wrap-writer-required get-project-id]]
               :parameters {:query [:map [:media-version {:optional true} [:string {:min 1}]]]}
               :handler (fn [{{{:keys [document-id]} :path {:keys [media-version]} :query} :parameters
                              db :db user-id :user/id}]
@@ -335,7 +330,7 @@
                           "<body>expires-at</body>, and sooner when the caller signs out, changes "
                           "password or loses access to the project. Writes nothing. "
                           "404 when the document has no recording.")
-            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
+            :middleware [[pra/wrap-reader-required get-project-id]]
             :handler (fn [{{{:keys [document-id]} :path} :parameters
                            db :db user-id :user/id secret-key :secret-key jwt-data :jwt-data}]
                        (if-let [url (media/media-url document-id)]

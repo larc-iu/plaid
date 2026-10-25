@@ -26,7 +26,7 @@
   The create, which names no document, reads the body's `:project-id`."
   [{db :db params :parameters as-of-ts :as-of-ts}]
   (if-let [doc-id (-> params :path :document-id)]
-    (or (-> (doc/get db doc-id) :document/project)
+    (or (doc/project-id db doc-id)
         (when as-of-ts
           ;; Reconstruction fallthrough: doc was deleted from
           ;; OLTP but may have existed at ts. A :history/pruned
@@ -392,7 +392,7 @@
                                 :not-held {:status 204}))))}}]
 
     ;; Media operations
-    media/media-routes
+    (media/media-routes get-project-id)
 
     ;; Metadata operations
     (metadata/metadata-routes "document" :document-id get-project-id get-document-id doc/get doc/set-metadata doc/delete-metadata doc/patch-metadata)]])

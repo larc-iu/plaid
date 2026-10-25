@@ -219,6 +219,30 @@
 (defn maintainer-ids [db id]
   (user-ids-for-role db id "maintainer"))
 
+(def ^:private role-rank {"reader" 1 "writer" 2 "maintainer" 3})
+
+(defn role-of
+  "The strongest role `user-id` holds on `project-id`, as the key `get` lists
+  it under (`:project/readers`, `:project/writers` or
+  `:project/maintainers`), nil for none or for a project being deleted. One
+  read on the `project_users` key, for the route gates, which would
+  otherwise load the whole project to read its role lists."
+  [db project-id user-id]
+  (when (and project-id user-id)
+    (some->> (psc/q db {:select [:pu.role]
+                        :from [[:project_users :pu]]
+                        :join [[:projects :p] [:= :p.id :pu.project_id]]
+                        :where [:and
+                                [:= :pu.project_id project-id]
+                                [:= :pu.user_id user-id]
+                                [:= :p.deleted_at nil]]})
+             seq
+             (map :role)
+             (apply max-key role-rank)
+             ({"reader" :project/readers
+               "writer" :project/writers
+               "maintainer" :project/maintainers}))))
+
 (defn get-all-ids
   "Every project's id, less the ones being deleted."
   [db]

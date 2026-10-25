@@ -991,10 +991,10 @@
                    :as-of-ts (:as-of-ts request)}))
 
 (defn- member-at?
-  "Does `user-id` hold at least `key` on `project-id` by a role on it?"
+  "Does `user-id` hold at least `key` on `project-id` by a role on it? The
+  levels are cumulative, so the strongest role held decides."
   [db key project-id user-id]
-  (let [project (prj/get db project-id)]
-    (boolean (some #(seq ((-> project % set) user-id)) (key levels)))))
+  (boolean (some #{(prj/role-of db project-id user-id)} (key levels))))
 
 (defn- holds-privilege?
   "Does `request`'s user hold at least `key` on `project-id`, or admin?

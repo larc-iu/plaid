@@ -17,9 +17,7 @@
 (defn get-project-id-from-document
   "Get project ID from document ID in path"
   [{db :db params :parameters}]
-  (let [document-id (-> params :path :document-id)
-        document (doc/get db document-id)]
-    (:document/project document)))
+  (doc/project-id db (-> params :path :document-id)))
 
 ;; `?op-types=` takes a comma-separated list of the SAME `entity/verb`
 ;; strings the response spells in `op/type` (e.g. `span-layer/create`), so a

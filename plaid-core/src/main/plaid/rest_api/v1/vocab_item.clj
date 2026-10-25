@@ -82,7 +82,7 @@
 (defn- document-project-id
   "The project of the document `?document-id=` names, nil when there is none."
   [{db :db params :parameters}]
-  (:document/project (doc/get db (-> params :query :document-id))))
+  (doc/project-id db (-> params :query :document-id)))
 
 (defn- wrap-entry-document-version
   "The check of `document-query`. Naming a document takes read access to it,
