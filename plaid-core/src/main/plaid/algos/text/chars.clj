@@ -21,13 +21,6 @@
         (= t Character/COMBINING_SPACING_MARK)
         (= t Character/ENCLOSING_MARK))))
 
-(defn word-letter?
-  "Whether code point `c` is part of a word's text: a letter, a digit, a
-  combining mark or one `letter-like` holds (a set or a predicate of code
-  points, see `layer-roles`), not punctuation."
-  [letter-like c]
-  (or (Character/isLetterOrDigit (int c)) (combining-mark? c) (boolean (letter-like (int c)))))
-
 (defn leading-marks
   "How many code points at the start of `s` are combining marks."
   [^String s]

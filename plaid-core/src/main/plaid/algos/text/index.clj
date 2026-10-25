@@ -22,14 +22,6 @@
         (if (<= (aget xs m) x) (recur (inc m) b) (recur a m)))
       a)))
 
-(defn begin-index
-  "`[begins longest]` for `xs`, sorted by `begin-of`: their begins as a long
-  array and the longest extent (`end-of` less `begin-of`). Every one of
-  them that ends after position p stands at or after index
-  `(lower-bound begins (- p longest))`."
-  [xs begin-of end-of]
-  [(long-array (map begin-of xs)) (reduce max 0 (map #(- (end-of %) (begin-of %)) xs))])
-
 (defn tokens-near
   "A function of `lo` and `hi` giving the tokens that begin or end within
   [lo, hi]. The others do not change which of an edit's places in that

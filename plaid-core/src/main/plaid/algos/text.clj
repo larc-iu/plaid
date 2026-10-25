@@ -2,8 +2,7 @@
   "What a change to a text's body does to the text and to the tokens over
   it. The work is in the namespaces under this one, and this one keeps the
   public names its callers use (see `export`)."
-  (:require [plaid.algos.text.align]
-            [plaid.algos.text.chars]
+  (:require [plaid.algos.text.chars]
             [plaid.algos.text.diff]
             [plaid.algos.text.ops]
             [plaid.algos.text.plain]
@@ -25,7 +24,6 @@
         plaid.algos.text.plain/apply-plain-gaps
         plaid.algos.text.plain/layer-roles
         plaid.algos.text.plain/layer-of
-        plaid.algos.text.align/align-to-words
         plaid.algos.text.read/slide-to-tokens
         plaid.algos.text.read/normalize-deletes
         plaid.algos.text.read/plain-body-gaps
