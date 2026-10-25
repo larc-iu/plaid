@@ -30,6 +30,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..core import agent
 from .pseudo import Pseudonyms, clip
 
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
@@ -40,16 +41,17 @@ ROUND_RE = re.compile(r'^(?P<app>[^:]+):assistant:(?P<project>[^:]+):round:(?P<c
 # What the loop appends to a reply that ended some other way than an answer
 # (plaid_agent.core.agent). Matched on the end of the text, which is never
 # exported by default.
-STOPPED_REPEAT = re.compile(r'\*\(Stopped after the same step (failed|was repeated) \d+ times\.\)\*\s*$')
-STEP_LIMIT = re.compile(r'\*\(Stopped at the step limit\.\)\*\s*$')
+STOPPED_REPEAT = re.compile(re.escape(agent.REPEAT_STOP).replace(re.escape('{how}'), '(failed|was repeated)')
+                            .replace(re.escape('{times}'), r'\d+') + r'\s*$')
+STEP_LIMIT = re.compile(re.escape(agent.STEP_LIMIT_STOP) + r'\s*$')
 CUT_AT_LENGTH = re.compile(r"\*\(The reply was cut off at the model's output limit\.\)\*\s*$")
 # The error a turn ends with when a model call reached its output cap
 # (agent.cut_line), which replaced the note above.
 CUT_AT_CAP = re.compile(r'^The model wrote (\S+ tokens )?without finishing, so this turn was stopped\.')
-EMPTY_REPLY = '(The model returned an empty reply.)'
+EMPTY_REPLY = f'({agent.EMPTY_REPLY})'
 # The reply of a turn whose call for words after its plan failed
 # (agent.NO_ANSWER): the plan was kept.
-NO_ANSWER = '(The model did not answer.)'
+NO_ANSWER = f'({agent.NO_ANSWER})'
 
 # A tool's refusal, by what it says, for a step written before steps stored
 # their refusal's kind (``error_kind``, core.tools.REFUSAL_KINDS, 2026-10-24).

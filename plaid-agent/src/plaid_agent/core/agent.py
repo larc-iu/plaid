@@ -518,6 +518,11 @@ EMPTY_REPLY = 'The model returned an empty reply.'
 #: The reply of a turn whose last call, for the words after a plan, failed:
 #: the plan is kept and its card shows it.
 NO_ANSWER = 'The model did not answer.'
+#: The line added under the reply of a turn that used its step budget.
+STEP_LIMIT_STOP = '*(Stopped at the step limit.)*'
+#: The line added under the reply of a turn whose same call failed, or was
+#: repeated, too many times in a row (``how`` is "failed" or "was repeated").
+REPEAT_STOP = '*(Stopped after the same step {how} {times} times.)*'
 
 # How many times in a row the SAME call (same tool, same arguments) may fail
 # before the turn stops. A model that repeats a refused call does not learn
@@ -1250,7 +1255,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                     text, thinking = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this '
                                                                'turn. Reply now with what you found and what '
                                                                'remains to do.')
-                    return TurnResult(text + '\n\n*(Stopped at the step limit.)*',
+                    return TurnResult(text + '\n\n' + STEP_LIMIT_STOP,
                                       new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
                 continue
             # The reply's own round holds something only on a turn that
@@ -1389,7 +1394,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                                                        f'{REPEATED_FAILURES} times in a row. Do not call it again. '
                                                        'Reply now with what you found and what remains to do.')
             line = 'was repeated' if failing['repeated'] else 'failed'
-            return TurnResult(text + f'\n\n*(Stopped after the same step {line} {REPEATED_FAILURES} times.)*',
+            return TurnResult(text + '\n\n' + REPEAT_STOP.format(how=line, times=REPEATED_FAILURES),
                               new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
         if rounds >= cfg.max_steps:
             text, thinking = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
@@ -1398,5 +1403,5 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # several), so the line gives no number the trace would contradict.
             # Raising it is the operator's `--max-steps`, which is not named to
             # the reader.
-            return TurnResult(text + '\n\n*(Stopped at the step limit.)*',
+            return TurnResult(text + '\n\n' + STEP_LIMIT_STOP,
                               new, trace, spend.usage(), *reply_round_of(rounds + 1, thinking))
