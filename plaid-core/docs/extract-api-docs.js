@@ -211,7 +211,10 @@ function parseJSDoc(content) {
 // new style (methodName: (args) => ...).
 function bundleMethods(body) {
   const found = [];
-  const methodRegex = /\/\*\*\s*\n([\s\S]*?)\*\/\s*\n?\s*(\w+):\s*(?:this\._|\([^)]*\)\s*=>)/g;
+  // A doc comment never runs past its own end, so a method the pattern does
+  // not take cannot lend its doc to the next one. An async arrow is a method
+  // too.
+  const methodRegex = /\/\*\*\s*\n((?:(?!\*\/)[\s\S])*?)\*\/\s*\n?\s*(\w+):\s*(?:this\._|(?:async\s*)?\([^)]*\)\s*=>)/g;
   let methodMatch;
   while ((methodMatch = methodRegex.exec(body)) !== null) {
     const [, docContent, methodName] = methodMatch;
