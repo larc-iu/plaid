@@ -88,7 +88,6 @@ export const readSentenceRole = (config) => {
   return SENTENCE_ROLE_VALUES.has(role) ? role : null;
 };
 
-/** A word token layer's non-baseline orthographies: [{name}], or null. */
 /**
  * A field's record as the `[key, value]` cells of its span layer's `igt`
  * config, in the order they are written: its scope, its language when
@@ -114,7 +113,23 @@ export const fieldConfigCells = (field) => {
 export const parentLayerFor = (scope, ids) =>
   scope === 'Sentence' ? ids.sentence : scope === 'Morpheme' ? ids.morpheme : ids.word;
 
+/** A word token layer's non-baseline orthographies: [{name}], or null. */
 export const readOrthographies = (config) => readIgt(config, 'orthographies') ?? null;
+
+// A word's spelling in an orthography is stored in its token metadata under
+// this prefix plus the orthography's name. Every reader and writer of that key
+// goes through the three helpers below.
+const ORTHOGRAPHY_KEY_PREFIX = 'orthog:';
+
+/** The token-metadata key a word's spelling in orthography `name` is stored under. */
+export const orthographyKey = (name) => `${ORTHOGRAPHY_KEY_PREFIX}${name}`;
+
+/** Whether a token-metadata key holds a spelling in some orthography. */
+export const isOrthographyKey = (key) =>
+  typeof key === 'string' && key.startsWith(ORTHOGRAPHY_KEY_PREFIX);
+
+/** The orthography an orthography key names (the inverse of orthographyKey). */
+export const orthographyName = (key) => key.slice(ORTHOGRAPHY_KEY_PREFIX.length);
 
 /**
  * The word token layer's config key (under `igt`) for whether a Baseline save

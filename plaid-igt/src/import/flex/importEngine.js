@@ -22,7 +22,12 @@ import {
 import { CHUNK, bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
-import { IGT_NAMESPACE, SENTENCE_ROLES, readVocabFields } from '../../domain/igtConfig.js';
+import {
+  IGT_NAMESPACE,
+  SENTENCE_ROLES,
+  orthographyKey,
+  readVocabFields,
+} from '../../domain/igtConfig.js';
 import { withLangSuffix } from '../../domain/fieldNames.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
@@ -732,7 +737,7 @@ async function importDocument({
         metadata: Object.fromEntries(
           Object.entries(orthographyNames)
             .filter(([ws]) => w.forms?.[ws] != null)
-            .map(([ws, name]) => [`orthog:${name}`, w.forms[ws]]),
+            .map(([ws, name]) => [orthographyKey(name), w.forms[ws]]),
         ),
         spans: spansOf('word', w, w),
         // A word FLEx never analyzed gets NO morpheme row (see

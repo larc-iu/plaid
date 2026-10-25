@@ -8,8 +8,7 @@
 // the Analyze tab will show it.
 
 import { joinMorphemes } from '@/domain/affixMarkers';
-
-const ORTHOGRAPHY_PREFIX = 'orthog:';
+import { isOrthographyKey, orthographyName } from '@/domain/igtConfig';
 
 const textOf = (chars, span) => chars.slice(span.begin, span.end).join('');
 
@@ -46,14 +45,14 @@ export function previewSentence(doc, index = 0) {
 
   const wordFieldNames = namesIn(words.map((w) => w.fields));
   const rows = [];
-  for (const name of wordFieldNames.filter((n) => n.startsWith(ORTHOGRAPHY_PREFIX))) {
+  for (const name of wordFieldNames.filter((n) => isOrthographyKey(n))) {
     rows.push({
       kind: 'orthography',
-      label: name.slice(ORTHOGRAPHY_PREFIX.length),
+      label: orthographyName(name),
       cells: words.map((w) => w.fields?.[name] ?? ''),
     });
   }
-  for (const name of wordFieldNames.filter((n) => !n.startsWith(ORTHOGRAPHY_PREFIX))) {
+  for (const name of wordFieldNames.filter((n) => !isOrthographyKey(n))) {
     rows.push({ kind: 'word', label: name, cells: words.map((w) => w.fields?.[name] ?? '') });
   }
 

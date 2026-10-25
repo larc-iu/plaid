@@ -39,6 +39,7 @@ import {
   readLexiconField,
   readSentenceRole,
   readInitialized,
+  orthographyKey,
 } from '../domain/igtConfig.js';
 import { ROLES } from '@larc-iu/plaid-client';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
@@ -546,14 +547,14 @@ const linkIndexFromRaw = (raw, order) => {
   };
 };
 
-// Split a raw token-metadata map: configured `orthog:<name>` keys are lifted
+// Split a raw token-metadata map: configured orthography keys are lifted
 // into `orthographies` (preserving the unset-vs-'' distinction); everything
-// else — including UNconfigured orthog:* keys — stays in `metadata`.
+// else — including the keys of UNconfigured orthographies — stays in `metadata`.
 const splitOrthographies = (metadata, orthographyNames) => {
   const orthographies = {};
   const rest = { ...(metadata || {}) };
   for (const name of orthographyNames) {
-    const key = `orthog:${name}`;
+    const key = orthographyKey(name);
     if (Object.prototype.hasOwnProperty.call(rest, key)) {
       orthographies[name] = rest[key];
       delete rest[key];

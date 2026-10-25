@@ -24,7 +24,7 @@
 // exists, but the person who reshaped the token knows that, and a stale value
 // they can edit down beats a deleted one they must retype. We cannot write
 // the new value for them, so we leave theirs alone. (This was briefly the other
-// way round, clearing `orthog:*`; the user's call, and the right one.)
+// way round, clearing the orthography keys; the user's call, and the right one.)
 
 import {
   PROV,

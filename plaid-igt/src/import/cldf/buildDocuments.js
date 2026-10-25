@@ -36,7 +36,13 @@ import { sameName } from '@ui/lib/nameKey.js';
 import { entryForm } from '@larc-iu/plaid-client';
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
-import { DEFAULT_IGNORED_TOKENS, SENTENCE_ROLES, isTokenIgnored } from '../../domain/igtConfig.js';
+import {
+  DEFAULT_IGNORED_TOKENS,
+  SENTENCE_ROLES,
+  isOrthographyKey,
+  isTokenIgnored,
+  orthographyKey,
+} from '../../domain/igtConfig.js';
 import { isLangTag, withLangSuffix } from '../../domain/fieldNames.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 
@@ -689,7 +695,7 @@ export function buildCldfDocuments(dataset, options = {}) {
           if (c.scope === 'Word' && value) wordFields[c.name] = value;
           if (c.scope === 'Morpheme') morphemeLists.set(c.name, splitAnalyzed(value));
           if (c.scope === 'Orthography' && value) {
-            wordFields[`orthog:${c.name}`] = value;
+            wordFields[orthographyKey(c.name)] = value;
           }
         }
 
@@ -925,7 +931,7 @@ export function buildCldfDocuments(dataset, options = {}) {
     for (const w of d.words) {
       // Orthographies ride in token metadata, not in a span layer.
       for (const name of Object.keys(w.fields)) {
-        if (!name.startsWith('orthog:')) addField(name, 'Word');
+        if (!isOrthographyKey(name)) addField(name, 'Word');
       }
       for (const m of w.morphemes)
         for (const name of Object.keys(m.fields)) addField(name, 'Morpheme');

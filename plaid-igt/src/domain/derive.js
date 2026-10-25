@@ -15,6 +15,7 @@ import {
   readOrthographies,
   readIgnoredTokens,
   isTokenIgnored,
+  orthographyKey,
 } from './igtConfig.js';
 import { virtualMorphemeId } from './virtualMorpheme.js';
 import { morphemeMorphType } from '@ui/domain/morphemes.js';
@@ -376,7 +377,7 @@ function collectOrthographies(token, primaryTokenLayer) {
   const out = {};
   const configs = readOrthographies(primaryTokenLayer?.config) || [];
   configs.forEach((c) => {
-    const key = `orthog:${c.name}`;
+    const key = orthographyKey(c.name);
     out[c.name] = token.metadata?.[key] || '';
   });
   return out;

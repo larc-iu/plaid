@@ -45,7 +45,7 @@ import {
 } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
-import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
+import { MEDIA_FILE_FIELD, orthographyKey } from '../../domain/igtConfig.js';
 import { keepTimeRule } from '../../domain/alignmentTimes.js';
 import { nameKey, sameName } from '@ui/lib/nameKey.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
@@ -843,11 +843,11 @@ function buildGroup(files, nodes, roles, options = {}) {
             const v = fieldValueOn(ann, annTier, node);
             if (v) wordFields[nameOf(node)] = v;
           }
-          // Orthography values ride in token metadata under the orthog: prefix,
+          // Orthography values ride in token metadata under their orthography key,
           // the convention the editor and the other importers share.
           for (const node of orthographyNodes) {
             const v = fieldValueOn(ann, annTier, node);
-            if (v) wordFields[`orthog:${nameOf(node)}`] = v;
+            if (v) wordFields[orthographyKey(nameOf(node))] = v;
           }
         }
         const morphAnns = ann ? childrenOn(ann, annTier, morphNodes) : [];

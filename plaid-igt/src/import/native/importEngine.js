@@ -74,6 +74,7 @@ import {
   readScope,
   readImportState,
   recordImportUnmarked,
+  orthographyKey,
 } from '../../domain/igtConfig.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 import { NATIVE_ITEM_KEY, createEntriesOnce, itemsBySourceKey } from '../lexicon.js';
@@ -468,7 +469,7 @@ const anchorNoun = (type) => (type === 'vocab-item' ? 'entry' : (type ?? 'anchor
 const wordMetadata = (node) => {
   const metadata = { ...(node.metadata || {}) };
   for (const [name, value] of Object.entries(node.orthographies || {})) {
-    metadata[`orthog:${name}`] = value;
+    metadata[orthographyKey(name)] = value;
   }
   return metadata;
 };

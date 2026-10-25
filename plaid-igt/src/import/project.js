@@ -31,6 +31,7 @@ import {
   findSentenceTokenLayer,
   findWordTokenLayer,
   IGT_NAMESPACE,
+  isOrthographyKey,
   readOrthographies,
   readScope,
 } from '../domain/igtConfig.js';
@@ -346,12 +347,12 @@ export async function writeBuiltDocument({
   progress,
 }) {
   const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
-  // Orthography values ride in token metadata under the orthog: prefix,
+  // Orthography values ride in token metadata under their orthography key,
   // the same convention the editor and the other importers use. Every other
   // field is a span on its layer.
   const spansOf = (scope, fields) =>
     Object.entries(fields || {})
-      .filter(([name, value]) => value && !name.startsWith('orthog:'))
+      .filter(([name, value]) => value && !isOrthographyKey(name))
       .map(([name, value]) => ({ layerId: spanLayerFor(scope, name), value }));
   await writeDocumentLayers({
     client,
@@ -363,7 +364,7 @@ export async function writeBuiltDocument({
       begin: w.begin,
       end: w.end,
       metadata: Object.fromEntries(
-        Object.entries(w.fields).filter(([key]) => key.startsWith('orthog:')),
+        Object.entries(w.fields).filter(([key]) => isOrthographyKey(key)),
       ),
       spans: spansOf('Word', w.fields),
       morphemes: (w.morphemes || []).map((m) => ({
