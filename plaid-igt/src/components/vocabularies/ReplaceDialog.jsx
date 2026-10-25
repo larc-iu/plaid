@@ -81,8 +81,9 @@ export const ReplaceDialog = ({
   items,
   numbers,
   client,
-  // `send(label, write, { plan, kind, ref })` runs the writes in their turn
-  // behind the entry saves, planned once (see useVocabEntries' sendPlanned).
+  // `send(label, write, { plan, recheck, kind, ref })` runs the writes in their
+  // turn behind the entry saves, planned once (see useVocabEntries'
+  // sendPlanned).
   send,
   onApplied,
 }) => {
@@ -163,11 +164,20 @@ export const ReplaceDialog = ({
     // name-ok: A15 built-in entry key
     return target.name === 'form' ? (it.form ?? '') : String(it.metadata?.[target.name] ?? '');
   };
+  // A chosen value as its write leaves it (replaceWrites), as valueIn reads it.
+  // name-ok: A15 built-in entry key
+  const valueAfter = (r) => (target.name === 'form' || !r.new.trim() ? r.new.trim() : r.new);
+
+  const readEntries = async () => {
+    const fresh = await readVocabulary(client, vocabularyId);
+    return new Map((fresh?.items || []).map((it) => [it.id, it]));
+  };
 
   const doApply = async () => {
     if (!replaceWrites(chosen, { field: target.name }).length) return;
     setBusy(true);
     let done = 0;
+    let rows = [];
     let writes = [];
     let skipped = 0;
     const label = filling
@@ -192,14 +202,21 @@ export const ReplaceDialog = ({
           }
         },
         {
-          // The entries are read again in the write's turn, once. A value
-          // someone changed since this preview is left as they made it.
+          // The entries are read again in the write's turn, and again before
+          // a resend. A value someone changed since this preview is left as
+          // they made it. On a resend a value this run's first send already
+          // wrote is sent again as it was, and answered from what it stored.
           plan: async () => {
-            const fresh = await readVocabulary(client, vocabularyId);
-            const entries = new Map((fresh?.items || []).map((it) => [it.id, it]));
-            const kept = chosen.filter((r) => valueIn(entries, r.id) === r.old);
-            skipped = chosen.length - kept.length;
-            writes = replaceWrites(kept, { field: target.name });
+            const entries = await readEntries();
+            rows = chosen.filter((r) => valueIn(entries, r.id) === r.old);
+            skipped = chosen.length - rows.length;
+            writes = replaceWrites(rows, { field: target.name });
+          },
+          recheck: async () => {
+            const entries = await readEntries();
+            rows = rows.filter((r) => [r.old, valueAfter(r)].includes(valueIn(entries, r.id)));
+            skipped = chosen.length - rows.length;
+            writes = replaceWrites(rows, { field: target.name });
           },
           kind: 'bulk-edit',
           ref: 'action:vocab-replace',

@@ -357,8 +357,8 @@ export const BulkAddDialog = ({
   tagsetFor = NO_TAGSETS,
   existingItems,
   client,
-  // `send(label, write, { plan, kind, ref })` runs the import's writes in their
-  // turn behind the entry saves, planned once (see useVocabEntries'
+  // `send(label, write, { plan, recheck, kind, ref })` runs the import's writes
+  // in their turn behind the entry saves, planned once (see useVocabEntries'
   // sendPlanned).
   send,
   onImported,
@@ -576,6 +576,22 @@ export const BulkAddDialog = ({
   // as batched metadata patches. A chunk that fails leaves the earlier ones in
   // place, which is safe to re-run: the plan is computed against the vocabulary
   // as it stands, so a second pass sees the landed entries as already present.
+  const readItems = async () => (await readVocabulary(client, vocabularyId))?.items || [];
+  // Refuses when the import planned against `items` would write something
+  // other than the reviewed plan.
+  const sameAsReview = (items) => {
+    const now = planVocabImport({
+      entries,
+      existingItems: items,
+      fieldNames,
+      caseInsensitive,
+      strategies,
+      overrides,
+      refuses,
+    });
+    if (planWrites(now) !== planWrites(plan)) throw new ChangedSinceReview();
+  };
+
   const runImport = async () => {
     setStep('running');
     setFailure(null);
@@ -611,23 +627,14 @@ export const BulkAddDialog = ({
         setMessage(`Bulk add: ${countOf(created, 'entry')} added, ${updated} updated`);
       },
       {
-        // The entries are read again in the import's turn, once. When they
-        // changed since the review, so that this plan would now write
-        // something else, nothing is written: the refusal re-reads the
-        // entries and the review shows the plan made against them. The
-        // creates' ids are minted here, so every send makes the same ones.
+        // The entries are read again in the import's turn, and again before
+        // a resend. When they changed since the review, so that this plan
+        // would now write something else, nothing more is written: the
+        // refusal re-reads the entries and the review shows the plan made
+        // against them. The creates' ids are minted here, so every send
+        // makes the same ones.
         plan: async () => {
-          const fresh = await readVocabulary(client, vocabularyId);
-          const now = planVocabImport({
-            entries,
-            existingItems: fresh?.items || [],
-            fieldNames,
-            caseInsensitive,
-            strategies,
-            overrides,
-            refuses,
-          });
-          if (planWrites(now) !== planWrites(plan)) throw new ChangedSinceReview();
+          sameAsReview(await readItems());
           return withMintedIds(
             creates.map((c) => ({
               vocabLayerId: vocabularyId,
@@ -635,6 +642,28 @@ export const BulkAddDialog = ({
               ...(Object.keys(c.metadata).length ? { metadata: c.metadata } : {}),
             })),
           );
+        },
+        // On a resend, what this run's first send landed is not a change
+        // since the review: its creates are left out, and an entry its
+        // update filled in counts as the review read it.
+        recheck: async (specs) => {
+          const ours = new Set(specs.map((c) => c.id));
+          const reviewed = new Map(existingItems.map((it) => [settledId(it.id), it]));
+          const patches = new Map(updates.map((u) => [settledId(u.id), followIds(u.patch)]));
+          const filled = (it) => {
+            const patch = patches.get(it.id);
+            return (
+              !!patch &&
+              Object.entries(patch).every(
+                ([k, v]) => JSON.stringify(it.metadata?.[k]) === JSON.stringify(v),
+              )
+            );
+          };
+          const items = (await readItems())
+            .filter((it) => !ours.has(it.id))
+            .map((it) => (filled(it) ? (reviewed.get(it.id) ?? it) : it));
+          sameAsReview(items);
+          return specs;
         },
         kind: 'import',
         ref: 'format:table',

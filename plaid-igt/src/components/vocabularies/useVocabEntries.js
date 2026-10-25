@@ -234,14 +234,16 @@ export function useVocabEntries({
   // the server holds them in the run's turn, which comes behind any save
   // still on its way. `plan()` reads and plans once, and every send of the
   // run hands `write(setMessage, planned)` what it planned (keyedSend), so a
-  // resend after a lost answer sends what the first send did. Resolves
-  // `{ landed, error }`. A refusal re-reads the entries here, the dialog
-  // reports it. `kind` and `ref` tag the operation (see the client's
-  // beginOperation).
-  const sendPlanned = async (label, write, { plan, kind, ref } = {}) => {
+  // resend after a lost answer sends what the first send did, after
+  // `recheck(planned)` has read again for what someone else changed meanwhile
+  // (keyedSend). Resolves `{ landed, error }`. A refusal re-reads the entries
+  // here, the dialog reports it. `kind` and `ref` tag the operation (see the
+  // client's beginOperation).
+  const sendPlanned = async (label, write, { plan, recheck, kind, ref } = {}) => {
     let error = null;
     const landed = await keyedSend(writes, client, label, write, {
       plan,
+      recheck,
       kind,
       ref,
       refused: (err) => {

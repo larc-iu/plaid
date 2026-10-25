@@ -42,10 +42,12 @@ const lost = (method) =>
     method,
   });
 
-// A server holding `initial`. The first bulk write lands and its answer is
-// lost. A request sent again under a key that landed is answered from what it
-// stored, and writes nothing again.
-const stub = (initial) => {
+// A server holding `initial`. The first bulk write (of `loseKind`, when
+// named) lands and its answer is lost. A request sent again under a key that
+// landed is answered from what it stored, and writes nothing again. With
+// `between`, the first write never reaches the server, and `between(items)`
+// is another maintainer's edit made before the resend.
+const stub = (initial, { loseKind = null, between = null } = {}) => {
   const items = structuredClone(initial);
   const sent = [];
   const landedKeys = new Set();
@@ -54,11 +56,14 @@ const stub = (initial) => {
   const keyed = (kind, apply) => async (body) => {
     const key = `${kind}.${n++}`;
     sent.push({ kind, body: structuredClone(body), key });
-    if (!landedKeys.has(JSON.stringify(body))) {
+    const losing = (!loseKind || kind === loseKind) && lose-- > 0;
+    if (losing && between) {
+      between(items);
+    } else if (!landedKeys.has(JSON.stringify(body))) {
       landedKeys.add(JSON.stringify(body));
       apply(body);
     }
-    if (lose-- > 0) throw lost(kind === 'bulkCreate' ? 'POST' : 'PATCH');
+    if (losing) throw lost(kind === 'bulkCreate' ? 'POST' : 'PATCH');
     return {};
   };
   const client = {
@@ -80,7 +85,11 @@ const stub = (initial) => {
       bulkUpdate: keyed('bulkUpdate', (updates) => {
         for (const u of updates) {
           const it = items.find((i) => i.id === u.id);
-          if (it && 'form' in u) it.form = u.form;
+          if (!it) continue;
+          if ('form' in u) it.form = u.form;
+          for (const op of u.metadata ?? []) {
+            if (op.op === 'set') it.metadata = { ...it.metadata, [op.path[0]]: op.value };
+          }
         }
       }),
       bulkCreate: keyed('bulkCreate', (specs) => {
@@ -169,5 +178,93 @@ describe('a planned run whose answer was lost', () => {
     expect(items.map((i) => i.form)).toEqual(['kat', 'perro', 'chat']);
     expect(feedback.notifySuccess).toHaveBeenCalledWith('Added 2 entries', 'Bulk Add complete');
     expect(document.body.textContent).not.toContain('changed since');
+  });
+});
+
+// The first send never reached the server, and another maintainer changed the
+// entries before it went again. The resend reads them again first, so it
+// writes over nothing of theirs.
+describe('a planned run whose first send never arrived', () => {
+  it('Replace skips a value changed since the preview', async () => {
+    const { client, sent, items } = stub(
+      [
+        { id: 'a', form: 'kat', metadata: {} },
+        { id: 'b', form: 'dog', metadata: {} },
+      ],
+      {
+        between: (now) => {
+          now[0].form = 'kot';
+        },
+      },
+    );
+    const view = await mount(client);
+    mounted = view;
+    await view.step(() => button('Replace').click());
+    await view.step(() => setValue(document.getElementById('vocab-replace-find'), 'k'));
+    await view.step(() => setValue(document.getElementById('vocab-replace-with'), 'c'));
+    await view.step(() => button('Replace 1').click());
+    await drain(view);
+
+    expect(sent.filter((s) => s.kind === 'bulkUpdate')).toHaveLength(1);
+    expect(items.map((i) => i.form)).toEqual(['kot', 'dog']);
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
+    expect(feedback.notifyWarning).toHaveBeenCalledWith(
+      'Skipped 1 value changed since the preview.',
+      'Nothing replaced',
+    );
+  });
+
+  it('Bulk Add goes back to the review when someone added one of its headwords', async () => {
+    const { client, sent, items } = stub([{ id: 'a', form: 'kat', metadata: {} }], {
+      between: (now) => {
+        now.push({ id: 'z', form: 'perro', metadata: {} });
+      },
+    });
+    const view = await mount(client);
+    mounted = view;
+    await view.step(() => button('Bulk Add').click());
+    await view.step(() =>
+      setValue(document.querySelector('textarea'), 'form\tgloss\nperro\tdog\nchat\tcat'),
+    );
+    await view.step(() => button('Next: columns').click());
+    await view.step(() => button('Next: review').click());
+    await view.step(() => button('Add 2').click());
+    await drain(view);
+
+    expect(sent.filter((s) => s.kind === 'bulkCreate')).toHaveLength(1);
+    expect(items.map((i) => i.form)).toEqual(['kat', 'perro']);
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('changed since');
+  });
+});
+
+describe('a planned run that fills in entries, whose answer was lost', () => {
+  it('Bulk Add reports what it filled in, not a change since the review', async () => {
+    const { client, sent, items } = stub([{ id: 'a', form: 'kat', metadata: {} }], {
+      loseKind: 'bulkUpdate',
+    });
+    const view = await mount(client);
+    mounted = view;
+    await view.step(() => button('Bulk Add').click());
+    await view.step(() =>
+      setValue(document.querySelector('textarea'), 'form\tgloss\nkat\tcat\nperro\tdog'),
+    );
+    await view.step(() => button('Next: columns').click());
+    await view.step(() => button('Next: review').click());
+    await view.step(() => button('Add 1').click());
+    await drain(view);
+
+    const updates = sent.filter((s) => s.kind === 'bulkUpdate');
+    expect(updates).toHaveLength(2);
+    expect(updates[1].body).toEqual(updates[0].body);
+    expect(items.map((i) => [i.form, i.metadata.gloss])).toEqual([
+      ['kat', 'cat'],
+      ['perro', 'dog'],
+    ]);
+    expect(document.body.textContent).not.toContain('changed since');
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      'Added 1 entry, filled in 1',
+      'Bulk Add complete',
+    );
   });
 });

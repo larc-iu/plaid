@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { WriteQueue } from './WriteQueue.js';
 import { keyedSend } from './keyedSend.js';
 
-// A queued write under keys fixed when it is queued (REV4 J3), and a planned
-// write that plans once (A3-1).
+// A queued write under keys fixed when it is queued (REV4 J3), a planned
+// write that plans once (A3-1), and its recheck before a resend.
 
 const lost = (method = 'PUT') =>
   Object.assign(new Error('Network error: fetch failed at http://x/api/v1/vocab-layers/A'), {
@@ -117,5 +117,54 @@ describe('keyedSend', () => {
     expect(changed).toBe(false);
     expect(refused).toHaveBeenCalledTimes(1);
     expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks before each resend only, and sends what the recheck gave', async () => {
+    const client = fakeClient();
+    const seen = [];
+    const checked = [];
+    let fail = 2;
+    let reads = 0;
+    const landed = await keyedSend(
+      queue(),
+      client,
+      'Replace',
+      async (_setMessage, planned) => {
+        seen.push(planned);
+        if (fail-- > 0) throw lost('PATCH');
+      },
+      {
+        plan: async () => ['a', 'b'],
+        recheck: async (planned) => {
+          checked.push(planned);
+          reads += 1;
+          // The first recheck's read the network failed: it is tried again.
+          if (reads === 1) throw lost('GET');
+          return planned.slice(1);
+        },
+      },
+    );
+    expect(landed).toBe(true);
+    expect(seen).toEqual([['a', 'b'], ['b'], []]);
+    expect(checked).toEqual([['a', 'b'], ['a', 'b'], ['b']]);
+  });
+
+  it('refuses a resend its recheck refused, and sends nothing more', async () => {
+    const client = fakeClient();
+    const refused = vi.fn();
+    const write = vi.fn(async () => {
+      throw lost('POST');
+    });
+    const landed = await keyedSend(queue(), client, 'Bulk Add', write, {
+      plan: async () => ['c'],
+      recheck: async () => {
+        throw new Error('changed since the review');
+      },
+      refused,
+    });
+    expect(landed).toBe(false);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(refused).toHaveBeenCalledTimes(1);
+    expect(refused.mock.calls[0][0].message).toBe('changed since the review');
   });
 });
