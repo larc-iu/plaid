@@ -67,4 +67,15 @@ describe('remembering a speaker', () => {
     await doc.updateAlignmentSpeaker('a-1', 'Cy');
     expect(client.projects.setConfig).toHaveBeenCalled();
   });
+
+  // The list is project config, and a screen redraws on the data version:
+  // the remembered name is kept as any project read is (`_takeProject`).
+  it('moves the data version, so the screens offer the name at once', async () => {
+    const { doc } = open({ id: 'm@x.com', isAdmin: false });
+    const before = doc.dataVersion;
+    await doc._rememberSpeaker('Dee');
+    expect(doc.project.config.igt.speakers).toEqual(['Ana', 'Dee']);
+    expect(doc.dataVersion).not.toBe(before);
+    expect(doc.knownSpeakers).toEqual(['Ana', 'Ben', 'Dee']);
+  });
 });

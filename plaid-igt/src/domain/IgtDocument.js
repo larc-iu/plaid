@@ -304,16 +304,17 @@ export class IgtDocument extends DocumentModel {
         undefined,
         expectStored(project, IGT_NAMESPACE, 'speakers'),
       );
+      // Kept as a project read is, so what is derived from it, and the
+      // screens keyed on the data version, follow.
       if (this._project) {
         const config = this._project.config || {};
-        this._project = {
+        this._takeProject({
           ...this._project,
           config: {
             ...config,
             [IGT_NAMESPACE]: { ...(config[IGT_NAMESPACE] || {}), speakers: next },
           },
-        };
-        this._emit();
+        });
       }
     };
     if (readSpeakers(this._project?.config).includes(speaker)) return;
