@@ -97,7 +97,7 @@ function load({ user = MAINTAINER, stored } = {}) {
     },
     get: async () => layer,
   };
-  const batched = client.batched;
+  const batched = client.batched.bind(client);
   client.batched = async (fn) => {
     let layerOps = null;
     const out = await batched(async (b) => {

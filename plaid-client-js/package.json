@@ -14,7 +14,8 @@
   },
   "main": "src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./testing": "./src/testing.js"
   },
   "scripts": {
     "test": "node --test",

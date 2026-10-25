@@ -73,21 +73,16 @@ function load(edit = null) {
     planImport(parseUmrFile(`${block(1)}\n${block(2)}\n${block(3)}`).sentences, []),
   );
   if (edit) edit(raw);
-  const { client, calls, requests } = recordingClient();
   // As the server answers: every row under the id the page minted, so a
   // ref names what a replay of the calls stores.
-  client.tokens.bulkCreate = async (ops) => {
-    calls.push({ name: 'tokens.bulkCreate', args: [ops] });
-    return { ids: ops.map((o) => o.id) };
+  const minted = {
+    'tokens.bulkCreate': ([ops]) => ({ ids: ops.map((o) => o.id) }),
+    'spans.create': (args) => ({ id: args[5].id }),
+    'relations.create': (args) => ({ id: args[6].id }),
   };
-  client.spans.create = async (...args) => {
-    calls.push({ name: 'spans.create', args });
-    return { id: args[5].id };
-  };
-  client.relations.create = async (...args) => {
-    calls.push({ name: 'relations.create', args });
-    return { id: args[6].id };
-  };
+  const { client, calls, requests } = recordingClient({
+    answer: ({ kind, args }) => minted[kind]?.(args),
+  });
   const doc = new UmrDocument({ raw, client });
   doc._reload = async () => {};
   doc.onError = (msg) => {

@@ -170,8 +170,12 @@ describe('editBaselineText', () => {
     expect(doc.body).toBe('one\ntwo');
   });
 
-  it('sends an edit whose answer was lost again, the same request, and patches from the answer', async () => {
-    const client = makeFakeClient();
+  // Sent again under its keys, the answer may be the first send's, replayed:
+  // the text is read, and shows what the server stored.
+  it('sends an edit whose answer was lost again, the same request, and shows the text stored', async () => {
+    const client = makeFakeClient({
+      reloadDoc: withDigest(buildRawDoc({ body: 'the cats' }), 'd1'),
+    });
     let sent = 0;
     client.texts.edit = async (id, ops, auditMessage, options) => {
       client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });

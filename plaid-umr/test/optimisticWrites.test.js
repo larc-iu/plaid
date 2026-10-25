@@ -34,26 +34,24 @@ s1e: 6-6
 
 `;
 
-// The recording client, with every write held until `release()`. Batches are
-// held too, since their ops run through the same methods. `fail` names one
-// method (`relations.create`) whose next call is refused.
+// The recording client, with every write held until `release()`, a batched
+// one included. `fail` names one method (`relations.create`) whose next
+// write is refused.
 const open = ({ fail = null } = {}) => {
   const raw = rawFromPlan(planImport(parseUmrFile(FILE).sentences, []));
-  const { client, calls } = recordingClient();
   let release;
   const gate = new Promise((resolve) => (release = resolve));
-  for (const group of ['tokens', 'spans', 'relations']) {
-    for (const [method, fn] of Object.entries(client[group])) {
-      client[group][method] = async (...args) => {
-        await gate;
-        if (fail === `${group}.${method}`) {
-          fail = null;
-          throw new Error('refused');
-        }
-        return fn(...args);
-      };
-    }
-  }
+  const { client, calls } = recordingClient({
+    answer: async ({ kind }) => {
+      if (!/^(tokens|spans|relations)\./.test(kind ?? '')) return undefined;
+      await gate;
+      if (fail === kind) {
+        fail = null;
+        throw new Error('refused');
+      }
+      return undefined;
+    },
+  });
   client.documents.get = async () => structuredClone(raw);
   const doc = new UmrDocument({ raw: structuredClone(raw), client });
   const byVar = (v) => [...doc.graph.nodesById.values()].find((n) => n.var === v);

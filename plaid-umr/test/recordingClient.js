@@ -1,153 +1,69 @@
 // A client that answers every write with fresh ids and remembers the calls,
-// so a test can read exactly what a document mutation sent. `batched` runs
-// the queued ops in order and answers like the server: one `{ body }` per
-// op. Not a test file itself, so the runner does not pick it up.
+// so a test can read exactly what a document mutation sent: plaid-client's own
+// test client (`fakeClient`, plaid-client-js testing.js), whose batches and
+// operations are the real client's. `batched` sends the queued ops as one
+// request, answered in order like the server: one `{ status, headers, body }`
+// per op. Not a test file itself, so the runner does not pick it up.
 //
-// `calls` is every operation, batched or not. `requests` is the ROUND TRIPS:
-// one entry per direct call and one per batch, whatever the batch holds,
-// which is what a test about how much a mutation costs has to count.
+// `calls` is every write, batched or not, as `{ name, args }` when it reaches
+// the server (a batched one when its batch is sent), and each logical
+// operation begun as `{ name: 'operation', args: [label], kind? }`.
+// `requests` is the ROUND TRIPS: one entry per direct write and one per batch
+// request, `{ name: 'batch', args: [ops] }`, whatever the batch holds, which
+// is what a test about how much a mutation costs has to count.
 //
 // A metadata patch must be a list of ops, as the server takes it, and is
 // refused here as there when it is not.
-import { applyMetadataOps } from '@larc-iu/plaid-client';
+//
+// `answer`, when given, is asked first about each write as it reaches the
+// server, `{ kind, args, batched }`: what it returns (or resolves to) is the
+// answer, undefined leaves the usual one, and what it throws refuses the
+// write, which is then not recorded. A test holds or refuses a write here,
+// batched or not, since a batched write never runs through the client's own
+// methods.
+// By its path: the apps' vite alias maps the package to its index.js alone.
+import { fakeClient } from '../../plaid-client-js/src/testing.js';
 
-const checkOps = (ops) => {
-  if (!Array.isArray(ops)) throw new Error('A metadata patch is a list of ops');
-  applyMetadataOps({}, ops);
+// The reads reconcile makes first: nobody holds the lock, and the audit log
+// records nothing in the window it asks about.
+const READS = {
+  'documents.get': () => null,
+  'documents.checkLock': () => null,
+  'documents.auditPage': () => ({ entries: [], nextCursor: null }),
 };
 
-class BatchRef {
-  constructor(op, index) {
-    this.op = op;
-    this.$ref = op;
-    if (index !== undefined) this.index = index;
-  }
-}
-
-export function recordingClient() {
+export function recordingClient({ answer } = {}) {
   let n = 0;
   const id = () => `new${++n}`;
   const calls = [];
   const requests = [];
-  let inBatch = false;
-  const record = (name, ...args) => {
-    calls.push({ name, args });
-    if (!inBatch) requests.push({ name, args });
+  const client = fakeClient({
+    onRequest: (r) => {
+      if (r.operations) requests.push({ name: 'batch', args: [r.operations.length] });
+      else if (r.method !== 'GET') requests.push({ name: r.kind, args: r.args });
+    },
+    answer: async (request) => {
+      const { kind, args, method } = request;
+      if (method === 'GET') return READS[kind]?.(...args);
+      const given = await answer?.(request);
+      calls.push({ name: kind, args });
+      if (given !== undefined) return given;
+      if (kind?.endsWith('.bulkCreate')) return { ids: args[0].map(() => id()) };
+      // The server answers a create, a copy included, with the new id alone.
+      if (/\.(create|copy)$/.test(kind ?? '')) return { id: id() };
+      return {};
+    },
+  });
+  // Not a round trip of its own: it only labels the ones inside it. Its kind,
+  // when it has one, rides beside the label.
+  const withOperation = client.withOperation.bind(client);
+  client.withOperation = (label, fn, options = {}) => {
+    calls.push({
+      name: 'operation',
+      args: [label],
+      ...(options.kind ? { kind: options.kind } : {}),
+    });
+    return withOperation(label, fn, options);
   };
-  const api = {
-    tokens: {
-      bulkCreate: async (ops) => {
-        record('tokens.bulkCreate', ops);
-        return { ids: ops.map(() => id()) };
-      },
-      bulkDelete: async (ids) => record('tokens.bulkDelete', ids),
-      patchMetadata: async (tokenId, ops) => {
-        checkOps(ops);
-        record('tokens.patchMetadata', tokenId, ops);
-      },
-    },
-    spans: {
-      create: async (layer, tokens, value, metadata) => {
-        record('spans.create', layer, tokens, value, metadata);
-        return { id: id() };
-      },
-      bulkCreate: async (ops) => {
-        record('spans.bulkCreate', ops);
-        return { ids: ops.map(() => id()) };
-      },
-      update: async (spanId, value) => record('spans.update', spanId, value),
-      patchMetadata: async (spanId, ops) => {
-        checkOps(ops);
-        record('spans.patchMetadata', spanId, ops);
-      },
-      setTokens: async (spanId, tokens) => record('spans.setTokens', spanId, tokens),
-    },
-    relations: {
-      create: async (layer, source, target, value, metadata) => {
-        record('relations.create', layer, source, target, value, metadata);
-        return { id: id() };
-      },
-      bulkCreate: async (ops) => {
-        record('relations.bulkCreate', ops);
-        return { ids: ops.map(() => id()) };
-      },
-      update: async (relId, value) => record('relations.update', relId, value),
-      patchMetadata: async (relId, ops) => {
-        checkOps(ops);
-        record('relations.patchMetadata', relId, ops);
-      },
-      delete: async (relId) => record('relations.delete', relId),
-      bulkDelete: async (ids) => record('relations.bulkDelete', ids),
-    },
-    tokenLayers: {
-      setConfig: async (layerId, namespace, key, value, message, options) =>
-        record('tokenLayers.setConfig', layerId, namespace, key, value, message, options),
-    },
-    documents: {
-      get: async () => null,
-      // Reads reconcile makes first: nobody holds the lock, and the audit log
-      // records nothing in the window it asks about.
-      checkLock: async () => null,
-      auditPage: async () => ({ entries: [], nextCursor: null }),
-      update: async (documentId, name) => record('documents.update', documentId, name),
-      // The server answers a copy with the new document's id alone.
-      copy: async (documentId, name) => {
-        record('documents.copy', documentId, name);
-        return { id: id() };
-      },
-    },
-    // The server's clock, which reconcile judges an audit entry's age by.
-    serverNow: () => new Date(),
-    // Not a round trip of its own: it only labels the ones inside it. Its
-    // kind, when it has one, rides beside the label.
-    withOperation: async (label, fn, { kind } = {}) => {
-      calls.push({ name: 'operation', args: [label], ...(kind ? { kind } : {}) });
-      return fn(() => {});
-    },
-    // `b.ref(n, index)` stands for the id op n of the batch makes (the ids[index]
-    // of a bulk create), as the real batch's does, and is filled in, at any
-    // depth of the op's arguments, when the op that names it runs.
-    batched: async (fn) => {
-      const queue = [];
-      const out = [];
-      const fill = (v) => {
-        if (v instanceof BatchRef) {
-          const body = out[v.op]?.body;
-          return v.index === undefined ? body?.id : body?.ids?.[v.index];
-        }
-        if (Array.isArray(v)) return v.map(fill);
-        if (v && Object.getPrototypeOf(v) === Object.prototype) {
-          return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)]));
-        }
-        return v;
-      };
-      const proxy = (group) =>
-        new Proxy(
-          {},
-          {
-            get:
-              (_, method) =>
-              (...args) =>
-                queue.push(() => api[group][method](...args.map(fill))),
-          },
-        );
-      const ref = (n = -1, index) => new BatchRef(n < 0 ? queue.length + n : n, index);
-      await fn({
-        tokens: proxy('tokens'),
-        spans: proxy('spans'),
-        relations: proxy('relations'),
-        tokenLayers: proxy('tokenLayers'),
-        ref,
-      });
-      requests.push({ name: 'batch', args: [queue.length] });
-      inBatch = true;
-      try {
-        for (const op of queue) out.push({ body: await op() });
-        return out;
-      } finally {
-        inBatch = false;
-      }
-    },
-  };
-  return { client: api, calls, requests };
+  return { client, calls, requests };
 }

@@ -83,7 +83,7 @@ function stubClient(...raws) {
         b.abort();
         throw Object.assign(new Error('document version mismatch'), { status: 409 });
       }
-      const ops = b.operations.map((o) => o.op);
+      const ops = b.queued.map((q) => q.kind);
       if (c.refuse?.(ops)) {
         b.abort();
         throw Object.assign(new Error('HTTP 500 boom'), { status: 500 });

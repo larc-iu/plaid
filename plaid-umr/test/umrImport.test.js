@@ -354,13 +354,15 @@ test('an attach that fails takes back its relations and restores the records', a
   const text = file({
     doc: '(s1s0 / sentence\n    :modal ((root :modal author)\n        (author :full-negative root)))',
   });
-  const { client, calls } = recordingClient();
+  // The relations are stored, and the answer is lost.
+  const { client, calls } = recordingClient({
+    answer: ({ kind, args }) => {
+      if (kind !== 'relations.bulkCreate') return undefined;
+      calls.push({ name: kind, args });
+      throw new Error('lost answer');
+    },
+  });
   client.documents.get = async () => structuredClone(raw);
-  const bulkCreate = client.relations.bulkCreate;
-  client.relations.bulkCreate = async (ops) => {
-    await bulkCreate(ops);
-    throw new Error('lost answer');
-  };
   await assert.rejects(
     importUmrDocument(client, 'p', 'doc', text, getUmrLayerInfo(raw), { into: raw.id }),
   );
@@ -392,7 +394,7 @@ test('an import makes its anchors and the nodes on them in one request', async (
   const { client, calls } = recordingClient();
   client.documents.get = async () => structuredClone(raw);
   const sent = [];
-  const batched = client.batched;
+  const batched = client.batched.bind(client);
   client.batched = async (fn) => {
     const from = calls.length;
     try {
@@ -473,7 +475,7 @@ test('a large import goes in chunks, each request of nodes with its anchors', as
   client.texts = { create: async () => ({ id: 't-new' }) };
   const sent = [];
   const batches = [];
-  const batched = client.batched;
+  const batched = client.batched.bind(client);
   client.batched = async (fn) => {
     const from = calls.length;
     try {

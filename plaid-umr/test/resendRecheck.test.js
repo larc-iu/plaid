@@ -26,27 +26,26 @@ const FIXTURE = path.join(
 const conflict = () =>
   Object.assign(new Error('HTTP 409 Document version mismatch'), { status: 409, method: 'POST' });
 
-// A document in strict mode whose first write of `kind` is refused 409, as
-// the server refuses a write stamped with a version someone else has moved
-// past. The read after it answers `fresh(raw)`.
+// A document in strict mode whose first write of `refusing.kind`
+// (`relations.create` unless the test says) is refused 409, as the server
+// refuses a write stamped with a version someone else has moved past, batched
+// or not. The read after it answers `fresh(raw)`.
 const load = (fresh) => {
   const text = fs.readFileSync(FIXTURE, 'utf8');
   const plan = planImport(parseUmrFile(text).sentences, []);
-  const { client, calls } = recordingClient();
+  const refusing = { kind: 'relations.create', done: false };
+  const { client, calls } = recordingClient({
+    answer: ({ kind, args }) => {
+      if (kind !== refusing.kind || refusing.done) return undefined;
+      refusing.done = true;
+      calls.push({ name: `${kind} (refused)`, args });
+      throw conflict();
+    },
+  });
   const raw = rawFromPlan(plan);
   const doc = new UmrDocument({ raw, client });
   client.strictModeDocumentId = doc.id;
   client.documentVersions = { [doc.id]: 1 };
-  const create = client.relations.create;
-  let refused = false;
-  client.relations.create = async (...args) => {
-    if (!refused) {
-      refused = true;
-      calls.push({ name: 'relations.create (refused)', args });
-      throw conflict();
-    }
-    return create(...args);
-  };
   client.documents.get = async () => {
     client.documentVersions = { [doc.id]: 2 };
     return fresh(structuredClone(raw), doc);
@@ -54,7 +53,7 @@ const load = (fresh) => {
   const errors = [];
   doc.onError = (msg, err) => errors.push(err);
   const release = doc.hold();
-  return { doc, calls, errors, release };
+  return { doc, calls, errors, release, refusing };
 };
 
 // REV-F-NET D-7's shape: existing edges n2 -> a and bp -> n1 in one
@@ -198,7 +197,7 @@ test('an edge goes again when what changed meanwhile is in a layer it does not r
 // sentence two nodes of one name.
 test('a node whose variable another user took meanwhile is refused, not sent again', async () => {
   let taken = null;
-  const { doc, calls, errors, release } = load((raw, d) => {
+  const { doc, calls, errors, release, refusing } = load((raw, d) => {
     const layer = d.layerInfo.conceptLayer.id;
     const find = (node) => {
       if (node && typeof node === 'object') {
@@ -221,15 +220,7 @@ test('a node whose variable another user took meanwhile is refused, not sent aga
     return raw;
   });
   // The first request of an add is its anchor, refused as the edge was.
-  const bulk = doc._client.tokens.bulkCreate;
-  let refused = false;
-  doc._client.tokens.bulkCreate = async (ops) => {
-    if (!refused) {
-      refused = true;
-      throw conflict();
-    }
-    return bulk(ops);
-  };
+  refusing.kind = 'tokens.bulkCreate';
   const pending = doc.createNode({ sentenceIndex: 1, concept: 'thing' });
   // The variable the add took, read off the node it shows at once.
   taken = doc.layerInfo.conceptLayer.spans.at(-1).metadata.umr.var;
@@ -307,7 +298,7 @@ test('a sentence text sent again after another user changed that sentence is ref
     .penmanOf(1)
     .replace(`(${root.var} / ${root.concept}`, `(${root.var} / ${root.concept} :mod (s1zz / huge)`);
   assert.notEqual(text, doc.penmanOf(1));
-  const batched = doc._client.batched;
+  const batched = doc._client.batched.bind(doc._client);
   let sent = 0;
   doc._client.batched = async (...args) => {
     sent += 1;

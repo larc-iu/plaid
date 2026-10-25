@@ -120,7 +120,7 @@ for (const [name, failure] of [
 test('a repair that finishes keeps the label naming it', async () => {
   const { doc } = open(() => null);
   const relabels = grouped(doc._client);
-  const run = doc._client.batched;
+  const run = doc._client.batched.bind(doc._client);
   doc._client.batched = async (fn) => {
     doc._client.operationGroup.written = true;
     return run(fn);
@@ -132,7 +132,7 @@ test('a repair that finishes keeps the label naming it', async () => {
 test('a repair that finishes and then fails to re-read keeps the label naming it', async () => {
   const { doc } = open(() => null);
   const relabels = grouped(doc._client);
-  const run = doc._client.batched;
+  const run = doc._client.batched.bind(doc._client);
   doc._client.batched = async (fn) => {
     doc._client.operationGroup.written = true;
     return run(fn);

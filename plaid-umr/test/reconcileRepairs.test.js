@@ -257,7 +257,7 @@ test('a renumbered name already taken takes a counter, and constants are left al
 test('an add that failed leaves no anchor to take back, in one request of its own operation', async () => {
   const { doc, calls } = load();
   doc.onError = () => {};
-  const batched = doc._client.batched;
+  const batched = doc._client.batched.bind(doc._client);
   let sent = null;
   // The batch reaches the server and is refused whole, as a batch is.
   doc._client.batched = async (fn) => {

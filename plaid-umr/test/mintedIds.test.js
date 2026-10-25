@@ -27,24 +27,17 @@ const FIXTURE = path.join(
 const load = () => {
   const text = fs.readFileSync(FIXTURE, 'utf8');
   const plan = planImport(parseUmrFile(text).sentences, []);
-  const { client, calls } = recordingClient();
   const sent = [];
-  const withId = (group, method, idAt) => {
-    const original = client[group][method];
-    client[group][method] = (...args) => {
-      sent.push({ what: `${group}.${method}`, id: args[idAt]?.id });
-      return original(...args);
-    };
-  };
-  withId('spans', 'create', 5);
-  withId('relations', 'create', 6);
-  for (const group of ['tokens', 'spans', 'relations']) {
-    const original = client[group].bulkCreate;
-    client[group].bulkCreate = (ops) => {
-      ops.forEach((op) => sent.push({ what: `${group}.bulkCreate`, id: op.id }));
-      return original(ops);
-    };
-  }
+  // Where each create names the id it mints.
+  const idAt = { 'spans.create': 5, 'relations.create': 6 };
+  const { client, calls } = recordingClient({
+    answer: ({ kind, args }) => {
+      if (kind in idAt) sent.push({ what: kind, id: args[idAt[kind]]?.id });
+      if (/^(tokens|spans|relations)\.bulkCreate$/.test(kind)) {
+        args[0].forEach((op) => sent.push({ what: kind, id: op.id }));
+      }
+    },
+  });
   const doc = new UmrDocument({ raw: rawFromPlan(plan), client });
   doc._reload = async () => {};
   const errors = [];

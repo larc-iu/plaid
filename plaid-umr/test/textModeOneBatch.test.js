@@ -43,7 +43,7 @@ const load = () => {
 
 // Batch number `k` (from 1) fails with `error`, the rest go through.
 const failBatch = (client, k, error) => {
-  const batched = client.batched;
+  const batched = client.batched.bind(client);
   let n = 0;
   client.batched = async (fn) => {
     n += 1;
@@ -139,7 +139,7 @@ const big = async () => {
 
 // What each `batched` call queued, by operation name.
 const perRequest = (client, calls) => {
-  const batched = client.batched;
+  const batched = client.batched.bind(client);
   const sent = [];
   client.batched = async (fn) => {
     const from = calls.length;
@@ -156,11 +156,11 @@ test('an apply past one request goes as three, and lands whole when all three do
   const { doc, client, calls, text, requests, release } = await big();
   const sent = perRequest(client, calls);
   assert.ok(await doc.applyPenman(1, text));
-  // The first is split past MAX_BATCH_OPS by the client itself, so it is
-  // one `batched` here, then the nodes, then the edges.
+  // The first is split past MAX_BATCH_OPS by the client itself, into two
+  // requests of one `batched`, then the nodes, then the edges.
   assert.deepEqual(
     requests.map((r) => r.name),
-    ['batch', 'batch', 'batch'],
+    ['batch', 'batch', 'batch', 'batch'],
   );
   // The new nodes' anchors go in the request that makes the nodes, so no
   // anchor is ever stored without its node.

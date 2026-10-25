@@ -4,7 +4,8 @@
 // config under config.igt.*), plus the document, the waits and the island
 // mount most tests repeat. Not imported by app code.
 
-import { ROLES, applyMetadataOps } from '@larc-iu/plaid-client';
+import { ROLES } from '@larc-iu/plaid-client';
+import { fakeClient } from '../../../plaid-client-js/src/testing.js';
 import { IgtDocument } from './IgtDocument.js';
 import { lexiconFieldChoices, proposeLexiconField } from './lexiconField.js';
 import { proposeSentenceRole } from './sentenceRole.js';
@@ -152,285 +153,75 @@ export function buildRawDoc(opts = {}) {
 }
 
 // ---- fake plaid client --------------------------------------------------
-// Records every call in `.calls`, fabricates ids for creates, and mirrors the
-// client's batch shape: `batched(fn)` hands `fn` a batch whose bundles queue
-// instead of answering, and resolves to one `{ status, body }` per queued op in
-// order (body.id present for creates); `batch()` returns the same view with
-// submit/abort. A write made on the client itself answers at once, batch or no
-// batch. Mutations only read ids + batch order back from these results; the
-// optimistic patch is what updates the document, so the fake need not maintain
-// real server state.
+// plaid-client's own test client (`fakeClient` in plaid-client-js testing.js):
+// the real client, batch and operations on a transport that records each call
+// in `.calls` as `{ kind, args }` and answers it here. A create answers a
+// fresh id, a check finds nothing and a repair changes nothing, as on a
+// project whose data keeps every rule, unless `opts.broken` (or
+// `opts.repaired`) names the bundle. Mutations only read ids and batch order
+// back from these answers: the optimistic patch is what updates the
+// document, so nothing here keeps server state.
 
-// A metadata PATCH body, and the `metadata` of a bulk update entry, is a list
-// of ops. Applying them to nothing throws on anything else, so a write that
-// still sends a fragment fails the test that makes it.
-const checkOps = (ops) => {
-  if (!Array.isArray(ops)) throw new Error('metadata ops must be an array');
-  applyMetadataOps({}, ops);
-};
-const checkBulkUpdate = (body) => {
-  for (const e of body || []) if (e.metadata !== undefined) checkOps(e.metadata);
-  return { count: (body || []).length };
-};
+const LAYER_BUNDLES = ['tokenLayers', 'spanLayers', 'relationLayers'];
 
-// The stand-in for an id an earlier op of the same batch creates, shaped as
-// plaid-client's BatchRef: a frozen marker with `$ref` (and `index`) public,
-// which cannot be sent anywhere but a later write on its own batch. Turned
-// into JSON or a string (a path, a query, a call on the client itself) it
-// throws, as the real one does, so a write that reads inside a ref fails the
-// test that makes it.
-const MISPLACED_REF =
-  'b.ref() stands for an id only in the body of a later write on the same batch';
-class FakeBatchRef {
-  #queue;
-  constructor(queue, op, index) {
-    this.#queue = queue;
-    this.$ref = op;
-    if (index !== undefined) this.index = index;
-    Object.freeze(this);
-  }
-  belongsTo(queue) {
-    return this.#queue === queue;
-  }
-  toJSON() {
-    throw new Error(MISPLACED_REF);
-  }
-  [Symbol.toPrimitive]() {
-    throw new Error(MISPLACED_REF);
-  }
-}
-// Every ref in `args` must belong to `queue` (null: a call on the client
-// itself, where no ref belongs).
-const checkRefs = (args, queue) => {
-  const walk = (v) => {
-    if (v instanceof FakeBatchRef) {
-      if (!queue || !v.belongsTo(queue)) throw new Error(MISPLACED_REF);
-      return;
-    }
-    if (Array.isArray(v)) v.forEach(walk);
-    else if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
-      Object.values(v).forEach(walk);
-    }
-  };
-  walk(args);
-};
+const writeAnswers = (opts) => ({
+  'tokens.create': () => ({ id: nextId('tok') }),
+  'tokens.split': () => ({ id: nextId('tok') }),
+  'tokens.bulkCreate': (body) => ({ ids: (body || []).map(() => nextId('tok')) }),
+  'tokens.bulkUpdate': (body) => ({ count: (body || []).length }),
+  'spans.create': () => ({ id: nextId('span') }),
+  'spans.bulkCreate': (body) => ({ ids: (body || []).map(() => nextId('span')) }),
+  'spans.bulkUpdate': (body) => ({ count: (body || []).length }),
+  'vocabLinks.create': () => ({ id: nextId('link') }),
+  'vocabLinks.bulkCreate': (body) => ({ ids: (body || []).map(() => nextId('link')) }),
+  'vocabItems.create': () => ({ id: nextId('vitem') }),
+  'vocabItems.bulkUpdate': (body) => ({ count: (body || []).length }),
+  'texts.create': () => ({ id: nextId('text') }),
+  'texts.edit': (id) => ({
+    id,
+    reshape: { tokens: [], spans: [], vocabLinks: [], deleted: {} },
+  }),
+  'documents.copy': () => ({ id: nextId('doc') }),
+  ...Object.fromEntries(
+    LAYER_BUNDLES.flatMap((bundle) => [
+      [`${bundle}.setConstraints`, () => ({ constraints: {} })],
+      [
+        `${bundle}.checkConstraints`,
+        (id, constraints) =>
+          opts.broken?.[bundle]
+            ? { violations: [{ constraint: constraints[0]?.type }], violationCount: 1 }
+            : { violations: [], violationCount: 0 },
+      ],
+      [
+        `${bundle}.repairConstraints`,
+        () => ({ repaired: opts.repaired?.[bundle] ?? [], violations: [], violationCount: 0 }),
+      ],
+    ]),
+  ),
+});
 
 export function makeFakeClient(opts = {}) {
-  const calls = [];
-  const record = (kind, args) => calls.push({ kind, args });
-
-  // The write bundles, bound to the queue they write into (null on the client
-  // itself, where a write answers its body directly).
-  const bundles = (queue) => {
-    const op =
-      (kind, makeBody) =>
-      (...args) => {
-        checkRefs(args, queue);
-        record(kind, args);
-        const body = makeBody(...args);
-        if (!queue) return body;
-        queue.push({ status: 200, body });
-        return undefined; // a queued op has no answer until submit
-      };
-    return {
-      tokens: {
-        create: op('tokens.create', () => ({ id: nextId('tok') })),
-        delete: op('tokens.delete', () => ({})),
-        update: op('tokens.update', () => ({})),
-        split: op('tokens.split', () => ({ id: nextId('tok') })),
-        merge: op('tokens.merge', () => ({})),
-        bulkCreate: op('tokens.bulkCreate', (body) => ({
-          ids: (body || []).map(() => nextId('tok')),
-        })),
-        bulkDelete: op('tokens.bulkDelete', () => ({})),
-        bulkUpdate: op('tokens.bulkUpdate', checkBulkUpdate),
-        setMetadata: op('tokens.setMetadata', () => ({})),
-        patchMetadata: op('tokens.patchMetadata', (id, ops) => (checkOps(ops), {})),
-        deleteMetadata: op('tokens.deleteMetadata', () => ({})),
-      },
-      spans: {
-        create: op('spans.create', () => ({ id: nextId('span') })),
-        update: op('spans.update', () => ({})),
-        delete: op('spans.delete', () => ({})),
-        bulkCreate: op('spans.bulkCreate', (body) => ({
-          ids: (body || []).map(() => nextId('span')),
-        })),
-        bulkDelete: op('spans.bulkDelete', () => ({})),
-        bulkUpdate: op('spans.bulkUpdate', checkBulkUpdate),
-        setMetadata: op('spans.setMetadata', () => ({})),
-        patchMetadata: op('spans.patchMetadata', (id, ops) => (checkOps(ops), {})),
-      },
-      vocabLinks: {
-        create: op('vocabLinks.create', () => ({ id: nextId('link') })),
-        bulkCreate: op('vocabLinks.bulkCreate', (body) => ({
-          ids: (body || []).map(() => nextId('link')),
-        })),
-        bulkDelete: op('vocabLinks.bulkDelete', () => ({})),
-        delete: op('vocabLinks.delete', () => ({})),
-        patchMetadata: op('vocabLinks.patchMetadata', (id, ops) => (checkOps(ops), {})),
-      },
-      vocabItems: {
-        create: op('vocabItems.create', () => ({ id: nextId('vitem') })),
-        update: op('vocabItems.update', () => ({})),
-        bulkUpdate: op('vocabItems.bulkUpdate', checkBulkUpdate),
-        bulkDelete: op('vocabItems.bulkDelete', () => ({})),
-        setMetadata: op('vocabItems.setMetadata', () => ({})),
-        deleteMetadata: op('vocabItems.deleteMetadata', () => ({})),
-        patchMetadata: op('vocabItems.patchMetadata', (id, ops) => (checkOps(ops), {})),
-      },
-      texts: {
-        create: op('texts.create', () => ({ id: nextId('text') })),
-        update: op('texts.update', () => ({})),
-        edit: op('texts.edit', (id) => ({
-          id,
-          reshape: { tokens: [], spans: [], vocabLinks: [], deleted: {} },
-        })),
-        delete: op('texts.delete', () => ({})),
-      },
-      // Layer config and layer rules (plaid-core's layer constraints). A
-      // check finds nothing and a repair changes nothing, as on a project
-      // whose data keeps every rule, unless `opts.broken` names the bundle.
-      ...Object.fromEntries(
-        ['tokenLayers', 'spanLayers', 'relationLayers'].map((bundle) => [
-          bundle,
-          {
-            setConfig: op(`${bundle}.setConfig`, () => ({})),
-            setConstraints: op(`${bundle}.setConstraints`, () => ({ constraints: {} })),
-            checkConstraints: op(`${bundle}.checkConstraints`, (id, constraints) =>
-              opts.broken?.[bundle]
-                ? { violations: [{ constraint: constraints[0]?.type }], violationCount: 1 }
-                : { violations: [], violationCount: 0 },
-            ),
-            repairConstraints: op(`${bundle}.repairConstraints`, () => ({
-              repaired: opts.repaired?.[bundle] ?? [],
-              violations: [],
-              violationCount: 0,
-            })),
-          },
-        ]),
-      ),
-      documents: {
-        // A read answers from "the wire" on the client and on a batch alike.
-        get: async () => opts.reloadDoc ?? buildRawDoc(),
-        update: op('documents.update', () => ({})),
-        copy: op('documents.copy', () => ({ id: nextId('doc') })),
-        setMetadata: op('documents.setMetadata', () => ({})),
-        patchMetadata: op('documents.patchMetadata', () => ({})),
-        acquireLock: op('documents.acquireLock', () => ({})),
-        releaseLock: op('documents.releaseLock', () => ({})),
-        uploadMedia: op('documents.uploadMedia', () => ({})),
-        deleteMedia: op('documents.deleteMedia', () => ({})),
-      },
-    };
-  };
-
-  const client = {
-    calls,
-    // Logical operations (audit-log grouping): recorded like any other call so
-    // a test can assert a mutation ran as one labeled operation; nesting
-    // flattens exactly like the real client.
-    operationGroup: null,
-    // A kind or ref (the structured side of an operation) is recorded as a
-    // second argument, and only when given, so a test of a plain operation
-    // reads as it always did.
-    beginOperation(message, { kind, ref } = {}) {
-      if (this.operationGroup) {
-        this.operationGroup.depth += 1;
-        return this.operationGroup.id;
-      }
-      const tags = { ...(kind ? { kind } : {}), ...(ref ? { ref } : {}) };
-      record('beginOperation', Object.keys(tags).length ? [message, tags] : [message]);
-      this.operationGroup = { id: `op-${calls.length}`, message, depth: 1, ...tags };
-      return this.operationGroup.id;
-    },
-    async endOperation() {
-      if (!this.operationGroup) return;
-      if (this.operationGroup.depth > 1) {
-        this.operationGroup.depth -= 1;
-        return;
-      }
-      this.operationGroup = null;
-    },
-    // Mirrors the real client: `fn` gets a `setMessage` to refine the label once
-    // the outcome is known, and the refinement is only applied when the
-    // operation actually WROTE something (the real client relabels through
-    // operationGroups.update, and skips it when no group materialized). Recorded
-    // as `operationGroups.update` so a test can assert the label a mutation
-    // settled on.
-    async withOperation(message, fn, { kind, ref } = {}) {
-      this.beginOperation(message, { kind, ref });
-      const group = this.operationGroup;
-      const startedAt = calls.length;
-      const setMessage = (msg) => {
-        if (group.depth === 1) group.refined = msg;
-      };
-      try {
-        return await fn(setMessage);
-      } finally {
-        const wrote = calls.length > startedAt;
-        if (group.refined !== undefined && wrote) {
-          record('operationGroups.update', [group.id, group.refined]);
-        }
-        await this.endOperation();
-      }
-    },
-    // A batch: the client with queueing write bundles, `submit` answering one
-    // result per queued op and `abort` dropping them.
-    batch() {
-      const queue = [];
-      const b = Object.assign(Object.create(client), bundles(queue));
-      b.client = client;
-      b.operations = queue;
-      b.open = true;
-      // The stand-in for the id an op queued earlier will create, as the
-      // real batch's `ref` builds it (op n counted from 0, or from the end
-      // when negative).
-      b.ref = (n = -1, index) => {
-        const at = n < 0 ? queue.length + n : n;
-        if (!(at >= 0 && at < queue.length)) throw new Error(`No operation ${n} queued`);
-        return new FakeBatchRef(queue, at, index);
-      };
-      b.submit = async () => {
-        b.open = false;
-        record('batch.submit', []);
-        return queue.splice(0);
-      };
-      b.abort = () => {
-        b.open = false;
-        queue.length = 0;
-      };
-      return b;
-    },
-    async batched(fn) {
-      const b = client.batch();
-      try {
-        await fn(b);
-      } catch (e) {
-        b.abort();
-        throw e;
-      }
-      return b.submit();
-    },
-
-    ...bundles(null),
-    projects: {
-      get: async () => opts.project ?? { id: 'proj-1', vocabs: [] },
-      list: async () => opts.projects ?? [opts.project ?? { id: 'proj-1', vocabs: [] }],
-    },
+  const writes = writeAnswers(opts);
+  const project = () => opts.project ?? { id: 'proj-1', vocabs: [] };
+  const reads = {
+    'documents.get': () => opts.reloadDoc ?? buildRawDoc(),
+    'projects.get': project,
+    'projects.list': () => ({ entries: opts.projects ?? [project()], nextCursor: null }),
+    // Mirrors the real endpoint: returns the layer + items but NOT vocab-links
+    // (those are embedded in the document GET under tokenLayer.vocabs[] and
+    // folded in by mergeRawVocabLinks). Tests pass `opts.vocabularies` to
+    // pre-seed links on the loaded table directly.
+    'vocabLayers.get': (id) => opts.vocabularies?.[id] ?? { id, items: [] },
     // A query answers what `opts.query(body)` gives, else no rows.
-    query: async (body) => {
-      record('query', [body]);
-      return (await opts.query?.(body)) ?? { results: [] };
-    },
-    vocabLayers: {
-      // Mirrors the real endpoint: returns the layer + items but NOT vocab-links
-      // (those are embedded in the document GET under tokenLayer.vocabs[] and
-      // folded in by mergeRawVocabLinks). Tests pass `opts.vocabularies` to
-      // pre-seed links on the loaded table directly.
-      get: async (id) => opts.vocabularies?.[id] ?? { id, items: [] },
-    },
+    query: async (body) => (await opts.query?.(body)) ?? { results: [] },
   };
-  return client;
+  return fakeClient({
+    answer: ({ kind, args, method }) => {
+      const answer = reads[kind] ?? writes[kind];
+      if (answer) return answer(...args);
+      return method === 'GET' ? undefined : {};
+    },
+  });
 }
 
 // ---- a document, the waits, an island ----------------------------------
