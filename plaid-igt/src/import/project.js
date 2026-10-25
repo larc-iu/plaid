@@ -328,6 +328,54 @@ export async function writeDocumentLayers({
 }
 
 /**
+ * A built document (the shape the CLDF and ELAN builds produce: `sentences[].fields`,
+ * `words[].{begin, end, fields, morphemes}`, each morpheme `{form, morphType, fields}`)
+ * written through `writeDocumentLayers`.
+ */
+export async function writeBuiltDocument({
+  client,
+  targets,
+  textId,
+  sentenceIds,
+  doc,
+  check,
+  progress,
+}) {
+  const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
+  // Orthography values ride in token metadata under the orthog: prefix,
+  // the same convention the editor and the other importers use. Every other
+  // field is a span on its layer.
+  const spansOf = (scope, fields) =>
+    Object.entries(fields || {})
+      .filter(([name, value]) => value && !name.startsWith('orthog:'))
+      .map(([name, value]) => ({ layerId: spanLayerFor(scope, name), value }));
+  await writeDocumentLayers({
+    client,
+    targets,
+    textId,
+    sentenceIds,
+    sentenceSpans: doc.sentences.map((s) => spansOf('Sentence', s.fields)),
+    words: doc.words.map((w) => ({
+      begin: w.begin,
+      end: w.end,
+      metadata: Object.fromEntries(
+        Object.entries(w.fields).filter(([key]) => key.startsWith('orthog:')),
+      ),
+      spans: spansOf('Word', w.fields),
+      morphemes: (w.morphemes || []).map((m) => ({
+        metadata: {
+          ...(m.form != null ? { form: m.form } : {}),
+          ...(m.morphType ? { morphType: m.morphType } : {}),
+        },
+        spans: spansOf('Morpheme', m.fields),
+      })),
+    })),
+    check,
+    progress,
+  });
+}
+
+/**
  * Where each segment sits in the recording: a token per segment on the
  * alignment layer, `{timeBegin, timeEnd, speaker}` in seconds in its metadata,
  * as the editor writes them. False when the project has no alignment layer,

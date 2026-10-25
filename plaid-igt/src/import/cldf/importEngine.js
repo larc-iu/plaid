@@ -28,7 +28,7 @@ import {
   finishDocument,
   resolveIgtTargets,
   setupDataFor,
-  writeDocumentLayers,
+  writeBuiltDocument,
 } from '../project.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { sameName } from '@ui/lib/nameKey.js';
@@ -277,7 +277,6 @@ async function importDocument({
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
-  const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
 
   const {
     documentId: docId,
@@ -297,37 +296,7 @@ async function importDocument({
   });
 
   if (textId) {
-    // Orthography values ride in token metadata under the orthog: prefix,
-    // the same convention the editor and the other importers use. Every other
-    // field is a span on its layer.
-    const spansOf = (scope, fields) =>
-      Object.entries(fields || {})
-        .filter(([name, value]) => value && !name.startsWith('orthog:'))
-        .map(([name, value]) => ({ layerId: spanLayerFor(scope, name), value }));
-    await writeDocumentLayers({
-      client,
-      targets,
-      textId,
-      sentenceIds,
-      sentenceSpans: doc.sentences.map((s) => spansOf('Sentence', s.fields)),
-      words: doc.words.map((w) => ({
-        begin: w.begin,
-        end: w.end,
-        metadata: Object.fromEntries(
-          Object.entries(w.fields).filter(([key]) => key.startsWith('orthog:')),
-        ),
-        spans: spansOf('Word', w.fields),
-        morphemes: (w.morphemes || []).map((m) => ({
-          metadata: {
-            ...(m.form != null ? { form: m.form } : {}),
-            ...(m.morphType ? { morphType: m.morphType } : {}),
-          },
-          spans: spansOf('Morpheme', m.fields),
-        })),
-      })),
-      check,
-      progress,
-    });
+    await writeBuiltDocument({ client, targets, textId, sentenceIds, doc, check, progress });
   }
 
   await finishDocument({
