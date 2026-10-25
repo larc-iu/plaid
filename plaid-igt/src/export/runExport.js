@@ -33,7 +33,8 @@ import { bareMediaType, extensionForMediaType } from '../domain/media/mediaTypes
 import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
-import { interlinearTextXml, flextextEnvelope, countXmlDropped } from './flextext.js';
+import { interlinearTextXml, flextextEnvelope } from './flextext.js';
+import { countXmlDropped } from './xml.js';
 import { buildLiftLexicon, collectExampleRefs } from './lift.js';
 import { buildItemNumbers, exampleKey } from '../domain/vocabDictionary.js';
 import { buildContextRows } from '../components/projects/search/searchRunner.js';

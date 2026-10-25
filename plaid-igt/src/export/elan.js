@@ -56,7 +56,12 @@
 import { morphFormOf } from '../domain/igtExport.js';
 import { MEDIA_FILE_FIELD } from '../domain/igtConfig.js';
 import { joinerBetween } from '../domain/affixMarkers.js';
-import { xmlEscape, phraseSpeakerFor } from './flextext.js';
+import { xmlEscape } from './xml.js';
+import {
+  containedAlignments,
+  sentenceSpeaker,
+  sentenceTiming,
+} from '../domain/sentenceSegments.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { mediaTypeForName } from '../domain/media/mediaTypes.js';
 import { ELAN_FIELD_NAMES_PROPERTY, writeElanFieldNames } from '../domain/elanFieldNames.js';
@@ -112,51 +117,6 @@ const DEFAULT_TIER_NAMES = Object.freeze({
 
 const attr = (name, value) =>
   value === null || value === undefined || value === '' ? '' : ` ${name}="${xmlEscape(value)}"`;
-
-/**
- * The alignment tokens lying WHOLLY inside a sentence, in text order. A token
- * straddling the boundary matches no sentence by design (see the header note).
- */
-export function containedAlignments(sentence, tokens) {
-  return (tokens || [])
-    .filter((t) => t.begin >= sentence.begin && t.end <= sentence.end)
-    .sort((a, b) => a.begin - b.begin);
-}
-
-/**
- * The speaker a sentence's tiers are filed under, or null. Resolved the same way
- * as its timing, so the two never disagree: the unique speaker among the
- * alignment tokens INSIDE the sentence, falling back to the strict covering-token
- * rule the .flextext export uses when the sentence contains none (an alignment
- * wider than the sentence). Contained segments that disagree yield no speaker
- * rather than an arbitrary one.
- */
-export function sentenceSpeaker(sentence, tokens) {
-  const inside = containedAlignments(sentence, tokens);
-  if (inside.length) {
-    const named = new Set(
-      inside
-        .map((t) => t.metadata?.speaker)
-        .filter((sp) => typeof sp === 'string' && sp.trim() !== '')
-        .map((sp) => sp.trim()),
-    );
-    return named.size === 1 ? [...named][0] : null;
-  }
-  return phraseSpeakerFor(sentence, tokens);
-}
-
-/**
- * {beginMs, endMs} for a sentence: the span of the alignment tokens inside it,
- * or null when it contains none. Milliseconds, since ELAN assumes them.
- */
-export function sentenceTiming(sentence, validTokens) {
-  const inside = containedAlignments(sentence, validTokens);
-  if (!inside.length) return null;
-  return {
-    beginMs: Math.round(Math.min(...inside.map((t) => t.metadata.timeBegin)) * 1000),
-    endMs: Math.round(Math.max(...inside.map((t) => t.metadata.timeEnd)) * 1000),
-  };
-}
 
 // A name allocator: TIER_ID is subject to an xsd:key, so a field named "Word"
 // must not collide with the structural Word tier. `scope` is given for a

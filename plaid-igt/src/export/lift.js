@@ -36,7 +36,7 @@
 // the importer's item-per-sense flattening. A vocabulary built by hand has no
 // such guids, so each of its items is an entry of its own.
 
-import { xmlEscape } from './flextext.js';
+import { xmlEscape } from './xml.js';
 import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import {

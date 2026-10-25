@@ -57,7 +57,7 @@ import {
   refIds,
 } from '../domain/vocabDictionary.js';
 import { detectDirection, userMetadata, RTL } from '@ui/domain/textDirection.js';
-import { phraseSpeakerFor } from './flextext.js';
+import { phraseSpeakerFor } from '../domain/sentenceSegments.js';
 
 // ---- the preset: which lines, in which order ------------------------------
 

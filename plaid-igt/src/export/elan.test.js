@@ -1,12 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { buildEafDocument, elanLossSummary, defaultElanOptions } from './elan.js';
 import {
-  buildEafDocument,
   containedAlignments,
   sentenceTiming,
   sentenceSpeaker,
-  elanLossSummary,
-  defaultElanOptions,
-} from './elan.js';
+} from '../domain/sentenceSegments.js';
 import { ELAN_FIELD_NAMES_PROPERTY } from '../domain/elanFieldNames.js';
 import { readEaf } from '../import/elan/readEaf.js';
 import { makeFixtureDoc, makeSentence, makeAlignmentToken } from './testFixtures.js';

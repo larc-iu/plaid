@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { SaxesParser } from 'saxes';
 import { buildEafDocument } from './elan.js';
-import { buildFlextextDocument, countXmlDropped, xmlEscape } from './flextext.js';
+import { buildFlextextDocument } from './flextext.js';
+import { countXmlDropped, xmlEscape } from './xml.js';
 import { runExport } from './runExport.js';
 import { discoverExportLayers } from './exportLayers.js';
 import { newPreset } from './presets.js';

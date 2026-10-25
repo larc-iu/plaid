@@ -48,40 +48,8 @@ import { lexiconViewOf } from '../domain/vocabLookup.js';
 import { resolveFieldLang } from '../domain/fieldNames.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { provState } from '@larc-iu/plaid-client';
-
-// Shared with the .eaf exporter (src/export/elan.js). The two XML formats
-// escape identically, and one copy keeps them from drifting.
-//
-// XML 1.0 has no escape for the C0 controls other than tab, newline and
-// carriage return, nor for U+FFFE and U+FFFF, so those are dropped. One
-// vertical tab from a Word paste would otherwise make the whole file one
-// that ELAN and FLEx refuse to open. What is dropped is counted, so the
-// export can name the document or lexicon it came from (countXmlDropped).
-// eslint-disable-next-line no-control-regex -- matching these characters is the point
-const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
-let xmlDropped = 0;
-
-export const xmlEscape = (s) => {
-  const raw = String(s ?? '');
-  const kept = raw.replace(XML_FORBIDDEN, '');
-  xmlDropped += raw.length - kept.length;
-  return kept
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-};
-
-/**
- * Runs a synchronous serializer and says how many characters xmlEscape
- * dropped while it ran. Synchronous, so no other export can run in between.
- */
-export function countXmlDropped(serialize) {
-  const before = xmlDropped;
-  const out = serialize();
-  return { out, dropped: xmlDropped - before };
-}
+import { xmlEscape } from './xml.js';
+import { phraseTimingFor, phraseSpeakerFor } from '../domain/sentenceSegments.js';
 
 // ---- lang resolution -------------------------------------------------------
 
@@ -325,65 +293,6 @@ function punctWordXml(indent, content, options) {
 // token). Anything else — partial overlaps, ambiguity — is skipped; we never
 // invent alignment. Times are stored in seconds (metadata.timeBegin/timeEnd);
 // FLEx/ELAN expect integer milliseconds.
-
-// The single alignment token an analysis phrase inherits from: an exact extent
-// match, else a unique token whose extent contains the sentence. Null when
-// there's no unique match (partial overlap, ambiguity) — we never invent
-// alignment. Shared by the timing and speaker projections so both stay
-// truthful in exactly the same cases.
-// A sentence's extent less the whitespace at its edges (the separator a
-// transcript row's sentence holds after the row's text), read from its pieces.
-// A sentence with no words is one piece, trimmed at both ends. Whitespace is
-// the head rule's: a next-line character (U+0085) counts, as in core.
-const isSpace = (c) => /\s/u.test(c) || c === '\u0085';
-const leadingSpace = (cps) => {
-  let n = 0;
-  while (n < cps.length && isSpace(cps[n])) n += 1;
-  return n;
-};
-function textExtent(sentence) {
-  const pieces = sentence.pieces || [];
-  let { begin, end } = sentence;
-  const first = pieces[0];
-  const last = pieces[pieces.length - 1];
-  if (first?.type === 'gap' && typeof first.content === 'string') {
-    begin += leadingSpace([...first.content]);
-  }
-  if (last?.type === 'gap' && typeof last.content === 'string') {
-    end -= leadingSpace([...last.content].reverse());
-  }
-  return begin < end ? { begin, end } : { begin: sentence.begin, end: sentence.end };
-}
-
-function coveringAlignment(sentence, tokens) {
-  const { begin, end } = textExtent(sentence);
-  const exact = tokens.filter(
-    (t) =>
-      (t.begin === sentence.begin && t.end === sentence.end) ||
-      (t.begin === begin && t.end === end),
-  );
-  const candidates = exact.length ? exact : tokens.filter((t) => t.begin <= begin && t.end >= end);
-  return candidates.length === 1 ? candidates[0] : null;
-}
-
-/** {beginMs, endMs} for a sentence, or null when no unique truthful match. */
-export function phraseTimingFor(sentence, validTokens) {
-  const t = coveringAlignment(sentence, validTokens);
-  if (!t) return null;
-  const { timeBegin, timeEnd } = t.metadata;
-  return { beginMs: Math.round(timeBegin * 1000), endMs: Math.round(timeEnd * 1000) };
-}
-
-// Speaker (diarization) for a sentence, or null. Same strict unique-match rule
-// as timing, but resolved over ALL alignment tokens (a speaker is independent
-// of whether the segment carries valid times). FLEx has no per-phrase speaker
-// in its glossing model proper — `speaker` is an ELAN-interop phrase attribute
-// alongside the time offsets — so a phrase that straddles a speaker change just
-// gets no speaker rather than a wrong one.
-export function phraseSpeakerFor(sentence, tokens) {
-  const s = coveringAlignment(sentence, tokens)?.metadata?.speaker;
-  return typeof s === 'string' && s.trim() !== '' ? s.trim() : null;
-}
 
 function phraseXml(
   indent,

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildFlextextDocument, phraseTimingFor, phraseSpeakerFor } from './flextext.js';
+import { buildFlextextDocument } from './flextext.js';
+import { phraseTimingFor, phraseSpeakerFor } from '../domain/sentenceSegments.js';
 import { proposeMetadataMap } from './presets.js';
 import {
   makeFixtureDoc,

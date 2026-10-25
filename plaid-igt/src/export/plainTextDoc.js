@@ -9,7 +9,7 @@ import { tiers } from '../domain/igtExport.js';
 // Shared strict alignment→sentence speaker projection (unique exact-or-contains
 // match, else none) — the same one the .flextext export uses, so a sentence
 // gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.
-import { phraseSpeakerFor } from './flextext.js';
+import { phraseSpeakerFor } from '../domain/sentenceSegments.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { displayWidth, padToWidth } from '@ui/lib/displayWidth.js';
 

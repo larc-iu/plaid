@@ -44,7 +44,7 @@ import {
   exportedVocabFields,
   fieldsWithRole,
 } from '../domain/vocabFields.js';
-import { phraseSpeakerFor } from './flextext.js';
+import { phraseSpeakerFor } from '../domain/sentenceSegments.js';
 import { countOf, plural } from '../../../plaid-ui/src/lib/plural.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
