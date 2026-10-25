@@ -927,7 +927,7 @@ export async function makeRequest(client, method, path, options = {}) {
     // The server took it, so the operation's group exists.
     if (stampedGroup) stampedGroup.written = true;
 
-    // Binary response (getMedia)
+    // Binary response (users.getAvatar)
     if (binaryResponse) {
       extractDocumentVersions(client, response.headers);
       landed(response.headers);
