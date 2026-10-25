@@ -9,51 +9,36 @@ import {
   storedConstraints,
 } from './layerConstraints.js';
 import { humanizeError, isChangedElsewhere, isConstraintViolation } from './errors.js';
+import { fakeClient as testClient } from '../../../plaid-client-js/src/testing.js';
 
-// A client with the four bundle methods, a batch that queues them, and a
-// scripted answer per (method, layer).
+// plaid-client's own test client (testing.js): the real client, its batch and
+// its operations, with a scripted answer per (method, layer). `calls` is each
+// layer call as it reaches the server, `[method, layer, ...args]`, and
+// `['batch', n]` for each batch request, `groups` each operation begun.
 const fakeClient = (answers = {}) => {
   const calls = [];
   const groups = [];
-  const run = (method, layerId, args) => {
-    calls.push([method, layerId, ...args]);
-    let a = answers[`${method}:${layerId}`];
-    if (typeof a === 'function') a = a(...args);
-    if (a instanceof Error) throw a;
-    return a ?? (method === 'repairConstraints' ? { repaired: [] } : { constraints: {} });
-  };
-  const bundle = () => ({
-    setConstraints: (id, ...args) => run('setConstraints', id, args),
-    repairConstraints: (id, ...args) => run('repairConstraints', id, args),
-    checkConstraints: (id, ...args) => run('checkConstraints', id, args),
-    get: (id) => run('get', id, []),
+  const client = testClient({
+    onRequest: (r) => {
+      if (r.operations) calls.push(['batch', r.operations.length]);
+    },
+    answer: ({ kind, args }) => {
+      const method = kind.split('.')[1];
+      const [layerId, ...rest] = args;
+      calls.push([method, layerId, ...rest]);
+      let a = answers[`${method}:${layerId}`];
+      if (typeof a === 'function') a = a(...rest);
+      if (a instanceof Error) throw a;
+      return a ?? (method === 'repairConstraints' ? { repaired: [] } : { constraints: {} });
+    },
   });
-  const client = {
-    calls,
-    groups,
-    tokenLayers: bundle(),
-    spanLayers: bundle(),
-    relationLayers: bundle(),
-    withOperation: async (label, fn, opts) => {
-      groups.push([label, opts]);
-      return fn(() => {});
-    },
-    batched: async (fn) => {
-      const queued = [];
-      const b = {};
-      for (const k of ['tokenLayers', 'spanLayers', 'relationLayers']) {
-        b[k] = {
-          setConstraints: (...args) => queued.push(['setConstraints', ...args]),
-          repairConstraints: (...args) => queued.push(['repairConstraints', ...args]),
-        };
-      }
-      fn(b);
-      calls.push(['batch', queued.length]);
-      const out = [];
-      for (const [method, id, ...args] of queued) out.push(run(method, id, args));
-      return out;
-    },
+  const withOperation = client.withOperation.bind(client);
+  client.withOperation = (label, fn, opts) => {
+    groups.push([label, opts]);
+    return withOperation(label, fn, opts);
   };
+  client.calls = calls;
+  client.groups = groups;
   return client;
 };
 

@@ -176,7 +176,7 @@ export async function ensureLayerConstraints(
             ),
           );
           // A batch answers `{status, headers, body}` per operation.
-          result.repaired = (answers || []).some((a) => (a?.body ?? a)?.repaired?.length > 0);
+          result.repaired = answers.some((a) => a.body?.repaired?.length > 0);
         }
 
         const declare = (api, w, list) =>
