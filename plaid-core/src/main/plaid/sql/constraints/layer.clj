@@ -955,11 +955,6 @@
                                        :where [:and [:in :id ch] [:= :kind "import"]]})
                           ids))))))
 
-(def ^:private reproducing-op-types
-  "Operations that write back values already stored, whose values keep an
-  import's exemption: a document copy and a restore from history."
-  #{"document/copy" "document/restore"})
-
 (defn- value-history-chunk
   "The audit rows of the rows `ch` of `table`, newest first, with the kind of
   group and the type of operation that wrote each. Read by target through
@@ -972,22 +967,6 @@
    :where [:and [:= :aw.target_table (name table)]
            [:in :aw.target_id (mapv str ch)]]
    :order-by [[:aw.ts :desc] [:aw.seq :desc]]})
-
-(defn- document-creators
-  "`{document-id {:kind :op_type}}`: the operation that created each of the
-  documents `doc-ids`, with the kind of its group, read from the document's
-  insert row."
-  [tx doc-ids]
-  (into {}
-        (map (fn [r] [(u (:target_id r)) r]))
-        (q-chunks tx (fn [ch] {:select [:aw.target_id :og.kind :o.op_type]
-                               :from [[:audit_writes :aw]]
-                               :join [[:operations :o] [:= :o.id :aw.op_id]]
-                               :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
-                               :where [:and [:= :aw.target_table "documents"]
-                                       [:in :aw.target_id (mapv str ch)]
-                                       [:= :aw.change_type "insert"]]})
-                  doc-ids)))
 
 (defn- import-set-ids
   "The ids among `rows` (id, value as stored, document) whose current value
@@ -1006,10 +985,11 @@
         by-id (group-by (comp u :target_id) audit)
         unrecorded (remove #(contains? by-id (u (:id %))) rows)
         creators (when (seq unrecorded)
-                   (document-creators tx (distinct (map (comp u :document_id) unrecorded))))
+                   (psaw/document-creators tx (distinct (map (comp str u :document_id) unrecorded))))
         exempt? (fn [setter] (or (= "import" (:kind setter))
-                                 (reproducing-op-types (:op_type setter))))]
-    (into (set (keep (fn [r] (when (exempt? (get creators (u (:document_id r)))) (u (:id r))))
+                                 (contains? psaw/reproducing-op-types
+                                            (some-> (:op_type setter) keyword))))]
+    (into (set (keep (fn [r] (when (exempt? (get creators (str (u (:document_id r))))) (u (:id r))))
                      unrecorded))
           (keep (fn [[id rs]]
                   (let [cur (get current id)

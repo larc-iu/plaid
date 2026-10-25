@@ -185,10 +185,11 @@
       (string? t) (first (clojure.string/split t #"/" 2))
       :else nil)))
 
-(def ^:private reproducing-op-types
+(def reproducing-op-types
   "Operations that write back values already stored: a document copy and a
   restore from history. A value they write keeps the value-set exemption an
-  import gave it (`plaid.sql.constraints.layer`)."
+  import gave it (`plaid.sql.constraints.layer`, which matches a stored
+  `op_type` string by its keyword)."
   #{:document/copy :document/restore})
 
 (defn- prov-state
@@ -466,16 +467,21 @@
                                   ids))]
     (remove recorded ids)))
 
-(defn- document-creators
-  "`{document-id-string {:op_id :ts}}`: the operation that created each of
-  the documents `doc-ids`, from the document's insert row."
+(defn document-creators
+  "`{document-id-string {:target_id :op_id :ts :op_type :kind}}`: the
+  operation that created each of the documents `doc-ids`, read from the
+  document's insert row, with its type and the kind of its group (nil when
+  it has none)."
   [tx doc-ids]
   (into {}
         (map (fn [r] [(str (:target_id r)) r]))
-        (in-chunks #(psc/q tx {:select [:target_id :op_id :ts] :from [:audit_writes]
-                               :where [:and [:= :target_table "documents"]
-                                       [:in :target_id (vec %)]
-                                       [:= :change_type "insert"]]})
+        (in-chunks #(psc/q tx {:select [:aw.target_id :aw.op_id :aw.ts :o.op_type :og.kind]
+                               :from [[:audit_writes :aw]]
+                               :join [[:operations :o] [:= :o.id :aw.op_id]]
+                               :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
+                               :where [:and [:= :aw.target_table "documents"]
+                                       [:in :aw.target_id (mapv str %)]
+                                       [:= :aw.change_type "insert"]]})
                    doc-ids)))
 
 (defn- record-whole!
