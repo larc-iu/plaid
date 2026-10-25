@@ -81,7 +81,7 @@ const Occurrences = ({ found, projectId }) => (
 );
 
 export const ProjectValidation = () => {
-  const { project, projectId, loading, canConfigure } = useManagedProject();
+  const { project, projectId, loading, canConfigure, fetchProject } = useManagedProject();
   const { getClient } = useAuth();
   const client = getClient();
 
@@ -186,7 +186,9 @@ export const ProjectValidation = () => {
   // Adopt every off-list value into the vocabulary. Offered, never imposed: a
   // project may well want the list to stay as it is and the values gone. The
   // values are added to the list as stored: a write refused because someone
-  // saved the list since is made again to what they saved.
+  // saved the list since is made again to what they saved. The project is then
+  // read again, quietly, and the new project runs the check again (`scan`
+  // follows `layerInfo`).
   const adopt = useCallback(
     async (field) => {
       setAdding(field.key);
@@ -213,7 +215,7 @@ export const ProjectValidation = () => {
           await attempt(await client.projects.get(projectId));
         }
         notifySuccess(`${field.label} updated`);
-        window.location.reload();
+        await fetchProject({ quiet: true });
       } catch (err) {
         console.error('Failed to add the values:', err);
         notifyError(err, 'Failed to add the values');
@@ -221,7 +223,7 @@ export const ProjectValidation = () => {
         setAdding(null);
       }
     },
-    [client, project, projectId],
+    [client, project, projectId, fetchProject],
   );
 
   if (loading) return <Loading />;

@@ -8,8 +8,24 @@ import { readFeatureInventory } from '../../utils/udVocab.js';
 // and once more against what another save left when that one is refused. The
 // feature inventory is written on its own.
 
-const managed = vi.hoisted(() => ({ current: null }));
-vi.mock('@ui/hooks/useManagedProject.js', () => ({ useManagedProject: () => managed.current }));
+// The project as the page holds it. fetchProject reads it again, the way
+// useManagedProject's does: the new object re-renders the page.
+const managed = vi.hoisted(() => ({ current: null, fetches: [] }));
+vi.mock('@ui/hooks/useManagedProject.js', async () => {
+  const { useState } = await import('react');
+  return {
+    useManagedProject: () => {
+      const [project, setProject] = useState(managed.current.project);
+      const fetchProject = async (options) => {
+        managed.fetches.push(options);
+        const fresh = { ...project };
+        setProject(fresh);
+        return fresh;
+      };
+      return { ...managed.current, project, fetchProject };
+    },
+  };
+});
 const client = vi.hoisted(() => ({ current: null }));
 vi.mock('../../contexts/AuthContext.jsx', () => ({
   useAuth: () => ({ getClient: () => client.current }),
@@ -51,6 +67,7 @@ const realLocation = window.location;
 beforeEach(() => {
   info.current = infoWith(['NOUN', 'VERB']);
   batches = [];
+  managed.fetches = [];
   managed.current = {
     project: { id: 'p1', name: 'P', config: {} },
     projectId: 'p1',
@@ -89,6 +106,8 @@ beforeEach(() => {
         info.current = infoWith(['NOUN', 'VERB', 'ADJ']);
         throw Object.assign(new Error('changed'), { status: 409 });
       }
+      // The redo landed: the project now lists what it wrote.
+      info.current = infoWith(ops[0].value);
       return [];
     },
   };
@@ -141,7 +160,6 @@ describe('UD Validation, Add', () => {
       ],
     ]);
     expect(client.current.projects.get).toHaveBeenCalledWith('p1');
-    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('writes the feature inventory on its own, expecting what is stored', async () => {
@@ -167,6 +185,29 @@ describe('UD Validation, Add', () => {
         { expected: INVENTORY },
       ],
     ]);
-    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  // The page stays: the project is read again quietly and the check runs
+  // again on what it says, so the list no longer shows what was added and
+  // nothing else on the page is thrown away.
+  it('reads the project again and checks again, with no page reload', async () => {
+    view = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation />
+      </MemoryRouter>,
+    );
+    await view.step(settle);
+    const queriesBefore = client.current.query.mock.calls.length;
+    const [uposAdd] = addButtons();
+    await view.step(async () => {
+      uposAdd.click();
+      await settle();
+    });
+    expect(reload).not.toHaveBeenCalled();
+    expect(managed.fetches).toEqual([{ quiet: true }]);
+    // The upos list now holds X: the check finds nothing off-list there.
+    expect(client.current.query.mock.calls.length).toBeGreaterThan(queriesBefore);
+    expect(addButtons()).toHaveLength(1);
+    expect(view.container.textContent).toContain('Everything stored is on the list.');
   });
 });
