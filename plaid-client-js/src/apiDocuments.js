@@ -99,6 +99,93 @@ import { auditMethods, bodyOf, csvParam, metadataMethods } from "./families.js";
 export function documentsApi(client) {
   return {
     /**
+     * Get a document. Set `includeBody` to true to include all data.
+     *
+     * A document with a recording has `mediaUrl`, and `mediaDuration`, the
+     * recording's length in seconds, when the server could read it from the
+     * file at upload (WAV, MP4, M4A, MOV, FLAC, MP3).
+     *
+     * `layers` narrows a body read to the layers you name (ids of any kind:
+     * text, token, span, or relation). A layer comes back when it is named
+     * or is an ancestor of a named layer, and carries its own
+     * texts/tokens/spans/relations/vocabs only when it is itself named — so
+     * name the text layer too if you also want the text body. An id that is
+     * not a layer of this document's project is an error, not a quietly
+     * smaller response. Requires `includeBody`.
+     * @param {string} documentId - The document ID
+     * @param {boolean} [includeBody] - Include document body data
+     * @param {string} [asOf] - Temporal query timestamp
+     * @param {string[]|string} [layers] - Layer ids to restrict a body read to
+     * @returns {Promise<PlaidDocument>}
+     */
+    get: (documentId, includeBody, asOf, layers) =>
+      client._request("GET", `/api/v1/documents/${documentId}`, {
+        queryParams: {
+          "include-body": includeBody,
+          "as-of": asOf,
+          layers: csvParam(layers),
+        },
+      }),
+    /**
+     * Get the media file for a document. Media is not versioned, so there is
+     * no as-of form: the route refuses the parameter. Prefer the document's
+     * own `mediaUrl`, which carries the file's version for caching.
+     * @param {string} documentId - The document ID
+     * @returns {Promise<ArrayBuffer>}
+     */
+    getMedia: (documentId) =>
+      client._request("GET", `/api/v1/documents/${documentId}/media`, {
+        binaryResponse: true,
+      }),
+    /**
+     * Create a new document in a project.
+     * @param {string} projectId - The project ID
+     * @param {string} name - The name
+     * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {object} [opts]
+     * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+     * @param {boolean} [opts.freeName] - A name another document of the project holds, ignoring case, becomes
+     *   the first free "name (2)", "name (3)" and on. Without it such a name is refused with 422
+     *   and `name-taken`.
+     * @returns {Promise<{id: string, name: string}>} The new id and the name stored
+     */
+    create: (projectId, name, metadata, auditMessage, { id, freeName } = {}) =>
+      client._request("POST", "/api/v1/documents", {
+        auditMessage,
+        body: bodyOf({
+          id,
+          "project-id": projectId,
+          name,
+          metadata,
+          "free-name": freeName || undefined,
+        }),
+      }),
+    /**
+     * Update a document's name. A name another document of the project holds,
+     * ignoring case,
+     * is refused with 422 and `name-taken`.
+     * @param {string} documentId - The document ID
+     * @param {string} name - The name
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<PlaidDocument>}
+     */
+    update: (documentId, name, auditMessage) =>
+      client._request("PATCH", `/api/v1/documents/${documentId}`, {
+        auditMessage,
+        body: bodyOf({ name }),
+      }),
+    /**
+     * Delete a document and all data contained.
+     * @param {string} documentId - The document ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (documentId, auditMessage) =>
+      client._request("DELETE", `/api/v1/documents/${documentId}`, {
+        auditMessage,
+      }),
+    /**
      * Check the lock status of a document.
      * @param {string} documentId - The document ID
      * @returns {Promise<{userId: string, expiresAt: number} | void>}
@@ -219,17 +306,6 @@ export function documentsApi(client) {
     locked: (documentId, fn, options) =>
       withDocumentLock(client, documentId, fn, options),
     /**
-     * Get the media file for a document. Media is not versioned, so there is
-     * no as-of form: the route refuses the parameter. Prefer the document's
-     * own `mediaUrl`, which carries the file's version for caching.
-     * @param {string} documentId - The document ID
-     * @returns {Promise<ArrayBuffer>}
-     */
-    getMedia: (documentId) =>
-      client._request("GET", `/api/v1/documents/${documentId}/media`, {
-        binaryResponse: true,
-      }),
-    /**
      * Get a link that plays the document's recording without an
      * Authorization header, for an audio or video element's `src`, which
      * cannot send one. `url` is the document's media URL with a
@@ -295,8 +371,6 @@ export function documentsApi(client) {
         auditMessage,
         queryParams: { "media-version": mediaVersion },
       }),
-    ...metadataMethods(client, "documents"),
-    ...auditMethods(client, "documents"),
     /**
      * Restore a document to its state at an earlier time, as one
      * operation: what was deleted since then comes back under its original
@@ -321,82 +395,6 @@ export function documentsApi(client) {
           "dry-run": dryRun ? "true" : undefined,
         },
         auditMessage,
-      }),
-    /**
-     * Get a document. Set `includeBody` to true to include all data.
-     *
-     * A document with a recording has `mediaUrl`, and `mediaDuration`, the
-     * recording's length in seconds, when the server could read it from the
-     * file at upload (WAV, MP4, M4A, MOV, FLAC, MP3).
-     *
-     * `layers` narrows a body read to the layers you name (ids of any kind:
-     * text, token, span, or relation). A layer comes back when it is named
-     * or is an ancestor of a named layer, and carries its own
-     * texts/tokens/spans/relations/vocabs only when it is itself named — so
-     * name the text layer too if you also want the text body. An id that is
-     * not a layer of this document's project is an error, not a quietly
-     * smaller response. Requires `includeBody`.
-     * @param {string} documentId - The document ID
-     * @param {boolean} [includeBody] - Include document body data
-     * @param {string} [asOf] - Temporal query timestamp
-     * @param {string[]|string} [layers] - Layer ids to restrict a body read to
-     * @returns {Promise<PlaidDocument>}
-     */
-    get: (documentId, includeBody, asOf, layers) =>
-      client._request("GET", `/api/v1/documents/${documentId}`, {
-        queryParams: {
-          "include-body": includeBody,
-          "as-of": asOf,
-          layers: csvParam(layers),
-        },
-      }),
-    /**
-     * Delete a document and all data contained.
-     * @param {string} documentId - The document ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (documentId, auditMessage) =>
-      client._request("DELETE", `/api/v1/documents/${documentId}`, {
-        auditMessage,
-      }),
-    /**
-     * Update a document's name. A name another document of the project holds,
-     * ignoring case,
-     * is refused with 422 and `name-taken`.
-     * @param {string} documentId - The document ID
-     * @param {string} name - The name
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<PlaidDocument>}
-     */
-    update: (documentId, name, auditMessage) =>
-      client._request("PATCH", `/api/v1/documents/${documentId}`, {
-        auditMessage,
-        body: bodyOf({ name }),
-      }),
-    /**
-     * Create a new document in a project.
-     * @param {string} projectId - The project ID
-     * @param {string} name - The name
-     * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
-     * @param {string} [auditMessage] - Audit message for this write
-     * @param {object} [opts]
-     * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-     * @param {boolean} [opts.freeName] - A name another document of the project holds, ignoring case, becomes
-     *   the first free "name (2)", "name (3)" and on. Without it such a name is refused with 422
-     *   and `name-taken`.
-     * @returns {Promise<{id: string, name: string}>} The new id and the name stored
-     */
-    create: (projectId, name, metadata, auditMessage, { id, freeName } = {}) =>
-      client._request("POST", "/api/v1/documents", {
-        auditMessage,
-        body: bodyOf({
-          id,
-          "project-id": projectId,
-          name,
-          metadata,
-          "free-name": freeName || undefined,
-        }),
       }),
     /**
      * Copy a document and everything in it into a new document of the same
@@ -426,19 +424,27 @@ export function documentsApi(client) {
           "free-name": freeName || undefined,
         }),
       }),
+    ...metadataMethods(client, "documents"),
+    ...auditMethods(client, "documents"),
   };
 }
 
 /** @param {import("./client.js").PlaidClient} client */
 export function textsApi(client) {
   return {
-    ...metadataMethods(client, "texts"),
+    /**
+     * Get a text.
+     * @param {string} textId - The text ID
+     * @returns {Promise<PlaidText>}
+     */
+    get: (textId) =>
+      client._request("GET", `/api/v1/texts/${textId}`),
     /**
      * Create a new text in a document's text layer. A text is a container for
      * one long string in `body` for a given layer.
      * @param {string} textLayerId - The text layer ID
      * @param {string} documentId - The document ID
-     * @param {string} body - The request body
+     * @param {string} body - The text
      * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
      * @param {string} [auditMessage]
      * @param {{id?: string, tokenEdges?: number[], tokenizeLayer?: string}} [options] - `id`: the
@@ -470,21 +476,6 @@ export function textsApi(client) {
         }),
       }),
     /**
-     * Get a text.
-     * @param {string} textId - The text ID
-     * @returns {Promise<PlaidText>}
-     */
-    get: (textId) =>
-      client._request("GET", `/api/v1/texts/${textId}`),
-    /**
-     * Delete a text and all dependent data.
-     * @param {string} textId - The text ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (textId, auditMessage) =>
-      client._request("DELETE", `/api/v1/texts/${textId}`, { auditMessage }),
-    /**
      * Update a text's body. A diff is computed and token indices are updated
      * so that tokens remain intact. Alternatively, `body` can be a list of
      * edit directives (code-point indices, applied in order):
@@ -500,7 +491,7 @@ export function textsApi(client) {
      * `versioned` is true (a batch whose later writes are stamped needs its
      * first write stamped too).
      * @param {string} textId - The text ID
-     * @param {any} body - The request body
+     * @param {any} body - The new text
      * @param {string} [auditMessage]
      * `tokenizeLayer`: a word layer of the text, whose words the server makes for the text the
      * update types, after it places the old tokens ("Tokenize new text"). They come in the
@@ -514,6 +505,14 @@ export function textsApi(client) {
         body: bodyOf({ body, base, "tokenize-layer": tokenizeLayer }),
         versioned: versioned ?? (base === undefined || base === null),
       }),
+    /**
+     * Delete a text and all dependent data.
+     * @param {string} textId - The text ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (textId, auditMessage) =>
+      client._request("DELETE", `/api/v1/texts/${textId}`, { auditMessage }),
     /**
      * Change a text's body by the edits made at the caret: a list of edit
      * directives as `update` takes them (code-point indices, applied in
@@ -538,5 +537,6 @@ export function textsApi(client) {
         body: bodyOf({ edits, base, "tokenize-layer": tokenizeLayer }),
         versioned: versioned ?? (base === undefined || base === null),
       }),
+    ...metadataMethods(client, "texts"),
   };
 }

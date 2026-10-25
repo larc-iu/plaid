@@ -107,6 +107,23 @@ const AVATAR_TOKEN_FRESH_MS = 5 * 1000;
 export function usersApi(client) {
   return {
     /**
+     * Get a user by ID
+     * @param {string} id - The resource ID
+     * @returns {Promise<User>}
+     */
+    get: (id) =>
+      client._request("GET", `/api/v1/users/${id}`),
+    /**
+     * Fetch a user's profile picture as raw bytes. Most callers want
+     * avatarUrl() instead. This one is for non-browser consumers.
+     * @param {string} id - The user ID
+     * @returns {Promise<ArrayBuffer>}
+     */
+    getAvatar: (id) =>
+      client._request("GET", `/api/v1/users/${id}/avatar`, {
+        binaryResponse: true,
+      }),
+    /**
      * List (or search) users. Transparently follows pagination cursors and
      * returns the full flat array. Admin-or-maintainer only.
      * @param {object} [opts]
@@ -165,36 +182,6 @@ export function usersApi(client) {
           "display-name": displayName ?? undefined,
         }),
       }),
-    ...auditMethods(client, "users"),
-    /**
-     * Get a user by ID
-     * @param {string} id - The resource ID
-     * @returns {Promise<User>}
-     */
-    get: (id) =>
-      client._request("GET", `/api/v1/users/${id}`),
-    /**
-     * Deactivate a user. Users are never hard-deleted: deactivation
-     * rejects their logins and tokens, strips their project memberships
-     * and vocab maintainerships, and revokes their API tokens. The user
-     * stays visible in listings with a deactivated-at timestamp.
-     * Reversible via activate(), which restores login only.
-     * @param {string} id - The resource ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/users/${id}`, { auditMessage }),
-    /**
-     * Reactivate a deactivated user, restoring their ability to log in.
-     * Project memberships, vocab maintainerships, and API tokens removed
-     * at deactivation are NOT restored — re-grant them deliberately.
-     * @param {string} id - The resource ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<User>}
-     */
-    activate: (id, auditMessage) =>
-      client._request("POST", `/api/v1/users/${id}/activate`, { auditMessage }),
     /**
      * Modify a user. Admins may change the display name, password, and admin
      * status of any user. All other users may only modify their own display
@@ -219,6 +206,28 @@ export function usersApi(client) {
           "is-admin": isAdmin,
         }),
       }),
+    /**
+     * Deactivate a user. Users are never hard-deleted: deactivation
+     * rejects their logins and tokens, strips their project memberships
+     * and vocab maintainerships, and revokes their API tokens. The user
+     * stays visible in listings with a deactivated-at timestamp.
+     * Reversible via activate(), which restores login only.
+     * @param {string} id - The resource ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (id, auditMessage) =>
+      client._request("DELETE", `/api/v1/users/${id}`, { auditMessage }),
+    /**
+     * Reactivate a deactivated user, restoring their ability to log in.
+     * Project memberships, vocab maintainerships, and API tokens removed
+     * at deactivation are NOT restored — re-grant them deliberately.
+     * @param {string} id - The resource ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<User>}
+     */
+    activate: (id, auditMessage) =>
+      client._request("POST", `/api/v1/users/${id}/activate`, { auditMessage }),
     /**
      * A token that shows any user's profile picture without an
      * Authorization header, for an `<img>`, which cannot send one. Resolves
@@ -307,16 +316,6 @@ export function usersApi(client) {
       return `${client.baseUrl}/api/v1/users/${id}/avatar?${params}`;
     },
     /**
-     * Fetch a user's profile picture as raw bytes. Most callers want
-     * avatarUrl() instead. This one is for non-browser consumers.
-     * @param {string} id - The user ID
-     * @returns {Promise<ArrayBuffer>}
-     */
-    getAvatar: (id) =>
-      client._request("GET", `/api/v1/users/${id}/avatar`, {
-        binaryResponse: true,
-      }),
-    /**
      * Upload a profile picture. Your own, or anyone's if you are an admin.
      * The server center-crops to a square, scales to the configured edge
      * length, and re-encodes, so no client-side resizing is needed. Accepts
@@ -349,6 +348,7 @@ export function usersApi(client) {
       client._request("DELETE", `/api/v1/users/${id}/avatar`, {
         auditMessage,
       }),
+    ...auditMethods(client, "users"),
   };
 }
 
@@ -557,6 +557,17 @@ export function authApi(client) {
 export function userDataApi(client) {
   return {
     /**
+     * Read one private data entry ({key, updatedAt, version, value}); 404 if absent.
+     * @param {string} userId
+     * @param {string} key
+     * @returns {Promise<UserDataEntry & {value: any}>}
+     */
+    get: (userId, key) =>
+      client._request(
+        "GET",
+        `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
+      ),
+    /**
      * List a user's private data entries ({key, updatedAt}, plus value when
      * includeValues), ordered by key. Owner or admin only. Transparently
      * follows pagination cursors and returns the full flat array.
@@ -624,15 +635,18 @@ export function userDataApi(client) {
         query: { prefix, pattern, "include-values": includeValues },
       }),
     /**
-     * Read one private data entry ({key, updatedAt, version, value}); 404 if absent.
+     * Delete one private data entry; 404 if absent.
      * @param {string} userId
      * @param {string} key
-     * @returns {Promise<UserDataEntry & {value: any}>}
+     * @returns {Promise<void>}
      */
-    get: (userId, key) =>
+    delete: (userId, key) =>
       client._request(
-        "GET",
+        "DELETE",
         `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
+        {
+          noBatch: true,
+        },
       ),
     /**
      * Create or replace one private data entry. `value` is any JSON, up to
@@ -680,19 +694,5 @@ export function userDataApi(client) {
         throw err;
       }
     },
-    /**
-     * Delete one private data entry; 404 if absent.
-     * @param {string} userId
-     * @param {string} key
-     * @returns {Promise<void>}
-     */
-    delete: (userId, key) =>
-      client._request(
-        "DELETE",
-        `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
-        {
-          noBatch: true,
-        },
-      ),
   };
 }

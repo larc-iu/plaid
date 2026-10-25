@@ -98,8 +98,6 @@ import { queryTimeout } from "./http.js";
 /** @param {import("./client.js").PlaidClient} client */
 export function textLayersApi(client) {
   return {
-    ...configMethods(client, "text-layers"),
-    ...layerMethods(client, "text-layers"),
     /**
      * Create a new text layer for a project.
      * @param {string} projectId - The project ID
@@ -114,31 +112,14 @@ export function textLayersApi(client) {
         auditMessage,
         body: bodyOf({ id, "project-id": projectId, name }),
       }),
+    ...configMethods(client, "text-layers"),
+    ...layerMethods(client, "text-layers"),
   };
 }
 
 /** @param {import("./client.js").PlaidClient} client */
 export function tokenLayersApi(client) {
   return {
-    ...layerMethods(client, "token-layers"),
-    /**
-     * Count, per document, the tokens of each layer whose surface matches a
-     * regex, as a query's `value: {regex}` on a token decides. Each text is
-     * read once, so it stays fast on a long document. Layers you cannot read
-     * are left out.
-     * @param {string[]} layerIds - The token layer ids
-     * @param {{regex: string, flags?: string}} value - The regex spec
-     * @returns {Promise<{results: Array<[string, string, number]>}>} [layerId,
-     *   documentId, count] rows, a document with tokens of the layer and no
-     *   match counting 0.
-     */
-    countMatching: (layerIds, value) =>
-      client._request("POST", "/api/v1/query/token-counts", {
-        body: { layers: layerIds, value },
-        outOfBand: true,
-        timeout: queryTimeout(client),
-        noBusyRetry: true,
-      }),
     /**
      * Create a new token layer.
      * @param {string} textLayerId - The text layer ID
@@ -168,6 +149,25 @@ export function tokenLayersApi(client) {
           "parent-token-layer-id": parentTokenLayerId,
         }),
       }),
+    /**
+     * Count, per document, the tokens of each layer whose surface matches a
+     * regex, as a query's `value: {regex}` on a token decides. Each text is
+     * read once, so it stays fast on a long document. Layers you cannot read
+     * are left out.
+     * @param {string[]} layerIds - The token layer ids
+     * @param {{regex: string, flags?: string}} value - The regex spec
+     * @returns {Promise<{results: Array<[string, string, number]>}>} [layerId,
+     *   documentId, count] rows, a document with tokens of the layer and no
+     *   match counting 0.
+     */
+    countMatching: (layerIds, value) =>
+      client._request("POST", "/api/v1/query/token-counts", {
+        body: { layers: layerIds, value },
+        outOfBand: true,
+        timeout: queryTimeout(client),
+        noBusyRetry: true,
+      }),
+    ...layerMethods(client, "token-layers"),
     ...configMethods(client, "token-layers"),
     ...constraintMethods(client, "token-layers"),
   };
@@ -176,10 +176,6 @@ export function tokenLayersApi(client) {
 /** @param {import("./client.js").PlaidClient} client */
 export function spanLayersApi(client) {
   return {
-    ...configMethods(client, "span-layers"),
-    ...constraintMethods(client, "span-layers"),
-    ...valueSetMethods(client, "span-layers"),
-    ...layerMethods(client, "span-layers"),
     /**
      * Create a new span layer.
      * @param {string} tokenLayerId - The token layer ID
@@ -194,13 +190,16 @@ export function spanLayersApi(client) {
         auditMessage,
         body: bodyOf({ id, "token-layer-id": tokenLayerId, name }),
       }),
+    ...configMethods(client, "span-layers"),
+    ...constraintMethods(client, "span-layers"),
+    ...valueSetMethods(client, "span-layers"),
+    ...layerMethods(client, "span-layers"),
   };
 }
 
 /** @param {import("./client.js").PlaidClient} client */
 export function relationLayersApi(client) {
   return {
-    ...layerMethods(client, "relation-layers"),
     /**
      * Create a new relation layer.
      * @param {string} spanLayerId - The span layer ID
@@ -215,6 +214,7 @@ export function relationLayersApi(client) {
         auditMessage,
         body: bodyOf({ id, "span-layer-id": spanLayerId, name }),
       }),
+    ...layerMethods(client, "relation-layers"),
     ...configMethods(client, "relation-layers"),
     ...constraintMethods(client, "relation-layers"),
     ...valueSetMethods(client, "relation-layers"),

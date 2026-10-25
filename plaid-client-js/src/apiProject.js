@@ -110,6 +110,118 @@ function eventQuery(types, startTime, endTime) {
 export function projectsApi(client) {
   return {
     /**
+     * Get a project by ID. To fetch the project's documents, use
+     * listDocuments(id) — the include-documents flag has been removed.
+     * @param {string} id - The resource ID
+     * @returns {Promise<Project>}
+     */
+    get: (id) =>
+      client._request("GET", `/api/v1/projects/${id}`),
+    /**
+     * List all projects accessible to user. Transparently follows pagination
+     * cursors and returns the full flat array.
+     * @returns {Promise<ProjectListEntry[]>}
+     */
+    list: () => listAll(client, "/api/v1/projects"),
+    /**
+     * Fetch a single page of projects.
+     * @param {object} [opts]
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @returns {Promise<Page<ProjectListEntry>>}
+     */
+    listPage: ({ limit, cursor } = {}) =>
+      listPage(client, "/api/v1/projects", {
+        limit,
+        cursor,
+      }),
+    /**
+     * Async-iterate projects page by page; yields each page's entries array.
+     * @param {object} [opts]
+     * @param {number} [opts.pageSize] - Per-request page size
+     * @returns {AsyncGenerator<ProjectListEntry[]>}
+     */
+    iterPages: ({ pageSize } = {}) =>
+      iterPages(client, "/api/v1/projects", {
+        pageSize,
+      }),
+    /**
+     * List all documents in a project. Transparently follows pagination
+     * cursors and returns the full flat array.
+     *
+     * Note: this endpoint does not support temporal (`as-of`) queries; the
+     * server rejects `?as-of=` on the documents-list route with a 400.
+     * @param {string} id - The project ID
+     * @returns {Promise<DocumentListEntry[]>}
+     */
+    listDocuments: (id) => listAll(client, `/api/v1/projects/${id}/documents`),
+    /**
+     * Fetch a single page of a project's documents.
+     *
+     * Note: this endpoint does not support temporal (`as-of`) queries; the
+     * server rejects `?as-of=` on the documents-list route with a 400.
+     * @param {string} id - The project ID
+     * @param {object} [opts]
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @returns {Promise<Page<DocumentListEntry>>}
+     */
+    listDocumentsPage: (id, { limit, cursor } = {}) =>
+      listPage(client, `/api/v1/projects/${id}/documents`, { limit, cursor }),
+    /**
+     * Async-iterate a project's documents page by page; yields each page's
+     * entries array.
+     *
+     * Note: this endpoint does not support temporal (`as-of`) queries; the
+     * server rejects `?as-of=` on the documents-list route with a 400.
+     * @param {string} id - The project ID
+     * @param {object} [opts]
+     * @param {number} [opts.pageSize] - Per-request page size
+     * @returns {AsyncGenerator<DocumentListEntry[]>}
+     */
+    iterDocuments: (id, { pageSize } = {}) =>
+      iterPages(client, `/api/v1/projects/${id}/documents`, { pageSize }),
+    /**
+     * Create a new project. Note: this also registers the user as a maintainer.
+     * @param {string} name - The name
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {object} [opts]
+     * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+     * @returns {Promise<Created>}
+     */
+    create: (name, auditMessage, { id } = {}) =>
+      client._request("POST", "/api/v1/projects", {
+        auditMessage,
+        body: bodyOf({ id, name }),
+      }),
+    /**
+     * Update a project's name.
+     * @param {string} id - The resource ID
+     * @param {string} name - The name
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<Project>}
+     */
+    update: (id, name, auditMessage) =>
+      client._request("PATCH", `/api/v1/projects/${id}`, {
+        auditMessage,
+        body: bodyOf({ name }),
+      }),
+    /**
+     * Delete a project and everything in it. This is irrecoverable. The
+     * project is gone when this returns, and what it holds is removed on
+     * the server afterwards.
+     * @param {string} id - The resource ID
+     * @param {string} [auditMessage] - Custom audit-log message
+     * @param {object} [options]
+     * @param {number} [options.timeout] - Per-request timeout in ms, the client's own by default (0/null disables)
+     * @returns {Promise<void>}
+     */
+    delete: (id, auditMessage, { timeout } = {}) =>
+      client._request("DELETE", `/api/v1/projects/${id}`, {
+        auditMessage,
+        timeout,
+      }),
+    /**
      * Set a user's access level to read and write for this project.
      * @param {string} id - The resource ID
      * @param {string} userId - The user ID
@@ -153,7 +265,6 @@ export function projectsApi(client) {
       client._request("DELETE", `/api/v1/projects/${id}/readers/${userId}`, {
         auditMessage,
       }),
-    ...configMethods(client, "projects"),
     /**
      * Assign a user as a maintainer for this project.
      * @param {string} id - The resource ID
@@ -178,7 +289,6 @@ export function projectsApi(client) {
         `/api/v1/projects/${id}/maintainers/${userId}`,
         { auditMessage },
       ),
-    ...auditMethods(client, "projects"),
     /**
      * When the calling user last wrote to each document in a project, as a
      * `{documentId: timestamp}` map. Documents they have never written to
@@ -215,118 +325,8 @@ export function projectsApi(client) {
       client._request("DELETE", `/api/v1/projects/${id}/vocabs/${vocabId}`, {
         auditMessage,
       }),
-    /**
-     * Get a project by ID. To fetch the project's documents, use
-     * listDocuments(id) — the include-documents flag has been removed.
-     * @param {string} id - The resource ID
-     * @returns {Promise<Project>}
-     */
-    get: (id) =>
-      client._request("GET", `/api/v1/projects/${id}`),
-    /**
-     * List all documents in a project. Transparently follows pagination
-     * cursors and returns the full flat array.
-     *
-     * Note: this endpoint does not support temporal (`as-of`) queries; the
-     * server rejects `?as-of=` on the documents-list route with a 400.
-     * @param {string} id - The project ID
-     * @returns {Promise<DocumentListEntry[]>}
-     */
-    listDocuments: (id) => listAll(client, `/api/v1/projects/${id}/documents`),
-    /**
-     * Fetch a single page of a project's documents.
-     *
-     * Note: this endpoint does not support temporal (`as-of`) queries; the
-     * server rejects `?as-of=` on the documents-list route with a 400.
-     * @param {string} id - The project ID
-     * @param {object} [opts]
-     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
-     * @param {string} [opts.cursor] - Opaque cursor from a previous page
-     * @returns {Promise<Page<DocumentListEntry>>}
-     */
-    listDocumentsPage: (id, { limit, cursor } = {}) =>
-      listPage(client, `/api/v1/projects/${id}/documents`, { limit, cursor }),
-    /**
-     * Async-iterate a project's documents page by page; yields each page's
-     * entries array.
-     *
-     * Note: this endpoint does not support temporal (`as-of`) queries; the
-     * server rejects `?as-of=` on the documents-list route with a 400.
-     * @param {string} id - The project ID
-     * @param {object} [opts]
-     * @param {number} [opts.pageSize] - Per-request page size
-     * @returns {AsyncGenerator<DocumentListEntry[]>}
-     */
-    iterDocuments: (id, { pageSize } = {}) =>
-      iterPages(client, `/api/v1/projects/${id}/documents`, { pageSize }),
-    /**
-     * Delete a project and everything in it. This is irrecoverable. The
-     * project is gone when this returns, and what it holds is removed on
-     * the server afterwards.
-     * @param {string} id - The resource ID
-     * @param {string} [auditMessage] - Custom audit-log message
-     * @param {object} [options]
-     * @param {number} [options.timeout] - Per-request timeout in ms, the client's own by default (0/null disables)
-     * @returns {Promise<void>}
-     */
-    delete: (id, auditMessage, { timeout } = {}) =>
-      client._request("DELETE", `/api/v1/projects/${id}`, {
-        auditMessage,
-        timeout,
-      }),
-    /**
-     * Update a project's name.
-     * @param {string} id - The resource ID
-     * @param {string} name - The name
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<Project>}
-     */
-    update: (id, name, auditMessage) =>
-      client._request("PATCH", `/api/v1/projects/${id}`, {
-        auditMessage,
-        body: bodyOf({ name }),
-      }),
-    /**
-     * List all projects accessible to user. Transparently follows pagination
-     * cursors and returns the full flat array.
-     * @returns {Promise<ProjectListEntry[]>}
-     */
-    list: () => listAll(client, "/api/v1/projects"),
-    /**
-     * Fetch a single page of projects.
-     * @param {object} [opts]
-     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
-     * @param {string} [opts.cursor] - Opaque cursor from a previous page
-     * @returns {Promise<Page<ProjectListEntry>>}
-     */
-    listPage: ({ limit, cursor } = {}) =>
-      listPage(client, "/api/v1/projects", {
-        limit,
-        cursor,
-      }),
-    /**
-     * Async-iterate projects page by page; yields each page's entries array.
-     * @param {object} [opts]
-     * @param {number} [opts.pageSize] - Per-request page size
-     * @returns {AsyncGenerator<ProjectListEntry[]>}
-     */
-    iterPages: ({ pageSize } = {}) =>
-      iterPages(client, "/api/v1/projects", {
-        pageSize,
-      }),
-    /**
-     * Create a new project. Note: this also registers the user as a maintainer.
-     * @param {string} name - The name
-     * @param {string} [auditMessage] - Audit message for this write
-     * @param {object} [opts]
-     * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-     * @returns {Promise<Created>}
-     */
-    create: (name, auditMessage, { id } = {}) =>
-      client._request("POST", "/api/v1/projects", {
-        auditMessage,
-        body: bodyOf({ id, name }),
-      }),
+    ...configMethods(client, "projects"),
+    ...auditMethods(client, "projects"),
   };
 }
 
@@ -334,66 +334,11 @@ export function projectsApi(client) {
 export function guidelinesApi(client) {
   return {
     /**
-     * Create a guideline in a project. `title` is the handle an assistant
-     * asks for one by, and the only thing a person has to keep current. It is
-     * NOT required to be unique, so a title already in use is written like
-     * any other: warn about it, do not refuse it. A `pinned` guideline is one
-     * the assistant is given in full on every turn.
-     * @param {string} projectId - The project the guideline belongs to
-     * @param {string} title - The handle an assistant asks for one by (1..100 characters)
-     * @param {object} [opts]
-     * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
-     * @param {boolean} [opts.pinned] - Send this one to the assistant in full on every turn
-     * @param {string} [opts.id] - The new guideline's id, minted by the caller (see uuidv7)
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<{id: string}>}
-     */
-    create: (projectId, title, { body, pinned, id } = {}, auditMessage) =>
-      client._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
-        auditMessage,
-        body: bodyOf({ id, title, body, pinned }),
-      }),
-    /**
      * Read one guideline, Markdown body included.
      * @param {string} id - The guideline id
      * @returns {Promise<Guideline>}
      */
     get: (id) => client._request("GET", `/api/v1/guidelines/${id}`),
-    /**
-     * Update a guideline. Every field is optional and an omitted one is
-     * left alone, so an edit to the body need not restate the title.
-     *
-     * Pass `expectedUpdatedAt` (the `updatedAt` you last read) when a person
-     * has been editing prose: the write then fails with 409 rather than
-     * overwriting somebody who saved in between. Leave it off for a pin
-     * toggle or a script, which have nothing of anyone's to lose.
-     * @param {string} id - The guideline id
-     * @param {object} [changes]
-     * @param {string} [changes.title] - The new handle
-     * @param {string} [changes.body] - The new Markdown text
-     * @param {boolean} [changes.pinned] - Whether the assistant always gets it in full
-     * @param {string} [changes.expectedUpdatedAt] - Write only if this is still the stored updatedAt
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<Guideline>}
-     */
-    update: (
-      id,
-      { title, body, pinned, expectedUpdatedAt } = {},
-      auditMessage,
-    ) =>
-      client._request("PATCH", `/api/v1/guidelines/${id}`, {
-        auditMessage,
-        queryParams: { "updated-at": expectedUpdatedAt },
-        body: bodyOf({ title, body, pinned }),
-      }),
-    /**
-     * Delete a guideline.
-     * @param {string} id - The guideline id
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/guidelines/${id}`, { auditMessage }),
     /**
      * List a project's guidelines, by title. Transparently follows
      * pagination cursors and returns the full flat array.
@@ -439,6 +384,61 @@ export function guidelinesApi(client) {
         pageSize,
         query: { "include-bodies": includeBodies },
       }),
+    /**
+     * Create a guideline in a project. `title` is the handle an assistant
+     * asks for one by, and the only thing a person has to keep current. It is
+     * NOT required to be unique, so a title already in use is written like
+     * any other: warn about it, do not refuse it. A `pinned` guideline is one
+     * the assistant is given in full on every turn.
+     * @param {string} projectId - The project the guideline belongs to
+     * @param {string} title - The handle an assistant asks for one by (1..100 characters)
+     * @param {object} [opts]
+     * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
+     * @param {boolean} [opts.pinned] - Send this one to the assistant in full on every turn
+     * @param {string} [opts.id] - The new guideline's id, minted by the caller (see uuidv7)
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<{id: string}>}
+     */
+    create: (projectId, title, { body, pinned, id } = {}, auditMessage) =>
+      client._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
+        auditMessage,
+        body: bodyOf({ id, title, body, pinned }),
+      }),
+    /**
+     * Update a guideline. Every field is optional and an omitted one is
+     * left alone, so an edit to the body need not restate the title.
+     *
+     * Pass `expectedUpdatedAt` (the `updatedAt` you last read) when a person
+     * has been editing prose: the write then fails with 409 rather than
+     * overwriting somebody who saved in between. Leave it off for a pin
+     * toggle or a script, which have nothing of anyone's to lose.
+     * @param {string} id - The guideline id
+     * @param {object} [changes]
+     * @param {string} [changes.title] - The new handle
+     * @param {string} [changes.body] - The new Markdown text
+     * @param {boolean} [changes.pinned] - Whether the assistant always gets it in full
+     * @param {string} [changes.expectedUpdatedAt] - Write only if this is still the stored updatedAt
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<Guideline>}
+     */
+    update: (
+      id,
+      { title, body, pinned, expectedUpdatedAt } = {},
+      auditMessage,
+    ) =>
+      client._request("PATCH", `/api/v1/guidelines/${id}`, {
+        auditMessage,
+        queryParams: { "updated-at": expectedUpdatedAt },
+        body: bodyOf({ title, body, pinned }),
+      }),
+    /**
+     * Delete a guideline.
+     * @param {string} id - The guideline id
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (id, auditMessage) =>
+      client._request("DELETE", `/api/v1/guidelines/${id}`, { auditMessage }),
   };
 }
 
@@ -446,61 +446,11 @@ export function guidelinesApi(client) {
 export function commentsApi(client) {
   return {
     /**
-     * Post a comment on an entity. Requires write access to the entity's
-     * project, or to the vocabulary for a vocab-item; the author is the
-     * authenticated caller. Comments are not audited and do not bump the
-     * document version.
-     *
-     * A comment outlives its anchor: deleting the entity does not delete
-     * the comment. `anchorLabel` is the caption shown once that happens
-     * ("Gloss of ktab, sentence 4"), so pass what the comment is about.
-     * @param {CommentableType} entityType - What kind of thing is being commented on
-     * @param {string} entityId - The commented entity's id
-     * @param {string} body - The comment text (1..10000 characters)
-     * @param {object} [opts]
-     * @param {string} [opts.anchorLabel] - What the comment is about, in words (at most 200 characters)
-     * @param {string} [opts.id] - The new comment's id, minted by the caller (see uuidv7)
-     * @returns {Promise<Comment>}
-     */
-    create: (entityType, entityId, body, { anchorLabel, id } = {}) =>
-      client._request("POST", "/api/v1/comments", {
-        // A comment is not audited, so it never joins an open operation,
-        // and never takes a number from an edit's Idempotency-Key seed.
-        noOperation: true,
-        body: bodyOf({
-          id,
-          "entity-type": entityType,
-          "entity-id": entityId,
-          body,
-          "anchor-label": anchorLabel,
-        }),
-      }),
-    /**
      * Read one comment.
      * @param {string} id - The comment id
      * @returns {Promise<Comment>}
      */
     get: (id) => client._request("GET", `/api/v1/comments/${id}`),
-    /**
-     * Edit a comment's body. Only the comment's AUTHOR may do this - not
-     * maintainers, not admins. Sets `edited` on the comment.
-     * @param {string} id - The comment id
-     * @param {string} body - The replacement text
-     * @returns {Promise<Comment>}
-     */
-    update: (id, body) =>
-      client._request("PATCH", `/api/v1/comments/${id}`, {
-        body: { body },
-        noOperation: true,
-      }),
-    /**
-     * Delete a comment. The author may delete their own; a project
-     * maintainer (or admin) may delete any.
-     * @param {string} id - The comment id
-     * @returns {Promise<void>}
-     */
-    delete: (id) =>
-      client._request("DELETE", `/api/v1/comments/${id}`, { noOperation: true }),
     /**
      * List comments in a project, oldest first. Transparently follows
      * pagination cursors and returns the full flat array.
@@ -566,27 +516,6 @@ export function commentsApi(client) {
         },
       }),
     /**
-     * Comment counts per entity, as an `{entityId: n}` map, over the same
-     * scope and filters as `list`. One cheap request paints a comment
-     * indicator on every annotated item in a document without paging
-     * through the bodies.
-     *
-     * The response is NOT key-transformed: its keys are entity ids, and
-     * camelCasing would mangle the hyphens in a UUID.
-     * @param {string} projectId - The project to read
-     * @param {{documentId?: string, entityType?: CommentableType, entityId?: string}} [filters] - Same filters as list()
-     * @returns {Promise<Object<string, number>>}
-     */
-    counts: (projectId, { documentId, entityType, entityId } = {}) =>
-      client._request("GET", `/api/v1/projects/${projectId}/comments/counts`, {
-        queryParams: {
-          "document-id": documentId,
-          "entity-type": entityType,
-          "entity-id": entityId,
-        },
-        skipResponseTransform: true,
-      }),
-    /**
      * List the comments on a vocabulary's entries, oldest first. Requires
      * read access to the vocabulary. Transparently follows pagination
      * cursors and returns the full flat array.
@@ -629,6 +558,77 @@ export function commentsApi(client) {
         query: { "entity-id": entityId },
       }),
     /**
+     * Post a comment on an entity. Requires write access to the entity's
+     * project, or to the vocabulary for a vocab-item; the author is the
+     * authenticated caller. Comments are not audited and do not bump the
+     * document version.
+     *
+     * A comment outlives its anchor: deleting the entity does not delete
+     * the comment. `anchorLabel` is the caption shown once that happens
+     * ("Gloss of ktab, sentence 4"), so pass what the comment is about.
+     * @param {CommentableType} entityType - What kind of thing is being commented on
+     * @param {string} entityId - The commented entity's id
+     * @param {string} body - The comment text (1..10000 characters)
+     * @param {object} [opts]
+     * @param {string} [opts.anchorLabel] - What the comment is about, in words (at most 200 characters)
+     * @param {string} [opts.id] - The new comment's id, minted by the caller (see uuidv7)
+     * @returns {Promise<Comment>}
+     */
+    create: (entityType, entityId, body, { anchorLabel, id } = {}) =>
+      client._request("POST", "/api/v1/comments", {
+        // A comment is not audited, so it never joins an open operation,
+        // and never takes a number from an edit's Idempotency-Key seed.
+        noOperation: true,
+        body: bodyOf({
+          id,
+          "entity-type": entityType,
+          "entity-id": entityId,
+          body,
+          "anchor-label": anchorLabel,
+        }),
+      }),
+    /**
+     * Edit a comment's body. Only the comment's AUTHOR may do this - not
+     * maintainers, not admins. Sets `edited` on the comment.
+     * @param {string} id - The comment id
+     * @param {string} body - The replacement text
+     * @returns {Promise<Comment>}
+     */
+    update: (id, body) =>
+      client._request("PATCH", `/api/v1/comments/${id}`, {
+        body: { body },
+        noOperation: true,
+      }),
+    /**
+     * Delete a comment. The author may delete their own; a project
+     * maintainer (or admin) may delete any.
+     * @param {string} id - The comment id
+     * @returns {Promise<void>}
+     */
+    delete: (id) =>
+      client._request("DELETE", `/api/v1/comments/${id}`, { noOperation: true }),
+    /**
+     * Comment counts per entity, as an `{entityId: n}` map, over the same
+     * scope and filters as `list`. One cheap request paints a comment
+     * indicator on every annotated item in a document without paging
+     * through the bodies.
+     *
+     * The response is NOT key-transformed: its keys are entity ids, and
+     * camelCasing would mangle the hyphens in a UUID.
+     * @param {string} projectId - The project to read
+     * @param {{documentId?: string, entityType?: CommentableType, entityId?: string}} [filters] - Same filters as list()
+     * @returns {Promise<Object<string, number>>}
+     */
+    counts: (projectId, { documentId, entityType, entityId } = {}) =>
+      client._request("GET", `/api/v1/projects/${projectId}/comments/counts`, {
+        queryParams: {
+          "document-id": documentId,
+          "entity-type": entityType,
+          "entity-id": entityId,
+        },
+        skipResponseTransform: true,
+      }),
+    /**
      * Comment counts per entry of a vocabulary, as an `{entityId: n}` map.
      * The response is NOT key-transformed: its keys are entry ids.
      * @param {string} vocabId - The vocab layer to read
@@ -651,50 +651,6 @@ export function commentsApi(client) {
 /** @param {import("./client.js").PlaidClient} client */
 export function eventsApi(client) {
   return {
-    /**
-     * Record one research-telemetry event (plaid-core sql/client_event.clj).
-     * Fire and forget: the event is buffered and sent with
-     * others every ten seconds, at fifty events, and when the page is
-     * hidden. A batch that fails is dropped, nothing is retried, and
-     * nothing is ever thrown. Sends nothing for a project whose switch
-     * (`config.plaid.research.telemetry`) is off, which it reads from the
-     * project itself. `suggestion.shown` is recorded once per target,
-     * field and value in a page session.
-     * @param {ClientEventType} type - The event type
-     * @param {object} fields
-     * @param {string} fields.projectId - The project it happened in
-     * @param {string} [fields.documentId] - The document it happened in
-     * @param {string} [fields.targetId] - What it is about: a token, a plan
-     * @param {object} [fields.data] - Its details, keyed by single lowercase words (`value`, `source`, `field`, `written`, `conversation`)
-     * @returns {boolean} Whether the event was buffered
-     */
-    record: (type, fields) => recorderFor(client).record(client, type, fields),
-    /**
-     * Send what the recorder holds now, rather than at its next interval.
-     * @returns {void}
-     */
-    flush: () => recorderFor(client).flush(),
-    /**
-     * Tell the recorder a project's switch at once, e.g. right after a
-     * maintainer changed it. Turning it off drops what is buffered.
-     * @param {string} projectId - The project
-     * @param {boolean} on - Whether telemetry is on
-     * @returns {void}
-     */
-    setEnabled: (projectId, on) => recorderFor(client).setEnabled(projectId, on),
-    /**
-     * Record events directly, with no buffering. Requires write access, and
-     * the server refuses with a 403 while the project's switch is off. All
-     * or nothing: one bad event refuses the request with a 400 naming it.
-     * @param {string} projectId - The project the events happened in
-     * @param {Array<{type: string, documentId?: string, targetId?: string, data?: object, clientTs?: string}>} events - At most 500 events
-     * @returns {Promise<{count: number}>}
-     */
-    create: (projectId, events) =>
-      client._request("POST", `/api/v1/projects/${projectId}/events`, {
-        body: events,
-        outOfBand: true,
-      }),
     /**
      * A project's events in arrival order. Maintainer or admin only.
      * Transparently follows pagination cursors and returns the full flat
@@ -745,6 +701,50 @@ export function eventsApi(client) {
         pageSize,
         query: eventQuery(types, startTime, endTime),
       }),
+    /**
+     * Record events directly, with no buffering. Requires write access, and
+     * the server refuses with a 403 while the project's switch is off. All
+     * or nothing: one bad event refuses the request with a 400 naming it.
+     * @param {string} projectId - The project the events happened in
+     * @param {Array<{type: string, documentId?: string, targetId?: string, data?: object, clientTs?: string}>} events - At most 500 events
+     * @returns {Promise<{count: number}>}
+     */
+    create: (projectId, events) =>
+      client._request("POST", `/api/v1/projects/${projectId}/events`, {
+        body: events,
+        outOfBand: true,
+      }),
+    /**
+     * Record one research-telemetry event (plaid-core sql/client_event.clj).
+     * Fire and forget: the event is buffered and sent with
+     * others every ten seconds, at fifty events, and when the page is
+     * hidden. A batch that fails is dropped, nothing is retried, and
+     * nothing is ever thrown. Sends nothing for a project whose switch
+     * (`config.plaid.research.telemetry`) is off, which it reads from the
+     * project itself. `suggestion.shown` is recorded once per target,
+     * field and value in a page session.
+     * @param {ClientEventType} type - The event type
+     * @param {object} fields
+     * @param {string} fields.projectId - The project it happened in
+     * @param {string} [fields.documentId] - The document it happened in
+     * @param {string} [fields.targetId] - What it is about: a token, a plan
+     * @param {object} [fields.data] - Its details, keyed by single lowercase words (`value`, `source`, `field`, `written`, `conversation`)
+     * @returns {boolean} Whether the event was buffered
+     */
+    record: (type, fields) => recorderFor(client).record(client, type, fields),
+    /**
+     * Send what the recorder holds now, rather than at its next interval.
+     * @returns {void}
+     */
+    flush: () => recorderFor(client).flush(),
+    /**
+     * Tell the recorder a project's switch at once, e.g. right after a
+     * maintainer changed it. Turning it off drops what is buffered.
+     * @param {string} projectId - The project
+     * @param {boolean} on - Whether telemetry is on
+     * @returns {void}
+     */
+    setEnabled: (projectId, on) => recorderFor(client).setEnabled(projectId, on),
   };
 }
 

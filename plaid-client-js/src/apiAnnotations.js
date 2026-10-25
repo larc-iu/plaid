@@ -98,6 +98,13 @@ import { bodyOf, metadataMethods } from "./families.js";
 export function tokensApi(client) {
   return {
     /**
+     * Get a token.
+     * @param {string} tokenId - The token ID
+     * @returns {Promise<Token>}
+     */
+    get: (tokenId) =>
+      client._request("GET", `/api/v1/tokens/${tokenId}`),
+    /**
      * Create a new token in a token layer. Tokens define text substrings
      * using begin and end offsets. Tokens may be zero-width and may overlap.
      * For tokens sharing the same begin, precedence controls the linear
@@ -142,22 +149,6 @@ export function tokensApi(client) {
         }),
       }),
     /**
-     * Get a token.
-     * @param {string} tokenId - The token ID
-     * @returns {Promise<Token>}
-     */
-    get: (tokenId) =>
-      client._request("GET", `/api/v1/tokens/${tokenId}`),
-    /**
-     * Delete a token and remove it from any spans. If this causes a span to
-     * have no remaining tokens, the span will also be deleted.
-     * @param {string} tokenId - The token ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (tokenId, auditMessage) =>
-      client._request("DELETE", `/api/v1/tokens/${tokenId}`, { auditMessage }),
-    /**
      * Update a token.
      * @param {string} tokenId - The token ID
      * @param {number} [begin] - New start offset, inclusive (Unicode code points)
@@ -175,16 +166,25 @@ export function tokensApi(client) {
         body: bodyOf({ begin, end, precedence }),
       }),
     /**
-     * Create multiple tokens in a single operation.
-     * @param {Array} body - The request body
+     * Delete a token and remove it from any spans. If this causes a span to
+     * have no remaining tokens, the span will also be deleted.
+     * @param {string} tokenId - The token ID
      * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
+     * @returns {Promise<void>}
+     */
+    delete: (tokenId, auditMessage) =>
+      client._request("DELETE", `/api/v1/tokens/${tokenId}`, { auditMessage }),
+    /**
+     * Create multiple tokens in a single operation.
+     * @param {Array} body - The tokens to create, each as its single create takes it
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order.
      */
     bulkCreate: (body, auditMessage) =>
       client._request("POST", "/api/v1/tokens/bulk", { auditMessage, body }),
     /**
      * Delete multiple tokens in a single operation. Provide an array of IDs.
-     * @param {Array} body - The request body
+     * @param {Array} body - The IDs of the tokens to delete
      * @param {string} [auditMessage] - Audit message for this write
      * @returns {Promise<void>}
      */
@@ -265,17 +265,12 @@ export function tokensApi(client) {
 export function spansApi(client) {
   return {
     /**
-     * Replace tokens for a span.
+     * Get a span by ID.
      * @param {string} spanId - The span ID
-     * @param {Array} tokens - The tokens
-     * @param {string} [auditMessage] - Audit message for this write
      * @returns {Promise<Span>}
      */
-    setTokens: (spanId, tokens, auditMessage) =>
-      client._request("PUT", `/api/v1/spans/${spanId}/tokens`, {
-        auditMessage,
-        body: bodyOf({ tokens }),
-      }),
+    get: (spanId) =>
+      client._request("GET", `/api/v1/spans/${spanId}`),
     /**
      * Create a new span. A span holds a primary atomic value and optional
      * metadata, and must at all times be associated with one or more tokens.
@@ -300,21 +295,6 @@ export function spansApi(client) {
         }),
       }),
     /**
-     * Get a span by ID.
-     * @param {string} spanId - The span ID
-     * @returns {Promise<Span>}
-     */
-    get: (spanId) =>
-      client._request("GET", `/api/v1/spans/${spanId}`),
-    /**
-     * Delete a span.
-     * @param {string} spanId - The span ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (spanId, auditMessage) =>
-      client._request("DELETE", `/api/v1/spans/${spanId}`, { auditMessage }),
-    /**
      * Update a span's value.
      * @param {string} spanId - The span ID
      * @param {any} value - The value
@@ -327,16 +307,24 @@ export function spansApi(client) {
         body: bodyOf({ value }),
       }),
     /**
-     * Create multiple spans in a single operation.
-     * @param {Array} body - The request body
+     * Delete a span.
+     * @param {string} spanId - The span ID
      * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
+     * @returns {Promise<void>}
+     */
+    delete: (spanId, auditMessage) =>
+      client._request("DELETE", `/api/v1/spans/${spanId}`, { auditMessage }),
+    /**
+     * Create multiple spans in a single operation.
+     * @param {Array} body - The spans to create, each as its single create takes it
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order.
      */
     bulkCreate: (body, auditMessage) =>
       client._request("POST", "/api/v1/spans/bulk", { auditMessage, body }),
     /**
      * Delete multiple spans in a single operation. Provide an array of IDs.
-     * @param {Array} body - The request body
+     * @param {Array} body - The IDs of the spans to delete
      * @param {string} [auditMessage] - Audit message for this write
      * @returns {Promise<void>}
      */
@@ -353,6 +341,18 @@ export function spansApi(client) {
         auditMessage,
         body,
       }),
+    /**
+     * Replace tokens for a span.
+     * @param {string} spanId - The span ID
+     * @param {Array} tokens - The tokens
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<Span>}
+     */
+    setTokens: (spanId, tokens, auditMessage) =>
+      client._request("PUT", `/api/v1/spans/${spanId}/tokens`, {
+        auditMessage,
+        body: bodyOf({ tokens }),
+      }),
     ...metadataMethods(client, "spans"),
   };
 }
@@ -360,19 +360,6 @@ export function spansApi(client) {
 /** @param {import("./client.js").PlaidClient} client */
 export function relationsApi(client) {
   return {
-    ...metadataMethods(client, "relations"),
-    /**
-     * Update the target span of a relation.
-     * @param {string} relationId - The relation ID
-     * @param {string} spanId - The span ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<Relation>}
-     */
-    setTarget: (relationId, spanId, auditMessage) =>
-      client._request("PUT", `/api/v1/relations/${relationId}/target`, {
-        auditMessage,
-        body: bodyOf({ "span-id": spanId }),
-      }),
     /**
      * Get a relation by ID.
      * @param {string} relationId - The relation ID
@@ -380,40 +367,6 @@ export function relationsApi(client) {
      */
     get: (relationId) =>
       client._request("GET", `/api/v1/relations/${relationId}`),
-    /**
-     * Delete a relation.
-     * @param {string} relationId - The relation ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (relationId, auditMessage) =>
-      client._request("DELETE", `/api/v1/relations/${relationId}`, {
-        auditMessage,
-      }),
-    /**
-     * Update a relation's value.
-     * @param {string} relationId - The relation ID
-     * @param {any} value - The value
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<Relation>}
-     */
-    update: (relationId, value, auditMessage) =>
-      client._request("PATCH", `/api/v1/relations/${relationId}`, {
-        auditMessage,
-        body: bodyOf({ value }),
-      }),
-    /**
-     * Update the source span of a relation.
-     * @param {string} relationId - The relation ID
-     * @param {string} spanId - The span ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<Relation>}
-     */
-    setSource: (relationId, spanId, auditMessage) =>
-      client._request("PUT", `/api/v1/relations/${relationId}/source`, {
-        auditMessage,
-        body: bodyOf({ "span-id": spanId }),
-      }),
     /**
      * Create a new relation. A relation is a directed edge between two spans
      * with a value, useful for expressing phenomena such as syntactic or
@@ -449,16 +402,38 @@ export function relationsApi(client) {
         }),
       }),
     /**
-     * Create multiple relations in a single operation.
-     * @param {Array} body - The request body
+     * Update a relation's value.
+     * @param {string} relationId - The relation ID
+     * @param {any} value - The value
      * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
+     * @returns {Promise<Relation>}
+     */
+    update: (relationId, value, auditMessage) =>
+      client._request("PATCH", `/api/v1/relations/${relationId}`, {
+        auditMessage,
+        body: bodyOf({ value }),
+      }),
+    /**
+     * Delete a relation.
+     * @param {string} relationId - The relation ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (relationId, auditMessage) =>
+      client._request("DELETE", `/api/v1/relations/${relationId}`, {
+        auditMessage,
+      }),
+    /**
+     * Create multiple relations in a single operation.
+     * @param {Array} body - The relations to create, each as its single create takes it
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order.
      */
     bulkCreate: (body, auditMessage) =>
       client._request("POST", "/api/v1/relations/bulk", { auditMessage, body }),
     /**
      * Delete multiple relations in a single operation. Provide an array of IDs.
-     * @param {Array} body - The request body
+     * @param {Array} body - The IDs of the relations to delete
      * @param {string} [auditMessage] - Audit message for this write
      * @returns {Promise<void>}
      */
@@ -478,12 +453,44 @@ export function relationsApi(client) {
         auditMessage,
         body,
       }),
+    /**
+     * Update the target span of a relation.
+     * @param {string} relationId - The relation ID
+     * @param {string} spanId - The span ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<Relation>}
+     */
+    setTarget: (relationId, spanId, auditMessage) =>
+      client._request("PUT", `/api/v1/relations/${relationId}/target`, {
+        auditMessage,
+        body: bodyOf({ "span-id": spanId }),
+      }),
+    /**
+     * Update the source span of a relation.
+     * @param {string} relationId - The relation ID
+     * @param {string} spanId - The span ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<Relation>}
+     */
+    setSource: (relationId, spanId, auditMessage) =>
+      client._request("PUT", `/api/v1/relations/${relationId}/source`, {
+        auditMessage,
+        body: bodyOf({ "span-id": spanId }),
+      }),
+    ...metadataMethods(client, "relations"),
   };
 }
 
 /** @param {import("./client.js").PlaidClient} client */
 export function vocabLinksApi(client) {
   return {
+    /**
+     * Get a vocab link by ID
+     * @param {string} id - The resource ID
+     * @returns {Promise<VocabLink>}
+     */
+    get: (id) =>
+      client._request("GET", `/api/v1/vocab-links/${id}`),
     /**
      * Create a new vocab link between tokens and a vocab item.
      * @param {string} vocabItem - The vocab item to link
@@ -500,12 +507,20 @@ export function vocabLinksApi(client) {
         body: bodyOf({ id, "vocab-item": vocabItem, tokens, metadata }),
       }),
     /**
+     * Delete a vocab link
+     * @param {string} id - The resource ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (id, auditMessage) =>
+      client._request("DELETE", `/api/v1/vocab-links/${id}`, { auditMessage }),
+    /**
      * Create multiple vocab links in a single operation. Entries may
      * reference different vocab items, but all tokens across the call must
      * belong to one document.
      * @param {Array<{vocabItem: string, tokens: string[], metadata?: any}>} body - The vocab links to create
      * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
+     * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order.
      */
     bulkCreate: (body, auditMessage) =>
       client._request("POST", "/api/v1/vocab-links/bulk", {
@@ -524,20 +539,5 @@ export function vocabLinksApi(client) {
         body,
       }),
     ...metadataMethods(client, "vocab-links"),
-    /**
-     * Get a vocab link by ID
-     * @param {string} id - The resource ID
-     * @returns {Promise<VocabLink>}
-     */
-    get: (id) =>
-      client._request("GET", `/api/v1/vocab-links/${id}`),
-    /**
-     * Delete a vocab link
-     * @param {string} id - The resource ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/vocab-links/${id}`, { auditMessage }),
   };
 }

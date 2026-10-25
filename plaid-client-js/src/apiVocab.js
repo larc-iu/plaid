@@ -126,6 +126,69 @@ export function vocabLayersApi(client) {
         queryParams: { "as-of": asOf },
       }),
     /**
+     * List all vocab layers accessible to user. Transparently follows
+     * pagination cursors and returns the full flat array.
+     * @returns {Promise<VocabLayer[]>}
+     */
+    list: () => listAll(client, "/api/v1/vocab-layers"),
+    /**
+     * Fetch a single page of vocab layers.
+     * @param {object} [opts]
+     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+     * @param {string} [opts.cursor] - Opaque cursor from a previous page
+     * @returns {Promise<Page<VocabLayer>>}
+     */
+    listPage: ({ limit, cursor } = {}) =>
+      listPage(client, "/api/v1/vocab-layers", {
+        limit,
+        cursor,
+      }),
+    /**
+     * Async-iterate vocab layers page by page; yields each page's entries array.
+     * @param {object} [opts]
+     * @param {number} [opts.pageSize] - Per-request page size
+     * @returns {AsyncGenerator<VocabLayer[]>}
+     */
+    iterPages: ({ pageSize } = {}) =>
+      iterPages(client, "/api/v1/vocab-layers", {
+        pageSize,
+      }),
+    /**
+     * Create a new vocab layer. Note: this also registers the user as a maintainer.
+     * @param {string} name - The name
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {object} [opts]
+     * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
+     * @returns {Promise<Created>}
+     */
+    create: (name, auditMessage, { id } = {}) =>
+      client._request("POST", "/api/v1/vocab-layers", {
+        auditMessage,
+        body: bodyOf({ id, name }),
+      }),
+    /**
+     * Update a vocab layer's name. A new name restates every document
+     * linking the vocabulary: their versions are bumped and taken up from
+     * X-Document-Versions.
+     * @param {string} id - The resource ID
+     * @param {string} name - The name
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<VocabLayer>}
+     */
+    update: (id, name, auditMessage) =>
+      client._request("PATCH", `/api/v1/vocab-layers/${id}`, {
+        auditMessage,
+        body: bodyOf({ name }),
+      }),
+    /**
+     * Delete a vocab layer.
+     * @param {string} id - The resource ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<void>}
+     */
+    delete: (id, auditMessage) =>
+      client._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage }),
+    /**
      * Get the audit log of a vocabulary: every change to it or to its
      * entries, folded into entries as the document log is. Links are not
      * listed, they belong to the document they annotate. Transparently
@@ -210,70 +273,6 @@ export function vocabLayersApi(client) {
         },
       ),
     /**
-     * Delete a vocab layer.
-     * @param {string} id - The resource ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<void>}
-     */
-    delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage }),
-    /**
-     * Update a vocab layer's name. A new name restates every document
-     * linking the vocabulary: their versions are bumped and taken up from
-     * X-Document-Versions.
-     * @param {string} id - The resource ID
-     * @param {string} name - The name
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<VocabLayer>}
-     */
-    update: (id, name, auditMessage) =>
-      client._request("PATCH", `/api/v1/vocab-layers/${id}`, {
-        auditMessage,
-        body: bodyOf({ name }),
-      }),
-    ...configMethods(client, "vocab-layers"),
-    /**
-     * List all vocab layers accessible to user. Transparently follows
-     * pagination cursors and returns the full flat array.
-     * @returns {Promise<VocabLayer[]>}
-     */
-    list: () => listAll(client, "/api/v1/vocab-layers"),
-    /**
-     * Fetch a single page of vocab layers.
-     * @param {object} [opts]
-     * @param {number} [opts.limit] - Page size (1..1000; server default 100)
-     * @param {string} [opts.cursor] - Opaque cursor from a previous page
-     * @returns {Promise<Page<VocabLayer>>}
-     */
-    listPage: ({ limit, cursor } = {}) =>
-      listPage(client, "/api/v1/vocab-layers", {
-        limit,
-        cursor,
-      }),
-    /**
-     * Async-iterate vocab layers page by page; yields each page's entries array.
-     * @param {object} [opts]
-     * @param {number} [opts.pageSize] - Per-request page size
-     * @returns {AsyncGenerator<VocabLayer[]>}
-     */
-    iterPages: ({ pageSize } = {}) =>
-      iterPages(client, "/api/v1/vocab-layers", {
-        pageSize,
-      }),
-    /**
-     * Create a new vocab layer. Note: this also registers the user as a maintainer.
-     * @param {string} name - The name
-     * @param {string} [auditMessage] - Audit message for this write
-     * @param {object} [opts]
-     * @param {string} [opts.id] - The new entity's id, minted by the caller (see uuidv7)
-     * @returns {Promise<Created>}
-     */
-    create: (name, auditMessage, { id } = {}) =>
-      client._request("POST", "/api/v1/vocab-layers", {
-        auditMessage,
-        body: bodyOf({ id, name }),
-      }),
-    /**
      * Assign a user as a maintainer for this vocab layer.
      * @param {string} id - The resource ID
      * @param {string} userId - The user ID
@@ -299,13 +298,20 @@ export function vocabLayersApi(client) {
         `/api/v1/vocab-layers/${id}/maintainers/${userId}`,
         { auditMessage },
       ),
+    ...configMethods(client, "vocab-layers"),
   };
 }
 
 /** @param {import("./client.js").PlaidClient} client */
 export function vocabItemsApi(client) {
   return {
-    ...metadataMethods(client, "vocab-items"),
+    /**
+     * Get a vocab item by ID
+     * @param {string} id - The resource ID
+     * @returns {Promise<VocabItem>}
+     */
+    get: (id) =>
+      client._request("GET", `/api/v1/vocab-items/${id}`),
     /**
      * Create a new vocab item
      * @param {string} vocabLayerId - The vocab layer ID
@@ -320,6 +326,37 @@ export function vocabItemsApi(client) {
       client._request("POST", "/api/v1/vocab-items", {
         auditMessage,
         body: bodyOf({ id, "vocab-layer-id": vocabLayerId, form, metadata }),
+      }),
+    /**
+     * Update a vocab item's form. A document read carries the entry's form on
+     * every link to it, so a rename restates those documents: each has its
+     * version bumped, and a strict-mode client picks up their new versions
+     * from the response.
+     * @param {string} id - The resource ID
+     * @param {string} form - The vocab item form
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<VocabItem>}
+     */
+    update: (id, form, auditMessage) =>
+      client._request("PATCH", `/api/v1/vocab-items/${id}`, {
+        auditMessage,
+        body: bodyOf({ form }),
+      }),
+    /**
+     * Delete a vocab item, and every link to it. Every document holding one
+     * of those links has its version bumped, and a strict-mode client picks
+     * up their new versions from the response.
+     * @param {string} id - The resource ID
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {{expectedLinkCount?: number}} [options] - `expectedLinkCount`: the
+     *   number of links the caller showed. The delete is refused with a 409 when
+     *   the entry has any other number of links by then.
+     * @returns {Promise<void>}
+     */
+    delete: (id, auditMessage, { expectedLinkCount } = {}) =>
+      client._request("DELETE", `/api/v1/vocab-items/${id}`, {
+        auditMessage,
+        queryParams: { "expected-link-count": expectedLinkCount },
       }),
     /**
      * Create multiple vocab items in a single operation. Entries may target
@@ -361,29 +398,6 @@ export function vocabItemsApi(client) {
         body,
       }),
     /**
-     * Get a vocab item by ID
-     * @param {string} id - The resource ID
-     * @returns {Promise<VocabItem>}
-     */
-    get: (id) =>
-      client._request("GET", `/api/v1/vocab-items/${id}`),
-    /**
-     * Delete a vocab item, and every link to it. Every document holding one
-     * of those links has its version bumped, and a strict-mode client picks
-     * up their new versions from the response.
-     * @param {string} id - The resource ID
-     * @param {string} [auditMessage] - Audit message for this write
-     * @param {{expectedLinkCount?: number}} [options] - `expectedLinkCount`: the
-     *   number of links the caller showed. The delete is refused with a 409 when
-     *   the entry has any other number of links by then.
-     * @returns {Promise<void>}
-     */
-    delete: (id, auditMessage, { expectedLinkCount } = {}) =>
-      client._request("DELETE", `/api/v1/vocab-items/${id}`, {
-        auditMessage,
-        queryParams: { "expected-link-count": expectedLinkCount },
-      }),
-    /**
      * Merge entries into this one, in one operation. Every link to a loser
      * moves to the survivor (keeping its id and metadata), except a link on
      * words the survivor is already linked to, which is deleted, and then the
@@ -406,20 +420,6 @@ export function vocabItemsApi(client) {
         auditMessage,
         body: { losers: loserIds },
       }),
-    /**
-     * Update a vocab item's form. A document read carries the entry's form on
-     * every link to it, so a rename restates those documents: each has its
-     * version bumped, and a strict-mode client picks up their new versions
-     * from the response.
-     * @param {string} id - The resource ID
-     * @param {string} form - The vocab item form
-     * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<VocabItem>}
-     */
-    update: (id, form, auditMessage) =>
-      client._request("PATCH", `/api/v1/vocab-items/${id}`, {
-        auditMessage,
-        body: bodyOf({ form }),
-      }),
+    ...metadataMethods(client, "vocab-items"),
   };
 }

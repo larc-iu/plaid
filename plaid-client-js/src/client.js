@@ -322,27 +322,38 @@ class PlaidClient {
    * @private
    */
   _installResources() {
-    this.vocabLinks = vocabLinksApi(this);
-    this.vocabLayers = vocabLayersApi(this);
-    this.relations = relationsApi(this);
-    this.spanLayers = spanLayersApi(this);
-    this.spans = spansApi(this);
-    this.server = serverApi(this);
-    this.auth = authApi(this);
+    this.documents = documentsApi(this);
     this.texts = textsApi(this);
+
+    this.tokens = tokensApi(this);
+    this.spans = spansApi(this);
+    this.relations = relationsApi(this);
+    this.vocabLinks = vocabLinksApi(this);
+
+    this.textLayers = textLayersApi(this);
+    this.tokenLayers = tokenLayersApi(this);
+    this.spanLayers = spanLayersApi(this);
+    this.relationLayers = relationLayersApi(this);
+
+    this.vocabLayers = vocabLayersApi(this);
+    this.vocabItems = vocabItemsApi(this);
+
     this.users = usersApi(this);
-    this.userData = userDataApi(this);
     this.apiTokens = apiTokensApi(this);
     this.invites = invitesApi(this);
+    this.auth = authApi(this);
+    this.userData = userDataApi(this);
+
+    this.projects = projectsApi(this);
+    this.guidelines = guidelinesApi(this);
+    this.comments = commentsApi(this);
+    this.events = eventsApi(this);
+    this.operationGroups = operationGroupsApi(this);
+
+    this.server = serverApi(this);
     this.admin = adminApi(this);
     this.audit = auditApi(this);
-    this.tokenLayers = tokenLayersApi(this);
-    this.documents = documentsApi(this);
-    this.projects = projectsApi(this);
-    this.textLayers = textLayersApi(this);
-    this.vocabItems = vocabItemsApi(this);
-    this.relationLayers = relationLayersApi(this);
-    this.tokens = tokensApi(this);
+
     this.messages = messagesApi(this);
 
     // outOfBand: a query is a read that travels as a POST (see the note at
@@ -401,11 +412,6 @@ class PlaidClient {
         timeout: queryTimeout(this),
         noBusyRetry: true,
       });
-
-    this.operationGroups = operationGroupsApi(this);
-    this.comments = commentsApi(this);
-    this.events = eventsApi(this);
-    this.guidelines = guidelinesApi(this);
   }
 
   // --- Core methods ---
