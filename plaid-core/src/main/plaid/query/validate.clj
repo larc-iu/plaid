@@ -102,12 +102,11 @@
         extra (remove #{:regex :flags} (keys spec))]
     (when (seq extra)
       (err! :validate (str label " regex spec has unknown key(s) " (vec extra) " (allowed :regex, :flags)")))
-    (when-not (string? regex)
-      (err! :validate (str label " regex must be a string, got: " (pr-str regex))))
-    (when (> (count regex) clauses/regex-max-len)
-      (err! :validate (str label " regex is too long (max " clauses/regex-max-len " chars)")))
-    (when (and flags (or (not (string? flags)) (not (re-matches #"i*" flags))))
-      (err! :validate (str label " regex flags " (pr-str flags) " unsupported (only \"i\")")))
+    (case (clauses/regex-spec-problem regex flags)
+      :not-string (err! :validate (str label " regex must be a string, got: " (pr-str regex)))
+      :too-long (err! :validate (str label " regex is too long (max " clauses/regex-max-len " chars)"))
+      :flags (err! :validate (str label " regex flags " (pr-str flags) " unsupported (only \"i\")"))
+      nil)
     (try (clauses/compile-regex regex)
          (catch java.util.regex.PatternSyntaxException e
            (err! :validate (str label " has an invalid regex: " (.getMessage e)))))))

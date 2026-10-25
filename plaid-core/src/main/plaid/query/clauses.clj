@@ -73,6 +73,53 @@
   ^java.util.regex.Pattern [^String p]
   (java.util.regex.Pattern/compile p java.util.regex.Pattern/UNICODE_CHARACTER_CLASS))
 
+(defn regex-spec-problem
+  "What keeps `regex` and `flags` (a `{:regex .. :flags \"i\"?}` spec's two
+  values) from being a pattern, before it is compiled: `:not-string`,
+  `:too-long` or `:flags`, or nil. Each caller says it in its own words."
+  [regex flags]
+  (cond
+    (not (string? regex)) :not-string
+    (> (count regex) regex-max-len) :too-long
+    (and flags (or (not (string? flags)) (not (re-matches #"i*" flags)))) :flags))
+
+(defn- plain-find? [^java.util.regex.Pattern p ^String s]
+  (.find (.matcher p s)))
+
+(defn canonical-finder
+  "A predicate on a string: does `pattern` match it, as the query language's
+  REGEXP decides. A value matches as stored, or in NFC with the pattern in NFC,
+  so text matches whatever is canonically equivalent to it: `pʰá` typed
+  composed finds it stored decomposed (a + U+0301), and the reverse, while
+  every match the stored text gives is kept (a combining mark searched for on
+  its own still finds it in a value stored decomposed). A pattern that names a
+  combining mark also matches decomposed with the value in NFD (outside its
+  classes, so `[á\\x{301}]` never finds a plain a), so a high tone (U+0301)
+  searched for on its own finds it inside a composed `á` (Luke, 2026-10-16). A
+  pattern with no mark is never compared decomposed, so `a` does not find the
+  a inside `á`. The NFC pattern is left out when the pattern already is NFC,
+  and either variant when it is something Java cannot compile (a letter after
+  a backslash taking a mark: `\\e` and U+0301).
+  `found?` runs one compiled pattern on one string (the REGEXP function's
+  reads the string through an interruptible CharSequence)."
+  ([pattern] (canonical-finder pattern plain-find?))
+  ([^java.util.regex.Pattern pattern found?]
+   (let [src (.pattern pattern)
+         nfc-src (canonical/nfc src)
+         composed (when-not (identical? nfc-src src)
+                    (try (compile-regex nfc-src) (catch Exception _ nil)))
+         decomposed (when (canonical/names-mark? src)
+                      (try (compile-regex (canonical/decompose-pattern src)) (catch Exception _ nil)))]
+     (fn [^String s]
+       (boolean
+        (or (found? pattern s)
+            (let [ns (canonical/nfc s)]
+              (cond
+                composed (found? composed ns)
+                (identical? ns s) false
+                :else (found? pattern ns)))
+            (when decomposed (found? decomposed (canonical/nfd s)))))))))
+
 ;; Constraint keys whose value may be a SCALAR VARIABLE: `{:value "?v"}` binds
 ;; `?v` to that column instead of filtering, so the same `?v` in two clauses is a
 ;; column-equality join (e.g. two spans with the *same* value). Scalar vars are a

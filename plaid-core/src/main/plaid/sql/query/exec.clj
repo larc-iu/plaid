@@ -61,18 +61,6 @@
   (doto (.getDeclaredMethod Function "result" (into-array Class [Integer/TYPE]))
     (.setAccessible true)))
 
-(def ^:private ^ConcurrentHashMap pattern-cache (ConcurrentHashMap.))
-(def ^:private pattern-cache-max 256)
-
-(defn- cached-pattern ^Pattern [^String p]
-  (or (.get pattern-cache p)
-      (let [compiled (clauses/compile-regex p)]
-        ;; bounded: stop caching past the cap (patterns past it still compile,
-        ;; just uncached) so adversarial distinct patterns can't grow it forever
-        (when (< (.size pattern-cache) pattern-cache-max)
-          (.putIfAbsent pattern-cache p compiled))
-        compiled)))
-
 (defn- interruptible-cs
   "Wrap `s` in a CharSequence whose `charAt` aborts (throws) once the running
   thread is interrupted. This is the ONLY reliable kill for a catastrophic-
@@ -101,36 +89,25 @@
   (doto (.getDeclaredMethod Function "result" (into-array Class []))
     (.setAccessible true)))
 
-(defn- composed-pattern
-  "`p` in NFC, compiled, or nil when it already is NFC (the pattern as typed
-  then says it all) or when composing it makes it something Java cannot
-  compile (a letter after a backslash taking a mark: `\\e` and U+0301)."
-  [^String p]
-  (let [n (canonical/nfc p)]
-    (when-not (identical? n p)
-      (try (cached-pattern n) (catch Exception _ nil)))))
+(defn- interruptible-find? [^Pattern p ^String v]
+  (.find (.matcher p (interruptible-cs v))))
 
-(defn- decomposed-pattern
-  "`p` as it matches a value in NFD (`canonical/decompose-pattern`: in NFD
-  outside its classes), compiled, when it names a combining mark
-  (`canonical/names-mark?`), else nil (and nil
-  when decomposing makes it something Java cannot compile)."
-  [^String p]
-  (when (canonical/names-mark? p)
-    (try (cached-pattern (canonical/decompose-pattern p)) (catch Exception _ nil))))
+(def ^:private ^ConcurrentHashMap finder-cache (ConcurrentHashMap.))
+(def ^:private finder-cache-max 256)
+
+(defn- cached-finder [^String p]
+  (or (.get finder-cache p)
+      (let [finder (clauses/canonical-finder (clauses/compile-regex p) interruptible-find?)]
+        ;; bounded: stop caching past the cap (patterns past it still compile,
+        ;; just uncached) so adversarial distinct patterns can't grow it forever
+        (when (< (.size finder-cache) finder-cache-max)
+          (.putIfAbsent finder-cache p finder))
+        finder)))
 
 (defn- regexp-function
   "A REGEXP(pattern, value) UDF: 1 if `value` contains a match for the Java
-  regex `pattern`, else 0. A value matches as stored, or in NFC with the
-  pattern in NFC, so text matches whatever is canonically equivalent to it:
-  `pʰá` typed composed finds it stored decomposed (a + U+0301), and the
-  reverse, while every match the stored text gives is kept (a combining mark
-  searched for on its own still finds it in a value stored decomposed). A
-  pattern that names a combining mark also matches decomposed with the value
-  in NFD (outside its classes, so `[á\\x{301}]` never finds a plain a), so
-  a high tone (U+0301) searched for on its own finds it inside a composed
-  `á` (Luke, 2026-10-16). A pattern with no mark is never compared
-  decomposed, so `a` does not find the a inside `á`.
+  regex `pattern`, else 0, with canonically equivalent spellings matching as
+  `clauses/canonical-finder` decides.
   Compiled patterns are cached. Patterns are validated for syntax at
   query-validation time, so compile here won't see a bad one. The value is
   wrapped in an interruptible CharSequence so a runaway pattern can be
@@ -140,18 +117,7 @@
     (xFunc []
       (let [^String pat (.invoke m-value-text this (object-array [(int 0)]))
             ^String s   (.invoke m-value-text this (object-array [(int 1)]))
-            found? (fn [^java.util.regex.Pattern p ^String v] (.find (.matcher p (interruptible-cs v))))
-            hit (if (and pat s
-                         (or (found? (cached-pattern pat) s)
-                             (let [ns (canonical/nfc s)
-                                   np (composed-pattern pat)]
-                               (cond
-                                 np (found? np ns)
-                                 (identical? ns s) false
-                                 :else (found? (cached-pattern pat) ns)))
-                             (when-let [dp (decomposed-pattern pat)]
-                               (found? dp (canonical/nfd s)))))
-                  1 0)]
+            hit (if (and pat s ((cached-finder pat) s)) 1 0)]
         (.invoke m-result-int this (object-array [(int hit)]))))))
 
 (def ^:private sqlite-null 5)

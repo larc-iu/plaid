@@ -21,15 +21,14 @@
   the same version and count.
 
   A surface matches as the query language's REGEXP decides
-  (`plaid.sql.query.exec/regexp-function`): as stored, or in NFC with the pattern
+  (`plaid.query.clauses/canonical-finder`): as stored, or in NFC with the pattern
   in NFC, or, for a pattern that names a combining mark, in NFD."
   (:require [clojure.string :as str]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
             [plaid.query.clauses :as clauses]
             [plaid.sql.common :as psc]
-            [plaid.sql.query.resolve :as resolve]
-            [plaid.util.canonical :as canonical])
+            [plaid.sql.query.resolve :as resolve])
   (:import [java.util.regex Pattern]))
 
 (def ^:dynamic *timeout-ms*
@@ -41,37 +40,19 @@
 
 (defn- pattern-of
   "The compiled pattern for a `{:regex .. :flags \"i\"?}` spec, or a 400."
-  ^Pattern [{:keys [regex flags] :as spec}]
-  (when-not (and (map? spec) (string? regex))
+  ^Pattern [spec]
+  (when-not (map? spec)
     (refuse! 400 "value must be {\"regex\": \"...\"}"))
-  (when (> (count regex) clauses/regex-max-len)
-    (refuse! 400 (str "regex is too long (max " clauses/regex-max-len " chars)")))
-  (when (and flags (or (not (string? flags)) (not (re-matches #"i*" flags))))
-    (refuse! 400 (str "regex flags " (pr-str flags) " unsupported (only \"i\")")))
-  (let [p (if (and flags (str/includes? flags "i")) (str "(?iu)" regex) regex)]
-    (try (clauses/compile-regex p)
-         (catch java.util.regex.PatternSyntaxException e
-           (refuse! 400 (str "invalid regex: " (.getMessage e)))))))
-
-(defn- matcher-fn
-  "A predicate on a surface string: does `pattern` match it, as REGEXP does?"
-  [^Pattern pattern]
-  (let [src (.pattern pattern)
-        nfc-src (canonical/nfc src)
-        composed (when-not (identical? nfc-src src)
-                   (try (clauses/compile-regex nfc-src) (catch Exception _ nil)))
-        decomposed (when (canonical/names-mark? src)
-                     (try (clauses/compile-regex (canonical/decompose-pattern src)) (catch Exception _ nil)))
-        found? (fn [^Pattern p ^String s] (.find (.matcher p s)))]
-    (fn [^String s]
-      (boolean
-       (or (found? pattern s)
-           (let [ns (canonical/nfc s)]
-             (cond
-               composed (found? composed ns)
-               (identical? ns s) false
-               :else (found? pattern ns)))
-           (when decomposed (found? decomposed (canonical/nfd s))))))))
+  (let [{:keys [regex flags]} spec]
+    (case (clauses/regex-spec-problem regex flags)
+      :not-string (refuse! 400 "value must be {\"regex\": \"...\"}")
+      :too-long (refuse! 400 (str "regex is too long (max " clauses/regex-max-len " chars)"))
+      :flags (refuse! 400 (str "regex flags " (pr-str flags) " unsupported (only \"i\")"))
+      nil)
+    (let [p (if (and flags (str/includes? flags "i")) (str "(?iu)" regex) regex)]
+      (try (clauses/compile-regex p)
+           (catch java.util.regex.PatternSyntaxException e
+             (refuse! 400 (str "invalid regex: " (.getMessage e))))))))
 
 (defonce ^:private cache
   ;; [layer doc pattern] -> [[token count, document version] count]
@@ -111,7 +92,7 @@
   (when-not (and (sequential? layer-ids) (every? string? layer-ids))
     (refuse! 400 "layers must be a list of token layer ids"))
   (let [^Pattern pattern (pattern-of value)
-        matches? (matcher-fn pattern)
+        matches? (clauses/canonical-finder pattern)
         pkey (str (.flags pattern) ":" (.pattern pattern))
         projects (resolve/effective-scope db user-id nil)
         ids (vec (distinct (map str/lower-case layer-ids)))
