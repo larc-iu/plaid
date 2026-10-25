@@ -113,6 +113,26 @@ describe('deleting a comment from the grid', () => {
   });
 });
 
+// B2-6: going read-only closes the popover, and a comment thread's popover
+// holds a claim on the live comment stream that has to go with it.
+describe('going read-only with a thread open', () => {
+  it('gives up the live comment stream the thread claimed', () => {
+    const store = seededStore();
+    const release = vi.fn();
+    store.watchLive = vi.fn(() => release);
+    mount({ comments: store });
+
+    openThread();
+    expect(store.watchLive).toHaveBeenCalledTimes(1);
+    editor.setReadOnly(true);
+
+    expect(host.querySelector('.igt-cmt-pop')).toBeNull();
+    expect(release).toHaveBeenCalledTimes(1);
+    editor.destroy();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('a comment the server refuses, from the grid', () => {
   const composer = () => host.querySelector('.igt-cmt-pop textarea[aria-label="Add a comment"]');
   const typeInto = (el, v) => {

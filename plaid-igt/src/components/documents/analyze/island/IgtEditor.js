@@ -413,10 +413,8 @@ export class IgtEditor {
     // in-progress edit at the read-only/time-travel transition.
     if (this.container.contains(document.activeElement)) document.activeElement.blur();
     this.readOnly = ro;
-    // Close any open vocab popover — its openers are disabled in read-only mode.
-    this._popover = null;
-    this._popoverPos = null;
-    this._popoverSearch = '';
+    // Close any open popover, its openers are disabled in read-only mode.
+    this._resetPopover();
     this._mweSel = null;
     this._render(true);
   }

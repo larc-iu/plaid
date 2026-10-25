@@ -41,18 +41,27 @@ export const popover = {
     return this._popover?.kind === 'morpheme' ? 360 : 240;
   },
 
-  _openPopover(tokenId, kind, anchorEl) {
-    // Replacing a comment popover with a vocab one bypasses _closePopover, so
-    // give up the live-stream claim here too or it leaks.
+  // The popover's state gone, and with it a comment thread's claim on the
+  // live comment stream. Every path that takes a popover down comes through
+  // here: closing it, replacing it with another, and going read-only.
+  _resetPopover() {
     this._releaseCommentLive?.();
     this._releaseCommentLive = null;
-    this._popover = { tokenId, kind, variant: 'vocab' };
+    this._popover = null;
+    this._popoverPos = null;
     this._popoverSearch = '';
-    this._popoverActiveIndex = null; // the render picks the best-ranked row
-    this._popoverVocabId = null; // re-default to the linked item's vocab each open
+    this._popoverActiveIndex = 0;
     this._popoverCreateEdit = null; // string while the "+ Create" row is being edited
     clearTimeout(this._createClickTimer);
     this._createClickTimer = null;
+    this._popoverReturnId = null;
+  },
+
+  _openPopover(tokenId, kind, anchorEl) {
+    this._resetPopover();
+    this._popover = { tokenId, kind, variant: 'vocab' };
+    this._popoverActiveIndex = null; // the render picks the best-ranked row
+    this._popoverVocabId = null; // re-default to the linked item's vocab each open
     this._popoverReturnId = `vocab:${tokenId}`;
     this._popoverPos = this._computePopoverPos(anchorEl, undefined, this._popWidth('vocab'));
     this._ensurePrecedent();
@@ -163,17 +172,8 @@ export const popover = {
   // would steal focus from wherever the user clicked.
   _closePopover(returnFocus = false) {
     if (!this._popover) return;
-    this._releaseCommentLive?.();
-    this._releaseCommentLive = null;
     const returnId = this._popoverReturnId;
-    this._popover = null;
-    this._popoverPos = null;
-    this._popoverSearch = '';
-    this._popoverActiveIndex = 0;
-    this._popoverCreateEdit = null;
-    clearTimeout(this._createClickTimer);
-    this._createClickTimer = null;
-    this._popoverReturnId = null;
+    this._resetPopover();
     this._render(true);
     if (returnFocus && returnId != null) {
       const opener = this._openerEl(returnId);
