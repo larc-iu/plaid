@@ -41,7 +41,8 @@ export const makeTextPlan = ({ base, digest = null, gaps }) => ({
  * body when it has moved on (a change to the same passage throws
  * `conflict`), its digest, and new keys (`keySeed`). With no digest known the
  * text is read once more, and then the save is refused (`unread`): no plan
- * goes without one. False when the gaps change nothing.
+ * goes without one, and a plan sent before goes again only with a digest read
+ * since, never the one refused. False when the gaps change nothing.
  *
  * @param {object} plan - from makeTextPlan
  * @param {{body: string, digest: string|null}|null} stored
@@ -62,7 +63,9 @@ export async function planOn(plan, stored, { read, keySeed, conflict, unread }) 
       plan.gaps = moved.gaps;
       plan.digest = now.digest ?? null;
     } else {
-      plan.digest = now.digest ?? plan.digest;
+      // The digest the plan was typed with, until it is sent: a plan made
+      // again after a send was refused as changed keeps none of its own.
+      plan.digest = now.digest ?? (plan.sentUnder == null ? plan.digest : null);
     }
     if (plan.gaps.length === 0) return false;
     if (plan.digest != null) break;

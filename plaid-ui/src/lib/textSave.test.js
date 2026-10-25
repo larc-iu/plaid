@@ -145,6 +145,24 @@ describe('planOn', () => {
     expect(read.read).toHaveBeenCalledTimes(1);
   });
 
+  // A plan made again after its send was refused as changed has no digest of
+  // its own: the one it went with is the one refused. Planned on a read with
+  // none, it reads once more (B5-10), as a plan made with none does.
+  it('keeps no digest a send went with, and reads once more when the text has none', async () => {
+    const typed = makeTextPlan({ base: 'one two', digest: 'd0', gaps: plan().gaps });
+    const unsent = how([]);
+    expect(await planOn(typed, { body: 'one two', digest: null }, unsent)).toBe(true);
+    expect(typed.digest).toBe('d0');
+    expect(unsent.read).not.toHaveBeenCalled();
+
+    sendingPlan(typed);
+    typed.keys = null;
+    const again = how([{ body: 'one two', digest: 'd4' }]);
+    expect(await planOn(typed, { body: 'one two', digest: null }, again)).toBe(true);
+    expect(again.read).toHaveBeenCalledTimes(1);
+    expect(typed.digest).toBe('d4');
+  });
+
   it('refuses a change it cannot move, and is false for gaps that change nothing', async () => {
     const p = makeTextPlan({ base: 'one two', gaps: [{ start: 4, end: 7, value: 'six' }] });
     await expect(planOn(p, { body: 'one too', digest: 'd' }, how([]))).rejects.toThrow(
