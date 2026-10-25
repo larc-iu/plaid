@@ -9,7 +9,6 @@ import {
   createdId,
   createdIds,
   MAX_BATCH_OPS,
-  mergeMetadata,
   metadataOps,
   provState,
   PROV_STATES,
@@ -280,25 +279,18 @@ export class UmrDocument extends DocumentModel {
     if (this._refused(conceptProblem(concept), under)) return Promise.resolve(false);
     const label = 'Failed to change the concept';
     if (!this._canWrite(label)) return Promise.resolve(false);
-    const writes = targets.map((n) => [n.id, this._valueEditStampOps(n.metadata)]);
-    this._applyRawPatch((next, infoNext) => {
-      const spans = this._layers(infoNext).spans;
-      writes.forEach(([id, ops]) => {
-        const span = spans.find((x) => x.id === id);
-        if (!span) return;
-        span.value = concept;
-        if (ops.length) span.metadata = applyMetadataOps(span.metadata, ops);
-      });
-    });
+    const writes = targets.map((n) => ({
+      id: n.id,
+      value: concept,
+      ops: this._valueEditStampOps(n.metadata),
+    }));
+    this._showValues(writes);
     const who = targets.length === 1 ? targets[0].var : `${targets.length} nodes`;
     return this._queueWrite(
       label,
       () =>
         this._client.batched(async (b) => {
-          writes.forEach(([id, ops]) => {
-            b.spans.update(settledId(id), concept);
-            if (ops.length) b.spans.patchMetadata(settledId(id), ops);
-          });
+          writes.forEach(({ id, ops }) => this._sendValue(b, 'span', settledId(id), concept, ops));
         }),
       `Take ${concept} from the entry ${change.form} for ${who}`,
     );
@@ -1093,25 +1085,13 @@ export class UmrDocument extends DocumentModel {
       ...(entryChanges ? umrOps(entryRecord(entry, this._lexicon)) : []),
       ...this._valueEditStampOps(node.metadata, node.concept !== concept),
     ];
-    this._applyRawPatch((next, infoNext) => {
-      const span = this._layers(infoNext).spans.find((s) => s.id === node.id);
-      if (!span) return;
-      span.value = concept;
-      if (ops.length) span.metadata = applyMetadataOps(span.metadata, ops);
-    });
-    const ok = await this._queueWrite(
+    // An entry change alone sends no update.
+    const ok = await this._writeValue(
+      'span',
+      node.id,
+      ops.length && node.concept === concept ? undefined : concept,
+      ops,
       label,
-      async () => {
-        const id = settledId(node.id);
-        if (ops.length) {
-          await this._client.batched(async (b) => {
-            if (node.concept !== concept) b.spans.update(id, concept);
-            b.spans.patchMetadata(id, ops);
-          });
-        } else {
-          await this._client.spans.update(id, concept);
-        }
-      },
       node.concept === concept
         ? `Change the entry of ${node.var} ${concept}`
         : `Change ${node.var} from ${node.concept} to ${concept}`,
@@ -1564,26 +1544,12 @@ export class UmrDocument extends DocumentModel {
     const label = 'Failed to change the relation';
     if (!this._canWrite(label)) return false;
     // Relabelling a drafted edge settles it, as re-typing a cell does in ud.
-    const stampOps = this._valueEditStampOps(edge.metadata);
-    this._applyRawPatch((next, infoNext) => {
-      const rel = this._layers(infoNext).relations.find((r) => r.id === edge.id);
-      if (!rel) return;
-      rel.value = role;
-      if (stampOps.length) rel.metadata = applyMetadataOps(rel.metadata, stampOps);
-    });
-    const ok = await this._queueWrite(
+    const ok = await this._writeValue(
+      'relation',
+      edge.id,
+      role,
+      this._valueEditStampOps(edge.metadata),
       label,
-      async () => {
-        const id = settledId(edge.id);
-        if (stampOps.length) {
-          await this._client.batched(async (b) => {
-            b.relations.update(id, role);
-            b.relations.patchMetadata(id, stampOps);
-          });
-        } else {
-          await this._client.relations.update(id, role);
-        }
-      },
       `Relabel ${edge.role} ${this._ends(edge)} as ${role}`,
     );
     if (!ok) onRefused?.();
@@ -1877,25 +1843,7 @@ export class UmrDocument extends DocumentModel {
     const stamps = this._confirmations(nodes);
     if (!stamps.length) return Promise.resolve(false);
     if (!this._canWrite(label)) return Promise.resolve(false);
-    this._applyRawPatch((next, infoNext) => {
-      const L = this._layers(infoNext);
-      stamps.forEach(([kind, id, stamp]) => {
-        const item = (kind === 'span' ? L.spans : L.relations).find((x) => x.id === id);
-        if (item) item.metadata = mergeMetadata(item.metadata, stamp);
-      });
-    });
-    return this._queueWrite(
-      label,
-      () =>
-        this._client.batched(async (b) => {
-          stamps.forEach(([kind, id, stamp]) => {
-            const api = kind === 'span' ? b.spans : b.relations;
-            api.patchMetadata(settledId(id), metadataOps(stamp));
-          });
-        }),
-      operation,
-      { kind: 'review' },
-    );
+    return this._stampRows(stamps, label, operation, { kind: 'review' });
   }
 
   /**
