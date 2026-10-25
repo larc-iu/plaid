@@ -334,12 +334,19 @@
                                (cp/cp-count nb)))
         sents (filter #(= :s (:token/layer %)) tokens)
         words (filter #(= :w (:token/layer %)) tokens)
-        ;; the plain rule deletes a token with no letter left and no word
-        ;; under it kept, its sentence or not (REV-W2-LAST F1)
+        ;; the plain rule deletes a token with no letter left and no letter
+        ;; typed inside it, its sentence or not (REV-W2-LAST F1): no gap
+        ;; within it types one (its whole text typed over too), nor an
+        ;; insert strictly inside it, and no word under it is kept
         may-go? (fn [begin end]
                   (and (not-any? (fn [i] (and (not (ws? (aget o i)))
                                               (not-any? #(and (<= (:start %) i) (< i (:end %))) server)))
                                  (range begin end))
+                       (not-any? #(and (some (complement ws?) (cps (:value %)))
+                                       (if (= (:start %) (:end %))
+                                         (< begin (:start %) end)
+                                         (and (<= begin (:start %)) (<= (:end %) end))))
+                                 server)
                        (not-any? #(and (<= begin (:token/begin %)) (<= (:token/end %) end) (by-id (:token/id %)))
                                  words)))
         out (transient [])]
@@ -530,6 +537,32 @@
       (is (empty? (follow-checks body tokens' server' r')))
       (is (= ["[:as 1] deleted though its sentence stays, at [18 21]"]
              (follow-checks body tokens' server' (without r' [:as 1])))))))
+
+(deftest a-row-or-segment-typed-over-whole-and-kept-may-not-go
+  ;; REV-BH7-TEXT F5, seed 329 of the test above with rows and segments: the
+  ;; one sentence, its row and its segment are typed over whole as ` Q`, so
+  ;; the rule keeps each of them, on `Q`, while every word goes. The plain
+  ;; rule deletes only a token with no letter left and no letter typed inside
+  ;; it, so a product that deleted the row or the segment here fails the
+  ;; follow checks, though no word under either is kept.
+  (let [body "caf\u00e9 thee da\ta"
+        tokens (vec (for [[id layer begin end] [[[:s 0] :s 0 14] [[:rw 0] :rw 0 14] [[:as 0] :ss 0 14]
+                                                [[:w 1] :w 0 4] [[:w 2] :w 5 12] [[:w 3] :w 13 14]]]
+                      {:token/id id :token/layer layer :token/begin begin :token/end end}))
+        ops (ta/gap-ops [{:start 0 :end 14 :value " Q"}])
+        server (server-gaps body tokens ops :apps)
+        r (run body tokens ops)
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
+        without (fn [r id] (-> r
+                               (update :tokens (fn [ts] (vec (remove #(= id (:token/id %)) ts))))
+                               (update :deleted (fnil conj []) id)))]
+    (is (= [1 2] (at [:s 0]) (at [:rw 0]) (at [:as 0])))
+    (is (nil? (at [:w 1])))
+    (is (empty? (follow-checks body tokens server r)))
+    (is (= ["[:as 0] deleted though its sentence stays, at [1 2]"]
+           (follow-checks body tokens server (without r [:as 0]))))
+    (is (= ["[:rw 0] deleted though its sentence stays, at [1 2]"]
+           (follow-checks body tokens server (without r [:rw 0]))))))
 
 ;; ---------------------------------------------------------------- the side the caret is on
 
