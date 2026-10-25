@@ -58,7 +58,7 @@ from plaid_client.workflows.igt.entry_forms import entry_form
 def stored_entry_form(form: str, morph_type: Optional[str]) -> Tuple[str, Optional[str]]:
     """The form and morph type an entry stores, from a form and type given
     (R27): its markers dropped, and the type they name when they name one
-    (the client's one rule, ``entry_form``)."""
+    and no type was given (R38, the client's one rule, ``entry_form``)."""
     out = entry_form(morph_type, form)
     return out['form'], out['morphType']
 
