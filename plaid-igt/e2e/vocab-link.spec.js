@@ -4,6 +4,9 @@ import { getFixture } from './fixtureProject.js';
 // Vocab-link popover round-trip: link a lexicon item to the first word, confirm
 // it persists across reload, then unlink it. Net-neutral on the fixture.
 
+// The save-status pill no longer says a write is on its way.
+const settled = (page) => expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
+
 async function openAnalyze(page, projectId, documentId) {
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
   await page.waitForLoadState('networkidle');
@@ -26,7 +29,7 @@ test('link then unlink a lexicon item on a word', async ({ page }) => {
   expect(form, 'an offered entry').not.toBe('');
   await row.click();
   await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(300);
+  await settled(page);
   await expect(page.locator('.igt-token-form .igt-vocab__hint').first()).toHaveText(form);
 
   // Persists across a full reload.
@@ -38,7 +41,7 @@ test('link then unlink a lexicon item on a word', async ({ page }) => {
   await page.locator('.igt-vocab-pop').first().waitFor({ state: 'visible' });
   await page.locator('.igt-vocab-pop__item.is-linked').first().click();
   await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(300);
+  await settled(page);
   await expect(page.locator('.igt-token-form .igt-vocab__hint')).toHaveCount(0);
 
   // The functional assertions above are the real proof. Guard against broken
