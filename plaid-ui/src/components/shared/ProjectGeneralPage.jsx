@@ -23,11 +23,11 @@ import { showsTartan } from '../../domain/projectTartan.js';
  *   shows in the breadcrumb and the project list, so a rename has to reach
  *   the screens above this one.
  * - `language`: when given, a Language card for one BCP-47 tag on the
- *   project. `saved` is the stored tag ('' for none), and `save(tag)` writes
- *   one, '' meaning remove it: the app keeps the tag in its own half of the
- *   project's config, so the app writes it. `description` is the line under the
- *   heading, and `note(savedTag)` an optional line under the field about what
- *   the SAVED tag does.
+ *   project, kept at `config.<namespace>.language` in the app's own half of
+ *   the project's config. `saved` is the stored tag as the app reads it ('' for
+ *   none), and a Save sets the cell, or removes it when the field is cleared.
+ *   `description` is the line under the heading, and `note(savedTag)` an
+ *   optional line under the field about what the SAVED tag does.
  * - `children`: the app's own sections, drawn between Language and Delete.
  * The Tartan card, in every app, turns the project's tartan on and off
  * (`config.plaid.tartan`, see domain/projectTartan.js showsTartan).
@@ -103,7 +103,7 @@ export const ProjectGeneralPage = ({
         </CardContent>
       </Card>
 
-      {language && <LanguageCard onSaved={onSaved} {...language} />}
+      {language && <LanguageCard project={project} onSaved={onSaved} {...language} />}
 
       {children}
 
@@ -118,7 +118,8 @@ export const ProjectGeneralPage = ({
 
 // One BCP-47 tag on the project itself, not on a layer: it is a fact about the
 // project, and readers of it (a parse spot, a frame file) need no layer config.
-const LanguageCard = ({ onSaved, saved, save, description, note }) => {
+const LanguageCard = ({ project, onSaved, namespace, saved, description, note }) => {
+  const { getClient } = useAuth();
   const [tag, setTag] = useState(saved);
   const [saving, setSaving] = useState(false);
   useEffect(() => setTag(saved), [saved]);
@@ -130,7 +131,20 @@ const LanguageCard = ({ onSaved, saved, save, description, note }) => {
     if (!changed || saving) return;
     setSaving(true);
     try {
-      await save(tag.trim());
+      const next = tag.trim();
+      const client = getClient();
+      const expected = expectStored(project, namespace, 'language');
+      if (next)
+        await client.projects.setConfig(
+          project.id,
+          namespace,
+          'language',
+          next,
+          undefined,
+          expected,
+        );
+      else
+        await client.projects.deleteConfig(project.id, namespace, 'language', undefined, expected);
       await onSaved?.();
       notifySuccess('Language saved');
     } catch (err) {

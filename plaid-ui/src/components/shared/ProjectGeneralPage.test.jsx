@@ -62,7 +62,7 @@ afterEach(async () => {
 describe('ProjectGeneralPage', () => {
   it('draws Name, Language, the app sections and Delete, in that order', async () => {
     await mount({
-      language: { saved: '', save: vi.fn(), description: 'The language.' },
+      language: { namespace: 'ud', saved: '', description: 'The language.' },
       children: (
         <div data-slot="card">
           <div>Tokenizer locale</div>
@@ -114,10 +114,13 @@ describe('ProjectGeneralPage', () => {
     expect(save.disabled).toBe(false);
   });
 
-  it('enables the language Save only once the tag differs, and hands the tag to the app', async () => {
+  it('enables the language Save only once the tag differs, and writes it in the app namespace', async () => {
     const onSaved = vi.fn();
-    const save = vi.fn(async () => {});
-    await mount({ onSaved, language: { saved: 'en', save, description: 'The language.' } });
+    await mount({
+      onSaved,
+      project: { id: 'p1', name: 'Texts', config: { ud: { language: 'en' } } },
+      language: { namespace: 'ud', saved: 'en', description: 'The language.' },
+    });
     const button = saves(view.container)[1];
     const field = view.container.querySelector('[aria-label="Project language"]');
     expect(field.value).toBe('en');
@@ -127,18 +130,29 @@ describe('ProjectGeneralPage', () => {
     await view.step(() => typeInto(field, ' de '));
     expect(button.disabled).toBe(false);
     await view.step(() => button.click());
-    expect(save).toHaveBeenCalledWith('de');
+    expect(client.projects.setConfig).toHaveBeenCalledWith(
+      'p1',
+      'ud',
+      'language',
+      'de',
+      undefined,
+      {
+        expected: 'en',
+      },
+    );
     expect(onSaved).toHaveBeenCalledTimes(1);
     await view.step(() => typeInto(field, ''));
     await view.step(() => button.click());
-    expect(save).toHaveBeenLastCalledWith('');
+    expect(client.projects.deleteConfig).toHaveBeenCalledWith('p1', 'ud', 'language', undefined, {
+      expected: 'en',
+    });
   });
 
   it('says what the saved tag does, not the typed one', async () => {
     await mount({
       language: {
+        namespace: 'ud',
         saved: 'en',
-        save: vi.fn(),
         description: 'The language.',
         note: (tag) => `Saved: ${tag || 'none'}`,
       },
