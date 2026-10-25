@@ -47,3 +47,12 @@ test('the restore list names nodes, edges and document-level relations', () => {
     '1 document-level relation',
   ]);
 });
+
+// A9-9: a layer is the app's when its flag is true, read as every other
+// reader in this app reads it, so a flag that holds anything else is no flag.
+test('a flag that is not true names no layer of this app', () => {
+  assert.deepEqual(UMR_LAYER_WORDS({ umr: { concepts: true } }), ['node', 'nodes']);
+  assert.equal(UMR_LAYER_WORDS({ umr: { concepts: 'yes' } }), undefined);
+  assert.equal(UMR_LAYER_WORDS({ umr: { nodes: 1 } }), undefined);
+  assert.equal(UMR_LAYER_WORDS({ umr: { relations: {} } }), undefined);
+});

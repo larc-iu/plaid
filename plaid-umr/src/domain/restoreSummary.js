@@ -7,6 +7,7 @@
 // and its tokens are left out.
 
 import { ROLES } from '@larc-iu/plaid-client';
+import { hasFlag, UMR_LAYER_FLAGS } from '../utils/umrLayerUtils.js';
 
 export const TOKEN_ROLE_WORDS = {
   [ROLES.SENTENCE]: ['sentence', 'sentences'],
@@ -15,10 +16,11 @@ export const TOKEN_ROLE_WORDS = {
 };
 
 export const UMR_LAYER_WORDS = (config) => {
-  const umr = config?.umr;
-  if (umr?.nodes) return null;
-  if (umr?.concepts) return ['node', 'nodes'];
-  if (umr?.relations) return ['edge', 'edges'];
-  if (umr?.documentGraph) return ['document-level relation', 'document-level relations'];
+  const layer = { config };
+  if (hasFlag(layer, UMR_LAYER_FLAGS.nodes)) return null;
+  if (hasFlag(layer, UMR_LAYER_FLAGS.concepts)) return ['node', 'nodes'];
+  if (hasFlag(layer, UMR_LAYER_FLAGS.relations)) return ['edge', 'edges'];
+  if (hasFlag(layer, UMR_LAYER_FLAGS.documentGraph))
+    return ['document-level relation', 'document-level relations'];
   return undefined;
 };

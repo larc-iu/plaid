@@ -48,7 +48,8 @@ const REQUIRED = [
   'documentGraphLayer',
 ];
 
-const hasFlag = (layer, flag) => layer?.config?.[UMR_NAMESPACE]?.[flag] === true;
+// Whether a layer carries one of this app's flags: true, and nothing else.
+export const hasFlag = (layer, flag) => layer?.config?.[UMR_NAMESPACE]?.[flag] === true;
 
 // The baseline text layer: the one tagged `baseline`, and none when no layer
 // is, which reads as a project not set up for UMR.
