@@ -401,9 +401,10 @@ export const analysisCopyMutations = {
         linkTo(m0Id, s0.vocabItemId, word);
         spansOn(m0Id, s0.fields, morphLayersByName, word);
       }
-      // A stored first morpheme storing no precedence reads after the slots
-      // made from 2 (R4-1-2), so it takes slot 1 in the same batch.
-      word.renumber = slots.length > 1 && !word.create && stored(m0Id) == null;
+      // A stored first morpheme storing anything but 1 reads after the slots
+      // made from 2, or ties with one (none reads last, R4-1-2), so it takes
+      // slot 1 in the same batch.
+      word.renumber = slots.length > 1 && !word.create && stored(m0Id) !== 1;
       // Remaining slots: new morphemes, with their own links and fields.
       slots.slice(1).forEach((slot, j) => {
         const m = {

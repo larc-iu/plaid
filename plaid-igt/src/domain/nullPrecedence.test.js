@@ -57,6 +57,61 @@ describe('a morpheme storing no precedence', () => {
     expect(createdPrecedences(client)).toEqual([2]);
   });
 
+  // REV-R4R R1: the target is numbered one past the highest stored sibling,
+  // not by its index, so gapped stored siblings keep reading ahead of it.
+  it.each([[[1, 2]], [[1, 3]], [[1, 5]]])(
+    'splitMorpheme numbers it past stored siblings %j',
+    async (stored) => {
+      const client = makeFakeClient();
+      const m = (id, precedence, form) => ({
+        id,
+        text: 'text-1',
+        begin: 0,
+        end: 6,
+        precedence,
+        metadata: { form },
+      });
+      const raw = buildRawDoc({
+        body: 'abcdef',
+        words: [{ id: 'w-1', begin: 0, end: 6 }],
+        morphemes: [m('m-a', stored[0], 'ab'), m('m-b', stored[1], 'cd'), m('m-c', null, 'ef')],
+      });
+      const doc = docFor(raw, client);
+      expect(await doc.splitMorpheme('m-c', 'e', 'f')).toBe(true);
+      expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'e', 'f']);
+      expect(precedenceUpdates(client)).toEqual([['m-c', stored[1] + 1]]);
+      expect(createdPrecedences(client)).toEqual([stored[1] + 2]);
+    },
+  );
+
+  it('splitMorpheme numbers every morpheme storing none in the order it reads', async () => {
+    const client = makeFakeClient();
+    const m = (id, precedence, form) => ({
+      id,
+      text: 'text-1',
+      begin: 0,
+      end: 6,
+      precedence,
+      metadata: { form },
+    });
+    const raw = buildRawDoc({
+      body: 'abcdef',
+      words: [{ id: 'w-1', begin: 0, end: 6 }],
+      morphemes: [m('m-a', 4, 'ab'), m('m-b', null, 'cd'), m('m-c', null, 'ef')],
+    });
+    const doc = docFor(raw, client);
+    expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'ef']);
+    expect(await doc.splitMorpheme('m-c', 'e', 'f')).toBe(true);
+    expect(formsOf(doc, 0)).toEqual(['ab', 'cd', 'e', 'f']);
+    expect(precedenceUpdates(client)).toEqual(
+      expect.arrayContaining([
+        ['m-b', 5],
+        ['m-c', 6],
+      ]),
+    );
+    expect(createdPrecedences(client)).toEqual([7]);
+  });
+
   it('applyAnalysisToWords numbers the first morpheme before the slots it makes', async () => {
     const client = makeFakeClient();
     const doc = docFor(
@@ -68,6 +123,23 @@ describe('a morpheme storing no precedence', () => {
     expect(precedenceUpdates(client)).toEqual([['m-2', 1]]);
     expect(createdPrecedences(client)).toEqual([2]);
   });
+
+  // REV-R4R R2: a lone first morpheme storing 3 would read after the slot
+  // made at 2.
+  it.each([2, 3])(
+    'applyAnalysisToWords numbers a first morpheme storing %i before the slots',
+    async (p) => {
+      const client = makeFakeClient();
+      const doc = docFor(
+        kat([{ id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: p, metadata: {} }]),
+        client,
+      );
+      expect(await doc.applyAnalysisToWords(['w-2'], kaT)).toBe(1);
+      expect(formsOf(doc, 1)).toEqual(['ka', 't']);
+      expect(precedenceUpdates(client)).toEqual([['m-2', 1]]);
+      expect(createdPrecedences(client)).toEqual([2]);
+    },
+  );
 
   it('a copy onto a first morpheme that stores one sends no renumber', async () => {
     const client = makeFakeClient();

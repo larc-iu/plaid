@@ -221,19 +221,25 @@ export const morphemeMutations = {
       ? [target]
       : sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
     const targetIdx = siblings.findIndex((m) => m.id === target.id);
-    const currentPrecedence = target.precedence ?? targetIdx + 1;
-    const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
     // A target storing no precedence reads after every one that stores one
-    // (R4-1-2), and so does any morpheme after it. The pieces made here are
-    // numbered, so the target and the ones after it are numbered in the same
-    // batch, or the first piece would read last.
+    // (R4-1-2), and so does every morpheme storing none. The pieces made here
+    // are numbered, so each morpheme storing none is numbered in the same
+    // batch, in the order it reads, from one past the highest stored, or the
+    // first piece would read last.
+    const firstNull = siblings.findIndex((m) => m.precedence == null);
+    const highestStored = Math.max(
+      0,
+      ...siblings.filter((m) => m.precedence != null).map((m) => m.precedence),
+    );
+    const currentPrecedence = target.precedence ?? highestStored + 1 + (targetIdx - firstNull);
+    const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
     const slots = new Map(
       target.precedence == null && !resolved.virtual
         ? siblings
-            .slice(targetIdx)
+            .slice(firstNull)
             .map((m, j) => [
               m.id,
-              j === 0 ? currentPrecedence : currentPrecedence + restForms.length + j,
+              highestStored + 1 + j + (firstNull + j > targetIdx ? restForms.length : 0),
             ])
         : [],
     );
@@ -242,7 +248,7 @@ export const morphemeMutations = {
     const goesBy = resolved.virtual ? null : this._morphemeGoesBy(target);
     const types = cliticTypesForChain({
       joiners: segments.slice(1).map((_, i) => joiners[i] ?? '-'),
-      startIdx: currentPrecedence - 1,
+      startIdx: targetIdx,
       count: siblings.length + restForms.length,
       types: [goesBy, ...restForms.map(() => null)],
     });

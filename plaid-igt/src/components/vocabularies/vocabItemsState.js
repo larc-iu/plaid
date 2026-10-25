@@ -31,8 +31,9 @@ export const cleanMeta = (obj) => {
 };
 
 // What a save of the entry form stores: the typed form without its affix or
-// clitic markers, and the type markers name ("-s" saved as a stem is the
-// suffix "s"), with the draft's other values as cleanMeta keeps them.
+// clitic markers, and the type the draft gives, else the one the markers name
+// ("-s" saved as a stem is the stem "s", "-s" with no type is the suffix "s"),
+// with the draft's other values as cleanMeta keeps them.
 export const entryToSave = (typedForm, fields) => {
   const metadata = cleanMeta(fields);
   const read = entryForm(metadata.morphType ?? null, String(typedForm ?? '').trim());
