@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -22,6 +22,7 @@ import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { PLAIN_ASSISTANT } from '@ui/components/assistant/plainCitations.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { useDetailParam } from '@ui/hooks/useDetailParam.js';
 
 // Every assistant conversation on the instance. A conversation is private to
 // the person who had it — it never appears in anyone else's sidebar — and an
@@ -58,18 +59,6 @@ const parseKey = (key) => {
 };
 
 const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:conv:${convId}`;
-
-// The open conversation lives in the URL beside `?tab=assistant`, so its title
-// is a real link: middle-click opens it in a new tab, and a pasted address
-// opens it too. Every other param stays.
-const PARAM = 'conversation';
-
-const withConversation = (params, key) => {
-  const next = new URLSearchParams(params);
-  if (key) next.set(PARAM, key);
-  else next.delete(PARAM);
-  return { search: next.toString() };
-};
 
 const AllConversations = ({ to }) => (
   <Button asChild variant="ghost" size="sm" className="self-start">
@@ -240,8 +229,10 @@ export const AdminAssistant = ({ client }) => {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchParams] = useSearchParams();
-  const selected = searchParams.get(PARAM);
+  // The open conversation lives in the URL beside `?tab=assistant`, so its
+  // title is a real link: middle-click opens it in a new tab, and a pasted
+  // address opens it too. Every other param stays.
+  const [selected, , withConversation] = useDetailParam('conversation');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -301,7 +292,7 @@ export const AdminAssistant = ({ client }) => {
   }, [entries, users, projects]);
 
   if (selected) {
-    const backTo = withConversation(searchParams, null);
+    const backTo = withConversation(null);
     // The detail needs the index's row (who, which project, the summary), so
     // an address opened cold waits for the index.
     if (loading) return <Loading className="p-0" />;
@@ -321,7 +312,7 @@ export const AdminAssistant = ({ client }) => {
       label: 'Conversation',
       sort: (r) => r.title.toLowerCase(),
       render: (r) => (
-        <Link to={withConversation(searchParams, r.key)} className="font-medium hover:underline">
+        <Link to={withConversation(r.key)} className="font-medium hover:underline">
           {r.title}
         </Link>
       ),

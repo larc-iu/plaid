@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { MoreVertical, UserPlus } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -14,6 +14,7 @@ import {
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { useUserAdmin } from '@ui/hooks/useUserAdmin.js';
+import { useDetailParam } from '@ui/hooks/useDetailParam.js';
 import { UserAdminDialogs } from '@ui/components/shared/UserAdminDialogs.jsx';
 import { UserDetail } from './UserDetail';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -25,20 +26,10 @@ import { textIncludes } from '@ui/domain/collation.js';
 // The open account lives in the URL beside the tab (`?user=<id>`), so a name
 // is a real link: middle-click opens the account in a new tab, and a pasted
 // address opens it too. Every other param stays.
-const PARAM = 'user';
-
-const withUser = (params, id) => {
-  const next = new URLSearchParams(params);
-  if (id) next.set(PARAM, id);
-  else next.delete(PARAM);
-  return { search: next.toString() };
-};
-
 export const AdminUsers = ({ client, currentUser }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchParams] = useSearchParams();
-  const selected = searchParams.get(PARAM);
+  const [selected, , withUser] = useDetailParam('user');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +58,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       <UserDetail
         client={client}
         userId={selected}
-        backTo={withUser(searchParams, null)}
+        backTo={withUser(null)}
         onEdit={(u) => userAdmin.startEdit(u)}
         dialogs={<UserAdminDialogs controller={userAdmin} />}
       />
@@ -80,7 +71,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       label: 'Name',
       sort: (u) => (u.displayName || u.id).toLowerCase(),
       render: (u) => (
-        <Link to={withUser(searchParams, u.id)} className="flex items-center gap-2 hover:underline">
+        <Link to={withUser(u.id)} className="flex items-center gap-2 hover:underline">
           <UserAvatar
             client={client}
             userId={u.id}
@@ -133,7 +124,7 @@ export const AdminUsers = ({ client, currentUser }) => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
-              <Link to={withUser(searchParams, u.id)}>Open</Link>
+              <Link to={withUser(u.id)}>Open</Link>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>Edit user</DropdownMenuItem>
             <DropdownMenuItem

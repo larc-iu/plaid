@@ -8,6 +8,7 @@ import {
   useReducer,
 } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
+import { useDetailParam } from '@ui/hooks/useDetailParam.js';
 import { createdId, isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
@@ -81,6 +82,9 @@ import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { EntryRestoreDialog } from './EntryRestoreDialog';
 
+// The params that ride with one open entry (useDetailParam's `companions`).
+const ITEM_COMPANIONS = ['parent'];
+
 // The Entries screen of a vocabulary. The data (the entries, their usage
 // counts) and the sends through `writes`, the vocabulary's entry WriteQueue,
 // which outlives this screen, are in useVocabEntries; the selection lives in
@@ -119,26 +123,21 @@ export const VocabularyItems = ({
   // the back button, and a link sent to someone all land on the same entry, and
   // each row in the list can be a real link. The draft follows whatever the
   // URL points at (NEW_ID = unsaved new item).
-  const [searchParams, setSearchParams] = useSearchParams();
-  const itemParam = searchParams.get('item');
+  // `?parent=` rides with `?item=new` only: "Add sense" opens the new-entry
+  // form under an entry, and the entry it creates is a sense of that one.
+  const [itemParam, setItemParam, itemHref] = useDetailParam('item', {
+    companions: ITEM_COMPANIONS,
+  });
+  const [searchParams] = useSearchParams();
   const selectedId = itemParam === 'new' ? NEW_ID : itemParam;
   const isNew = selectedId === NEW_ID;
   const newParent = itemParam === 'new' ? searchParams.get('parent') : null;
 
   // `?item=` for one entry, keeping whatever else is on the URL (`?tab=`).
-  // `?parent=` rides with `?item=new` only: "Add sense" opens the new-entry
-  // form under an entry, and the entry it creates is a sense of that one.
-  const itemQuery = (id, parent = null) => {
-    const next = new URLSearchParams(searchParams);
-    if (id) next.set('item', id === NEW_ID ? 'new' : id);
-    else next.delete('item');
-    if (id === NEW_ID && parent) next.set('parent', parent);
-    else next.delete('parent');
-    const q = next.toString();
-    return q ? `?${q}` : '';
-  };
-  const itemTo = (id) => ({ search: itemQuery(id) });
-  const newSenseTo = (parentId) => ({ search: itemQuery(NEW_ID, parentId) });
+  const itemSlug = (id) => (id === NEW_ID ? 'new' : id);
+  const parentOf = (id, parent) => (id === NEW_ID && parent ? { parent } : null);
+  const itemTo = (id) => itemHref(itemSlug(id));
+  const newSenseTo = (parentId) => itemHref('new', { parent: parentId });
   // The right pane's tab (`?pane=`): the entry itself, its concordance, or
   // its comments. The entry is the default and keeps the URL clean.
   const [pane, setPane, paneHref] = useTabParam(['entry', 'concordance', 'comments'], 'entry', {
@@ -149,7 +148,7 @@ export const VocabularyItems = ({
   const paneTo = (name) => paneHref(pathname, name);
   const confirm = useConfirm();
   const goItem = (id, options, parent = null) =>
-    setSearchParams(itemQuery(id, parent).replace(/^\?/, ''), options);
+    setItemParam(itemSlug(id), options, parentOf(id, parent));
 
   // The open draft holds typing of the user's (set below, once the draft is
   // read).

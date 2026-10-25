@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Pin, PinOff, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Input } from '../ui/input.jsx';
@@ -12,6 +12,7 @@ import { useUnsavedDraft, useUnsavedGuard } from '../../hooks/useUnsavedDraft.js
 import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 import { WriteQueue } from '../../domain/WriteQueue.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
+import { useDetailParam } from '../../hooks/useDetailParam.js';
 import { pageKey, LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
 import { humanizeError, isUnknownOutcome, statusOf } from '../../lib/errors.js';
@@ -100,7 +101,6 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
   // overwrite it" promises. Cleared whenever a different draft is opened.
   const [overwrite, setOverwrite] = useState(false);
   const [query, setQuery] = useState('');
-  const [params, setParams] = useSearchParams();
   const confirm = useConfirm();
   const begin = useLatestCall();
   const beginBody = useLatestCall();
@@ -115,31 +115,12 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
     return () => writes.letGo();
   }, [writes]);
 
-  const selectedId = params.get('guideline');
+  // The open guideline lives in `?guideline=`, beside every other param, and
+  // each one opened is a history entry, so Back steps through them.
+  // `guidelineTo` is a row's address.
+  const [selectedId, setSelectedId, guidelineTo] = useDetailParam('guideline');
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
-
-  const setSelectedId = useCallback(
-    (id) =>
-      setParams(
-        (prev) => {
-          // Copy so the rest of the query (`?tab=`) survives.
-          const out = new URLSearchParams(prev);
-          if (id) out.set('guideline', id);
-          else out.delete('guideline');
-          return out;
-        },
-        { replace: true },
-      ),
-    [setParams],
-  );
-
-  // A guideline's address: this page with every other param kept.
-  const guidelineTo = (id) => {
-    const out = new URLSearchParams(params);
-    out.set('guideline', id);
-    return { search: out.toString() };
-  };
 
   const load = useCallback(async () => {
     const isCurrent = begin();
@@ -257,7 +238,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
             id,
           }),
         );
-        setSelectedId(created.id);
+        setSelectedId(created.id, { replace: true });
       }
       setDraft(null);
       setOverwrite(false);
@@ -329,7 +310,7 @@ export function GuidelinesTab({ client, projectId, project, canWrite }) {
     });
     if (!ok) return;
     const id = opened.id;
-    setSelectedId(null);
+    setSelectedId(null, { replace: true });
     setEntries((prev) => prev.filter((g) => g.id !== id));
     writes.push(
       async () => {

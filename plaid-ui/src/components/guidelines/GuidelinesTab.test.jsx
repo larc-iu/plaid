@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { StrictMode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { renderComponent, all, texts, byText } from '../../test/renderComponent.jsx';
 import { GuidelinesTab } from './GuidelinesTab.jsx';
 import { hasUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
@@ -140,6 +140,28 @@ describe('the guidelines list', () => {
     );
     expect(client.guidelines.get).toHaveBeenCalledWith('g2');
     expect(container.textContent).toContain('The alpha body.');
+    await unmount();
+  });
+
+  // A8-4: each guideline opened is a history entry, so Back steps through
+  // them, as it does through entries, accounts and conversations.
+  it('opens one guideline after another as history entries, so Back steps through them', async () => {
+    let navigate = null;
+    const Nav = () => {
+      navigate = useNavigate();
+      return null;
+    };
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter initialEntries={['/p?tab=guidelines']}>
+        <Nav />
+        <GuidelinesTab client={fakeClient()} projectId="p1" canWrite={false} />
+      </MemoryRouter>,
+    );
+    await step(() => byText(container, 'a', 'Alpha').click());
+    await step(() => byText(container, 'a', 'Zeta').click());
+    expect(container.querySelector('h2').textContent).toBe('Zeta');
+    await step(() => navigate(-1));
+    expect(container.querySelector('h2').textContent).toBe('Alpha');
     await unmount();
   });
 
