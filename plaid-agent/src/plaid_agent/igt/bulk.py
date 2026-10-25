@@ -748,28 +748,6 @@ def refuse_rule_on_merged(ws: Workspace, merge: Dict[str, Any]) -> None:
                 raise ToolError(clash_message(o, merge), kind='conflict')
 
 
-def planned_changes(ws: Workspace) -> List[Dict[str, Any]]:
-    """The plan with each rule in its place as the changes it writes now
-    (what it found when staged, less what the plan's own changes and later
-    rules take, as :func:`settle_rules` counts it), for a reader that wants
-    every change one by one."""
-    sync_rules(ws)
-    keep = rule_keep(ws, ws.ops)
-    later: set = set()
-    per: Dict[int, List[Dict[str, Any]]] = {}
-    for i in reversed(range(len(ws.ops))):
-        op = ws.ops[i]
-        if not rules.is_rule(op):
-            continue
-        writes = [o for o in ws.rule_found.get(rules.target(op), []) if keep(o)]
-        per[i] = [o for o in writes if op_target(o) not in later and not writes_stored(ws, o)]
-        later |= {op_target(o) for o in writes} - {None}
-    out: List[Dict[str, Any]] = []
-    for i, op in enumerate(ws.ops):
-        out.extend(per[i] if i in per else [op])
-    return out
-
-
 def _basis(earlier: List[tuple], kept: set, removed: frozenset = frozenset()) -> str:
     """What a rule is found over, as :attr:`Workspace.rule_basis` holds it:
     the rules before it, in plan order, the values the plan keeps and the

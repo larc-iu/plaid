@@ -237,6 +237,29 @@ def odd_client():
     return c
 
 
+def applied(w):
+    """What approval writes for the plan ``w`` holds: ``execute_plan`` over a
+    copy of its fake client, as the user ``w`` acts for, so ``w`` can go on
+    staging over the data as it was. Returns the copy, holding only the
+    approval's calls."""
+    import copy
+    from plaid_agent.igt.plan import execute_plan
+    c = copy.deepcopy(w.client)
+    c.calls.clear()
+    execute_plan(c, w.plan_payload()['ops'], source='s', label='l', project=w.project, requester=w.requester_id)
+    return c
+
+
+def forms_written(c):
+    """Each morpheme form a run wrote, by token id."""
+    return {tid: o['value'] for tid, ops in c.patches('tokens') for o in ops if o.get('path') == ['form']}
+
+
+def spans_made(c):
+    """The tokens each span a run created is on, in order."""
+    return [list(p['args'][1]) for p in c.payloads('spans.create')]
+
+
 def fake_ws(client, project_id='p1'):
     """A workspace over the fake client. Its corpus-wide tools ask the
     session's core about a copy of the fake's project (``FakeClient.query``)."""

@@ -71,17 +71,18 @@ def test_a_rename_that_takes_a_type_writes_it_with_the_form():
 def test_a_respelling_carried_into_the_headwords_stores_them_as_bulk_edit_does():
     # REV-R4-IGT D4: Bulk Edit's lexicon rows go through entryForm with the
     # entry's own type (bulkPlan.js collectLexiconRows), and so does respell_all.
-    from plaid_agent.igt.bulk import planned_changes
+    from fixtures import applied
     ws = _ws()
     out = call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'di', 'replacement': 'du',
                                         'morpheme_forms': False})
     assert not out.startswith('Error'), out
-    [op] = [o for o in planned_changes(ws) if o['kind'] == 'rename_entry']
+    c = applied(ws)
     # vi-erg is the suffix "-di": "-du" is stored "du", the type unchanged.
-    assert op['item_id'] == 'vi-erg' and op['form'] == 'du' and 'morph_type' not in op, op
+    assert c.updates('vocab_items') == [('vi-erg', 'du')] and c.patches('vocab_items') == []
     ws = _ws()
     call_tool(ws, 'respell_all', {'lexicon': True, 'pattern': 'Ali', 'replacement': 'ka-', 'whole': True,
                                   'morpheme_forms': False})
-    [op] = [o for o in planned_changes(ws) if o['kind'] == 'rename_entry']
+    c = applied(ws)
     # An untyped entry takes the type its new markers name.
-    assert op['item_id'] == 'vi-ali' and op['form'] == 'ka' and op['morph_type'] == 'prefix', op
+    assert c.updates('vocab_items') == [('vi-ali', 'ka')]
+    assert c.patches('vocab_items') == [('vi-ali', [{'op': 'set', 'path': ['morphType'], 'value': 'prefix'}])]

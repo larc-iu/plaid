@@ -3,9 +3,8 @@
 so for a writer who does not maintain the lexicon it plans none of them, and
 says why, rather than stage a change the server refuses at approval."""
 
-from fixtures import fake_ws, FakeClient, project_raw, VOCAB
+from fixtures import applied, fake_ws, FakeClient, project_raw, VOCAB
 
-from plaid_agent.igt.bulk import planned_changes
 from plaid_agent.igt.toolkit import call_tool
 
 
@@ -45,12 +44,12 @@ def test_a_maintainer_and_an_administrator_plan_them():
 def test_a_respelling_leaves_the_headwords_of_a_lexicon_the_writer_does_not_maintain():
     w = _ws(['owner@x.org'])
     out = call_tool(w, 'respell_all', {'lexicon': True, 'pattern': 'g', 'replacement': 'gh', 'morpheme_forms': False})
-    assert all(op['kind'] != 'rename_entry' for op in planned_changes(w))
+    assert applied(w).updates('vocab_items') == []
     assert 'Headwords left as they are, since only a maintainer of their lexicon can rename them' in out
     assert '"Lexicon"' in out
     mine = _ws(['writer@x.org'])
     out = call_tool(mine, 'respell_all', {'lexicon': True, 'pattern': 'g', 'replacement': 'gh', 'morpheme_forms': False})
-    assert any(op['kind'] == 'rename_entry' for op in planned_changes(mine))
+    assert applied(mine).updates('vocab_items')
     assert 'Headwords left as they are' not in out
 
 

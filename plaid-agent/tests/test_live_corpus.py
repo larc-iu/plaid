@@ -189,8 +189,11 @@ def test_bulk_tools_plan(proj):
     same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
     # akuna has no morpheme token: the rule reaches its derived morpheme.
     b = same_ops(proj, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
-    from plaid_agent.igt.bulk import planned_changes
-    assert [op['token_id'] for op in planned_changes(b)] == [f'virtual:{proj.ids["w-3"]}']
+    # What approval resolves the rule to (writing it would change the
+    # module's project under the tests after this one).
+    from plaid_agent.igt.plan import resolve_scopes
+    ops, _notes = resolve_scopes(b.client, b.project, b.plan_payload()['ops'])
+    assert [op['token_id'] for op in ops] == [f'virtual:{proj.ids["w-3"]}']
     same_ops(proj, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     same_ops(proj, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}], 'skip_analyzed': True})
     same_ops(proj, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]})

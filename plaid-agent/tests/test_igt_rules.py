@@ -15,7 +15,6 @@ import test_lost_answers as la
 from plaid_agent.core import plan as core_plan
 from plaid_agent.core import rules
 from plaid_agent.core.conversation import ConversationStore
-from plaid_agent.igt.bulk import planned_changes
 from plaid_agent.igt.toolkit import call_tool
 
 # span id -> (token id, document); the store holds each one's value now.
@@ -87,7 +86,6 @@ def test_rules_compose_in_plan_order_when_staged_and_when_approved():
     _replace(w, 'X', 'Y', whole=True)
     out = _replace(w, 'Y', 'Z', whole=True)
     assert 'Planned 2 values in 1 document, as one row on the card' in out, out
-    assert {o['span_id']: o['value'] for o in planned_changes(w) if o['value'] == 'Z'} == {'sp-g1': 'Z', 'sp-x2': 'Z'}
     _plan, helper = _approved(client, w)
     assert not helper.errors, helper.errors
     assert dict(client.updates('spans')) == {'sp-g1': 'Z', 'sp-x2': 'Z'}

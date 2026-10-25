@@ -1044,8 +1044,9 @@ class Workspace(BaseWorkspace):
             for k in (SEQ, ASKED, ANALYSIS_ASKED, NAMED_EDITS):
                 op.pop(k, None)
         spec = compact_spec(self)
-        # An op the scan path staged names no document; the group it joins
-        # must, so the card can place it and the label can head it.
+        # An op a tool staged by reference (set_field, set_orthography)
+        # names no document; the group it joins must, so the card can place
+        # it and the label can head it.
         from .changes import _doc_of
         for op in ops:
             if op.get('kind') in spec and not op.get('doc'):

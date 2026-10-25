@@ -607,8 +607,8 @@ def test_a_respelling_does_not_rename_an_entry_the_plan_removes():
     w = dict_ws()
     call_tool(w, 'delete_entry', {'entry_form': 'phika'})
     call_tool(w, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'e'})
-    from plaid_agent.igt.bulk import planned_changes
-    assert [o['item_id'] for o in planned_changes(w) if o['kind'] == 'rename_entry'] == \
+    from fixtures import applied
+    assert [item_id for item_id, _form in applied(w).updates('vocab_items')] == \
         ['d-kwatha', 'd-boil', 'd-simmer', 'd-ferment', 'd-nyumba']
 
 
