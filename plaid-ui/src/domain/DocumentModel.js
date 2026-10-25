@@ -274,6 +274,10 @@ export class DocumentModel {
   get project() {
     return this._project;
   }
+  /** The signed-in user this document was opened for, or null. */
+  get user() {
+    return this._user;
+  }
   get asOf() {
     return this._asOf;
   }
@@ -706,6 +710,14 @@ export class DocumentModel {
     const value = compute();
     this._derivedCache.set(key, { version: this._dataVersion, value });
     return value;
+  }
+
+  // Drop the values `_derived` holds under `keys` (every one when none are
+  // named), for a subclass whose derivations read something it keeps beside
+  // `_raw` that just changed without a new data version.
+  _invalidate(...keys) {
+    if (keys.length === 0) this._derivedCache.clear();
+    else for (const key of keys) this._derivedCache.delete(key);
   }
 
   // ----- mutation infrastructure -----
@@ -1326,12 +1338,26 @@ export class DocumentModel {
   // From inside a send. The edits queued behind it are not on the server yet,
   // so they are shown again on top of what the refetch read, and a refetch
   // once the queue has drained puts the screen in step with the server.
+  // Answers the document as read: the screen may show more on top of it.
   async _reloadInSend() {
-    if (!this._client || !this.id) return;
+    if (!this._client || !this.id) return null;
     const updated = await this._fetch();
     await this._adoptReload(updated);
     this._showUnsent(updated);
-    if (this._writes.queued > 1) this._writes.reloadWhenDrained = true;
+    if (this._queuedBehind()) this._reloadOnceDrained();
+    return updated;
+  }
+
+  // From inside a send: whether edits are queued behind the one being sent.
+  _queuedBehind() {
+    return this._writes.queued > 1;
+  }
+
+  // From inside a send: read the document once the queue has drained, as
+  // `_reloadDrained` does, when what the send heard back cannot be shown as
+  // it stands (a replayed answer, a reshape the patch cannot follow).
+  _reloadOnceDrained() {
+    this._writes.reloadWhenDrained = true;
   }
 
   // After a refused send. The refetch takes the refused edit off the screen.

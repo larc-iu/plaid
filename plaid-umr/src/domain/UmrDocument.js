@@ -218,7 +218,7 @@ export class UmrDocument extends DocumentModel {
   setLexicon(lexicon) {
     if (this._lexicon === lexicon) return;
     this._lexicon = lexicon;
-    this._derivedCache.clear();
+    this._invalidate();
     this._emit();
   }
 

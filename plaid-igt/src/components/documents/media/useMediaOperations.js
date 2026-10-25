@@ -909,7 +909,7 @@ export const useMediaOperations = () => {
       // other step rather than left as dead air.
       transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
       lock.setStatus('Loading the transcript…');
-      await reloadAfterRun(() => doc._reload());
+      await reloadAfterRun(() => doc.reload());
     } catch (error) {
       console.error('Transcription failed:', error);
       // `pending` means the request is still out there. The client stopped

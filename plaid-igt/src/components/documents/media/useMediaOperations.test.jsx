@@ -805,7 +805,7 @@ describe('useMediaOperations: stopping a transcription before the service is ask
       expect(h.locks.state.held).toBeNull();
       expect(operations).toEqual([]);
       expect(client.messages.requestService).not.toHaveBeenCalled();
-      expect(doc._reload).not.toHaveBeenCalled();
+      expect(doc.reload).not.toHaveBeenCalled();
       expect(notifyInfo).toHaveBeenCalledWith(
         'Stopped. The transcript is unchanged.',
         'Transcribe',

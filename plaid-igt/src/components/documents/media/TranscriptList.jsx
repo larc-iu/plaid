@@ -1061,7 +1061,7 @@ export function TranscriptList({
         return doc.id;
       },
       get me() {
-        return doc._user?.id;
+        return doc.user?.id;
       },
       warn: (message) => notifyWarning(message),
       error: (message, title) => notifyError(message, title),

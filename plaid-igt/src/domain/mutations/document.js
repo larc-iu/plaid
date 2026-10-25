@@ -335,13 +335,10 @@ export const documentMutations = {
   },
 
   // The document read, from inside a send, and put on screen with the edits
-  // queued behind shown on top (as `_reloadInSend` does). Answers the body
-  // stored and its digest, as read: the screen may show more on top of it.
+  // queued behind shown on top (`_reloadInSend`). Answers the body stored and
+  // its digest, as read: the screen may show more on top of it.
   async _readStoredText() {
-    const updated = await this._fetch();
-    await this._adoptReload(updated);
-    this._showUnsent(updated);
-    if (this._writes.queued > 1) this._writes.reloadWhenDrained = true;
+    const updated = await this._reloadInSend();
     const text = getIgtLayerInfo(updated).primaryTextLayer?.text;
     return { body: text?.body ?? '', digest: text?.digest ?? null };
   },

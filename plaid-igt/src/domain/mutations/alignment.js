@@ -849,7 +849,7 @@ export const alignmentMutations = {
       // A replayed answer (this send run again, or the client's own resend)
       // carries the body as it was: what is stored is read once the queue has
       // drained.
-      if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
+      if (state.again || wasReplayed(results)) this._reloadOnceDrained();
     });
   },
 
@@ -1320,7 +1320,7 @@ export const alignmentMutations = {
         // carries the body as it was when the write first landed: what is
         // stored now is read once the queue has drained. Otherwise the words
         // the server made are shown from the answer.
-        if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
+        if (state.again || wasReplayed(results)) this._reloadOnceDrained();
         else if (at) {
           this._applyRawPatch((next, infoNext) =>
             pushMadeWords(infoNext, textId, results?.[0]?.body),
@@ -1455,7 +1455,7 @@ export const alignmentMutations = {
       // carries the body as it was when the write first landed: what is
       // stored now is read once the queue has drained.
       if (state.again || wasReplayed(results)) {
-        this._writes.reloadWhenDrained = true;
+        this._reloadOnceDrained();
       } else {
         this._showRowAnswer(textId, segmentId, sent, answer);
         await this._followSoleForms(forms);
@@ -1557,8 +1557,8 @@ export const alignmentMutations = {
       settledId(segmentId),
     ]);
     const guessed = [...sent.changed].some((id) => !named.has(settledId(id)));
-    if (!reshape || guessed || this._writes.queued > 1 || text?.body !== answer.body) {
-      this._writes.reloadWhenDrained = true;
+    if (!reshape || guessed || this._queuedBehind() || text?.body !== answer.body) {
+      this._reloadOnceDrained();
       return;
     }
     this._applyRawPatch((next, infoNext, vocabs) => {
@@ -1700,6 +1700,6 @@ export const alignmentMutations = {
   // `_reloadInSend` does.
   _showRead(updated, producer = null) {
     this._showUnsent(producer ? this._patched(updated, producer) : updated);
-    if (this._writes.queued > 1) this._writes.reloadWhenDrained = true;
+    if (this._queuedBehind()) this._reloadOnceDrained();
   },
 };
