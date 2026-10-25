@@ -155,9 +155,10 @@ class Approving:
     @staticmethod
     def _reviewed(client, project_id: str, user_id: str) -> bool:
         """Whether the approver's work is reviewed in the project, read from
-        the server (:meth:`Requester.reviewed`)."""
+        the server (:meth:`Requester.reviewed`). A failed read of the project
+        or of the approver's record raises, and the approval is refused."""
         project = client.projects.get(project_id)
-        return Requester(client, user_id).reviewed(project)
+        return Requester(client, user_id, strict=True).reviewed(project)
 
     def _apply(self, client, project, store, conv_id, conv, meta, approve: dict, request_id, response_helper) -> None:
         plan_id = approve.get('plan_id')

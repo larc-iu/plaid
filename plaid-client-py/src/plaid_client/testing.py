@@ -970,6 +970,9 @@ class FakeClient:
     ``as_of`` is accepted and answered with the fixture as it is: the fake
     has no history. ``vocab_items.get`` reads one entry out of them, and an
     entry no vocabulary holds is the server's 404.
+
+    ``users.get`` answers any user's record, an administrator when ``admins``
+    names them.
     """
 
     #: resources a caller may write through, each recording under its own name.
@@ -979,7 +982,7 @@ class FakeClient:
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
                  comments=None, restore_summary=None, projects=None, services=None,
                  vocabularies=None, vocab_audit=None, vocab_restore_summary=None,
-                 limits=None):
+                 limits=None, admins=()):
         self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
@@ -1041,6 +1044,9 @@ class FakeClient:
         self.guidelines = FakeClient._Guidelines(self)
         self.user_data = FakeClient._UserData(self.base_url)
         self.messages = FakeClient._Messages(self)
+        #: the users ``users.get`` answers as administrators
+        self.admins = {normalize_user_id(u) for u in admins}
+        self.users = FakeClient._Users(self)
         # A subclass that answers vocabulary reads its own way, as a property,
         # keeps it.
         if not isinstance(inspect.getattr_static(self, 'vocab_layers', None), property):
@@ -1666,6 +1672,17 @@ class FakeClient:
             c = self._client
             c._project(project_id, f'/api/v1/projects/{project_id}/services')
             return [dict(s) for s in c.services.get(project_id, [])]
+
+    class _Users:
+        """A user's record, as the server answers a token reading its own:
+        an administrator when ``admins`` names them."""
+
+        def __init__(self, client):
+            self._client = client
+
+        def get(self, id):
+            uid = normalize_user_id(id)
+            return {'id': uid, 'username': uid, 'is_admin': uid in self._client.admins}
 
     class _UserData:
         """The user's private key/value store, in memory and not logged. A

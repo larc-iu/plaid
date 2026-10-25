@@ -26,12 +26,16 @@ class Requester:
     """The user a turn or an approval acts for. Whether they are an
     administrator is asked of the server once (a token may read its own
     user's record), and a read that fails answers no, so they then count by
-    their listed role alone. ``user_id`` None (a script, a test) is nobody:
-    not an administrator, not reviewed."""
+    their listed role alone: a tool check then refuses, and the server
+    decides anyway. ``strict`` raises the failure instead, for an approval,
+    where the answer decides the stamp and a wrong no would stamp a reviewed
+    administrator's work verified. ``user_id`` None (a script, a test) is
+    nobody: not an administrator, not reviewed."""
 
-    def __init__(self, client, user_id: Optional[str]):
+    def __init__(self, client, user_id: Optional[str], strict: bool = False):
         self.client = client
         self.id = user_id
+        self.strict = strict
         self._admin: Optional[bool] = None
 
     def is_admin(self) -> bool:
@@ -41,6 +45,8 @@ class Requester:
             try:
                 self._admin = bool((self.client.users.get(self.id) or {}).get('is_admin'))
             except Exception:  # noqa: BLE001 - unreadable: counted by role
+                if self.strict:
+                    raise
                 self._admin = False
         return self._admin
 
