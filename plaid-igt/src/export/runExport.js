@@ -58,7 +58,7 @@ import {
 } from './nativeJson.js';
 import { sanitizeFilename } from '@ui/lib/download.js';
 import { dedupeFilenames, assembleZip } from './files.js';
-import { formatExt } from './presets.js';
+import { exportFormat, formatExt } from './presets.js';
 import { countOf } from '@ui/lib/plural.js';
 import { humanizeError, isUnreachable } from '@ui/lib/errors.js';
 
@@ -104,24 +104,39 @@ const serializeXmlCounted = (serialize, onDropped) => {
   return out;
 };
 
-function serializeDoc(igtDoc, preset, layers, context = {}) {
+// Each format's writer for one document, `ctx` holding what the run knows of
+// it. A format with no entry writes plain text.
+const countedXml = (write) => (igtDoc, ctx) =>
+  serializeXmlCounted(() => write(igtDoc, ctx), ctx.onControlDropped);
+const DOCUMENT_WRITERS = {
+  // A CLDF dataset is assembled from every document at once, so the
+  // per-document loop only collects them.
+  cldf: () => null,
+  latex: (igtDoc, { preset, layers, latexEntries }) =>
+    formatChapter(igtDoc, latexSelection(preset.options || {}, layers), {
+      entries: latexEntries,
+    }),
+  'plaid-igt-json': (igtDoc, { mediaFile, comments, onWarning }) =>
+    toJson(serializeDocumentNative(igtDoc, { mediaFile, comments, onWarning })),
   // One <interlinear-text> block, not a whole file: the FLEx branch joins the
   // scope's blocks into a single .flextext at assembly time.
-  if (preset.format === 'flextext') {
+  flextext: countedXml((igtDoc, { preset, layers }) =>
     // What each field records about its own language comes from the PROJECT at
     // run time, not from the preset: it is a fact about the data, and a preset
     // saved before a field was labelled should still export it correctly.
-    return interlinearTextXml(igtDoc, {
+    interlinearTextXml(igtDoc, {
       ...(preset.options || {}),
       fieldLangs: layers.fieldLangs,
-    });
-  }
-  if (preset.format === 'elan') {
-    return buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context);
-  }
+    }),
+  ),
+  elan: countedXml((igtDoc, { preset, layers, context }) =>
+    buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context),
+  ),
   // Drop tier names that no longer exist in the project configuration.
-  return serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers));
-}
+  plaintext: countedXml((igtDoc, { preset, layers }) =>
+    serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers)),
+  ),
+};
 
 /**
  * The FLEx archive's own instructions. Its two files have to be imported in
@@ -298,18 +313,14 @@ export async function runExport({
     if (shouldStop()) throw new ExportCancelled();
   };
   const reading = (read) => readAgainOnBlip(read, retryDelaysMs, checkStop);
+  const format = exportFormat(preset.format);
   const ext = formatExt(preset.format);
   const layers = discoverExportLayers(project);
   const warnings = [];
-  const isNative = preset.format === 'plaid-igt-json';
-  const isCldf = preset.format === 'cldf';
-  const isElan = preset.format === 'elan';
-  const isFlex = preset.format === 'flextext';
-  const isLatex = preset.format === 'latex';
   // The FLEx target is both files: the texts as .flextext and the lexicon as
   // LIFT, which is the only one of the two that can carry a lexicon at all.
-  const wantLexicon = isFlex && preset.options?.lexicon !== false;
-  const includeMedia = (isNative || isCldf || isElan) && preset.options?.includeMedia !== false;
+  const wantLexicon = format.id === 'flextext' && preset.options?.lexicon !== false;
+  const includeMedia = format.media && preset.options?.includeMedia !== false;
   const exportedAt = new Date().toISOString();
 
   // Document id list for the scope.
@@ -342,7 +353,7 @@ export async function runExport({
   // Document scope downloads the bare file; project/multi-doc scopes always
   // produce a zip — and the native archive is a zip at every scope. A CLDF
   // dataset is a set of files by definition, so it is always a zip too.
-  let wantZip = isNative || isCldf || isLatex || scope.type !== 'document';
+  let wantZip = format.alwaysZip || scope.type !== 'document';
 
   // Vocabularies are fetched for the TSVs (opt-in) or the native archive
   // (always — links reference items by id), and snapshotted BEFORE the
@@ -350,14 +361,13 @@ export async function runExport({
   // it's given (folding in raw-embedded links), so sharing this one with the
   // documents would grow it synthetic empty entries for failed vocabs.
   // The FLEx target says the lexicon in LIFT, so the TSV dump does not apply.
-  const wantVocabTsvs =
-    !isNative && !isCldf && !isFlex && !isLatex && !!preset.includeVocabularies && wantZip;
+  const wantVocabTsvs = format.vocabularyTsvs && !!preset.includeVocabularies && wantZip;
   // CLDF turns the vocabularies into EntryTable/SenseTable, so it needs them
   // loaded whenever its dictionary option is on.
-  const wantCldfDictionary = isCldf && preset.options?.dictionary !== false;
+  const wantCldfDictionary = format.id === 'cldf' && preset.options?.dictionary !== false;
   // A LaTeX book reads the vocabularies for its vocabulary chapter, which
   // the words and morphemes of its texts link to.
-  const latexVocab = isLatex ? latexVocabulary(preset.options, project.vocabs) : null;
+  const latexVocab = format.id === 'latex' ? latexVocabulary(preset.options, project.vocabs) : null;
   const wantVocabChapter = !!latexVocab?.include && latexVocab.vocabularies.some((v) => v.on);
   // Every format reads them: a linked morpheme goes by its entry's morph type
   // (R2), which sets its joiner, its small caps and its FLEx type, and a FLEx
@@ -408,7 +418,7 @@ export async function runExport({
   // to read and today's manual in a time-travelled archive would be a claim
   // about the past that nobody made.
   let guidelines = [];
-  if (isNative && !asOf) {
+  if (format.archive && !asOf) {
     try {
       guidelines = await reading(() => client.guidelines.list(project.id, { includeBodies: true }));
     } catch (err) {
@@ -457,10 +467,10 @@ export async function runExport({
   // are unaudited (plaid.sql.comment), so there is no state at `asOf` to
   // read. Today's comments in a time-travelled archive would carry today's
   // dates and could anchor to entities that did not yet exist.
-  const wantComments = isNative && !asOf;
+  const wantComments = format.archive && !asOf;
   // The native archive carries every layer of the project, other apps' too.
   // Every other format writes this app's layers alone.
-  const readLayers = isNative ? null : readLayerIds(project);
+  const readLayers = format.archive ? null : readLayerIds(project);
   // A document and its comments are read ahead of the serializer, a few
   // documents at a time. A read's failure is kept for its turn in the loop,
   // where it fails the export.
@@ -533,7 +543,9 @@ export async function runExport({
         // An .eaf names its recording, and an ELAN import keeps that name in a
         // Media file field. Written back under it, with the extension of what
         // is stored, since a recording may have been converted on the way in.
-        const kept = isElan ? String(igtDoc.document?.metadata?.[MEDIA_FILE_FIELD] ?? '') : '';
+        const kept = format.keepsMediaName
+          ? String(igtDoc.document?.metadata?.[MEDIA_FILE_FIELD] ?? '')
+          : '';
         const stem = kept.replace(/\.[^./]*$/, '') || name;
         let candidate = `${sanitizeFilename(stem)}${mediaExt}`;
         [candidate] = dedupeFilenames([...usedMediaNames, candidate]).slice(-1);
@@ -557,41 +569,31 @@ export async function runExport({
       docComments = await shapeComments(client, read.comments.list, authorNames);
     }
 
+    const onWarning = (msg) => warnings.push(`"${name}": ${msg}`);
     try {
       docFiles.push({
         name: `${sanitizeFilename(name)}.${ext}`,
-        // A CLDF dataset is assembled from every document at once, so the
-        // per-document loop only collects them here.
-        data: isCldf
-          ? null
-          : isLatex
-            ? formatChapter(igtDoc, latexSelection(preset.options || {}, layers), {
-                entries: latexEntries,
-              })
-            : isNative
-              ? toJson(
-                  serializeDocumentNative(igtDoc, {
-                    mediaFile,
-                    comments: docComments,
-                    onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
-                  }),
-                )
-              : serializeXmlCounted(
-                  () =>
-                    serializeDoc(igtDoc, preset, layers, {
-                      exportedAt,
-                      onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
-                      // A bundled .eaf lands in documents/ and its media in
-                      // media/, so the href that resolves climbs one level.
-                      mediaHref: mediaFile ? `../${mediaFile}` : null,
-                      mediaType,
-                    }),
-                  () => warnings.push(`"${name}": invisible control characters left out`),
-                ),
+        data: (DOCUMENT_WRITERS[format.id] ?? DOCUMENT_WRITERS.plaintext)(igtDoc, {
+          preset,
+          layers,
+          latexEntries,
+          mediaFile,
+          comments: docComments,
+          onWarning,
+          context: {
+            exportedAt,
+            onWarning,
+            // A bundled .eaf lands in documents/ and its media in
+            // media/, so the href that resolves climbs one level.
+            mediaHref: mediaFile ? `../${mediaFile}` : null,
+            mediaType,
+          },
+          onControlDropped: () => warnings.push(`"${name}": invisible control characters left out`),
+        }),
         // Only CLDF reads the documents again, all at once. Every other
         // format is done with each one here, and 400 of them held to the
         // end were 400 MB.
-        igtDoc: isCldf ? igtDoc : null,
+        igtDoc: format.dataset ? igtDoc : null,
         id: igtDoc.document?.id ?? docIds[i],
         docName: name,
         mediaFile,
@@ -630,7 +632,7 @@ export async function runExport({
   // The native archive of a project with no documents still holds the
   // project: its vocabularies, settings and guidelines. Every other format
   // is its documents.
-  if (!docFiles.length && !isNative) throw new Error('Nothing to export');
+  if (!docFiles.length && !format.archive) throw new Error('Nothing to export');
 
   // What the export is named after: the document when the run covers exactly
   // one, the project otherwise. Which radio the scope came from does not
@@ -644,7 +646,7 @@ export async function runExport({
 
   // FLEx: the whole scope becomes ONE .flextext (one import action in FLEx,
   // not one per document), and the lexicon rides along as LIFT beside it.
-  if (isFlex) {
+  if (format.id === 'flextext') {
     const flextext = flextextEnvelope(docFiles.map((f) => f.data));
     const lexicon = wantLexicon
       ? serializeXmlCounted(
@@ -692,7 +694,7 @@ export async function runExport({
 
   // Single document → the bare file.
   if (!wantZip) {
-    const mime = isElan ? 'text/xml;charset=utf-8' : 'text/plain;charset=utf-8';
+    const mime = format.bareType;
     return {
       filename: docFiles[0].name,
       blob: new Blob([docFiles[0].data], { type: mime }),
@@ -701,7 +703,7 @@ export async function runExport({
   }
 
   // LaTeX: one book, a chapter per document in the order of the run.
-  if (isLatex) {
+  if (format.id === 'latex') {
     checkStop();
     return {
       filename: `${stem}-latex.zip`,
@@ -729,7 +731,7 @@ export async function runExport({
   }
 
   // CLDF: one dataset built from every document, not a file per document.
-  if (isCldf) {
+  if (format.id === 'cldf') {
     const { files, warnings: cldfWarnings } = buildCldfDataset({
       project,
       languages: readLanguages(project?.config),
@@ -757,9 +759,9 @@ export async function runExport({
     data: docFiles[i].data,
   }));
 
-  if (isElan) entries.push(...mediaEntries);
+  if (format.id === 'elan') entries.push(...mediaEntries);
 
-  if (isNative) {
+  if (format.archive) {
     const vocabNames = dedupeFilenames(
       vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.json`),
     );

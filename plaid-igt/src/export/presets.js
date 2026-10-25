@@ -12,19 +12,154 @@ import { defaultElanOptions } from './elan.js';
 import { defaultLatexOptions } from './latexBook.js';
 import { isLangTag, parseFieldName } from '../domain/fieldNames.js';
 
+// Each export format and what the export does with it. Policy lives here, so
+// a new format is one entry and runExport, newPreset, the preset editor and
+// the runner read the same facts:
+//
+// - alwaysZip: a zip at every scope, even one document.
+// - media: the preset's includeMedia option applies, so the recordings go in.
+// - vocabularyTsvs: runExport adds the vocabularies as TSV files to a zip when
+//   the preset's includeVocabularies is set.
+// - vocabularyToggle: the preset editor offers that switch. It is off for
+//   ELAN, though runExport would honour the flag there (a preset newPreset
+//   makes has it off).
+// - archive: the lossless archive, which reads every layer, the guidelines
+//   and the comments, and exports a project with no documents.
+// - keepsMediaName: a recording goes out under the name the document's Media
+//   file field keeps.
+// - dataset: the documents are assembled once, at the end, from all of them.
+// - bareType: the content type of a lone document's bare file.
+// - zipNote: what the runner says about the zip.
+// - options(layers, languages): a new preset's options.
+const plainTextOptions = (layers) => ({
+  orthographies: [...layers.orthographies],
+  wordFields: [...layers.wordFields],
+  morphFields: [...layers.morphFields],
+  sentFields: [...layers.sentFields],
+  wordLine: 'segmented',
+  numberSentences: true,
+  includeHeader: true,
+});
+
+const FORMAT_DEFAULTS = {
+  alwaysZip: false,
+  media: false,
+  vocabularyTsvs: false,
+  vocabularyToggle: false,
+  archive: false,
+  keepsMediaName: false,
+  dataset: false,
+  bareType: 'text/plain;charset=utf-8',
+  zipNote: null,
+};
+
 export const EXPORT_FORMATS = [
-  { id: 'plaintext', label: 'Plain text', ext: 'txt', defaultName: 'Plain text' },
-  { id: 'flextext', label: 'FLEx (.flextext + .lift)', ext: 'flextext', defaultName: 'FLEx' },
-  { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv', defaultName: 'CLDF' },
-  { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf', defaultName: 'ELAN' },
-  { id: 'latex', label: 'LaTeX book (.zip)', ext: 'tex', defaultName: 'LaTeX' },
   {
+    ...FORMAT_DEFAULTS,
+    id: 'plaintext',
+    label: 'Plain text',
+    ext: 'txt',
+    defaultName: 'Plain text',
+    vocabularyTsvs: true,
+    vocabularyToggle: true,
+    options: plainTextOptions,
+  },
+  {
+    ...FORMAT_DEFAULTS,
+    id: 'flextext',
+    label: 'FLEx (.flextext + .lift)',
+    ext: 'flextext',
+    defaultName: 'FLEx',
+    zipNote:
+      'This format produces one .flextext for the whole run. With the lexicon included (set in the ' +
+      'preset) it becomes a .zip pairing that file with the lexicon as LIFT.',
+    options: (layers, languages) => ({
+      langs: {
+        // The writing-system tag is the fact itself; the ISO code and the
+        // name are guesses at it, in that order.
+        baseline:
+          languages?.object?.tag ||
+          languages?.object?.iso639P3 ||
+          tagify(languages?.object?.name) ||
+          'und',
+        analysis:
+          languages?.meta?.tag ||
+          languages?.meta?.iso639P3 ||
+          tagify(languages?.meta?.name) ||
+          'en',
+        orthographies: Object.fromEntries(layers.orthographies.map((n) => [n, tagify(n) || 'und'])),
+        fieldOverrides: {},
+      },
+      fieldMap: defaultFieldMap(layers),
+      metadataMap: proposeMetadataMap(layers.documentMetadata),
+      citationForms: true,
+      lexicon: true,
+    }),
+  },
+  {
+    ...FORMAT_DEFAULTS,
+    id: 'cldf',
+    label: 'CLDF TextCorpus (.zip dataset)',
+    ext: 'csv',
+    defaultName: 'CLDF',
+    alwaysZip: true,
+    media: true,
+    dataset: true,
+    zipNote:
+      'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the ' +
+      'scope. Whether the lexicon is included is set in the preset.',
+    // The dataset always carries the vocabularies it needs for EntryTable, so
+    // the TSV flag does not apply. Languages come from project config at run
+    // time rather than being frozen into the preset.
+    options: (layers) => ({ ...defaultCldfOptions(layers), includeMedia: true }),
+  },
+  {
+    ...FORMAT_DEFAULTS,
+    id: 'elan',
+    label: 'ELAN annotation file (.eaf)',
+    ext: 'eaf',
+    defaultName: 'ELAN',
+    media: true,
+    vocabularyTsvs: true,
+    keepsMediaName: true,
+    bareType: 'text/xml;charset=utf-8',
+    // Media rides along in the zip so the .eaf's MEDIA_URL resolves next to it.
+    options: (layers) => ({ ...defaultElanOptions(layers), includeMedia: true }),
+  },
+  {
+    ...FORMAT_DEFAULTS,
+    id: 'latex',
+    label: 'LaTeX book (.zip)',
+    ext: 'tex',
+    defaultName: 'LaTeX',
+    alwaysZip: true,
+    zipNote:
+      'This format always produces a .zip of LaTeX source, one chapter per document, whatever the ' +
+      'scope.',
+    // A book of every document in the run, so the TSV flag does not apply.
+    options: (layers) => defaultLatexOptions(layers),
+  },
+  {
+    ...FORMAT_DEFAULTS,
     id: 'plaid-igt-json',
     label: 'Plaid IGT JSON (lossless .zip archive)',
     ext: 'json',
     defaultName: 'Plaid IGT JSON',
+    alwaysZip: true,
+    media: true,
+    archive: true,
+    zipNote:
+      'This format always produces a .zip archive including all vocabularies and the project ' +
+      'configuration, whatever the scope.',
+    // Lossless archive: vocabularies are always included (runExport forces
+    // this regardless of the flag); the only option is media embedding.
+    options: () => ({ includeMedia: true }),
   },
 ];
+
+/** A format's entry, and plain text's for an id no entry has. */
+export const exportFormat = (format) =>
+  EXPORT_FORMATS.find((f) => f.id === format) ?? EXPORT_FORMATS[0];
 
 export const formatExt = (format) => EXPORT_FORMATS.find((f) => f.id === format)?.ext ?? 'txt';
 
@@ -154,65 +289,11 @@ export function proposeMetadataMap(names) {
  * seeds the .flextext writing-system tags so the same fact is not typed twice.
  */
 export function newPreset(format, layers, name = 'New preset', languages = null) {
-  const base = { id: uuidv4(), name, format, includeVocabularies: false };
-  if (format === 'plaid-igt-json') {
-    // Lossless archive: vocabularies are always included (runExport forces
-    // this regardless of the flag); the only option is media embedding.
-    return { ...base, includeVocabularies: true, options: { includeMedia: true } };
-  }
-  if (format === 'cldf') {
-    // The dataset always carries the vocabularies it needs for EntryTable, so
-    // the TSV flag does not apply. Languages come from project config at run
-    // time rather than being frozen into the preset.
-    return { ...base, options: { ...defaultCldfOptions(layers), includeMedia: true } };
-  }
-  if (format === 'elan') {
-    // Media rides along in the zip so the .eaf's MEDIA_URL resolves next to it.
-    return { ...base, options: { ...defaultElanOptions(layers), includeMedia: true } };
-  }
-  if (format === 'latex') {
-    // A book of every document in the run, so the TSV flag does not apply.
-    return { ...base, options: defaultLatexOptions(layers) };
-  }
-  if (format === 'flextext') {
-    return {
-      ...base,
-      options: {
-        langs: {
-          // The writing-system tag is the fact itself; the ISO code and the
-          // name are guesses at it, in that order.
-          baseline:
-            languages?.object?.tag ||
-            languages?.object?.iso639P3 ||
-            tagify(languages?.object?.name) ||
-            'und',
-          analysis:
-            languages?.meta?.tag ||
-            languages?.meta?.iso639P3 ||
-            tagify(languages?.meta?.name) ||
-            'en',
-          orthographies: Object.fromEntries(
-            layers.orthographies.map((n) => [n, tagify(n) || 'und']),
-          ),
-          fieldOverrides: {},
-        },
-        fieldMap: defaultFieldMap(layers),
-        metadataMap: proposeMetadataMap(layers.documentMetadata),
-        citationForms: true,
-        lexicon: true,
-      },
-    };
-  }
   return {
-    ...base,
-    options: {
-      orthographies: [...layers.orthographies],
-      wordFields: [...layers.wordFields],
-      morphFields: [...layers.morphFields],
-      sentFields: [...layers.sentFields],
-      wordLine: 'segmented',
-      numberSentences: true,
-      includeHeader: true,
-    },
+    id: uuidv4(),
+    name,
+    format,
+    includeVocabularies: exportFormat(format).archive,
+    options: exportFormat(format).options(layers, languages),
   };
 }

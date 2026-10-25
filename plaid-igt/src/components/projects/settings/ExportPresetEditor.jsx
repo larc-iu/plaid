@@ -10,7 +10,12 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
 import { readLanguages } from '@/domain/igtConfig';
-import { readExportPresets, updateExportPresets, EXPORT_FORMATS } from '@/export/presets';
+import {
+  readExportPresets,
+  updateExportPresets,
+  EXPORT_FORMATS,
+  exportFormat,
+} from '@/export/presets';
 import { isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
@@ -22,8 +27,38 @@ import { LatexOptions } from '@/components/export/LatexOptions.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
-// Formats that handle the project's vocabularies themselves.
-const OWN_VOCABULARY_FORMATS = new Set(['plaid-igt-json', 'cldf', 'elan', 'latex', 'flextext']);
+// Each format's options editor. A format with no entry edits plain text's.
+const OPTIONS_EDITORS = {
+  flextext: ({ options, layers, onChange }) => (
+    <FlextextOptions options={options} layers={layers} onChange={onChange} />
+  ),
+  cldf: ({ options, layers, project, projectId, onChange }) => (
+    <CldfOptions
+      options={options}
+      layers={layers}
+      languages={readLanguages(project.config)}
+      projectId={projectId}
+      onChange={onChange}
+    />
+  ),
+  elan: ({ options, layers, onChange }) => (
+    <ElanOptions options={options} layers={layers} onChange={onChange} />
+  ),
+  latex: ({ options, layers, project, onChange }) => (
+    <LatexOptions
+      options={options}
+      layers={layers}
+      vocabularies={project.vocabs || []}
+      onChange={onChange}
+    />
+  ),
+  'plaid-igt-json': ({ options, onChange }) => (
+    <NativeOptions options={options} onChange={onChange} />
+  ),
+  plaintext: ({ options, layers, onChange }) => (
+    <PlainTextOptions options={options} layers={layers} onChange={onChange} />
+  ),
+};
 
 // The project's Export tab → one preset (/projects/:projectId/export/:presetId).
 // Rendered in place of the preset list inside the Settings section, so the
@@ -177,46 +212,14 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
           <h3 className="text-lg font-semibold">Contents</h3>
           <p className="text-sm text-muted-foreground">What this preset includes when it runs.</p>
         </div>
-        {draft.format === 'flextext' ? (
-          <FlextextOptions
-            options={draft.options || {}}
-            layers={layers}
-            onChange={(options) => update({ options })}
-          />
-        ) : draft.format === 'cldf' ? (
-          <CldfOptions
-            options={draft.options || {}}
-            layers={layers}
-            languages={readLanguages(project.config)}
-            projectId={projectId}
-            onChange={(options) => update({ options })}
-          />
-        ) : draft.format === 'elan' ? (
-          <ElanOptions
-            options={draft.options || {}}
-            layers={layers}
-            onChange={(options) => update({ options })}
-          />
-        ) : draft.format === 'latex' ? (
-          <LatexOptions
-            options={draft.options || {}}
-            layers={layers}
-            vocabularies={project.vocabs || []}
-            onChange={(options) => update({ options })}
-          />
-        ) : draft.format === 'plaid-igt-json' ? (
-          <NativeOptions
-            options={draft.options || {}}
-            onChange={(options) => update({ options })}
-          />
-        ) : (
-          <PlainTextOptions
-            options={draft.options || {}}
-            layers={layers}
-            onChange={(options) => update({ options })}
-          />
-        )}
-        {!OWN_VOCABULARY_FORMATS.has(draft.format) && hasVocabularies && (
+        {(OPTIONS_EDITORS[draft.format] ?? OPTIONS_EDITORS.plaintext)({
+          options: draft.options || {},
+          layers,
+          project,
+          projectId,
+          onChange: (options) => update({ options }),
+        })}
+        {exportFormat(draft.format).vocabularyToggle && hasVocabularies && (
           <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
             <span>
               <span className="font-medium">Include vocabularies as TSV files</span>

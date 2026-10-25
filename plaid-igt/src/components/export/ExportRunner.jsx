@@ -5,7 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
-import { readExportPresets, EXPORT_FORMATS } from '@/export/presets';
+import { readExportPresets, EXPORT_FORMATS, exportFormat } from '@/export/presets';
 import { runExport, ExportCancelled } from '@/export/runExport';
 import { saveBlob } from '@ui/lib/download.js';
 import { ScopeStep } from './ScopeStep.jsx';
@@ -15,24 +15,6 @@ import { cn } from '@ui/lib/utils';
 import { countOf } from '@ui/lib/plural.js';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
-
-// Formats that assemble ONE dataset rather than a file per document: they zip
-// at every scope and handle the project's vocabularies themselves, so the
-// per-run vocabularies toggle does not apply.
-const ZIP_NOTES = {
-  'plaid-igt-json':
-    'This format always produces a .zip archive including all vocabularies and the project ' +
-    'configuration, whatever the scope.',
-  cldf:
-    'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the ' +
-    'scope. Whether the lexicon is included is set in the preset.',
-  latex:
-    'This format always produces a .zip of LaTeX source, one chapter per document, whatever the ' +
-    'scope.',
-  flextext:
-    'This format produces one .flextext for the whole run. With the lexicon included (set in the ' +
-    'preset) it becomes a .zip pairing that file with the lexicon as LIFT.',
-};
 
 // Run an export with one of the project's saved presets. Presets themselves
 // (format, layers, options) are configured by ExportPresetsSettings, which sits
@@ -242,7 +224,7 @@ export const ExportRunner = ({
                 onSelectedDocIdsChange={setSelectedDocIds}
                 includeVocabularies={preset.includeVocabularies}
                 hasVocabularies={(project?.vocabs?.length ?? 0) > 0}
-                zipNote={ZIP_NOTES[preset.format] ?? null}
+                zipNote={exportFormat(preset.format).zipNote}
               />
             </div>
           )}
