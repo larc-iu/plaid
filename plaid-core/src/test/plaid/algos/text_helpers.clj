@@ -1,14 +1,16 @@
 (ns plaid.algos.text-helpers
-  "The text save's two readings as the tests call them: a whole-body save
-  and an edit from the caret, each read and applied by the plain rule."
+  "The text save's two inputs as the tests call them: a whole-body save
+  and an edit from the caret, each taken as gaps and applied by the plain
+  rule."
   (:require [plaid.algos.text :as ta]))
 
 (defn plain-body
-  "`apply-plain-gaps` for a whole-body save of `old` as `new`, as
-  `plain-body-read` reads it."
+  "`apply-plain-gaps` for a whole-body save of `old` as `new`, the change
+  taken as `plain-body-gaps` takes it."
   ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
   ([old new tokens partitioning word-layers opts]
-   (second (ta/plain-body-read old new tokens (assoc opts :partitioning partitioning :deciders word-layers)))))
+   (let [roles (assoc opts :partitioning partitioning :deciders word-layers)]
+     (ta/apply-plain-gaps old tokens (ta/plain-body-gaps old new tokens roles) roles))))
 
 (defn plain-edits
   "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
@@ -17,4 +19,4 @@
   ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
   ([old tokens ops partitioning word-layers opts]
    (let [roles (assoc opts :partitioning partitioning :deciders word-layers)]
-     (ta/apply-plain-gaps old tokens (ta/plain-edit-gaps old ops tokens roles) roles))))
+     (ta/apply-plain-gaps old tokens (ta/plain-edit-gaps old ops) roles))))

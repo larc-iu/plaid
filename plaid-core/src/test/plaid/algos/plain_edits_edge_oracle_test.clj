@@ -4,7 +4,7 @@
   sentences or two words meet. The generators and the judge are in
   `plaid.algos.plain-edits-oracle`."
   (:require [clojure.test :refer [deftest is testing]]
-            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs cps edit-loss-problems gap-fill gen-doc gen-gaps keystrokes layout-tokens problems punct? roles run save save-read server-gaps trim-ws ws?]]
+            [plaid.algos.plain-edits-oracle :refer [cases-per-config configs cps gap-fill gen-doc gen-gaps keystrokes layout-tokens letters-left-problems problems punct? roles run save save-read server-gaps trim-ws ws?]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -54,8 +54,8 @@
           (when-let [gaps (and (some #(= :w (:token/layer %)) tokens) (select-type-over rng body tokens))]
             (let [ops (ta/gap-ops gaps)
                   r (run body tokens ops layout false)
-                  ps (-> (problems body tokens (server-gaps body tokens ops layout) r)
-                         (into (edit-loss-problems body tokens ops layout r))
+                  ps (-> (problems body tokens (server-gaps body ops) r)
+                         (into (letters-left-problems body tokens ops r))
                          (cond-> (not= (ta/edit-ops-body ops body) (:text/body (:text r))) (conj "body")))]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :old body :gaps gaps :problems (take 3 ps)}))))))
       (testing (str cname)
@@ -301,7 +301,7 @@
               gaps (gen-gaps rng body tokens opts)
               tokens (layout-tokens layout tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
-              server (server-gaps body tokens (ta/gap-ops gaps) layout)]
+              server (server-gaps body (ta/gap-ops gaps))]
           (doseq [[rname plain split sgaps] [[:composed
                                               (run body tokens (ta/gap-ops gaps) layout false)
                                               (run body tokens (ta/gap-ops gaps) layout true)
@@ -445,7 +445,7 @@
             sents (sort-by :token/begin (filter #(= :s (:token/layer %)) tokens))]
         (doseq [[rname ops] {:composed (ta/gap-ops gaps) :keys-left-to-right (keystrokes gaps false)}]
           (let [r (run body tokens ops)
-                server (server-gaps body tokens ops :apps)
+                server (server-gaps body ops)
                 ps (vec (remove #(re-find #"^\[:as " %) (problems body tokens server r)))
                 nb (:text/body (:text r))
                 ss (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb))
@@ -499,45 +499,6 @@
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
 
-(deftest a-row-over-a-one-word-sentence-typed-over-follows-the-sentence
-  ;; REV-W2-TEXT N2, seed 2034 of the test above, past its default seeds: a
-  ;; paste over `kai` (a sentence of one word, under a row over the whole
-  ;; sentence) and into the next sentence types `kai` over as `Q`. The word
-  ;; and its sentence go to `Q`, and the row follows the sentence edge by
-  ;; edge to where the next one begins, over `Q\nR`. The judge read the row
-  ;; as a word typed over, since its text is the word's, where a row over a
-  ;; sentence follows it as the other rows do.
-  (let [body "ə́múk   su  dog\n  kai  thee da\t你好 a café"
-        tokens (vec (for [[id layer begin end] [[[:s 0] :s 0 18] [[:s 1] :s 18 21] [[:s 2] :s 21 40]
-                                                [[:rw 0] :rw 0 18] [[:rw 1] :rw 18 21] [[:rw 2] :rw 21 40]
-                                                [[:w 1] :w 0 10] [[:w 2] :w 12 15] [[:w 3] :w 18 21] [[:w 4] :w 23 30]
-                                                [[:w 5] :w 31 33] [[:w 6] :w 34 35] [[:w 7] :w 36 40]]]
-                      {:token/id id :token/layer layer :token/begin begin :token/end end}))
-        ops (ta/gap-ops [{:start 18 :end 35 :value "Q\nR"}])
-        server (server-gaps body tokens ops :apps)
-        r (run body tokens ops)
-        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
-    (is (= [18 19] (at [:w 3])))
-    (is (= [18 19] (at [:s 1])))
-    (is (= [18 21] (at [:rw 1])))
-    (is (= [21 26] (at [:rw 2])))
-    (is (empty? (problems body tokens server r)))
-    (is (empty? (follow-checks body tokens server r)))
-    ;; and a product that deleted the row, or a segment over the sentence,
-    ;; while its sentence stays fails the follow checks (REV-W2-LAST F1)
-    (let [without (fn [r id] (-> r
-                                 (update :tokens (fn [ts] (vec (remove #(= id (:token/id %)) ts))))
-                                 (update :deleted (fnil conj []) id)))
-          tokens' (into tokens (for [[id begin end] [[[:as 0] 0 15] [[:as 1] 18 21] [[:as 2] 23 40]]]
-                                 {:token/id id :token/layer :ss :token/begin begin :token/end end}))
-          server' (server-gaps body tokens' ops :apps)
-          r' (run body tokens' ops)]
-      (is (= ["[:rw 1] deleted though its sentence stays, at [18 21]"]
-             (follow-checks body tokens server (without r [:rw 1]))))
-      (is (empty? (follow-checks body tokens' server' r')))
-      (is (= ["[:as 1] deleted though its sentence stays, at [18 21]"]
-             (follow-checks body tokens' server' (without r' [:as 1])))))))
-
 (deftest a-row-or-segment-typed-over-whole-and-kept-may-not-go
   ;; REV-BH7-TEXT F5, seed 329 of the test above with rows and segments: the
   ;; one sentence, its row and its segment are typed over whole as ` Q`, so
@@ -550,7 +511,7 @@
                                                 [[:w 1] :w 0 4] [[:w 2] :w 5 12] [[:w 3] :w 13 14]]]
                       {:token/id id :token/layer layer :token/begin begin :token/end end}))
         ops (ta/gap-ops [{:start 0 :end 14 :value " Q"}])
-        server (server-gaps body tokens ops :apps)
+        server (server-gaps body ops)
         r (run body tokens ops)
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
         without (fn [r id] (-> r

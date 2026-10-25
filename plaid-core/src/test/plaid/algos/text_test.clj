@@ -562,9 +562,11 @@
                 (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))))))))
 
 ;; ---------------------------------------------------------------------------
-;; A word replaced outright keeps its tokens, on the new word (ruled
-;; 2026-09-21). The diff spells `cow` to `abc` as insert `ab`, keep `c`,
-;; delete `ow`, which left the token of `cow` on the `c` of `abc`.
+;; A word respelled in a whole-body save is read by the plain rule over the
+;; diff (R42): it keeps its token, on the new word, when the diff keeps a
+;; letter of it, and goes when the diff keeps none. The diff spells `cow`
+;; to `abc` as insert `ab`, keep `c`, delete `ow`, and the token of `cow`
+;; takes the letters typed against its `c`.
 
 (defn- subsequence? [a b]
   (loop [a (seq (.toArray (.codePoints ^String a))) b (seq (.toArray (.codePoints ^String b)))]
@@ -573,12 +575,13 @@
           (= (first a) (first b)) (recur (rest a) (rest b))
           :else (recur a (rest b)))))
 
-(deftest a-word-replaced-leaves-every-token-on-its-word
-  ;; The oracle above, extended to replaces: the replaced word's token reads
-  ;; the new word, every other one its own. Left out, since the body cannot
-  ;; tell what was meant: a new word that only adds letters to the old one
-  ;; (typed at its edge, which stays outside it), and one that repeats a
-  ;; neighbour (`cat cow` to `cow cow` is also `cat` deleted and `cow` added).
+(deftest a-word-replaced-leaves-every-other-token-on-its-word
+  ;; The oracle above, extended to replaces: every word but the replaced one
+  ;; reads its own, and the replaced word's token reads the new word when
+  ;; the two share a letter, and goes when they share none. Left out, since
+  ;; the body cannot tell what was meant: a new word that only adds letters
+  ;; to the old one, and one that repeats a neighbour (`cat cow` to `cow cow`
+  ;; is also `cat` deleted and `cow` added).
   (let [vocab ["the" "cat" "cow" "a" "at" "ab" "abc" "tat" "ta" "big" "bad" "𐌰𐌱" "𐌰" "é" "שלום" "ta."]
         cases (atom 0)]
     (doseq [seed (range 1 7)]
@@ -599,10 +602,16 @@
                     {:keys [text tokens deleted]} (body-edit old new before)
                     extents (mapv (juxt :token/begin :token/end) (word-tokens words'))]
                 (is (= new (:text/body text)))
-                (is (= [] deleted))
-                (is (= extents (mapv (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)
-                                     (range (count words))))
-                    (str "seed " seed ": " (pr-str old) " -> " (pr-str new)))))))))
+                (if (some (set (.toArray (.codePoints ^String (words k)))) (.toArray (.codePoints ^String w)))
+                  (do (is (= [] deleted) (str "seed " seed ": " (pr-str old) " -> " (pr-str new)))
+                      (is (= extents (mapv (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)
+                                           (range (count words))))
+                          (str "seed " seed ": " (pr-str old) " -> " (pr-str new))))
+                  (do (is (= [k] deleted) (str "seed " seed ": " (pr-str old) " -> " (pr-str new)))
+                      (is (= (assoc extents k nil)
+                             (mapv (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)
+                                   (range (count words))))
+                          (str "seed " seed ": " (pr-str old) " -> " (pr-str new)))))))))))
     (is (< 800 @cases))))
 
 ;; ---------------------------------------------------------------------------
@@ -1101,7 +1110,7 @@
                        (conj (assoc (tok [:m i 0] ob0 (inc ob0)) :token/layer :m))
                        (cond-> (< 1 k) (conj (assoc (tok [:m i 1] (inc ob0) (+ ob0 k)) :token/layer :m))))
               expect (-> expect
-                         (assoc [:w i] w' [:m i 0] (cp/cp-subs w' 0 1))
+                         (assoc [:w i] w' [:m i 0] (if (< 1 k) (cp/cp-subs w' 0 1) w'))
                          (cond-> (< 1 k) (assoc [:m i 1] (cp/cp-subs w' 1 k'))))
               end? (or (= 14 (mod i 15)) (= i (dec n)))]
           (if end?
@@ -1126,9 +1135,11 @@
     (fn ^long [] (swap! t + 10000))))
 
 (deftest a-save-changing-every-word-of-a-long-text-keeps-every-token
+  ;; Each word gets a letter at its end, which the word and its last
+  ;; morpheme take, so every token stays.
   (doseq [sep ["\n" " "]]
     (testing (str "sentences separated by " (pr-str sep))
-      (let [{:keys [old new tokens expect]} (long-text 3000 sep str/capitalize)
+      (let [{:keys [old new tokens expect]} (long-text 3000 sep #(str % "x"))
             {:keys [text tokens deleted]}
             (with-redefs [editscript.util.common/current-time (slow-clock)]
               (body-edit old new tokens #{:s} #{:w :m}))

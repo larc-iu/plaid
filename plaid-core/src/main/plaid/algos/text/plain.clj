@@ -12,13 +12,15 @@
 ;; Plain edits
 ;;
 ;; Every token layer takes a text edit the plain way, the one rule set of a
-;; body save: an edit inside a token, or touching its edge with no whitespace
-;; between, grows or shrinks the token, and nothing else happens to it. A
+;; body save, by fixed rules and never by a guess at what was meant (R42):
+;; an edit inside a token, or touching its edge with no whitespace between,
+;; grows or shrinks the token, and nothing else happens to it. A gap that
+;; both deletes and types is a delete and an insert at the same place. A
 ;; token is never split by a typed space (unless a layer of the text sets
 ;; `splitOnSpace`), never joined to its neighbour by a deleted one, never
-;; folded onto another word, and loses nothing hanging off it. Only a token
-;; whose whole text is deleted goes. A word can hold a space (a FLEx phrase),
-;; and its analysis is the app's business, not the core's.
+;; folded onto another word, and loses nothing hanging off it. A word goes
+;; when none of its letters is left. A word can hold a space (a FLEx
+;; phrase), and its analysis is the app's business, not the core's.
 
 (defn typed-to-next?
   "Whether text `v` (code points) inserted at `a` in `o` goes to the token of
@@ -412,9 +414,8 @@
     goes (see `word-token?`, so every token on no partition when no token
     of `tokens` is on a deciding layer).
   - `:decider-layers`: the layers of the tokens of `tokens` that decide.
-  - `:word?`: whether a token is a word to a split and to a reading's
-    `foreign?` check: one on a deciding layer, or one that decides when the
-    text has no deciding layer. In a text whose word layer holds no token
+  - `:word?`: whether a token is a word to a split: one on a deciding
+    layer, or one that decides when the text has no deciding layer. In a text whose word layer holds no token
     yet the rows decide in the words' place, but they are no words here
     (REV6-TEXT-1, REV7-TEXT-4).
   - `:row?`: whether a layer is a row, which forbids overlap and is no
@@ -469,18 +470,28 @@
   `split-spaced-words`). `:letter-like` names the code points that are
   letters to the punctuation rule below (see `punct?`).
 
-  For a token with text, [B, E):
-  - A gap inside it, or reaching one of its ends from inside, grows or
-    shrinks it (a space typed inside is inside it).
+  A gap that both deletes and types is a delete and an insert at the same
+  place (R42). For a token with text, [B, E):
+  - A gap strictly inside it grows or shrinks it (a space typed inside is
+    inside it), and so does a gap that only deletes reaching one of its
+    ends from inside.
   - A gap that takes its last letters, or stands right after it, gives it
     the letters the new text starts with, up to the first whitespace, when
     its last letter kept is not whitespace. Likewise a gap that takes its
     first letters or stands right before it gives it the letters the new
     text ends with, after the last whitespace, when its first letter kept is
     not whitespace. New text with no whitespace between two such tokens
-    goes to the word holding the gap at that end, else the first. A gap
-    that is exactly a token's text (a word, a sentence with its separator,
-    a segment) goes to that token alone, which keeps its place on it.
+    goes to the word the gap cuts at that end, when it can take it, else
+    the first.
+  - A word, a token under it or a token beside it on a layer that allows
+    overlap (a node) goes when none of its letters is left, whatever is
+    typed in their place: a word typed over whole goes, and so do the
+    words of a paste that covers them, the same words typed again or not.
+  - A sentence, or a token of a layer that forbids overlap and is no word
+    layer and none under one (a row, a time-alignment segment), holds the
+    text a gap types reaching one of its ends from inside, and a gap that
+    is exactly its text (a sentence with its separator) goes to it alone,
+    which keeps its place on it.
   - Where new text goes is decided by the words, the tokens on a layer in
     `:deciders` (else every token on no layer in `:partitioning`), and the
     other tokens follow them, so a sentence or a time-alignment segment
@@ -496,7 +507,8 @@
     or with the others. A gap in that whitespace that deletes ends the
     run: text typed before it goes to the one before. Text holding a line
     break goes to the one before.
-  - A gap that takes all of it, and more, deletes it.
+  - A gap that takes all of it, and more, deletes it, and so does one that
+    deletes exactly its text.
   - The new text between the letters given to the tokens either side
     belongs to neither.
   - A token left beginning or ending on whitespace it did not begin or end
@@ -537,13 +549,37 @@
          {:keys [partitioning decides? decider-layers row?] word-layers :deciders :as save}
          (save-roles roles wide)
          punct-word? (fn [t] (and (contains? word-layers (:token/layer t)) (punct-only? o letter-like t)))
-         deciders (filterv decides? wide)
-        ;; the tokens whose text is one of a gap's words typed over (see
-        ;; `cut-at-words`), a word's: old extent to [gap offset length]. Its
-        ;; morphemes as long as it and its nodes go with it.
-         keep-at (let [extents (into #{} (map (juxt :token/begin :token/end)) deciders)]
-                   (into {} (mapcat (fn [g] (keep (fn [[b e off len]] (when (extents [b e]) [[b e] [g off len]])) (:keeps (gaps g)))))
-                         (range k)))
+        ;; A sentence or a row holds the text typed over it, its whole text
+        ;; too: a token of a partition, or of a layer that forbids overlap and
+        ;; is no word layer and none under one (a transcript row, a
+        ;; segment), by the layers' shape alone. Every other token (a word,
+        ;; what lies under it, a node beside it) goes when none of its old
+        ;; letters is left, whatever is typed in their place (R42).
+         holds-typed? (fn [{:token/keys [layer]}]
+                        (or (contains? partitioning layer)
+                            (and (contains? (:exclusive save) layer) (not (contains? word-layers layer))
+                                 (not ((:child? save) layer)))))
+         ;; whether a token that is no sentence or row loses every old letter
+         ;; it had (whitespace aside) to the gaps that delete
+         doomed? (fn [{:token/keys [begin end] :as t}]
+                   (and (not (holds-typed? t))
+                        (let [g (at-or-before (dec end))]
+                          ;; some gap that deletes reaches into it
+                          (and (>= g 0)
+                               (some (fn [h] (let [{:keys [a b]} (info h)] (and (< a b) (< a end) (< begin b))))
+                                     (take-while #(and (>= % 0) (< begin (:b (info %)))) (iterate dec g)))
+                               (some #(not (space? (aget o %))) (range begin end))
+                               (loop [x begin]
+                                 (if (< x end)
+                                   (let [h (at-or-before x)
+                                         {:keys [a b]} (when (>= h 0) (info h))]
+                                     (cond
+                                       (and a (< a b) (<= a x) (< x b)) (recur b)
+                                       (space? (aget o x)) (recur (inc x))
+                                       :else false))
+                                   true))))))
+         doomed (into #{} (comp (filter doomed?) (map :token/id)) wide)
+         deciders (filterv #(and (decides? %) (not (doomed (:token/id %)))) wide)
         ;; What the words have at each gap: one
         ;; ending at its start or inside it, one beginning inside it or at its
         ;; end, one holding it at its end or at its start (the gap reaches
@@ -574,9 +610,11 @@
                              (and (< a begin) (<= begin b) (< b end)) (when-not punct-word? (mark! g :after))
                              (and (= begin a) (<= b end)) (mark! g :holds-start))
                            (when (and (= begin a) (< a end) (not punct-word?)) (mark! g :after)))))))
-                ;; A gap that is exactly a token's text (a word, a sentence
-                ;; with its separator, a segment) is that token typed over.
-                 (doseq [{:token/keys [begin end]} wide]
+                ;; A gap that is exactly the text of a sentence (with its
+                ;; separator) or of a row is that token typed over, which
+                ;; keeps it.
+                 (doseq [{:token/keys [begin end] :as t} wide
+                         :when (holds-typed? t)]
                    (let [g (at-or-before begin)]
                      (when (>= g 0)
                        (let [{:keys [a b]} (info g)]
@@ -626,20 +664,15 @@
                            (= :after (side-of g)) [0 (if word? n trail)]
                            (= :before (side-of g)) [(if word? n lead) 0]
                            (not word?) [(if before? lead 0) (if after? trail 0)]
-                           (flag? g :holds-end) [(if before-ok n 0) 0]
-                           (flag? g :holds-start) [0 (if after-ok n 0)]
+                           ;; a word the gap cuts takes what is typed
+                           ;; against what is left of it, before a word
+                           ;; it only touches
+                           (and (flag? g :holds-end) before-ok) [n 0]
+                           (and (flag? g :holds-start) after-ok) [0 n]
                            before? [n 0]
                            after? [0 n]
                            :else [0 0])))
                      (range k))
-        ;; a word typed over as a word of its own at the gap's start or end
-        ;; holds the new text there, which no neighbour takes
-         given (let [held (reduce (fn [m [_ [g off len]]]
-                                    (cond-> m
-                                      (zero? off) (assoc-in [g 0] true)
-                                      (= (+ off len) (:n (info g))) (assoc-in [g 1] true)))
-                                  {} keep-at)]
-                 (mapv (fn [g [x y]] (let [h (held g)] [(if (get h 0) 0 x) (if (get h 1) 0 y)])) (range k) given))
          given-before (fn [g] (first (given g)))
          given-after (fn [g] (second (given g)))
         ;; Text typed after whitespace, on the line of the next letter, goes
@@ -688,25 +721,16 @@
                       (if (and (> h s) (no-begin? layer (:a (info (dec h))) x))
                         (recur (dec h))
                         (new-at h)))))
-         placed (mapv (fn [{:token/keys [begin end layer] :as t}]
-                        (if-let [[g off len] (keep-at [begin end])]
-                          ;; one of the gap's words typed over: it goes on
-                          ;; its new word
-                          (assoc t :token/begin (+ (new-at g) off) :token/end (+ (new-at g) off len))
+         placed (mapv (fn [{:token/keys [id begin end layer] :as t}]
+                        (if (doomed id)
+                          (assoc t ::gone true)
                           (let [gb (at-or-before begin)
                                 {:keys [a b n]} (when (>= gb 0) (info gb))
-                              ;; the gap's words typed over that the token
-                              ;; holds: an edge of it inside the gap, or at
-                              ;; the edge of one of them, goes to their edge
-                              ;; (a sentence keeps its word, a node its words)
-                                inner (fn [g] (filter (fn [[kb ke]] (and (<= begin kb) (<= ke end) (keep-at [kb ke]))) (:keeps (gaps g))))
                                 nb (cond
                                      (neg? gb) begin
                                      ;; a sentence beginning in the whitespace
                                      ;; after text typed there begins at it
                                      (and (partitioning layer) (to-next? gb layer begin)) (run-at gb layer begin)
-                                     (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
-                                     (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
                                   ;; right before it
                                      (and (< a begin) (<= begin b))
@@ -718,6 +742,12 @@
                                        (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
                                        (and (= a b) (or (partitioning layer) (row? layer)) (= :before (side-of gb))) (+ (new-at gb) n)
                                        (= a b) (- (+ (new-at gb) n) (given-after gb))
+                                       ;; a gap that deletes its first letters
+                                       ;; and types is a delete, then an insert
+                                       ;; at its new start, which takes the
+                                       ;; letters typed against it (R42). A
+                                       ;; sentence or a row holds all of it.
+                                       (and (> end b) (not (holds-typed? t))) (- (+ (new-at gb) n) (given-after gb))
                                        (>= end b) (+ (new-at gb) (given-before gb))
                                        :else nil)
                                      :else (+ begin (aget shift (inc gb))))
@@ -727,14 +757,16 @@
                                      (neg? ge) end
                                      ;; and the one before it ends there
                                      (and (partitioning layer) (< begin a2) (to-next? ge layer end)) (run-at ge layer end)
-                                     (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
-                                     (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole
                                      (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
                                      (or (= a2 end) (and (< a2 end) (< end b2)))
                                      (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
                                      (and (< a2 end) (= end b2))
-                                     (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
+                                     (cond
+                                       ;; and its last letters, at its new end
+                                       (and (< begin a2) (not (holds-typed? t))) (+ (new-at ge) (given-before ge))
+                                       (<= begin a2) (- (+ (new-at ge) n2) (given-after ge))
+                                       :else nil)
                                      :else (+ end (aget shift (inc ge))))]
                             (if (and nb ne (< nb ne))
                            ;; off whitespace it did not have at that edge

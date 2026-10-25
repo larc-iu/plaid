@@ -14,19 +14,21 @@
 
   The judge, for each token of a plain layer, against the change as the
   server takes it (the composed gaps, or for a whole body the gaps its
-  diff gives):
-  - a token (a word, a morpheme, a segment, a sentence, a token of a layer
-    nested under the words) is deleted only when none of its old text is
-    left and no new text was typed inside it (a token typed over whole is
-    kept),
+  diff gives), holds the written rule (R42):
+  - a word, a token under it or a node beside it is deleted when, and only
+    when, none of its old letters is left, whatever was typed in their
+    place,
+  - a sentence or a row (a segment, a transcript row) is deleted only when
+    none of its old text is left and no new text was typed inside it, so
+    one typed over whole is kept,
   - a token left keeps all of its old letters that are left, and holds none
     of the old text outside it (so no word takes the space before it or
     another word's letters),
   - it neither begins nor ends on whitespace it did not have there,
   - a new letter joined to a word's letters with no whitespace between is
-    in a word, unless it was typed over exactly a sentence's or a segment's
-    text, which keeps it, and a new letter in a word is inside the word, joined to its
-    letters, or typed over it,
+    in a word, unless it was typed over exactly a sentence's or a row's
+    text, which keeps it, and a new letter in a word is inside the word,
+    joined to its letters, or typed strictly inside its old text,
   - a word's morphemes keep its extent, go with it, and are never moved
     onto another word,
   - a word inside a segment stays inside it, and every word stays inside
@@ -40,7 +42,6 @@
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.algos.text.chars :as chars]
-            [plaid.algos.text.read :as text-read]
             [plaid.algos.text-helpers :as th]
             [plaid.util.codepoint :as cp]))
 
@@ -280,6 +281,9 @@
         by-id (into {} (map (juxt :token/id identity)) (:tokens result))
         gone (set (:deleted result))
         plain #{:w :m :a :x :s :u}
+        ;; the layers whose tokens hold what is typed over them: sentences
+        ;; and rows
+        holds #{:s :a :ss :rw}
         ;; the layer whose tokens are the words: UMR's nodes on a text with no
         ;; plain words
         wl (if (some #(= :w (:token/layer %)) tokens) :w :u)
@@ -292,35 +296,11 @@
                               (or (and (< a b) (<= begin a) (<= b end))
                                   (and (= a b) (< begin a) (< a end))))
                             gaps))
-        text-of (fn [{:token/keys [begin end]}] (String. ^ints nw (int begin) (int (- end begin))))
-        ;; a token whose text is one of a gap's words typed over (see
-        ;; `cut-at-words`): where it must be now
-        ;; (those that are a word's text)
-        keep-want (let [extents (into #{} (comp (filter #(and (= wl (:token/layer %)) (< (:token/begin %) (:token/end %))))
-                                                (map (juxt :token/begin :token/end)))
-                                      tokens)]
-                    (into {} (mapcat (fn [g] (keep (fn [[b e off len]]
-                                                     (when (extents [b e]) [[b e] [(+ (gap-new g) off) (+ (gap-new g) off len)]]))
-                                                   (:keeps g))))
-                          gaps))
-        holds-keep? (fn [{:token/keys [begin end]}] (some (fn [[[b e] _]] (and (<= begin b) (<= e end))) keep-want))]
+        text-of (fn [{:token/keys [begin end]}] (String. ^ints nw (int begin) (int (- end begin))))]
     (when (not= expected new-body) (bad! "body " (pr-str new-body) " not " (pr-str expected)))
     (when (= expected new-body)
-      ;; each word typed over as a word of its own is on it
-      (doseq [{:token/keys [id layer begin end]} tokens
-              :let [want (keep-want [begin end])]
-              :when (and want
-                         ;; a row over a sentence follows it (REV3), the
-                         ;; row over it with its whitespace too (REV2-TEXT-1)
-                         (not (and (#{:a :ss :rw} layer)
-                                   (some #(and (= :s (:token/layer %))
-                                               (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])))
-                                         tokens))))]
-        (let [now (by-id id)]
-          (when (or (gone id) (not= want [(:token/begin now) (:token/end now)]))
-            (bad! id " typed over as a word of its own is not on it: " (pr-str (when-not (gone id) (some-> now text-of)))))))
       (doseq [{:token/keys [id layer begin end] :as t} tokens
-              :when (and (plain layer) (< begin end) (not (keep-want [begin end]))
+              :when (and (plain layer) (< begin end)
                          ;; a token over a sentence follows it (REV3)
                          (or (= :s layer) (not (#{:a :ss} layer))
                              (not-any? #(and (= :s (:token/layer %))
@@ -328,10 +308,11 @@
                                        tokens)))]
         (let [kept (kept-of t)
               cov (covering t)
-              ;; no letter of it left, and none typed inside it
+              ;; no letter of it left, and for a sentence or a row none
+              ;; typed inside it
               must-go (and (every? #(ws? (aget o %)) kept)
-                           (every? (fn [g] (every? ws? (cps (:value g)))) cov)
-                           (not (holds-keep? t)))
+                           (or (not (holds layer))
+                               (every? (fn [g] (every? ws? (cps (:value g)))) cov)))
               now (by-id id)]
           (cond
             (and must-go (not (gone id))) (bad! id " kept with none of its text")
@@ -363,8 +344,9 @@
                 (bad! id " begins on whitespace " (pr-str (text-of now))))
               (when (and (ws? (aget nw (dec ne))) (not (ws? (aget o (dec end)))))
                 (bad! id " ends on whitespace " (pr-str (text-of now))))
-              ;; a new letter in a word is inside it, joined to it, or typed over it
-              (when (and (= layer wl) (not (holds-keep? t)))
+              ;; a new letter in a word is inside it, joined to it, or typed
+              ;; strictly inside its old text
+              (when (= layer wl)
                 (let [letters (filterv #(not (ws? (aget o %))) kept)
                       hull (when (seq letters) [(aget newpos (first letters)) (inc (aget newpos (peek letters)))])
                       kept-new (set (map #(aget newpos %) kept))]
@@ -377,8 +359,10 @@
                                       :else (contains? kept-new q))))]
                       (when-not (or (and hull (<= (first hull) p) (< p (second hull)))
                                     (reach dec) (reach inc)
+                                    ;; typed strictly inside its old text
                                     (some (fn [g] (let [na (gap-new g)]
-                                                    (and (<= na p) (< p (+ na (cp/cp-count (:value g)))))))
+                                                    (and (< begin (:start g)) (< (:end g) end)
+                                                         (<= na p) (< p (+ na (cp/cp-count (:value g)))))))
                                           cov))
                         (bad! id " took a new letter apart from it at " p " (" (pr-str (text-of now)) ")"))))))))))
       ;; a new letter joined to a word's letters is in a word, but for a
@@ -396,13 +380,14 @@
                             (aset a (aget newpos k) true))
                           a)]
         ;; reached from a word's letter through new letters only, unless it
-        ;; was typed over exactly a token's text (a sentence, a segment),
-        ;; which keeps it
+        ;; was typed over exactly a sentence's or a row's text, which keeps
+        ;; it
         (dotimes [p (alength nw)]
           (when (and (aget inserted p) (not (ws? (aget nw p))) (not (aget word-at p))
                      (not-any? (fn [g] (let [na (gap-new g)]
                                          (and (<= na p) (< p (+ na (cp/cp-count (:value g))))
-                                              (or (some #(and (= (:start g) (:token/begin %)) (= (:end g) (:token/end %))
+                                              (or (some #(and (holds (:token/layer %))
+                                                              (= (:start g) (:token/begin %)) (= (:end g) (:token/end %))
                                                               (< (:start g) (:end g)))
                                                         tokens)
                                                   ;; typed where two sentences meet with
@@ -520,38 +505,6 @@
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
      (th/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :dealt :exclusive :head-layers])))))
 
-(defn exact
-  "What `ops` do taken exactly as made: each net gap less the text it shares
-  with the old at either end, read by the plain rule (REV2-F-TEXT-CORE X)."
-  [^String old tokens ops layout]
-  (let [r (roles layout false)
-        o (cps old)]
-    (ta/apply-plain-gaps old tokens (vec (keep #(#'text-read/trim-gap o %) (ta/compose-edits ops old)))
-                         (select-keys r [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers]))))
-
-(defn lost-problems
-  "The words and sentences `r` deletes that `x`, the edit taken exactly as
-  made, keeps (a word counted by its text, so one of two twins may go in
-  place of the other): a reading never deletes what the edit as made keeps
-  letters of (REV2-F-TEXT-CORE R1). With `:paste`, `r` read the change
-  from a paste, which cannot tell a word from one of the same letters
-  beside it, and may delete no more words or sentences than `x`."
-  ([old tokens r x] (lost-problems old tokens r x nil))
-  ([^String old tokens r x mode]
-   (let [o (cps old)
-         text (fn [{:token/keys [begin end]}] (String. o (int begin) (int (- end begin))))
-         gone (fn [r layer] (let [g (set (:deleted r))] (filter #(and (= layer (:token/layer %)) (g (:token/id %))) tokens)))
-         wr (frequencies (map text (gone r :w)))
-         wx (frequencies (map text (gone x :w)))
-         sx (set (map :token/id (gone x :s)))]
-     (if (= mode :paste)
-       (cond-> []
-         (< (count (gone x :w)) (count (gone r :w))) (conj (str "deleted words " (pr-str wr) ", as made " (pr-str wx)))
-         (< (count (gone x :s)) (count (gone r :s))) (conj "deleted more sentences than the edit as made"))
-       (cond-> []
-         (some (fn [[t c]] (< (get wx t 0) c)) wr) (conj (str "deleted words " (pr-str wr) ", as made " (pr-str wx)))
-         (some #(not (sx (:token/id %))) (gone r :s)) (conj "deleted a sentence the edit as made keeps"))))))
-
 (defn letters-left-problems
   "The words and sentences `r` deletes though an old letter of theirs, not
   whitespace, lies outside every net gap of `ops` (Luke: a word goes only
@@ -568,32 +521,19 @@
                        (str id " deleted with a letter left outside the change " (pr-str (cp/cp-subs old begin end))))))
           tokens)))
 
-(declare server-gaps)
-
-(defn edit-loss-problems
-  "An edit never deletes a word or sentence with a letter left outside the
-  change, and where the server took each gap as made (no gap read as a
-  whole-body save reads it, see `plaid.algos.text/plain-edit-gaps`), none
-  the edit as made keeps (REV3-F-TEXT-CORE G3)."
-  [^String old tokens ops layout r]
-  (let [o (cps old)
-        as-made (vec (keep #(#'text-read/trim-gap o %) (ta/compose-edits ops old)))]
-    (cond-> (letters-left-problems old tokens ops r)
-      (= as-made (server-gaps old tokens ops layout))
-      (into (lost-problems old tokens r (exact old tokens ops layout))))))
-
 (defn server-gaps
-  "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
-  [old tokens ops layout]
-  (let [r (roles layout false)]
-    (ta/plain-edit-gaps old ops tokens (select-keys r [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers]))))
+  "The gaps an edit by `ops` is taken as: its net change, less what each
+  gap's new text shares with the old at its ends."
+  [old ops]
+  (ta/plain-edit-gaps old ops))
 
 (defn save-read
   "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has
-  them (see `plain-body-read`)."
+  them (see `plain-body-gaps`)."
   [old new tokens layout split?]
-  (let [r (roles layout split?)]
-    (ta/plain-body-read old new tokens (select-keys r [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers]))))
+  (let [roles (select-keys (roles layout split?) [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers])
+        gaps (ta/plain-body-gaps old new tokens roles)]
+    [gaps (ta/apply-plain-gaps old tokens gaps roles)]))
 
 (defn save
   "What a whole-body save of `new` does, the layers as `layout` has them."

@@ -6,7 +6,10 @@
   which deleted every token with its spans, and answered 200. It happened
   from about 2,000 words when every word changed, and sooner on a busy
   server. Here editscript's clock moves 10 s at every look, so the old diff
-  gives up on every stretch however fast the machine."
+  gives up on every stretch however fast the machine. Every word of two
+  letters or more is capitalized. A word of one letter capitalized is that
+  letter typed over, which deletes the word (R42), so those stay as they
+  are."
   (:require [clojure.string :as str]
             [clojure.test :refer :all]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler admin-request api-call
@@ -26,14 +29,15 @@
        :body :document/text-layers
        (mapcat :text-layer/token-layers)))
 
-(deftest a-save-changing-every-word-of-3000-keeps-every-token-and-span
+(deftest a-save-changing-every-longer-word-of-3000-keeps-every-token-and-span
   (let [vocab ["the" "cat" "sat" "on" "a" "mat" "with" "tat" "kaki" "dog"
                "told" "me" "then" "we" "left" "at" "noon" "ab" "é" "to"]
         words (mapv #(nth vocab (mod (* 7 %) (count vocab))) (range 3000))
         sentences (partition-all 15 words)
         line (fn [ws] (str (str/join " " ws) ".\n"))
         old (apply str (map line sentences))
-        new (apply str (map (comp line #(map str/capitalize %)) sentences))
+        respell #(if (< 1 (cp/cp-count %)) (str/capitalize %) %)
+        new (apply str (map (comp line #(map respell %)) sentences))
         proj (create-test-project admin-request "LongSaveProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -76,7 +80,7 @@
     (is (= 3000 (count w-tokens)))
     (is (= 3000 (count spans)))
     (is (= (set (map str w-ids)) (set (map (comp str :token/id) w-tokens))))
-    ;; every word token reads its word, capitalized, where it was
-    (is (= (mapv str/capitalize words)
+    ;; every word token reads its word, respelled, where it was
+    (is (= (mapv respell words)
            (mapv #(cp/cp-subs new (:token/begin %) (:token/end %)) (sort-by :token/begin w-tokens))))
     (is (= extents (mapv (juxt :token/begin :token/end) (sort-by :token/begin w-tokens))))))

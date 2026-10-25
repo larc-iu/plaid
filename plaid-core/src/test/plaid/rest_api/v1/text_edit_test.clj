@@ -685,10 +685,12 @@
                                                [[0 3] [4 8] [9 12]] [8])
         r (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "XZ XZ XZ"}})]
     (is (= 200 (:status r)) (pr-str (:body r)))
-    ;; `mat` and `tat` are typed over as words of their own (REV-one-rule
-    ;; F1), and the row over the last sentence follows it
-    (is (= [3 8] (take 2 (extent (peek rows)))))
-    (is (= [2 2] (take 2 (extent (first points)))))))
+    ;; the body's diff keeps only the space, so every word goes (R42). The
+    ;; last sentence, typed over whole, is the one left, it covers the text
+    ;; after the gap-fill, and the row over it follows it, with the empty
+    ;; row at its start
+    (is (= [0 8] (take 2 (extent (peek rows)))))
+    (is (= [0 0] (take 2 (extent (first points)))))))
 
 (deftest every-layer-takes-an-edit-the-plain-way-with-no-key
   ;; One rule set (Luke, 2026-10-01): a layer whose config says nothing about
@@ -732,21 +734,20 @@
     (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "dogs c at eel"}}))
     (is (= [[0 4 "dogs"] [5 9 "c at"] [10 13 "eel"]] (map extent words) (map extent nodes)))))
 
-(deftest words-typed-over-as-words-each-keep-their-token
-  ;; REV-one-rule F1 (Luke, 2026-09-21: a replaced word keeps its
-  ;; annotations): a stretch of whole words typed over as words of its own is
-  ;; each word typed over, on both paths. With fewer new words than old, the
-  ;; last new word goes to the old word sharing most letters with it.
+(deftest words-typed-over-as-words-go
+  ;; R42, superseding Luke's 2026-09-21 ruling that a replaced word keeps its
+  ;; annotations: a stretch of whole words typed over deletes each word with
+  ;; its node, on both paths, whatever is typed in its place.
   (testing "`不 大` typed over as `x y`"
     (let [{:keys [text words nodes]} (setup "我 不 大 好 。" :nodes true)
           base (-> (get-text admin-request text) :body :text/digest)]
       (assert-ok (edit-text text {:edits [{:type "replace" :index 2 :length 3 :value "x y"}] :base base}))
-      (is (= [[0 1 "我"] [2 3 "x"] [4 5 "y"] [6 7 "好"] [8 9 "。"]] (map extent words) (map extent nodes)))))
+      (is (= [[0 1 "我"] nil nil [6 7 "好"] [8 9 "。"]] (map extent words) (map extent nodes)))))
   (testing "and as a whole body"
     (let [{:keys [text words nodes]} (setup "我 不 大 好 。" :nodes true)]
       (assert-ok (edit-text text {:body "我 x y 好 。"}))
-      (is (= [[0 1 "我"] [2 3 "x"] [4 5 "y"] [6 7 "好"] [8 9 "。"]] (map extent words) (map extent nodes)))))
-  (testing "`cat eel` typed over as `one` keeps `eel` and its node, a relation on it kept"
+      (is (= [[0 1 "我"] nil nil [6 7 "好"] [8 9 "。"]] (map extent words) (map extent nodes)))))
+  (testing "`cat eel` typed over as `one` deletes both, with the node of `eel` and the relation on it"
     (let [{:keys [text words nodes node-layer]} (setup "dog cat eel fox." :nodes true)
           sl (-> (create-span-layer admin-request node-layer "Concept") :body :id)
           rl (-> (create-relation-layer admin-request sl "Edges") :body :id)
@@ -756,8 +757,9 @@
       (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 7 :value "one"}] :base base}))
       (is (= "dog one fox." (-> (get-text admin-request text) :body :text/body)))
       (is (nil? (extent (words 1))))
-      (is (= [4 7 "one"] (extent (words 2)) (extent (nodes 2))))
-      (assert-ok (get-relation admin-request rel)))))
+      (is (nil? (extent (words 2))))
+      (is (nil? (extent (nodes 2))))
+      (is (= 404 (:status (get-relation admin-request rel)))))))
 
 (deftest a-root-word-layer-with-a-layer-under-it-decides
   ;; REV-one-rule F6: words a script made on a root layer, morphemes on a
@@ -810,17 +812,17 @@
         (is (= want (map extent words)) (pr-str (map extent words)))
         (is (= (map extent words) (map extent morphemes)))))))
 
-(deftest several-words-typed-over-as-one-keep-the-letters-left-of-each
-  ;; `the area` typed over as `tlaak` is read as a whole-body save reads it
-  ;; (REV-F-TEXT-CORE, one reading for a change over several words): its
-  ;; diff keeps letters of both words, so neither goes (REV2-one-rule), and
-  ;; each keeps its node. REV2-one-rule E1 had the edits path keep `area`
-  ;; alone, on `tlaak`, and delete `the`.
+(deftest several-words-typed-over-as-one-are-a-delete-and-an-insert
+  ;; `the area` typed over as `tlaak` is a delete and an insert (R42), less
+  ;; the `t` the two share at the start: `the` keeps its `t` and takes the
+  ;; letters typed against it, with its node, and `area`, with no letter
+  ;; left, goes with its node.
   (let [{:keys [text words nodes]} (setup "see the area now" :nodes true)]
     (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 8 :value "tlaak"}]
                                 :base (digest/text-digest "see the area now")}))
-    (is (= [4 6 "tl"] (extent (words 1)) (extent (nodes 1))))
-    (is (= [6 9 "aak"] (extent (words 2)) (extent (nodes 2))))))
+    (is (= [4 9 "tlaak"] (extent (words 1)) (extent (nodes 1))))
+    (is (nil? (extent (words 2))))
+    (is (nil? (extent (nodes 2))))))
 
 (deftest text-typed-at-a-sentences-start-belongs-to-that-sentence
   ;; Luke (2026-10-15): text typed after the space between two sentences

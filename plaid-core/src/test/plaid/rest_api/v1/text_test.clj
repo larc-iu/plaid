@@ -242,11 +242,12 @@
       (assert-ok s)
       (is (= [cow-m] (-> s :body :span/tokens))))))
 
-(deftest text-body-analyzed-word-replaced-outright-moves-and-drops-its-morphemes
-  ;; `cow`, analyzed `co` + `w`, replaced by `abc`: the word and its own
-  ;; annotations move onto `abc`, and its morphemes go with their glosses,
-  ;; as the edits path has it (ruled 2026-09-27). A whole-body save read
-  ;; `ab` typed before the `c` and `ow` deleted, and left `co` on `abc`.
+(deftest text-body-analyzed-word-respelled-keeps-the-tokens-its-diff-keeps-a-letter-of
+  ;; `cow`, analyzed `co` + `w`, saved as `abc`: the body's diff is `ab`
+  ;; typed before the `c` and `ow` deleted, read by the plain rule (R42).
+  ;; The word and `co` keep the `c`, take the letters typed against it and
+  ;; keep their annotations, and `w`, with no letter left, goes with its
+  ;; gloss.
   (let [proj (create-test-project admin-request "TextAnalyzedWordProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -272,6 +273,7 @@
         sa (-> (create-token admin-request morphemes text-id 8 10) :body :id)
         translation (-> (create-span admin-request translations [cow] "COW") :body :id)
         co-gloss (-> (create-span admin-request glosses [co] "CO") :body :id)
+        w-gloss (-> (create-span admin-request glosses [w] "W") :body :id)
         sa-gloss (-> (create-span admin-request glosses [sa] "SA") :body :id)
         extent (fn [id]
                  (let [t (get-token admin-request id)]
@@ -281,9 +283,10 @@
     (is (= [4 7 "abc"] (extent cow)))
     (is (= [8 11 "sat"] (extent sat)))
     (is (= [8 10 "sa"] (extent sa)))
-    (assert-not-found (get-token admin-request co))
+    (is (= [4 7 "abc"] (extent co)))
     (assert-not-found (get-token admin-request w))
-    (assert-not-found (get-span admin-request co-gloss))
+    (assert-ok (get-span admin-request co-gloss))
+    (assert-not-found (get-span admin-request w-gloss))
     (assert-ok (get-span admin-request sa-gloss))
     (let [s (get-span admin-request translation)]
       (assert-ok s)
@@ -410,12 +413,11 @@
       (is (= [0 4 "mat\t"] (extent n1)))
       (is (= [4 7 "cat"] (extent n2))))))
 
-(deftest text-body-edit-aligns-a-respelled-word-when-that-deletes-fewer-words
-  ;; The body update aligns a changed stretch word by word, with the words
-  ;; layer read from the project, when that deletes fewer words than the
-  ;; diff as it stands: `d` respelled `X` and `cda` deleted keeps `d` on `X`,
-  ;; where the diff read both deleted. Where each reading deletes one word
-  ;; (`a ab` to `aX`), the diff's is taken (REV2-one-rule): `a` on `aX`.
+(deftest text-body-edit-is-read-as-its-diff
+  ;; A body update is its character diff, read by the plain rule (R42): `d
+  ;; cda` saved as `X` shares no letter with it, so both words go, and `X`
+  ;; is in no word. ` ab` saved as `X` after `a` deletes `ab`, and `a` takes
+  ;; the letter typed against it.
   (let [proj (create-test-project admin-request "TextAlignWordsProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -437,7 +439,7 @@
                    ((juxt :token/begin :token/end :token/value) (:body t))))]
     (assert-ok (update-text admin-request text-id "ac X.\nthe a ab\n"))
     (is (= [0 2 "ac"] (extent ac)))
-    (is (= [3 4 "X"] (extent d)))
+    (is (= 404 (:status (get-token admin-request d))))
     (is (= 404 (:status (get-token admin-request cda))))
     (assert-ok (update-text admin-request text-id "ac X.\nthe aX\n"))
     (is (= [6 9 "the"] (extent the)))

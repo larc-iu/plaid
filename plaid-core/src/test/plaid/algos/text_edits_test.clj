@@ -70,8 +70,8 @@
     (is (= ["bb bbbb bb" [[0 "bb"] [1 "bb"] [2 "bb"] [3 "bb"]]] (typed "bb bb bb bb" [(del 5 1)]))))
   (testing "letters typed at a word's end join it"
     (is (= ["cats sat" [[0 "cats"] [1 "sat"]]] (typed "cat sat" [(ins 3 "s")]))))
-  (testing "a word selected and typed over keeps its token"
-    (is (= ["dog sat" [[0 "dog"] [1 "sat"]]] (typed "cat sat" [(rep 0 3 "dog")])))))
+  (testing "a word selected and typed over whole goes (R42)"
+    (is (= ["dog sat" [[1 "sat"]]] (typed "cat sat" [(rep 0 3 "dog")])))))
 
 (deftest composing-many-ops-costs-what-they-move
   ;; A long paste sent as one op per word, and the same typed a letter at a

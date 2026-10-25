@@ -71,9 +71,10 @@
     (is (= ["the cats" "the" "cats"] (edit "|the| |cat|" [(ins 7 "s")])))
     (is (= ["the scat" "the" "scat"] (edit "|the| |cat|" [(ins 4 "s")])))
     (is (= ["the cat," "the" "cat,"] (edit "|the| |cat|" [(ins 7 ",")]))))
-  (testing "a word replaced whole keeps its token"
-    (is (= ["the dog" "the" "dog"] (edit "|the| |cat|" [(rep 4 3 "dog")])))
-    (is (= ["the dog" "the" "dog"] (edit "|the| |cat|" [(del 4 3) (ins 4 "dog")])))))
+  (testing "a word typed over whole goes, and what is typed is in no word (R42)"
+    (is (= ["the dog" "the" nil] (edit "|the| |cat|" [(rep 4 3 "dog")])))
+    (is (= ["the dog" "the" nil] (edit "|the| |cat|" [(del 4 3) (ins 4 "dog")])))
+    (is (= ["thedog" "thedog" nil] (edit "|the| |cat|" [(rep 3 4 "dog")])) "the letters typed against a word go to it")))
 
 (deftest a-typed-space-never-splits-a-word
   (is (= ["the c at" "the" "c at"] (edit "|the| |cat|" [(ins 5 " ")])))
@@ -124,7 +125,7 @@
   (is (= ["the cats" "the" "cats"] (save "|the| |cat|" "the cats")))
   (is (= ["the c at" "the" "c at"] (save "|the| |cat|" "the c at")))
   (is (= ["thecat" "the" "cat"] (save "|the| |cat|" "thecat")))
-  (is (= ["the dog" "the" "dog"] (save "|the| |cat|" "the dog")))
+  (is (= ["the dog" "the" nil] (save "|the| |cat|" "the dog")))
   (is (= ["the cow" "the" nil "cow"] (save "|the| |cat| |cow|" "the cow")))
   (is (= ["the bat sat in" "the" "bat" "sat" "in"] (save "|the| |cat| |sat| |on|" "the bat sat in")))
   (is (= ["talu new lei x" "talu new lei" "x"] (save "|talu lei| |x|" "talu new lei x"))))
@@ -137,18 +138,17 @@
     (is (= ["cax ydog" "cax" "ydog"] (edit "|cat||dog|" [(rep 2 1 "x y")])))))
 
 (deftest a-sentence-keeps-to-the-words-edges
-  ;; `a ` typed over as words of its own is read as a whole-body save reads
-  ;; it (REV-F-TEXT-CORE): `a` typed over as the first `XZ`, which keeps its
-  ;; token in its sentence, and the rest typed before `dog`, the letters
-  ;; against it going with it into the next sentence
+  ;; `a ` typed over as `XZ XZ XZ` is a delete and an insert (R42): `a` goes,
+  ;; the letters typed against `dog` go with it into the next sentence, and
+  ;; the rest stays in the sentence the stretch reaches into from inside
   (let [{:keys [body tokens]} (doc "|köye| |a| /|dog|")
         r (th/plain-edits body tokens [(rep 5 2 "XZ XZ XZ")] #{:s} #{:w})
         at (fn [id] (let [t (some #(when (= id (:token/id %)) %) (:tokens r))] [(:token/begin t) (:token/end t)]))]
     (is (= "köye XZ XZ XZdog" (:text/body (:text r))))
-    (is (= [5 7] (at [:w 1])))
+    (is (some #{[:w 1]} (:deleted r)))
     (is (= [11 16] (at [:w 2])))
-    (is (= [8 16] (at [:s 1])))
-    (is (= [0 8] (at [:s 0])))))
+    (is (= [11 16] (at [:s 1])))
+    (is (= [0 11] (at [:s 0])))))
 
 (deftest a-sentence-or-a-segment-typed-over-exactly-keeps-its-token
   ;; L1: `kai\n` (all of sentence 1) typed over as `-`, which touches `dog`
@@ -167,7 +167,7 @@
                 {:token/id :w3 :token/layer :w :token/begin 5 :token/end 7}
                 {:token/id :a1 :token/layer :a :token/begin 0 :token/end 2}
                 {:token/id :a2 :token/layer :a :token/begin 2 :token/end 7}]
-        r (th/plain-edits "abcd ef" tokens [(rep 2 5 "xy")] #{:s} #{:w})
+        r (th/plain-edits "abcd ef" tokens [(rep 2 5 "xy")] #{:s} #{:w} {:exclusive #{:w :a}})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= "abxy" (:text/body (:text r))))
     (is (= [0 2] (at :a1) (at :w1)))
@@ -568,20 +568,20 @@
         c (some #(when (= :c (:token/id %)) %) (:tokens r))]
     (is (= [0 0] [(:token/begin c) (:token/end c)]))))
 
-(deftest words-typed-over-as-words-each-keep-their-token
-  ;; REV-one-rule F1: each word typed over whole keeps its token, on both
-  ;; paths. Fewer new words than old: the last goes to the old word sharing
-  ;; most letters with it, the first on a tie, and the others go.
-  (is (= ["我 x y 好 。" "我" "x" "y" "好" "。"] (edit "|我| |不| |大| |好| |。|" [(rep 2 3 "x y")])))
-  (is (= ["我 x y 好 。" "我" "x" "y" "好" "。"] (save "|我| |不| |大| |好| |。|" "我 x y 好 。")))
-  (is (= ["dog one fox." "dog" nil "one" "fox."] (edit "|dog| |cat| |eel| |fox.|" [(rep 4 7 "one")])))
+(deftest words-typed-over-as-words-go
+  ;; R42: a stretch typed over deletes every word it covers whole, on both
+  ;; paths, however many words are typed in their place. They are in no
+  ;; word, and a word it cuts keeps its letters left.
+  (is (= ["我 x y 好 。" "我" nil nil "好" "。"] (edit "|我| |不| |大| |好| |。|" [(rep 2 3 "x y")])))
+  (is (= ["我 x y 好 。" "我" nil nil "好" "。"] (save "|我| |不| |大| |好| |。|" "我 x y 好 。")))
+  (is (= ["dog one fox." "dog" nil nil "fox."] (edit "|dog| |cat| |eel| |fox.|" [(rep 4 7 "one")])))
   ;; chinese_tlp: `远离 人烟 千 里 之外` typed over as `q `
-  (is (= ["在 q  的" "在" "q" nil nil nil nil "的"]
+  (is (= ["在 q  的" "在" nil nil nil nil nil "的"]
          (edit "|在| |远离| |人烟| |千| |里| |之外| |的|" [(rep 2 12 "q ")])))
-  ;; more new words than old, as a whole-body save reads it: the last old
-  ;; word holds the rest
-  (is (= ["a x y z b" "a" "x" "y z" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")])))
-  (is (= ["a x y zeel b" "a" "x" "zeel" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y zeel")])))
+  (is (= ["a x y z b" "a" nil nil "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")])))
+  ;; the shared end is no change: `eel` keeps its token, with the letter
+  ;; typed against it
+  (is (= ["a x y zeel b" "a" nil "zeel" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y zeel")])))
   (is (= ["wa xy\njjadi ma" "wa" "jjadi" "ma"] (edit "|wa|\n|jadi| |ma|" [(rep 0 10 "wa xy\njjadi ma")]))))
 
 (deftest layer-roles-read-the-layers-shape
@@ -605,10 +605,12 @@
                                               {:id :d :overlap-mode "partitioning"}
                                               {:id :w :overlap-mode "any"}]))))))
 
-(deftest an-analysed-word-retyped-in-a-whole-body-save-drops-its-morphemes
-  ;; REV-one-rule F4: `cow` (`co` + `w`) saved as `abc` is the word typed
-  ;; over, as on the edits path (2026-09-27); `cat` (`ca` + `t`) saved as
-  ;; `bad` respells inside each morpheme and keeps them
+(deftest an-analysed-word-respelled-keeps-what-its-letters-left-keep
+  ;; R42: `cow` (`co` + `w`) typed over whole as `abc` goes with its
+  ;; morphemes. Saved as a whole body the diff keeps the `c`, so the word
+  ;; and `co` keep their tokens and take the letters typed against them,
+  ;; and `w`, with no letter left, goes. `cat` (`ca` + `t`) saved as `bad`
+  ;; keeps the `a`: `ca` takes `b` and `d`, `t` goes
   (let [t (fn [id l b e] {:token/id id :token/layer l :token/begin b :token/end e})
         run (fn [old new tokens f]
               (let [r (f old new tokens)
@@ -618,8 +620,9 @@
         edits (fn [old new tokens] (th/plain-edits old tokens [(rep 4 3 (subs new 4 7))] #{} #{:w}))
         cow [(t :w :w 4 7) (t :co :m 4 6) (t :w2 :m 6 7)]
         cat [(t :w :w 4 7) (t :ca :m 4 6) (t :t :m 6 7)]]
-    (is (= {:w "abc"} (run "the cow sat" "the abc sat" cow body) (run "the cow sat" "the abc sat" cow edits)))
-    (is (= {:w "bad" :ca "ba" :t "d"} (run "the cat sat" "the bad sat" cat body)))))
+    (is (= {} (run "the cow sat" "the abc sat" cow edits)))
+    (is (= {:w "abc" :co "abc"} (run "the cow sat" "the abc sat" cow body)))
+    (is (= {:w "bad" :ca "bad"} (run "the cat sat" "the bad sat" cat body)))))
 
 (defn- live-texts
   "Each live token's text after `r`, by id."
@@ -634,9 +637,11 @@
   ;; H1-IGT-TEXT-1: the same text pasted over the whole body, a line or a
   ;; stretch, with one word inserted, deleted or replaced, read old word i
   ;; as new word i, so every word after the change took its neighbour's
-  ;; analysis and sentences went. Every other word keeps its own token,
-  ;; morphemes and sentence, on all three readings: one replace of the
-  ;; whole body, one replace of the line, and a whole-body save.
+  ;; analysis and sentences went. The text the paste shares with the old at
+  ;; its start and end is no change, so every other word keeps its own
+  ;; token, morphemes and sentence, on all three inputs: one replace of the
+  ;; whole body, one replace of the line, and a whole-body save. The word
+  ;; replaced goes (R42).
   (let [lines [["wa" "me" "sekarang" "wandi"] ["jadi" "ma" "parlure"]
                ["karena" "arun" "tok" "kurang" "(...)" "ma" "koi" "kielunara" "perlu" "a" "mera"]
                ["yo," "sor..."] ["lore!"]]
@@ -663,7 +668,6 @@
             want (into {} (for [l (range (count lines)) j (range (count (lines l)))
                                 :when (not (and (= l li) (= j k) (not= change :insert)))]
                             [(wid l j) ((lines l) j)]))
-            want (cond-> want (= change :replace) (assoc (wid li k) "XYZ"))
             lb (cp/cp-count (line-text (subvec lines 0 li)))
             lb (if (pos? li) (inc lb) lb)
             le (+ lb (cp/cp-count (str/join " " line)))
@@ -678,21 +682,22 @@
             (doseq [[[_ i] t] want]
               (is (= t (got [:m i])) (str where ": morpheme " i)))
             (is (every? #(contains? got [:s %]) (range (count lines))) (str where ": every sentence kept"))
-            (is (= (if (= change :delete) #{[:w (+ (ids li) k)] [:m (+ (ids li) k)]} #{})
+            (is (= (if (= change :insert) #{} #{[:w (+ (ids li) k)] [:m (+ (ids li) k)]})
                    (set (:deleted r)))
                 where)))))))
 
-(deftest small-edits-sent-as-one-replace-are-each-taken-as-made
-  ;; H1-IGT-TEXT-1, the API form: three small inserts written as one replace
-  ;; stored `jadi` on `xy`, `ma` on `jjadi`, and `parlure` across a space
-  ;; and a line break
-  (is (= ["wa me sekarang wandi xy\njjadi ma parlure\nz" "wa" "me" "sekarang" "wandi" "jjadi" "ma" "parlure"]
+(deftest a-replace-sent-as-one-is-one-stretch
+  ;; R42: one replace is one delete and one insert, less the text it shares
+  ;; with the old at its start and end. Three small inserts written as one
+  ;; replace that ends on a letter typed after the last word delete every
+  ;; word between the first change and the last, and nothing reads them as
+  ;; typed again
+  (is (= ["wa me sekarang wandi xy\njjadi ma parlure\nz" "wa" "me" "sekarang" "wandi" nil nil nil]
          (edit "|wa| |me| |sekarang| |wandi|\n|jadi| |ma| |parlure|\n"
                [(rep 0 37 "wa me sekarang wandi xy\njjadi ma parlure\nz")])))
   ;; a phrase (a word holding a space) next to its twin, one of them deleted:
-  ;; one keeps its token whole (the text cannot tell which, the save keeps
-  ;; the second)
-  (is (= ["a thee da. b" "a" nil "thee da" "b"]
+  ;; the shared start and end leave the second inside the stretch
+  (is (= ["a thee da. b" "a" "thee da" nil "b"]
          (edit "|a| |thee da| |thee da|. |b|" [(rep 0 20 "a thee da. b")])))
   ;; a word deleted before punctuation: the word before keeps off it
   (is (= ["on köye. a" "on" "köye" nil "a"] (edit "|on| |köye| |tat|. |a|" [(rep 0 14 "on köye. a")]))))
@@ -819,38 +824,16 @@
     ;; a layer of that role not under the words is no child, so deals nothing
     (is (= #{:x} (:dealt r)))))
 
-(deftest a-paste-over-several-words-reads-as-a-whole-body-save
-  ;; REV-F-TEXT-CORE F1 to F5: one replace over several words, the paste a
-  ;; Baseline or a row sends, is read as the whole-body save of the same
-  ;; change reads it, so a repeated word, a second change, a word inserted
-  ;; beside a respelled one or a script without spaces moves and deletes
-  ;; no word the save keeps
-  (doseq [[s new] [;; F1: a word that repeats, two changes
-                   ["|ba|\n/|xa|\n/|cat| |xa| |xa| |end|" "xa\nxa\ncat xa end"]
-                   ["|kon| |the| |the|\n/|kon|" "kon jalan the\nשלום"]
-                   ["|a| |a| |b|" "x a bb"]
-                   ["|jalan| |jalan| |ke| |pasar|\n/|saya| |makan| |nasi|" "jalang jalan ke pasar\nsaya makan nasih"]
-                   ["|jalab| |jalan| |ke| |pasar|\n/|saya| |makan| |nasi|" "jalan jalan ke pasar\nsaya makan nasih"]
-                   ["|I| |saw| |the| |the| |dog|\n/|it| |ran|" "I saw teh the dog\nit run"]
-                   ;; F2: inside a stretch
-                   ["|na| |kon| |tok| |ma|" "na oke kan tak ma"]
-                   ["|the| |cat| |sat| |down|" "the c at sit down"]
-                   ["|x| |cat,| |tat| |y|" "x a b c y"]
-                   ;; F3: a word inserted beside a respelled one
-                   ["|the| |cat| |sat| |down|" "the big cot sat down"]
-                   ["|na| |kon| |tok| |ma|" "na oke kan tok ma"]
-                   ;; F4: a run with punctuation typed over
-                   ["|x| |cat|, |tat| |y|" "x dog, rat y"]
-                   ;; F5: a script without spaces, two changes
-                   ["|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！"]
-                   ["|你||好||吗||。|\n/|我||很||好||。|" "你好嗎。\n我很好！"]]]
-    (let [{:keys [body]} (doc s)]
-      (is (= (save s new) (edit s [(rep 0 (cp/cp-count body) new)])) (str (pr-str s) " -> " (pr-str new)))))
-  (testing "what the save keeps there"
-    (is (= ["xa\nxa\ncat xa end" "xa" "xa" "cat" nil "xa" "end"] (save "|ba|\n/|xa|\n/|cat| |xa| |xa| |end|" "xa\nxa\ncat xa end")))
-    (is (= ["x a bb" "x" "a" "bb"] (save "|a| |a| |b|" "x a bb")))
-    (is (= ["na oke kan tak ma" "na" "kan" "tak" "ma"] (save "|na| |kon| |tok| |ma|" "na oke kan tak ma")))
-    (is (= ["你好嗎。我很好！" "你" "好" "嗎" "。" "我" "很" "好" "！"] (save "|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！")))))
+;; R42: a paste over several words is a delete and an insert at the same
+;; place. The words it covers whole go, a word it cuts keeps its letters
+;; left with those typed against them, and its other letters are in no
+;; word. A whole-body save is its character diff, read by the same rule.
+(deftest a-paste-over-several-words-is-a-delete-and-an-insert
+  (is (= ["the dog ran down" "the" nil nil "down"] (edit "|the| |cat| |sat| |down|" [(rep 4 7 "dog ran")])))
+  (is (= ["the cXY Zat down" "the" "cXY" "Zat down"] (edit "|the| |cat| |sat down|" [(rep 5 4 "XY Z")])))
+  ;; saved as a whole body, the diff keeps the `a` of `sat`, which keeps its
+  ;; word
+  (is (= ["the dog ran down" "the" nil "ran" "down"] (save "|the| |cat| |sat| |down|" "the dog ran down"))))
 
 (deftest an-edit-that-only-deletes-or-only-types-is-taken-as-made
   ;; REV2-F-TEXT-CORE R1: a delete across a word boundary carries all it
@@ -940,15 +923,6 @@
         long-token (timed 4000 true)]
     (is (< small 10.0) (str "200: " small " s"))
     (is (< long-token (* 8 small)) (str "4000 in one sentence: " long-token " s, 200: " small " s"))))
-
-(deftest a-word-typed-over-beside-its-twin-keeps-its-token
-  ;; REV3-F-TEXT-CORE G2: the diff deletes `你` and types `好` after the next
-  ;; `好`; the same text is `你` typed over as `好`, which keeps every word
-  (is (= ["我好好吗！" "我" "好" "好" "吗" "！"] (save "|我||你||好||吗||。|" "我好好吗！")))
-  (is (= ["我好好吗！" "我" "好" "好" "吗" "！"] (edit "|我||你||好||吗||。|" [(rep 0 5 "我好好吗！")])))
-  (is (= ["我你你吗！" "我" "你" "你" "吗" "！"] (save "|我||你||好||吗||。|" "我你你吗！")))
-  (testing "spaced text was already right"
-    (is (= ["x cd cd y." "x" "cd" "cd" "y."] (save "|x| |ab| |cd| |y|" "x cd cd y.")))))
 
 (deftest a-word-layer-with-no-tokens-reads-as-none
   ;; R1-DEBT-CORE-12: which tokens are the words is decided one way on
@@ -1197,10 +1171,11 @@
     (is (= ["ab'" "xcd"] (sents (th/plain-edits "ab'cd" (tokens "ab'cd" 3) [(ins 3 "x")] #{:s} #{:w}))))
     (is (= ["ab." "xcd"] (sents (th/plain-edits "ab.cd" (tokens "ab.cd" 3) [(ins 3 "x")] #{:s} #{:w} {:letter-like ll}))))))
 
-(deftest a-punctuation-word-typed-over-keeps-its-token
-  ;; Luke 2026-10-17: a word made only of punctuation typed over keeps its
-  ;; token, as any word typed over does, on both paths (the rule of
-  ;; 6f1485d1a that deleted it is withdrawn)
+(deftest a-punctuation-word-typed-over-goes
+  ;; A word made only of punctuation typed over whole goes, as every word
+  ;; typed over whole does (R42, superseding Luke's 2026-10-17 ruling that
+  ;; it kept its token), and the letter typed against the word before goes
+  ;; to it, on both paths
   (let [body "ab, cd"
         tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 6}
                 {:token/id [:w 0] :token/layer :w :token/begin 0 :token/end 2}
@@ -1209,5 +1184,6 @@
         op (rep 2 1 "x")]
     (doseq [r [(th/plain-edits body tokens [op] #{:s} #{:w})
                (th/plain-body body "abx cd" tokens #{:s} #{:w})]]
-      (is (= [[0 2] [2 3] [4 6]]
+      (is (= [[:w 1]] (:deleted r)))
+      (is (= [[0 3] [4 6]]
              (sort (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r))))))))

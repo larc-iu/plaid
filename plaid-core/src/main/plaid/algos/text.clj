@@ -28,9 +28,7 @@
         plaid.algos.text.align/align-to-words
         plaid.algos.text.read/slide-to-tokens
         plaid.algos.text.read/normalize-deletes
-        plaid.algos.text.read/body-diff-gaps
         plaid.algos.text.read/plain-body-gaps
-        plaid.algos.text.read/plain-body-read
         plaid.algos.text.read/plain-edit-gaps
         plaid.algos.text.ops/delete-op
         plaid.algos.text.ops/insert-op

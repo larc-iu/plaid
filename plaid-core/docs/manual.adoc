@@ -944,8 +944,8 @@ PATCH /texts/9cfafcc6
 { edits: [ { type: "insert", index: 10, value: "!" } ], base: "4d7e1a…" }
 ----
 
-Tokens follow the text the way a person would expect.
-Letters typed inside a word or at its end become part of the word, and a word is deleted only when all of its letters are.
+Tokens follow the text by fixed rules, the same for every save.
+Letters typed inside a word or at its end become part of the word, and a word is deleted when all of its letters are.
 A word made only of punctuation and symbols, such as a token over `(` or `.`, takes no text typed against it, so the letters typed there are the same words as where the punctuation has no token: in `ab (cd)` with a token over `(`, `x` typed after `(` makes `xcd`, and `x` typed after a closing `.` is in no word.
 This holds for words only: a row made only of punctuation, such as a pause `...` in a text with no words, takes text as any row does.
 An emoji and the zero morph `∅` count as letters here.
@@ -955,7 +955,14 @@ Under the type `unicodePunctuation` a word made only of punctuation is ignored, 
 Under the type `blacklist` the entries of `blacklist` are the words ignored, and those one character long are the only characters that part words.
 The list of the other type is kept and not read.
 Punctuation and symbols are read from the Unicode 16 table the apps read.
-A word typed over keeps its place, and its annotations, on the new text.
+
+A replacement, or any change that deletes text and types new text in the same place, counts as a deletion followed by an insertion there.
+The text it shares with the old text at its start and at its end is no change.
+A word all of whose letters it replaces is deleted with its annotations, even when the new text spells the same word again.
+A word it replaces only part of keeps its other letters and takes the letters typed against them, and the rest of the new text belongs to no word.
+In `the cat sat`, `cat` replaced by `dog` deletes the word `cat`, and `dog` belongs to no word, while `at s` replaced by `ow r` leaves the words `cow` and `rat`.
+Tokens under a word, such as morphemes, and tokens beside the words on a layer that allows overlap, such as UMR nodes, are deleted the same way when none of their letters is left.
+A sentence or a row (see below) holds the text typed over part of it, and one whose whole text is replaced keeps its place and its annotations on the new text.
 
 A next-line character (U+0085) is whitespace to all of these rules, as a line feed is: it parts two words, ends a line, and counts as whitespace at a sentence's or a row's edge.
 
@@ -983,7 +990,7 @@ A row, a token of a layer that forbids overlap other than the words and the laye
 * A row keeps every letter it held that the save leaves. A space typed inside a word that splits it (`splitOnSpace`) moves no row.
 * Rows that did not overlap before a save do not overlap after it.
 
-A whole `body` save reads its change from the difference between the two bodies and places it by the same rules. Where the difference can be read at more than one place, it is read where it changes the fewest tokens, and among those, as text typed at a sentence's start after whitespace. The reading can still differ from what was typed (`Then` typed before `The` can read as `The` typed over), so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
+A whole `body` save takes its change as the character difference between the two bodies, read by the same rules. Where the difference can stand at more than one place for the same new body, it stands where it changes the fewest tokens, and among those, as text typed at a sentence's start after whitespace. The reading can still differ from what was typed (`Then` typed before `The` can read as `The` typed over), so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
 
 The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
 An editor can update its own copy of the document from it instead of reading the document again.

@@ -188,17 +188,10 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
     return token ? newBody.slice(token.begin, token.end).join('') : null;
   };
   expect(wordUnder('HUMAN'), 'gloss on an untouched word kept').toBe(FORMS[1]);
-  // The first word was replaced OUTRIGHT, zork… by "a", and its gloss rides
-  // along onto the new word. That is what the core diff does since it began
-  // folding a delete-and-insert pair into one replace (ffb9005f, dfd44160),
-  // which is what keeps a RESPELLING's annotations: the server sees the same
-  // shape either way. A word deleted outright still loses its gloss, and
-  // retyping the whole body still loses everything.
-  //
-  // Whether a replace that consumes a whole token should be read as a
-  // respelling (keep) or as a new word (drop) is Luke's to settle. Pinned
-  // here as what happens, not as what ought to.
-  expect(wordUnder('DET'), 'gloss on the replaced word rides onto its replacement').toBe('a');
+  // The first word was replaced outright by "a", which shares no letter with
+  // it: a word all of whose letters are replaced goes with its annotations,
+  // and what is typed is a new word (R42).
+  expect(wordUnder('DET'), 'gloss on the replaced word goes with it').toBeNull();
 });
 
 test('C2-02: rename and delete from the Details tab', async ({ page }) => {

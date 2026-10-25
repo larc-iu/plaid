@@ -69,11 +69,10 @@
   (let [tokens (tokens-of c)
         ops (ta/gap-ops gaps)
         opts (cond-> opts sos (assoc :split-on-space true))]
-    (if (= path :edits)
-      (let [used (ta/plain-edit-gaps o ops tokens opts)]
-        {:gaps used :r (ta/apply-plain-gaps o tokens used opts)})
-      (let [[used r] (ta/plain-body-read o (ta/edit-ops-body ops o) tokens opts)]
-        {:gaps used :r r}))))
+    (let [used (if (= path :edits)
+                 (ta/plain-edit-gaps o ops)
+                 (ta/plain-body-gaps o (ta/edit-ops-body ops o) tokens opts))]
+      {:gaps used :r (ta/apply-plain-gaps o tokens used opts)})))
 
 (defn violations
   "What breaks the invariant (see the ns doc) in case `c` on `path`."
@@ -427,10 +426,14 @@
     (doseq [[label o sents words rows gaps want]
             [;; REV7-TEXT-1: a NEL reads as whitespace at a row's edge, as LF does
              ["at the end, NEL" "Hi.\u0085The end." [[0 4] [4 12]] [[0 2] [4 7] [8 11]] [[0 3] [3 12]] [[3 3 " So"]] ["Hi. So" "\u0085The end."]]
-             ;; REV7-TEXT-4: in a text with no word the rows decide, and the
-             ;; edits and the body read a replace over a line break alike
-             ["no words, a replace over a line break" "abcd Ef ŋa \u2028ฉันไปตลาด" [[0 12] [12 21]] [] [[0 10] [10 21]] [[9 12 "x y"]] ["abcd Ef ŋx" " yฉันไปตลาด"]]]
+             ;; REV7-TEXT-4: in a text with no word the rows decide. A
+             ;; replace over a line break is a delete and an insert at the
+             ;; same place (R42): the second row, cut at its start, takes the
+             ;; letter typed against it. The body's diff keeps the space and
+             ;; types `y` inside the row.
+             ["no words, a replace over a line break" "abcd Ef ŋa \u2028ฉันไปตลาด" [[0 12] [12 21]] [] [[0 10] [10 21]] [[9 12 "x y"]]
+              {:edits ["abcd Ef ŋx" "yฉันไปตลาด"] :body ["abcd Ef ŋx" " yฉันไปตลาด"]}]]
             path [:edits :body]
             :let [c {:o o :sents sents :words words :rows rows :gaps (mapv (fn [[a z v]] {:start a :end z :value v}) gaps)}
                   {r :r} (run-case c path)]]
-      (is (= want (mapv second (texts r))) (str label " " path)))))
+      (is (= (if (map? want) (want path) want) (mapv second (texts r))) (str label " " path)))))

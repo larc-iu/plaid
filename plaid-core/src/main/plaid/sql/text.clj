@@ -236,10 +236,12 @@
           ;; the word placed by where they stand, or dealt one to each part
           ;; on a layer of role `syntactic-word`. A character a layer's
           ;; ignored-tokens rule calls letter-like is a letter to the
-          ;; punctuation rule (see ta/ignored-rule). A diffed body's
-          ;; edits are first moved to where they disturb the fewest tokens
-          ;; when they could stand in several places for the same result (see
-          ;; ta/plain-body-gaps). Ops sent as the body are applied as sent.
+          ;; punctuation rule (see ta/ignored-rule). Edits are taken as
+          ;; their net change (see ta/plain-edit-gaps), a whole body as its
+          ;; character diff, each edit of it moved to where it disturbs the
+          ;; fewest tokens when it could stand in several places for the same
+          ;; result (see ta/plain-body-gaps), and both are read by the same
+          ;; rule (R42). Ops sent as the body are applied as sent.
           layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
                        (psc/q db {:select [:id :name :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
@@ -251,9 +253,11 @@
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           [gaps {new-text :text sent-tokens :tokens deleted-ids :deleted sent-heads :heads sent-made :made}]
           (cond
-            edits (let [gaps (ta/plain-edit-gaps old-body edits tokens roles)]
-                    [gaps (ta/apply-plain-gaps old-body tokens gaps roles)])
-            (string? new-body-or-ops) (ta/plain-body-read old-body new-body-or-ops tokens roles)
+            (or edits (string? new-body-or-ops))
+            (let [gaps (if edits
+                         (ta/plain-edit-gaps old-body edits)
+                         (ta/plain-body-gaps old-body new-body-or-ops tokens roles))]
+              [gaps (ta/apply-plain-gaps old-body tokens gaps roles)])
             :else [(when tokenize (ta/compose-edits (vec new-body-or-ops) old-body))
                    (ta/apply-text-edits (vec new-body-or-ops) text-map tokens)])
           sent-body (:text/body new-text)

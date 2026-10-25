@@ -1,16 +1,14 @@
 (ns plaid.algos.text.read
   "What a change to a text's body is read as, in gaps for the plain rule:
-  a whole-body save's diff slid to the tokens, its deletes normalized and
-  its stretches aligned to the words (`plain-body-read`), and the net
-  change of an editor's edits (`plain-edit-gaps`)."
+  a whole-body save's character diff, each edit placed where it disturbs
+  the fewest tokens (`plain-body-gaps`), and the net change of an editor's
+  edits (`plain-edit-gaps`)."
   (:require [clojure.set :as set]
-            [plaid.algos.text.chars :refer [cps->str has-space? punct-only? space? word-letter?]]
-            [plaid.algos.text.align :refer [align-to-words]]
+            [plaid.algos.text.chars :refer [cps->str has-space? punct-only? space?]]
             [plaid.algos.text.diff :refer [diff]]
-            [plaid.algos.text.index :refer [begin-index lower-bound tokens-near upper-bound]]
+            [plaid.algos.text.index :refer [tokens-near]]
             [plaid.algos.text.ops :refer [compose-edits edits->ops ops->edits]]
-            [plaid.algos.text.plain :refer [apply-plain-gaps gaps-body save-roles typed-to-next?]]
-            [plaid.util.codepoint :as cp]))
+            [plaid.algos.text.plain :refer [typed-to-next?]]))
 
 ;; ---------------------------------------------------------------------------
 ;; Sliding an edit to the tokens
@@ -351,30 +349,12 @@
                                  near-e (near (reduce min (map start-of places))
                                               (reduce max (map reach-of places)))
                                  cost #(slide-cost o near-e partitioning word-layers letter-like %)
-                                 here (cost e)
-                                  ;; an insert that can stand right after (or
-                                  ;; before) a delete of exactly one token's text
-                                  ;; makes that token typed over whole, which
-                                  ;; keeps it: `我你好吗。` saved as `我好好吗！` is
-                                  ;; `你` typed over as `好`, not `你` deleted and
-                                  ;; `好` doubled (REV3-F-TEXT-CORE G2)
-                                 whole? (fn [d] (and d (= :delete (:kind d))
-                                                     (some #(and (= (:token/begin %) (:start d)) (= (:token/end %) (:end d)))
-                                                           (near (:start d) (:end d)))))
-                                 typed-over (when (and (= :insert (:kind e)) (pos? here))
-                                              (let [p (peek moved)]
-                                                (or (when (and prev (whole? p) (<= (:end p) (:at e)))
-                                                      (some #(when (= (:at %) (:end p)) %) (slide-places o e (:end p) hi)))
-                                                    (when (and (whole? nxt) (<= (:at e) (:start nxt)))
-                                                      (some #(when (= (:at %) (:start nxt)) %) (slide-places o e lo (:start nxt)))))))]
-                             (cond
-                               typed-over typed-over
-                               (zero? here)
+                                 here (cost e)]
+                             (if (zero? here)
                                e
-                                ;; The fewest disturbed, then the fewest cut, then
-                                ;; the nearest place. The sort is stable and
-                                ;; `places` starts with the edit itself.
-                               :else
+                               ;; The fewest disturbed, then the fewest cut, then
+                               ;; the nearest place. The sort is stable and
+                               ;; `places` starts with the edit itself.
                                (first (sort-by (juxt cost
                                                      #(slide-cuts near-e %)
                                                      #(if (next-start? near-e %) 0 1)
@@ -517,113 +497,6 @@
       (and (= (+ p s) n) (= (+ p s) k)) nil
       :else (assoc gap :start (+ start p) :end (- end s) :value (String. v (int p) (int (- n p s)))))))
 
-;; A stretch of several words typed over as words of its own is each word
-;; typed over: `不 大` to `x y` is `不` typed over as `x` and `大` as `y`,
-;; so each word keeps its token and what hangs off it (Luke, 2026-09-21: a
-;; replaced word keeps its annotations). Where there are more old words than
-;; new, the last new word goes to the old word left that shares the most
-;; letters with it, the first on a tie (`cat eel` to `one` keeps `eel`), and
-;; the other old words are deleted. Where there are more new words than old,
-;; the last old word goes the same way to a new word, and the others are in
-;; no word.
-;; A replace over several words is not read this way on the edits path: it
-;; is read as a whole-body save reads it (see `plain-edit-gaps`).
-
-(defn- cp-runs
-  "The runs of `cs` from `from` to `to`, each `[b e ws?]`, whitespace or not."
-  [^ints cs from to]
-  (loop [i from out []]
-    (if (< i to)
-      (let [w (space? (aget cs i))
-            e (loop [j (inc i)] (if (and (< j to) (= w (space? (aget cs j)))) (recur (inc j)) j))]
-        (recur e (conj out [i e w])))
-      out)))
-
-(defn- shared-letters
-  "How many letters `cs`[b, e) and `vs`[x, y) have in common, counted with
-  repeats."
-  [^ints cs b e ^ints vs x y]
-  (let [f (frequencies (map #(aget vs %) (range x y)))]
-    (first (reduce (fn [[n f] i]
-                     (let [c (aget cs i) k (get f c 0)]
-                       (if (pos? k) [(inc n) (assoc f c (dec k))] [n f])))
-                   [0 f] (range b e)))))
-
-(defn- pair-words
-  "Pieces `[old-b old-e new-b new-e keep]`, in order, for old [`a`, `b`)
-  holding the words `ow` typed over as new [`x`, `y`) holding the words
-  `vw` (extents in `o` and `v`), none of them the same on both sides: old
-  word i is typed over as new word i. Where there are more old words than
-  new, the last new word goes to the old word left that the stretch
-  reaches into at its start or end (a letter of it beside the stretch, as
-  the plain rule gives it), else the one sharing most letters with it, the
-  first on a tie, and the other old words go. Where there are more new
-  words than old, the last old word goes the same way to the new word left
-  it reaches into or shares most letters with, and the other new words are
-  typed apart from every word."
-  [^ints o ^ints v ow vw a b x y letter-like]
-  (let [m (count ow)
-        n (count vw)]
-    (if (or (zero? m) (zero? n))
-      [[a b x y nil]]
-      (let [ob (fn [i] (first (ow i))) oe (fn [i] (second (ow i)))
-            vb (fn [i] (first (vw i))) ve (fn [i] (second (vw i)))
-            most (fn [score from to] (reduce (fn [a i] (if (> (score i) (score a)) i a)) from (range (inc from) to)))
-            at-start? (fn [i] (and (pos? a) (= a (ob i)) (word-letter? letter-like (aget o (dec a)))))
-            at-end? (fn [i] (and (< b (alength o)) (= b (oe i)) (word-letter? letter-like (aget o b))))
-            typed (fn [i j] [(ob i) (oe i) (vb j) (ve j) [(ob i) (oe i)]])
-            words (if (<= n m)
-                    (let [l (dec n)
-                          best (cond
-                                 (at-start? l) l
-                                 (at-end? (dec m)) (dec m)
-                                 :else (most #(shared-letters o (ob %) (oe %) v (vb l) (ve l)) l m))]
-                      (conj (mapv #(typed % %) (range l))
-                            [(ob l) (oe (dec m)) (vb l) (ve l) [(ob best) (oe best)]]))
-                    (let [l (dec m)
-                          best (cond
-                                 (at-end? l) (dec n)
-                                 (at-start? l) l
-                                 :else (most #(shared-letters o (ob l) (oe l) v (vb %) (ve %)) l n))]
-                      (conj (mapv #(typed % %) (range l)) (typed l best))))]
-        (concat [[a (nth (first words) 0) x (nth (first words) 2) nil] (first words)]
-                (mapcat (fn [p q] [[(p 1) (q 0) (p 3) (q 2) nil] q]) words (rest words))
-                [[(nth (peek words) 1) b (nth (peek words) 3) y nil]])))))
-
-(defn- cut-at-words
-  "`gap` (see `compose-edits`) cut where its old and new text are words with
-  whitespace between, typed over word by word (see `pair-words`). The
-  pieces whose old and new text are the same are left out. Pieces that touch
-  stay one gap, which then carries `:keeps`, each `[b e off len]`: the token
-  over exactly old [b, e) goes on the gap's new text from `off` for `len`. A
-  gap with fewer than two old words, or no new word, is left whole.
-  `letter-like` as in `pair-words`."
-  [^ints o letter-like {:keys [start end value] :as gap}]
-  (let [^ints v (.toArray (.codePoints ^String value))
-        ow (filterv #(not (nth % 2)) (cp-runs o start end))
-        vw (filterv #(not (nth % 2)) (cp-runs v 0 (alength v)))]
-    (if (or (< (count ow) 2) (empty? vw))
-      [gap]
-      (let [;; [old-b old-e new-b new-e keep], in order
-            pieces (pair-words o v ow vw start end 0 (alength v) (or letter-like #{}))
-            same? (fn [[a b x y]] (and (= (- b a) (- y x))
-                                       (every? #(= (aget o (+ a %)) (aget v (+ x %))) (range (- b a)))))
-            changed (remove same? pieces)
-            ;; pieces that touch are one gap
-            groups (reduce (fn [out [a :as p]]
-                             (if (and (seq out) (= a (second (peek (peek out)))))
-                               (conj (pop out) (conj (peek out) p))
-                               (conj out [p])))
-                           [] changed)]
-        (mapv (fn [ps]
-                (let [[a _ x] (first ps)
-                      [_ b _ y] (peek ps)
-                      keeps (vec (keep (fn [[_ _ px py kp]] (when kp [(first kp) (second kp) (- px x) (- py px)])) ps))]
-                  (cond-> {:start a :end b :value (String. v (int x) (int (- y x)))}
-                    (:side gap) (assoc :side (:side gap))
-                    (seq keeps) (assoc :keeps keeps))))
-              groups)))))
-
 (defn- edits->gaps
   "Old-coordinate edits in position order (see `ops->edits`) as gaps: edits
   that touch are one gap."
@@ -639,300 +512,25 @@
           []
           edits))
 
-(defn- word-extents
-  "The old extents of the words of `tokens` under `roles` (see
-  `save-roles`, `:decides?`)."
-  [tokens roles]
-  (into #{} (comp (filter (:decides? (save-roles roles tokens)))
-                  (map (juxt :token/begin :token/end)))
-        tokens))
-
-(defn- merge-in-words
-  "`gaps` with the gaps inside one word of `tokens` (`word?`), with no
-  whitespace between them and none typed, made one gap when taken apart
-  they would delete a token inside the word: `cow`, analysed `co` + `w`,
-  saved as `abc` is the word typed over (its morphemes go, as the edits
-  path has it, 2026-09-27), not `ab` typed before `c` and `ow` deleted,
-  which left `co` on `abc` and deleted `w`. A respelling inside each token
-  (`cat`, `ca` + `t`, to `bad`) is left as it is."
-  [gaps ^ints o tokens word?]
-  (let [wide (vec (sort-by :token/begin (filter #(< (:token/begin %) (:token/end %)) tokens)))
-        wbegins (long-array (map :token/begin wide))
-        words (vec (filter word? wide))
-        begins (long-array (map :token/begin words))
-        word-of (fn [{:keys [start end]}]
-                  (let [i (dec (upper-bound begins start))]
-                    (when (>= i 0) (let [w (words i)] (when (<= end (:token/end w)) w)))))
-        apart? (fn [x y] (some #(space? (aget o %)) (range (:end x) (:start y))))
-        ;; runs of gaps in one word with no whitespace between
-        runs (reduce (fn [out g]
-                       (let [w (word-of g)
-                             [pw run] (peek out)]
-                         (if (and w pw (= (:token/id w) (:token/id pw)) (not (has-space? (:value g)))
-                                  (not (has-space? (:value (peek run)))) (not (apart? (peek run) g)))
-                           (conj (pop out) [pw (conj run g)])
-                           (conj out [w [g]]))))
-                     [] gaps)
-        ;; whether the gaps of `run` taken apart delete the token: one holds
-        ;; it, and is not exactly its text typed over
-        goes? (fn [run {tb :token/begin te :token/end}]
-                (some (fn [{:keys [start end value]}]
-                        (and (<= start tb) (<= te end)
-                             (not (and (= start tb) (= end te) (seq value)))))
-                      run))]
-    (into []
-          (mapcat (fn [[w run]]
-                    (if (and w (< 1 (count run))
-                             (some #(goes? run %)
-                                   (subvec wide (upper-bound wbegins (dec (:token/begin w)))
-                                           (upper-bound wbegins (dec (:token/end w))))))
-                      (let [a (:start (first run))]
-                        [{:start a :end (:end (peek run))
-                          :value (apply str (map-indexed (fn [i g]
-                                                           (str (when (pos? i)
-                                                                  (let [f (run (dec i))] (String. o (int (:end f)) (int (- (:start g) (:end f))))))
-                                                                (:value g)))
-                                                         run))}])
-                      run)))
-          runs)))
-
-(defn- body-word-layers
-  "The layers whose tokens are the words of a whole-body save (see
-  `save-roles`, `:decider-layers`)."
-  [tokens roles]
-  (:decider-layers (save-roles roles tokens)))
-
-(defn body-diff-gaps
-  "The change a whole-body save of `old` as `new` reads, before it reads any
-  stretch as words typed over: the diff, each edit moved to the equivalent
-  place that disturbs the fewest `tokens` (see `slide-to-tokens` and
-  `normalize-deletes`), each changed stretch aligned to the words (see
-  `align-to-words`), and edits that touch one gap, the layers as `roles`
-  has them (see `layer-roles`). A letter outside these gaps is a letter the
-  save keeps, and no token holding one is deleted. With `align?` false, the
-  stretches are left as the diff spells them. `outside` is what stands
-  beyond either end of `old` when it is a stretch of a longer text, nil for
-  a whole body (see `align-to-words`)."
-  ([^String old ^String new tokens {:keys [partitioning deciders letter-like] :as roles} align? outside]
-   (-> (diff old new)
-       (slide-to-tokens old tokens partitioning deciders letter-like)
-       (normalize-deletes old tokens)
-       (cond-> align? (align-to-words old tokens (body-word-layers tokens roles) letter-like outside))
-       ops->edits
-       edits->gaps)))
-
 (defn plain-body-gaps
-  "The gaps a whole-body save of `old` as `new` is taken as: those of
-  `body-diff-gaps`, the gaps inside one word that would delete a token
-  inside it made one gap (see `merge-in-words`), and each gap cut where it
-  types words over words (see `cut-at-words`). Neither step reaches a
-  letter outside the diff's gaps but inside the one word it reads as typed
-  over, so no word with a letter left is deleted. `outside` is as for
-  `body-diff-gaps`."
-  ([^String old ^String new tokens roles outside]
-   (let [^ints o (.toArray (.codePoints old))
-         wl (body-word-layers tokens roles)]
-     (-> (body-diff-gaps old new tokens roles true outside)
-         (merge-in-words o tokens #(contains? wl (:token/layer %)))
-         (->> (into [] (mapcat #(cut-at-words o (:letter-like roles) %))))))))
-
-(defn- pick-reading
-  "`[gaps result]`: of the two readings of a change of `old`, `gaps` (the
-  words aligned, typed over and retyped, see `plain-body-gaps`) and `gaps0`
-  (a delay of the diff as it stands, see `body-diff-gaps`), and
-  `apply-plain-gaps` of it. `gaps` is taken when every token it deletes
-  `gaps0` deletes too, not counting the tokens under the words
-  (`:children`, a morpheme of a word typed over), or when it deletes
-  fewer, else `gaps0`. So a change never deletes a word its own diff keeps
-  letters of only to keep another (REV2-one-rule): where two readings each
-  delete one word, the diff's is taken."
-  [^String old tokens gaps gaps0 roles]
-  (let [run #(apply-plain-gaps old tokens % roles)
-        layer-of (into {} (map (juxt :token/id :token/layer)) tokens)
-        children (set (:children roles))
-        counted (fn [r] (into #{} (remove #(children (layer-of %))) (:deleted r)))
-        read (run gaps)
-        gone (counted read)]
-    (if (empty? gone)
-      [gaps read]
-      (let [as-diffed (run @gaps0)
-            gone0 (counted as-diffed)]
-        (if (or (every? gone0 gone) (< (count gone) (count gone0)))
-          [gaps read]
-          [@gaps0 as-diffed])))))
-
-(defn plain-body-read
-  "`[gaps result]`: the gaps a whole-body save of `old` as `new` is taken as
-  and `apply-plain-gaps` of them, the aligned reading (`plain-body-gaps`) or
-  the diff as it stands, as `pick-reading` chooses."
-  [^String old ^String new tokens roles]
-  (pick-reading old tokens
-                (plain-body-gaps old new tokens roles nil)
-                (delay (body-diff-gaps old new tokens roles false nil))
-                roles))
+  "The gaps a whole-body save of `old` as `new` is taken as: the character
+  diff, each edit moved to the equivalent place that disturbs the fewest
+  `tokens` (see `slide-to-tokens` and `normalize-deletes`), and edits that
+  touch one gap, the layers as `roles` has them (see `layer-roles`). The
+  plain rule then reads them as it reads an editor's edits (R42)."
+  [^String old ^String new tokens {:keys [partitioning deciders letter-like]}]
+  (-> (diff old new)
+      (slide-to-tokens old tokens partitioning deciders letter-like)
+      (normalize-deletes old tokens)
+      ops->edits
+      edits->gaps))
 
 (defn plain-edit-gaps
-  "The gaps an edit of `old` by `ops` from the caret is taken as, for
-  `tokens` (see `apply-plain-gaps` for `roles`): its net change (see `compose-edits`), each gap of it taken apart
-  and as it was made, less the text its new value shares with the old at
-  either end. A gap that only deletes or only types carries all it means
-  and is always taken so: a word shrinks, and goes only with all its
-  letters (REV2-F-TEXT-CORE R1).
-
-  A gap that both deletes and types, reaching inside two words or more, or
-  inside one and holding or typing words with whitespace between (a paste
-  over a line, a row or the whole body, a selection typed over), is read as
-  a whole-body save reads the stretch it was sent over (see
-  `plain-body-read`; the text outside the stretch is the same, and the
-  aligner is told what stands beyond its ends), so a word
-  pasted in, left out or typed over moves no other word (H1-IGT-TEXT-1,
-  REV-F-TEXT-CORE). That reading is taken when it deletes no word or
-  sentence that the gap as sent keeps, or deletes fewer, weighed on the
-  text between the gap's neighbours. Where both delete the same, it is
-  taken unless it leaves a word over a run of typed text of its own with
-  whitespace between (`hi` on `Oh my.\nHi`) and the gap as sent does not.
-  Otherwise the gap is taken as made."
-  ([^String old ops tokens roles]
-   (let [^ints o (.toArray (.codePoints old))
-         n (alength o)
-         ;; the words' old extents, by begin, and the longest
-         words (vec (sort (word-extents tokens roles)))
-         [^longs begins longest] (begin-index words first second)
-         ;; how many words [a, b) touches the inside of, two at most
-         over (fn [a b] (let [from (lower-bound begins (- a longest))]
-                          (loop [i from k 0]
-                            (if (and (< i (count words)) (< k 2) (< (aget begins i) b))
-                              (recur (inc i) (if (> (second (words i)) a) (inc k) k))
-                              k))))
-         ;; how many runs of text with no whitespace [a, b) of `cs` holds
-         runs (fn [^ints cs a b] (count (filter (fn [[_ _ w?]] (not w?)) (cp-runs cs a b))))
-         gaps (compose-edits ops old)
-         k (count gaps)
-         ;; a gap that both deletes and types, over two words or more, or
-         ;; over one and holding or typing words with whitespace between
-         multi? (fn [{:keys [start end ^String value]}]
-                  (let [w (over start end)
-                        ^ints v (.toArray (.codePoints value))]
-                    (and (< start end) (pos? (alength v))
-                         (or (<= 2 w)
-                             (and (= 1 w) (or (<= 2 (runs o start end)) (<= 2 (runs v 0 (alength v)))))))))
-         ;; `word-of-layer?`, a word for `foreign?` below: a token of a word
-         ;; layer, where the text has one. In a text whose word layer holds
-         ;; no token yet the rows decide in the words' place, but a row
-         ;; holds runs of text with whitespace between as a matter of
-         ;; course, so it is never foreign, and the gap is read as a
-         ;; whole-body save reads it (REV7-TEXT-4)
-         {word? :decides? word-of-layer? :word? :keys [children partitioning]} (save-roles roles tokens)
-         ;; gap i read as a whole-body save of its window (the text between
-         ;; its neighbours) reads it, the tokens cut to the window, when that
-         ;; reading deletes no word or sentence the gap as made keeps, or
-         ;; deletes fewer, else the gap as made
-         ;; `tokens` cut to old [lo, hi), in its coordinates: the short ones
-         ;; found by their begin, the few long ones (a text in one sentence,
-         ;; a document's token, a node over a long sentence) looked at whole
-         long? #(< 1024 (- (:token/end %) (:token/begin %)))
-         longs (filterv long? tokens)
-         by-begin (vec (sort-by :token/begin (remove long? tokens)))
-         [^longs tbegins tlongest] (begin-index by-begin :token/begin :token/end)
-         in? (fn [lo hi {:token/keys [begin end]}] (if (= begin end) (<= lo begin hi) (and (< begin hi) (< lo end))))
-         cut-one (fn [lo hi tk] (assoc tk :token/begin (- (max lo (:token/begin tk)) lo) :token/end (- (min hi (:token/end tk)) lo)))
-         cut (fn [lo hi]
-               (let [from (lower-bound tbegins (- lo tlongest))]
-                 (loop [i from out (transient (into [] (comp (filter #(in? lo hi %)) (map #(cut-one lo hi %))) longs))]
-                   (if (and (< i (count by-begin)) (<= (aget tbegins i) hi))
-                     (let [tk (by-begin i)]
-                       (recur (inc i) (if (in? lo hi tk) (conj! out (cut-one lo hi tk)) out)))
-                     (persistent! out)))))
-         shift (fn [gs by] (mapv (fn [gap] (cond-> (-> gap (update :start + by) (update :end + by))
-                                             (:keeps gap) (update :keeps (fn [ks] (mapv (fn [[b e off len]] [(+ b by) (+ e by) off len]) ks)))))
-                                 gs))
-         ;; gap i (`t` as made, less the text it shares at its ends) read as
-         ;; a whole-body save reads the stretch it was sent over (the text
-         ;; outside it is the same), when that reading deletes no word or
-         ;; sentence the gap as made keeps, or deletes fewer, else as made.
-         ;; The two are weighed on the text between the gap's neighbours.
-         read (fn [i t]
-                (let [g (gaps i)
-                      ;; the reading, on the stretch
-                      a (:start g)
-                      st-old (cp/cp-subs old a (:end g))
-                      st-tokens (cut a (:end g))
-                      ;; what stands beyond either end of the stretch, so
-                      ;; the aligner does not read them as the text's ends
-                      ;; (REV-W2-TEXT N2: a paste over `你好你` before `。`)
-                      beyond (fn [p] (when (< -1 p n) (if (space? (aget o p)) :space :text)))
-                      ;; An edge a word's token runs across is read as the
-                      ;; text's end, as before R40: read as the inside of the
-                      ;; text, a line break typed before the rest of the word
-                      ;; cost nothing, and stood inside the word's token in
-                      ;; place of splitting the sentences (REV-PASTE F1, ` the
-                      ;; cat, mat the` with `the cat, mat th` typed over as
-                      ;; `Oh.` and a line break)
-                      across? (fn [e] (let [from (lower-bound begins (- e longest))]
-                                        (loop [i from]
-                                          (when (and (< i (count words)) (< (aget begins i) e))
-                                            (if (< e (second (words i))) true (recur (inc i)))))))
-                      edge (fn [e p] (when-not (across? e) (beyond p)))
-                      outside {:start (edge a (dec a)) :end (edge (:end g) (:end g))}
-                      aligned (plain-body-gaps st-old (:value g) st-tokens roles outside)
-                      diffed (delay (body-diff-gaps st-old (:value g) st-tokens roles false outside))
-                      rgaps (first (pick-reading st-old st-tokens aligned diffed (dissoc roles :split-on-space)))
-                      ;; weighed on the window
-                      lo (if (pos? i) (inc (:end (gaps (dec i)))) 0)
-                      hi (if (< (inc i) k) (dec (:start (gaps (inc i)))) n)
-                      w-old (cp/cp-subs old lo hi)
-                      w-tokens (cut lo hi)
-                      w-read (shift rgaps (- a lo))
-                      ;; the gap as it was sent, whole: a paste carries the text it
-                      ;; did not change, which the trim would read as kept
-                      ;; wherever its letters match (`talu talu x` pasted as `talu
-                      ;; x` trims to `alu t` deleted, which keeps a `t` of each)
-                      w-made [(-> g (update :start - lo) (update :end - lo))]
-                      ;; (a layer that splits on space splits what either
-                      ;; reading gives alike, so the choice does not depend on it)
-                      run #(apply-plain-gaps w-old w-tokens % (dissoc roles :split-on-space))
-                      rr (run w-read)
-                      made (run w-made)
-                      ;; the words and sentences a reading deletes
-                      counted-ids (into #{} (comp (filter #(or (word? %) (contains? partitioning (:token/layer %))))
-                                                  (remove #(children (:token/layer %)))
-                                                  (map :token/id))
-                                        w-tokens)
-                      counted (fn [r] (into #{} (filter counted-ids) (:deleted r)))
-                      dr (counted rr)
-                      dm (counted made)
-                      ;; whether `r`, read from `gs`, leaves a word over several runs
-                      ;; of text with whitespace between, one of them typed text
-                      ;; alone (`hi` on `Oh my.\nHi`)
-                      foreign? (fn [gs r]
-                                 (let [^ints nw (.toArray (.codePoints ^String (:text/body (:text r))))
-                                       typed (let [arr (boolean-array (alength nw))]
-                                               (reduce (fn [sh {:keys [start end value]}]
-                                                         (let [c (cp/cp-count value)]
-                                                           (dotimes [j c] (aset arr (+ start sh j) true))
-                                                           (+ sh (- c (- end start)))))
-                                                       0 (sort-by :start gs))
-                                               arr)
-                                       gone (set (:deleted r))]
-                                   (some (fn [{:token/keys [id begin end] :as tk}]
-                                           (and (word-of-layer? tk) (not (gone id))
-                                                (let [rs (remove #(nth % 2) (cp-runs nw begin end))]
-                                                  (and (< 1 (count rs))
-                                                       (some (fn [[x y]] (every? #(aget typed %) (range x y))) rs)))))
-                                         (:tokens r))))
-                      take-read? (if (= dr dm)
-                                   (or (not (foreign? w-read rr)) (foreign? w-made made))
-                                   (or (every? dm dr) (< (count dr) (count dm))))]
-                  (if (and take-read? (= (:value g) (gaps-body st-old rgaps)))
-                    (shift rgaps a)
-                    [t])))]
-     (into []
-           (mapcat (fn [i]
-                     (let [g (gaps i)
-                           t (trim-gap o g)]
-                       (cond
-                         (nil? t) []
-                         ;; only typing or only deleting: as made
-                         (multi? g) (read i t)
-                         :else [t]))))
-           (range k)))))
+  "The gaps an edit of `old` by `ops` from the caret is taken as: its net
+  change (see `compose-edits`), each gap less the text its new value shares
+  with the old at either end. A gap that both deletes and types is a delete
+  and an insert at the same place, read by the plain rule as every other
+  edit is (R42)."
+  [^String old ops]
+  (let [^ints o (.toArray (.codePoints old))]
+    (into [] (keep #(trim-gap o %)) (compose-edits ops old))))
