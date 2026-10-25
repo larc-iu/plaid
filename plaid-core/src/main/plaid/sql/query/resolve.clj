@@ -20,23 +20,22 @@
             [plaid.sql.project :as prj]
             [plaid.sql.user :as usr]))
 
-;; Kind -> its layer table. Keyed both by ENTITY kind (resolving an entity's :layer
-;; ref) and by LAYER kind (resolving a structural slot's parent-layer ref, e.g. a
-;; token layer's :text-layer). `:text-layer` has no entity equivalent.
-(def ^:private layer-table
-  {:span         :span_layers
-   :token        :token_layers
-   :relation     :relation_layers
-   :text-layer   :text_layers
-   :token-layer  :token_layers
-   :span-layer   :span_layers})
+;; Kind -> its layer table, keyed both by ENTITY kind (an entity's :layer) and
+;; by LAYER kind (a layer variable, or a structural slot's parent layer, e.g. a
+;; token layer's :text-layer). The compiler reads it too.
+(def layer-table
+  {:span           :span_layers
+   :token          :token_layers
+   :relation       :relation_layers
+   :vocab          :vocab_layers
+   :text-layer     :text_layers
+   :token-layer    :token_layers
+   :span-layer     :span_layers
+   :relation-layer :relation_layers
+   :vocab-layer    :vocab_layers})
 
 (defn- err! [msg data]
   (throw (ex-info msg (merge {:code 400 :query-error/stage :resolve} data))))
-
-(defn- uuid-string?
-  [s]
-  (boolean (re-matches #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" s)))
 
 ;; ---------------------------------------------------------------------------
 ;; Scope (ACL)
@@ -103,7 +102,7 @@
   [scope-ids kind ref]
   (let [s (str ref)]
     (cond
-      (not (uuid-string? s))
+      (not (clauses/uuid-like? s))
       (err! (str (clojure.core/name kind) " layer reference " (pr-str ref)
                  " must be a layer id. Layers are identified by id only — to match by"
                  " name, bind the layer with a clause, e.g. [\"" (layer-clause-name kind)

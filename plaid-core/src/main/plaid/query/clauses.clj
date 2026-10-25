@@ -166,18 +166,26 @@
 ;; layer variable (binds + joins the parent node) or a scalar layer reference
 ;; (resolved to one layer) — exactly like an entity's :layer slot. Keyed by
 ;; [clause-head slot] -> the parent layer kind the slot references.
+;; Each slot's value also names the column on the host layer's table that
+;; holds the parent's id.
 (def ^:private layer-slot->kind
-  {[:token-layer :text-layer]         :text-layer
-   [:token-layer :parent-token-layer] :token-layer
-   [:span-layer :token-layer]         :token-layer
-   [:relation-layer :span-layer]      :span-layer})
+  {[:token-layer :text-layer]         {:kind :text-layer :column :text_layer_id}
+   [:token-layer :parent-token-layer] {:kind :token-layer :column :parent_token_layer_id}
+   [:span-layer :token-layer]         {:kind :token-layer :column :token_layer_id}
+   [:relation-layer :span-layer]      {:kind :span-layer :column :span_layer_id}})
+
+(defn layer-slot-column
+  "The column on a `head` layer's table that holds the parent layer its `slot`
+  names."
+  [head slot]
+  (:column (layer-slot->kind [head slot])))
 
 (defn layer-slots-for
   "The `[slot parent-kind]` structural-slot entries available on a layer clause head
   (empty for entity heads and for layer kinds with no parent — text-layer/vocab-layer).
   Public so resolve/compile share this single source of truth."
   [head]
-  (keep (fn [[[h slot] tgt]] (when (= h head) [slot tgt])) layer-slot->kind))
+  (keep (fn [[[h slot] {tgt :kind}]] (when (= h head) [slot tgt])) layer-slot->kind))
 
 ;; Constraint keys whose value may be a query variable (so it is var-ized at parse):
 ;; the entity :layer / relation-endpoint slots plus every layer structural slot.
@@ -236,6 +244,25 @@
 ;; or a link's item). They behave like opaque ids — only `=` / `!=` / `in`
 ;; against a variable or an id literal (no ordering, no name resolution — see
 ;; the G4 check in `validate`).
+;; Each scalar field's column on its entity's table, in the order a constraint
+;; map's fields are compiled: `:json?` for a JSON-encoded column, `:id?` for an
+;; id compared as text. One table for the constraint map (`{:value ..}`) and the
+;; dot path (`?s.value`). A token's :value has no column: it is its surface,
+;; sliced from its text, on both.
+(def field-column-list
+  [[:value      {:column :value :json? true}]
+   [:form       {:column :form}]
+   [:doc        {:column :document_id :id? true}]
+   [:item       {:column :vocab_item_id :id? true}]
+   [:begin      {:column :begin}]
+   [:end        {:column :end_}]
+   [:name       {:column :name}]
+   [:body       {:column :body}]
+   [:id         {:column :id :id? true}]
+   [:precedence {:column :precedence}]])
+
+(def field-columns (into {} field-column-list))
+
 (def ^:private ref-attrs #{:layer :source :target :item})
 
 ;; Layer variables expose name/id as scalar fields, plus open `config` keys.

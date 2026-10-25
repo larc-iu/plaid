@@ -42,28 +42,13 @@
 (def ^:private layer-fk
   {:span :span_layer_id :token :token_layer_id :relation :relation_layer_id :vocab :vocab_layer_id})
 
-(def ^:private layer-tbl
-  {:span :span_layers :token :token_layers :relation :relation_layers})
-
 ;; Layer variables: a var in an entity's :layer position is a node of a LAYER
 ;; kind, joined to the entity's `*_layer_id`. (Same-layer joins + projection.)
-(def ^:private layer-entity-table
-  {:text-layer :text_layers :span-layer :span_layers :token-layer :token_layers
-   :relation-layer :relation_layers :vocab-layer :vocab_layers})
-
+;; Its table is `qr/layer-table`'s.
 (def ^:private layer-alias-prefix
   {:text-layer "txlv" :span-layer "slv" :token-layer "tlv" :relation-layer "rlv" :vocab-layer "vlv"})
 
-;; A layer clause's structural slot -> the FK column on the host layer table that
-;; points at the referenced parent layer. Keyed by [layer-kind slot]; the kind IS
-;; the clause head (a layer var's kind equals the clause that binds it).
-(def ^:private layer-slot-fk
-  {[:token-layer :text-layer]         :text_layer_id
-   [:token-layer :parent-token-layer] :parent_token_layer_id
-   [:span-layer :token-layer]         :token_layer_id
-   [:relation-layer :span-layer]      :span_layer_id})
-
-(defn- layer-kind? [k] (contains? layer-entity-table k))
+(defn- layer-kind? [k] (contains? clauses/layer-clauses k))
 
 (defn- err-500! [msg data]
   (throw (ex-info msg (merge {:code 500 :query-error/stage :compile} data))))
@@ -125,7 +110,7 @@
      (let [[head v cmap] clause]
        (cond
          (contains? entity-table head) (update acc v (fnil conj []) (or cmap {}))
-         (contains? layer-entity-table head) (update acc v (fnil conj []) (or cmap {}))
+         (layer-kind? head) (update acc v (fnil conj []) (or cmap {}))
          :else acc)))
    {} clauses))
 
@@ -358,6 +343,12 @@
   (let [tx (token-text-alias! st a)]
     [:substr (col tx :body) [:+ (col a :begin) [:inline 1]] [:- (col a :end_) (col a :begin)]]))
 
+(defn- surface-field?
+  "Whether field `k` of an entity of `kind` is a token's surface, which has no
+  column and is sliced from its text."
+  [kind k]
+  (and (= kind :token) (= k :value)))
+
 (defn- emit-entity-filters!
   "Emit the value/form/doc/begin/end/name/body/id/metadata predicates from one
   entity constraint map (`kind` is the host entity's kind, for metadata's
@@ -366,29 +357,25 @@
   query scope: a constraint that re-states an outer var inside a `:not` must land
   inside that NOT EXISTS subquery as a correlated predicate, not on the outer alias."
   [st kind a cmap]
-  ;; :value — for span/relation it is the JSON-encoded annotation (regex matches the
-  ;; DECODED scalar); for a TOKEN it is the SURFACE substring (plain text, sliced
-  ;; from the text body), so match/regex run on the substr expression directly.
-  (when (contains? cmap :value)
-    (if (= kind :token)
+  ;; Each field's column is `clauses/field-columns`'. A JSON-encoded column (a
+  ;; span's or relation's :value) is matched as stored, its literal encoded the
+  ;; same, and its regex runs on the DECODED scalar. A token's :value is its
+  ;; SURFACE (`surface-field?`), sliced from the text body, so match and regex
+  ;; run on the substr expression directly.
+  (doseq [[k {:keys [column json? id?]}] clauses/field-column-list
+          :when (contains? cmap k)
+          :let [v (get cmap k)]]
+    (cond
+      (surface-field? kind k)
       (let [surf (token-surface-sql st a)]
-        (emit-field! st surf (:value cmap) identity surf false))
-      (emit-field! st (col a :value) (:value cmap) psc/write-json
-                   [:json_extract (col a :value) [:inline "$"]] true)))
-  ;; :form (vocab_items.form) is plain TEXT — regex runs on the column directly.
-  (when (contains? cmap :form)
-    (emit-field! st (col a :form) (:form cmap) identity (col a :form) false))
-  (when (contains? cmap :doc)   (emit-field! st (col a :document_id) (:doc cmap) str (col a :document_id) false))
-  ;; a link's :item by id(s); a vocab VARIABLE there is a join, emitted by
-  ;; compile-relation-inline! (it needs the constraints to ensure the var)
-  (when (and (contains? cmap :item) (not (symbol? (:item cmap))))
-    (emit-field! st (col a :vocab_item_id) (:item cmap) str (col a :vocab_item_id) false))
-  (when (contains? cmap :begin) (emit-field! st (col a :begin) (:begin cmap) identity (col a :begin) false))
-  (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_) false))
-  ;; document name / text body (plain TEXT — regex runs on the column directly), id
-  (when (contains? cmap :name)  (emit-field! st (col a :name) (:name cmap) identity (col a :name) false))
-  (when (contains? cmap :body)  (emit-field! st (col a :body) (:body cmap) identity (col a :body) false))
-  (when (contains? cmap :id)    (emit-field! st (col a :id) (:id cmap) str (col a :id) false))
+        (emit-field! st surf v identity surf false))
+      ;; a link's :item by id(s); a vocab VARIABLE there is a join, emitted by
+      ;; compile-relation-inline! (it needs the constraints to ensure the var)
+      (and (= k :item) (symbol? v)) nil
+      json?
+      (emit-field! st (col a column) v psc/write-json [:json_extract (col a column) [:inline "$"]] true)
+      :else
+      (emit-field! st (col a column) v (if id? str identity) (col a column) false)))
   ;; metadata: one correlated EXISTS per key (indexed on the PK)
   (when (contains? cmap :metadata)
     (doseq [[mk spec] (:metadata cmap)]
@@ -422,7 +409,7 @@
   scope — the sanctioned intentional multi-layer match."
   [st v kind]
   (let [a (next-alias! st (layer-alias-prefix kind))
-        table (layer-entity-table kind)]
+        table (qr/layer-table kind)]
     (swap! st assoc-in [:var->alias v] a)
     (add-from! st [table a])
     (add-where! st [:in (col a :id) (in-scope-layers st table)])
@@ -471,7 +458,7 @@
             ;; count three times slower.
             (when (and (empty? layer-id-sets) (empty? layer-vars) (layer-fk kind))
               (add-where! st [:in (col a (layer-fk kind))
-                              (in-scope-layers st (if (= kind :vocab) :vocab_layers (layer-tbl kind)))]))
+                              (in-scope-layers st (qr/layer-table kind))]))
             ;; :layer is a VARIABLE -> also join to the (scoped) layer node it names
             (doseq [lv layer-vars]
               (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st lv constraints) :id)]))
@@ -486,7 +473,7 @@
                               {:select [:id] :from [:documents] :where [:in :project_id (:scope @st)]}])
               (when-not (layer-fk kind)
                 (err-500! (str "No scope predicate registered for kind " kind
-                               " — keep entity-table/alias-prefix/layer-fk/layer-tbl in sync")
+                               " — keep entity-table/alias-prefix/layer-fk/qr/layer-table in sync")
                           {:kind kind})))
             ;; Attribute filters (value/form/doc/begin/end) are NOT emitted here —
             ;; `compile-query` Pass B and `compile-not!` emit them per-clause via
@@ -509,7 +496,7 @@
   ;; structural slots: join this layer's FK to its referenced parent layer
   (doseq [[slot _parent-kind] (clauses/layer-slots-for kind)
           :when (contains? cs slot)]
-    (let [fk (layer-slot-fk [kind slot])
+    (let [fk (clauses/layer-slot-column kind slot)
           ref (get cs slot)]
       (if (symbol? ref)
         (add-where! st [:= (col a fk) (col (ensure-var! st ref constraints) :id)])
@@ -1052,7 +1039,7 @@
         ;; layer clauses: the pre-loop ensure-var! allocated + scoped the var; emit
         ;; its name/structural filters INSIDE the subquery so a CORRELATED outer
         ;; layer var's predicates are negated here, not silently dropped.
-        (contains? layer-entity-table (first c))
+        (layer-kind? (first c))
         (let [[head v cmap] c]
           (emit-layer-filters! sub-st (get-in @sub-st [:var->alias v]) head (or cmap {}) inner-cons))
         (contains? entity-table (first c))
@@ -1097,20 +1084,6 @@
    :>= :>=})
 
 ;; --- field references (dot paths): ?t.begin / ?s.metadata.k / ?sl.config.k ----
-;; attr keyword -> {:column kw :enc fn :json? bool}. The column lives on the
-;; entity/layer alias; :value is stored JSON-encoded so it is DECODED for
-;; comparison (json? true); doc/id are opaque id strings (enc str).
-(def ^:private attr->col
-  {:begin      {:column :begin       :enc identity :json? false}
-   :end        {:column :end_        :enc identity :json? false}
-   :precedence {:column :precedence  :enc identity :json? false}
-   :value      {:column :value       :enc identity :json? true}
-   :form       {:column :form        :enc identity :json? false}
-   :name       {:column :name        :enc identity :json? false}
-   :body       {:column :body        :enc identity :json? false}
-   :doc        {:column :document_id :enc str      :json? false}
-   :id         {:column :id          :enc str      :json? false}})
-
 (defn- json-path-key
   "One key segment as a quoted SQLite JSON-path label, so every character in it
   is part of the key: `x[0]` names the key `x[0]` rather than indexing an array
@@ -1167,11 +1140,12 @@
       (:core :layer-attr)
       (cond
         ;; a token's :value is the surface substring (no column), not a JSON annotation
-        (and (= kind :token) (= (:attr res) :value))
+        (surface-field? kind (:attr res))
         {:sql (token-surface-sql st a) :enc identity}
         :else
-        (let [{:keys [column enc json?]} (attr->col (:attr res))]
-          {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column)) :enc enc}))
+        (let [{:keys [column json? id?]} (clauses/field-columns (:attr res))]
+          {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column))
+           :enc (if id? str identity)}))
       :ref
       ;; a FK reference column: ?s.layer -> the kind-aware *_layer_id; a relation's
       ;; ?r.source/?r.target -> source_span_id/target_span_id; a link's ?l.item ->
@@ -1526,14 +1500,14 @@
         (cond
           (contains? entity-table head)
           (emit-entity-filters! st head (get-in @st [:var->alias v]) (or cmap {}))
-          (contains? layer-entity-table head)
+          (layer-kind? head)
           (emit-layer-filters! st (get-in @st [:var->alias v]) head (or cmap {}) constraints))))
     ;; Pass C: relationship clauses, inline relation source/target, and negation.
     (doseq [clause (:where resolved)]
       (cond
         (= :not (first clause)) (compile-not! st constraints clause)
         ;; layer-constraint clauses are fully handled by ensure-layer-var! in Pass B
-        (contains? layer-entity-table (first clause)) nil
+        (layer-kind? (first clause)) nil
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         (pred-honeysql-op (first clause)) (compile-pred! st clause)
         (= clauses/op-match (first clause)) (compile-regex-pred! st clause)
