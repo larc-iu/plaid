@@ -3,7 +3,7 @@ import { TASKS } from '@larc-iu/plaid-client';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
-import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/import/elan/fieldTargets';
+import { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '@/domain/fieldInventory';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
   BUILTIN_LINK_PRECEDENT,

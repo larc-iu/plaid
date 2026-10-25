@@ -10,6 +10,7 @@ import {
   findWordTokenLayer,
   readOrthographies,
   IGT_NAMESPACE,
+  orthographyKey,
 } from '@/domain/igtConfig';
 import { TYPE } from '@ui/lib/typeScale.js';
 
@@ -143,7 +144,7 @@ export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
   };
 
   // Count words with a non-empty value for this orthography (stored as the
-  // `orthog:<name>` token-metadata key). null = unknown — the delete dialog
+  // orthography key, orthographyKey in igtConfig). null = unknown — the delete dialog
   // warns accordingly. `.` regex = "has at least one character".
   const handleCountOrthographyUsage = async (orthographyName) => {
     const layerId = wordLayerIdRef.current;
@@ -153,7 +154,7 @@ export const OrthographiesSettings = ({ project, client, onProjectUpdate }) => {
         [
           'token',
           '?t',
-          { layer: layerId, metadata: { [`orthog:${orthographyName}`]: { regex: '.' } } },
+          { layer: layerId, metadata: { [orthographyKey(orthographyName)]: { regex: '.' } } },
         ],
       ],
       return: { group: [], aggregates: [['count']] },

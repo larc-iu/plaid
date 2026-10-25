@@ -14,11 +14,6 @@
 import { parseFieldName } from '../../domain/fieldNames.js';
 import { existingFields } from '../../domain/fieldInventory.js';
 
-// ServicesSettings.jsx still imports these three from here. It belongs to a
-// lane that is running (BH-4a), and this re-export goes when its import line
-// moves to domain/fieldInventory.js.
-export { fieldIdsOf, fieldNamesOf, fieldRolesOf } from '../../domain/fieldInventory.js';
-
 // Names read alike when their base names do, ignoring case, spacing and
 // punctuation: "Translation (nl)", "translation" and "Translation-nl" all fold
 // together. The writing-system tag comes off first, because "Gloss (en)" beside

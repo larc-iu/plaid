@@ -26,9 +26,8 @@ const isTestFile = (rel) =>
 
 const ALLOWED = new Set([
   'domain/igtConfig.js',
-  // Held by lanes still running when this gate landed (BH-4a, BH-3). Each
-  // goes to orthographyKey and leaves this list when they are done.
-  'components/projects/settings/OrthographiesSettings.jsx',
+  // Held by a lane still running when this gate landed (BH-3). It goes to
+  // orthographyKey and leaves this list when that lane is done.
   'domain/mutations/tokens.js',
 ]);
 
