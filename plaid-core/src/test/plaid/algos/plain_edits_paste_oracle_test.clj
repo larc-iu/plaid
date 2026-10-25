@@ -192,3 +192,28 @@
           (is (empty? @fails) (pr-str (take 3 @fails))))))
     (is (<= (count (distinct (map #(subvec % 0 3) @as-saved))) paste-ceiling)
         (str (count (distinct (map #(subvec % 0 3) @as-saved))) " " (pr-str (take 10 (distinct (map #(subvec % 0 3) @as-saved))))))))
+
+;; REV-W2-TEXT N2 (FX-W2d), `:spaceless` seed 256 of the test above at two
+;; changes, past its default seeds, the case with only its words and
+;; sentences: `你` typed over as `嗎` and `好` typed before `。`, pasted over
+;; `你好你`. The stretch was read as if its end were the text's end, so the
+;; letters typed after the last `你` counted as typed against a word's edge
+;; at the text's end, and the diff's reading (insert `嗎好` at 0, delete the
+;; last `你`) stayed: it deleted that `你`, which the exact edits keep, and
+;; put `嗎好你` on the first word. `。` stands after the stretch, with no
+;; space, and the aligner now reads the stretch's end as the inside of the
+;; text, as a whole-body save does.
+(deftest a-paste-in-a-script-without-spaces-reads-the-text-beyond-its-stretch
+  (let [old "你好你。好很"
+        w (fn [i b e] {:token/id [:w i] :token/layer :w :token/begin b :token/end e})
+        tokens (into [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 2}
+                      {:token/id [:s 1] :token/layer :s :token/begin 2 :token/end 6}]
+                     (map #(w % % (inc %)) (range 6)))
+        exact (run old tokens (ta/gap-ops [{:start 0 :end 1 :value "嗎"} {:start 3 :end 3 :value "好"}]))
+        pasted (run old tokens [{:type :replace :index 0 :length 3 :value "嗎好你好"}])
+        extents (fn [r] (into (sorted-map) (map (juxt :token/id (juxt :token/begin :token/end))) (:tokens r)))]
+    (is (= "嗎好你好。好很" (:text/body (:text pasted))))
+    (is (empty? (:deleted exact)))
+    (is (empty? (:deleted pasted)))
+    (is (= (extents exact) (extents pasted)))
+    (is (= [2 4] (get (extents pasted) [:w 2])))))

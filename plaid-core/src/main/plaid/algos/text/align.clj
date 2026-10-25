@@ -139,19 +139,34 @@
   script without spaces, a word and punctuation left out of it). Without
   `word-layers`, or with none, nothing tells the words, and the ops are
   left as they are. A code point in `letter-like` (see `layer-roles`) is a
-  letter of a word."
-  [ops old tokens word-layers letter-like]
+  letter of a word.
+
+  `outside` tells what stands just beyond each end of `old` where `old` is
+  a stretch of a longer text (see `plain-edit-gaps`): `:start` and `:end`
+  each nil where the text ends there, `:space` where whitespace stands
+  there, and `:text` where other text does. A stretch's edge with text
+  beyond it is read as the inside of the text, not its end: letters typed
+  after a word there are not typed against its edge at the text's end
+  (REV-W2-TEXT N2). nil `outside` is a whole body."
+  [ops old tokens word-layers letter-like outside]
   (if (empty? word-layers)
     ops
-    (align-to-words* ops old tokens word-layers (or letter-like #{}))))
+    (align-to-words* ops old tokens word-layers (or letter-like #{}) outside)))
 
 (defn- align-to-words*
-  [ops old tokens word-layers letter-like]
+  [ops old tokens word-layers letter-like {before :start after :end}]
   (let [edits (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
         n (alength o)
         near (tokens-near tokens (count edits))
         sp? (fn [i] (space? (aget o (int i))))
+        ;; whether the text ends at the start of `old`, or at its end, and
+        ;; not a stretch's edge with text beyond it
+        start? (not= before :text)
+        end? (not= after :text)
+        ;; a word edge at p: the text's ends, a space either side, or `eg`
+        bound-in (fn [eg p] (or (and (<= p 0) start?) (and (>= p n) end?)
+                                (and (pos? p) (sp? (dec p))) (and (< p n) (sp? p)) (eg p)))
         start-of (fn [e] (or (:start e) (:at e)))
         reach-of (fn [e] (or (:end e) (:at e)))
          ;; the edges between two words without a space, near [lo hi]: the
@@ -181,7 +196,7 @@
            (let [lo (max 0 (- (start-of e) align-limit))
                  hi (min n (+ (reach-of e) align-limit))
                  eg (edges lo hi)
-                 bound? (fn [p] (or (<= p 0) (>= p n) (sp? (dec p)) (sp? p) (eg p)))
+                 bound? (partial bound-in eg)
                  ustart (fn [p] (loop [p p] (if (or (<= p lo) (bound? p)) p (recur (dec p)))))
                  uend (fn [p] (loop [p p] (if (or (>= p hi) (bound? p)) p (recur (inc p)))))
                  a (let [k (loop [k (ustart (start-of e))] (if (and (> k lo) (sp? (dec k))) (recur (dec k)) k))]
@@ -200,7 +215,7 @@
         realign
         (fn [[a b es]]
           (let [eg (edges (max 0 (dec a)) (min n (inc b)))
-                bound? (fn [p] (or (<= p 0) (>= p n) (sp? (dec p)) (sp? p) (eg p)))
+                bound? (partial bound-in eg)
                 m (- b a)
                 N (let [sb (StringBuilder.)]
                     (loop [p a es es]
@@ -231,20 +246,28 @@
                  ;; are outside its token as at a space
                 before-punct? (fn [p]
                                 (and (lt? p) (< (inc p) n) (not (lt? (inc p))) (not (sp? (inc p)))
-                                     (loop [q (inc p)] (cond (= q n) true (sp? q) true (lt? q) false :else (recur (inc q))))
+                                     (loop [q (inc p)] (cond (= q n) end? (sp? q) true (lt? q) false :else (recur (inc q))))
                                      ;; back to the word's start, then over
                                      ;; punctuation to a space or the text's
                                      ;; start, and not another word's letter
                                      (let [q (loop [q p] (if (and (pos? q) (lt? (dec q)) (not (bound? q))) (recur (dec q)) (dec q)))]
-                                       (loop [q q] (cond (< q 0) true (sp? q) true (lt? q) false :else (recur (dec q)))))))
+                                       (loop [q q] (cond (< q 0) start? (sp? q) true (lt? q) false :else (recur (dec q)))))))
                  ;; whether the old letter at p is not a space and ends its
                  ;; word at a space, the text's end or such punctuation
-                spaced-end? (fn [p] (and (not (sp? p)) (or (= (inc p) n) (sp? (inc p)) (before-punct? p))))
+                spaced-end? (fn [p] (and (not (sp? p)) (or (if (= (inc p) n) (not= after :text) (sp? (inc p))) (before-punct? p))))
                  ;; the same for each letter of the window, looked up in the
                  ;; alignment's inner loop
                 window-end (let [xs (boolean-array (max m 1))]
                              (dotimes [i m] (aset xs i (boolean (spaced-end? (+ a i)))))
                              xs)
+                 ;; whether a space or the text's start is before the letter
+                 ;; at p. A stretch's start with text before it counts as the
+                 ;; text's start here, as the end does in `end-at`: read as
+                 ;; the inside of the text, the letters typed there went to
+                 ;; the word before the stretch (`sattalu leiköye` with
+                 ;; `talu leiköye` typed over as `sat leiköye` gave `satsa`
+                 ;; and `t lei`, where the whole-body save keeps `sat` and
+                 ;; gives `talu lei` the `sat lei` typed over it)
                 spaced-start? (fn [p] (or (zero? p) (sp? (dec p))))
                  ;; Every word of the window ends at a space. Between two
                  ;; words without one, which of them kept a letter is not
@@ -259,8 +282,10 @@
                 S (* 3 RS)
                 ->w (fn [s] (quot s RS))
                 ->r (fn [s] (rem s RS))
-                s0 (+ (run-state 0 0 (if (and (pos? a) (spaced-end? (dec a))) 1 0) 0 0 0)
-                      (* RS (if (and (pos? a) (not (sp? (dec a)))) 1 0)))
+                 ;; at a stretch's start with text before it, the letter
+                 ;; there ends its word where a space begins the stretch
+                s0 (+ (run-state 0 0 (if (if (pos? a) (spaced-end? (dec a)) (and (= before :text) (pos? n) (sp? 0))) 1 0) 0 0 0)
+                      (* RS (if (if (pos? a) (not (sp? (dec a))) (= before :text)) 1 0)))
                  ;; [state' bad touched] for each step
                 step (fn [s kind i j]
                        (let [w (->w s) r (->r s)]
@@ -280,7 +305,12 @@
                                 [(+ r' (* RS (if (and (osp i) (= w 1)) 2 w))) 0 y])
                            :i (let [[r' y] (run-step r :i (nsp j) false)]
                                 [(+ r' (* RS (if (nsp j) 0 w))) 0 y]))))
-                 ;; a run at the window's end ends before the letter after it
+                 ;; a run at the window's end ends before the letter after it.
+                 ;; At a stretch's end with text beyond it, as at the text's
+                 ;; end: read as the letter after it, the text beyond moved
+                 ;; the stretch's reading off the whole-body save's of the
+                 ;; same change (`cat  (ab) thee` with ` (ab) ` typed over as
+                 ;; `a b` left the `a` in no word)
                 end-at (fn [s]
                          (let [nx? (and (< b n) (not (sp? b)))
                                [x y] (run-end (->r s) nx? (bound? b) (spaced-start? b))]

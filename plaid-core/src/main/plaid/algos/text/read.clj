@@ -710,12 +710,14 @@
   `align-to-words`), and edits that touch one gap, the layers as `roles`
   has them (see `layer-roles`). A letter outside these gaps is a letter the
   save keeps, and no token holding one is deleted. With `align?` false, the
-  stretches are left as the diff spells them."
-  ([^String old ^String new tokens {:keys [partitioning deciders letter-like] :as roles} align?]
+  stretches are left as the diff spells them. `outside` is what stands
+  beyond either end of `old` when it is a stretch of a longer text, nil for
+  a whole body (see `align-to-words`)."
+  ([^String old ^String new tokens {:keys [partitioning deciders letter-like] :as roles} align? outside]
    (-> (diff old new)
        (slide-to-tokens old tokens partitioning deciders letter-like)
        (normalize-deletes old tokens)
-       (cond-> align? (align-to-words old tokens (body-word-layers tokens roles) letter-like))
+       (cond-> align? (align-to-words old tokens (body-word-layers tokens roles) letter-like outside))
        ops->edits
        edits->gaps)))
 
@@ -725,11 +727,12 @@
   inside it made one gap (see `merge-in-words`), and each gap cut where it
   types words over words (see `cut-at-words`). Neither step reaches a
   letter outside the diff's gaps but inside the one word it reads as typed
-  over, so no word with a letter left is deleted."
-  ([^String old ^String new tokens roles]
+  over, so no word with a letter left is deleted. `outside` is as for
+  `body-diff-gaps`."
+  ([^String old ^String new tokens roles outside]
    (let [^ints o (.toArray (.codePoints old))
          wl (body-word-layers tokens roles)]
-     (-> (body-diff-gaps old new tokens roles true)
+     (-> (body-diff-gaps old new tokens roles true outside)
          (merge-in-words o tokens #(contains? wl (:token/layer %)))
          (->> (into [] (mapcat #(cut-at-words o (:letter-like roles) %))))))))
 
@@ -764,8 +767,8 @@
   the diff as it stands, as `pick-reading` chooses."
   [^String old ^String new tokens roles]
   (pick-reading old tokens
-                (plain-body-gaps old new tokens roles)
-                (delay (body-diff-gaps old new tokens roles false))
+                (plain-body-gaps old new tokens roles nil)
+                (delay (body-diff-gaps old new tokens roles false nil))
                 roles))
 
 (defn plain-edit-gaps
@@ -780,7 +783,8 @@
   inside one and holding or typing words with whitespace between (a paste
   over a line, a row or the whole body, a selection typed over), is read as
   a whole-body save reads the stretch it was sent over (see
-  `plain-body-read`; the text outside the stretch is the same), so a word
+  `plain-body-read`; the text outside the stretch is the same, and the
+  aligner is told what stands beyond its ends), so a word
   pasted in, left out or typed over moves no other word (H1-IGT-TEXT-1,
   REV-F-TEXT-CORE). That reading is taken when it deletes no word or
   sentence that the gap as sent keeps, or deletes fewer, weighed on the
@@ -853,8 +857,13 @@
                       a (:start g)
                       st-old (cp/cp-subs old a (:end g))
                       st-tokens (cut a (:end g))
-                      aligned (plain-body-gaps st-old (:value g) st-tokens roles)
-                      diffed (delay (body-diff-gaps st-old (:value g) st-tokens roles false))
+                      ;; what stands beyond either end of the stretch, so
+                      ;; the aligner does not read them as the text's ends
+                      ;; (REV-W2-TEXT N2: a paste over `你好你` before `。`)
+                      beyond (fn [p] (when (< -1 p n) (if (space? (aget o p)) :space :text)))
+                      outside {:start (beyond (dec a)) :end (beyond (:end g))}
+                      aligned (plain-body-gaps st-old (:value g) st-tokens roles outside)
+                      diffed (delay (body-diff-gaps st-old (:value g) st-tokens roles false outside))
                       rgaps (first (pick-reading st-old st-tokens aligned diffed (dissoc roles :split-on-space)))
                       ;; weighed on the window
                       lo (if (pos? i) (inc (:end (gaps (dec i)))) 0)
