@@ -331,6 +331,28 @@
         (is (= machine (-> (get-token admin-request (first sols)) :body :metadata))
             "the kept words keep theirs")))))
 
+;; REV-R4R R6: when no word of the group stores a precedence, the made word
+;; takes 1, as split-spaced-words falls back to it for a typed space.
+(deftest a-split-s-new-syntactic-word-takes-1-when-the-group-stores-none
+  (let [{:keys [doc text-id sentence word text-layer]} (setup-hierarchy "mar")
+        sw (-> (create-token-layer-opts admin-request text-layer "Syntactic words"
+                                        {:overlap-mode "any" :parent-token-layer-id word}) :body :id)
+        _ (assert-status 204 (api-call admin-request {:method :put
+                                                      :path (str "/api/v1/token-layers/" sw "/config/plaid/role")
+                                                      :body "syntactic-word"}))
+        _ (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 3]])))
+        [mar] (-> (bulk-create-tokens admin-request (toks word text-id [[0 3]])) :body :ids)
+        mar-w (-> (create-token admin-request sw text-id 0 3) :body :id)
+        tokens (fn [] (->> (api-call admin-request {:method :get :path (str "/api/v1/documents/" doc "?include-body=true")})
+                           :body :document/text-layers
+                           (mapcat :text-layer/token-layers)
+                           (filter #(= sw (:token-layer/id %)))
+                           first :token-layer/tokens))]
+    (assert-created (split-token admin-request mar 1))
+    (let [[t & more] (remove (comp #{mar-w} :token/id) (tokens))]
+      (is (empty? more))
+      (is (= [1 3 1] [(:token/begin t) (:token/end t) (:token/precedence t)])))))
+
 (deftest parent-without-children-can-be-deleted
   (let [{:keys [text-id sentence word]} (setup-hierarchy "dogs run")]
     (assert-created (bulk-create-tokens admin-request (toks sentence text-id [[0 8]])))

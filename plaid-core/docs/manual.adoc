@@ -1615,7 +1615,7 @@ A layer carries at most one role, and the inventory is deliberately small:
 | `time-alignment` | token layer | Tokens aligned to a media timeline, for audio or video.
 |===
 
-Plaid itself acts on one of these roles only: a space typed inside a word deals out the tokens of a `syntactic-word` layer under it.
+Plaid itself acts on one of these roles only: a space typed inside a word, and a request that splits a token, both deal out the tokens of a `syntactic-word` layer under it.
 These names are rather blessed conventional names for communicating the meaning of a layer that apps are expected to honor when present.
 The app that first sets the project up might record the roles of its sentence and word layers like this:
 

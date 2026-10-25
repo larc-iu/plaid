@@ -920,8 +920,9 @@
   piece, the first in canonical order (precedence, nulls last, then id) to
   the left, each keeping its row. Any other number, one included, stay
   together on the side `side` keeps, and the other piece gets one new
-  token with the first one's precedence, cut from no token, so it inherits
-  no `preserveOnSplit` key: no producer proposed that word. Both follow a
+  token with the first one's precedence (1 when it stores none), cut from
+  no token, so it inherits no `preserveOnSplit` key: no producer proposed
+  that word. Both follow a
   typed space (`plaid.algos.text`, `split-spaced-words`)."
   [tx straddlers position & [side]]
   (let [rows (into [] (keep #(psc/fetch-by-id tx :tokens (:token/id %))) straddlers)
@@ -946,7 +947,7 @@
                                     :document_id document_id
                                     :begin (if right? begin position)
                                     :end_ (if right? position end_)
-                                    :precedence precedence}))))
+                                    :precedence (or precedence 1)}))))
     (doseq [t-row rows
             :when (not (grouped (:id t-row)))]
       (split-one! tx t-row position nil side))))
