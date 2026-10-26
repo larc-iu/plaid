@@ -45,6 +45,7 @@ import {
   FLEX_MORPH_TYPES,
   decorateWithAffixMarkers,
   equalsBefore,
+  isClitic,
 } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
@@ -193,12 +194,20 @@ const morphTxt = (m, typedBefore) =>
   decorateWithAffixMarkers(m?.morphType ?? null, morphFormOf(m), { equalsBefore: typedBefore });
 
 // Whether a "=" typed before each morph of a word is written in front of it:
-// not before the first, and not where the morph before already ends in "="
-// (a proclitic), so the boundary is written once (REV-CLITIC CL-10).
+// not before the first, not where the morph before already ends in "=" (a
+// proclitic), so the boundary is written once (REV-CLITIC CL-10), and only on
+// a morph with no type or a clitic's. A morph FLEx types as no clitic keeps
+// its own markers and loses the "=", which FLEx cannot say (CL-14, a loss the
+// round-trip parity ruling accepts).
 const typedBeforeEach = (morphemes) => {
   let prev = '';
   return morphemes.map((m, i) => {
-    const typed = i > 0 && equalsBefore(m?.metadata) && !String(prev ?? '').endsWith('=');
+    const type = m?.morphType ?? null;
+    const typed =
+      i > 0 &&
+      equalsBefore(m?.metadata) &&
+      (type == null || isClitic(type)) &&
+      !String(prev ?? '').endsWith('=');
     prev = morphTxt(m, typed);
     return typed;
   });

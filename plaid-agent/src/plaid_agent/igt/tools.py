@@ -15,8 +15,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
 from plaid_client.workflows.igt.config import orthography_key
-from plaid_client.workflows.igt.interlinear import clitic_types, equals_of_clitic
-from plaid_client.workflows.igt.glossing import is_clitic
+from plaid_client.workflows.igt.interlinear import choose_type, clitic_types
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
@@ -373,8 +372,8 @@ def stage_equals(chain, out: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     then typed by the grid's rule (``clitic_types``), with its record. Returns
     a copy: one ``out`` serves every word of a bulk call."""
     kept, prefix = set(), ''
-    for form, before in chain:
-        if before and prefix:
+    for i, (form, before) in enumerate(chain):
+        if before and i > 0:
             kept.add(prefix)
         prefix += form or ''
     staged, befores, prefix = [], [], ''
@@ -1232,17 +1231,23 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
                          'morpheme type ' + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ')
                          + (qv(t) if t else '(cleared)'))}
         if t is None:
-            # As the grid's clear does (R47, REV-CLITIC CL-9): clearing a
-            # clitic's type takes back the "=" that types it, and clearing any
-            # other type keeps the "=", which then types this morpheme.
+            # As the grid's Type list does (choose_type, REV-CLITIC CL-9,
+            # CL-16): clearing a clitic's type takes back the "=" that types
+            # it, and clearing any other type keeps the "=", which then types
+            # this morpheme unless its entry has a type.
             k = next(i for i, x in enumerate(w.morphemes) if x.id == m.id)
-            taken = equals_of_clitic([x.equals_before for x in w.morphemes], k)
-            if taken and is_clitic(m.morph_type):
-                op['equals_taken'] = [w.morphemes[j].id for j in taken]
-            elif taken:
-                op['equals_type'] = 'proclitic' if taken[0] - 1 == k else 'enclitic'
+            changes = choose_type([{'morph_type': x.morph_type, 'entry_type': x.entry_type,
+                                    'type_from_equals': (x.metadata or {}).get('morphTypeFromEquals'),
+                                    'equals_before': x.equals_before} for x in w.morphemes], k, None)
+            taken = [w.morphemes[j].id for j, c in enumerate(changes) if 'equals_before' in c]
+            if taken:
+                op['equals_taken'] = taken
+            if changes[k].get('morph_type'):
+                op['equals_type'] = changes[k]['morph_type']
                 op['label'] += f' (its "=" makes it {op["equals_type"]})'
-        if t != (m.morph_type or None):
+        # The type the "=" rule gave, chosen as it stands, loses its record.
+        ruled = t is not None and (m.metadata or {}).get('morphTypeFromEquals') == t
+        if t != (m.morph_type or None) or ruled:
             staged.append(op)
         elif (at := ws.replacing(op)) is not None:
             # Set back to what it holds: the type change planned for it goes.

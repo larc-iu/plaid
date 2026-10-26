@@ -568,7 +568,7 @@ export default {
     },
     'token.equalsTyped': {
       carried: 'changed',
-      how: 'Written as "=" in front of the morph\'s txt, as FLEx writes an enclitic, so FLEx reads the morph as an enclitic.',
+      how: 'Written as "=" in front of the morph\'s txt, as FLEx writes an enclitic, so FLEx reads the morph as an enclitic. Before a morph typed as no clitic (a stem, a suffix) the "=" is not written, since FLEx cannot say it, and the morph keeps its own type and markers (REV-CLITIC CL-14, under the round-trip parity ruling).',
     },
     'alignment.provenance': {
       carried: false,

@@ -237,3 +237,29 @@ def test_set_analysis_for_form_keeps_and_states_a_typed_equals():
     op = w.ops[-1]
     assert [m.get('equals_before') for m in op['morphemes']] == [None, True]
     assert 'equals' not in op['morphemes'][1]
+
+
+def _planned(w):
+    return [(m.get('morph_type'), m.get('type_from_equals'), m.get('equals_before'))
+            for m in w.ops[-1]['morphemes']]
+
+
+def test_set_morpheme_on_a_planned_morpheme_is_the_grids_type_list():
+    """REV-CLITIC CL-15: a type chosen on a morpheme of a planned analysis
+    drops the rule's record, a clitic's clear takes its "=", and any other
+    clear keeps the "=", which types the morpheme again."""
+    w = fake_ws(FakeClient())
+    analysis = [{'form': 'A'}, {'form': 'li', 'equals': True}, {'form': 'di'}]
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': analysis})
+    assert _planned(w) == [('proclitic', 'proclitic', None), (None, None, True), (None, None, None)]
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': 'proclitic'})
+    assert _planned(w)[0] == ('proclitic', None, None)
+    w = fake_ws(FakeClient())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': analysis})
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': ''})
+    assert _planned(w) == [(None, None, None), (None, None, None), (None, None, None)]
+    w = fake_ws(FakeClient())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                  'morphemes': [{'form': 'A', 'type': 'stem'}, *analysis[1:]]})
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': ''})
+    assert _planned(w)[0] == ('proclitic', 'proclitic', None) and _planned(w)[1][2] is True

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.igt import precedence
 from plaid_client.workflows.igt.senses import morpheme_morph_type
+from plaid_client.workflows.igt.interlinear import choose_type
 
 from ..core import keep as _keep, rules, work
 from ..core.bidi import plain_quote, qv
@@ -1344,6 +1345,23 @@ def _put(pm: Dict[str, Any], what: str, value) -> None:
             [{'layer_id': what, 'value': value}] if value != '' else [])
 
 
+def _put_type(ms: List[Dict[str, Any]], k: int, value) -> None:
+    """A type named for morpheme ``k`` of a planned analysis, as the grid's
+    Type list takes it (``choose_type``, REV-CLITIC CL-15): a chosen type drops
+    the rule's record, a clitic's clear takes its "=", and any other clear keeps
+    the "=" and the rule reads the chain again."""
+    pieces = [{'morph_type': m.get('morph_type'), 'type_from_equals': m.get('type_from_equals'),
+               'equals_before': m.get('equals_before')} for m in ms]
+    for m, change in zip(ms, choose_type(pieces, k, value or None)):
+        for key, v in change.items():
+            if key == 'morph_type':
+                m[key] = v
+            elif v is None:
+                m.pop(key, None)
+            else:
+                m[key] = v
+
+
 def _meets(ws: Workspace, cond: Dict[str, Any], word_id: str) -> bool:
     """Whether a word meets a rule's condition, asked of the stored project
     once a turn."""
@@ -1372,7 +1390,9 @@ def worked_out(ws: Workspace, op: Dict[str, Any], analysis_rules: Optional[List[
     for _seq, is_rule, e in events:
         if not is_rule:
             _s, k, what, value = e
-            if 0 <= k < len(ms):
+            if 0 <= k < len(ms) and what == TYPE:
+                _put_type(ms, k, value)
+            elif 0 <= k < len(ms):
                 _put(ms[k], what, value)
                 writers.pop((k, what), None)
             continue
@@ -1476,7 +1496,10 @@ def name_on_analysis(ws: Workspace, analysis: Dict[str, Any], index: int, what: 
     it leaves the plan. 1 when the plan changed, else 0. Staged through the
     funnel, as the same change."""
     cur = _held(analysis['morphemes'][index], what)
-    if cur == value:
+    # The type the "=" rule gave, chosen as it stands, is the person's from
+    # now on (REV-CLITIC CL-15): its record goes, so it is a change.
+    ruled = what == TYPE and value and analysis['morphemes'][index].get('type_from_equals') == value
+    if cur == value and not ruled:
         # What the analysis holds already: named all the same when a rule set
         # it, which may leave the plan (REV6-AGENT-6).
         _ms, writers, _h = worked_out(ws, analysis)

@@ -453,6 +453,25 @@ async function buildStory(ctx) {
       joiners: ['-', '=', '-'],
     }),
   );
+  // A "=" typed between two morphemes FLEx types (REV-CLITIC CL-14): l-a=d-ra
+  // with every piece typed, so the flextext export writes the suffix d with its
+  // own marker and no "=", the loss the flextext list states.
+  doc = await reload(client, projectId, docId);
+  await must(
+    doc,
+    'segment ladra with an inner = between typed pieces',
+    doc.splitMorphemeMulti(word(doc, 'ladra').morphemes[0].id, ['l', 'a', 'd', 'ra'], {
+      joiners: ['-', '=', '-'],
+    }),
+  );
+  doc = await reload(client, projectId, docId);
+  for (const [i, type] of ['prefix', 'stem', 'suffix', 'suffix'].entries()) {
+    await must(
+      doc,
+      `type ladra ${i}`,
+      doc.setMorphemeType(word(doc, 'ladra').morphemes[i].id, type),
+    );
+  }
   // A proclitic typed with "=" (REV-CLITIC CL-10): F proclitic by the rule,
   // the key on i, and i linked to a stem, so the flextext export writes the
   // "=" once, on the proclitic, with i's txt and cf alike.

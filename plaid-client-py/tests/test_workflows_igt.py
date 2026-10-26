@@ -665,6 +665,10 @@ def test_clitic_types_agree_with_the_grid_on_every_short_chain():
     assert len(table) == 63
     for joints, types in table.items():
         assert clitic_types(list(joints), ['x'] * (len(joints) + 1)) == types, joints
+        # and the re-read the Type list runs gives a fresh chain the same types
+        from plaid_client.workflows.igt.interlinear import reread_equals
+        pieces = [{}] + [{'equals_before': j == '='} for j in joints]
+        assert [c[0] if c else None for c in reread_equals(pieces)] == types, joints
 
 
 def test_equals_of_clitic_names_the_key_that_types_a_piece():
@@ -674,3 +678,22 @@ def test_equals_of_clitic_names_the_key_that_types_a_piece():
     assert equals_of_clitic([False, True], 0) == []
     assert equals_of_clitic([False, True, False], 0) == [1]  # the proclitic's key is after it
     assert equals_of_clitic([False, False, True, False], 2) == []  # interior: types nothing
+
+
+def test_choose_type_is_the_grids_type_list():
+    """plaid-igt's setMorphemeType over a chain (REV-CLITIC CL-9, CL-15,
+    CL-16): a chosen type drops the rule's record, a clitic's clear takes its
+    "=", any other clear keeps it and the rule types the piece again, and a
+    piece whose entry has a type is never written."""
+    from plaid_client.workflows.igt.interlinear import choose_type
+    ni = {'morph_type': 'proclitic', 'type_from_equals': 'proclitic'}
+    house = {'equals_before': True}
+    assert choose_type([ni, house, {}], 0, 'proclitic')[0] == {'morph_type': 'proclitic',
+                                                                'type_from_equals': None}
+    assert choose_type([ni, house, {}], 0, None) == [
+        {'morph_type': None, 'type_from_equals': None}, {'equals_before': None}, {}]
+    stem = {'morph_type': 'stem'}
+    assert choose_type([stem, house, {}], 0, None) == [
+        {'morph_type': 'proclitic', 'type_from_equals': 'proclitic'}, {}, {}]
+    linked = {'morph_type': 'stem', 'entry_type': 'stem'}
+    assert choose_type([linked, house, {}], 0, None)[0] == {'morph_type': None, 'type_from_equals': None}

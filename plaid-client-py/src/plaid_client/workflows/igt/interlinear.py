@@ -75,6 +75,62 @@ def clitic_types(joiners, glosses):
     return types
 
 
+def _type(t):
+    return t if isinstance(t, str) and t != '' else None
+
+
+def _is_clitic(t):
+    return isinstance(t, str) and 'clitic' in t.lower()
+
+
+def reread_equals(pieces):
+    """plaid-igt's rereadEquals: what the "=" rule writes on each piece of a
+    word, from the typed "=" before each. ``pieces`` are dicts with
+    ``morph_type``, ``type_from_equals``, ``equals_before`` and
+    ``entry_type``. Per piece None, or the ``(type, record)`` the rule writes
+    (``(None, None)`` takes its own away). A piece that goes by a type the rule
+    did not set, its entry's included, is left alone."""
+    n = len(pieces)
+    want: List[Optional[str]] = [None] * n
+    for j in range(1, n):
+        if pieces[j].get('equals_before'):
+            side = clitic_side_of_boundary(j - 1, n)
+            if side:
+                want[j - 1 if side == 'left' else j] = CLITIC_TYPE_BY_SIDE[side]
+    out = []
+    for k, p in enumerate(pieces):
+        own, entry = _type(p.get('morph_type')), _type(p.get('entry_type'))
+        by_rule = entry is None and own is not None and p.get('type_from_equals') == own
+        free = by_rule or (own is None and entry is None)
+        out.append((want[k], want[k]) if free and (own if by_rule else None) != want[k] else None)
+    return out
+
+
+def choose_type(pieces, k, morph_type):
+    """The grid's Type list on piece ``k`` of a word (plaid-igt's
+    setMorphemeType), for any writer that edits a chain the way a person does
+    there. ``pieces`` as for :func:`reread_equals`. Per piece, the keys that
+    change (``morph_type``, ``type_from_equals``, ``equals_before``, None
+    taking one away). A chosen type drops the rule's record. Clearing a
+    clitic's type takes back the "=" that typed it, clearing any other keeps
+    the "=", and the rule then reads the word again."""
+    changes = [{} for _ in pieces]
+    if morph_type:
+        changes[k] = {'morph_type': morph_type, 'type_from_equals': None}
+        return changes
+    after = [dict(p) for p in pieces]
+    if _is_clitic(pieces[k].get('morph_type')):
+        for j in equals_of_clitic([bool(p.get('equals_before')) for p in pieces], k):
+            after[j]['equals_before'] = False
+            changes[j]['equals_before'] = None
+    after[k].update(morph_type=None, type_from_equals=None)
+    changes[k].update(morph_type=None, type_from_equals=None)
+    for j, c in enumerate(reread_equals(after)):
+        if c:
+            changes[j].update(morph_type=c[0], type_from_equals=c[1])
+    return changes
+
+
 # --- output parsing + alignment ----------------------------------------------
 
 class ParsedWord:
