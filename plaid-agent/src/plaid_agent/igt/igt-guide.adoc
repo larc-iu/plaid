@@ -298,19 +298,22 @@ The full set of gestures is collected under <<_keyboard_shortcuts>>.
 === Morpheme types
 
 A morpheme's type, such as stem, suffix, or enclitic, decides how it joins its neighbours: `=` beside a clitic, `-` otherwise.
-In the grid, a clitic's `=` sits against the clitic, with a narrow space toward its host: `ni= house`, `house =ni`.
+In the grid, a proclitic's or an enclitic's `=` sits against the clitic, with a narrow space toward its host: `ni= house`, `house =ni`. Between two clitics it sits in the middle.
 Copied and exported text writes the plain `=`.
 
 Typing `=` in a morpheme form splits it and types the clitic by its place in the word.
 A `=` after the word's first morpheme makes that morpheme a proclitic, and a `=` before the last makes the last an enclitic. In a word of two morphemes, the second is the enclitic.
-A `=` between two inner morphemes types neither, and the boundary shows as `-`.
-The types a `=` gave are worked out again over the whole word each time its morphemes are split, merged, or deleted, so the result does not depend on the order they were typed in.
+A `=` between two inner morphemes types neither, and the boundary shows as `-` until a change makes it first or last in the word.
+Each `=` typed is kept with the morpheme after it, and the types are worked out again over the whole word each time its morphemes are split, merged, or deleted, so the result does not depend on the order they were typed in.
+Merging the two morphemes beside a `=`, or deleting the morpheme after it, takes the `=` away. Clearing a clitic's type in the **Type** list takes away the `=` that gave it.
 A type chosen in the **Type** list, given by an import, or carried by a linked entry is never changed this way.
+A copied analysis (Analyze every, Auto-analyze, Bulk Edit) carries each `=` with it, and a CLDF import types the pieces of a word written with `=` by the same rule.
 
-The **Type** list in a morpheme's link popover sets its type.
-On an unlinked morpheme it sets the morpheme's own type, and **—** clears it.
-On a linked morpheme it shows the entry's type, and a change applies to every use of the entry. Only the vocabulary's maintainers can change it.
-In a project with no lexicon, the **type** button under a morpheme opens the list.
+The **Type** list in a morpheme's link popover sets its type, and **—** clears it.
+On an unlinked morpheme it sets the morpheme's own type.
+On a morpheme linked to an entry with a type, it shows the entry's type, and a change applies to every use of the entry. Only the vocabulary's maintainers can change it.
+Linked to an entry with no type, the morpheme goes by its own, and the list shows and sets that, not the entry's.
+In a project with no lexicon, the **set type** button under a morpheme opens the list.
 
 === Provenance
 
