@@ -22,7 +22,7 @@ from .plan import KIND, SCOPES, analysed_morphemes, move_phrase, removed_entries
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
-from .tools import (parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis,
+from .tools import (parse_analysis, analysis_op, stage_equals, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
@@ -1546,8 +1546,11 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
                               for m in chain])
         had_values = sum(len(spans.get(m['id']) or []) for m in chain)
         head = ws.corpus.label_ref(w['document'], w['id'], budget) + f' {qv(w.get("value") or "")}'
+        # The word's typed "=" as set_analysis keeps them (stage_equals).
+        staged_out = stage_equals([((m.get('metadata') or {}).get('form'),
+                                    (m.get('metadata') or {}).get('equalsBefore') is True) for m in chain], out)
         op, note = analysis_op(ws, head, w.get('value') or '', w['id'], w['text'], w['begin'], w['end'],
-                               existing, seg, had_values, out)
+                               existing, seg, had_values, staged_out)
         op['doc'] = w['document']
         staged.append(op)
         if not first_note and note:

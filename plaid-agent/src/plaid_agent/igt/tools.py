@@ -250,8 +250,8 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
             raise ToolError(f'{r} is analysed twice in one call', kind='invalid-argument')
         seen.add(w.id)
         refuse_shape_and_analysis(ws, w.id, r, analysing=True)
-        out = parse_analysis(ws, item.get('morphemes'))
-        stage_equals(w, out)
+        out = stage_equals([(x.form, x.equals_before) for x in w.morphemes if not x.virtual],
+                           parse_analysis(ws, item.get('morphemes')))
         # A derived morpheme (an unsegmented word's) is stored nowhere, so
         # there is nothing for the analysis to keep or delete.
         existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes
@@ -363,28 +363,34 @@ def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
     return out
 
 
-def stage_equals(w: Word, out: List[Dict[str, Any]]) -> None:
-    """The typed "=" of a set_analysis (REV-CLITIC CL-12), as the grid keeps
-    them: a morpheme's ``equals`` states one before it, and without it the
-    morpheme keeps the "=" the word's chain had at the same place (the forms
-    before it the same). The pieces nobody typed are then typed by the grid's
-    rule (``clitic_types``), with its record."""
+def stage_equals(chain, out: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The typed "=" of one word's new analysis (REV-CLITIC CL-12), as the
+    grid keeps them, for set_analysis and set_analysis_for_form alike.
+    ``chain`` is the word's stored morphemes as ``(form, equals before)``
+    pairs, ``out`` what parse_analysis read. A morpheme's ``equals`` states a
+    "=" before it, and without it the morpheme keeps the "=" the chain had at
+    the same place (the forms before it the same). The pieces nobody typed are
+    then typed by the grid's rule (``clitic_types``), with its record. Returns
+    a copy: one ``out`` serves every word of a bulk call."""
     kept, prefix = set(), ''
-    for x in w.morphemes:
-        if not x.virtual and x.equals_before and prefix:
+    for form, before in chain:
+        if before and prefix:
             kept.add(prefix)
-        prefix += x.form or ''
-    befores, prefix = [], ''
+        prefix += form or ''
+    staged, befores, prefix = [], [], ''
     for j, m in enumerate(out):
+        m = dict(m)
         stated = m.pop('equals', None)
         befores.append(j > 0 and (stated if stated is not None else prefix in kept))
         prefix += m['form']
-    types = clitic_types(['=' if b else '-' for b in befores[1:]], [m['form'] for m in out])
-    for m, before, rule in zip(out, befores, types):
+        staged.append(m)
+    types = clitic_types(['=' if b else '-' for b in befores[1:]], [m['form'] for m in staged])
+    for m, before, rule in zip(staged, befores, types):
         if before:
             m['equals_before'] = True
         if rule and not m.get('morph_type'):
             m['morph_type'] = m['type_from_equals'] = rule
+    return staged
 
 
 def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: str, begin: int, end: int,

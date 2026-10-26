@@ -220,3 +220,20 @@ def test_set_analysis_states_and_drops_a_typed_equals():
     op = w.ops[-1]
     assert [m.get('equals_before') for m in op['morphemes']] == [None, None, True]
     assert [m.get('morph_type') for m in op['morphemes']] == [None, None, 'enclitic']
+
+
+def test_set_analysis_for_form_keeps_and_states_a_typed_equals():
+    """FX-CLITIC round 5: the bulk set_analysis_for_form reads "=" as
+    set_analysis does, word by word, so a person's typed "=" is not lost
+    across the corpus."""
+    w = _with_equals_on_di()
+    call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    op = w.ops[-1]
+    assert [m.get('equals_before') for m in op['morphemes']] == [None, True]
+    assert [m.get('morph_type') for m in op['morphemes']] == [None, 'enclitic']
+    w = fake_ws(FakeClient())
+    call_tool(w, 'set_analysis_for_form', {'form': 'akuna',
+                                           'morphemes': [{'form': 'aku'}, {'form': 'na', 'equals': True}]})
+    op = w.ops[-1]
+    assert [m.get('equals_before') for m in op['morphemes']] == [None, True]
+    assert 'equals' not in op['morphemes'][1]
