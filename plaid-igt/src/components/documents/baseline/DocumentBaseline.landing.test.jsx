@@ -219,6 +219,54 @@ describe('a save that lands', () => {
   });
 });
 
+describe('a save on its way', () => {
+  // The box open with a line typed at the top and the caret on "gh", two
+  // lines down: code point 11 of the text it sends.
+  const typeAndSave = async (editBaselineText) => {
+    const view = await mount({ over: { editBaselineText } });
+    const { m, openEditor, box, button } = view;
+    await openEditor();
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    await m.step(async () => {
+      box().focus();
+      box().setSelectionRange(0, 0);
+      box().dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowUp' }));
+    });
+    await m.step(async () => {
+      box().dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'x' }));
+      setValue.call(box(), 'x\n' + body);
+      box().setSelectionRange(2, 2);
+      box().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await m.step(async () => {
+      box().setSelectionRange(13, 13);
+      box().dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowDown' }));
+    });
+    expect(analyzeFocus.read().at).toBe(0);
+    await m.step(async () => button('Save changes').click());
+    return view;
+  };
+
+  it("hands the box's caret to Analyze as it is sent, before it lands", async () => {
+    let answer;
+    const editBaselineText = vi.fn(() => new Promise((r) => (answer = r)));
+    const { m } = await typeAndSave(editBaselineText);
+    expect(editBaselineText).toHaveBeenCalled();
+    expect(analyzeFocus.read()).toEqual({ docId: 'doc-1', sentenceId: null, begin: null, at: 11 });
+    await m.step(async () => answer(true));
+    await m.unmount();
+  });
+
+  it('puts back the caret from the saved text when the save is refused', async () => {
+    const editBaselineText = vi.fn(async () => false);
+    const { m, box } = await typeAndSave(editBaselineText);
+    expect(editBaselineText).toHaveBeenCalled();
+    expect(box()).not.toBe(null);
+    expect(analyzeFocus.read()).toEqual({ docId: 'doc-1', sentenceId: null, begin: null, at: 0 });
+    await m.unmount();
+  });
+});
+
 describe('a handoff is for the next tab only', () => {
   it('drops what was left for Analyze and Tokenize when the tab opens', async () => {
     analyzeFocus.write({ docId: 'doc-1', sentenceId: 's1', begin: null });

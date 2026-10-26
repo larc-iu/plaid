@@ -331,7 +331,7 @@ export class IgtEditor {
 
   // The sentence the grid is on: the focused or last focused cell's while it
   // is in view, else the first sentence with more than half of it showing
-  // below the pinned chrome, else the one crossing the chrome's bottom edge,
+  // below the pinned chrome, else the one with the most of it showing there,
   // else the page's first. Null for a document with no sentences. Read while
   // the grid is still in the page, since it measures.
   //
@@ -359,10 +359,15 @@ export class IgtEditor {
       ? active.closest?.('.igt-sentence')?.dataset?.sentenceId
       : null;
     const id = focused || this._lastSentenceId;
+    // The most showing, the higher of two that show as much.
+    const most = rows.reduce(
+      (best, row) => (showing(row) > (best ? showing(best) : 0) ? row : best),
+      null,
+    );
     const pick =
       rows.find((row) => row.s.id === id && showing(row) > 0) ||
       rows.find((row) => showing(row) > row.r.height / 2) ||
-      rows.find(({ r }) => r.top < chrome && r.bottom > chrome);
+      most;
     return pick?.s ?? page[0] ?? null;
   }
 

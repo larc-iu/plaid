@@ -151,13 +151,28 @@ describe('to the Baseline tab', () => {
     expect(baselineFocus.read().sentenceId).toBe('s-27');
   });
 
-  it('hands over the sentence crossing the chrome when none shows more than half', () => {
+  it('hands over the sentence with the most of it showing when none shows more than half', () => {
     const { editor, host } = mount();
     page2(editor);
-    // Sentences 3000px tall: s-26 crosses the chrome's edge and fills the window.
-    layout(host, { first: 26, offset: -1000, chrome: 97, height: 3000 });
+    // Sentences 3000px tall in a 768px window under 98px of chrome. s-25 peeks
+    // out 20px under the strip, and s-26 fills the screen below it.
+    layout(host, { first: 26, offset: 118, chrome: 98, height: 3000 });
     editor.handToBaseline();
     expect(baselineFocus.read().sentenceId).toBe('s-26');
+    // s-26's top exactly at the strip's bottom: nothing crosses it.
+    layout(host, { first: 26, offset: 98, chrome: 98, height: 3000 });
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-26');
+  });
+
+  it('takes the higher of two sentences showing as much', () => {
+    const { editor, host } = mount();
+    page2(editor);
+    // Two 3000px sentences, each 335px showing between the 98px strip and the
+    // 768px window's bottom.
+    layout(host, { first: 26, offset: 433, chrome: 98, height: 3000 });
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-25');
   });
 
   it("counts only the app's pinned chrome, not a header elsewhere in the page", () => {

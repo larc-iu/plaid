@@ -34,7 +34,13 @@ function landingFor(doc) {
 
 export function DocumentBaseline() {
   const { doc, readOnly } = useDocumentCtx();
-  const ops = useBaselineOperations();
+  // A save hands Analyze the box's caret as it goes out when the box holds
+  // the text it sends, and a refused one puts back what was there before.
+  const sendRef = useRef(null);
+  const ops = useBaselineOperations({
+    onSend: (text) => sendRef.current?.send(text),
+    onRefused: () => sendRef.current?.refused(),
+  });
 
   // The textarea is controlled by the hook's `editedText` alone. It used to
   // carry a second copy here and an effect writing one into the other on every
@@ -94,6 +100,35 @@ export function DocumentBaseline() {
     const at = utf16ToCp(el.value, el.selectionStart);
     lastBoxRef.current = { text: el.value, at };
     if (el.value === (ops.body || '')) placeCaret(at);
+  };
+  const beforeSendRef = useRef(null);
+  sendRef.current = {
+    send: (text) => {
+      const last = lastBoxRef.current;
+      if (!last || last.text !== text) return;
+      let before = null;
+      try {
+        before = analyzeFocus.read();
+      } catch {
+        /* noop */
+      }
+      beforeSendRef.current = { at: caretRef.current, req: before };
+      placeCaret(last.at);
+    },
+    refused: () => {
+      const back = beforeSendRef.current;
+      beforeSendRef.current = null;
+      // Only while the tab is up, with the draft back in the box: after the
+      // reader has left, Analyze has already taken the caret.
+      if (!back || !textareaRef.current) return;
+      caretRef.current = back.at;
+      try {
+        if (back.req) analyzeFocus.write(back.req);
+        else analyzeFocus.clear();
+      } catch {
+        /* noop */
+      }
+    },
   };
   useEffect(() => {
     const last = lastBoxRef.current;

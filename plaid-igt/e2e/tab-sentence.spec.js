@@ -248,8 +248,15 @@ test('a draft left unsaved hands Analyze the caret it last had in the saved text
 });
 
 // Last in the file: it saves, which moves every line after the third.
-test('a save hands Analyze the caret the box had, in the text it saved', async ({ page }) => {
+test('a save hands Analyze the caret the box had, in the text it saved, before it lands', async ({
+  page,
+}) => {
   await open(page, 'baseline');
+  // The save takes a while to land, and the reader leaves at once.
+  await page.route('**/api/v1/texts/**', async (route) => {
+    if (route.request().method() !== 'GET') await new Promise((r) => setTimeout(r, 2500));
+    await route.continue();
+  });
   await page.getByRole('button', { name: 'Edit text' }).click();
   const box = page.getByPlaceholder('Type or paste the text');
   const typeAt = async (at, text) => {
@@ -264,8 +271,11 @@ test('a save hands Analyze the caret the box had, in the text it saved', async (
   await typeAt(starts[24] + 1 + 6, 'b');
   await box.press('ArrowLeft');
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByRole('button', { name: 'Edit text' })).toBeVisible();
-  await expect(page.locator('p.whitespace-pre-wrap')).toContainText('line25b');
   await page.getByRole('tab', { name: 'Analyze' }).click();
   await expect.poll(() => flashed(page)).toBe('25');
+  await expect
+    .poll(async () => (await client.documents.get(documentId, true)).textLayers[0].text.body, {
+      timeout: 15_000,
+    })
+    .toContain('line25b');
 });
