@@ -33,8 +33,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const mount = async ({ text = body, list = sentences, ctx } = {}) => {
-  const doc = fakeDocument({ id: 'doc-1', body: text, sentences: list });
+const mount = async ({ text = body, list = sentences, ctx, over = {} } = {}) => {
+  const doc = fakeDocument({ id: 'doc-1', body: text, sentences: list, ...over });
   const m = await mountDocumentHook(() => null, {
     doc,
     render: () => <DocumentBaseline />,
@@ -48,7 +48,7 @@ const mount = async ({ text = body, list = sentences, ctx } = {}) => {
     await m.step(async () => button('Edit text').click());
     await m.step(() => new Promise((r) => requestAnimationFrame(r)));
   };
-  return { m, view, flash, button, box, openEditor };
+  return { m, doc, view, flash, button, box, openEditor };
 };
 
 describe('from the Analyze tab', () => {
@@ -178,6 +178,43 @@ describe('to the Analyze tab', () => {
     });
     expect(box().value).not.toBe(body);
     expect(analyzeFocus.read().at).toBe(9);
+    await m.unmount();
+  });
+});
+
+describe('a save that lands', () => {
+  it("hands over the box's last caret, read against the text it saved", async () => {
+    // The save lands: the stored text is now what the box held.
+    let landed = null;
+    const editBaselineText = vi.fn(async () => {
+      landed.doc.body = landed.box().value;
+      return true;
+    });
+    const view = await mount({ over: { editBaselineText } });
+    landed = view;
+    const { m, openEditor, box, button } = view;
+    await openEditor();
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    const caret = async (u) =>
+      m.step(async () => {
+        box().setSelectionRange(u, u);
+        box().dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowDown' }));
+      });
+    await m.step(async () => box().focus());
+    await caret(0);
+    // A line typed at the top, then the caret on "gh", two lines down.
+    await m.step(async () => {
+      box().dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'x' }));
+      setValue.call(box(), 'x\n' + body);
+      box().setSelectionRange(2, 2);
+      box().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await caret(13);
+    expect(analyzeFocus.read().at).toBe(0);
+    await m.step(async () => button('Save changes').click());
+    await m.step(async () => {});
+    expect(editBaselineText).toHaveBeenCalled();
+    expect(analyzeFocus.read()).toEqual({ docId: 'doc-1', sentenceId: null, begin: null, at: 11 });
     await m.unmount();
   });
 });

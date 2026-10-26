@@ -92,12 +92,12 @@ describe('from the Baseline tab', () => {
 
 describe('to the Baseline tab', () => {
   const page2 = (editor) => editor._setPage(1);
-  // Lays the page out 100px a sentence, `first` at the window's top plus
+  // Lays the page out `height` px a sentence, `first` at the window's top plus
   // `offset`, under chrome pinned down to `chrome` px (the tab strip).
-  const layout = (host, { first, offset = 0, chrome = 0 }) => {
+  const layout = (host, { first, offset = 0, chrome = 0, height = 100 }) => {
     for (const el of host.querySelectorAll('.igt-sentence[data-sentence-id]')) {
-      const top = (Number(el.dataset.sentenceId.slice(2)) - first) * 100 + offset;
-      el.getBoundingClientRect = () => ({ top, bottom: top + 100, height: 100 });
+      const top = (Number(el.dataset.sentenceId.slice(2)) - first) * height + offset;
+      el.getBoundingClientRect = () => ({ top, bottom: top + height, height });
     }
     const strip = document.createElement('div');
     strip.dataset.pinned = 'true';
@@ -138,13 +138,39 @@ describe('to the Baseline tab', () => {
     expect(baselineFocus.read().sentenceId).toBe('s-28');
   });
 
-  it('hands over the topmost sentence whose top is below the pinned chrome', () => {
+  it('hands over the first sentence with more than half of it showing below the pinned chrome', () => {
     const { editor, host } = mount();
     page2(editor);
-    // s-27 runs from 50 to 150, its top under the 97px chrome. s-28 starts at 150.
-    layout(host, { first: 27, offset: 50, chrome: 97 });
+    // s-27 runs from 40 to 140 under 97px of chrome: 43px show, s-28 is next.
+    layout(host, { first: 27, offset: 40, chrome: 97 });
     editor.handToBaseline();
     expect(baselineFocus.read().sentenceId).toBe('s-28');
+    // From 60 to 160: 63px show, so s-27 is the one at the top of the screen.
+    layout(host, { first: 27, offset: 60, chrome: 97 });
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-27');
+  });
+
+  it('hands over the sentence crossing the chrome when none shows more than half', () => {
+    const { editor, host } = mount();
+    page2(editor);
+    // Sentences 3000px tall: s-26 crosses the chrome's edge and fills the window.
+    layout(host, { first: 26, offset: -1000, chrome: 97, height: 3000 });
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-26');
+  });
+
+  it("counts only the app's pinned chrome, not a header elsewhere in the page", () => {
+    const { editor, host } = mount();
+    page2(editor);
+    layout(host, { first: 27, offset: 60, chrome: 97 });
+    // A comment popover's head, open far down the page.
+    const head = document.createElement('header');
+    head.getBoundingClientRect = () => ({ top: 320, bottom: 351, height: 31 });
+    document.body.appendChild(head);
+    pinned.push(head);
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-27');
   });
 
   it("hands over the page's first sentence when nothing is in view", () => {

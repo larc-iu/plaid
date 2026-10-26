@@ -330,40 +330,40 @@ export class IgtEditor {
   }
 
   // The sentence the grid is on: the focused or last focused cell's while it
-  // is in view, else the topmost sentence whose top is below the pinned
-  // chrome (the app header and the document's tab strip, measured), else the
-  // page's first. Null for a document with no sentences. Read while the grid
-  // is still in the page, since it measures.
+  // is in view, else the first sentence with more than half of it showing
+  // below the pinned chrome, else the one crossing the chrome's bottom edge,
+  // else the page's first. Null for a document with no sentences. Read while
+  // the grid is still in the page, since it measures.
+  //
+  // The pinned chrome is the document's tab strip (`[data-pinned]`), measured.
+  // It sticks under the app header, so its bottom is never above the header's.
   sentenceOnScreen() {
     const size = this.constructor.PAGE_SIZE;
     const start = this._page * size;
     const page = (this.doc.sentences || []).slice(start, start + size);
     const chrome = Math.max(
       0,
-      ...[...document.querySelectorAll('header, [data-pinned]')].map(
+      ...[...document.querySelectorAll('[data-pinned]')].map(
         (el) => el.getBoundingClientRect().bottom,
       ),
     );
-    const rows = [...this.container.querySelectorAll('.igt-sentence[data-sentence-id]')].map(
-      (el) => ({
+    const rows = [...this.container.querySelectorAll('.igt-sentence[data-sentence-id]')]
+      .map((el) => ({
         s: page.find((p) => p.id === el.dataset.sentenceId),
         r: el.getBoundingClientRect(),
-      }),
-    );
+      }))
+      .filter(({ s, r }) => s && r.height > 0);
+    const showing = ({ r }) => Math.min(r.bottom, window.innerHeight) - Math.max(r.top, chrome);
     const active = document.activeElement;
     const focused = this.container.contains(active)
       ? active.closest?.('.igt-sentence')?.dataset?.sentenceId
       : null;
     const id = focused || this._lastSentenceId;
-    const held = rows.find(
-      ({ s, r }) =>
-        s && s.id === id && r.height > 0 && r.bottom > chrome && r.top < window.innerHeight,
-    );
-    if (held) return held.s;
-    const top = rows.find(
-      ({ s, r }) => s && r.height > 0 && r.top >= chrome && r.top < window.innerHeight,
-    );
-    return top?.s ?? page[0] ?? null;
+    const pick =
+      rows.find((row) => row.s.id === id && showing(row) > 0) ||
+      rows.find((row) => showing(row) > row.r.height / 2) ||
+      rows.find(({ r }) => r.top < chrome && r.bottom > chrome);
+    return pick?.s ?? page[0] ?? null;
   }
 
   // Leaving the grid: the Baseline tab opens on the sentence it was on.

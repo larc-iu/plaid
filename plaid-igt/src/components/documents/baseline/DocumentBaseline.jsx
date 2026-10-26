@@ -86,10 +86,22 @@ export function DocumentBaseline() {
     return () => clearTimeout(timer);
   }, [flash]);
   // Only from the saved text: a caret in a draft counts letters the grid does
-  // not have, and the draft may be left unsaved.
+  // not have, and the draft may be left unsaved. The box's last caret is kept,
+  // and handed over once a save lands with nothing typed since, when the text
+  // it counts is the saved text.
+  const lastBoxRef = useRef(null);
   const caretFromBox = (el) => {
-    if (el.value === (ops.body || '')) placeCaret(utf16ToCp(el.value, el.selectionStart));
+    const at = utf16ToCp(el.value, el.selectionStart);
+    lastBoxRef.current = { text: el.value, at };
+    if (el.value === (ops.body || '')) placeCaret(at);
   };
+  useEffect(() => {
+    const last = lastBoxRef.current;
+    if (ops.isEditing || !last || last.text !== (ops.body || '')) return;
+    lastBoxRef.current = null;
+    placeCaret(last.at);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ops.isEditing, ops.body]);
   const caretFromText = (e) => {
     const sel = window.getSelection?.();
     if (!sel?.rangeCount) return;

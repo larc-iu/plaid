@@ -165,22 +165,18 @@ test('Edit text shows the caret on the first lines of a long text', async ({ pag
   }
 });
 
-test('a focused sentence scrolled away gives way to the first one below the pinned tab strip', async ({
-  page,
-}) => {
-  await open(page, 'analyze');
-  await sentence(page, 2).locator('.igt-field').first().click();
-  // Sentence 6 with its top hidden under the strip, sentence 7 the first whole one.
+// Scrolls sentence `n`'s top to `dy` px below the pinned tab strip's bottom
+// (above it when negative), then presses Baseline by hand: Playwright's click
+// scrolls the page first, which a reader's click does not.
+async function scrollAndLeave(page, n, dy) {
   await page.evaluate(() => window.scrollBy(0, 800));
   const chrome = await page.evaluate(
     () => document.querySelector('[data-pinned]').getBoundingClientRect().bottom,
   );
-  await sentence(page, 6).evaluate(
-    (el, b) => window.scrollBy(0, el.getBoundingClientRect().bottom - (b + 30)),
-    chrome,
+  await sentence(page, n).evaluate(
+    (el, to) => window.scrollBy(0, el.getBoundingClientRect().top - to),
+    chrome + dy,
   );
-  // Pressed by hand: Playwright's click scrolls the page first, which a
-  // reader's click does not.
   await page.evaluate(() => {
     const tab = [...document.querySelectorAll('[role="tab"]')].find(
       (t) => t.textContent.trim() === 'Baseline',
@@ -189,6 +185,23 @@ test('a focused sentence scrolled away gives way to the first one below the pinn
     tab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
     tab.click();
   });
+}
+
+test('a focused sentence scrolled away gives way to the sentence at the top of the screen', async ({
+  page,
+}) => {
+  await open(page, 'analyze');
+  await sentence(page, 2).locator('.igt-field').first().click();
+  // Sentence 6 all but 30px under the strip: sentence 7 is the one on screen.
+  await scrollAndLeave(page, 7, 30);
+  await expect(page.locator('.baseline-flash')).toHaveText(lines[6]);
+});
+
+test('a sentence with its top 30px under the strip is still the one on screen', async ({
+  page,
+}) => {
+  await open(page, 'analyze');
+  await scrollAndLeave(page, 7, -30);
   await expect(page.locator('.baseline-flash')).toHaveText(lines[6]);
 });
 
@@ -232,4 +245,27 @@ test('a draft left unsaved hands Analyze the caret it last had in the saved text
   await page.getByRole('tab', { name: 'Analyze' }).click();
   await page.getByRole('button', { name: 'Leave' }).click();
   await expect.poll(() => flashed(page)).toBe('5');
+});
+
+// Last in the file: it saves, which moves every line after the third.
+test('a save hands Analyze the caret the box had, in the text it saved', async ({ page }) => {
+  await open(page, 'baseline');
+  await page.getByRole('button', { name: 'Edit text' }).click();
+  const box = page.getByPlaceholder('Type or paste the text');
+  const typeAt = async (at, text) => {
+    await box.evaluate((el, u) => {
+      el.focus();
+      el.setSelectionRange(u, u);
+    }, at);
+    await page.keyboard.type(text);
+  };
+  // A typo fixed in sentence 3, then one in sentence 25.
+  await typeAt(starts[2] + 5, 'a');
+  await typeAt(starts[24] + 1 + 6, 'b');
+  await box.press('ArrowLeft');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('button', { name: 'Edit text' })).toBeVisible();
+  await expect(page.locator('p.whitespace-pre-wrap')).toContainText('line25b');
+  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await expect.poll(() => flashed(page)).toBe('25');
 });
