@@ -22,7 +22,7 @@ import { TokenizeDialog } from './TokenizeDialog.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 import { countOf, plural } from '@ui/lib/plural.js';
-import { analyzeFocus, openTab, tokenizeFocus } from '../hooks/focusHandoff.js';
+import { analyzeFocus, tokenizeFocus } from '../hooks/focusHandoff.js';
 
 export function DocumentTokenize() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
@@ -50,7 +50,7 @@ export function DocumentTokenize() {
   useEffect(() => {
     let req = null;
     try {
-      req = openTab(tokenizeFocus);
+      req = tokenizeFocus.read();
     } catch {
       /* noop */
     }

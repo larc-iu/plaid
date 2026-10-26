@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { cpSlice, utf16ToCp } from '@larc-iu/plaid-client';
+import { useEffect, useRef } from 'react';
 import { Info, Pencil, Save, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -9,38 +8,10 @@ import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { analyzeFocus, baselineFocus, openTab, sentenceNear } from '../hooks/focusHandoff.js';
-import './DocumentBaseline.css';
-
-const toUtf16 = (text, at) => cpSlice(text, 0, at).length;
-
-// Coming from the Analyze tab: the sentence the grid was on (focusHandoff.js
-// baselineFocus), or the one nearest where it stood, as UTF-16 offsets into
-// the body for the screen. Null when there is nothing to land on.
-function landingFor(doc) {
-  let req = null;
-  try {
-    req = openTab(baselineFocus);
-  } catch {
-    /* noop */
-  }
-  if (!req || req.docId !== doc.id) return null;
-  const sentences = doc.sentences || [];
-  const s = sentences.find((x) => x.id === req.sentenceId) || sentenceNear(sentences, req.at);
-  if (!s) return null;
-  const body = doc.body || '';
-  return { at: s.begin, from: toUtf16(body, s.begin), to: toUtf16(body, s.end) };
-}
 
 export function DocumentBaseline() {
   const { doc, readOnly } = useDocumentCtx();
-  // A save hands Analyze the box's caret as it goes out when the box holds
-  // the text it sends, and a refused one puts back what was there before.
-  const sendRef = useRef(null);
-  const ops = useBaselineOperations({
-    onSend: (text) => sendRef.current?.send(text),
-    onRefused: () => sendRef.current?.refused(),
-  });
+  const ops = useBaselineOperations();
 
   // The textarea is controlled by the hook's `editedText` alone. It used to
   // carry a second copy here and an effect writing one into the other on every
@@ -49,104 +20,6 @@ export function DocumentBaseline() {
   // change. `setEditedText` is plain state in a hook this component calls, so
   // there is no round trip for the caret to jump across.
   const textareaRef = useRef(null);
-
-  // The caret, in code points of the text: where Edit text opens it, and the
-  // sentence the Analyze tab opens on (analyzeFocus). It starts at the
-  // sentence handed over from Analyze, and moves with a click in the text or
-  // the caret in the box.
-  const [flash, setFlash] = useState(null);
-  const caretRef = useRef(null);
-  const flashRef = useRef(null);
-  const placeCaret = (at) => {
-    caretRef.current = at;
-    try {
-      analyzeFocus.write({ docId: doc.id, sentenceId: null, begin: null, at });
-    } catch {
-      /* noop */
-    }
-  };
-  // Read after the commit, never during render: the grid hands its sentence
-  // over as it unmounts, which is in the same commit as this tab's mount.
-  // Once per mount: React's second run of a mount effect in development would
-  // otherwise drop the caret this one handed to Analyze (openTab).
-  const openedRef = useRef(false);
-  useEffect(() => {
-    if (openedRef.current) return;
-    openedRef.current = true;
-    const landing = landingFor(doc);
-    if (!landing) return;
-    try {
-      baselineFocus.clear();
-    } catch {
-      /* noop */
-    }
-    placeCaret(landing.at);
-    setFlash(landing);
-    // Once, on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    if (!flash) return undefined;
-    flashRef.current?.scrollIntoView?.({ block: 'center' });
-    const timer = setTimeout(() => setFlash(null), 2400);
-    return () => clearTimeout(timer);
-  }, [flash]);
-  // Only from the saved text: a caret in a draft counts letters the grid does
-  // not have, and the draft may be left unsaved. The box's last caret is kept,
-  // and handed over once a save lands with nothing typed since, when the text
-  // it counts is the saved text.
-  const lastBoxRef = useRef(null);
-  const caretFromBox = (el) => {
-    const at = utf16ToCp(el.value, el.selectionStart);
-    lastBoxRef.current = { text: el.value, at };
-    if (el.value === (ops.body || '')) placeCaret(at);
-  };
-  const beforeSendRef = useRef(null);
-  sendRef.current = {
-    send: (text) => {
-      const last = lastBoxRef.current;
-      if (!last || last.text !== text) return;
-      let before = null;
-      try {
-        before = analyzeFocus.read();
-      } catch {
-        /* noop */
-      }
-      beforeSendRef.current = { at: caretRef.current, req: before };
-      placeCaret(last.at);
-    },
-    refused: () => {
-      const back = beforeSendRef.current;
-      beforeSendRef.current = null;
-      // Only while the tab is up, with the draft back in the box: after the
-      // reader has left, Analyze has already taken the caret.
-      if (!back || !textareaRef.current) return;
-      caretRef.current = back.at;
-      try {
-        if (back.req) analyzeFocus.write(back.req);
-        else analyzeFocus.clear();
-      } catch {
-        /* noop */
-      }
-    },
-  };
-  useEffect(() => {
-    const last = lastBoxRef.current;
-    if (ops.isEditing || !last || last.text !== (ops.body || '')) return;
-    lastBoxRef.current = null;
-    placeCaret(last.at);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ops.isEditing, ops.body]);
-  const caretFromText = (e) => {
-    const sel = window.getSelection?.();
-    if (!sel?.rangeCount) return;
-    const r = sel.getRangeAt(0);
-    if (!e.currentTarget.contains(r.startContainer)) return;
-    const before = document.createRange();
-    before.selectNodeContents(e.currentTarget);
-    before.setEnd(r.startContainer, r.startOffset);
-    placeCaret(utf16ToCp(ops.body || '', before.toString().length));
-  };
 
   // Auto-grow the textarea with its content, capped so it doesn't run
   // off-screen on huge documents.
@@ -171,20 +44,7 @@ export function DocumentBaseline() {
     if (opened) {
       requestAnimationFrame(() => {
         autoGrow();
-        const el = textareaRef.current;
-        el?.focus();
-        if (el && caretRef.current != null) {
-          // The box scrolls to the caret when the text before it runs past
-          // the box: that text's height, measured in the box itself, less
-          // half the box.
-          const full = el.value;
-          const u = toUtf16(full, caretRef.current);
-          el.value = full.slice(0, u);
-          const above = el.scrollHeight;
-          el.value = full;
-          el.setSelectionRange(u, u);
-          el.scrollTop = above > el.clientHeight ? above - el.clientHeight / 2 : 0;
-        }
+        textareaRef.current?.focus();
       });
     } else if (closed) {
       requestAnimationFrame(() => {
@@ -204,15 +64,8 @@ export function DocumentBaseline() {
 
   const handleTextChange = (e) => {
     ops.handleTextChange(e);
-    caretFromBox(e.target);
     autoGrow();
   };
-  const handleSelect = (e) => {
-    ops.editLogHandlers.onSelect(e);
-    caretFromBox(e.target);
-  };
-
-  const body = ops.body || '';
 
   return (
     <div className="flex flex-col gap-6 pt-4">
@@ -241,7 +94,6 @@ export function DocumentBaseline() {
                   compose
                   value={ops.editedText}
                   {...ops.editLogHandlers}
-                  onSelect={handleSelect}
                   onChange={handleTextChange}
                   placeholder="Type or paste the text"
                   readOnly={readOnly}
@@ -286,22 +138,8 @@ export function DocumentBaseline() {
             <div className="flex flex-col gap-4">
               <div>
                 <div className="rounded-md bg-muted p-4">
-                  <p
-                    dir="auto"
-                    className="whitespace-pre-wrap font-text text-sm"
-                    onMouseUp={caretFromText}
-                  >
-                    {flash ? (
-                      <>
-                        {body.slice(0, flash.from)}
-                        <span ref={flashRef} className="baseline-flash">
-                          {body.slice(flash.from, flash.to)}
-                        </span>
-                        {body.slice(flash.to)}
-                      </>
-                    ) : (
-                      body
-                    )}
+                  <p dir="auto" className="whitespace-pre-wrap font-text text-sm">
+                    {ops.body || ''}
                   </p>
                 </div>
               </div>

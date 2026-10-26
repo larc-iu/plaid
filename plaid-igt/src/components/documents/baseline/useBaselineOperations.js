@@ -117,9 +117,7 @@ export function baselineLossSentence(doc, ranges) {
   return touched ? 'Changes the words in the removed text.' : '';
 }
 
-// `onSend(text)` is called as a save goes out, with the text it stores, and
-// `onRefused()` when that save is refused and the draft stays.
-export const useBaselineOperations = ({ onSend, onRefused } = {}) => {
+export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useDocumentModel(doc);
   const confirm = useConfirm();
@@ -165,7 +163,6 @@ export const useBaselineOperations = ({ onSend, onRefused } = {}) => {
       if (at.sent && !at.settled) {
         editLog.unsend(at.sent);
         setBase(base);
-        onRefused?.();
       }
       setSaving(false);
       notifyError(err, 'Failed to save baseline text');
@@ -202,9 +199,7 @@ export const useBaselineOperations = ({ onSend, onRefused } = {}) => {
     const sent = editLog.send();
     at.sent = sent;
     // What was sent, as the base of what is typed while it is on its way.
-    const sending = shown(applyTextOps(sent.base, gapsToOps(sent.gaps)));
-    setBase(sending);
-    onSend?.(sending);
+    setBase(shown(applyTextOps(sent.base, gapsToOps(sent.gaps))));
     const outcome = {};
     const ok = await doc.editBaselineText(sent, outcome);
     at.settled = true;
@@ -212,7 +207,6 @@ export const useBaselineOperations = ({ onSend, onRefused } = {}) => {
     if (!ok && !outcome.landed) {
       editLog.unsend(sent);
       setBase(base);
-      onRefused?.();
       setChangedElsewhere(!!outcome.conflict);
       return;
     }

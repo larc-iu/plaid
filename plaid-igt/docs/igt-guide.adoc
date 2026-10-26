@@ -141,7 +141,6 @@ A new line typed after a sentence joins that sentence, and one typed before the 
 A space typed inside a word splits it in two. The part holding more of the word keeps its analysis, and the other part is a new word with none.
 Deleting a space does not merge words. Do that on the Tokenize tab.
 **Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it.
-Coming from the Analyze tab, the sentence you were on there is highlighted for a moment, and **Edit text** puts the cursor at its start.
 
 When someone else saved the baseline while you were editing it, **Save changes** puts your changes onto their text.
 If you both changed the same passage, the save is refused and your text stays in the box.
@@ -277,7 +276,6 @@ TIP: A word that came out split can be repaired by dragging across its pieces, w
 The **Analyze** tab is where interlinearization happens.
 It shows each sentence with its words, the morphemes under each word, and a row for every annotation field.
 Long documents are shown twenty-five sentences at a time, with a pager above and below the grid.
-Coming from the Baseline tab, the grid opens on the page and sentence where the cursor was.
 A document of more than 15,000 words is marked **Long document**, since editing slows down past that length. Split it into shorter ones.
 
 What you do here:
