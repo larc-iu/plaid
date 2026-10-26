@@ -281,6 +281,34 @@ describe('morpheme type', () => {
     });
   });
 
+  it('setMorphemeType takes away the record that "=" set the type (R47)', async () => {
+    const doc = makeDoc({
+      raw: buildRawDoc({
+        words: [{ id: 'w-1', begin: 0, end: 3 }],
+        morphemes: [
+          {
+            id: 'm-1',
+            begin: 0,
+            end: 3,
+            precedence: 1,
+            metadata: { form: 'ab', morphType: 'enclitic', morphTypeFromEquals: 'enclitic' },
+          },
+        ],
+        body: 'abc',
+      }),
+    });
+    await doc.setMorphemeType('m-1', 'enclitic');
+    const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(call.args[1]).toEqual([
+      { op: 'set', path: ['morphType'], value: 'enclitic' },
+      { op: 'delete', path: ['morphTypeFromEquals'] },
+    ]);
+    expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({
+      form: 'ab',
+      morphType: 'enclitic',
+    });
+  });
+
   it('setMorphemeType(null) clears the type with a delete op', async () => {
     const doc = typedDoc();
     await doc.setMorphemeType('m-1', null);
@@ -511,6 +539,114 @@ describe('morpheme structural ops', () => {
     };
     expect(await split({ morphType: 'stem' })).toBe(null);
     expect(await split({})).toBe('proclitic');
+  });
+
+  describe('the "=" rule is read over the whole word (R47)', () => {
+    const oneWord = (metadata = { form: 'nihousePL' }) =>
+      makeDoc({
+        raw: buildRawDoc({
+          words: [{ id: 'w-1', begin: 0, end: 9 }],
+          morphemes: [{ id: 'm-1', begin: 0, end: 9, precedence: 1, metadata }],
+          body: 'nihousePL',
+        }),
+      });
+    const chain = (doc) =>
+      doc.sentences[0].tokens[0].morphemes.map((m) => [
+        m.metadata.form,
+        m.metadata.morphType ?? null,
+        m.metadata.morphTypeFromEquals ?? null,
+      ]);
+    const morphemeId = (doc, i) => doc.sentences[0].tokens[0].morphemes[i].id;
+
+    it('ni=house then -PL types ni as typing ni=house-PL at once does', async () => {
+      const a = oneWord();
+      await a.splitMorpheme('m-1', 'ni', 'housePL', '=');
+      expect(chain(a)).toEqual([
+        ['ni', null, null],
+        ['housePL', 'enclitic', 'enclitic'],
+      ]);
+      await a.splitMorpheme(morphemeId(a, 1), 'house', 'PL', '-');
+      const b = oneWord();
+      await b.splitMorphemeMulti('m-1', ['ni', 'house', 'PL'], { joiners: ['=', '-'] });
+      const c = oneWord();
+      await c.splitMorpheme('m-1', 'nihouse', 'PL', '-');
+      await c.splitMorpheme('m-1', 'ni', 'house', '=');
+      const want = [
+        ['ni', 'proclitic', 'proclitic'],
+        ['house', null, null],
+        ['PL', null, null],
+      ];
+      expect(chain(a)).toEqual(want);
+      expect(chain(b)).toEqual(want);
+      expect(chain(c)).toEqual(want);
+    });
+
+    it("the moved type goes in the split's own batch, one patch on the morpheme it leaves", async () => {
+      const doc = oneWord();
+      await doc.splitMorpheme('m-1', 'ni', 'housePL', '=');
+      const houseId = morphemeId(doc, 1);
+      doc.client.calls.length = 0;
+      await doc.splitMorpheme(houseId, 'house', 'PL', '-');
+      const patches = doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+      const onHouse = patches.find((c) => c.args[0] === houseId);
+      expect(onHouse.args[1]).toEqual(
+        expect.arrayContaining([
+          { op: 'delete', path: ['morphType'] },
+          { op: 'delete', path: ['morphTypeFromEquals'] },
+        ]),
+      );
+      const onNi = patches.find((c) => c.args[0] === 'm-1');
+      expect(onNi.args[1]).toEqual(
+        expect.arrayContaining([
+          { op: 'set', path: ['morphType'], value: 'proclitic' },
+          { op: 'set', path: ['morphTypeFromEquals'], value: 'proclitic' },
+        ]),
+      );
+    });
+
+    it('an interior "=" types nothing', async () => {
+      const doc = oneWord({ form: 'abcd' });
+      await doc.splitMorphemeMulti('m-1', ['a', 'b', 'c', 'd'], { joiners: ['-', '=', '-'] });
+      expect(chain(doc).map((m) => m[1])).toEqual([null, null, null, null]);
+    });
+
+    it('a merge and a delete read the rule again', async () => {
+      const doc = oneWord();
+      await doc.splitMorphemeMulti('m-1', ['ni', 'house', 'PL'], { joiners: ['=', '-'] });
+      // PL merged into house: ni=housePL, a two-piece word, so housePL is the enclitic
+      await doc.mergeMorphemes(morphemeId(doc, 2));
+      expect(chain(doc)).toEqual([
+        ['ni', null, null],
+        ['housePL', 'enclitic', 'enclitic'],
+      ]);
+      const d = oneWord();
+      await d.splitMorphemeMulti('m-1', ['ni', 'house', 'PL'], { joiners: ['=', '-'] });
+      await d.deleteMorpheme(morphemeId(d, 2));
+      expect(chain(d)).toEqual([
+        ['ni', null, null],
+        ['house', 'enclitic', 'enclitic'],
+      ]);
+    });
+
+    it('never moves or clears a type a person chose', async () => {
+      const doc = oneWord();
+      await doc.splitMorpheme('m-1', 'ni', 'housePL', '=');
+      await doc.setMorphemeType(morphemeId(doc, 1), 'enclitic');
+      expect(chain(doc)[1]).toEqual(['housePL', 'enclitic', null]);
+      await doc.splitMorpheme(morphemeId(doc, 1), 'house', 'PL', '-');
+      // the chosen enclitic stays, and "=" had set no other type to move
+      expect(chain(doc)).toEqual([
+        ['ni', null, null],
+        ['house', 'enclitic', null],
+        ['PL', null, null],
+      ]);
+    });
+
+    it('never writes over a type another writer gave after "="', async () => {
+      const doc = oneWord({ form: 'nihouse', morphType: 'stem', morphTypeFromEquals: 'proclitic' });
+      await doc.splitMorpheme('m-1', 'nihouse', 'PL', '-');
+      expect(chain(doc)[0]).toEqual(['nihouse', 'stem', 'proclitic']);
+    });
   });
 
   it('mergeMorphemes concatenates forms into predecessor and renumbers', async () => {

@@ -6,12 +6,21 @@ import {
   isValidMorphType,
   isClitic,
   morphemeJoiner,
+  shownMorphemeJoiner,
+  cliticSideOfJoint,
   joinMorphemes,
   cliticSideOfBoundary,
-  cliticTypesForChain,
   splitChainText,
 } from './affixMarkers.js';
 import { formatPlain, joinMorphemeTexts } from './igtExport.js';
+import {
+  EQUALS_TYPE_KEY,
+  typedByEquals,
+  equalsBoundaries,
+  equalsAfterSplit,
+  equalsAfterRemove,
+  rereadEquals,
+} from './mutations/equalsRule.js';
 
 describe('affix markers', () => {
   it('carries FLEx exact 19-type MoMorphType inventory', () => {
@@ -44,6 +53,25 @@ describe('affix markers', () => {
     expect(morphemeJoiner('stem', 'enclitic')).toBe('=');
     expect(morphemeJoiner('proclitic', 'stem')).toBe('=');
     expect(morphemeJoiner(undefined, undefined)).toBe('-'); // hand-entered default
+  });
+
+  it('on screen, sets "=" against its clitic with a hair space toward the host (R49)', () => {
+    const HAIR = String.fromCodePoint(0x200a);
+    expect(shownMorphemeJoiner('proclitic', 'stem')).toBe(`=${HAIR}`);
+    expect(shownMorphemeJoiner('stem', 'enclitic')).toBe(`${HAIR}=`);
+    expect(shownMorphemeJoiner('clitic', 'stem')).toBe(`=${HAIR}`);
+    expect(shownMorphemeJoiner('stem', 'clitic')).toBe(`${HAIR}=`);
+    expect(shownMorphemeJoiner('stem', 'suffix')).toBe('-');
+    expect(cliticSideOfJoint('stem', 'suffix')).toBeNull();
+  });
+
+  it('copied text keeps the plain Leipzig "=" (R49 is on screen only)', () => {
+    const chain = [
+      { text: 'ni', morphType: 'proclitic' },
+      { text: 'house', morphType: 'stem' },
+      { text: 'ri', morphType: 'enclitic' },
+    ];
+    expect(joinMorphemes(chain)).toBe('ni=house=ri');
   });
 
   it('joinMorphemes renders a chain', () => {
@@ -103,53 +131,95 @@ describe('affix markers', () => {
   });
 });
 
-describe('clitic side of a "=" boundary', () => {
-  it('positional rule: left edge → proclitic, right edge → enclitic', () => {
+describe('clitic side of a "=" boundary (R47)', () => {
+  it('positional rule: first piece proclitic, last piece enclitic, a two-piece word enclitic', () => {
     expect(cliticSideOfBoundary({ leftIdx: 0, count: 3 })).toBe('left');
     expect(cliticSideOfBoundary({ leftIdx: 1, count: 3 })).toBe('right');
-  });
-  it('two-morpheme word: gloss case decides, else enclitic', () => {
     expect(cliticSideOfBoundary({ leftIdx: 0, count: 2 })).toBe('right');
+  });
+  it('an interior boundary names no side', () => {
+    expect(cliticSideOfBoundary({ leftIdx: 1, count: 4 })).toBeNull();
+  });
+  it('reads no gloss: a two-piece word is enclitic whatever its glosses say', () => {
     expect(
       cliticSideOfBoundary({ leftIdx: 0, count: 2, leftGloss: 'DET', rightGloss: 'house' }),
-    ).toBe('left');
-    expect(
-      cliticSideOfBoundary({ leftIdx: 0, count: 2, leftGloss: 'house', rightGloss: 'DET' }),
     ).toBe('right');
-    // both caps / both lexical: no signal → default
-    expect(cliticSideOfBoundary({ leftIdx: 0, count: 2, leftGloss: 'A', rightGloss: 'B' })).toBe(
-      'right',
-    );
   });
-  it('interior boundary: gloss case or untyped', () => {
-    expect(cliticSideOfBoundary({ leftIdx: 1, count: 4 })).toBeNull();
-    expect(cliticSideOfBoundary({ leftIdx: 1, count: 4, leftGloss: 'go', rightGloss: '3SG' })).toBe(
-      'right',
-    );
+
+  const piece = (morphType = null, fromEquals = null, entryType = null) => ({
+    metadata: {
+      ...(morphType ? { morphType } : {}),
+      ...(fromEquals ? { [EQUALS_TYPE_KEY]: fromEquals } : {}),
+    },
+    entryType,
   });
-  it('cliticTypesForChain stamps only untyped pieces, per boundary', () => {
-    // word "a=b-c" written as one chain
-    expect(
-      cliticTypesForChain({
-        joiners: ['=', '-'],
-        startIdx: 0,
-        count: 3,
-        types: [null, null, null],
-      }),
-    ).toEqual(['proclitic', null, null]);
-    // chain replacing the 2nd morpheme of a 4-morpheme word: "x" | "b=c" | "y"
-    expect(
-      cliticTypesForChain({ joiners: ['='], startIdx: 1, count: 4, types: [null, null] }),
-    ).toEqual([null, null]);
-    // right edge, existing type on the left piece is left alone
-    expect(
-      cliticTypesForChain({ joiners: ['='], startIdx: 1, count: 3, types: ['stem', null] }),
-    ).toEqual(['stem', 'enclitic']);
-    // never overwrites
-    expect(
-      cliticTypesForChain({ joiners: ['='], startIdx: 0, count: 2, types: [null, 'suffix'] }),
-    ).toEqual([null, 'suffix']);
+  const eq = (t) => piece(t, t);
+
+  it('a type counts as set by "=" only while the record names the type it holds', () => {
+    expect(typedByEquals(eq('enclitic').metadata)).toBe(true);
+    expect(typedByEquals({ morphType: 'enclitic' })).toBe(false);
+    // another writer changed the type: the record no longer names it
+    expect(typedByEquals({ morphType: 'stem', [EQUALS_TYPE_KEY]: 'enclitic' })).toBe(false);
+    // a linked entry's type hides the morpheme's own
+    expect(typedByEquals(eq('enclitic').metadata, 'stem')).toBe(false);
   });
+
+  it('equalsBoundaries reads the boundaries "=" typed from the types it set', () => {
+    expect([...equalsBoundaries([piece(), eq('enclitic')])]).toEqual([0]);
+    expect([...equalsBoundaries([eq('proclitic'), piece(), piece()])]).toEqual([0]);
+    // a type a person chose, an import gave or an entry carries records no "="
+    expect([...equalsBoundaries([piece('proclitic'), piece('enclitic')])]).toEqual([]);
+    expect([...equalsBoundaries([piece(), piece(null, null, 'enclitic')])]).toEqual([]);
+  });
+
+  it('the boundaries move with a split, a merge and a delete', () => {
+    // a=b|c, b split in three with "-" and "=": a=b-x=y|c
+    expect([...equalsAfterSplit(new Set([0, 1]), 1, ['-', '='])].sort()).toEqual([0, 2, 3]);
+    // merging piece 1 into piece 0 takes the boundary between them
+    expect([...equalsAfterRemove(new Set([0, 2]), 1)]).toEqual([1]);
+    // deleting the first piece takes the boundary after it
+    expect([...equalsAfterRemove(new Set([0, 1]), 0)]).toEqual([0]);
+  });
+
+  it('rereadEquals moves a type "=" set to the side the rule names now', () => {
+    // ni=house, then house split as house-PL: house loses enclitic, ni gets proclitic
+    expect(rereadEquals([piece(), eq('enclitic'), piece()], new Set([0]))).toEqual([
+      { morphType: 'proclitic', [EQUALS_TYPE_KEY]: 'proclitic' },
+      { morphType: null, [EQUALS_TYPE_KEY]: null },
+      null,
+    ]);
+  });
+
+  it('rereadEquals drops a type "=" set when the boundary becomes interior', () => {
+    expect(rereadEquals([piece(), eq('proclitic'), piece(), piece()], new Set([1]))).toEqual([
+      null,
+      { morphType: null, [EQUALS_TYPE_KEY]: null },
+      null,
+      null,
+    ]);
+  });
+
+  it('rereadEquals never sets or clears a type it did not set', () => {
+    // a hand-set stem on the clitic side keeps it, and nothing else is typed
+    expect(rereadEquals([piece('stem'), piece(), piece()], new Set([0]))).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    // a hand-set enclitic where the rule names no clitic stays
+    expect(rereadEquals([piece(), piece('enclitic'), piece()], new Set())).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    // an entry's type is never written over
+    expect(rereadEquals([piece(), piece(null, null, 'stem')], new Set([0]))).toEqual([null, null]);
+  });
+
+  it('rereadEquals writes nothing when every type already stands', () => {
+    expect(rereadEquals([piece(), eq('enclitic')], new Set([0]))).toEqual([null, null]);
+  });
+
   it('splitChainText keeps joiners and drops empty pieces', () => {
     expect(splitChainText('a-b=c')).toEqual({ segments: ['a', 'b', 'c'], joiners: ['-', '='] });
     expect(splitChainText('-a--b= ')).toEqual({ segments: ['a', 'b'], joiners: ['-'] });

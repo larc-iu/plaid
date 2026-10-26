@@ -103,7 +103,8 @@ def test_set_morpheme_changes_form_or_type_in_place():
     c = w.client
     execute_plan(c, w.ops, source='s', label='l')
     [patch] = [p for tid, p in c.patches('tokens') if tid == 'm-4b']
-    assert as_fragment(patch) == {'morphType': None, 'form': 'är', 'prov': 'inferred', 'provSource': 's',
+    assert as_fragment(patch) == {'morphType': None, 'morphTypeFromEquals': None, 'form': 'är',
+                                  'prov': 'inferred', 'provSource': 's',
                                   'provConfirmed': True, 'provProb': None, 'provDetail': None}
     # A rewrite of the chain deletes every morpheme after the first, so the two
     # form changes above are writes to something that will not be there. The

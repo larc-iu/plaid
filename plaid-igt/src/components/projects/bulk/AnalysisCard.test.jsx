@@ -24,7 +24,8 @@ describe('AnalysisCard', () => {
     const joiners = [...view.container.querySelectorAll('.igt-morph-joiner')].map(
       (n) => n.textContent,
     );
-    expect(joiners).toEqual(['=']);
+    // "=" against the enclitic, a hair space toward the host (R49).
+    expect(joiners).toEqual([`${String.fromCodePoint(0x200a)}=`]);
     await view.unmount();
   });
 });

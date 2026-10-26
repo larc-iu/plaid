@@ -912,6 +912,9 @@ export const vocabPopover = {
           )}
         </select>
       </label>
+      ${linked && canEditEntry
+        ? html`<div class="igt-vocab-pop__type-note">Applies to every use of this entry.</div>`
+        : nothing}
     `;
   },
 };

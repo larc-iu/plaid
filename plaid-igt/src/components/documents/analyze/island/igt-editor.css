@@ -818,6 +818,15 @@
   user-select: none;
   pointer-events: none;
 }
+/* A clitic's "=" (R49) sits on the clitic's side of the gap, its hair space
+   (in the text) toward the host: the glyph ends at the gap's middle for a
+   proclitic on the left and starts there for an enclitic on the right. */
+.igt-morph-joiner--left {
+  justify-content: flex-end;
+}
+.igt-morph-joiner--right {
+  justify-content: flex-start;
+}
 /* Morpheme-type editor row in the vocab popover footer */
 .igt-vocab-pop__type {
   display: flex;
@@ -836,6 +845,11 @@
   border-radius: calc(var(--radius) - 4px);
   background: var(--igt-surface);
   color: var(--igt-gray-900);
+}
+.igt-vocab-pop__type-note {
+  padding: 0 8px 5px;
+  font-size: 11px;
+  color: var(--igt-gray-500);
 }
 .igt-morph-cell {
   height: var(--igt-morph-h);

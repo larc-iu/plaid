@@ -37,6 +37,7 @@ from plaid_client.metadata_ops import metadata_ops
 from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_PROB_KEY, is_probability, stamp_inferred
 
 from .derive import word_state
+from .interlinear import EQUALS_TYPE_KEY
 
 BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
 
@@ -107,15 +108,19 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                             **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                             **({'degraded': True} if a['degraded'] else {})})
                     meta = {'form': segment, **stamp_inferred(source, prob=form_prob, detail=form_detail)}
+                    # A type the "=" rule gave carries its record (R47).
+                    from_equals = a['types'][j] if a.get('types_from_equals') else None
                     if j == 0 and keep:
                         mid = keep
                         b.tokens.patch_metadata(mid, metadata_ops({
-                            **meta, 'morphType': a['types'][0],
+                            **meta, 'morphType': a['types'][0], EQUALS_TYPE_KEY: from_equals,
                             PROV_CONFIRMED_KEY: None,
                             PROV_PROB_KEY: form_prob if is_probability(form_prob) else None}))
                     else:
                         if a['types'][j]:
                             meta['morphType'] = a['types'][j]
+                        if from_equals:
+                            meta[EQUALS_TYPE_KEY] = from_equals
                         mid = uuid7()
                         b.tokens.create(morph_layer_id, text_id, w['token']['begin'], w['token']['end'],
                                         precedence=j + 1, metadata=meta, id=mid)

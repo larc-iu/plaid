@@ -100,6 +100,7 @@ from ..core.bidi import qv
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
 from plaid_client.provenance import is_machine
+from plaid_client.workflows.igt.interlinear import EQUALS_TYPE_KEY
 
 from plaid_client.service import requester_message
 
@@ -281,7 +282,8 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         first = morphemes[0]
         slots = [m0['id']]
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
-            mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()})))
+            mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'),
+                               EQUALS_TYPE_KEY: None, **ctx.restamp()})))
         # Keep the chain's numbering contiguous from 1 whatever the
         # first morpheme's precedence was before.
         b.add(lambda batch, mid=m0['id']: batch.tokens.update(mid, precedence=1))
@@ -394,14 +396,15 @@ def _apply_unlink(ctx: Context, op) -> int:
 def _apply_set_morph_type(ctx: Context, op) -> int:
     # Only a direct correction stages one (set_morpheme), so it is stamped as
     # the editor's setMorphemeType stamps it: the approved type is reviewed
-    # work, and a re-analysis without Overwrite leaves it alone.
+    # work, and a re-analysis without Overwrite leaves it alone. A type set
+    # here is chosen, so the grid's record that "=" set one goes (R47).
     morph_type = op.get('morph_type') or None
     mid = op['morpheme_id']
     if is_virtual(mid) and mid not in ctx.materialized:
         _token(ctx, op, mid, {'morphType': morph_type} if morph_type else None)
         return 1
     ctx.b.update('tokens', _token(ctx, op, mid),
-                 metadata=metadata_ops({'morphType': morph_type, **ctx.restamp()}))
+                 metadata=metadata_ops({'morphType': morph_type, EQUALS_TYPE_KEY: None, **ctx.restamp()}))
     return 1
 
 

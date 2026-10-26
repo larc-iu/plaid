@@ -23,6 +23,34 @@ export const isClitic = (morphType) =>
 export const morphemeJoiner = (prevMorphType, morphType) =>
   isClitic(prevMorphType) || isClitic(morphType) ? '=' : '-';
 
+const HAIR_SPACE = '\u200A';
+
+/**
+ * Which side of the joint between two adjacent morphemes holds the clitic
+ * its "=" belongs to: 'left' | 'right', or null when the joint is "-". A
+ * proclitic on the left or an enclitic on the right says so outright, and
+ * failing that, whichever side is a clitic of another kind.
+ */
+export const cliticSideOfJoint = (prevMorphType, morphType) => {
+  if (!isClitic(prevMorphType) && !isClitic(morphType)) return null;
+  if (String(prevMorphType).toLowerCase() === 'proclitic') return 'left';
+  if (String(morphType).toLowerCase() === 'enclitic') return 'right';
+  return isClitic(prevMorphType) ? 'left' : 'right';
+};
+
+/**
+ * The joint as a screen draws it (R49): "=" flush against its clitic with a
+ * hair space toward the host ("ni= house", "house =ni"), "-" as it is. On
+ * screen only: copied and exported text keeps the plain Leipzig "="
+ * (morphemeJoiner).
+ */
+export const shownMorphemeJoiner = (prevMorphType, morphType) => {
+  const side = cliticSideOfJoint(prevMorphType, morphType);
+  if (side === 'left') return `=${HAIR_SPACE}`;
+  if (side === 'right') return `${HAIR_SPACE}=`;
+  return '-';
+};
+
 const isType = (t) => typeof t === 'string' && t !== '';
 
 /**

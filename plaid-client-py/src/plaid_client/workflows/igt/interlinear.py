@@ -22,42 +22,37 @@ ALIGN_THRESHOLD = 0.5  # min surface similarity for an output word to count
 
 # --- clitic side of a "=" boundary (mirrors affixMarkers.cliticSideOfBoundary) ---
 
-def _is_caps_gloss(g):
-    return isinstance(g, str) and g != '' and g == g.upper() and g != g.lower()
-
-
-def clitic_side_of_boundary(left_idx, count, left_gloss=None, right_gloss=None):
+def clitic_side_of_boundary(left_idx, count):
     """'left' | 'right' | None: which side of the "=" after morpheme `left_idx`
-    (0-based, in a word of `count` morphemes) is the clitic. Positional rule
-    first (clitics sit outside the affixes), gloss case as the tiebreak (the
-    ALL-CAPS side is grammatical), enclitic as the default for a two-morpheme
-    word, untyped for an undecidable interior boundary."""
-    left_is_first = left_idx == 0
-    right_is_last = left_idx + 1 == count - 1
-    if left_is_first != right_is_last:
-        return 'left' if left_is_first else 'right'
-    lc, rc = _is_caps_gloss(left_gloss), _is_caps_gloss(right_gloss)
-    if lc != rc:
-        return 'left' if lc else 'right'
-    return 'right' if (left_is_first and right_is_last) else None
+    (0-based, in a word of `count` morphemes) is the clitic. By position only,
+    as the grid types it (R47): the first piece a proclitic, the last an
+    enclitic, a two-piece word's last an enclitic, an interior boundary
+    neither."""
+    if left_idx + 1 == count - 1:
+        return 'right'
+    return 'left' if left_idx == 0 else None
 
 
 CLITIC_TYPE_BY_SIDE = {'left': 'proclitic', 'right': 'enclitic'}
 
+#: The morpheme metadata key that records a type "=" set, holding that type
+#: (plaid-igt's EQUALS_TYPE_KEY). The grid moves or clears a type only while
+#: this names it.
+EQUALS_TYPE_KEY = 'morphTypeFromEquals'
+
 
 def clitic_types(joiners, glosses):
-    """morphType per piece of a chain (None = untyped) from its '=' boundaries."""
+    """morphType per piece of a chain (None = untyped) from its '=' boundaries.
+    ``glosses`` gives the piece count. The rule reads none of them."""
     n = len(glosses)
     types: List[Optional[str]] = [None] * n
     for i, j in enumerate(joiners):
         if j != '=':
             continue
-        side = clitic_side_of_boundary(i, n, glosses[i], glosses[i + 1])
+        side = clitic_side_of_boundary(i, n)
         if side is None:
             continue
-        k = i if side == 'left' else i + 1
-        if types[k] is None:
-            types[k] = CLITIC_TYPE_BY_SIDE[side]
+        types[i if side == 'left' else i + 1] = CLITIC_TYPE_BY_SIDE[side]
     return types
 
 
@@ -179,6 +174,7 @@ def analysis_for(surface: str, out: ParsedWord) -> Dict[str, Any]:
         'segments': list(out.segments),
         'glosses': list(out.glosses),
         'types': clitic_types(out.joiners, out.glosses),
+        'types_from_equals': True,
         'joiners': list(out.joiners),
         'degraded': False,
         'surface_mismatch': _norm(out.surface) != _norm(surface),

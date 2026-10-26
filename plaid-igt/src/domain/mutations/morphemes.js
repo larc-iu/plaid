@@ -19,7 +19,14 @@ import {
   createdId,
   FORM_PROBS_KEY,
 } from '@larc-iu/plaid-client';
-import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
+import { isValidMorphType } from '../affixMarkers.js';
+import {
+  EQUALS_TYPE_KEY,
+  equalsBoundaries,
+  equalsAfterSplit,
+  equalsAfterRemove,
+  rereadEquals,
+} from './equalsRule.js';
 import { isZeroMorph } from '../zeroMorph.js';
 import { removeTokensLocally } from '../textEdits.js';
 import { entryMorphTypesOf } from '../vocabLookup.js';
@@ -100,6 +107,21 @@ const nullSlots = (siblings) => {
   return { next: highest + 1 + slots.length, slots };
 };
 
+// The "=" rule's changes to morphemes an edit does not otherwise write, shown
+// on the layer and sent in the edit's batch: `[morpheme, change]` pairs.
+const applyChanges = (layer, pairs) =>
+  pairs.forEach(([m, change]) => {
+    const t = layer.tokens.find((x) => x.id === m.id);
+    if (t) t.metadata = mergeMetadata(t.metadata, change);
+  });
+const sendChanges = (b, pairs) =>
+  pairs.forEach(([m, change]) => b.tokens.patchMetadata(settledId(m.id), metadataOps(change)));
+
+// A change the "=" rule wants as a create body: its null values (a type taken
+// away) have nothing to take away from on a new morpheme.
+const setsOnly = (change) =>
+  Object.fromEntries(Object.entries(change || {}).filter(([, v]) => v != null));
+
 const formOf = (morpheme, body) => {
   const meta = morpheme?.metadata;
   if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
@@ -171,19 +193,42 @@ export const morphemeMutations = {
     });
   },
 
-  // The morph type a stored morpheme goes by: its linked entry's (R2, no copy
-  // of it is stored on the morpheme), else its own.
-  _morphemeGoesBy(token) {
+  // The morph type a stored morpheme's linked entry goes by (R2, no copy of
+  // it is stored on the morpheme), null when it is linked to none or the
+  // entry has none.
+  _morphemeEntryType(token) {
     for (const v of Object.values(this._vocabularies || {})) {
       const link = (v.vocabLinks || []).find((l) => l.tokens?.includes(token.id));
-      if (link) {
-        return morphemeMorphType(
-          token.metadata,
-          entryMorphTypesOf(v.items).get(link.vocabItem?.id),
-        );
-      }
+      if (link) return entryMorphTypesOf(v.items).get(link.vocabItem?.id) ?? null;
     }
-    return morphemeMorphType(token.metadata);
+    return null;
+  },
+
+  // The morph type a stored morpheme goes by: its linked entry's, else its own.
+  _morphemeGoesBy(token) {
+    return morphemeMorphType(token.metadata, this._morphemeEntryType(token));
+  },
+
+  // The "=" rule (R47) read over a word's chain once its pieces change:
+  // `chain` is the word's morphemes after the change, in order, each
+  // `{ id, metadata, made }` (`made` for a piece this change creates, which
+  // is linked to nothing), and `boundaries` the "=" boundaries between them.
+  // Per piece, the metadata change the rule wants, or null.
+  _equalsChanges(chain, boundaries) {
+    return rereadEquals(
+      chain.map((m) => ({
+        metadata: m.metadata,
+        entryType: m.made ? null : this._morphemeEntryType(m),
+      })),
+      boundaries,
+    );
+  },
+
+  // The "=" boundaries a word's stored chain records now.
+  _equalsNow(chain) {
+    return equalsBoundaries(
+      chain.map((m) => ({ metadata: m.metadata, entryType: this._morphemeEntryType(m) })),
+    );
   },
 
   // Split a morpheme's form into two: existing gets `leftForm`, a new one
@@ -203,9 +248,10 @@ export const morphemeMutations = {
   // precedence to free the target slots, then create at the freed slots. The
   // creates MUST run AFTER the shifts: if a new (begin, end, precedence)
   // triple collides with an existing morpheme's it's a server-side 409.
-  // `joiners` (optional, one per boundary, '-' | '=') types the clitic side of
-  // each '=' boundary via cliticTypesForChain: positional rule, never
-  // overwriting a type the target morpheme already has.
+  // `joiners` (optional, one per boundary, '-' | '=') marks each new boundary,
+  // and the "=" rule is read again over the whole word (R47, rereadEquals):
+  // it sets, moves or clears only a type "=" set, never one a person chose,
+  // an import gave or the linked entry carries.
   async splitMorphemeMulti(morphemeId, segments, { joiners = [] } = {}) {
     if (!Array.isArray(segments) || segments.length < 2) {
       console.error('splitMorphemeMulti needs at least two segments', segments);
@@ -267,18 +313,30 @@ export const morphemeMutations = {
         : [],
     );
     const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
-    // A type the target goes by, its entry's included, is never overwritten.
-    const goesBy = resolved.virtual ? null : this._morphemeGoesBy(target);
-    const types = cliticTypesForChain({
-      joiners: segments.slice(1).map((_, i) => joiners[i] ?? '-'),
-      startIdx: targetIdx,
-      count: siblings.length + restForms.length,
-      types: [goesBy, ...restForms.map(() => null)],
-    });
-    const firstMorphType = types[0] != null && goesBy == null ? { morphType: types[0] } : {};
+    // The "=" rule over the word as the split leaves it: the target, its new
+    // pieces after it, and the siblings around them.
+    const boundaries = equalsAfterSplit(
+      resolved.virtual ? new Set() : this._equalsNow(siblings),
+      targetIdx,
+      restForms.map((_, i) => joiners[i] ?? '-'),
+    );
+    const changes = this._equalsChanges(
+      [
+        ...siblings.slice(0, targetIdx),
+        { ...target, made: resolved.virtual },
+        ...restForms.map(() => ({ metadata: {}, made: true })),
+        ...siblings.slice(targetIdx + 1),
+      ],
+      boundaries,
+    );
+    const targetChange = changes[targetIdx] || {};
+    const restChanges = changes.slice(targetIdx + 1, targetIdx + 1 + restForms.length);
+    const others = siblings
+      .map((m, k) => [m, changes[k < targetIdx ? k : k + restForms.length]])
+      .filter(([, change], k) => k !== targetIdx && change);
     const firstMeta = resolved.virtual
-      ? created(this, { form: firstForm, ...firstMorphType })
-      : { ...formStamped(this, target, firstForm), ...firstMorphType };
+      ? created(this, { form: firstForm, ...setsOnly(targetChange) })
+      : { ...formStamped(this, target, firstForm), ...targetChange };
     // Every piece gets an explicit form, an empty one included. A morpheme
     // with no `form` key renders the word's text (that is how a word's single
     // default morpheme shows the word), so a right-edge split ("ngo-" with
@@ -289,10 +347,7 @@ export const morphemeMutations = {
       begin: target.begin,
       end: target.end,
       precedence: currentPrecedence + 1 + i,
-      metadata: created(this, {
-        form: form ?? '',
-        ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
-      }),
+      metadata: created(this, { form: form ?? '', ...setsOnly(restChanges[i]) }),
     }));
 
     this._applyRawPatch((next, infoNext) => {
@@ -319,6 +374,7 @@ export const morphemeMutations = {
         });
       }
       rest.forEach((r) => layer.tokens.push({ ...r, text: textId }));
+      applyChanges(layer, others);
     });
 
     // One batch, so the split lands whole or not at all. For a word nobody had
@@ -366,6 +422,8 @@ export const morphemeMutations = {
             { id: r.id },
           );
         });
+        // Last, so the creates' results stay where they are read below.
+        sendChanges(b, others);
       });
       // The target's patch or create, the shifts, the slots, then the creates.
       if (resolved.virtual) ids.set(target.id, createdId(results[0]));
@@ -423,7 +481,14 @@ export const morphemeMutations = {
     );
     const renumber = [...shifts, ...slots];
     const renumbered = new Map(renumber);
-    const patch = formStamped(this, previous, mergedForm);
+    // The "=" rule over the word the merge leaves (R47): the boundary between
+    // the two goes with it.
+    const kept = siblings.filter((m) => m.id !== morphemeId);
+    const changes = this._equalsChanges(kept, equalsAfterRemove(this._equalsNow(siblings), idx));
+    const patch = { ...formStamped(this, previous, mergedForm), ...(changes[idx - 1] || {}) };
+    const others = kept
+      .map((m, k) => [m, changes[k]])
+      .filter(([m, c]) => c && m.id !== previous.id);
 
     const textId = info.primaryTextLayer?.text?.id;
     this._applyRawPatch((next, infoNext, vocabs) => {
@@ -436,6 +501,7 @@ export const morphemeMutations = {
       layer.tokens.forEach((m) => {
         if (renumbered.has(m.id)) m.precedence = renumbered.get(m.id);
       });
+      applyChanges(layer, others);
     });
 
     return this._queueWrite(label, () =>
@@ -446,6 +512,7 @@ export const morphemeMutations = {
         renumber.forEach(([id, p]) => {
           b.tokens.update(settledId(id), undefined, undefined, p);
         });
+        sendChanges(b, others);
       }),
     );
   },
@@ -476,6 +543,11 @@ export const morphemeMutations = {
     const label = 'Failed to delete morpheme';
     if (!this._canWrite(label)) return false;
     const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
+    // The "=" rule over the word the delete leaves (R47).
+    const at = siblings.findIndex((m) => m.id === morphemeId);
+    const kept = siblings.filter((m) => m.id !== morphemeId);
+    const changes = this._equalsChanges(kept, equalsAfterRemove(this._equalsNow(siblings), at));
+    const others = kept.map((m, k) => [m, changes[k]]).filter(([, c]) => c);
 
     const textId = info.primaryTextLayer?.text?.id;
     this._applyRawPatch((next, infoNext, vocabs) => {
@@ -493,6 +565,7 @@ export const morphemeMutations = {
           m.precedence = (m.precedence ?? 0) - 1;
         }
       });
+      applyChanges(layer, others);
     });
 
     return this._queueWrite(label, () =>
@@ -501,6 +574,7 @@ export const morphemeMutations = {
         subsequents.forEach((m) => {
           b.tokens.update(settledId(m.id), undefined, undefined, (m.precedence ?? 0) - 1);
         });
+        sendChanges(b, others);
       }),
     );
   },
@@ -539,8 +613,13 @@ export const morphemeMutations = {
     // stays virtual rather than being written into existence empty.
     if (resolved.virtual && morphType == null) return true;
     return this._writeMorphemeMeta(resolved, 'Failed to set morpheme type', (target) => ({
-      // A cleared type is a delete op.
-      patch: { morphType: morphType ?? null, ...(this.editStamp(target?.metadata) || {}) },
+      // A cleared type is a delete op. A type chosen here is the person's, so
+      // the record that "=" set the type goes with it (R47).
+      patch: {
+        morphType: morphType ?? null,
+        ...(target?.metadata?.[EQUALS_TYPE_KEY] != null ? { [EQUALS_TYPE_KEY]: null } : {}),
+        ...(this.editStamp(target?.metadata) || {}),
+      },
       created: { morphType },
     }));
   },

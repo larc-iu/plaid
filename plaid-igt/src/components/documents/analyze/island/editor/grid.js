@@ -2,7 +2,7 @@ import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
 import { allowedGuess } from '@/domain/glossGuess';
-import { morphemeJoiner } from '@/domain/affixMarkers';
+import { cliticSideOfJoint, shownMorphemeJoiner } from '@/domain/affixMarkers';
 import { KINDS } from '@/domain/precedent';
 import { extractAnalysis } from '@/domain/analysisMemory.js';
 import {
@@ -267,10 +267,19 @@ export const grid = {
           // within a word, so it identifies the column either way.
           (m) => m.precedence,
           (m, i) => {
-            const joiner = i > 0 ? morphemeJoiner(morphemes[i - 1]?.morphType, m.morphType) : null;
+            const prev = morphemes[i - 1]?.morphType;
+            const joiner = i > 0 ? shownMorphemeJoiner(prev, m.morphType) : null;
+            // "=" sits on its clitic's side of the gap (R49).
+            const side = i > 0 ? cliticSideOfJoint(prev, m.morphType) : null;
             return html`
               ${joiner
-                ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>`
+                ? html`<span
+                    class=${side
+                      ? `igt-morph-joiner igt-morph-joiner--${side}`
+                      : 'igt-morph-joiner'}
+                    aria-hidden="true"
+                    >${joiner}</span
+                  >`
                 : nothing}
               ${this._morphCol(m, token, morphemes, ctx, index)}
             `;
@@ -604,6 +613,20 @@ export const grid = {
         @click=${openerClick}
       >
         analyze
+      </button>`;
+    } else if (!hasVocabs && !this.readOnly && kind === 'morpheme') {
+      // With no lexicon there is no chip either, and the morpheme's type is
+      // set in the same popover (R48).
+      opener = html`<button
+        type="button"
+        class="igt-vocab__opener igt-vocab__link"
+        data-vocab-opener=${id}
+        data-pop-opener=${`vocab:${id}`}
+        title="Morpheme type"
+        aria-label=${`Type of ${formText ?? ''}`}
+        @click=${openerClick}
+      >
+        type
       </button>`;
     }
     // A word's stack holds, between the word and its chip, one row per lane

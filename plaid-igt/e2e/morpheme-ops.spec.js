@@ -113,3 +113,82 @@ test('split a morpheme with "=" types an enclitic, then merge it back', async ({
 
   expect.soft(diag.failures, 'no API failures during "=" split').toEqual([]);
 });
+
+// R47: "=" types by the word as it stands after every change, not as it stood
+// when "=" was typed. a=bc makes bc the enclitic of a two-piece word, and
+// splitting bc as b-c then makes a the proclitic and leaves b untyped, as
+// typing a=b-c at once does. Merging both back takes the types "=" set away.
+// R49: the "=" sits on the clitic's side.
+test('"=" is read again over the word when it is split and merged (R47)', async ({ page }) => {
+  const { projectId, documentId } = await getFixture();
+  const diag = collectClientErrors(page);
+  await seedAuth(page);
+  await openAnalyze(page, projectId, documentId);
+
+  const first = page.locator('.igt-morph-field[data-prec="1"]').first();
+  const word = await first.getAttribute('data-word');
+  const realSel = `.igt-morph-field[data-word="${word}"][data-prec]`;
+  const origForm = await first.inputValue();
+  const before = await page.locator(realSel).count();
+  const chain = first.locator('xpath=ancestor::div[contains(@class,"igt-morphemes")]');
+  // The word's morphemes as the server holds them: form, type, and the record
+  // that "=" set the type.
+  const stored = async () => {
+    const raw = await makeClient().documents.get(documentId, true);
+    const layers = raw.textLayers[0].tokenLayers;
+    const role = (r) => layers.find((l) => l.config?.plaid?.role === r);
+    const w = role('word').tokens.find((t) => t.id === word);
+    return role('morpheme')
+      .tokens.filter((t) => t.begin === w.begin && t.end === w.end)
+      .sort((x, y) => (x.precedence ?? 0) - (y.precedence ?? 0))
+      .map((t) => [
+        t.metadata?.form ?? null,
+        t.metadata?.morphType ?? null,
+        t.metadata?.morphTypeFromEquals ?? null,
+      ]);
+  };
+
+  await first.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('abc');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('=');
+  await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before + 1);
+  await expect(chain.locator('.igt-morph-joiner').first()).toHaveClass(/igt-morph-joiner--right/);
+  // The caret is at the start of "bc": split it after b with "-".
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('-');
+  await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before + 2);
+  await expect(chain.locator('.igt-morph-joiner').first()).toHaveClass(/igt-morph-joiner--left/);
+  await expect(chain.locator('.igt-morph-joiner').nth(1)).toHaveText('-');
+  await page.waitForLoadState('networkidle');
+  await expect.poll(stored, { timeout: 8000 }).toEqual([
+    ['a', 'proclitic', 'proclitic'],
+    ['b', null, null],
+    ['c', null, null],
+  ]);
+
+  // Merge c into b, then b into a: the "=" boundary goes, and so does a's type.
+  await page.keyboard.press('Backspace');
+  await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before + 1);
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Backspace');
+  await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before);
+  await page.waitForLoadState('networkidle');
+  await expect.poll(stored, { timeout: 8000 }).toEqual([['abc', null, null]]);
+
+  const firstAgain = page.locator('.igt-morph-field[data-prec="1"]').first();
+  await firstAgain.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type(origForm);
+  await firstAgain.press('Enter');
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(async () => JSON.stringify(await makeClient().documents.get(documentId, true)), {
+      timeout: 8000,
+    })
+    .not.toContain('"form":"abc"');
+
+  expect.soft(diag.failures, 'no API failures during the "=" round trip').toEqual([]);
+});

@@ -49,8 +49,9 @@ def test_analysis_for_flags_surface_mismatch_and_types_clitics():
     assert analysis_for('evlerdi', ParsedWord('house(ev)-PL(ler)=COP(dir)'))['surface_mismatch']
 
 
-def test_clitic_types_edge_rule_then_gloss_case():
-    assert clitic_types(['='], ['DET', 'house']) == ['proclitic', None]  # two pieces: positional tie, caps left
+def test_clitic_types_by_position_only():
+    # R47: the grid's rule, which reads no gloss. A two-piece word is enclitic.
+    assert clitic_types(['='], ['DET', 'house']) == [None, 'enclitic']
     assert clitic_types(['='], ['house', 'DET']) == [None, 'enclitic']
     assert clitic_types(['=', '-'], ['x', 'y', 'z']) == ['proclitic', None, None]  # first boundary: left is first
     assert clitic_types(['-', '='], ['x', 'y', 'z']) == [None, None, 'enclitic']
@@ -367,12 +368,27 @@ def test_write_analyses_makes_the_first_morpheme_of_a_word_nobody_segmented():
     assert creates[0][2] == ('morph-layer', 't1', 0, 3)
     assert creates[0][3]['precedence'] == 1 and creates[0][3]['metadata']['form'] == 'ab'
     assert creates[0][3]['metadata']['morphType'] == 'stem'
+    assert 'morphTypeFromEquals' not in creates[0][3]['metadata']  # a type "=" did not set
     glosses = [c for c in first if c[:2] == ('spans', 'create')]
     assert [g[2][:3] for g in glosses] == [('gloss-layer', [made], 'A'),
                                            ('gloss-layer', [creates[1][3]['id']], 'C')]
     assert not [c for c in first if c[:2] == ('tokens', 'delete')]  # nothing stored to delete
     assert all('virtual:' not in repr(c) for b in _batch_log(client) for c in b)
 
+
+def test_write_analyses_records_the_types_equals_set():
+    """A type the "=" rule gave carries the record the grid reads (R47), so a
+    person's later split moves it as it moves one typed in the grid."""
+    m0 = virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3})
+    plan = {'word': {'text_id': 't1', 'morphs': [m0], 'morph_spans': {m0['id']: []},
+                     'token': {'id': 'w1', 'begin': 0, 'end': 3}},
+            'analysis': analysis_for('abc', ParsedWord('A(ab)=C(c)'))}
+    client = testing.FakeClient([])
+    write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {})
+    creates = [c for c in _batch_log(client)[0] if c[:2] == ('tokens', 'create')]
+    metas = [c[3]['metadata'] for c in creates]
+    assert [m.get('morphType') for m in metas] == [None, 'enclitic']
+    assert [m.get('morphTypeFromEquals') for m in metas] == [None, 'enclitic']
 
 
 def test_write_analyses_puts_each_segment_probability_on_its_morpheme_and_gloss():

@@ -12,7 +12,7 @@
 
 import '@/components/documents/analyze/island/igt-editor.css';
 import { cn } from '@ui/lib/utils';
-import { morphemeJoiner } from '@/domain/affixMarkers';
+import { cliticSideOfJoint, shownMorphemeJoiner } from '@/domain/affixMarkers';
 
 // Mirror of IgtEditor._fieldSize: the cross-browser fallback for field-sizing.
 const fieldSize = (v) => Math.max(5, [...(v ?? '')].length + 1);
@@ -93,16 +93,19 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
             {hasMorphemes && (
               <div className="igt-morphemes">
                 {morphemes.map((m, i) => {
-                  const joiner =
-                    i > 0
-                      ? morphemeJoiner(
-                          morphemes[i - 1]?.goesBy ?? morphemes[i - 1]?.morphType,
-                          m.goesBy ?? m.morphType,
-                        )
-                      : null;
+                  const prev = morphemes[i - 1]?.goesBy ?? morphemes[i - 1]?.morphType;
+                  const type = m.goesBy ?? m.morphType;
+                  const joiner = i > 0 ? shownMorphemeJoiner(prev, type) : null;
+                  const side = i > 0 ? cliticSideOfJoint(prev, type) : null;
                   return [
                     joiner ? (
-                      <span key={`j${i}`} className="igt-morph-joiner" aria-hidden="true">
+                      <span
+                        key={`j${i}`}
+                        className={
+                          side ? `igt-morph-joiner igt-morph-joiner--${side}` : 'igt-morph-joiner'
+                        }
+                        aria-hidden="true"
+                      >
                         {joiner}
                       </span>
                     ) : null,
