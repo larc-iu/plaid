@@ -280,7 +280,7 @@ A document of more than 15,000 words is marked **Long document**, since editing 
 
 What you do here:
 
-* **Segment morphemes**. Break each word into morphemes and edit their forms. Type `-` in a morpheme to split it at the cursor, or `=` to split at a clitic boundary. Backspace at the start of a morpheme merges it into the previous one. **Alt+0** types the zero morph ∅ (see <<_typing_special_characters>>).
+* **Segment morphemes**. Break each word into morphemes and edit their forms. Type `-` in a morpheme to split it at the cursor, or `=` to split at a clitic boundary (see <<_morpheme_types>>). Backspace at the start of a morpheme merges it into the previous one. **Alt+0** types the zero morph ∅ (see <<_typing_special_characters>>).
 * **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, such as a gloss it has seen before for the same form, which you accept with Enter or type over.
 * **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. On a morpheme field with a lexicon field, such as Gloss, each row pairs a value with the lexicon sense it goes with, and taking one sets both. A field held to a tagset opens its list on its own and narrows it as you type.
 * **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon (see <<_vocabularies>>). When the same form occurs unlinked elsewhere in the text, **all ×N** in the popover links every one of them at once.
@@ -294,6 +294,23 @@ What you do here:
 Move around the grid with **Enter** or **Tab** (next cell, Shift for the previous one), **↑** and **↓** (rows), and **←** and **→** from the ends of a value.
 **Alt+click** a word to open it on the Tokenize tab.
 The full set of gestures is collected under <<_keyboard_shortcuts>>.
+
+=== Morpheme types
+
+A morpheme's type, such as stem, suffix, or enclitic, decides how it joins its neighbours: `=` beside a clitic, `-` otherwise.
+In the grid, a clitic's `=` sits against the clitic, with a narrow space toward its host: `ni= house`, `house =ni`.
+Copied and exported text writes the plain `=`.
+
+Typing `=` in a morpheme form splits it and types the clitic by its place in the word.
+A `=` after the word's first morpheme makes that morpheme a proclitic, and a `=` before the last makes the last an enclitic. In a word of two morphemes, the second is the enclitic.
+A `=` between two inner morphemes types neither, and the boundary shows as `-`.
+The types a `=` gave are worked out again over the whole word each time its morphemes are split, merged, or deleted, so the result does not depend on the order they were typed in.
+A type chosen in the **Type** list, given by an import, or carried by a linked entry is never changed this way.
+
+The **Type** list in a morpheme's link popover sets its type.
+On an unlinked morpheme it sets the morpheme's own type, and **—** clears it.
+On a linked morpheme it shows the entry's type, and a change applies to every use of the entry. Only the vocabulary's maintainers can change it.
+In a project with no lexicon, the **type** button under a morpheme opens the list.
 
 === Provenance
 
@@ -362,6 +379,7 @@ Anyone who can edit the document can add an entry this way.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
 A linked morpheme takes its type from the entry, or goes by its own when the entry has none. The type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
+In the Analyze grid, a morpheme's link popover sets the type (see <<_morpheme_types>>).
 Only a vocabulary's maintainers can change an entry's type.
 
 Vocabularies have their own area in the app, under **Vocabularies** in the header.
@@ -1117,7 +1135,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Alt+↓** | List every value the project has given this form, with counts. On a morpheme field with a lexicon field, list the senses with their values. **↑** / **↓** move through the list, **Enter** takes the highlighted row, **Esc** closes the list. A field held to a tagset opens its list on its own.
 | **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
-| **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
+| **=** | In a morpheme form, split at the cursor as a clitic boundary. The clitic is typed by its place in the word (see <<_morpheme_types>>).
 | **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form, delete the morpheme.
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
