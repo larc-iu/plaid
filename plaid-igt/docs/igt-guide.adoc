@@ -304,7 +304,7 @@ Copied and exported text writes the plain `=`.
 Typing `=` in a morpheme form splits it and types the clitic by its place in the word.
 A `=` after the word's first morpheme makes that morpheme a proclitic, and a `=` before the last makes the last an enclitic. In a word of two morphemes, the second is the enclitic.
 A `=` between two inner morphemes types neither, and still shows as `=`, in the grid and in every copy and export.
-A FLEx export writes such a `=` in front of the morpheme after it, as FLEx writes an enclitic, and a proclitic's `=` once, on the proclitic. An ELAN export writes every `=` in front of the morpheme after it.
+A FLEx export writes such a `=` in front of the morpheme after it, as FLEx writes an enclitic, and a proclitic's `=` once, on the proclitic. Before a morpheme typed as anything but a clitic, such as a stem or a suffix, it writes none, since FLEx has no way to say it. An ELAN export writes every `=` in front of the morpheme after it.
 Each `=` typed is kept with the morpheme after it, and the types are worked out again over the whole word each time its morphemes are split, merged, or deleted, so the result does not depend on the order they were typed in.
 Merging the two morphemes beside a `=`, or deleting the morpheme after it, takes the `=` away, and so does deleting a word's first morpheme for the `=` after it.
 Clearing a clitic type in the **Type** list takes away the `=` that gave it. Clearing any other type keeps the `=`, and a `=` the cleared type blocked then types the morpheme at once.
