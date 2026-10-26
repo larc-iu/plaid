@@ -60,6 +60,21 @@ test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
 });
 
+// Presses a document tab as a reader's click does. Playwright's own click
+// scrolls the page first whenever the strip is not yet "stable" (its save
+// status changing width after an edit), and scrolling a pinned tab into view
+// takes the page back towards the top, which moves the sentence on screen.
+async function pressTab(page, name) {
+  await page.evaluate((label) => {
+    const tab = [...document.querySelectorAll('[role="tab"]')].find(
+      (t) => t.textContent.trim() === label,
+    );
+    tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    tab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+    tab.click();
+  }, name);
+}
+
 const sentence = (page, n) =>
   page.locator('.igt-sentence[data-sentence-id]').filter({
     hasText: new RegExp(`\\bline${n}\\b`),
@@ -79,7 +94,7 @@ test('Analyze and Baseline keep the sentence across the tab switch, both ways', 
   await sentence(page, 28).locator('.igt-field').first().click();
 
   // To Baseline: sentence 28 lit and in view, nothing selected, no focus taken.
-  await page.getByRole('tab', { name: 'Baseline' }).click();
+  await pressTab(page, 'Baseline');
   const lit = page.locator('.baseline-flash');
   await expect(lit).toHaveText(lines[27]);
   await expect(lit).toBeInViewport();
@@ -101,20 +116,24 @@ test('Analyze and Baseline keep the sentence across the tab switch, both ways', 
 
   // Back to Analyze untouched: page 2, sentence 28.
   await page.getByRole('button', { name: 'Cancel' }).click();
-  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await pressTab(page, 'Analyze');
   await expect(sentence(page, 28)).toBeInViewport();
   await expect(sentence(page, 3)).toHaveCount(0);
 
   // The caret moved in Baseline to sentence 3: Analyze opens on page 1 there.
-  await page.getByRole('tab', { name: 'Baseline' }).click();
+  // Moved once the box has opened, a frame after the click, which focuses it
+  // and places its own caret in the same frame, or the opening puts the caret
+  // back where the landing left it.
+  await pressTab(page, 'Baseline');
   await page.getByRole('button', { name: 'Edit text' }).click();
+  await expect(box).toBeFocused();
   await box.evaluate((el, at) => {
     el.focus();
     el.setSelectionRange(at, at);
   }, starts[2] + 3);
   await box.press('ArrowRight');
   await page.getByRole('button', { name: 'Cancel' }).click();
-  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await pressTab(page, 'Analyze');
   await expect(sentence(page, 3)).toBeInViewport();
   await expect(sentence(page, 28)).toHaveCount(0);
 
@@ -154,9 +173,9 @@ test('Edit text shows the caret on the first lines of a long text', async ({ pag
   await open(page, 'analyze');
   const box = page.getByPlaceholder('Type or paste the text');
   for (const n of [1, 2]) {
-    await page.getByRole('tab', { name: 'Analyze' }).click();
+    await pressTab(page, 'Analyze');
     await sentence(page, n).locator('.igt-field').first().click();
-    await page.getByRole('tab', { name: 'Baseline' }).click();
+    await pressTab(page, 'Baseline');
     await expect(page.locator('.baseline-flash')).toHaveText(lines[n - 1]);
     await page.getByRole('button', { name: 'Edit text' }).click();
     await expect.poll(() => box.evaluate((el) => el.selectionStart)).toBe(starts[n - 1]);
@@ -166,8 +185,7 @@ test('Edit text shows the caret on the first lines of a long text', async ({ pag
 });
 
 // Scrolls sentence `n`'s top to `dy` px below the pinned tab strip's bottom
-// (above it when negative), then presses Baseline by hand: Playwright's click
-// scrolls the page first, which a reader's click does not.
+// (above it when negative), then presses Baseline.
 async function scrollAndLeave(page, n, dy) {
   await page.evaluate(() => window.scrollBy(0, 800));
   const chrome = await page.evaluate(
@@ -177,14 +195,7 @@ async function scrollAndLeave(page, n, dy) {
     (el, to) => window.scrollBy(0, el.getBoundingClientRect().top - to),
     chrome + dy,
   );
-  await page.evaluate(() => {
-    const tab = [...document.querySelectorAll('[role="tab"]')].find(
-      (t) => t.textContent.trim() === 'Baseline',
-    );
-    tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
-    tab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
-    tab.click();
-  });
+  await pressTab(page, 'Baseline');
 }
 
 test('a focused sentence scrolled away gives way to the sentence at the top of the screen', async ({
@@ -210,22 +221,22 @@ test('a handoff is for the next tab only', async ({ page }) => {
   // stale lands there, and Analyze after it opens with no landing.
   await open(page, 'analyze');
   await sentence(page, 5).locator('.igt-field').first().click();
-  await page.getByRole('tab', { name: 'Tokenize' }).click();
+  await pressTab(page, 'Tokenize');
   const word = page.locator(`span.token[data-begin="${starts[11]}"]`).first();
   await word.dispatchEvent('mousedown', { button: 0 });
   await page.mouse.up();
-  await page.getByRole('tab', { name: 'Baseline' }).click();
+  await pressTab(page, 'Baseline');
   await expect(page.getByRole('button', { name: 'Edit text' })).toBeVisible();
   await expect(page.locator('.baseline-flash')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await pressTab(page, 'Analyze');
   await expect(sentence(page, 1)).toBeVisible();
   expect(await flashed(page)).toBe(null);
 
   // Tokenize straight to Analyze still lands on the word's sentence.
-  await page.getByRole('tab', { name: 'Tokenize' }).click();
+  await pressTab(page, 'Tokenize');
   await word.dispatchEvent('mousedown', { button: 0 });
   await page.mouse.up();
-  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await pressTab(page, 'Analyze');
   await expect.poll(() => flashed(page)).toBe('12');
 });
 
@@ -242,7 +253,7 @@ test('a draft left unsaved hands Analyze the caret it last had in the saved text
   await box.press('ArrowRight');
   await page.keyboard.type('new1\nnew2\nnew3\n');
   for (let i = 0; i < 10; i++) await box.press('ArrowDown');
-  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await pressTab(page, 'Analyze');
   await page.getByRole('button', { name: 'Leave' }).click();
   await expect.poll(() => flashed(page)).toBe('5');
 });
@@ -271,7 +282,7 @@ test('a save hands Analyze the caret the box had, in the text it saved, before i
   await typeAt(starts[24] + 1 + 6, 'b');
   await box.press('ArrowLeft');
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await pressTab(page, 'Analyze');
   await expect.poll(() => flashed(page)).toBe('25');
   await expect
     .poll(async () => (await client.documents.get(documentId, true)).textLayers[0].text.body, {
