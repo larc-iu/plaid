@@ -414,6 +414,7 @@ const fakeMediaElement = (refusals, over = {}) => ({
   playbackRate: 1,
   currentTime: 0,
   duration: 10,
+  paused: true,
   play: refusedPlay(refusals),
   pause: vi.fn(),
   addEventListener: vi.fn(),
@@ -447,6 +448,57 @@ describe('useMediaOperations: the playback keys', () => {
 
     expect(el.play).toHaveBeenCalledTimes(2);
     expect(refusals.map((r) => r.handled)).toEqual([true, true]);
+    await h.unmount();
+  });
+});
+
+// `isPlaying` is drawn from the element's play and pause events on the next
+// render, and a key pressed before that render read the old picture: Space or
+// Shift+Space just after a pause paused it again, and nothing played. What is
+// done is read from the element.
+describe('useMediaOperations: play or pause reads the element', () => {
+  it('a key pressed before the pause is drawn plays, and one before the play is drawn pauses', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await loadRecording(h, el);
+    // Drawn as playing, but the element is already paused.
+    await h.step(() => h.api.handlePlayingChange(true));
+    el.paused = true;
+    await h.step(async () => {
+      press({ code: 'Space', key: ' ' });
+      await settle();
+    });
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(el.pause).not.toHaveBeenCalled();
+    await h.step(() => h.api.setSelection({ start: 1, end: 4 }));
+    await h.step(async () => {
+      press({ code: 'Space', key: ' ', shiftKey: true });
+      await settle();
+    });
+    expect(el.play).toHaveBeenCalledTimes(2);
+    expect(el.pause).not.toHaveBeenCalled();
+    await h.step(() => h.api.handlePlaySelection());
+    expect(el.play).toHaveBeenCalledTimes(3);
+    await h.step(() => h.api.togglePlayback());
+    expect(el.play).toHaveBeenCalledTimes(4);
+    expect(el.pause).not.toHaveBeenCalled();
+    expect(h.api.playingNow()).toBe(false);
+
+    // Drawn as paused, but the element plays.
+    await h.step(() => h.api.handlePlayingChange(false));
+    el.paused = false;
+    expect(h.api.playingNow()).toBe(true);
+    await h.step(async () => {
+      press({ code: 'Space', key: ' ' });
+      await settle();
+    });
+    await h.step(async () => {
+      press({ code: 'Space', key: ' ', shiftKey: true });
+      await settle();
+    });
+    await h.step(() => h.api.togglePlayback());
+    expect(el.pause).toHaveBeenCalledTimes(3);
+    expect(el.play).toHaveBeenCalledTimes(4);
     await h.unmount();
   });
 });
@@ -724,10 +776,13 @@ describe('useMediaOperations: playing before the recording has loaded', () => {
     await h.step(() => h.api.handlePlaySelection());
     expect(el.currentTime).toBe(5);
     expect(el.play).toHaveBeenCalledTimes(1);
+    // The element plays, and says so.
+    el.paused = false;
     await h.step(() => h.api.handlePlayingChange(true));
 
     await h.step(() => h.api.handlePlaySelection());
     expect(el.pause).toHaveBeenCalledTimes(1);
+    el.paused = true;
     await h.step(() => h.api.handlePlayingChange(false));
 
     el.currentTime = 7;

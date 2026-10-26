@@ -128,7 +128,8 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   const togglePlayback = async () => {
     if (mediaRef.current) {
       try {
-        if (isPlaying) {
+        // The element, not `isPlaying`, which is drawn after its events.
+        if (!mediaRef.current.paused) {
           mediaRef.current.pause();
         } else {
           await mediaRef.current.play();

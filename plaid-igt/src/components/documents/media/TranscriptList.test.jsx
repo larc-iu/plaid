@@ -49,6 +49,7 @@ const makeOps = (over = {}) => ({
   getCurrentTime: () => null,
   segmentFocusRequest: null,
   isPlaying: false,
+  playingNow: () => false,
   playingSelection: null,
   selection: null,
   setSelection: vi.fn(),
@@ -224,6 +225,41 @@ describe('TranscriptList', () => {
     expect(ctrl.defaultPrevented).toBe(false);
     expect(ops.playRangeFromHere).toHaveBeenCalledTimes(1);
     await r.unmount();
+  });
+
+  // `isPlaying` is a picture of the element drawn on the next render after
+  // its play or pause event, and a chord pressed before that render read the
+  // old picture: it paused a recording already paused, and nothing played.
+  it('Shift+Space reads whether the recording plays from the element, not from the last render', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const segment = { start: 1.5, end: 3 };
+    const paused = makeOps({
+      autoPlayOnFocus: false,
+      isPlaying: true,
+      playingNow: () => false,
+      playingSelection: segment,
+    });
+    const r = await renderComponent(element(doc, paused));
+    const second = rowTextareas(r.container)[1];
+    await r.step(() => second.focus());
+    press(second, ' ', { code: 'Space', shiftKey: true });
+    expect(paused.pausePlayback).not.toHaveBeenCalled();
+    expect(paused.playRangeFromHere).toHaveBeenCalledWith(segment);
+    await r.unmount();
+
+    const playing = makeOps({
+      autoPlayOnFocus: false,
+      isPlaying: false,
+      playingNow: () => true,
+      playingSelection: segment,
+    });
+    const r2 = await renderComponent(element(doc, playing));
+    const again = rowTextareas(r2.container)[1];
+    await r2.step(() => again.focus());
+    press(again, ' ', { code: 'Space', shiftKey: true });
+    expect(playing.pausePlayback).toHaveBeenCalledTimes(1);
+    expect(playing.playRangeFromHere).not.toHaveBeenCalled();
+    await r2.unmount();
   });
 
   it('Alt+Enter in a row saves it, then splits its segment between the words at the caret; Alt+M merges it with the next', async () => {

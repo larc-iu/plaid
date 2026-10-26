@@ -636,6 +636,15 @@ export const useMediaOperations = () => {
     mediaElementRef.current?.pause();
   }, []);
 
+  // Whether the recording is playing now, read from the element. Every choice
+  // between play and pause reads this and not `isPlaying`, which is drawn from
+  // the element's events on the next render: a key pressed between a pause
+  // and that render paused a paused recording, and nothing played.
+  const playingNow = useCallback(() => {
+    const el = mediaElementRef.current;
+    return !!el && !el.paused;
+  }, []);
+
   // The timeline's play button for the selection: pause while it plays,
   // otherwise play on from where it stopped, as a transcript row's button and
   // Shift+Space do.
@@ -645,21 +654,21 @@ export const useMediaOperations = () => {
       playingSelection &&
       playingSelection.start === selection.start &&
       playingSelection.end === selection.end;
-    if (isPlaying && isThis) pausePlayback();
+    if (playingNow() && isThis) pausePlayback();
     else playRangeFromHere(selection);
-  }, [selection, playingSelection, isPlaying, pausePlayback, playRangeFromHere]);
+  }, [selection, playingSelection, playingNow, pausePlayback, playRangeFromHere]);
 
   // Play from the playhead, or pause. Free playback (no range) never auto-stops.
   const togglePlayback = useCallback(() => {
     const el = playableElement();
     if (!el) return;
-    if (isPlaying) {
+    if (!el.paused) {
       el.pause();
     } else {
       setPlayingSelection(null);
       el.play().catch(() => {});
     }
-  }, [isPlaying, playableElement]);
+  }, [playableElement]);
 
   // Move playback by `delta` seconds, keeping it in the recording. Any range
   // being played is dropped: after a seek the user is listening freely.
@@ -1186,7 +1195,7 @@ export const useMediaOperations = () => {
         e.preventDefault();
         const el = playableElement();
         if (!el) return;
-        if (isPlaying) el.pause();
+        if (!el.paused) el.pause();
         else if (selection) playRangeFromHere(selection);
         else el.play().catch(() => {});
         return;
@@ -1218,7 +1227,7 @@ export const useMediaOperations = () => {
         e.preventDefault();
         const el = playableElement();
         if (el) {
-          if (isPlaying) {
+          if (!el.paused) {
             el.pause();
           } else {
             // Swallowed like every other play() here: a rejection is the
@@ -1232,7 +1241,6 @@ export const useMediaOperations = () => {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [
     selection,
-    isPlaying,
     playRangeFromHere,
     seekBy,
     playableElement,
@@ -1313,6 +1321,7 @@ export const useMediaOperations = () => {
     playRange,
     playRangeFromHere,
     pausePlayback,
+    playingNow,
     togglePlayback,
     seekBy,
 

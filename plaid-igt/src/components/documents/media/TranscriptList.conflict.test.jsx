@@ -57,6 +57,7 @@ const makeOps = (doc) => ({
   getCurrentTime: () => null,
   segmentFocusRequest: null,
   isPlaying: false,
+  playingNow: () => false,
   playingSelection: null,
   selection: null,
   setSelection: vi.fn(),

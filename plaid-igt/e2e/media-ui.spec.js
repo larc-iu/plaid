@@ -177,35 +177,35 @@ test('Shift+Space in a row pauses and plays on from there; only a finished segme
       return el ? { t: el.currentTime, paused: el.paused } : null;
     });
   const paused = async () => (await state())?.paused;
+  const time = async () => (await state())?.t;
 
-  // Into the row: the segment (0 to 4.99 s) plays from its start.
+  // Into the row: the segment (0 to 4.99 s) plays from its start. Focus plays
+  // it when the tab is set to, and the play starts in the focus handler.
   await row.focus();
-  await page.waitForTimeout(150);
   if (await paused()) await row.press('Shift+Space');
   await expect.poll(paused).toBe(false);
-  await page.waitForTimeout(700);
+  await expect.poll(time).toBeGreaterThan(0.5);
 
-  // Pause mid-segment, then the chord again: playback goes on from where it
-  // stopped, never back to the start.
+  // Pause mid-segment, then the chord again at once: playback goes on from
+  // where it stopped, never back to the start. The chord comes before the
+  // page has drawn the pause, as a quick hand's does.
   await row.press('Shift+Space');
   await expect.poll(paused).toBe(true);
   const { t: pausedAt } = await state();
-  expect(pausedAt).toBeGreaterThan(0.3);
   expect(pausedAt).toBeLessThan(4);
   await row.press('Shift+Space');
   await expect.poll(paused).toBe(false);
-  await page.waitForTimeout(300);
-  const { t: resumedAt } = await state();
+  const resumedAt = await time();
   expect(resumedAt).toBeGreaterThanOrEqual(pausedAt);
   expect(resumedAt).toBeLessThan(pausedAt + 1.5);
+  await expect.poll(time).toBeGreaterThan(pausedAt);
 
   // It stops at the segment's end; from there the chord starts the segment over.
   await expect.poll(paused, { timeout: 10000 }).toBe(true);
-  expect((await state()).t).toBeGreaterThan(4.5);
+  expect(await time()).toBeGreaterThan(4.5);
   await row.press('Shift+Space');
   await expect.poll(paused).toBe(false);
-  await page.waitForTimeout(200);
-  expect((await state()).t).toBeLessThan(1.5);
+  expect(await time()).toBeLessThan(1.5);
   await row.press('Shift+Space');
   await expect.poll(paused).toBe(true);
 
