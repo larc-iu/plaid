@@ -1,17 +1,48 @@
-// The "=" rule's record and its reading over a word's chain (R47). The rule
-// itself, which side of a "=" is the clitic, is affixMarkers.js's
-// cliticSideOfBoundary. This reads a morpheme's stored type, which is why it
-// sits beside the writers: what the rule may move is decided by what is
+// The "=" rule (R47): which side of a "=" is the clitic, its records and its
+// reading over a word's chain. This reads a morpheme's stored metadata, which
+// is why it sits beside the writers: what the rule may move is decided by what is
 // stored, never by the type a morpheme goes by.
-import { CLITIC_TYPE_BY_SIDE, cliticSideOfBoundary } from '../affixMarkers.js';
+//
+// Two records, both flat keys on the morpheme:
+// - EQUALS_BEFORE_KEY (true) on the morpheme after a typed "=": the boundary
+//   itself. It goes wherever that morpheme goes, so a split keeps it on the
+//   left piece's boundary (the piece it is on keeps its metadata), a "=" typed
+//   in the split puts it on the new piece after it, and a merge or a delete of
+//   that morpheme takes it away with the boundary. An interior or blocked "="
+//   stays recorded, and types its clitic once a change makes it outer or
+//   frees its side.
+// - EQUALS_TYPE_KEY (the type) beside a type the rule wrote: the type is the
+//   rule's to move or clear only while the record names it, so a type a
+//   person chose, an import, a model or another writer gave, or a linked
+//   entry carries, is never touched.
+//
+// A "=" names a BOUNDARY (Leipzig rule 2: clitic boundary), but Plaid stores
+// cliticness on the morpheme, so a fixed rule decides which side is the
+// clitic: by position only, the first piece a proclitic, the last an
+// enclitic, a two-piece word's last piece an enclitic, an interior boundary
+// neither. The rule is read again over the whole word whenever its pieces
+// change (a split, a merge, a delete, a "=" typed), so the outcome depends
+// only on the chain, never on the order it was typed in. PolyGloss's writer
+// in the Python client (workflows/igt/interlinear.py) applies the same rule.
 
 /**
- * The morpheme metadata key that records a type "=" set: it holds the type
- * the rule wrote. The rule moves or clears only a type whose record names it,
- * so a type a person chose, an import or a model gave, or another writer put
- * over the rule's own, is never touched, and a type is never read as the
- * rule's from its value alone.
+ * Which side of the "=" boundary after morpheme `leftIdx` (0-based, in a word
+ * of `count` morphemes) is the clitic: 'left' | 'right' | null.
  */
+export const cliticSideOfBoundary = ({ leftIdx, count }) => {
+  const leftIsFirst = leftIdx === 0;
+  const rightIsLast = leftIdx + 1 === count - 1;
+  if (rightIsLast) return 'right';
+  return leftIsFirst ? 'left' : null;
+};
+
+/** The type the rule gives the clitic on each side. */
+const CLITIC_TYPE_BY_SIDE = Object.freeze({ left: 'proclitic', right: 'enclitic' });
+
+/** The key on the morpheme after a typed "=". */
+export const EQUALS_BEFORE_KEY = 'equalsBefore';
+
+/** The key that records a type the rule wrote, holding that type. */
 export const EQUALS_TYPE_KEY = 'morphTypeFromEquals';
 
 const isType = (t) => typeof t === 'string' && t !== '';
@@ -26,68 +57,94 @@ export const typedByEquals = (metadata, entryType = null) =>
   isType(metadata?.[EQUALS_TYPE_KEY]) &&
   metadata[EQUALS_TYPE_KEY] === metadata.morphType;
 
+/** Does a typed "=" stand before this morpheme? */
+const equalsBefore = (metadata) => metadata?.[EQUALS_BEFORE_KEY] === true;
+
 /**
- * The "=" boundaries a word's chain records, read off the types "=" set: a
- * proclitic the rule typed has its "=" after it, an enclitic before it.
- * `pieces` are the word's morphemes in order, each `{ metadata, entryType }`.
- * A set of boundary indices (boundary b lies between pieces b and b + 1).
+ * The typed "=" boundaries of a word's chain, read off the keys: a set of
+ * boundary indices (boundary b lies between pieces b and b + 1). `pieces` are
+ * the word's morphemes in order, each `{ metadata, entryType }`. A key on the
+ * first piece stands before nothing.
  */
 export const equalsBoundaries = (pieces) => {
   const out = new Set();
   pieces.forEach((p, k) => {
-    if (!typedByEquals(p.metadata, p.entryType)) return;
-    const t = p.metadata.morphType;
-    if (t === 'proclitic' && k < pieces.length - 1) out.add(k);
-    if (t === 'enclitic' && k > 0) out.add(k - 1);
+    if (k > 0 && equalsBefore(p.metadata)) out.add(k - 1);
   });
   return out;
 };
 
-/** The boundaries once piece `at` is split, `joiners` between its new pieces. */
-export const equalsAfterSplit = (boundaries, at, joiners) => {
-  const out = new Set();
-  boundaries.forEach((b) => out.add(b < at ? b : b + joiners.length));
-  joiners.forEach((j, i) => {
-    if (j === '=') out.add(at + i);
-  });
-  return out;
+/** The piece the rule types for boundary `b` of a `count`-piece word, or null. */
+const cliticOfBoundary = (b, count) => {
+  const side = cliticSideOfBoundary({ leftIdx: b, count });
+  return side === 'left' ? b : side === 'right' ? b + 1 : null;
 };
 
 /**
- * The boundaries once piece `at` is gone, merged into the piece before it or
- * deleted: the boundary before it goes with it (after it, for the first).
+ * What the rule writes on each piece of a chain, from the "=" boundaries its
+ * keys record: per piece, null for no change, or the metadata to merge (a null
+ * value takes the key away). A piece that goes by a type the rule did not set
+ * is left as it is, and the side it would have taken stays untyped. A key on
+ * the first piece is taken away.
  */
-export const equalsAfterRemove = (boundaries, at) => {
-  const gone = at > 0 ? at - 1 : 0;
-  const out = new Set();
-  boundaries.forEach((b) => {
-    if (b !== gone) out.add(b > gone ? b - 1 : b);
-  });
-  return out;
-};
-
-/**
- * What the rule writes on each piece of a chain whose "=" boundaries are
- * `boundaries`: per piece, null for no change, or the metadata to merge
- * (`{ morphType, [EQUALS_TYPE_KEY] }`, a null value taking the key away).
- * A piece that goes by a type the rule did not set is left as it is, and
- * then the side it would have taken stays untyped.
- */
-export const rereadEquals = (pieces, boundaries) => {
+export const rereadEquals = (pieces) => {
   const want = pieces.map(() => null);
-  boundaries.forEach((b) => {
-    const side = cliticSideOfBoundary({ leftIdx: b, count: pieces.length });
-    if (!side) return;
-    want[side === 'left' ? b : b + 1] = CLITIC_TYPE_BY_SIDE[side];
+  equalsBoundaries(pieces).forEach((b) => {
+    const k = cliticOfBoundary(b, pieces.length);
+    if (k != null) want[k] = CLITIC_TYPE_BY_SIDE[k === b ? 'left' : 'right'];
   });
   return pieces.map((p, k) => {
+    const change = k === 0 && equalsBefore(p.metadata) ? { [EQUALS_BEFORE_KEY]: null } : {};
     const own = p.metadata?.morphType;
     const byRule = typedByEquals(p.metadata, p.entryType);
-    if (!byRule && (isType(own) || isType(p.entryType))) return null;
-    const now = byRule ? own : null;
-    if (now === want[k]) return null;
-    return want[k]
-      ? { morphType: want[k], [EQUALS_TYPE_KEY]: want[k] }
-      : { morphType: null, [EQUALS_TYPE_KEY]: null };
+    const free = byRule || (!isType(own) && !isType(p.entryType));
+    if (free && (byRule ? own : null) !== want[k]) {
+      Object.assign(
+        change,
+        want[k]
+          ? { morphType: want[k], [EQUALS_TYPE_KEY]: want[k] }
+          : { morphType: null, [EQUALS_TYPE_KEY]: null },
+      );
+    }
+    return Object.keys(change).length ? change : null;
+  });
+};
+
+/**
+ * The typed "=" boundaries whose clitic is piece `k` of the chain, as the keys
+ * that record them: `[pieceIndex]` of each morpheme to take the key from.
+ * Clearing a clitic's type takes back the "=" that typed it.
+ */
+export const equalsOfClitic = (pieces, k) =>
+  [...equalsBoundaries(pieces)]
+    .filter((b) => cliticOfBoundary(b, pieces.length) === k)
+    .map((b) => b + 1);
+
+/**
+ * The records an analysis copy carries with a morpheme's type: the key before
+ * it, and the rule's record while it names the type the morpheme holds.
+ */
+export const equalsRecords = (metadata) => ({
+  ...(equalsBefore(metadata) ? { [EQUALS_BEFORE_KEY]: true } : {}),
+  ...(typedByEquals(metadata) ? { [EQUALS_TYPE_KEY]: metadata[EQUALS_TYPE_KEY] } : {}),
+});
+
+/**
+ * A chain written whole by a writer that reads "=" boundaries (an importer):
+ * `befores` says, per piece, whether a "=" stands before it. Per piece, the
+ * type the rule gives (or null) and the records typing it in the grid leaves
+ * (`equals`, absent when there are none).
+ */
+export const equalsChain = (befores) => {
+  const pieces = befores.map((b) => ({ metadata: b ? { [EQUALS_BEFORE_KEY]: true } : {} }));
+  return rereadEquals(pieces).map((change, k) => {
+    const equals = {
+      ...(k > 0 && befores[k] ? { [EQUALS_BEFORE_KEY]: true } : {}),
+      ...(change?.morphType ? { [EQUALS_TYPE_KEY]: change.morphType } : {}),
+    };
+    return {
+      morphType: change?.morphType ?? null,
+      ...(Object.keys(equals).length ? { equals } : {}),
+    };
   });
 };

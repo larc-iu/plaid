@@ -20,9 +20,11 @@
 // morphType is inferred ONLY for clitics. Leipzig's "-" says a boundary exists
 // but not what sits on either side ("un-break-able" gives no way to know
 // "break" is the stem), so guessing would assert what the data does not say.
-// "=" does mean clitic, and inferring just that inverts the exporter's joiner
-// rule exactly, so a round trip reproduces the same joints.
+// "=" does mean clitic, and is read by the grid's rule (see typeByJoints
+// below). An interior "=" types nothing under it, so it comes back as "-" on a
+// later export.
 
+import { equalsChain } from '../../domain/mutations/equalsRule.js';
 import {
   makeCpIndexer,
   splitAnalyzed,
@@ -63,18 +65,19 @@ export const BY_CONTRIBUTION = '__contribution__';
 /** Grouping sentinel: the whole corpus as a single document. */
 export const SINGLE_TEXT = '__single__';
 
-/**
- * The clitic type a joint implies, or null when it implies nothing.
- *
- * "=" says a clitic boundary is here, but NOT which side the clitic is on:
- * "perro=s" (host + enclitic) and "se=lo" (proclitic + host) are structurally
- * identical, so no rule can tell them apart. The piece after the "=" is taken
- * to be the clitic because enclitics are the commoner case, and because
- * marking one side keeps the joint a "=" on re-export (the exporter writes
- * "=" when EITHER side is a clitic). A wrong guess costs one morphType edit
- * and changes nothing in the display.
- */
-const morphTypeOf = (pieces, i) => (pieces[i].before === '=' ? 'enclitic' : null);
+// "=" says a clitic boundary is here, but not which side the clitic is on:
+// "perro=s" (host + enclitic) and "se=lo" (proclitic + host) are written
+// alike. The pieces are typed by the rule typing "=" in the grid applies
+// (R47, equalsChain): the first piece before a "=" a proclitic, the last after
+// one an enclitic, a two-piece word's second an enclitic, an interior "="
+// neither. Each "=" is recorded as typing it records it, so a later split in
+// the grid reads the word as it reads one typed there (REV-CLITIC CL-8).
+
+// The kept pieces of a word, typed by their "=" joints.
+const typeByJoints = (pieces) => {
+  const typed = equalsChain(pieces.map((p) => p.before === '='));
+  return pieces.map(({ before: _before, ...m }, k) => ({ ...m, ...typed[k] }));
+};
 
 // ---- options ----------------------------------------------------------------
 
@@ -728,7 +731,7 @@ export function buildCldfDocuments(dataset, options = {}) {
             const v = list_[mi]?.form ?? '';
             if (v) fields[name] = v;
           }
-          return { form: p.form, morphType: morphTypeOf(pieces, mi), fields };
+          return { form: p.form, morphType: null, fields, before: p.before };
         });
         // One piece that is only the word again, with no values, is no
         // segmentation: Analyzed_Word gives an unsegmented word as itself, and
@@ -753,7 +756,7 @@ export function buildCldfDocuments(dataset, options = {}) {
           fields: wordFields,
           morphemes: bare
             ? []
-            : morphemes.filter((m) => m.form !== '' || Object.keys(m.fields).length),
+            : typeByJoints(morphemes.filter((m) => m.form !== '' || Object.keys(m.fields).length)),
         });
       });
     });

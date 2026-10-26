@@ -292,6 +292,9 @@ describe('runCldfImport', () => {
       [2, 's'],
     ]);
     expect(morphemes[1].metadata.morphType).toBe('enclitic');
+    // with the records typing "=" leaves (R47)
+    expect(morphemes[1].metadata.equalsBefore).toBe(true);
+    expect(morphemes[1].metadata.morphTypeFromEquals).toBe('enclitic');
   });
 
   it('writes no morpheme for a word the dataset never analyzed', async () => {

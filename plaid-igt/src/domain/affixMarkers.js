@@ -68,32 +68,10 @@ export const isBoundType = (morphType) =>
 export const canNameWord = (morphType, form) =>
   !isBoundType(morphType) && !isZeroMorph(form) && typeof form === 'string' && form.trim() !== '';
 
-// --- Typing the clitic side of a "=" boundary (R47) -------------------------
-// A "=" names a BOUNDARY (Leipzig rule 2: clitic boundary), but Plaid stores
-// cliticness on the morpheme, so a fixed rule decides which side is the
-// clitic: by position only, the first piece a proclitic, the last an
-// enclitic, a two-piece word's last piece an enclitic, an interior boundary
-// neither. The rule is read again over the whole word whenever its pieces
-// change (a split, a merge, a delete, a "=" typed), so the outcome depends
-// only on the chain, never on the order it was typed in. PolyGloss's writer
-// in the Python client (workflows/igt/interlinear.py) applies the same rule.
-
-/**
- * Which side of the "=" boundary after morpheme `leftIdx` (0-based, in a word
- * of `count` morphemes) is the clitic: 'left' | 'right' | null.
- */
-export const cliticSideOfBoundary = ({ leftIdx, count }) => {
-  const leftIsFirst = leftIdx === 0;
-  const rightIsLast = leftIdx + 1 === count - 1;
-  if (rightIsLast) return 'right';
-  return leftIsFirst ? 'left' : null;
-};
-
-/** The type the rule gives the clitic on each side. */
-export const CLITIC_TYPE_BY_SIDE = Object.freeze({ left: 'proclitic', right: 'enclitic' });
-
-// The rule's record on a morpheme and its reading over a word's chain are
-// part of the writers, in mutations/equalsRule.js.
+// The rule typing the clitic side of a "=" (R47), its records and its reading
+// over a word's chain live with the writers, in mutations/equalsRule.js, which
+// imports nothing, so the importers and the fidelity scripts read it under
+// plain node too.
 
 /**
  * Parse pasted/typed chain text ("a-b=c") into { segments, joiners }: pieces

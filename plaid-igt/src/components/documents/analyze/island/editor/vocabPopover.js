@@ -862,46 +862,40 @@ export const vocabPopover = {
   // exact inventory, or "—" for untyped. Pure metadata — geometry, precedence,
   // and the form are untouched; the display-only affix joints ("-"/"=") react
   // immediately.
-  // A LINKED morpheme's type lives on its lexicon entry (the entry's is read
-  // over the token's own, see derive.js), so the row edits the entry —
-  // for vocab maintainers; others see it read-only. Unlinked: the token's own.
+  // A morpheme linked to an entry that has a type goes by the entry's (R2),
+  // so the row shows and edits the entry, for vocab maintainers, and says the
+  // change applies to every use. Linked to an entry with none, it goes by its
+  // own, so the row shows and edits that, as on an unlinked morpheme
+  // (REV-CLITIC CL-3).
   _morphTypeRow(morphemeId, currentItem) {
     const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find(
       (m) => m.id === morphemeId,
     );
     const linked = !!currentItem?.vocabId;
     const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
-    // The entry's type is its own, else its headword's. Linked, the row
-    // shows that, and the type the token holds of its own only when the
-    // entry has none, which is the one the grid joins it by. A choice sets
-    // the entry's type either way.
     const fromItem = linked
       ? this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id)
       : null;
-    const own = morph?.metadata?.morphType || null;
-    const ownShown = !linked || (!fromItem && !!own);
-    const current = (fromItem || own) ?? '';
-    const canEditEntry = linked && !!vocab && this.canManageVocab(vocab);
-    const disabled = this.readOnly || (linked && !canEditEntry);
-    const title = !linked
+    const editsEntry = !!fromItem;
+    const current = (editsEntry ? fromItem : morph?.metadata?.morphType) || '';
+    const canEditEntry = editsEntry && !!vocab && this.canManageVocab(vocab);
+    const disabled = this.readOnly || (editsEntry && !canEditEntry);
+    const title = !editsEntry
       ? 'Type of this morpheme'
-      : ownShown
-        ? canEditEntry
-          ? "Type of this morpheme. Choosing one sets the linked lexicon entry's type."
-          : 'Type of this morpheme. Only maintainers of the linked lexicon entry can change it.'
-        : canEditEntry
-          ? 'Type of the linked lexicon entry (applies to every morpheme linked to it)'
-          : 'Type comes from the linked lexicon entry. Only its maintainers can change it.';
+      : canEditEntry
+        ? 'Type of the linked lexicon entry'
+        : 'Type of the linked lexicon entry. Only its maintainers can change it.';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
-        <span>${ownShown ? 'Type' : 'Type (entry)'}</span>
+        <span>${editsEntry ? 'Type (entry)' : 'Type'}</span>
         <select
           ?disabled=${disabled}
-          aria-label=${linked ? 'Lexicon entry morpheme type' : 'Morpheme type'}
+          aria-label=${editsEntry ? 'Lexicon entry morpheme type' : 'Morpheme type'}
           @change=${(e) => {
             e.stopPropagation();
             const value = e.target.value || null;
-            if (linked) this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value);
+            if (editsEntry)
+              this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value);
             else this.doc.setMorphemeType(morphemeId, value);
           }}
         >
@@ -912,7 +906,7 @@ export const vocabPopover = {
           )}
         </select>
       </label>
-      ${linked && canEditEntry
+      ${canEditEntry
         ? html`<div class="igt-vocab-pop__type-note">Applies to every use of this entry.</div>`
         : nothing}
     `;

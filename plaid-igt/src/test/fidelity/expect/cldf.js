@@ -15,6 +15,11 @@
 // behavior under test, so `bindings` asks the preset code for it.
 
 import { defaultCldfOptions } from '../../../export/cldf.js';
+import {
+  equalsChain,
+  EQUALS_BEFORE_KEY,
+  EQUALS_TYPE_KEY,
+} from '../../../domain/mutations/equalsRule.js';
 import { entryRolesByKey } from '../../../domain/lexiconField.js';
 import { escapeJsRegex } from '../../../../../plaid-ui/src/lib/jsRegex.js';
 import {
@@ -552,9 +557,11 @@ export default {
     },
     {
       keys: ['token.morphTypeOnMorpheme', 'token.procliticBeforeMorpheme'],
-      // Only the joint survives: a morpheme after the first is "enclitic" when
-      // it or the one before it had a clitic type, and nothing else keeps a
-      // type. A type is read off the source, since the links are gone here: the
+      // Only the joint survives: the export writes "=" between two morphemes
+      // when either had a clitic type, and the import types the pieces by the
+      // grid's "=" rule over those joints (equalsChain, with its records), so
+      // nothing else keeps a type. A type is read off the source, since the
+      // links are gone here: the
       // linked entry's (or its headword's, for a sense) when it has one, else
       // the token's own.
       apply(expected, actual, ctx) {
@@ -578,9 +585,15 @@ export default {
           };
           for (const { morphemes } of wordsWithMorphemes(d)) {
             const clitic = morphemes.map((m) => CLITIC_TYPES.has(typeOf(m)));
+            const typed = equalsChain(
+              morphemes.map((m, i) => i > 0 && (clitic[i] || clitic[i - 1])),
+            );
             morphemes.forEach((m, i) => {
-              if (i > 0 && (clitic[i] || clitic[i - 1])) m.metadata.morphType = 'enclitic';
-              else delete m.metadata.morphType;
+              for (const key of ['morphType', EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY]) {
+                delete m.metadata[key];
+              }
+              if (typed[i].morphType) m.metadata.morphType = typed[i].morphType;
+              Object.assign(m.metadata, typed[i].equals || {});
             });
           }
         }

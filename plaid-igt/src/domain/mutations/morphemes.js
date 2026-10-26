@@ -20,13 +20,7 @@ import {
   FORM_PROBS_KEY,
 } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
-import {
-  EQUALS_TYPE_KEY,
-  equalsBoundaries,
-  equalsAfterSplit,
-  equalsAfterRemove,
-  rereadEquals,
-} from './equalsRule.js';
+import { EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY, rereadEquals, equalsOfClitic } from './equalsRule.js';
 import { isZeroMorph } from '../zeroMorph.js';
 import { removeTokensLocally } from '../textEdits.js';
 import { entryMorphTypesOf } from '../vocabLookup.js';
@@ -212,22 +206,14 @@ export const morphemeMutations = {
   // The "=" rule (R47) read over a word's chain once its pieces change:
   // `chain` is the word's morphemes after the change, in order, each
   // `{ id, metadata, made }` (`made` for a piece this change creates, which
-  // is linked to nothing), and `boundaries` the "=" boundaries between them.
-  // Per piece, the metadata change the rule wants, or null.
-  _equalsChanges(chain, boundaries) {
+  // is linked to nothing, its metadata holding the key of a "=" typed before
+  // it). Per piece, the metadata change the rule wants, or null.
+  _equalsChanges(chain) {
     return rereadEquals(
       chain.map((m) => ({
         metadata: m.metadata,
         entryType: m.made ? null : this._morphemeEntryType(m),
       })),
-      boundaries,
-    );
-  },
-
-  // The "=" boundaries a word's stored chain records now.
-  _equalsNow(chain) {
-    return equalsBoundaries(
-      chain.map((m) => ({ metadata: m.metadata, entryType: this._morphemeEntryType(m) })),
     );
   },
 
@@ -313,22 +299,18 @@ export const morphemeMutations = {
         : [],
     );
     const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
-    // The "=" rule over the word as the split leaves it: the target, its new
-    // pieces after it, and the siblings around them.
-    const boundaries = equalsAfterSplit(
-      resolved.virtual ? new Set() : this._equalsNow(siblings),
-      targetIdx,
-      restForms.map((_, i) => joiners[i] ?? '-'),
+    // The "=" rule over the word as the split leaves it: the target, which
+    // keeps the key of a "=" before it, its new pieces after it, each holding
+    // the key of a "=" typed before it, and the siblings around them.
+    const restKeys = restForms.map((_, i) =>
+      (joiners[i] ?? '-') === '=' ? { [EQUALS_BEFORE_KEY]: true } : {},
     );
-    const changes = this._equalsChanges(
-      [
-        ...siblings.slice(0, targetIdx),
-        { ...target, made: resolved.virtual },
-        ...restForms.map(() => ({ metadata: {}, made: true })),
-        ...siblings.slice(targetIdx + 1),
-      ],
-      boundaries,
-    );
+    const changes = this._equalsChanges([
+      ...siblings.slice(0, targetIdx),
+      { ...target, made: resolved.virtual },
+      ...restKeys.map((metadata) => ({ metadata, made: true })),
+      ...siblings.slice(targetIdx + 1),
+    ]);
     const targetChange = changes[targetIdx] || {};
     const restChanges = changes.slice(targetIdx + 1, targetIdx + 1 + restForms.length);
     const others = siblings
@@ -347,7 +329,7 @@ export const morphemeMutations = {
       begin: target.begin,
       end: target.end,
       precedence: currentPrecedence + 1 + i,
-      metadata: created(this, { form: form ?? '', ...setsOnly(restChanges[i]) }),
+      metadata: created(this, { form: form ?? '', ...restKeys[i], ...setsOnly(restChanges[i]) }),
     }));
 
     this._applyRawPatch((next, infoNext) => {
@@ -481,10 +463,10 @@ export const morphemeMutations = {
     );
     const renumber = [...shifts, ...slots];
     const renumbered = new Map(renumber);
-    // The "=" rule over the word the merge leaves (R47): the boundary between
-    // the two goes with it.
+    // The "=" rule over the word the merge leaves (R47): a "=" between the
+    // two goes with the morpheme that holds its key.
     const kept = siblings.filter((m) => m.id !== morphemeId);
-    const changes = this._equalsChanges(kept, equalsAfterRemove(this._equalsNow(siblings), idx));
+    const changes = this._equalsChanges(kept);
     const patch = { ...formStamped(this, previous, mergedForm), ...(changes[idx - 1] || {}) };
     const others = kept
       .map((m, k) => [m, changes[k]])
@@ -544,9 +526,10 @@ export const morphemeMutations = {
     if (!this._canWrite(label)) return false;
     const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
     // The "=" rule over the word the delete leaves (R47).
-    const at = siblings.findIndex((m) => m.id === morphemeId);
+    // A "=" before the morpheme goes with it, and one after the first
+    // morpheme stands before nothing once it is gone.
     const kept = siblings.filter((m) => m.id !== morphemeId);
-    const changes = this._equalsChanges(kept, equalsAfterRemove(this._equalsNow(siblings), at));
+    const changes = this._equalsChanges(kept);
     const others = kept.map((m, k) => [m, changes[k]]).filter(([, c]) => c);
 
     const textId = info.primaryTextLayer?.text?.id;
@@ -612,23 +595,47 @@ export const morphemeMutations = {
     // Clearing the type of a morpheme that has none asks for nothing, so it
     // stays virtual rather than being written into existence empty.
     if (resolved.virtual && morphType == null) return true;
-    return this._writeMorphemeMeta(resolved, 'Failed to set morpheme type', (target) => ({
-      // A cleared type is a delete op. A type chosen here is the person's, so
-      // the record that "=" set the type goes with it (R47).
-      patch: {
-        morphType: morphType ?? null,
-        ...(target?.metadata?.[EQUALS_TYPE_KEY] != null ? { [EQUALS_TYPE_KEY]: null } : {}),
-        ...(this.editStamp(target?.metadata) || {}),
-      },
-      created: { morphType },
-    }));
+    // Clearing a clitic's type takes back the "=" that typed it, so the rule
+    // types it no more: the key on this morpheme (an enclitic's "=") or on
+    // the one after it (a proclitic's).
+    const dropped = new Set();
+    if (!resolved.virtual && morphType == null) {
+      const siblings = sortByPrecedence(
+        morphemesInWord(this.layerInfo.morphemeTokenLayer.tokens, resolved.token),
+      );
+      const k = siblings.findIndex((m) => m.id === resolved.token.id);
+      const pieces = siblings.map((m) => ({ metadata: m.metadata }));
+      equalsOfClitic(pieces, k).forEach((j) => dropped.add(siblings[j].id));
+    }
+    const unkey = { [EQUALS_BEFORE_KEY]: null };
+    const others = [...dropped]
+      .filter((id) => id !== resolved.token?.id)
+      .map((id) => [{ id }, unkey]);
+    return this._writeMorphemeMeta(
+      resolved,
+      'Failed to set morpheme type',
+      (target) => ({
+        // A cleared type is a delete op. A type chosen here is the person's, so
+        // the record that "=" set the type goes with it (R47).
+        patch: {
+          morphType: morphType ?? null,
+          ...(target?.metadata?.[EQUALS_TYPE_KEY] != null ? { [EQUALS_TYPE_KEY]: null } : {}),
+          ...(target && dropped.has(target.id) ? unkey : {}),
+          ...(this.editStamp(target?.metadata) || {}),
+        },
+        created: { morphType },
+      }),
+      others,
+    );
   },
 
   // One metadata change to one morpheme, shown at once: a patch of a real
   // token, or the creation of an unanalyzed word's morpheme carrying it.
   // `change(target)` answers `{ patch, created }`, the patch for a real token
   // (a null value deletes its key) and the metadata a new one is made with.
-  _writeMorphemeMeta(resolved, label, change) {
+  // `others` are `[morpheme, change]` pairs on its siblings that go in the
+  // same batch.
+  _writeMorphemeMeta(resolved, label, change, others = []) {
     if (!this._canWrite(label)) return false;
     if (resolved.virtual) {
       const { creates } = this._planMorphemes(
@@ -645,11 +652,21 @@ export const morphemeMutations = {
     const target = resolved.token;
     const { patch } = change(target);
     this._applyRawPatch((next, infoNext) => {
-      const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === target.id);
+      const layer = infoNext.morphemeTokenLayer;
+      const m = (layer?.tokens || []).find((x) => x.id === target.id);
       if (m) m.metadata = mergeMetadata(m.metadata, patch);
+      if (layer) applyChanges(layer, others);
     });
+    if (!others.length) {
+      return this._queueWrite(label, () =>
+        this._client.tokens.patchMetadata(settledId(target.id), metadataOps(patch)),
+      );
+    }
     return this._queueWrite(label, () =>
-      this._client.tokens.patchMetadata(settledId(target.id), metadataOps(patch)),
+      this._client.batched(async (b) => {
+        b.tokens.patchMetadata(settledId(target.id), metadataOps(patch));
+        sendChanges(b, others);
+      }),
     );
   },
 };

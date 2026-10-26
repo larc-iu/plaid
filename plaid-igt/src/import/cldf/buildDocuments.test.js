@@ -105,6 +105,34 @@ describe('buildCldfDocuments', () => {
     expect(affixed.morphemes.map((m) => m.morphType)).toEqual([null, null, null]);
   });
 
+  it('types "=" by the grid\'s rule and records each "=" as typing it does (REV-CLITIC CL-8)', () => {
+    const { documents } = buildCldfDocuments(
+      dataset(
+        'ID,Primary_Text,Analyzed_Word,Gloss\r\n1,abc xabc perros,a=b-c\tx-a=b-c\tperro=s,\r\n',
+        BASIC_COLUMNS,
+      ),
+    );
+    const [first, inner, last] = documents[0].words;
+    // the first piece before a "=" is the proclitic, an interior "=" types nothing
+    expect(first.morphemes.map((m) => m.morphType)).toEqual(['proclitic', null, null]);
+    expect(inner.morphemes.map((m) => m.morphType)).toEqual([null, null, null, null]);
+    expect(first.morphemes.map((m) => m.equals ?? {})).toEqual([
+      { morphTypeFromEquals: 'proclitic' },
+      { equalsBefore: true },
+      {},
+    ]);
+    expect(inner.morphemes.map((m) => m.equals ?? {})).toEqual([
+      {},
+      {},
+      { equalsBefore: true },
+      {},
+    ]);
+    expect(last.morphemes.map((m) => m.equals ?? {})).toEqual([
+      {},
+      { equalsBefore: true, morphTypeFromEquals: 'enclitic' },
+    ]);
+  });
+
   it("keeps a word's own gloss when a morpheme gloss cannot be split onto it", () => {
     const columns = [...BASIC_COLUMNS, col('Word_Gloss', null, { separator: '\t', null: [] })];
     const { documents, warnings } = buildCldfDocuments(

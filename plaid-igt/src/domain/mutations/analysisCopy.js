@@ -28,6 +28,7 @@ import {
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
+import { EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY } from './equalsRule.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // Entities per chunk. A chunk is one atomic batch, and the writes inside it go
@@ -37,9 +38,27 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 // the single SQLite write lock against other writers.
 const ANALYSIS_BATCH_BUDGET = 800;
 
+// The "=" records a slot of an analysis writes with it (R47): the key of a
+// "=" before it, and the rule's record while it names the type written.
+const equalsWritten = (slot) => {
+  const eq = slot.equals || {};
+  return {
+    ...(eq[EQUALS_BEFORE_KEY] ? { [EQUALS_BEFORE_KEY]: true } : {}),
+    ...(eq[EQUALS_TYPE_KEY] != null && eq[EQUALS_TYPE_KEY] === slot.morphType
+      ? { [EQUALS_TYPE_KEY]: eq[EQUALS_TYPE_KEY] }
+      : {}),
+  };
+};
+
 // The metadata ops that return a surviving default morpheme to a bare slot:
 // no form, no type, no provenance.
-const RESET_MORPHEME_OPS = ['form', 'morphType', ...PROVENANCE_KEYS].map((key) => ({
+const RESET_MORPHEME_OPS = [
+  'form',
+  'morphType',
+  EQUALS_TYPE_KEY,
+  EQUALS_BEFORE_KEY,
+  ...PROVENANCE_KEYS,
+].map((key) => ({
   op: 'delete',
   path: [key],
 }));
@@ -393,6 +412,7 @@ export const analysisCopyMutations = {
         const patch = {};
         if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
         if (s0.morphType != null) patch.morphType = s0.morphType;
+        Object.assign(patch, equalsWritten(s0));
         const merged = { ...patch, ...stampForm(s0.form) };
         if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
           if (word.create) word.create.metadata = { ...word.create.metadata, ...merged };
@@ -415,6 +435,7 @@ export const analysisCopyMutations = {
           metadata: {
             ...(slot.form != null ? { form: slot.form } : {}),
             ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
+            ...equalsWritten(slot),
             ...stampForm(slot.form),
           },
           links: [],

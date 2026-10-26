@@ -23,6 +23,12 @@
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { isTokenIgnored } from './igtConfig.js';
 import { pickMajority } from './precedent.js';
+import { equalsRecords } from './mutations/equalsRule.js';
+
+const recordsOf = (metadata) => {
+  const r = equalsRecords(metadata);
+  return Object.keys(r).length ? r : undefined;
+};
 
 export const ANALYSIS_COPY_SOURCE = 'rule:analysis-precedent';
 
@@ -100,6 +106,10 @@ export function extractAnalysis(token) {
       // else its own), which the cards and the tagset check read.
       morphType: m.metadata?.morphType ?? null,
       goesBy: m.morphType,
+      // The "=" rule's records (R47): a copy carries them with the type, so
+      // it changes under a later split as its source does. Absent when there
+      // are none.
+      equals: recordsOf(m.metadata),
       vocabItemId: null,
       fields: {},
     };
@@ -245,7 +255,7 @@ export function filterAnalysis(analysis, copy = {}) {
     // Keep the single morpheme as a carrier for its link/values, but drop the
     // form/morphType changes — those are segmentation-tier edits.
     const m = stripMorpheme(analysis.morphemes[0]);
-    morphemes = [{ ...m, form: null, morphType: null, goesBy: null }];
+    morphemes = [{ ...m, form: null, morphType: null, goesBy: null, equals: undefined }];
   } else {
     morphemes = [];
   }

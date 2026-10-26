@@ -334,7 +334,8 @@ export async function writeDocumentLayers({
 
 /**
  * A built document (the shape the CLDF and ELAN builds produce: `sentences[].fields`,
- * `words[].{begin, end, fields, morphemes}`, each morpheme `{form, morphType, fields}`)
+ * `words[].{begin, end, fields, morphemes}`, each morpheme `{form, morphType, fields}`, and
+ * `equals`, the "=" records the CLDF build gives a morpheme)
  * written through `writeDocumentLayers`.
  */
 export async function writeBuiltDocument({
@@ -371,6 +372,7 @@ export async function writeBuiltDocument({
         metadata: {
           ...(m.form != null ? { form: m.form } : {}),
           ...(m.morphType ? { morphType: m.morphType } : {}),
+          ...(m.equals || {}),
         },
         spans: spansOf('Morpheme', m.fields),
       })),

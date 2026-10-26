@@ -21,13 +21,19 @@ let host;
 let editor;
 
 // "kari", segmented ka + ri, ri linked to the entry `ri` when `linked`.
-function mount({ lexicon = true, linked = false, entryType = 'enclitic', own = {} } = {}) {
+function mount({
+  lexicon = true,
+  linked = false,
+  entryType = 'enclitic',
+  own = {},
+  own2 = {},
+} = {}) {
   const raw = buildRawDoc({
     body: 'kari',
     words: [{ id: 'w-1', begin: 0, end: 4 }],
     morphemes: [
       { id: 'm-1', begin: 0, end: 4, precedence: 1, metadata: { form: 'ka', ...own } },
-      { id: 'm-2', begin: 0, end: 4, precedence: 2, metadata: { form: 'ri' } },
+      { id: 'm-2', begin: 0, end: 4, precedence: 2, metadata: { form: 'ri', ...own2 } },
     ],
   });
   const client = makeFakeClient();
@@ -120,6 +126,35 @@ describe('the morpheme type control (R48)', () => {
     expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('suffix');
   });
 
+  it('on a morpheme linked to an untyped entry, shows and clears the morpheme’s own type (CL-3)', async () => {
+    const { doc, client } = mount({
+      linked: true,
+      entryType: null,
+      own2: { morphType: 'enclitic', morphTypeFromEquals: 'enclitic' },
+    });
+    openOn('m-2');
+    expect(popover().querySelector('.igt-vocab-pop__type option[selected]').value).toBe('enclitic');
+    expect(popover().querySelector('.igt-vocab-pop__type-note')).toBeNull();
+    choose('');
+    expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBeNull();
+    await settle(4);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
+    expect(client.calls.find((c) => c.kind === 'tokens.patchMetadata').args[0]).toBe('m-2');
+  });
+
+  it('on a morpheme linked to an untyped entry, sets the morpheme’s own type, not the entry’s', async () => {
+    const { doc, client } = mount({ linked: true, entryType: null });
+    openOn('m-2');
+    choose('suffix');
+    await settle(4);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
+    expect(client.calls.find((c) => c.kind === 'tokens.patchMetadata').args).toEqual([
+      'm-2',
+      [{ op: 'set', path: ['morphType'], value: 'suffix' }],
+    ]);
+    expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('suffix');
+  });
+
   it('says nothing of every use on an unlinked morpheme', () => {
     mount();
     openOn('m-1');
@@ -128,6 +163,10 @@ describe('the morpheme type control (R48)', () => {
 
   it('opens from a morpheme in a project with no lexicon', async () => {
     const { doc } = mount({ lexicon: false });
+    // a bare verb, as the other openers are (REV-CLITIC CL-7)
+    const opener = host.querySelector('button[data-vocab-opener="m-2"]');
+    expect(opener.textContent.trim()).toBe('set type');
+    expect(opener.title).toBe('Set morpheme type');
     openOn('m-2');
     expect(popover().querySelector('.igt-vocab-pop__type select')).not.toBeNull();
     choose('enclitic');

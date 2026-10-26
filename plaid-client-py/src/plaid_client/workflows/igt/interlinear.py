@@ -40,6 +40,10 @@ CLITIC_TYPE_BY_SIDE = {'left': 'proclitic', 'right': 'enclitic'}
 #: this names it.
 EQUALS_TYPE_KEY = 'morphTypeFromEquals'
 
+#: The key (True) on the morpheme after a typed "=" (plaid-igt's
+#: EQUALS_BEFORE_KEY): the grid reads the word's "=" boundaries off it.
+EQUALS_BEFORE_KEY = 'equalsBefore'
+
 
 def clitic_types(joiners, glosses):
     """morphType per piece of a chain (None = untyped) from its '=' boundaries.

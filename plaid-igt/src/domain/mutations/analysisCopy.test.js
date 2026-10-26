@@ -95,6 +95,8 @@ describe('bulkReplaceAnalyses', () => {
       expect.arrayContaining([
         { op: 'delete', path: ['form'] },
         { op: 'delete', path: ['morphType'] },
+        { op: 'delete', path: ['morphTypeFromEquals'] },
+        { op: 'delete', path: ['equalsBefore'] },
         { op: 'delete', path: ['prov'] },
       ]),
     );

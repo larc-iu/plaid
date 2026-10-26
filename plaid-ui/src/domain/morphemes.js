@@ -27,20 +27,22 @@ const HAIR_SPACE = '\u200A';
 
 /**
  * Which side of the joint between two adjacent morphemes holds the clitic
- * its "=" belongs to: 'left' | 'right', or null when the joint is "-". A
- * proclitic on the left or an enclitic on the right says so outright, and
- * failing that, whichever side is a clitic of another kind.
+ * its "=" belongs to: 'left' for a proclitic before a non-clitic, 'right' for
+ * an enclitic after one, else null (a "-", or a "=" whose clitic side is not
+ * plain, such as two clitics or an enclitic before a suffix).
  */
 export const cliticSideOfJoint = (prevMorphType, morphType) => {
-  if (!isClitic(prevMorphType) && !isClitic(morphType)) return null;
-  if (String(prevMorphType).toLowerCase() === 'proclitic') return 'left';
-  if (String(morphType).toLowerCase() === 'enclitic') return 'right';
-  return isClitic(prevMorphType) ? 'left' : 'right';
+  const prev = String(prevMorphType ?? '').toLowerCase();
+  const next = String(morphType ?? '').toLowerCase();
+  if (prev === 'proclitic' && !isClitic(morphType)) return 'left';
+  if (next === 'enclitic' && !isClitic(prevMorphType)) return 'right';
+  return null;
 };
 
 /**
  * The joint as a screen draws it (R49): "=" flush against its clitic with a
- * hair space toward the host ("ni= house", "house =ni"), "-" as it is. On
+ * hair space toward the host ("ni= house", "house =ni") where one side is
+ * plainly the clitic (cliticSideOfJoint), else the plain joint. On
  * screen only: copied and exported text keeps the plain Leipzig "="
  * (morphemeJoiner).
  */
@@ -48,7 +50,7 @@ export const shownMorphemeJoiner = (prevMorphType, morphType) => {
   const side = cliticSideOfJoint(prevMorphType, morphType);
   if (side === 'left') return `=${HAIR_SPACE}`;
   if (side === 'right') return `${HAIR_SPACE}=`;
-  return '-';
+  return morphemeJoiner(prevMorphType, morphType);
 };
 
 const isType = (t) => typeof t === 'string' && t !== '';

@@ -9,16 +9,18 @@ import {
   shownMorphemeJoiner,
   cliticSideOfJoint,
   joinMorphemes,
-  cliticSideOfBoundary,
   splitChainText,
 } from './affixMarkers.js';
 import { formatPlain, joinMorphemeTexts } from './igtExport.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
+  cliticSideOfBoundary,
   EQUALS_TYPE_KEY,
+  EQUALS_BEFORE_KEY,
   typedByEquals,
   equalsBoundaries,
-  equalsAfterSplit,
-  equalsAfterRemove,
   rereadEquals,
 } from './mutations/equalsRule.js';
 
@@ -59,8 +61,15 @@ describe('affix markers', () => {
     const HAIR = String.fromCodePoint(0x200a);
     expect(shownMorphemeJoiner('proclitic', 'stem')).toBe(`=${HAIR}`);
     expect(shownMorphemeJoiner('stem', 'enclitic')).toBe(`${HAIR}=`);
-    expect(shownMorphemeJoiner('clitic', 'stem')).toBe(`=${HAIR}`);
-    expect(shownMorphemeJoiner('stem', 'clitic')).toBe(`${HAIR}=`);
+    // only a proclitic before a non-clitic, or an enclitic after one, owns its
+    // "=": anything else draws it plain (REV-CLITIC CL-5)
+    expect(shownMorphemeJoiner('clitic', 'stem')).toBe('=');
+    expect(shownMorphemeJoiner('stem', 'clitic')).toBe('=');
+    expect(shownMorphemeJoiner('enclitic', 'suffix')).toBe('=');
+    expect(shownMorphemeJoiner('stem', 'proclitic')).toBe('=');
+    expect(shownMorphemeJoiner('proclitic', 'enclitic')).toBe('=');
+    expect(shownMorphemeJoiner('enclitic', 'enclitic')).toBe('=');
+    expect(cliticSideOfJoint('enclitic', 'suffix')).toBeNull();
     expect(shownMorphemeJoiner('stem', 'suffix')).toBe('-');
     expect(cliticSideOfJoint('stem', 'suffix')).toBeNull();
   });
@@ -146,14 +155,19 @@ describe('clitic side of a "=" boundary (R47)', () => {
     ).toBe('right');
   });
 
-  const piece = (morphType = null, fromEquals = null, entryType = null) => ({
+  // A piece of a chain: its own type, the type "=" set (the record), its
+  // entry's type, and whether a typed "=" stands before it.
+  const piece = (morphType = null, fromEquals = null, entryType = null, before = false) => ({
     metadata: {
       ...(morphType ? { morphType } : {}),
       ...(fromEquals ? { [EQUALS_TYPE_KEY]: fromEquals } : {}),
+      ...(before ? { [EQUALS_BEFORE_KEY]: true } : {}),
     },
     entryType,
   });
-  const eq = (t) => piece(t, t);
+  const eq = (t, before = false) => piece(t, t, null, before);
+  const after = (morphType = null) => piece(morphType, null, null, true);
+  const clear = { morphType: null, [EQUALS_TYPE_KEY]: null };
 
   it('a type counts as set by "=" only while the record names the type it holds', () => {
     expect(typedByEquals(eq('enclitic').metadata)).toBe(true);
@@ -164,60 +178,73 @@ describe('clitic side of a "=" boundary (R47)', () => {
     expect(typedByEquals(eq('enclitic').metadata, 'stem')).toBe(false);
   });
 
-  it('equalsBoundaries reads the boundaries "=" typed from the types it set', () => {
-    expect([...equalsBoundaries([piece(), eq('enclitic')])]).toEqual([0]);
-    expect([...equalsBoundaries([eq('proclitic'), piece(), piece()])]).toEqual([0]);
-    // a type a person chose, an import gave or an entry carries records no "="
+  it('equalsBoundaries reads the typed "=" off the morpheme after each, whatever the types', () => {
+    expect([...equalsBoundaries([piece(), after()])]).toEqual([0]);
+    expect([...equalsBoundaries([piece(), piece(), after(), piece()])]).toEqual([1]);
+    // a type alone records no "=", and a key on the first piece stands before nothing
     expect([...equalsBoundaries([piece('proclitic'), piece('enclitic')])]).toEqual([]);
-    expect([...equalsBoundaries([piece(), piece(null, null, 'enclitic')])]).toEqual([]);
+    expect([...equalsBoundaries([after(), piece()])]).toEqual([]);
   });
 
-  it('the boundaries move with a split, a merge and a delete', () => {
-    // a=b|c, b split in three with "-" and "=": a=b-x=y|c
-    expect([...equalsAfterSplit(new Set([0, 1]), 1, ['-', '='])].sort()).toEqual([0, 2, 3]);
-    // merging piece 1 into piece 0 takes the boundary between them
-    expect([...equalsAfterRemove(new Set([0, 2]), 1)]).toEqual([1]);
-    // deleting the first piece takes the boundary after it
-    expect([...equalsAfterRemove(new Set([0, 1]), 0)]).toEqual([0]);
-  });
-
-  it('rereadEquals moves a type "=" set to the side the rule names now', () => {
+  it('rereadEquals types the clitic side the rule names now and takes back what it set elsewhere', () => {
     // ni=house, then house split as house-PL: house loses enclitic, ni gets proclitic
-    expect(rereadEquals([piece(), eq('enclitic'), piece()], new Set([0]))).toEqual([
+    expect(rereadEquals([piece(), eq('enclitic', true), piece()])).toEqual([
       { morphType: 'proclitic', [EQUALS_TYPE_KEY]: 'proclitic' },
-      { morphType: null, [EQUALS_TYPE_KEY]: null },
+      clear,
       null,
     ]);
   });
 
-  it('rereadEquals drops a type "=" set when the boundary becomes interior', () => {
-    expect(rereadEquals([piece(), eq('proclitic'), piece(), piece()], new Set([1]))).toEqual([
+  it('an interior "=" types nothing but stays, and types again once it is outer', () => {
+    expect(rereadEquals([piece(), piece(), after(), piece()])).toEqual([null, null, null, null]);
+    expect(rereadEquals([piece(), piece(), after()])).toEqual([
       null,
-      { morphType: null, [EQUALS_TYPE_KEY]: null },
       null,
-      null,
+      { morphType: 'enclitic', [EQUALS_TYPE_KEY]: 'enclitic' },
     ]);
+  });
+
+  it('a blocked "=" stays and types its side once the side is free', () => {
+    // the clitic side has a chosen stem: nothing typed, the key stays
+    expect(rereadEquals([piece(), after('stem')])).toEqual([null, null]);
+    expect(rereadEquals([piece(), after()])).toEqual([
+      null,
+      { morphType: 'enclitic', [EQUALS_TYPE_KEY]: 'enclitic' },
+    ]);
+  });
+
+  it('rereadEquals takes away a key left on the first piece', () => {
+    expect(rereadEquals([after(), piece()])).toEqual([{ [EQUALS_BEFORE_KEY]: null }, null]);
   });
 
   it('rereadEquals never sets or clears a type it did not set', () => {
-    // a hand-set stem on the clitic side keeps it, and nothing else is typed
-    expect(rereadEquals([piece('stem'), piece(), piece()], new Set([0]))).toEqual([
-      null,
-      null,
-      null,
-    ]);
-    // a hand-set enclitic where the rule names no clitic stays
-    expect(rereadEquals([piece(), piece('enclitic'), piece()], new Set())).toEqual([
-      null,
-      null,
-      null,
-    ]);
-    // an entry's type is never written over
-    expect(rereadEquals([piece(), piece(null, null, 'stem')], new Set([0]))).toEqual([null, null]);
+    expect(rereadEquals([piece('stem'), after(), piece()])).toEqual([null, null, null]);
+    expect(rereadEquals([piece(), piece('enclitic'), piece()])).toEqual([null, null, null]);
+    expect(rereadEquals([piece(), piece(null, null, 'stem', true)])).toEqual([null, null]);
   });
 
   it('rereadEquals writes nothing when every type already stands', () => {
-    expect(rereadEquals([piece(), eq('enclitic')], new Set([0]))).toEqual([null, null]);
+    expect(rereadEquals([piece(), eq('enclitic', true)])).toEqual([null, null]);
+  });
+
+  it('agrees with the Python client on every chain of one to six pieces', () => {
+    const table = JSON.parse(
+      readFileSync(
+        join(
+          dirname(fileURLToPath(import.meta.url)),
+          '../../../plaid-client-py/tests/clitic_chains.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(Object.keys(table)).toHaveLength(63);
+    for (const [joints, types] of Object.entries(table)) {
+      const pieces = [piece(), ...[...joints].map((j) => (j === '=' ? after() : piece()))];
+      expect(
+        rereadEquals(pieces).map((c) => c?.morphType ?? null),
+        joints,
+      ).toEqual(types);
+    }
   });
 
   it('splitChainText keeps joiners and drops empty pieces', () => {

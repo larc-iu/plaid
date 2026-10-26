@@ -622,11 +622,11 @@ export const grid = {
         class="igt-vocab__opener igt-vocab__link"
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
-        title="Morpheme type"
-        aria-label=${`Type of ${formText ?? ''}`}
+        title="Set morpheme type"
+        aria-label=${`Set the type of ${formText ?? ''}`}
         @click=${openerClick}
       >
-        type
+        set type
       </button>`;
     }
     // A word's stack holds, between the word and its chip, one row per lane

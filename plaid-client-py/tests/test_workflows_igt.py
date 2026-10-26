@@ -369,6 +369,7 @@ def test_write_analyses_makes_the_first_morpheme_of_a_word_nobody_segmented():
     assert creates[0][3]['precedence'] == 1 and creates[0][3]['metadata']['form'] == 'ab'
     assert creates[0][3]['metadata']['morphType'] == 'stem'
     assert 'morphTypeFromEquals' not in creates[0][3]['metadata']  # a type "=" did not set
+    assert 'equalsBefore' not in creates[1][3]['metadata']
     glosses = [c for c in first if c[:2] == ('spans', 'create')]
     assert [g[2][:3] for g in glosses] == [('gloss-layer', [made], 'A'),
                                            ('gloss-layer', [creates[1][3]['id']], 'C')]
@@ -389,6 +390,8 @@ def test_write_analyses_records_the_types_equals_set():
     metas = [c[3]['metadata'] for c in creates]
     assert [m.get('morphType') for m in metas] == [None, 'enclitic']
     assert [m.get('morphTypeFromEquals') for m in metas] == [None, 'enclitic']
+    # and the typed "=" itself, on the morpheme after it (REV-CLITIC CL-1)
+    assert [m.get('equalsBefore') for m in metas] == [None, True]
 
 
 def test_write_analyses_puts_each_segment_probability_on_its_morpheme_and_gloss():
@@ -650,3 +653,15 @@ def test_a_derived_morpheme_goes_by_its_entry_s_type_and_its_first_valued_gloss(
     assert morph_type(w, linked) == 'suffix'
     assert gloss_of(w, linked, 'g') == {'value': 'and'}
     assert gloss_of(w, own, 'g') is None
+
+
+def test_clitic_types_agree_with_the_grid_on_every_short_chain():
+    """The table plaid-igt's affixMarkers.test.js reads too: the grid's rule
+    (rereadEquals) and this one give every chain of 1 to 6 pieces the same
+    types (R47)."""
+    import json
+    from pathlib import Path
+    table = json.loads((Path(__file__).parent / 'clitic_chains.json').read_text())
+    assert len(table) == 63
+    for joints, types in table.items():
+        assert clitic_types(list(joints), ['x'] * (len(joints) + 1)) == types, joints

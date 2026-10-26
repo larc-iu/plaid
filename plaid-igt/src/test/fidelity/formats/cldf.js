@@ -501,7 +501,7 @@ export default {
     'token.morphemeZero': carried,
     'token.morphTypeOnMorpheme': {
       carried: 'changed',
-      how: 'Only the joint survives. A morpheme comes back with morphType "enclitic" when it or the morpheme before it in its word had a clitic type (clitic, enclitic or proclitic, read from the linked entry when there is one, else from the token), and with no morphType otherwise. The first morpheme of a word never has one. The preset panel lists this loss (INHERENT_LOSSES).',
+      how: 'Only the joint survives. The export writes "=" between two morphemes when either had a clitic type (clitic, enclitic or proclitic, read from the linked entry when there is one, else from the token), and the import types the pieces as typing "=" in the grid does: the first piece before a "=" a proclitic, the last after one an enclitic, a two-piece word’s second an enclitic, an interior "=" neither, each "=" and each type it gave recorded in the metadata typing leaves. Every other morpheme comes back with no morphType. The preset panel lists this loss (INHERENT_LOSSES).',
     },
     'token.provenance': PROVENANCE_RULED,
     'token.wordsInOneRun': carried,
@@ -515,7 +515,7 @@ export default {
     'token.morphemeProvenance': PROVENANCE_RULED,
     'token.procliticBeforeMorpheme': {
       carried: 'changed',
-      how: 'The proclitic comes back with no morphType and the morpheme after it with morphType "enclitic", by the rule under token.morphTypeOnMorpheme.',
+      how: 'Comes back by the rule under token.morphTypeOnMorpheme: a proclitic first in its word stays a proclitic, the morpheme after it then has no morphType unless it is the last of two.',
     },
     'alignment.provenance': NO_SEGMENTS,
     'alignment.severalInSentence': NO_SEGMENTS,

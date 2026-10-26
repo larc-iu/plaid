@@ -8,6 +8,7 @@
     "plaid-igt/src/domain/fieldNames.js",
     "plaid-igt/src/domain/igtConfig.js",
     "plaid-igt/src/domain/mutations/analysisCopy.js",
+    "plaid-igt/src/domain/mutations/equalsRule.js",
     "plaid-igt/src/domain/mwe.js",
     "plaid-igt/src/domain/precedent.js",
     "plaid-igt/src/domain/tagsets.js",
