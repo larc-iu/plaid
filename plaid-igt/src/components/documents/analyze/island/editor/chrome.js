@@ -359,6 +359,13 @@ export const chrome = {
           >
         </div>
         <div class="igt-legend__row">
+          <strong>Spelling</strong>
+          <span
+            >${kbd('analyze.respell')} on a word to respell it · <kbd>↵</kbd> to save ·
+            <kbd>Esc</kbd> to cancel</span
+          >
+        </div>
+        <div class="igt-legend__row">
           <strong>Rows</strong>
           <span
             >click a row label (or <kbd>↵</kbd>/<kbd>Space</kbd> on it) to pick which rows show ·

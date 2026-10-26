@@ -308,7 +308,8 @@ describe('gathering words into a multi-word expression', () => {
     const rows = [...popover().querySelectorAll('.igt-vocab-pop__mwe')].map((r) =>
       r.textContent.replace(/\s+/g, ' ').trim(),
     );
-    expect(rows).toEqual(['In: sit down', 'Gather into a multi-word expression']);
+    // The word's own Respell row (R51) follows them.
+    expect(rows).toEqual(['In: sit down', 'Gather into a multi-word expression', 'Respell']);
     click(popover().querySelectorAll('.igt-vocab-pop__mwe')[1]);
     expect(popover()).toBeNull();
     expect(selectedForms()).toEqual(['w-3']);

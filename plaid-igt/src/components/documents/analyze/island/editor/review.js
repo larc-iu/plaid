@@ -461,6 +461,7 @@ export const review = {
       if (!hadPopover) this._clearMweSelection();
     }
     if (this.readOnly) return;
+    if (this._respellKey(e)) return;
     // Gathering words for a multi-word expression from a chip or a bracket
     // label. A cell runs the same keys through its own handler first.
     if (!e.igtMweSeen && this._mweKeydown(e)) return;

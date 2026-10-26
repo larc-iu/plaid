@@ -198,6 +198,19 @@ export const vocabPopover = {
         : html`<div class="igt-vocab-pop__empty" data-pop-autofocus tabindex="-1">
             Nothing else in this text is spelled “${formText}” and unanalyzed.
           </div>`}
+      ${kind === 'word' && this._canRespell(tokenId)
+        ? html`<button
+            type="button"
+            class="igt-vocab-pop__all"
+            title=${`Change the spelling of “${formText}” · ${keys.words('analyze.respell')}`}
+            @click=${(e) => {
+              e.stopPropagation();
+              this._openRespell(tokenId);
+            }}
+          >
+            Respell
+          </button>`
+        : nothing}
       ${kind === 'morpheme' ? this._morphTypeRow(tokenId, null) : nothing}
     </div>`;
   },
@@ -281,6 +294,15 @@ export const vocabPopover = {
           onSelect: () => this._startMweSelection(sentence.id, tokenId),
         });
       }
+    }
+    // A word's own spelling, changed in place (respell.js).
+    if (kind === 'word' && this._canRespell(tokenId)) {
+      extraRows.push({
+        kind: 'respell',
+        label: 'Respell',
+        title: `Change the spelling of “${formText}” · ${keys.words('analyze.respell')}`,
+        onSelect: () => this._openRespell(tokenId),
+      });
     }
     // Rows the keyboard can land on: every item, the create row, the extras.
     const total = limited.length + (canCreate ? 1 : 0) + extraRows.length;
@@ -626,9 +648,11 @@ export const vocabPopover = {
               r.onSelect();
             }}
           >
-            <svg viewBox="0 0 16 12" aria-hidden="true">
-              <path d="M1.5 3v6h13V3" stroke-width="1.2" stroke-linecap="round"></path>
-            </svg>
+            ${r.kind === 'respell'
+              ? nothing
+              : html`<svg viewBox="0 0 16 12" aria-hidden="true">
+                  <path d="M1.5 3v6h13V3" stroke-width="1.2" stroke-linecap="round"></path>
+                </svg>`}
             ${r.kind === 'in'
               ? html`<span class="igt-vocab-pop__mwe-in">In:</span> ${r.label}${numHtml(
                     r.sub,

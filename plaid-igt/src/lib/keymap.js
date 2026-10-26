@@ -97,6 +97,15 @@ export const KEY_ACTIONS = [
     keys: ['Alt+ArrowDown'],
   },
   {
+    // R51. F2 is rename in a file manager and edits a cell in a spreadsheet,
+    // and no system or window manager takes it. On a Mac keyboard it may need Fn.
+    id: 'analyze.respell',
+    scope: 'analyze',
+    group: 'analyze',
+    label: 'Respell the word',
+    keys: ['F2'],
+  },
+  {
     id: 'analyze.gatherLeft',
     scope: 'analyze',
     group: 'analyze',

@@ -78,6 +78,46 @@ export function applyDeleteToTokens(tokens, index, count) {
 }
 
 /**
+ * Token extents after replacing `length` code points at `index` with `value`,
+ * as plaid-core's `token-edit` reads a replace: a delete and an insert, except
+ * that a token covering the whole replaced range keeps it, resized (`kat` to
+ * `cat` keeps the word and everything on it), and a zero-width token at the
+ * range's end stays at the end. Combining marks `value` starts with are
+ * inserted first, joining the letter before. An empty value is a delete and a
+ * zero length an insert.
+ */
+export function applyReplaceToTokens(tokens, index, length, value) {
+  if (length === 0) {
+    return {
+      tokens: applyInsertToTokens(tokens, index, cpLength(value), leadingMarks(value)),
+      deletedIds: [],
+    };
+  }
+  if (value === '') return applyDeleteToTokens(tokens, index, length);
+  const marks = index > 0 ? leadingMarks(value) : 0;
+  if (marks > 0) {
+    const joined = applyInsertToTokens(tokens, index, marks, marks);
+    return applyReplaceToTokens(joined, index + marks, length, cpSlice(value, marks));
+  }
+  const ei = index + length;
+  const delta = cpLength(value) - length;
+  const kept = [];
+  const deletedIds = [];
+  for (const t of tokens) {
+    if (t.begin < t.end && t.begin <= index && ei <= t.end) {
+      kept.push({ ...t, end: t.end + delta });
+    } else if (t.begin === t.end && t.end === ei) {
+      kept.push({ ...t, begin: t.begin + delta, end: t.end + delta });
+    } else {
+      const del = applyDeleteToTokens([t], index, length);
+      if (del.deletedIds.length) deletedIds.push(t.id);
+      else kept.push(applyInsertToTokens(del.tokens, index, cpLength(value), 0)[0]);
+    }
+  }
+  return { tokens: kept, deletedIds };
+}
+
+/**
  * Stretch the surviving tokens of a partitioning layer back into a gapless
  * cover of a body `newLength` long: the first starts at 0, each one runs to the
  * next one's start, the last runs to the end. An empty layer stays empty (a
@@ -96,11 +136,13 @@ export function compensatePartition(tokens, newLength) {
 const applyOpToBody = (body, op) => {
   if (op.type === 'insert') return cpSlice(body, 0, op.index) + op.value + cpSlice(body, op.index);
   if (op.type === 'delete') return cpSlice(body, 0, op.index) + cpSlice(body, op.index + op.value);
+  if (op.type === 'replace')
+    return cpSlice(body, 0, op.index) + op.value + cpSlice(body, op.index + op.length);
   throw new Error(`Unsupported local text edit: ${op.type}`);
 };
 
 /**
- * Apply `ops` (insert / delete, as sent to `texts.update`) to the raw document
+ * Apply `ops` (insert / delete / replace, as sent to `texts.update`) to the raw document
  * in place: the body, every token layer of that text, every span pinned to a
  * token that went away, and every vocab link on such a token. Returns the ids
  * of the deleted tokens. `vocabs` is the `{ [vocabId]: { vocabLinks } }` table
@@ -124,6 +166,10 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
           cpLength(op.value),
           leadingMarks(op.value),
         );
+      } else if (op.type === 'replace') {
+        const result = applyReplaceToTokens(tokens, op.index, op.length, op.value);
+        layer.tokens = result.tokens;
+        for (const id of result.deletedIds) deletedIds.push(id);
       } else {
         const result = applyDeleteToTokens(tokens, op.index, op.value);
         layer.tokens = result.tokens;

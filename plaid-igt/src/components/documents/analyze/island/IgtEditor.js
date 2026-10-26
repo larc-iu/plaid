@@ -48,6 +48,7 @@ import { grid } from './editor/grid.js';
 import { vocabPopover } from './editor/vocabPopover.js';
 import { pairPicker } from './editor/pairPicker.js';
 import { conflicts } from './editor/conflicts.js';
+import { respell } from './editor/respell.js';
 import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.js';
 import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
@@ -415,6 +416,7 @@ export class IgtEditor {
     this.readOnly = ro;
     // Close any open popover, its openers are disabled in read-only mode.
     this._resetPopover();
+    this._respell = null;
     this._mweSel = null;
     this._render(true);
   }
@@ -895,6 +897,7 @@ Object.assign(
   pairPicker,
   telemetry,
   conflicts,
+  respell,
 );
 
 // ---------------------------------------------------------------------------

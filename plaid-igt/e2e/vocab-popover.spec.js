@@ -355,9 +355,12 @@ test('B3-01/04: arrows move the highlight and clamp; Tab stays in the search box
   for (let i = 1; i < n; i++) await page.keyboard.press('ArrowDown', { delay: 10 });
   await expect(createRow(page)).toHaveClass(/is-active/);
   // Below the create row a word's popover offers the multi-word expression
-  // row; the highlight clamps on that last row.
+  // row, then Respell (R51); the highlight clamps on that last row.
+  await expect(page.locator('.igt-vocab-pop__mwe').first()).toHaveText(
+    'Gather into a multi-word expression',
+  );
   const mweRow = page.locator('.igt-vocab-pop__mwe').last();
-  await expect(mweRow).toHaveText('Gather into a multi-word expression');
+  await expect(mweRow).toHaveText('Respell');
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
   await expect(mweRow).toHaveClass(/is-active/);
   await expect(createRow(page)).not.toHaveClass(/is-active/);

@@ -107,7 +107,7 @@ export const grid = {
           }}
           @click=${(e) => this._onWordFormClick(e, sctx.sentence, token)}
         >
-          ${this._vocabFace(token.content, {
+          ${this._vocabFace(this._respellFace(token) ?? token.content, {
             id: token.id,
             vocabItem: token.vocabItem,
             formText: token.content,

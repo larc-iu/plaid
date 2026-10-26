@@ -39,6 +39,8 @@ import {
   metadataOps,
   createdId,
   createdIds,
+  wasReplayed,
+  FORM_PROBS_KEY,
 } from '@larc-iu/plaid-client';
 import {
   newHalfMetadata,
@@ -48,7 +50,11 @@ import {
 } from '../tokenReshape.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { applyMergeRules } from '../igtConstraints.js';
-import { removeTokensLocally } from '../textEdits.js';
+import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
+import { RESPELL_UNCHANGED, respellOps, respellRefusal, respelling } from '../respell.js';
+import { soleForms } from '../soleMorphemeForms.js';
+import { applyReshape } from '@ui/domain/textReshape.js';
+import { reshapeVocabLinks } from './document.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { builtinRun } from '../builtinVersion.js';
@@ -120,6 +126,110 @@ export const tokenMutations = {
     return this._queueWrite(label, () =>
       this._client.tokens.patchMetadata(settledId(tokenId), ops),
     );
+  },
+
+  // Respell one word in place (R51, Luke 2026-10-26): the text write Bulk
+  // Edit's Respell words sends, for one word, one whole-word replace op
+  // (respell.js) with the digest of the text it was made on. The server keeps
+  // the word's token, and with it its morphemes, glosses, links, expressions
+  // and comments. A word's sole morpheme whose stored form spells the word
+  // follows it in the same batch (H17, as a Baseline save), stamped as Bulk
+  // Edit stamps a form. Every other morpheme form is left as it is: a form
+  // with no `form` key reads the word already. Refused (`refuse`) as the box
+  // refuses it (respellRefusal), and a spelling that is the word's own sends
+  // nothing. A text changed since is read again and respelled when the word
+  // still reads as it did, else refused, as Bulk Edit's replan does.
+  async respellWord(tokenId, typed) {
+    const info = this.layerInfo;
+    const textId = info.primaryTextLayer?.text?.id;
+    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    if (!textId || !word) return this.refuse('Word not found');
+    const old = cpSlice(this.body, word.begin, word.end);
+    const refusal = respellRefusal(old, typed);
+    if (refusal === RESPELL_UNCHANGED) return true;
+    if (refusal) return this.refuse(refusal);
+    const value = respelling(typed);
+    const label = 'Failed to respell';
+    if (!this._canWrite(label)) return false;
+    const sole = soleForms(info, this.body).get(tokenId) ?? null;
+    const morpheme = sole
+      ? (info.morphemeTokenLayer?.tokens || []).find((m) => m.id === sole.morphemeId)
+      : null;
+    const formOps = morpheme
+      ? [
+          { op: 'set', path: ['form'], value },
+          ...metadataOps(
+            this.valueEditStamp(morpheme.metadata, { value, probsKey: FORM_PROBS_KEY }) || {},
+          ),
+        ]
+      : null;
+    const planned = this._plannedText();
+    const show = (ops) => (next, infoNext, vocabs) => {
+      applyTextEditsLocally(next, textId, ops, vocabs);
+      if (!formOps) return;
+      const m = (infoNext.morphemeTokenLayer?.tokens || []).find(
+        (x) => settledId(x.id) === settledId(morpheme.id),
+      );
+      if (m) m.metadata = applyMetadataOps(m.metadata, formOps);
+    };
+    // A respell never goes without the digest of the text it was made on.
+    const send = (ops) => (base) => {
+      if (!base)
+        throw new Error('The saved text could not be read. Reload the page and respell again.');
+      return this._client.batched(async (b) => {
+        b.texts.update(textId, ops, undefined, { base, versioned: true });
+        if (formOps) b.tokens.bulkUpdate([{ id: settledId(morpheme.id), metadata: formOps }]);
+      });
+    };
+    const opsOn = (w) => respellOps([{ begin: w.begin, end: w.end, new: value }]);
+    const ops = opsOn(word);
+    this._applyRawPatch(show(ops));
+    const state = { planned, send: send(ops) };
+    const wordIn = (fresh) =>
+      (fresh.primaryTokenLayer?.tokens || []).find((t) => settledId(t.id) === settledId(tokenId));
+    const reads = (fresh, w) => cpSlice(fresh.primaryTextLayer?.text?.body ?? '', w.begin, w.end);
+    const write = async () => {
+      const results = await this._sendOverSegmentText(state, {
+        replan: (fresh, updated) => {
+          const w = wordIn(fresh);
+          if (!w || reads(fresh, w) !== old) {
+            return {
+              refusal: Object.assign(new Error(`“${old}” was changed elsewhere. Not respelled.`), {
+                status: 409,
+                changedElsewhere: true,
+                notice: true,
+              }),
+            };
+          }
+          const again = opsOn(w);
+          return { send: send(again), show: () => this._showRead(updated, show(again)) };
+        },
+        landed: (fresh) => {
+          const w = wordIn(fresh);
+          return !!w && reads(fresh, w) === value;
+        },
+        readOnRefusal: true,
+      });
+      if (!results) return; // found stored already
+      const answer = results?.[0]?.body;
+      this._heardText(textId, answer);
+      const text = this.layerInfo.primaryTextLayer?.text;
+      if (
+        state.again ||
+        wasReplayed(results) ||
+        !answer?.reshape ||
+        this._queuedBehind() ||
+        text?.body !== answer.body
+      ) {
+        this._reloadOnceDrained();
+        return;
+      }
+      this._applyRawPatch((next, infoNext, vocabs) => {
+        Object.assign(next, applyReshape(next, textId, answer));
+        reshapeVocabLinks(vocabs, answer.reshape);
+      });
+    };
+    return this._queueWrite(label, write, `Respell ${old} → ${value}`);
   },
 
   // Split a word token at `splitOffset` (relative to token.begin). Wipes any

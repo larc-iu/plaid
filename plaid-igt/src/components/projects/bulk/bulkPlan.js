@@ -186,7 +186,8 @@ export function collectLexiconRows(vocabularies, apply, canRespellIn = () => tru
   return rows;
 }
 
-// Text edit directives for one text's selected respell rows (domain/respell.js).
+// Text edit directives for one text's selected respell rows, shared with
+// the Analyze grid's Respell (domain/respell.js).
 export { respellOps } from '../../../domain/respell.js';
 
 // ---- field ------------------------------------------------------------------

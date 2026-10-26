@@ -2165,3 +2165,43 @@
 .igt-field--smallcaps:not(:focus) {
   font-feature-settings: 'c2sc';
 }
+
+/* Respell (R51): the box over a word while its spelling is edited, in the
+   word's own type, and the refusal under it. */
+.igt-respell {
+  position: relative;
+  display: inline-flex;
+}
+.igt-respell__box {
+  font: inherit;
+  font-family: var(--plaid-font-text);
+  font-weight: 600;
+  text-align: center;
+  padding: 1px 4px;
+  min-width: 3ch;
+  color: inherit;
+  background: var(--igt-surface);
+  border: 1px solid var(--igt-ring);
+  border-radius: 4px;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--igt-ring) 30%, transparent);
+}
+.igt-respell__box[aria-invalid='true'] {
+  border-color: var(--igt-warning);
+}
+.igt-respell__note {
+  position: absolute;
+  top: calc(100% + 4px);
+  /* Centred under the box, which reads the same either way. */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--igt-warning);
+  background: var(--igt-popover);
+  border: 1px solid var(--igt-line);
+}
