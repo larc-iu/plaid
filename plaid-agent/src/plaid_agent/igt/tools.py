@@ -15,7 +15,8 @@ from typing import Any, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
 from plaid_client.workflows.igt.config import orthography_key
-from plaid_client.workflows.igt.interlinear import equals_of_clitic
+from plaid_client.workflows.igt.interlinear import clitic_types, equals_of_clitic
+from plaid_client.workflows.igt.glossing import is_clitic
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
@@ -250,6 +251,7 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
         seen.add(w.id)
         refuse_shape_and_analysis(ws, w.id, r, analysing=True)
         out = parse_analysis(ws, item.get('morphemes'))
+        stage_equals(w, out)
         # A derived morpheme (an unsegmented word's) is stored nowhere, so
         # there is nothing for the analysis to keep or delete.
         existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes
@@ -356,8 +358,33 @@ def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
                 raise ToolError(f'"{f.name}" is a {f.scope} field, not a morpheme field; use set_field for it',
                                 kind='invalid-argument')
             fvals.append({'layer_id': f.layer_id, 'value': '' if val is None else unmark(str(val), f.name)})
-        out.append({'form': m['form'].strip(), 'morph_type': m.get('type') or None, 'fields': fvals})
+        out.append({'form': m['form'].strip(), 'morph_type': m.get('type') or None, 'fields': fvals,
+                    **({'equals': m['equals']} if isinstance(m.get('equals'), bool) else {})})
     return out
+
+
+def stage_equals(w: Word, out: List[Dict[str, Any]]) -> None:
+    """The typed "=" of a set_analysis (REV-CLITIC CL-12), as the grid keeps
+    them: a morpheme's ``equals`` states one before it, and without it the
+    morpheme keeps the "=" the word's chain had at the same place (the forms
+    before it the same). The pieces nobody typed are then typed by the grid's
+    rule (``clitic_types``), with its record."""
+    kept, prefix = set(), ''
+    for x in w.morphemes:
+        if not x.virtual and x.equals_before and prefix:
+            kept.add(prefix)
+        prefix += x.form or ''
+    befores, prefix = [], ''
+    for j, m in enumerate(out):
+        stated = m.pop('equals', None)
+        befores.append(j > 0 and (stated if stated is not None else prefix in kept))
+        prefix += m['form']
+    types = clitic_types(['=' if b else '-' for b in befores[1:]], [m['form'] for m in out])
+    for m, before, rule in zip(out, befores, types):
+        if before:
+            m['equals_before'] = True
+        if rule and not m.get('morph_type'):
+            m['morph_type'] = m['type_from_equals'] = rule
 
 
 def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: str, begin: int, end: int,
@@ -370,12 +397,13 @@ def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: s
     else:
         note = ''
     types = [m.get('morph_type') for m in out]
-    desc = join_morphemes(list(zip([m['form'] for m in out], types)))
+    befores = [m.get('equals_before') is True for m in out]
+    desc = join_morphemes(list(zip([m['form'] for m in out], types, befores)))
     gloss_bits = []
     for f in ws.project.fields_by_scope('Morpheme'):
         vals = [next((fv['value'] for fv in m['fields'] if fv['layer_id'] == f.layer_id), '_') for m in out]
         if any(v not in ('', '_') for v in vals):
-            gloss_bits.append(f'{f.name} {join_morphemes(list(zip([v or "_" for v in vals], types)))}')
+            gloss_bits.append(f'{f.name} {join_morphemes(list(zip([v or "_" for v in vals], types, befores)))}')
     op = {'kind': 'set_analysis', 'word_id': word_id, 'text_id': text_id, 'begin': begin, 'end': end,
           'morpheme_layer_id': ws.project.morpheme_layer_id, 'existing': existing, 'morphemes': out,
           **labelled(head, (f'{current_seg} → ' if current_seg else '')
@@ -1198,12 +1226,16 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
                          'morpheme type ' + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ')
                          + (qv(t) if t else '(cleared)'))}
         if t is None:
-            # As the grid's clear does (R47): the "=" that types this
-            # morpheme goes with its type.
-            taken = equals_of_clitic([x.equals_before for x in w.morphemes],
-                                     next(i for i, x in enumerate(w.morphemes) if x.id == m.id))
-            if taken:
+            # As the grid's clear does (R47, REV-CLITIC CL-9): clearing a
+            # clitic's type takes back the "=" that types it, and clearing any
+            # other type keeps the "=", which then types this morpheme.
+            k = next(i for i, x in enumerate(w.morphemes) if x.id == m.id)
+            taken = equals_of_clitic([x.equals_before for x in w.morphemes], k)
+            if taken and is_clitic(m.morph_type):
                 op['equals_taken'] = [w.morphemes[j].id for j in taken]
+            elif taken:
+                op['equals_type'] = 'proclitic' if taken[0] - 1 == k else 'enclitic'
+                op['label'] += f' (its "=" makes it {op["equals_type"]})'
         if t != (m.morph_type or None):
             staged.append(op)
         elif (at := ws.replacing(op)) is not None:

@@ -75,6 +75,8 @@ _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.'}
 _MORPHEMES = {'type': 'array', 'items': {'type': 'object', 'properties': {
     'form': {'type': 'string'}, 'type': {'type': 'string'},
+    'equals': {'type': 'boolean', 'description': 'A "=" before this morpheme (true) or not (false). '
+               'Left out, a "=" the word has there now is kept.'},
     'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}}, 'required': ['form']}}
 
 TOOLS = [

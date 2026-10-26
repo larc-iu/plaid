@@ -19,7 +19,7 @@ import {
   createdId,
   FORM_PROBS_KEY,
 } from '@larc-iu/plaid-client';
-import { isValidMorphType } from '../affixMarkers.js';
+import { isClitic, isValidMorphType } from '../affixMarkers.js';
 import { EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY, rereadEquals, equalsOfClitic } from './equalsRule.js';
 import { isZeroMorph } from '../zeroMorph.js';
 import { removeTokensLocally } from '../textEdits.js';
@@ -597,20 +597,39 @@ export const morphemeMutations = {
     if (resolved.virtual && morphType == null) return true;
     // Clearing a clitic's type takes back the "=" that typed it, so the rule
     // types it no more: the key on this morpheme (an enclitic's "=") or on
-    // the one after it (a proclitic's).
+    // the one after it (a proclitic's). Clearing any other type keeps the
+    // "=", and the rule is read again over the word, so a "=" the cleared
+    // type blocked types this morpheme at once (REV-CLITIC CL-9).
     const dropped = new Set();
+    const unkey = { [EQUALS_BEFORE_KEY]: null };
+    let changes = [];
+    let siblings = [];
     if (!resolved.virtual && morphType == null) {
-      const siblings = sortByPrecedence(
+      siblings = sortByPrecedence(
         morphemesInWord(this.layerInfo.morphemeTokenLayer.tokens, resolved.token),
       );
       const k = siblings.findIndex((m) => m.id === resolved.token.id);
-      const pieces = siblings.map((m) => ({ metadata: m.metadata }));
-      equalsOfClitic(pieces, k).forEach((j) => dropped.add(siblings[j].id));
+      if (isClitic(resolved.token.metadata?.morphType)) {
+        const pieces = siblings.map((m) => ({ metadata: m.metadata }));
+        equalsOfClitic(pieces, k).forEach((j) => dropped.add(siblings[j].id));
+      }
+      const after = (m) => {
+        const md = { ...(m.metadata || {}) };
+        if (dropped.has(m.id)) delete md[EQUALS_BEFORE_KEY];
+        if (m.id === resolved.token.id) {
+          delete md.morphType;
+          delete md[EQUALS_TYPE_KEY];
+        }
+        return { ...m, metadata: md };
+      };
+      changes = this._equalsChanges(siblings.map(after));
     }
-    const unkey = { [EQUALS_BEFORE_KEY]: null };
-    const others = [...dropped]
+    const changeOf = (id) => changes[siblings.findIndex((m) => m.id === id)] || {};
+    const others = [
+      ...new Set([...dropped, ...siblings.filter((m, j) => changes[j]).map((m) => m.id)]),
+    ]
       .filter((id) => id !== resolved.token?.id)
-      .map((id) => [{ id }, unkey]);
+      .map((id) => [{ id }, { ...(dropped.has(id) ? unkey : {}), ...changeOf(id) }]);
     return this._writeMorphemeMeta(
       resolved,
       'Failed to set morpheme type',
@@ -621,6 +640,7 @@ export const morphemeMutations = {
           morphType: morphType ?? null,
           ...(target?.metadata?.[EQUALS_TYPE_KEY] != null ? { [EQUALS_TYPE_KEY]: null } : {}),
           ...(target && dropped.has(target.id) ? unkey : {}),
+          ...(target ? changeOf(target.id) : {}),
           ...(this.editStamp(target?.metadata) || {}),
         },
         created: { morphType },

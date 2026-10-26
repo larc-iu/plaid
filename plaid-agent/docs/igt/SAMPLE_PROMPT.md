@@ -168,8 +168,8 @@ PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morpheme
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string): The word, sN.wN.
-- `morphemes` (array of object {form: string (required), type: string, fields: object of string})
-- `analyses` (array of object {ref: string (required), morphemes: array of object {form: string (required), type: string, fields: object of string} (required)}): Several words at once: [{ref, morphemes}, ...].
+- `morphemes` (array of object {form: string (required), type: string, equals: boolean, fields: object of string})
+- `analyses` (array of object {ref: string (required), morphemes: array of object {form: string (required), type: string, equals: boolean, fields: object of string} (required)}): Several words at once: [{ref, morphemes}, ...].
 
 ### set_morpheme
 

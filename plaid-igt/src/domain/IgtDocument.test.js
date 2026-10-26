@@ -3,7 +3,7 @@ import { applyMetadataOps, metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import { clearSentencesFits, TOO_MANY_SENTENCES } from './mutations/sentences.js';
-import { extractAnalysis } from './analysisMemory.js';
+import { extractAnalysis, analysisSignature } from './analysisMemory.js';
 
 // Build a doc wired to a fake client. `raw`/`project`/`vocabularies` overridable.
 function makeDoc({ raw, project, vocabularies, client } = {}) {
@@ -730,6 +730,58 @@ describe('morpheme structural ops', () => {
         expect(state(1), copy).toEqual(state(0));
         expect(state(0).map((m) => m[1])).toEqual(['proclitic', null, null]);
       }
+    });
+
+    it('an analysis with a "=" is not the same analysis without it (CL-11)', async () => {
+      resetIds();
+      const doc = makeDoc({
+        raw: buildRawDoc({
+          words: [
+            { id: 'w-1', begin: 0, end: 4 },
+            { id: 'w-2', begin: 5, end: 9 },
+          ],
+          morphemes: [],
+          body: 'xabc xabc',
+        }),
+      });
+      const w = (i) => doc.sentences[0].tokens[i];
+      await doc.splitMorphemeMulti(w(0).morphemes[0].id, ['x', 'a', 'b', 'c'], {
+        joiners: ['-', '=', '-'],
+      });
+      await doc.splitMorphemeMulti(w(1).morphemes[0].id, ['x', 'a', 'b', 'c'], {
+        joiners: ['-', '-', '-'],
+      });
+      const a = extractAnalysis(w(0));
+      expect(analysisSignature(a)).not.toBe(analysisSignature(extractAnalysis(w(1))));
+      expect(await doc.bulkReplaceAnalyses([{ wordTokenId: 'w-2', analysis: a }])).toBe(1);
+      expect(keys(doc)).toEqual([false, false, true, false]);
+      expect(w(1).morphemes.map((m) => m.metadata.equalsBefore === true)).toEqual([
+        false,
+        false,
+        true,
+        false,
+      ]);
+    });
+
+    it('clearing a type that is no clitic keeps the "=" and frees its side at once (CL-9)', async () => {
+      const doc = oneWord();
+      await doc.setMorphemeType('m-1', 'stem');
+      await doc.splitMorphemeMulti('m-1', ['ni', 'house', 'PL'], { joiners: ['=', '-'] });
+      // ni keeps its stem, so the "=" before house is recorded but types nothing
+      expect(chain(doc).map((m) => m[1])).toEqual(['stem', null, null]);
+      doc.client.calls.length = 0;
+      await doc.setMorphemeType('m-1', null);
+      expect(keys(doc)).toEqual([false, true, false]);
+      expect(chain(doc)[0]).toEqual(['ni', 'proclitic', 'proclitic']);
+      // one write, the rule's type in the clear's own patch
+      const patches = doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+      expect(patches).toHaveLength(1);
+      expect(patches[0].args[1]).toEqual(
+        expect.arrayContaining([
+          { op: 'set', path: ['morphType'], value: 'proclitic' },
+          { op: 'set', path: ['morphTypeFromEquals'], value: 'proclitic' },
+        ]),
+      );
     });
 
     it('clearing the type of a clitic "=" typed takes the "=" back', async () => {

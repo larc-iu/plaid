@@ -187,22 +187,30 @@ function morphemesStatus(morphemes, options) {
   return guessStatus(states);
 }
 
-function morphXml(indent, m, options, lex, first) {
+// A morph's txt as FLEx writes it, with the "=" typed before it
+// (`typedBefore`) as its leading marker.
+const morphTxt = (m, typedBefore) =>
+  decorateWithAffixMarkers(m?.morphType ?? null, morphFormOf(m), { equalsBefore: typedBefore });
+
+// Whether a "=" typed before each morph of a word is written in front of it:
+// not before the first, and not where the morph before already ends in "="
+// (a proclitic), so the boundary is written once (REV-CLITIC CL-10).
+const typedBeforeEach = (morphemes) => {
+  let prev = '';
+  return morphemes.map((m, i) => {
+    const typed = i > 0 && equalsBefore(m?.metadata) && !String(prev ?? '').endsWith('=');
+    prev = morphTxt(m, typed);
+    return typed;
+  });
+};
+
+function morphXml(indent, m, options, lex, typedBefore) {
   const morphType = m?.morphType ?? null;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
   // Decorated, because that is what FLEx writes in its own export and what its
   // allomorph lookup compares against.
-  lines.push(
-    ...item(
-      `${indent}  `,
-      'txt',
-      baselineLang(options),
-      decorateWithAffixMarkers(morphType, morphFormOf(m), {
-        equalsBefore: !first && equalsBefore(m?.metadata),
-      }),
-    ),
-  );
+  lines.push(...item(`${indent}  `, 'txt', baselineLang(options), morphTxt(m, typedBefore)));
   if (options?.citationForms && m?.vocabItem) {
     // FLEx matches <item type="cf"> against the entry's LEXEME form, decorated
     // with its affix markers. BIRDInterlinearImporter.cs is explicit about it:
@@ -226,7 +234,10 @@ function morphXml(indent, m, options, lex, first) {
         `${indent}  `,
         'cf',
         baselineLang(options),
-        decorateWithAffixMarkers(entry.morphType ?? meta.morphType ?? morphType, lexeme),
+        // With the typed "=" txt writes, so the two agree.
+        decorateWithAffixMarkers(entry.morphType ?? meta.morphType ?? morphType, lexeme, {
+          equalsBefore: typedBefore,
+        }),
       ),
     );
     // Narrows the match when entries share a lexeme form. FLEx reads a missing
@@ -274,7 +285,10 @@ function wordXml(indent, token, options, lex) {
   if (morphemes.length) {
     const status = morphemesStatus(morphemes, options);
     lines.push(`${indent}  <morphemes${status ? ` analysisStatus="${status}"` : ''}>`);
-    morphemes.forEach((m, i) => lines.push(...morphXml(`${indent}    `, m, options, lex, i === 0)));
+    const typed = typedBeforeEach(morphemes);
+    morphemes.forEach((m, i) =>
+      lines.push(...morphXml(`${indent}    `, m, options, lex, typed[i])),
+    );
     lines.push(`${indent}  </morphemes>`);
   }
   lines.push(`${indent}</word>`);

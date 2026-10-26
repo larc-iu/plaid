@@ -283,7 +283,8 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         slots = [m0['id']]
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
             mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'),
-                               EQUALS_TYPE_KEY: None, **ctx.restamp()})))
+                               EQUALS_TYPE_KEY: f.get('type_from_equals'), EQUALS_BEFORE_KEY: None,
+                               **ctx.restamp()})))
         # Keep the chain's numbering contiguous from 1 whatever the
         # first morpheme's precedence was before.
         b.add(lambda batch, mid=m0['id']: batch.tokens.update(mid, precedence=1))
@@ -299,6 +300,11 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         meta = {'form': m['form'], **ctx.stamp()}
         if m.get('morph_type'):
             meta['morphType'] = m['morph_type']
+        # A typed "=" before it, and the type the grid's rule gives (R47).
+        if m.get('equals_before'):
+            meta[EQUALS_BEFORE_KEY] = True
+        if m.get('type_from_equals'):
+            meta[EQUALS_TYPE_KEY] = m['type_from_equals']
         made = b.new_id()
         b.add(lambda batch, j=j, meta=meta, i=made: batch.tokens.create(
             layer, text_id, begin, end, precedence=j + 1, metadata=meta, id=i))
@@ -398,14 +404,15 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
     # the editor's setMorphemeType stamps it: the approved type is reviewed
     # work, and a re-analysis without Overwrite leaves it alone. A type set
     # here is chosen, so the grid's record that "=" set one goes (R47).
-    morph_type = op.get('morph_type') or None
+    # A clear the morpheme's "=" types again (CL-9) writes the rule's type.
+    morph_type = op.get('equals_type') or op.get('morph_type') or None
     mid = op['morpheme_id']
     if is_virtual(mid) and mid not in ctx.materialized:
         _token(ctx, op, mid, {'morphType': morph_type} if morph_type else None)
         return 1
     taken = op.get('equals_taken') or []
     ctx.b.update('tokens', _token(ctx, op, mid),
-                 metadata=metadata_ops({'morphType': morph_type, EQUALS_TYPE_KEY: None,
+                 metadata=metadata_ops({'morphType': morph_type, EQUALS_TYPE_KEY: op.get('equals_type'),
                                         **({EQUALS_BEFORE_KEY: None} if mid in taken else {}),
                                         **ctx.restamp()}))
     for other in taken:

@@ -453,6 +453,19 @@ async function buildStory(ctx) {
       joiners: ['-', '=', '-'],
     }),
   );
+  // A proclitic typed with "=" (REV-CLITIC CL-10): F proclitic by the rule,
+  // the key on i, and i linked to a stem, so the flextext export writes the
+  // "=" once, on the proclitic, with i's txt and cf alike.
+  doc = await reload(client, projectId, docId);
+  await must(
+    doc,
+    'segment Fin with a proclitic =',
+    doc.splitMorphemeMulti(word(doc, 'Fin').morphemes[0].id, ['F', 'i', 'n'], {
+      joiners: ['=', '-'],
+    }),
+  );
+  doc = await reload(client, projectId, docId);
+  await must(doc, 'link the host of F=', doc.linkVocab(word(doc, 'Fin').morphemes[1].id, e.casa));
   doc = await reload(client, projectId, docId);
   await must(doc, 'segment parar∅', doc.createMorphemes(word(doc, 'parar∅').id, ['parar', '∅']));
   doc = await reload(client, projectId, docId);

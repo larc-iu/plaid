@@ -170,6 +170,55 @@ describe('buildFlextextDocument', () => {
     expect(morphs[1].querySelector('item[type="gls"]').textContent).toBe('PL');
   });
 
+  // A typed "=" (metadata.equalsBefore) is written once (REV-CLITIC CL-10): in
+  // front of the morph after it, unless the morph before already ends in "=",
+  // and the same in txt and cf so FLEx matches the allomorph.
+  const chain = (morphemes) => {
+    const doc = makeFixtureDoc();
+    const w = doc.sortedSentences[0].pieces[0];
+    w.content = morphemes.map((m) => m.metadata.form).join('');
+    w.morphemes = morphemes.map((m) => ({ annotations: {}, vocabItem: null, ...m }));
+    const dom = parse(buildFlextextDocument([doc], { ...FLEXTEXT_OPTIONS, citationForms: true }));
+    return [...dom.querySelectorAll('word')][0].querySelectorAll('morph');
+  };
+  const items = (morphs, type) =>
+    [...morphs].map((m) => m.querySelector(`item[type="${type}"]`)?.textContent ?? null);
+
+  it('writes a proclitic\'s "=" once, on the proclitic, with txt and cf agreeing', () => {
+    const morphs = chain([
+      {
+        id: 'a',
+        metadata: { form: 'ni', morphType: 'proclitic', morphTypeFromEquals: 'proclitic' },
+        morphType: 'proclitic',
+      },
+      {
+        id: 'b',
+        metadata: { form: 'house', equalsBefore: true },
+        morphType: 'stem',
+        vocabItem: { id: 'v1', form: 'house', metadata: { morphType: 'stem' } },
+      },
+      { id: 'c', metadata: { form: 'PL' }, morphType: null },
+    ]);
+    expect(items(morphs, 'txt')).toEqual(['ni=', 'house', 'PL']);
+    expect(items(morphs, 'cf')).toEqual([null, 'house', null]);
+  });
+
+  it('writes an interior "=" in front of the morph after it, in txt and cf alike', () => {
+    const morphs = chain([
+      { id: 'a', metadata: { form: 'm' }, morphType: null },
+      { id: 'b', metadata: { form: 'i' }, morphType: null },
+      {
+        id: 'c',
+        metadata: { form: 'r', equalsBefore: true },
+        morphType: null,
+        vocabItem: { id: 'v1', form: 'r', metadata: {} },
+      },
+      { id: 'd', metadata: { form: 'a' }, morphType: null },
+    ]);
+    expect(items(morphs, 'txt')).toEqual(['m', 'i', '=r', 'a']);
+    expect(items(morphs, 'cf')).toEqual([null, null, '=r', null]);
+  });
+
   // FLEx looks up <item type="cf"> as the entry's DECORATED LEXEME form, not
   // the citation form the name suggests (BIRDInterlinearImporter.cs says so in
   // as many words). Getting this wrong silently unlinks every morpheme whose

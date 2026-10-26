@@ -147,3 +147,76 @@ def test_a_cleared_clitic_type_takes_back_the_equals_that_typed_it():
     [patch] = [p for tid, p in c.patches('tokens') if tid == 'm-4b']
     frag = as_fragment(patch)
     assert frag['morphType'] is None and frag['equalsBefore'] is None
+
+
+def test_a_cleared_type_that_is_no_clitic_keeps_the_equals_and_types_the_morpheme():
+    """As the grid's clear does (REV-CLITIC CL-9): the "=" stays, and the rule
+    types the morpheme the cleared type had blocked."""
+    from fixtures import document_raw
+    raw = document_raw()
+    morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
+    gam = next(m for m in morphs if m['id'] == 'm-4b')
+    gam['metadata'] = {'form': 'ar', 'morphType': 'suffix', 'equalsBefore': True}
+    w = fake_ws(FakeClient(documents={'d1': raw}))
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': ''})
+    assert 'equals_taken' not in w.ops[-1] and w.ops[-1]['equals_type'] == 'enclitic'
+    c = w.client
+    execute_plan(c, w.ops, source='s', label='l')
+    [patch] = [p for tid, p in c.patches('tokens') if tid == 'm-4b']
+    frag = as_fragment(patch)
+    assert frag['morphType'] == 'enclitic' and frag['morphTypeFromEquals'] == 'enclitic'
+    assert 'equalsBefore' not in frag
+
+
+def _with_equals_on_di():
+    from fixtures import document_raw
+    raw = document_raw()
+    morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
+    di = next(m for m in morphs if m['id'] == 'm-1b')
+    di['metadata'] = {'form': 'di', 'equalsBefore': True}
+    return fake_ws(FakeClient(documents={'d1': raw}))
+
+
+def _token_creates(c):
+    """The metadata of every token the plan made, in order."""
+    out = []
+    for kind, payload in c.calls:
+        if kind == 'tokens.bulk_create':
+            out.extend(item.get('metadata') or {} for item in payload)
+        elif kind == 'tokens.create':
+            out.append(payload['kwargs'].get('metadata') or {})
+    return out
+
+
+def test_set_analysis_keeps_a_typed_equals_whose_boundary_stays():
+    """REV-CLITIC CL-12: re-setting a word with the same boundary keeps its
+    typed "=", and the rule types the pieces nobody typed, as the grid does."""
+    w = _with_equals_on_di()
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                  'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    op = w.ops[-1]
+    assert [m.get('equals_before') for m in op['morphemes']] == [None, True]
+    assert 'Ali=di' in op['label']
+    c = w.client
+    execute_plan(c, w.ops, source='s', label='l')
+    made = _token_creates(c)
+    assert made[0]['equalsBefore'] is True
+    assert made[0]['morphType'] == 'enclitic' and made[0]['morphTypeFromEquals'] == 'enclitic'
+
+
+def test_set_analysis_states_and_drops_a_typed_equals():
+    w = _with_equals_on_di()
+    # a boundary moved: the "=" before "di" is not kept
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                  'morphemes': [{'form': 'Al'}, {'form': 'idi'}]})
+    assert [m.get('equals_before') for m in w.ops[-1]['morphemes']] == [None, None]
+    w = _with_equals_on_di()
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                  'morphemes': [{'form': 'Ali'}, {'form': 'di', 'equals': False}]})
+    assert [m.get('equals_before') for m in w.ops[-1]['morphemes']] == [None, None]
+    w = fake_ws(FakeClient())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                  'morphemes': [{'form': 'A'}, {'form': 'li'}, {'form': 'di', 'equals': True}]})
+    op = w.ops[-1]
+    assert [m.get('equals_before') for m in op['morphemes']] == [None, None, True]
+    assert [m.get('morph_type') for m in op['morphemes']] == [None, None, 'enclitic']

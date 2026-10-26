@@ -126,9 +126,43 @@ async function validateFile(dir, label, file) {
   const result = await tool('xmllint', ['--noout', v.flag, schema, path]);
   const at = `${label} ${file.path} (${v.name})`;
   if (result.missing) return { label: at, state: MISSING, detail: result.missing };
-  return result.ok
-    ? { label: at, state: 'ok', detail: '' }
-    : { label: at, state: 'fail', detail: clip(result.output) };
+  if (!result.ok) return { label: at, state: 'fail', detail: clip(result.output) };
+  if (/\.flextext$/i.test(file.path)) {
+    const faults = flextextMarkerFaults(new TextDecoder().decode(file.bytes));
+    if (faults.length) return { label: at, state: 'fail', detail: clip(faults.join('\n')) };
+  }
+  return { label: at, state: 'ok', detail: '' };
+}
+
+/**
+ * What the schema cannot see in a .flextext's morphs (REV-CLITIC CL-10): a
+ * boundary written twice (a txt ending in "=" before one starting with it),
+ * and a linked morph whose txt and cf disagree about a leading "=", which
+ * FLEx then matches to no allomorph.
+ */
+function flextextMarkerFaults(xml) {
+  const faults = [];
+  const itemOf = (block, type) =>
+    new RegExp(`<item type="${type}"[^>]*>([^<]*)</item>`).exec(block)?.[1] ?? null;
+  // Only the typed "=" is checked here: a cf may carry its entry's own affix
+  // markers where the morph's txt does not.
+  const edges = (t) => t.startsWith('=');
+  for (const word of xml.split(/<word[\s>]/).slice(1)) {
+    const morphs = [...word.matchAll(/<morph[\s>][\s\S]*?<\/morph>/g)].map((m) => m[0]);
+    let prev = null;
+    for (const m of morphs) {
+      const txt = itemOf(m, 'txt');
+      const cf = itemOf(m, 'cf');
+      if (txt != null && prev != null && prev.endsWith('=') && txt.startsWith('=')) {
+        faults.push(`"=" written twice: ${prev} ${txt}`);
+      }
+      if (txt != null && cf != null && edges(txt) !== edges(cf)) {
+        faults.push(`txt ${txt} and cf ${cf} disagree about a leading "="`);
+      }
+      prev = txt;
+    }
+  }
+  return faults;
 }
 
 /**

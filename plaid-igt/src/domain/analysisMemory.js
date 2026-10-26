@@ -23,7 +23,7 @@
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { isTokenIgnored } from './igtConfig.js';
 import { pickMajority } from './precedent.js';
-import { equalsRecords } from './mutations/equalsRule.js';
+import { equalsRecords, EQUALS_BEFORE_KEY } from './mutations/equalsRule.js';
 
 const recordsOf = (metadata) => {
   const r = equalsRecords(metadata);
@@ -155,7 +155,15 @@ export function analysisSignature(analysis) {
   return JSON.stringify([
     analysis.word.vocabItemId,
     fieldPairs(analysis.word.fields),
-    analysis.morphemes.map((m) => [m.form, m.morphType, m.vocabItemId, fieldPairs(m.fields)]),
+    // A "=" typed before a morpheme is part of the analysis even where it
+    // types nothing (REV-CLITIC CL-11). Added only where there is one.
+    analysis.morphemes.map((m) => [
+      m.form,
+      m.morphType,
+      m.vocabItemId,
+      fieldPairs(m.fields),
+      ...(m.equals?.[EQUALS_BEFORE_KEY] ? [true] : []),
+    ]),
   ]);
 }
 
