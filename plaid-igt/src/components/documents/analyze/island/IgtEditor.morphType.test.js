@@ -67,6 +67,7 @@ const choose = (value) => {
   select.dispatchEvent(new Event('change', { bubbles: true }));
 };
 const joiner = () => host.querySelector('.igt-morph-joiner');
+const HAIR = String.fromCodePoint(0x200a);
 
 beforeEach(() => resetIds());
 afterEach(() => {
@@ -137,13 +138,13 @@ describe('the morpheme type control (R48)', () => {
 describe('the clitic side of "=" (R49)', () => {
   it('sets "=" against an enclitic with a hair space on the host side', () => {
     mount({ linked: true });
-    expect(joiner().textContent).toBe(' =');
+    expect(joiner().textContent).toBe(`${HAIR}=`);
     expect(joiner().classList.contains('igt-morph-joiner--right')).toBe(true);
   });
 
   it('sets "=" against a proclitic with a hair space on the host side', () => {
     mount({ own: { morphType: 'proclitic' } });
-    expect(joiner().textContent).toBe('= ');
+    expect(joiner().textContent).toBe(`=${HAIR}`);
     expect(joiner().classList.contains('igt-morph-joiner--left')).toBe(true);
   });
 
