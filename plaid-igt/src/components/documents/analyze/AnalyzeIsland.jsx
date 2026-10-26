@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
@@ -37,6 +37,11 @@ export const AnalyzeIsland = () => {
 
   // A citation in the panel into this document, while the grid is up.
   useEffect(() => onSentenceFocus((req) => editorRef.current?.focusSentence(req)), []);
+
+  // Leaving the tab hands the sentence the grid was on to the Baseline tab. A
+  // layout cleanup, because it runs while the grid is still in the page and
+  // can be measured, and before the island is destroyed.
+  useLayoutEffect(() => () => editorRef.current?.handToBaseline(), []);
 
   // An Auto-analyze run keeps going when the dialog is closed, so its status
   // goes onto the toolbar button that opened it.

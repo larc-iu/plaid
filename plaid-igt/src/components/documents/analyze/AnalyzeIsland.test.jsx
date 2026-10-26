@@ -5,9 +5,11 @@ import { SubjectContext } from '@ui/components/assistant/subject.js';
 import { DOCK_MIN_WINDOW } from '@ui/components/assistant/panelWidth.js';
 import { buildRawDoc, makeFakeClient, resetIds, makeIgtDoc } from '@/domain/test-helpers.js';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
-import { askSentenceFocus } from '../hooks/focusHandoff.js';
+import { askSentenceFocus, baselineFocus } from '../hooks/focusHandoff.js';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AnalyzeIsland } from './AnalyzeIsland.jsx';
+import { DocumentBaseline } from '../baseline/DocumentBaseline.jsx';
+import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 
 // The React side of the island's asks. The island is built once, so what it
 // is handed has to reach what the page holds NOW: a goToTab made under an
@@ -27,7 +29,7 @@ vi.mock('./AutoAnalyzeDialog.jsx', () => ({
 let doc;
 let view;
 
-const page = ({ goToTab, ask = vi.fn() } = {}) => (
+const page = ({ goToTab, ask = vi.fn(), tab = 'analyze' } = {}) => (
   <AuthContext.Provider value={{ user: null }}>
     <SubjectContext.Provider value={{ ask }}>
       <DocumentProvider
@@ -41,7 +43,9 @@ const page = ({ goToTab, ask = vi.fn() } = {}) => (
           goToTab,
         }}
       >
-        <AnalyzeIsland />
+        <ConfirmProvider>
+          {tab === 'analyze' ? <AnalyzeIsland /> : <DocumentBaseline />}
+        </ConfirmProvider>
       </DocumentProvider>
     </SubjectContext.Provider>
   </AuthContext.Provider>
@@ -112,5 +116,50 @@ describe('AnalyzeIsland', () => {
     view = null;
     askSentenceFocus(req);
     expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the Baseline tab the sentence it is on when it goes, while the grid is still in the page', async () => {
+    const hand = IgtEditor.prototype.handToBaseline;
+    const inPage = [];
+    vi.spyOn(IgtEditor.prototype, 'handToBaseline').mockImplementation(function () {
+      inPage.push(this.container.querySelector('.igt-sentence')?.isConnected);
+      return hand.call(this);
+    });
+    view = await renderComponent(page({ goToTab: vi.fn() }));
+    expect(baselineFocus.read()).toBe(null);
+    await view.unmount();
+    view = null;
+    expect(inPage).toEqual([true]);
+    expect(baselineFocus.read()).toEqual({
+      docId: doc.id,
+      sentenceId: doc.sentences[0].id,
+      at: doc.sentences[0].begin,
+    });
+  });
+
+  it('lights on the Baseline tab the sentence it was on, in the commit that switches the tab', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    doc = makeDoc(
+      buildRawDoc({
+        body: 'the cat\nsat',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+          { id: 'w-3', begin: 8, end: 11 },
+        ],
+        sentences: [
+          { id: 's-1', begin: 0, end: 7 },
+          { id: 's-2', begin: 8, end: 11 },
+        ],
+      }),
+    );
+    // A request left from an earlier visit, which the switch replaces.
+    baselineFocus.write({ docId: doc.id, sentenceId: 's-1', at: 0 });
+    view = await renderComponent(page({ goToTab: vi.fn() }));
+    view.container.querySelector('.igt-sentence[data-sentence-id="s-2"] .igt-field').focus();
+    await view.rerender(page({ goToTab: vi.fn(), tab: 'baseline' }));
+    await view.step(() => {});
+    expect(view.container.querySelector('.baseline-flash')?.textContent).toBe('sat');
+    delete Element.prototype.scrollIntoView;
   });
 });

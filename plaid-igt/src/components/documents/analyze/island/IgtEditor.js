@@ -52,7 +52,7 @@ import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.j
 import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
 import { saveStateOf } from '@ui/lib/saveState.js';
-import { analyzeFocus } from '../../hooks/focusHandoff.js';
+import { analyzeFocus, baselineFocus, sentenceNear } from '../../hooks/focusHandoff.js';
 
 export class IgtEditor {
   constructor(
@@ -314,8 +314,50 @@ export class IgtEditor {
     };
     this.container.addEventListener('mouseover', this._onMweHover);
     this.container.addEventListener('mouseout', this._onMweHover);
+    // The sentence of the last cell focused, for the Baseline tab (sentenceOnScreen).
+    this._onSentenceFocusIn = (e) => {
+      const id = e.target?.closest?.('.igt-sentence')?.dataset?.sentenceId;
+      if (id) this._lastSentenceId = id;
+    };
+    this.container.addEventListener('focusin', this._onSentenceFocusIn);
     this._render(true);
     this._consumeFocusRequest();
+  }
+
+  // The sentence the grid is on: the focused cell's, else the last focused
+  // cell's while it is on the page shown, else the topmost sentence in view,
+  // else the page's first. Null for a document with no sentences. Read while
+  // the grid is still in the page, since it measures.
+  sentenceOnScreen() {
+    const size = this.constructor.PAGE_SIZE;
+    const start = this._page * size;
+    const page = (this.doc.sentences || []).slice(start, start + size);
+    const active = document.activeElement;
+    const focused = this.container.contains(active)
+      ? active.closest?.('.igt-sentence')?.dataset?.sentenceId
+      : null;
+    const id = focused || this._lastSentenceId;
+    const held = id && page.find((s) => s.id === id);
+    if (held) return held;
+    for (const el of this.container.querySelectorAll('.igt-sentence[data-sentence-id]')) {
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.bottom > 0 && r.top < window.innerHeight) {
+        const s = page.find((p) => p.id === el.dataset.sentenceId);
+        if (s) return s;
+      }
+    }
+    return page[0] ?? null;
+  }
+
+  // Leaving the grid: the Baseline tab opens on the sentence it was on.
+  handToBaseline() {
+    const s = this.sentenceOnScreen();
+    if (!s) return;
+    try {
+      baselineFocus.write({ docId: this.doc.id, sentenceId: s.id, at: s.begin });
+    } catch {
+      /* noop */
+    }
   }
 
   // Search click-through: the handoff (focusHandoff.js analyzeFocus) names a
@@ -332,16 +374,19 @@ export class IgtEditor {
       /* noop */
     }
     if (!req || req.docId !== this.doc.id) return;
-    const idx = (this.doc.sentences || []).findIndex((s) => s.id === req.sentenceId);
+    const sentences = this.doc.sentences || [];
+    let idx = sentences.findIndex((s) => s.id === req.sentenceId);
+    // From the Baseline tab: the sentence holding the caret, or nearest it.
+    if (idx < 0 && typeof req.at === 'number')
+      idx = sentences.indexOf(sentenceNear(sentences, req.at));
     if (idx < 0) {
       analyzeFocus.clear(); // stale target — drop it
       return;
     }
+    const sentenceId = sentences[idx].id;
     this._setPage(Math.floor(idx / this.constructor.PAGE_SIZE));
     requestAnimationFrame(() => {
-      const el = this.container.querySelector(
-        `.igt-sentence[data-sentence-id="${req.sentenceId}"]`,
-      );
+      const el = this.container.querySelector(`.igt-sentence[data-sentence-id="${sentenceId}"]`);
       if (!el) return; // throwaway mount already torn down — leave the key for the real one
       analyzeFocus.clear();
       el.scrollIntoView({ block: 'center' });
@@ -457,6 +502,7 @@ export class IgtEditor {
     if (this._beat) clearTimeout(this._beat.timer);
     this._beat = null;
     this.container.removeEventListener('beforeinput', this._onBeforeInput);
+    this.container.removeEventListener('focusin', this._onSentenceFocusIn);
     this.container.removeEventListener('mouseover', this._onMweHover);
     this.container.removeEventListener('mouseout', this._onMweHover);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);

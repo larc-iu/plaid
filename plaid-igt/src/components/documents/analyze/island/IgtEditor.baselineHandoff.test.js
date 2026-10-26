@@ -1,0 +1,141 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  buildRawDoc,
+  makeFakeClient,
+  resetIds,
+  makeIgtDoc,
+  mountIsland,
+} from '@/domain/test-helpers.js';
+import { DOCK_MIN_WINDOW } from '@ui/components/assistant/panelWidth.js';
+import { analyzeFocus, baselineFocus } from '../../hooks/focusHandoff.js';
+
+// The Analyze and Baseline tabs hand each other the sentence the reader was
+// on (R50). The grid opens on the page and sentence holding Baseline's caret,
+// and hands Baseline the sentence it is on when it goes.
+
+vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
+  humanizeError: (e) => String(e),
+  notifyInfo: vi.fn(),
+  notifyError: vi.fn(),
+}));
+
+// 30 one-word sentences, a line each: two pages of the grid. Sentence i is
+// s00..s29 at code points 4i to 4i+3.
+const N = 30;
+const body = Array.from({ length: N }, (_, i) => `s${String(i).padStart(2, '0')}`).join('\n');
+const spans = (prefix) =>
+  Array.from({ length: N }, (_, i) => ({ id: `${prefix}-${i}`, begin: 4 * i, end: 4 * i + 3 }));
+
+let mounted;
+const mount = (opts = {}) => {
+  const client = makeFakeClient();
+  client.query = async () => ({ results: [] });
+  const doc = makeIgtDoc({
+    raw: buildRawDoc({
+      body: opts.body ?? body,
+      words: opts.words ?? spans('w'),
+      sentences: opts.sentences ?? spans('s'),
+    }),
+    project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
+    client,
+    user: null,
+  });
+  mounted = mountIsland(doc, {});
+  return { doc, host: mounted.host, editor: mounted.editor };
+};
+
+beforeEach(() => {
+  resetIds();
+  sessionStorage.clear();
+  window.innerWidth = DOCK_MIN_WINDOW;
+});
+afterEach(() => {
+  mounted?.destroy();
+  mounted = null;
+  vi.restoreAllMocks();
+});
+
+const rendered = (host) =>
+  [...host.querySelectorAll('.igt-sentence[data-sentence-id]')].map((el) => el.dataset.sentenceId);
+
+describe('from the Baseline tab', () => {
+  it("opens on the page and sentence holding Baseline's caret", () => {
+    analyzeFocus.write({ docId: 'doc-1', sentenceId: null, begin: null, at: 4 * 27 + 1 });
+    const { editor, host } = mount();
+    expect(editor._page).toBe(1);
+    expect(rendered(host)).toContain('s-27');
+  });
+
+  it('opens on the sentence nearest the caret when the caret is between sentences', () => {
+    // The caret stood where s-27 was, deleted since.
+    analyzeFocus.write({ docId: 'doc-1', sentenceId: null, begin: null, at: 4 * 27 + 1 });
+    const sentences = spans('s').filter((s) => s.id !== 's-27');
+    const { editor, host } = mount({ sentences });
+    expect(editor._page).toBe(1);
+    expect(rendered(host)).toContain('s-28');
+  });
+
+  it('opens on the first page for a caret before every sentence', () => {
+    analyzeFocus.write({ docId: 'doc-1', sentenceId: null, begin: null, at: 0 });
+    const { editor } = mount();
+    expect(editor._page).toBe(0);
+  });
+
+  it('opens a document with no sentences without a landing', () => {
+    analyzeFocus.write({ docId: 'doc-1', sentenceId: null, begin: null, at: 3 });
+    const { editor } = mount({ body: '', words: [], sentences: [] });
+    expect(editor._page).toBe(0);
+    expect(analyzeFocus.read()).toBe(null);
+  });
+});
+
+describe('to the Baseline tab', () => {
+  const page2 = (editor) => editor._setPage(1);
+
+  it("hands over the focused cell's sentence", () => {
+    const { editor, host, doc } = mount();
+    page2(editor);
+    host.querySelector('.igt-sentence[data-sentence-id="s-27"] .igt-field').focus();
+    editor.handToBaseline();
+    expect(baselineFocus.read()).toEqual({ docId: doc.id, sentenceId: 's-27', at: 108 });
+  });
+
+  it("hands over the last focused cell's sentence once focus has left the grid", () => {
+    const { editor, host } = mount();
+    page2(editor);
+    const cell = host.querySelector('.igt-sentence[data-sentence-id="s-26"] .igt-field');
+    cell.focus();
+    cell.blur();
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-26');
+  });
+
+  it('hands over the topmost sentence in view when no cell on the page was focused', () => {
+    const { editor, host } = mount();
+    host.querySelector('.igt-sentence[data-sentence-id="s-2"] .igt-field').focus();
+    page2(editor);
+    // s-25 and s-26 are scrolled above the window, s-27 is the first in it,
+    // its top 10px down.
+    for (const el of host.querySelectorAll('.igt-sentence[data-sentence-id]')) {
+      const i = Number(el.dataset.sentenceId.slice(2));
+      const top = (i - 27) * 100 + (i < 27 ? 0 : 10);
+      el.getBoundingClientRect = () => ({ top, bottom: top + 100, height: 100 });
+    }
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-27');
+  });
+
+  it("hands over the page's first sentence when nothing is measured", () => {
+    const { editor } = mount();
+    page2(editor);
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-25');
+  });
+
+  it('hands over nothing from a document with no sentences', () => {
+    const { editor } = mount({ body: '', words: [], sentences: [] });
+    editor.handToBaseline();
+    expect(baselineFocus.read()).toBe(null);
+  });
+});

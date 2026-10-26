@@ -1,0 +1,13 @@
+/* Landing from the Analyze tab: the sentence the grid was on, a background in
+   the ring colour that fades, as Analyze and Tokenize flash where they land. */
+@keyframes baseline-flash {
+  0% {
+    background: hsl(var(--ring) / 0.25);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.baseline-flash {
+  animation: baseline-flash 2.4s ease-out;
+}
