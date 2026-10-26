@@ -181,10 +181,14 @@ test('letters typed at the end of a word join it, and a word typed after a space
   await page.keyboard.type(' cuatro');
   await save(page);
   await expect.poll(async () => (await stored(doc)).body).toBe('unos dos tres cuatro');
+  // The morpheme's form follows its word in a second write after the edit
+  // (H17), so it is waited for and not read the moment the body lands.
+  await expect
+    .poll(async () => (await stored(doc)).morphemes)
+    .toEqual(expect.arrayContaining(['dos:DOS', 'tres:TRES', 'unos:UNO']));
   const s = await stored(doc);
   expect(s.words).toContain('unos');
   expect(s.words).not.toContain('tres cuatro');
-  expect(s.morphemes).toEqual(expect.arrayContaining(['dos:DOS', 'tres:TRES', 'unos:UNO']));
   await showsStored(page, doc);
 });
 
