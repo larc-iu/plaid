@@ -186,15 +186,8 @@ export function collectLexiconRows(vocabularies, apply, canRespellIn = () => tru
   return rows;
 }
 
-// Text edit directives for one text's selected respell rows. Applied in
-// order server-side, so later (higher-offset) replacements go first: each
-// op's indices then refer to text no earlier op has shifted. Every op is a
-// whole-token replace, which is what keeps the token (see plaid.algos.text).
-export function respellOps(rows) {
-  return [...rows]
-    .sort((a, b) => b.begin - a.begin)
-    .map((r) => ({ type: 'replace', index: r.begin, length: r.end - r.begin, value: r.new }));
-}
+// Text edit directives for one text's selected respell rows (domain/respell.js).
+export { respellOps } from '../../../domain/respell.js';
 
 // ---- field ------------------------------------------------------------------
 
