@@ -214,6 +214,37 @@ describe('a document whose tab is in the query', () => {
     await view.unmount();
   });
 
+  // A tab is a link, and the strip is up before the document has loaded. A
+  // tab picked in that time was undone by the landing when the document came.
+  it('does not land over a tab the reader picked while the document loaded', async () => {
+    let arrive;
+    const loaded = new Promise((resolve) => {
+      arrive = resolve;
+    });
+    const slow = app({
+      loadDocument: async ({ documentId }) => {
+        await loaded;
+        return {
+          raw: { id: documentId, name: 'Doc' },
+          sentences: tokenized,
+          hold: () => () => {},
+          reload: () => Promise.resolve(),
+        };
+      },
+    });
+    await mount(['/p/p1/d/d1'], { config: slow });
+    await view.step(() => seen.navigate('/p/p1/d/d1?tab=details'));
+    await view.step(async () => {
+      arrive();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(body()).toBe('details');
+    expect(seen.search).toBe('?tab=details');
+    await view.unmount();
+  });
+
   it('does not land while a past state is open', async () => {
     past.asOf = '2026-09-01T00:00:00Z';
     await mount(['/p/p1/d/d1']);

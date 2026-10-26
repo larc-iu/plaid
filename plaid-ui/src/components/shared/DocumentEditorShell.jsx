@@ -332,13 +332,17 @@ const DocumentEditor = ({ app, documentClient }) => {
   // should, once, on the first live load: not on a past state, and not after
   // the reader has picked a tab. Replace, not push: the reader did not ask for
   // this tab, so Back leaves the document instead of undoing the landing.
+  // A tab picked while the document loads names itself in the address, and
+  // the landing leaves it alone.
   const landedRef = useRef(!query || searchParams.has('tab'));
+  const picked = searchParams.has('tab');
   useEffect(() => {
+    if (picked) landedRef.current = true;
     if (!doc || history.asOf || landedRef.current) return;
     landedRef.current = true;
     const to = query.landing?.(doc);
     if (to && to !== queryTab) setQueryTab(to, { replace: true });
-  }, [doc, history.asOf, query, queryTab, setQueryTab]);
+  }, [doc, history.asOf, picked, query, queryTab, setQueryTab]);
 
   // The check on open, where the app has the shell run it. It writes
   // nothing, so nothing waits on it.
