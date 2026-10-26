@@ -25,6 +25,13 @@
 // only on the chain, never on the order it was typed in. PolyGloss's writer
 // in the Python client (workflows/igt/interlinear.py) applies the same rule.
 
+// The key on the morpheme after a typed "=", and its reading, are plaid-ui's:
+// every app's joiner reads them (morphemeJoiner). By relative path, so this
+// file still loads under plain node.
+import { EQUALS_BEFORE_KEY, equalsBefore } from '../../../../plaid-ui/src/domain/morphemes.js';
+
+export { EQUALS_BEFORE_KEY };
+
 /**
  * Which side of the "=" boundary after morpheme `leftIdx` (0-based, in a word
  * of `count` morphemes) is the clitic: 'left' | 'right' | null.
@@ -38,9 +45,6 @@ export const cliticSideOfBoundary = ({ leftIdx, count }) => {
 
 /** The type the rule gives the clitic on each side. */
 const CLITIC_TYPE_BY_SIDE = Object.freeze({ left: 'proclitic', right: 'enclitic' });
-
-/** The key on the morpheme after a typed "=". */
-export const EQUALS_BEFORE_KEY = 'equalsBefore';
 
 /** The key that records a type the rule wrote, holding that type. */
 export const EQUALS_TYPE_KEY = 'morphTypeFromEquals';
@@ -56,9 +60,6 @@ export const typedByEquals = (metadata, entryType = null) =>
   !isType(entryType) &&
   isType(metadata?.[EQUALS_TYPE_KEY]) &&
   metadata[EQUALS_TYPE_KEY] === metadata.morphType;
-
-/** Does a typed "=" stand before this morpheme? */
-const equalsBefore = (metadata) => metadata?.[EQUALS_BEFORE_KEY] === true;
 
 /**
  * The typed "=" boundaries of a word's chain, read off the keys: a set of

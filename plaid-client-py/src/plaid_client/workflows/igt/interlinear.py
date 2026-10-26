@@ -45,6 +45,21 @@ EQUALS_TYPE_KEY = 'morphTypeFromEquals'
 EQUALS_BEFORE_KEY = 'equalsBefore'
 
 
+def equals_of_clitic(befores, k):
+    """The pieces whose "=" key types piece ``k`` (plaid-igt's
+    equalsOfClitic): ``befores`` says, per piece of a word, whether a "=" was
+    typed before it. Clearing a clitic's type takes these keys away."""
+    n = len(befores)
+    out = []
+    for j in range(1, n):
+        if not befores[j]:
+            continue
+        side = clitic_side_of_boundary(j - 1, n)
+        if (side == 'left' and j - 1 == k) or (side == 'right' and j == k):
+            out.append(j)
+    return out
+
+
 def clitic_types(joiners, glosses):
     """morphType per piece of a chain (None = untyped) from its '=' boundaries.
     ``glosses`` gives the piece count. The rule reads none of them."""

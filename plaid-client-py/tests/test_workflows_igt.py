@@ -665,3 +665,12 @@ def test_clitic_types_agree_with_the_grid_on_every_short_chain():
     assert len(table) == 63
     for joints, types in table.items():
         assert clitic_types(list(joints), ['x'] * (len(joints) + 1)) == types, joints
+
+
+def test_equals_of_clitic_names_the_key_that_types_a_piece():
+    """plaid-igt's equalsOfClitic: the keys a clear of piece k takes away."""
+    from plaid_client.workflows.igt.interlinear import equals_of_clitic
+    assert equals_of_clitic([False, True], 1) == [1]  # two pieces: the enclitic
+    assert equals_of_clitic([False, True], 0) == []
+    assert equals_of_clitic([False, True, False], 0) == [1]  # the proclitic's key is after it
+    assert equals_of_clitic([False, False, True, False], 2) == []  # interior: types nothing

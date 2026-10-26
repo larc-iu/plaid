@@ -566,6 +566,10 @@ export default {
       where:
         'flextext <morph type="proclitic"> whose txt ends in "=", followed by the next <morph> of the word',
     },
+    'token.equalsTyped': {
+      carried: 'changed',
+      how: 'Written as "=" in front of the morph\'s txt, as FLEx writes an enclitic, so FLEx reads the morph as an enclitic.',
+    },
     'alignment.provenance': {
       carried: false,
       kind: 'inherent',

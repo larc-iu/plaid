@@ -558,7 +558,7 @@ export default {
     {
       keys: ['token.morphTypeOnMorpheme', 'token.procliticBeforeMorpheme'],
       // Only the joint survives: the export writes "=" between two morphemes
-      // when either had a clitic type, and the import types the pieces by the
+      // when either had a clitic type or a "=" was typed before the second, and the import types the pieces by the
       // grid's "=" rule over those joints (equalsChain, with its records), so
       // nothing else keeps a type. A type is read off the source, since the
       // links are gone here: the
@@ -585,8 +585,10 @@ export default {
           };
           for (const { morphemes } of wordsWithMorphemes(d)) {
             const clitic = morphemes.map((m) => CLITIC_TYPES.has(typeOf(m)));
+            // A "=" typed with no clitic beside it is written too (R47 round 3).
+            const typedBefore = morphemes.map((m) => m.metadata[EQUALS_BEFORE_KEY] === true);
             const typed = equalsChain(
-              morphemes.map((m, i) => i > 0 && (clitic[i] || clitic[i - 1])),
+              morphemes.map((m, i) => i > 0 && (clitic[i] || clitic[i - 1] || typedBefore[i])),
             );
             morphemes.forEach((m, i) => {
               for (const key of ['morphType', EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY]) {

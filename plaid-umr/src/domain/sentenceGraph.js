@@ -59,7 +59,7 @@ import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
-import { morphemeMorphType } from '../../../plaid-ui/src/domain/morphemes.js';
+import { equalsBefore, morphemeMorphType } from '../../../plaid-ui/src/domain/morphemes.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -348,6 +348,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null, entryTypes = null } 
       // before it when the word is drawn: its entry's, else its own. Absent
       // on every hand-entered one.
       morphType: morphemeMorphType(token.metadata, entryTypes?.get(entryOf.get(token.id)) ?? null),
+      // A "=" typed before it in igt (R47), which joins it with "=" whatever
+      // the types.
+      equalsBefore: equalsBefore(token.metadata),
       precedence: token.precedence ?? null,
     });
   });

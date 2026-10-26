@@ -13,6 +13,7 @@
 import '@/components/documents/analyze/island/igt-editor.css';
 import { cn } from '@ui/lib/utils';
 import { cliticSideOfJoint, shownMorphemeJoiner } from '@/domain/affixMarkers';
+import { EQUALS_BEFORE_KEY } from '@/domain/mutations/equalsRule';
 
 // Mirror of IgtEditor._fieldSize: the cross-browser fallback for field-sizing.
 const fieldSize = (v) => Math.max(5, [...(v ?? '')].length + 1);
@@ -95,7 +96,8 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
                 {morphemes.map((m, i) => {
                   const prev = morphemes[i - 1]?.goesBy ?? morphemes[i - 1]?.morphType;
                   const type = m.goesBy ?? m.morphType;
-                  const joiner = i > 0 ? shownMorphemeJoiner(prev, type) : null;
+                  const joiner =
+                    i > 0 ? shownMorphemeJoiner(prev, type, !!m.equals?.[EQUALS_BEFORE_KEY]) : null;
                   const side = i > 0 ? cliticSideOfJoint(prev, type) : null;
                   return [
                     joiner ? (

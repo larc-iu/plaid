@@ -884,6 +884,8 @@ def test_a_form_that_carries_its_affix_marker_gets_no_second_one():
     assert join_morphemes([('m-', 'prefix'), ('ohpmooit', None)]) == 'm-ohpmooit'
     assert join_morphemes([('i', None), ('=m', 'enclitic'), ('-haa', 'suffix')]) == 'i=m-haa'
     assert join_morphemes([('ka', None), ('ni', 'enclitic')]) == 'ka=ni'
+    # a "=" recorded on the morpheme after it (equalsBefore) joins as "=" (R47 round 3)
+    assert join_morphemes([('a', None), ('b', None), ('c', None, True), ('d', None)]) == 'a-b=c-d'
     raw = document_raw()
     morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
     morphs[1]['metadata'] = {'form': '-di', 'morphType': 'suffix'}
@@ -895,6 +897,22 @@ def test_a_form_that_carries_its_affix_marker_gets_no_second_one():
                                         'morphemes': [{'form': 'Al'}, {'form': '-i', 'type': 'suffix'}]})
     assert 'Planned' in out
     assert 'Ali-di → Al-i' in w.ops[0]['label'] and '--' not in w.ops[0]['label']
+
+
+def test_a_recorded_equals_joins_the_assistants_views_as_equals():
+    """A "=" typed in the grid is recorded on the morpheme after it
+    (metadata.equalsBefore), and the assistant's reads join the word with it,
+    as the grid draws it (R47 round 3)."""
+    from fixtures import document_raw
+    from plaid_agent.igt.citations import _word_payload
+    from plaid_agent.igt.project import segmentation
+    raw = document_raw()
+    morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
+    morphs[1]['metadata'] = {'form': 'di', 'equalsBefore': True}
+    w = fake_ws(FakeClient(documents={'d1': raw}))
+    word = w.doc('d1').sentences[0].words[0]
+    assert segmentation(word) == 'Ali=di'
+    assert _word_payload(word, w.project, pieces=True)['joiners'] == ['=']
 
 
 def test_a_value_copied_back_from_a_read_is_written_without_its_mark():

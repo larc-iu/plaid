@@ -455,6 +455,13 @@ export const STRIPS = {
   'token.morphTypeOnMorpheme': (s) => {
     for (const d of docs(s)) for (const t of tokensIn(d, 'morpheme')) delete t.metadata.morphType;
   },
+  'token.equalsTyped': (s) => {
+    for (const d of docs(s))
+      for (const t of tokensIn(d, 'morpheme')) {
+        delete t.metadata.equalsBefore;
+        delete t.metadata.morphTypeFromEquals;
+      }
+  },
 
   // ---- time alignment ----
   'alignment.provenance': (s) => {

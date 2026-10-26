@@ -47,12 +47,14 @@ from ..core.tools import ValueRefusal, overview_documents
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
 
-def joiner(prev_type, next_type):
-    """The mark between two adjacent morphemes: '=' when either is a clitic."""
-    return '=' if is_clitic(prev_type) or is_clitic(next_type) else '-'
+def joiner(prev_type, next_type, equals_before=False):
+    """The mark between two adjacent morphemes: '=' when either is a clitic
+    or a "=" was typed before the second (``metadata.equalsBefore``, R47),
+    plaid-ui's ``morphemeJoiner``."""
+    return '=' if equals_before or is_clitic(prev_type) or is_clitic(next_type) else '-'
 
 
-def joiner_between(prev_text, prev_type, next_text, next_type) -> str:
+def joiner_between(prev_text, prev_type, next_text, next_type, equals_before=False) -> str:
     """The joint to write between two adjacent pieces of a word: nothing when
     either side already carries a marker on the edge that would meet it (a
     form stored as "m-", a gloss imported as "-PL"), else :func:`joiner`.
@@ -60,16 +62,18 @@ def joiner_between(prev_text, prev_type, next_text, next_type) -> str:
     marker made "m-" + "ohpmooit" read "m--ohpmooit"."""
     if (prev_text or '').endswith(('-', '=')) or (next_text or '').startswith(('-', '=')):
         return ''
-    return joiner(prev_type, next_type)
+    return joiner(prev_type, next_type, equals_before)
 
 
 def join_morphemes(items) -> str:
-    """``[(text, morph type)]`` joined with the joint each pair calls for
-    (plaid-igt's ``joinMorphemes``)."""
+    """``[(text, morph type)]`` or ``[(text, morph type, equals before)]``
+    joined with the joint each pair calls for (plaid-igt's ``joinMorphemes``)."""
     out = ''
-    for i, (text, mtype) in enumerate(items):
+    for i, item in enumerate(items):
+        text, mtype = item[0], item[1]
         if i:
-            out += joiner_between(items[i - 1][0], items[i - 1][1], text, mtype)
+            out += joiner_between(items[i - 1][0], items[i - 1][1], text, mtype,
+                                  len(item) > 2 and item[2] is True)
         out += text
     return out
 
@@ -437,6 +441,11 @@ class Morpheme:
     #: out (``Workspace.doc``). Not something the morpheme holds, so not part
     #: of its fingerprint.
     entry_type: Optional[str] = field(default=None, compare=False)
+
+    @property
+    def equals_before(self) -> bool:
+        """Was a "=" typed before this morpheme in the grid (R47)?"""
+        return (self.metadata or {}).get('equalsBefore') is True
 
     @property
     def goes_by(self) -> Optional[str]:
@@ -917,7 +926,7 @@ MISSING = '_'
 
 
 def segmentation(w: Word) -> str:
-    return join_morphemes([(m.form or '?', m.goes_by) for m in w.morphemes])
+    return join_morphemes([(m.form or '?', m.goes_by, m.equals_before) for m in w.morphemes])
 
 
 def morpheme_field_line(w: Word, name: str) -> Optional[str]:
@@ -926,7 +935,8 @@ def morpheme_field_line(w: Word, name: str) -> Optional[str]:
     items = []
     for m in w.morphemes:
         sp = m.fields.get(name)
-        items.append((_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING, m.goes_by))
+        items.append((_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING, m.goes_by,
+                      m.equals_before))
     return join_morphemes(items)
 
 

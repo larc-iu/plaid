@@ -52,6 +52,9 @@ def test_an_entry_form_is_stored_as_the_js_client_stores_it(js):
 
 def test_a_form_is_decorated_as_the_js_client_decorates_it(js):
     assert [decorate_with_affix_markers(t, f) for t, f in CASES] == js['decorated']
+    # after a recorded "=" (R47 round 3)
+    assert [decorate_with_affix_markers(t, f, equals_before=True) for t, f in CASES] == \
+        js['decoratedAfterEquals']
 
 
 def test_the_rule():

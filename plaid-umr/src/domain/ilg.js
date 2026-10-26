@@ -295,7 +295,9 @@ const morphemesPerWord = (sentence) =>
  */
 export const morphemeJoinersFor = (sentence) =>
   morphemesPerWord(sentence).map((ms) =>
-    ms.map((m, i) => (i === 0 ? '' : morphemeJoiner(ms[i - 1]?.morphType, m.morphType))),
+    ms.map((m, i) =>
+      i === 0 ? '' : morphemeJoiner(ms[i - 1]?.morphType, m.morphType, m.equalsBefore === true),
+    ),
   );
 
 // A value as the canvas shows it: its spaces are spaces (`its blood`), and
@@ -326,7 +328,11 @@ const joinedItems = (perWord, morphemesByWord) =>
     if (ms.length !== values.length) return out;
     for (let i = 1; i < out.length; i += 1) {
       if (/[-=]$/.test(out[i - 1]) || /^[-=]/.test(out[i])) continue;
-      const joint = morphemeJoiner(ms[i - 1]?.morphType, ms[i]?.morphType);
+      const joint = morphemeJoiner(
+        ms[i - 1]?.morphType,
+        ms[i]?.morphType,
+        ms[i]?.equalsBefore === true,
+      );
       if (leansForward(ms[i - 1]?.morphType)) out[i - 1] = `${out[i - 1]}${joint}`;
       else out[i] = `${joint}${out[i]}`;
     }

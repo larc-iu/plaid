@@ -464,6 +464,13 @@ export default {
     'token.wordEdgePunctuation': carried,
     'token.sentenceExtraMetadata': NO_ANNOTATION_METADATA,
     'token.morphemeProvenance': TOKEN_PROV_LOST,
+    'token.equalsTyped': {
+      carried: false,
+      kind: 'ruled',
+      ruling: PARITY_RULING,
+      wart: true,
+      why: 'The = joint is written in front of the morpheme, and it comes back as morphType enclitic on it (token.morphTypeOnMorpheme), not as the record of a typed =.',
+    },
     'token.procliticBeforeMorpheme': {
       carried: false,
       kind: 'ruled',

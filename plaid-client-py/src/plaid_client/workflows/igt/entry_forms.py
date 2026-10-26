@@ -53,14 +53,15 @@ _TYPE_BY_MARKERS = {
 _MARKED = re.compile(r'([-=]?)(.+?)([-=]?)', re.DOTALL)
 
 
-def decorate_with_affix_markers(morph_type, form):
+def decorate_with_affix_markers(morph_type, form, equals_before=False):
     """A form written the way FieldWorks writes a morph standing alone: "-ar"
     for a suffix, "ka-" for a prefix, unchanged for a stem, for a type outside
-    the table or none."""
+    the table or none. ``equals_before`` says a "=" was typed before the morph
+    (``metadata.equalsBefore``, R47): its leading marker is then "="."""
     if form is None or form == '':
         return form
-    marks = _MARKERS.get(str(morph_type if morph_type is not None else '').lower())
-    return f'{marks[0]}{form}{marks[1]}' if marks else form
+    marks = _MARKERS.get(str(morph_type if morph_type is not None else '').lower()) or ('', '')
+    return f'{"=" if equals_before else marks[0]}{form}{marks[1]}'
 
 
 def _strips(form, morph_type):

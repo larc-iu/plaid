@@ -69,17 +69,27 @@ const TYPE_BY_MARKERS = Object.freeze({
 /**
  * A form written the way FieldWorks writes a morph standing alone: "-ar" for
  * a suffix, "ka-" for a prefix, "=ni" for an enclitic, unchanged for a stem or
- * for a type outside the table or none.
+ * for a type outside the table or none. `equalsBefore` says a "=" was typed
+ * before the morph (plaid-igt's `metadata.equalsBefore`, R47): its leading
+ * marker is then "=", whatever its type says ("=c" for a stem or a suffix).
  *
  * @template {string | null | undefined} F
  * @param {string | null | undefined} morphType
  * @param {F} form
+ * @param {{ equalsBefore?: boolean }} [options]
  * @returns {F | string}
  */
-export function decorateWithAffixMarkers(morphType, form) {
+export function decorateWithAffixMarkers(
+  morphType,
+  form,
+  { equalsBefore = false } = {},
+) {
   if (form == null || form === "") return form;
-  const marks = MORPH_TYPE_MARKERS[String(morphType ?? "").toLowerCase()];
-  return marks ? `${marks[0]}${form}${marks[1]}` : form;
+  const marks = MORPH_TYPE_MARKERS[String(morphType ?? "").toLowerCase()] ?? [
+    "",
+    "",
+  ];
+  return `${equalsBefore ? "=" : marks[0]}${form}${marks[1]}`;
 }
 
 /** @param {string} form @param {string} type */
@@ -96,11 +106,13 @@ const strips = (form, type) => {
 // A form whose bare middle holds whitespace is free text ("-du, du-"), so its
 // markers name no type and stay. WHITESPACE spells out JS's \s, so the
 // Python client's copy matches it character for character.
-const WHITESPACE = /[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/u;
+const WHITESPACE =
+  /[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/u;
 /** @param {string} form */
 const markedType = (form) => {
   const m = /^([-=]?)(.+?)([-=]?)$/su.exec(form);
-  const type = m && !WHITESPACE.test(m[2]) && TYPE_BY_MARKERS[`${m[1]},${m[3]}`];
+  const type =
+    m && !WHITESPACE.test(m[2]) && TYPE_BY_MARKERS[`${m[1]},${m[3]}`];
   return type && m ? { form: m[2], morphType: type } : null;
 };
 

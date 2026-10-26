@@ -124,3 +124,26 @@ def test_set_morpheme_changes_form_or_type_in_place():
     out, notes = normalize_ops([{'kind': 'set_morpheme_form', 'morpheme_id': 'm-4a', 'form': 'G', 'label': 'f1'},
                                 rewrite])
     assert [o['kind'] for o in out] == ['set_analysis'] and len(notes) == 1
+
+
+def test_a_cleared_clitic_type_takes_back_the_equals_that_typed_it():
+    """As the grid's clear does (R47 round 3): clearing the type of the
+    clitic a typed "=" names takes away the key that records the "=", so a
+    later edit in the grid does not type it again."""
+    from fixtures import document_raw
+    raw = document_raw()
+    morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
+    gam = next(m for m in morphs if m['id'] == 'm-4b')
+    gam['metadata'] = {'form': 'ar', 'morphType': 'enclitic', 'morphTypeFromEquals': 'enclitic',
+                       'equalsBefore': True}
+    w = fake_ws(FakeClient(documents={'d1': raw}))
+    # the host's clear takes nothing: the "=" names the enclitic
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m1', 'type': 'stem'})
+    assert 'equals_taken' not in w.ops[-1]
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': ''})
+    assert w.ops[-1]['equals_taken'] == ['m-4b']
+    c = w.client
+    execute_plan(c, w.ops, source='s', label='l')
+    [patch] = [p for tid, p in c.patches('tokens') if tid == 'm-4b']
+    frag = as_fragment(patch)
+    assert frag['morphType'] is None and frag['equalsBefore'] is None

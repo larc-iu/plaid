@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
 from plaid_client.workflows.igt.config import orthography_key
+from plaid_client.workflows.igt.interlinear import equals_of_clitic
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
@@ -1196,6 +1197,13 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
               **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} (in {qv(w.surface)})',
                          'morpheme type ' + (f'{qv(m.morph_type)} → ' if m.morph_type else '= ')
                          + (qv(t) if t else '(cleared)'))}
+        if t is None:
+            # As the grid's clear does (R47): the "=" that types this
+            # morpheme goes with its type.
+            taken = equals_of_clitic([x.equals_before for x in w.morphemes],
+                                     next(i for i, x in enumerate(w.morphemes) if x.id == m.id))
+            if taken:
+                op['equals_taken'] = [w.morphemes[j].id for j in taken]
         if t != (m.morph_type or None):
             staged.append(op)
         elif (at := ws.replacing(op)) is not None:

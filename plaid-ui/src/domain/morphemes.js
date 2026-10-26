@@ -13,15 +13,26 @@ export const isClitic = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('clitic');
 
 /**
- * The joint between two adjacent morphemes of a word, from their
- * `metadata.morphType` values: "=" when either side is a clitic, else "-".
+ * The key plaid-igt sets on the morpheme after a typed "=" (R47, its
+ * mutations/equalsRule.js): the boundary itself, whatever the types beside it.
+ */
+export const EQUALS_BEFORE_KEY = 'equalsBefore';
+
+/** Does a typed "=" stand before the morpheme with this metadata? */
+export const equalsBefore = (metadata) => metadata?.[EQUALS_BEFORE_KEY] === true;
+
+/**
+ * The joint between two adjacent morphemes of a word: "=" when either side is
+ * a clitic or a "=" was typed before the second (`typedBefore`, what
+ * `equalsBefore` reads off its metadata), else "-". Every reader joins a word
+ * with this, the grid, the copies and the exports alike.
  *
  * Deliberately simple, and rendered at DISPLAY time only: a marker is never
  * stored in the baseline text or in a morpheme's form, and an exported file
  * writes the forms bare.
  */
-export const morphemeJoiner = (prevMorphType, morphType) =>
-  isClitic(prevMorphType) || isClitic(morphType) ? '=' : '-';
+export const morphemeJoiner = (prevMorphType, morphType, typedBefore = false) =>
+  typedBefore || isClitic(prevMorphType) || isClitic(morphType) ? '=' : '-';
 
 const HAIR_SPACE = '\u200A';
 
@@ -46,11 +57,11 @@ export const cliticSideOfJoint = (prevMorphType, morphType) => {
  * screen only: copied and exported text keeps the plain Leipzig "="
  * (morphemeJoiner).
  */
-export const shownMorphemeJoiner = (prevMorphType, morphType) => {
+export const shownMorphemeJoiner = (prevMorphType, morphType, typedBefore = false) => {
   const side = cliticSideOfJoint(prevMorphType, morphType);
   if (side === 'left') return `=${HAIR_SPACE}`;
   if (side === 'right') return `${HAIR_SPACE}=`;
-  return morphemeJoiner(prevMorphType, morphType);
+  return morphemeJoiner(prevMorphType, morphType, typedBefore);
 };
 
 const isType = (t) => typeof t === 'string' && t !== '';

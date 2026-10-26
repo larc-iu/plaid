@@ -32,6 +32,7 @@ import { morphFormOf, texCell, texGloss, texWord, wordCells } from '../domain/ig
 import {
   canNameWord,
   decorateWithAffixMarkers,
+  equalsBefore,
   joinerBetween,
   morphTypeLabel,
 } from '../domain/affixMarkers.js';
@@ -352,6 +353,7 @@ const linkedMorphemes = (text, morphemes, entries) => {
   const piece = (i) => ({
     text: forms[i],
     morphType: morphemes[i].morphType ?? null,
+    equalsBefore: equalsBefore(morphemes[i].metadata),
   });
   const joints = forms.map((_, i) => (i === 0 ? '' : joinerBetween(piece(i - 1), piece(i))));
   if (forms.map((f, i) => joints[i] + f).join('') !== text) return null;

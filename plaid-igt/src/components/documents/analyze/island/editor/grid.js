@@ -2,7 +2,7 @@ import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
 import { allowedGuess } from '@/domain/glossGuess';
-import { cliticSideOfJoint, shownMorphemeJoiner } from '@/domain/affixMarkers';
+import { cliticSideOfJoint, equalsBefore, shownMorphemeJoiner } from '@/domain/affixMarkers';
 import { KINDS } from '@/domain/precedent';
 import { extractAnalysis } from '@/domain/analysisMemory.js';
 import {
@@ -268,7 +268,8 @@ export const grid = {
           (m) => m.precedence,
           (m, i) => {
             const prev = morphemes[i - 1]?.morphType;
-            const joiner = i > 0 ? shownMorphemeJoiner(prev, m.morphType) : null;
+            const joiner =
+              i > 0 ? shownMorphemeJoiner(prev, m.morphType, equalsBefore(m.metadata)) : null;
             // "=" sits on its clitic's side of the gap (R49).
             const side = i > 0 ? cliticSideOfJoint(prev, m.morphType) : null;
             return html`

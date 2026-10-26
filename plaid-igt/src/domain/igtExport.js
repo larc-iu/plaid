@@ -18,7 +18,7 @@
 // grammatical abbreviations in small caps (texGloss). Untokenized baseline
 // text (punctuation) gets its own column with empty gloss cells.
 
-import { canNameWord, joinMorphemes } from './affixMarkers.js';
+import { canNameWord, equalsBefore, joinMorphemes } from './affixMarkers.js';
 import { boundByPieces, glossSmallCaps } from './tagsets.js';
 import { isTexSpecial, texEscape, texLine } from './tex.js';
 import { displayWidth, padToWidth } from '../../../plaid-ui/src/lib/displayWidth.js';
@@ -56,6 +56,7 @@ export const joinMorphemeTexts = (morphemes, texts) =>
         texts.map((t, i) => ({
           text: t,
           morphType: morphemes[i]?.morphType,
+          equalsBefore: i > 0 && equalsBefore(morphemes[i]?.metadata),
         })),
       )
     : '';

@@ -41,7 +41,11 @@
 //               morpheme: {field→'gls'|'msa'} }   (unmapped fields are omitted)
 //   citationForms: bool   — emit <item type="cf"> (and "hn") for a linked morpheme
 
-import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
+import {
+  FLEX_MORPH_TYPES,
+  decorateWithAffixMarkers,
+  equalsBefore,
+} from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { lexiconViewOf } from '../domain/vocabLookup.js';
@@ -183,7 +187,7 @@ function morphemesStatus(morphemes, options) {
   return guessStatus(states);
 }
 
-function morphXml(indent, m, options, lex) {
+function morphXml(indent, m, options, lex, first) {
   const morphType = m?.morphType ?? null;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
@@ -194,7 +198,9 @@ function morphXml(indent, m, options, lex) {
       `${indent}  `,
       'txt',
       baselineLang(options),
-      decorateWithAffixMarkers(morphType, morphFormOf(m)),
+      decorateWithAffixMarkers(morphType, morphFormOf(m), {
+        equalsBefore: !first && equalsBefore(m?.metadata),
+      }),
     ),
   );
   if (options?.citationForms && m?.vocabItem) {
@@ -268,7 +274,7 @@ function wordXml(indent, token, options, lex) {
   if (morphemes.length) {
     const status = morphemesStatus(morphemes, options);
     lines.push(`${indent}  <morphemes${status ? ` analysisStatus="${status}"` : ''}>`);
-    for (const m of morphemes) lines.push(...morphXml(`${indent}    `, m, options, lex));
+    morphemes.forEach((m, i) => lines.push(...morphXml(`${indent}    `, m, options, lex, i === 0)));
     lines.push(`${indent}  </morphemes>`);
   }
   lines.push(`${indent}</word>`);

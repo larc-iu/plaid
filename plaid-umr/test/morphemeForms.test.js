@@ -120,6 +120,18 @@ test('the joint before each morpheme comes from the morph types', () => {
   assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[1], []);
 });
 
+test('a "=" typed in igt and recorded on the morpheme after it joins as "=" (R47 round 3)', () => {
+  const info = layerInfo();
+  info.morphemeTokenLayer.tokens = [
+    { id: 'm-0', ...WORD_1, precedence: 1, metadata: { form: 'a' } },
+    { id: 'm-1', ...WORD_1, precedence: 2, metadata: { form: 'b' } },
+    { id: 'm-2', ...WORD_1, precedence: 3, metadata: { form: 'c', equalsBefore: true } },
+    { id: 'm-3', ...WORD_1, precedence: 4, metadata: { form: 'd' } },
+  ];
+  const graph = buildDocumentGraph(info);
+  assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[0], ['', '-', '=', '-']);
+});
+
 test('a morpheme with no type joins with the default', () => {
   // Every hand-entered morpheme, which carries no morphType at all.
   const graph = buildDocumentGraph(layerInfo());

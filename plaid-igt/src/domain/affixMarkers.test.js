@@ -74,6 +74,27 @@ describe('affix markers', () => {
     expect(cliticSideOfJoint('stem', 'suffix')).toBeNull();
   });
 
+  it('a recorded "=" joins as "=" with no clitic on either side, drawn plain (round 3)', () => {
+    expect(morphemeJoiner('stem', 'suffix', true)).toBe('=');
+    expect(morphemeJoiner(null, null, true)).toBe('=');
+    expect(morphemeJoiner(null, null, false)).toBe('-');
+    expect(shownMorphemeJoiner('stem', 'suffix', true)).toBe('=');
+    expect(shownMorphemeJoiner('stem', 'enclitic', true)).toBe(`${String.fromCodePoint(0x200a)}=`);
+    expect(
+      joinMorphemes([
+        { text: 'a', morphType: null },
+        { text: 'b', morphType: null },
+        { text: 'c', morphType: null, equalsBefore: true },
+        { text: 'd', morphType: null },
+      ]),
+    ).toBe('a-b=c-d');
+    const ms = ['a', 'b', 'c'].map((form, i) => ({
+      metadata: { form, ...(i === 2 ? { equalsBefore: true } : {}) },
+      morphType: null,
+    }));
+    expect(joinMorphemeTexts(ms, ['a', 'b', 'c'])).toBe('a-b=c');
+  });
+
   it('copied text keeps the plain Leipzig "=" (R49 is on screen only)', () => {
     const chain = [
       { text: 'ni', morphType: 'proclitic' },

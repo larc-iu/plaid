@@ -501,7 +501,7 @@ export default {
     'token.morphemeZero': carried,
     'token.morphTypeOnMorpheme': {
       carried: 'changed',
-      how: 'Only the joint survives. The export writes "=" between two morphemes when either had a clitic type (clitic, enclitic or proclitic, read from the linked entry when there is one, else from the token), and the import types the pieces as typing "=" in the grid does: the first piece before a "=" a proclitic, the last after one an enclitic, a two-piece word’s second an enclitic, an interior "=" neither, each "=" and each type it gave recorded in the metadata typing leaves. Every other morpheme comes back with no morphType. The preset panel lists this loss (INHERENT_LOSSES).',
+      how: 'Only the joint survives. The export writes "=" between two morphemes when either had a clitic type (clitic, enclitic or proclitic, read from the linked entry when there is one, else from the token) or a "=" was typed before the second (token.equalsTyped), and the import types the pieces as typing "=" in the grid does: the first piece before a "=" a proclitic, the last after one an enclitic, a two-piece word’s second an enclitic, an interior "=" neither, each "=" and each type it gave recorded in the metadata typing leaves. Every other morpheme comes back with no morphType. The preset panel lists this loss (INHERENT_LOSSES).',
     },
     'token.provenance': PROVENANCE_RULED,
     'token.wordsInOneRun': carried,
@@ -513,6 +513,10 @@ export default {
       ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'token.morphemeProvenance': PROVENANCE_RULED,
+    'token.equalsTyped': {
+      carried: true,
+      where: 'the = joint in Analyzed_Word and Gloss, read back as the same record',
+    },
     'token.procliticBeforeMorpheme': {
       carried: 'changed',
       how: 'Comes back by the rule under token.morphTypeOnMorpheme: a proclitic first in its word stays a proclitic, the morpheme after it then has no morphType unless it is the last of two.',

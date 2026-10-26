@@ -316,7 +316,8 @@ def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
             pieces.append(sp.value if sp and sp.value != '' else '_')
     for i, (m, piece) in enumerate(zip(w.morphemes, pieces)):
         if i:
-            out += joiner_between(pieces[i - 1], w.morphemes[i - 1].goes_by, piece, m.goes_by)
+            out += joiner_between(pieces[i - 1], w.morphemes[i - 1].goes_by, piece, m.goes_by,
+                                  m.equals_before)
         out += f'[{piece}]' if m is hit else piece
     return out
 

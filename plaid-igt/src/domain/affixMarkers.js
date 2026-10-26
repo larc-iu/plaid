@@ -45,6 +45,7 @@ export const morphTypeOptions = (current = null) =>
 // place morph types are reasoned about here.
 export {
   isClitic,
+  equalsBefore,
   morphemeJoiner,
   cliticSideOfJoint,
   shownMorphemeJoiner,
@@ -70,8 +71,8 @@ export const canNameWord = (morphType, form) =>
 
 // The rule typing the clitic side of a "=" (R47), its records and its reading
 // over a word's chain live with the writers, in mutations/equalsRule.js, which
-// imports nothing, so the importers and the fidelity scripts read it under
-// plain node too.
+// imports only plaid-ui's morphemes.js by relative path, so the importers and
+// the fidelity scripts read it under plain node too.
 
 /**
  * Parse pasted/typed chain text ("a-b=c") into { segments, joiners }: pieces
@@ -107,15 +108,19 @@ const endsWithMarker = (text) => /[-=]$/.test(text ?? '');
 /**
  * The joint to write between two adjacent pieces of a word: nothing when
  * either side already carries a marker on the edge that would meet it, else
- * the joiner their morph types call for. Suppressing ours rather than
+ * the joiner their morph types, and a "=" typed before the second, call for
+ * (`next.equalsBefore`). Suppressing ours rather than
  * stripping theirs keeps the value the author wrote, which is what a CLDF or
  * ELAN round trip reads back out.
  */
 export const joinerBetween = (prev, next) =>
   endsWithMarker(prev?.text) || startsWithMarker(next?.text)
     ? ''
-    : morphemeJoiner(prev?.morphType, next?.morphType);
+    : morphemeJoiner(prev?.morphType, next?.morphType, next?.equalsBefore === true);
 
-/** Join morpheme strings with per-pair joints. items: [{text, morphType}] */
+/**
+ * Join morpheme strings with per-pair joints. items: [{text, morphType,
+ * equalsBefore}], `equalsBefore` true where a "=" was typed before the piece.
+ */
 export const joinMorphemes = (items) =>
   items.map((m, i) => (i === 0 ? m.text : joinerBetween(items[i - 1], m) + m.text)).join('');

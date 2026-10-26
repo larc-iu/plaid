@@ -438,6 +438,10 @@ export default {
       carried: true,
       where: 'the morpheme line, the proclitic joined to the morpheme after it with =',
     },
+    'token.equalsTyped': {
+      carried: true,
+      where: 'the morpheme line, = between the two morphemes',
+    },
 
     // Time alignment
     'alignment.provenance': PROVENANCE,

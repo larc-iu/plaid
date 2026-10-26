@@ -55,7 +55,7 @@
 
 import { morphFormOf } from '../domain/igtExport.js';
 import { MEDIA_FILE_FIELD } from '../domain/igtConfig.js';
-import { joinerBetween } from '../domain/affixMarkers.js';
+import { equalsBefore, joinerBetween } from '../domain/affixMarkers.js';
 import { xmlEscape } from './xml.js';
 import {
   containedAlignments,
@@ -144,6 +144,7 @@ const morphText = (morphemes, i, withMarkers) => {
   const piece = (j) => ({
     text: morphFormOf(morphemes[j]),
     morphType: morphemes[j]?.morphType ?? null,
+    equalsBefore: equalsBefore(morphemes[j]?.metadata),
   });
   return joinerBetween(piece(i - 1), piece(i)) + form;
 };

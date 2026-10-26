@@ -237,6 +237,7 @@ export default {
     'token.sentenceExtraMetadata': NOT_A_VOCABULARY,
     'token.morphemeProvenance': NOT_A_VOCABULARY,
     'token.procliticBeforeMorpheme': NOT_A_VOCABULARY,
+    'token.equalsTyped': NOT_A_VOCABULARY,
     'alignment.provenance': NOT_A_VOCABULARY,
     'alignment.severalInSentence': NOT_A_VOCABULARY,
     'alignment.straddlesSentences': NOT_A_VOCABULARY,

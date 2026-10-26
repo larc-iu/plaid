@@ -444,6 +444,16 @@ async function buildStory(ctx) {
   await must(doc, 'proclitic', doc.setMorphemeType(word(doc, 'sin').morphemes[0].id, 'proclitic'));
   await must(doc, 'spaced gloss', doc.updateTokenSpan(word(doc, 'sin').id, 'Gloss', ' without '));
 
+  // A "=" typed between two inner morphemes (R47): recorded, types nothing,
+  // joins as "=" (token.equalsTyped).
+  await must(
+    doc,
+    'segment mira with an inner =',
+    doc.splitMorphemeMulti(word(doc, 'mira').morphemes[0].id, ['m', 'i', 'r', 'a'], {
+      joiners: ['-', '=', '-'],
+    }),
+  );
+  doc = await reload(client, projectId, docId);
   await must(doc, 'segment parar∅', doc.createMorphemes(word(doc, 'parar∅').id, ['parar', '∅']));
   doc = await reload(client, projectId, docId);
   await must(doc, 'link zero', doc.linkVocab(word(doc, 'parar∅').morphemes[1].id, e.zero));

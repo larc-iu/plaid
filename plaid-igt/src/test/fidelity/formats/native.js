@@ -209,6 +209,7 @@ export default {
     'token.sentenceExtraMetadata': carried,
     'token.morphemeProvenance': carried,
     'token.procliticBeforeMorpheme': carried,
+    'token.equalsTyped': carried,
     'alignment.provenance': carried,
     'alignment.severalInSentence': carried,
     'alignment.straddlesSentences': carried,

@@ -1033,6 +1033,12 @@ export const FEATURES = [
       }),
   },
   {
+    key: 'token.equalsTyped',
+    what: 'a "=" typed between two morphemes with no clitic beside it (metadata.equalsBefore)',
+    detect: (s) =>
+      sum(s, (d) => count(tokensIn(d, 'morpheme'), (m) => m.metadata.equalsBefore === true)),
+  },
+  {
     key: 'alignment.provenance',
     what: 'provenance on a segment (a transcription service made it)',
     detect: (s) =>

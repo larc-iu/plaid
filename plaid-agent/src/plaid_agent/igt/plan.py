@@ -100,7 +100,7 @@ from ..core.bidi import qv
 from ..core.opkind import OpKind
 from plaid_client import PlaidAPIError, metadata_ops
 from plaid_client.provenance import is_machine
-from plaid_client.workflows.igt.interlinear import EQUALS_TYPE_KEY
+from plaid_client.workflows.igt.interlinear import EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY
 
 from plaid_client.service import requester_message
 
@@ -403,8 +403,14 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
     if is_virtual(mid) and mid not in ctx.materialized:
         _token(ctx, op, mid, {'morphType': morph_type} if morph_type else None)
         return 1
+    taken = op.get('equals_taken') or []
     ctx.b.update('tokens', _token(ctx, op, mid),
-                 metadata=metadata_ops({'morphType': morph_type, EQUALS_TYPE_KEY: None, **ctx.restamp()}))
+                 metadata=metadata_ops({'morphType': morph_type, EQUALS_TYPE_KEY: None,
+                                        **({EQUALS_BEFORE_KEY: None} if mid in taken else {}),
+                                        **ctx.restamp()}))
+    for other in taken:
+        if other != mid:
+            ctx.b.update('tokens', other, metadata=metadata_ops({EQUALS_BEFORE_KEY: None}))
     return 1
 
 

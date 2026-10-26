@@ -187,6 +187,12 @@ describe('the clitic side of "=" (R49)', () => {
     expect(joiner().classList.contains('igt-morph-joiner--left')).toBe(true);
   });
 
+  it('draws a recorded "=" with no clitic beside it as a plain "=" (round 3)', () => {
+    mount({ own: {}, own2: { equalsBefore: true } });
+    expect(joiner().textContent).toBe('=');
+    expect(joiner().className).toBe('igt-morph-joiner');
+  });
+
   it('leaves "-" as it is', () => {
     mount();
     expect(joiner().textContent).toBe('-');

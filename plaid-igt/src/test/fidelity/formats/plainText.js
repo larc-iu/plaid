@@ -320,6 +320,10 @@ export default {
       carried: true,
       where: 'the segmented word line, the proclitic joined to the morpheme after it with =',
     },
+    'token.equalsTyped': {
+      carried: true,
+      where: 'the segmented word line, = between the two morphemes',
+    },
 
     // Time alignment
     'alignment.provenance': PROVENANCE,

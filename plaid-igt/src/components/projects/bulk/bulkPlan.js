@@ -23,7 +23,7 @@
 
 import { cpSlice, entryForm } from '@larc-iu/plaid-client';
 import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemory.js';
-import { morphemeJoiner } from '../../../domain/affixMarkers.js';
+import { equalsBefore, morphemeJoiner } from '../../../domain/affixMarkers.js';
 import { morphemeGlossReading } from '../../../domain/tagsets.js';
 
 export const OPERATIONS = [
@@ -105,7 +105,8 @@ export function collectRespellRows(doc, apply) {
       const chain = [];
       const ms = t.morphemes || [];
       ms.forEach((m, i) => {
-        const joiner = i > 0 ? morphemeJoiner(ms[i - 1]?.morphType, m.morphType) : '';
+        const joiner =
+          i > 0 ? morphemeJoiner(ms[i - 1]?.morphType, m.morphType, equalsBefore(m.metadata)) : '';
         if (hasOwnForm(m)) {
           const nf = apply(m.metadata.form);
           if (nf != null)

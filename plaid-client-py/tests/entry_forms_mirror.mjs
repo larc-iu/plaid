@@ -16,5 +16,8 @@ process.stdout.write(
     types: forms.MORPH_TYPES,
     entry: cases.map(([t, f]) => forms.entryForm(t, f)),
     decorated: cases.map(([t, f]) => forms.decorateWithAffixMarkers(t, f) ?? null),
+    decoratedAfterEquals: cases.map(
+      ([t, f]) => forms.decorateWithAffixMarkers(t, f, { equalsBefore: true }) ?? null,
+    ),
   }),
 );
