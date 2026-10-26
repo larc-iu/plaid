@@ -9,7 +9,7 @@ import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { analyzeFocus, baselineFocus, sentenceNear } from '../hooks/focusHandoff.js';
+import { analyzeFocus, baselineFocus, openTab, sentenceNear } from '../hooks/focusHandoff.js';
 import './DocumentBaseline.css';
 
 const toUtf16 = (text, at) => cpSlice(text, 0, at).length;
@@ -20,7 +20,7 @@ const toUtf16 = (text, at) => cpSlice(text, 0, at).length;
 function landingFor(doc) {
   let req = null;
   try {
-    req = baselineFocus.read();
+    req = openTab(baselineFocus);
   } catch {
     /* noop */
   }
@@ -61,7 +61,12 @@ export function DocumentBaseline() {
   };
   // Read after the commit, never during render: the grid hands its sentence
   // over as it unmounts, which is in the same commit as this tab's mount.
+  // Once per mount: React's second run of a mount effect in development would
+  // otherwise drop the caret this one handed to Analyze (openTab).
+  const openedRef = useRef(false);
   useEffect(() => {
+    if (openedRef.current) return;
+    openedRef.current = true;
     const landing = landingFor(doc);
     if (!landing) return;
     try {
@@ -80,7 +85,11 @@ export function DocumentBaseline() {
     const timer = setTimeout(() => setFlash(null), 2400);
     return () => clearTimeout(timer);
   }, [flash]);
-  const caretFromBox = (el) => placeCaret(utf16ToCp(el.value, el.selectionStart));
+  // Only from the saved text: a caret in a draft counts letters the grid does
+  // not have, and the draft may be left unsaved.
+  const caretFromBox = (el) => {
+    if (el.value === (ops.body || '')) placeCaret(utf16ToCp(el.value, el.selectionStart));
+  };
   const caretFromText = (e) => {
     const sel = window.getSelection?.();
     if (!sel?.rangeCount) return;
@@ -118,15 +127,16 @@ export function DocumentBaseline() {
         const el = textareaRef.current;
         el?.focus();
         if (el && caretRef.current != null) {
-          // The box scrolls to the caret: the height of the text before it,
-          // measured in the box itself, less half the box.
+          // The box scrolls to the caret when the text before it runs past
+          // the box: that text's height, measured in the box itself, less
+          // half the box.
           const full = el.value;
           const u = toUtf16(full, caretRef.current);
           el.value = full.slice(0, u);
           const above = el.scrollHeight;
           el.value = full;
           el.setSelectionRange(u, u);
-          el.scrollTop = Math.max(0, above - el.clientHeight / 2);
+          el.scrollTop = above > el.clientHeight ? above - el.clientHeight / 2 : 0;
         }
       });
     } else if (closed) {

@@ -123,3 +123,113 @@ test('Analyze and Baseline keep the sentence across the tab switch, both ways', 
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=baseline`);
   await expect(page.locator('.baseline-flash')).toHaveText(lines[4]);
 });
+
+const open = async (page, tab) => {
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=${tab}`);
+  if (tab === 'analyze') {
+    await expect(page.locator('.igt-sentence[data-sentence-id]').first()).toBeVisible();
+  }
+  await page.waitForLoadState('networkidle');
+};
+
+// The line of the box's caret, and whether it shows inside the box.
+const caretShown = (box) =>
+  box.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight);
+    const line = el.value.slice(0, el.selectionStart).split('\n').length - 1;
+    const top = parseFloat(cs.paddingTop) + line * lh;
+    return top >= el.scrollTop && top + lh <= el.scrollTop + el.clientHeight;
+  });
+
+// The line number of the sentence the grid flashed on landing, or null.
+const flashed = (page) =>
+  page.evaluate(
+    () =>
+      document.querySelector('.igt-sentence--flash')?.textContent.match(/line(\d+)/)?.[1] ?? null,
+  );
+
+test('Edit text shows the caret on the first lines of a long text', async ({ page }) => {
+  await open(page, 'analyze');
+  const box = page.getByPlaceholder('Type or paste the text');
+  for (const n of [1, 2]) {
+    await page.getByRole('tab', { name: 'Analyze' }).click();
+    await sentence(page, n).locator('.igt-field').first().click();
+    await page.getByRole('tab', { name: 'Baseline' }).click();
+    await expect(page.locator('.baseline-flash')).toHaveText(lines[n - 1]);
+    await page.getByRole('button', { name: 'Edit text' }).click();
+    await expect.poll(() => box.evaluate((el) => el.selectionStart)).toBe(starts[n - 1]);
+    expect(await caretShown(box)).toBe(true);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+  }
+});
+
+test('a focused sentence scrolled away gives way to the first one below the pinned tab strip', async ({
+  page,
+}) => {
+  await open(page, 'analyze');
+  await sentence(page, 2).locator('.igt-field').first().click();
+  // Sentence 6 with its top hidden under the strip, sentence 7 the first whole one.
+  await page.evaluate(() => window.scrollBy(0, 800));
+  const chrome = await page.evaluate(
+    () => document.querySelector('[data-pinned]').getBoundingClientRect().bottom,
+  );
+  await sentence(page, 6).evaluate(
+    (el, b) => window.scrollBy(0, el.getBoundingClientRect().bottom - (b + 30)),
+    chrome,
+  );
+  // Pressed by hand: Playwright's click scrolls the page first, which a
+  // reader's click does not.
+  await page.evaluate(() => {
+    const tab = [...document.querySelectorAll('[role="tab"]')].find(
+      (t) => t.textContent.trim() === 'Baseline',
+    );
+    tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    tab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+    tab.click();
+  });
+  await expect(page.locator('.baseline-flash')).toHaveText(lines[6]);
+});
+
+test('a handoff is for the next tab only', async ({ page }) => {
+  // Analyze on 5, a word of 12 pressed on Tokenize, then Baseline: nothing
+  // stale lands there, and Analyze after it opens with no landing.
+  await open(page, 'analyze');
+  await sentence(page, 5).locator('.igt-field').first().click();
+  await page.getByRole('tab', { name: 'Tokenize' }).click();
+  const word = page.locator(`span.token[data-begin="${starts[11]}"]`).first();
+  await word.dispatchEvent('mousedown', { button: 0 });
+  await page.mouse.up();
+  await page.getByRole('tab', { name: 'Baseline' }).click();
+  await expect(page.getByRole('button', { name: 'Edit text' })).toBeVisible();
+  await expect(page.locator('.baseline-flash')).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await expect(sentence(page, 1)).toBeVisible();
+  expect(await flashed(page)).toBe(null);
+
+  // Tokenize straight to Analyze still lands on the word's sentence.
+  await page.getByRole('tab', { name: 'Tokenize' }).click();
+  await word.dispatchEvent('mousedown', { button: 0 });
+  await page.mouse.up();
+  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await expect.poll(() => flashed(page)).toBe('12');
+});
+
+test('a draft left unsaved hands Analyze the caret it last had in the saved text', async ({
+  page,
+}) => {
+  await open(page, 'baseline');
+  await page.getByRole('button', { name: 'Edit text' }).click();
+  const box = page.getByPlaceholder('Type or paste the text');
+  await box.evaluate((el, at) => {
+    el.focus();
+    el.setSelectionRange(at, at);
+  }, starts[4]);
+  await box.press('ArrowRight');
+  await page.keyboard.type('new1\nnew2\nnew3\n');
+  for (let i = 0; i < 10; i++) await box.press('ArrowDown');
+  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await page.getByRole('button', { name: 'Leave' }).click();
+  await expect.poll(() => flashed(page)).toBe('5');
+});

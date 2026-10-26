@@ -31,6 +31,17 @@ export const analyzeFocus = handoff('igt:focus-sentence');
 export const tokenizeFocus = handoff('igt:focus-tokenize');
 export const baselineFocus = handoff('igt:focus-baseline');
 
+// A handoff is for the next tab only. Each of the three tabs opens with this:
+// it reads its own request and drops every other, so a request left for a tab
+// the reader went past never lands later (Analyze, Tokenize, Baseline lands
+// Baseline on nothing). Its own stays until its landing is done.
+const ALL = [analyzeFocus, tokenizeFocus, baselineFocus];
+export function openTab(own) {
+  const req = own.read();
+  for (const h of ALL) if (h !== own) h.clear();
+  return req;
+}
+
 // The sentence holding code point `at`, else the one closest to it, else null
 // for a document with no sentences. A caret just after a sentence's last
 // character is in that sentence.

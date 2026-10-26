@@ -7,7 +7,7 @@ import {
   mountIsland,
 } from '@/domain/test-helpers.js';
 import { DOCK_MIN_WINDOW } from '@ui/components/assistant/panelWidth.js';
-import { analyzeFocus, baselineFocus } from '../../hooks/focusHandoff.js';
+import { analyzeFocus, baselineFocus, tokenizeFocus } from '../../hooks/focusHandoff.js';
 
 // The Analyze and Baseline tabs hand each other the sentence the reader was
 // on (R50). The grid opens on the page and sentence holding Baseline's caret,
@@ -92,11 +92,29 @@ describe('from the Baseline tab', () => {
 
 describe('to the Baseline tab', () => {
   const page2 = (editor) => editor._setPage(1);
+  // Lays the page out 100px a sentence, `first` at the window's top plus
+  // `offset`, under chrome pinned down to `chrome` px (the tab strip).
+  const layout = (host, { first, offset = 0, chrome = 0 }) => {
+    for (const el of host.querySelectorAll('.igt-sentence[data-sentence-id]')) {
+      const top = (Number(el.dataset.sentenceId.slice(2)) - first) * 100 + offset;
+      el.getBoundingClientRect = () => ({ top, bottom: top + 100, height: 100 });
+    }
+    const strip = document.createElement('div');
+    strip.dataset.pinned = 'true';
+    strip.getBoundingClientRect = () => ({ top: 0, bottom: chrome, height: chrome });
+    document.body.appendChild(strip);
+    pinned.push(strip);
+  };
+  const pinned = [];
+  afterEach(() => pinned.splice(0).forEach((el) => el.remove()));
+  const cell = (host, id) =>
+    host.querySelector(`.igt-sentence[data-sentence-id="${id}"] .igt-field`);
 
-  it("hands over the focused cell's sentence", () => {
+  it("hands over the focused cell's sentence while it is in view", () => {
     const { editor, host, doc } = mount();
     page2(editor);
-    host.querySelector('.igt-sentence[data-sentence-id="s-27"] .igt-field').focus();
+    layout(host, { first: 25 });
+    cell(host, 's-27').focus();
     editor.handToBaseline();
     expect(baselineFocus.read()).toEqual({ docId: doc.id, sentenceId: 's-27', at: 108 });
   });
@@ -104,29 +122,32 @@ describe('to the Baseline tab', () => {
   it("hands over the last focused cell's sentence once focus has left the grid", () => {
     const { editor, host } = mount();
     page2(editor);
-    const cell = host.querySelector('.igt-sentence[data-sentence-id="s-26"] .igt-field');
-    cell.focus();
-    cell.blur();
+    layout(host, { first: 25 });
+    cell(host, 's-26').focus();
+    cell(host, 's-26').blur();
     editor.handToBaseline();
     expect(baselineFocus.read().sentenceId).toBe('s-26');
   });
 
-  it('hands over the topmost sentence in view when no cell on the page was focused', () => {
+  it('hands over the topmost sentence in view when the focused one is scrolled away', () => {
     const { editor, host } = mount();
-    host.querySelector('.igt-sentence[data-sentence-id="s-2"] .igt-field').focus();
     page2(editor);
-    // s-25 and s-26 are scrolled above the window, s-27 is the first in it,
-    // its top 10px down.
-    for (const el of host.querySelectorAll('.igt-sentence[data-sentence-id]')) {
-      const i = Number(el.dataset.sentenceId.slice(2));
-      const top = (i - 27) * 100 + (i < 27 ? 0 : 10);
-      el.getBoundingClientRect = () => ({ top, bottom: top + 100, height: 100 });
-    }
+    cell(host, 's-26').focus();
+    layout(host, { first: 28, offset: 10 });
     editor.handToBaseline();
-    expect(baselineFocus.read().sentenceId).toBe('s-27');
+    expect(baselineFocus.read().sentenceId).toBe('s-28');
   });
 
-  it("hands over the page's first sentence when nothing is measured", () => {
+  it('hands over the topmost sentence whose top is below the pinned chrome', () => {
+    const { editor, host } = mount();
+    page2(editor);
+    // s-27 runs from 50 to 150, its top under the 97px chrome. s-28 starts at 150.
+    layout(host, { first: 27, offset: 50, chrome: 97 });
+    editor.handToBaseline();
+    expect(baselineFocus.read().sentenceId).toBe('s-28');
+  });
+
+  it("hands over the page's first sentence when nothing is in view", () => {
     const { editor } = mount();
     page2(editor);
     editor.handToBaseline();
@@ -137,5 +158,17 @@ describe('to the Baseline tab', () => {
     const { editor } = mount({ body: '', words: [], sentences: [] });
     editor.handToBaseline();
     expect(baselineFocus.read()).toBe(null);
+  });
+});
+
+describe('a handoff is for the next tab only', () => {
+  it('clears what was left for Tokenize and Baseline when the grid opens, and lands on its own', () => {
+    tokenizeFocus.write({ docId: 'doc-1', sentenceId: 's-3', begin: 12 });
+    baselineFocus.write({ docId: 'doc-1', sentenceId: 's-4', at: 16 });
+    analyzeFocus.write({ docId: 'doc-1', sentenceId: null, begin: null, at: 4 * 27 });
+    const { editor } = mount();
+    expect(tokenizeFocus.read()).toBe(null);
+    expect(baselineFocus.read()).toBe(null);
+    expect(editor._page).toBe(1);
   });
 });

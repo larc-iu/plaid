@@ -156,6 +156,9 @@ describe('AnalyzeIsland', () => {
     // A request left from an earlier visit, which the switch replaces.
     baselineFocus.write({ docId: doc.id, sentenceId: 's-1', at: 0 });
     view = await renderComponent(page({ goToTab: vi.fn() }));
+    view.container.querySelectorAll('.igt-sentence[data-sentence-id]').forEach((el, i) => {
+      el.getBoundingClientRect = () => ({ top: i * 100, bottom: i * 100 + 100, height: 100 });
+    });
     view.container.querySelector('.igt-sentence[data-sentence-id="s-2"] .igt-field').focus();
     await view.rerender(page({ goToTab: vi.fn(), tab: 'baseline' }));
     await view.step(() => {});

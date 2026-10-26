@@ -52,7 +52,7 @@ import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.j
 import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
 import { saveStateOf } from '@ui/lib/saveState.js';
-import { analyzeFocus, baselineFocus, sentenceNear } from '../../hooks/focusHandoff.js';
+import { analyzeFocus, baselineFocus, openTab, sentenceNear } from '../../hooks/focusHandoff.js';
 
 export class IgtEditor {
   constructor(
@@ -321,32 +321,49 @@ export class IgtEditor {
     };
     this.container.addEventListener('focusin', this._onSentenceFocusIn);
     this._render(true);
+    try {
+      openTab(analyzeFocus);
+    } catch {
+      /* noop */
+    }
     this._consumeFocusRequest();
   }
 
-  // The sentence the grid is on: the focused cell's, else the last focused
-  // cell's while it is on the page shown, else the topmost sentence in view,
-  // else the page's first. Null for a document with no sentences. Read while
-  // the grid is still in the page, since it measures.
+  // The sentence the grid is on: the focused or last focused cell's while it
+  // is in view, else the topmost sentence whose top is below the pinned
+  // chrome (the app header and the document's tab strip, measured), else the
+  // page's first. Null for a document with no sentences. Read while the grid
+  // is still in the page, since it measures.
   sentenceOnScreen() {
     const size = this.constructor.PAGE_SIZE;
     const start = this._page * size;
     const page = (this.doc.sentences || []).slice(start, start + size);
+    const chrome = Math.max(
+      0,
+      ...[...document.querySelectorAll('header, [data-pinned]')].map(
+        (el) => el.getBoundingClientRect().bottom,
+      ),
+    );
+    const rows = [...this.container.querySelectorAll('.igt-sentence[data-sentence-id]')].map(
+      (el) => ({
+        s: page.find((p) => p.id === el.dataset.sentenceId),
+        r: el.getBoundingClientRect(),
+      }),
+    );
     const active = document.activeElement;
     const focused = this.container.contains(active)
       ? active.closest?.('.igt-sentence')?.dataset?.sentenceId
       : null;
     const id = focused || this._lastSentenceId;
-    const held = id && page.find((s) => s.id === id);
-    if (held) return held;
-    for (const el of this.container.querySelectorAll('.igt-sentence[data-sentence-id]')) {
-      const r = el.getBoundingClientRect();
-      if (r.height > 0 && r.bottom > 0 && r.top < window.innerHeight) {
-        const s = page.find((p) => p.id === el.dataset.sentenceId);
-        if (s) return s;
-      }
-    }
-    return page[0] ?? null;
+    const held = rows.find(
+      ({ s, r }) =>
+        s && s.id === id && r.height > 0 && r.bottom > chrome && r.top < window.innerHeight,
+    );
+    if (held) return held.s;
+    const top = rows.find(
+      ({ s, r }) => s && r.height > 0 && r.top >= chrome && r.top < window.innerHeight,
+    );
+    return top?.s ?? page[0] ?? null;
   }
 
   // Leaving the grid: the Baseline tab opens on the sentence it was on.

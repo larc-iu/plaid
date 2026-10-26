@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { all } from '@ui/test/renderComponent.jsx';
 import { fakeDocument, mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
-import { analyzeFocus, baselineFocus } from '../hooks/focusHandoff.js';
+import { analyzeFocus, baselineFocus, tokenizeFocus } from '../hooks/focusHandoff.js';
 import { DocumentBaseline } from './DocumentBaseline.jsx';
 
 // The Analyze and Baseline tabs hand each other the sentence the reader was
@@ -114,7 +114,7 @@ describe('from the Analyze tab', () => {
     baselineFocus.write({ docId: 'doc-2', sentenceId: 's3', at: 9 });
     const other = await mount();
     expect(other.flash()).toBe(null);
-    expect(analyzeFocus.read()).toEqual({ docId: 'doc-1', sentenceId: null, begin: null, at: 9 });
+    expect(analyzeFocus.read()).toBe(null);
     await other.m.unmount();
   });
 
@@ -152,6 +152,51 @@ describe('to the Analyze tab', () => {
       window.getSelection().collapse(textNode, 11); // before "gh", past two astral letters
       view().dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
+    expect(analyzeFocus.read()).toEqual({ docId: 'doc-1', sentenceId: null, begin: null, at: 9 });
+    await m.unmount();
+  });
+
+  it('hands over nothing typed and unsaved: the caret it last had in the saved text stays', async () => {
+    const { m, openEditor, box } = await mount();
+    await openEditor();
+    await m.step(async () => {
+      box().focus();
+      box().setSelectionRange(11, 11); // before "gh"
+      box().dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowDown' }));
+    });
+    expect(analyzeFocus.read().at).toBe(9);
+    // Ten lines typed at the top, the caret then moved inside the draft.
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    await m.step(async () => {
+      setValue.call(box(), 'x\n'.repeat(10) + body);
+      box().setSelectionRange(5, 5);
+      box().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await m.step(async () => {
+      box().setSelectionRange(24, 24);
+      box().dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowDown' }));
+    });
+    expect(box().value).not.toBe(body);
+    expect(analyzeFocus.read().at).toBe(9);
+    await m.unmount();
+  });
+});
+
+describe('a handoff is for the next tab only', () => {
+  it('drops what was left for Analyze and Tokenize when the tab opens', async () => {
+    analyzeFocus.write({ docId: 'doc-1', sentenceId: 's1', begin: null });
+    tokenizeFocus.write({ docId: 'doc-1', sentenceId: 's1', begin: 0 });
+    const { m } = await mount();
+    expect(analyzeFocus.read()).toBe(null);
+    expect(tokenizeFocus.read()).toBe(null);
+    await m.unmount();
+  });
+
+  it('leaves its own landing for Analyze after dropping the rest', async () => {
+    tokenizeFocus.write({ docId: 'doc-1', sentenceId: 's1', begin: 0 });
+    baselineFocus.write({ docId: 'doc-1', sentenceId: 's3', at: 9 });
+    const { m } = await mount();
+    expect(tokenizeFocus.read()).toBe(null);
     expect(analyzeFocus.read()).toEqual({ docId: 'doc-1', sentenceId: null, begin: null, at: 9 });
     await m.unmount();
   });

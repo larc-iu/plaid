@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { sentenceNear } from './focusHandoff.js';
+import {
+  analyzeFocus,
+  baselineFocus,
+  openTab,
+  sentenceNear,
+  tokenizeFocus,
+} from './focusHandoff.js';
 
 // The sentence a handoff between Analyze and Baseline lands on, by position:
 // the one holding the offset, else the closest, else none.
@@ -31,5 +37,28 @@ describe('sentenceNear', () => {
   it('is null for a document with no sentences', () => {
     expect(sentenceNear([], 3)).toBe(null);
     expect(sentenceNear(undefined, 3)).toBe(null);
+  });
+});
+
+// A handoff is for the next tab only: a tab opening takes its own and drops
+// the rest, so one left for a tab the reader went past never lands later.
+describe('openTab', () => {
+  it("returns the tab's own request and clears every other one", () => {
+    sessionStorage.clear();
+    analyzeFocus.write({ docId: 'd', sentenceId: 'a', begin: null });
+    tokenizeFocus.write({ docId: 'd', sentenceId: 't', begin: 3 });
+    baselineFocus.write({ docId: 'd', sentenceId: 'b', at: 0 });
+    expect(openTab(tokenizeFocus)).toEqual({ docId: 'd', sentenceId: 't', begin: 3 });
+    expect(analyzeFocus.read()).toBe(null);
+    expect(baselineFocus.read()).toBe(null);
+    // Its own stays until its landing is done.
+    expect(tokenizeFocus.read()).toEqual({ docId: 'd', sentenceId: 't', begin: 3 });
+  });
+
+  it('is null with nothing left for it', () => {
+    sessionStorage.clear();
+    analyzeFocus.write({ docId: 'd', sentenceId: 'a', begin: null });
+    expect(openTab(baselineFocus)).toBe(null);
+    expect(analyzeFocus.read()).toBe(null);
   });
 });
