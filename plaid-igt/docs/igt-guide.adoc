@@ -298,12 +298,12 @@ The full set of gestures is collected under <<_keyboard_shortcuts>>.
 === Morpheme types
 
 A morpheme's type, such as stem, suffix, or enclitic, decides how it joins its neighbours: `=` beside a clitic, `-` otherwise.
-In the grid, a proclitic's or an enclitic's `=` sits against the clitic, with a narrow space toward its host: `ni= house`, `house =ni`. Between two clitics it sits in the middle.
+In the grid, a proclitic's or an enclitic's `=` sits against the clitic, with a narrow space toward its host: `ni= house`, `house =ni`. Any other `=` sits in the middle.
 Copied and exported text writes the plain `=`.
 
 Typing `=` in a morpheme form splits it and types the clitic by its place in the word.
 A `=` after the word's first morpheme makes that morpheme a proclitic, and a `=` before the last makes the last an enclitic. In a word of two morphemes, the second is the enclitic.
-A `=` between two inner morphemes types neither, and the boundary shows as `-` until a change makes it first or last in the word.
+A `=` between two inner morphemes types neither, and still shows as `=`, in the grid and in every copy and export. A FLEx or ELAN export writes it in front of the morpheme, as those formats write an enclitic.
 Each `=` typed is kept with the morpheme after it, and the types are worked out again over the whole word each time its morphemes are split, merged, or deleted, so the result does not depend on the order they were typed in.
 Merging the two morphemes beside a `=`, or deleting the morpheme after it, takes the `=` away. Clearing a clitic's type in the **Type** list takes away the `=` that gave it.
 A type chosen in the **Type** list, given by an import, or carried by a linked entry is never changed this way.
