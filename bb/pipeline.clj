@@ -676,5 +676,7 @@
       (when (seq problems)
         (binding [*out* *err*]
           (doseq [msg problems] (println "✗" msg)))
-        (fail (str "no release from " sha " until CI and a nightly have both passed on it")))
+        (fail (str "no release from " sha " until CI and a nightly have both passed on it."
+                   " Nothing was built, so a release run stopped here is re-run as it is once they pass"
+                   " (gh run rerun <run id>), at the same version number.")))
       (println "✓ CI and a nightly passed on" sha))))

@@ -126,7 +126,8 @@ A nightly run whose suites were skipped, on a night `master` did not move, does 
 . Run `bb release <version>`, for example `bb release 0.2.0-alpha.1`. It checks the same two runs on `HEAD` and refuses to tag without them, then tags `HEAD` and pushes the tag.
 
 The tag starts `release.yml`, which builds the jar, the npm package and the Python package, smoke-tests the jar and publishes all three.
-A version number whose release failed is not used again: the next attempt takes the next number.
+When the release stops at its first job, because CI or the nightly run had not passed, nothing has been built: get the missing run to pass and re-run the same release run (`gh run rerun <run id>`), at the same version number.
+A version number whose build or publish failed is not used again: the next attempt takes the next number.
 
 == Working on plaid-core
 
