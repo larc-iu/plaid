@@ -2045,10 +2045,28 @@ Caddy does both with the configuration above, while nginx needs `client_max_body
 == Backups
 
 Every night at `[backup] time` (03:00 by default) Plaid writes a snapshot of the database to `data/backups/` and keeps the most recent `[backup] retention` of them.
-That protects against a bad edit but not against a lost machine, so copy the newest backup somewhere else on a schedule, together with `data/media/`.
+Each backup is a zip holding one file, `plaid.db`, the database.
+A snapshot that fails SQLite's quick check is not kept: the log says so at ERROR, and the backups from earlier nights stay as they are.
 An admin can also take a backup by hand from the admin pages.
 
-To restore, stop the service, put the database file from the backup in place of `data/plaid.db` (removing any `plaid.db-wal` and `plaid.db-shm` beside it), restore `data/media/`, and start the service.
+The backups protect against a bad edit but not against a lost machine.
+Copy the newest backup somewhere else on a schedule, together with `data/media/`, `data/config.toml` and `data/jwt-secret.txt`, which the zip does not hold.
+
+== Restoring from a backup
+
+A restore needs a backup zip and your off-box copy of `data/media/`, `config.toml` and `jwt-secret.txt`.
+Without `jwt-secret.txt`, Plaid makes a new signing secret, so everyone is signed out and every named API token stops working.
+Without `config.toml`, Plaid starts with every setting at its default, the port among them.
+
+. Stop the service: `sudo systemctl stop plaid`.
+. Move the old `data/` directory aside, if there is one, rather than deleting it.
+. Unzip the newest `plaid-backup-<stamp>.zip` (from the old `data/backups/` or your off-box copy) into an empty directory. It holds one file, `plaid.db`.
+. Check the file: `sqlite3 plaid.db "PRAGMA integrity_check"` prints `ok` for a sound database. If it prints anything else, use the next newest backup.
+. Make a new `data/` directory and move `plaid.db` into it, with no `plaid.db-wal` or `plaid.db-shm` beside it.
+. Put back `data/media/`, `data/config.toml` and `data/jwt-secret.txt` from your off-box copy, and make the secret readable by its owner only: `chmod 600 data/jwt-secret.txt`.
+. Give everything in `data/` to the service's user: `sudo chown -R plaid:plaid data`.
+. Start the service: `sudo systemctl start plaid`. A newer jar runs its migrations on startup.
+. Check `+curl http://localhost:8080/health+`, with the port from `config.toml`. It answers `"ok": true` with the version. Then open a document with a recording in each app and play the recording.
 
 == Upgrading
 
