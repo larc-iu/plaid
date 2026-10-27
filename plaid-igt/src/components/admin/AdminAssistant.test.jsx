@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, byText, texts } from '@ui/test/renderComponent.jsx';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { AdminAssistant } from './AdminAssistant';
 
 // The index is built entirely out of the STORE KEY plus a small value, and
@@ -293,6 +294,64 @@ describe('a conversation has an address', () => {
     expect(container.textContent).not.toContain('There is no conversation');
     await step(async () => release());
     expect(container.textContent).toContain('Fourteen, across three documents.');
+    await unmount();
+  });
+});
+
+describe('Updated is when the conversation last changed', () => {
+  // Luke, 2026-10-27: Updated moved while nobody sent anything. A tab holding
+  // a conversation renews its hold every two minutes, and the service writes
+  // the hold into the sidebar entry, so the store row's own stamp moves with
+  // every renewal. The entry's `updatedAt` moves only when the transcript does.
+  const HELD = 'Held open in a tab';
+  const SENT = 'Sent to last';
+  const held = {
+    ...entry('ada@example.com', PA, 'h1', {
+      id: 'h1',
+      title: HELD,
+      updatedAt: '2026-08-01T10:00:00.000Z',
+      holder: { tab: 't1', at: '2026-10-01T10:00:00.000Z' },
+    }),
+    updatedAt: '2026-10-01T10:00:00Z',
+  };
+  const sent = entry('ada@example.com', PA, 's1', {
+    id: 's1',
+    title: SENT,
+    updatedAt: '2026-09-01T10:00:00.000Z',
+  });
+  const withEntries = (list) => fakeClient({ admin: { userData: vi.fn(async () => list) } });
+  const updatedTitle = (container, title) =>
+    all(container, 'tbody tr')
+      .find((tr) => tr.textContent.includes(title))
+      .querySelector('td:last-child span')
+      .getAttribute('title');
+
+  it("shows and sorts by the entry's own time, not the row's", async () => {
+    const { container, unmount } = await mount(withEntries([held, sent]));
+    expect(rowCells(container).map((c) => c[0])).toEqual([SENT, HELD]);
+    expect(updatedTitle(container, HELD)).toBe(fullTimestamp('2026-08-01T10:00:00.000Z'));
+    await unmount();
+  });
+
+  it("shows the entry's own time on the conversation it opens", async () => {
+    const { container, step, unmount } = await mount(withEntries([held, sent]));
+    await step(async () => byText(container, 'tbody a', HELD).click());
+    const stamps = all(container, 'p span[title]').map((s) => s.getAttribute('title'));
+    expect(stamps).toEqual([fullTimestamp('2026-08-01T10:00:00.000Z')]);
+    await unmount();
+  });
+
+  it("falls back to the row's stamp when the entry has no usable time", async () => {
+    const missing = entry('ada@example.com', PA, 'm1', { id: 'm1', title: 'No time' });
+    const garbled = entry('ada@example.com', PA, 'g1', {
+      id: 'g1',
+      title: 'Garbled time',
+      updatedAt: 'yesterday',
+    });
+    const { container, unmount } = await mount(withEntries([missing, garbled]));
+    const row = fullTimestamp('2026-09-01T10:00:00Z');
+    expect(updatedTitle(container, 'No time')).toBe(row);
+    expect(updatedTitle(container, 'Garbled time')).toBe(row);
     await unmount();
   });
 });

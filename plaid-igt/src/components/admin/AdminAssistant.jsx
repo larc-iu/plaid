@@ -52,6 +52,8 @@ const OWN_APP = 'igt';
 
 // `<app>:assistant:<project>:meta:<id>`. Both ids are UUIDs, so no segment can
 // contain the separator.
+const isTime = (v) => typeof v === 'string' && !Number.isNaN(new Date(v).getTime());
+
 const parseKey = (key) => {
   const parts = String(key).split(':');
   if (parts.length !== 5 || parts[1] !== 'assistant') return null;
@@ -283,9 +285,11 @@ export const AdminAssistant = ({ client }) => {
           title: meta.title || 'Untitled',
           turns: typeof meta.turns === 'number' ? meta.turns : null,
           model: meta.model || null,
-          // The row's own stamp, not the meta value's: it is what the store
-          // recorded, and it is there even when the value is malformed.
-          updatedAt: entry.updatedAt,
+          // When the conversation last changed, the time the assistant's own
+          // list shows. The store row's stamp moves with every hold renewal of
+          // a tab that has it open, so it stands in only for an entry with no
+          // usable time of its own.
+          updatedAt: isTime(meta.updatedAt) ? meta.updatedAt : entry.updatedAt,
         },
       ];
     });
