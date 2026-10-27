@@ -2061,7 +2061,12 @@ Without `config.toml`, Plaid starts with every setting at its default, the port 
 . Stop the service: `sudo systemctl stop plaid`.
 . Move the old `data/` directory aside, if there is one, rather than deleting it.
 . Unzip the newest `plaid-backup-<stamp>.zip` (from the old `data/backups/` or your off-box copy) into an empty directory. It holds one file, `plaid.db`.
-. Check the file: `sqlite3 plaid.db "PRAGMA integrity_check"` prints `ok` for a sound database. If it prints anything else, use the next newest backup.
+. Check the file, in the directory it was unzipped into. For a sound database this prints `ok`, and if it prints anything else, use the next newest backup.
++
+[source,console]
+----
+$ python3 -c "import sqlite3; print(sqlite3.connect('file:plaid.db?mode=ro', uri=True).execute('pragma integrity_check').fetchone()[0])"
+----
 . Make a new `data/` directory and move `plaid.db` into it, with no `plaid.db-wal` or `plaid.db-shm` beside it.
 . Put back `data/media/`, `data/config.toml` and `data/jwt-secret.txt` from your off-box copy, and make the secret readable by its owner only: `chmod 600 data/jwt-secret.txt`.
 . Give everything in `data/` to the service's user: `sudo chown -R plaid:plaid data`.
