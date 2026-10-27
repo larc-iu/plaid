@@ -50,6 +50,10 @@ class Unavailable(Exception):
     """No core can be started here: the reason, for the skip."""
 
 
+# Launches on a fresh port after the first one was taken before the core bound it.
+PORT_RELAUNCHES = 2
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
@@ -124,16 +128,26 @@ class PrivateCore:
 
     def __init__(self):
         self.dir = Path(tempfile.mkdtemp(prefix='plaid-agent-core-'))
+        self.log = None
+        try:
+            self._launch()
+        except Unavailable:
+            shutil.rmtree(self.dir, ignore_errors=True)
+            raise
+
+    def _launch(self) -> None:
+        """Start the core on a port free at this moment. The port is only
+        known free until the JVM binds it, and on a busy CI runner another
+        process can take it first, so :meth:`wait` launches again on a fresh
+        one when the core says its port is in use."""
         self.port = _free_port()
         self.url = f'http://127.0.0.1:{self.port}'
         config = self.dir / 'config.toml'
         config.write_text(f'[server]\nport = {self.port}\n\n[logging]\nlevel = "warn"\nlibrary_level = "warn"\n\n'
                           f'[database]\npath = "{self.dir / "plaid.db"}"\n\n[backup]\nenabled = false\n')
-        try:
-            cmd = command(config)
-        except Unavailable:
-            shutil.rmtree(self.dir, ignore_errors=True)
-            raise
+        cmd = command(config)
+        if self.log is not None:
+            self.log.close()
         self.log = open(self.dir / 'core.log', 'wb')
         env = {**os.environ, 'PLAID_ADMIN_EMAIL': ADMIN_EMAIL, 'PLAID_ADMIN_PASSWORD': ADMIN_PASSWORD}
         # Its own process group, so stopping it reaches the JVM the Clojure
@@ -143,8 +157,13 @@ class PrivateCore:
 
     def wait(self, timeout: float = BOOT_TIMEOUT) -> None:
         deadline = time.monotonic() + timeout
+        relaunches = 0
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
+                if relaunches < PORT_RELAUNCHES and 'Address already in use' in self.tail():
+                    relaunches += 1
+                    self._launch()
+                    continue
                 raise RuntimeError(f'the private Plaid core exited ({self.proc.returncode}) before it was ready:\n'
                                    + self.tail())
             if answers(self.url):
