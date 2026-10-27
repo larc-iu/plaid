@@ -1,6 +1,7 @@
 (ns plaid.server.backup-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [mount.core :as mount]
             [plaid.fixtures :refer [db with-db]]
             [plaid.server.backup :as backup]
             [plaid.server.config]
@@ -160,3 +161,51 @@
   (with-redefs [plaid.server.config/config {:plaid.server.sql/config {:main-db-path "/srv/plaid/data/plaid.db"}
                                             :plaid.backup/config {:directory "/mnt/off-site"}}]
     (is (= "/mnt/off-site" (:directory (backup/status))))))
+
+;; REV-RESTORE: a JVM stopped mid-backup left its database-sized snapshot in
+;; the backups directory for good.
+(defn- leftovers! [dir]
+  (doseq [n [".plaid-backup-20200101-030000-0b0e7d1c-6c3a-4f1e-9a51-1d2f3e4a5b6c.db.tmp"
+             ".plaid-backup-20200101-030000-0b0e7d1c-6c3a-4f1e-9a51-1d2f3e4a5b6c.zip.tmp"]]
+    (spit (io/file dir n) "left by a stopped server")))
+
+(def ^:private kept
+  ;; A finished zip and files that only look like the backup's temporaries.
+  #{"plaid-backup-20200101-030000.zip"
+    ".plaid-backup-notes.db.tmp"
+    "plaid-backup-20200101-030000-0b0e7d1c-6c3a-4f1e-9a51-1d2f3e4a5b6c.db.tmp"
+    ".plaid-backup-20200101-030000-0b0e7d1c-6c3a-4f1e-9a51-1d2f3e4a5b6c.db"})
+
+(defn- names [dir] (set (map #(.getName %) (.listFiles dir))))
+
+(deftest leftovers-are-removed-at-startup
+  (with-temp-directory
+    (fn [dir]
+      (leftovers! dir)
+      (doseq [n kept] (spit (io/file dir n) "keep"))
+      (with-redefs [plaid.server.config/config {:plaid.backup/config {:enabled? false
+                                                                      :directory (str dir)}}]
+        (mount/start #'backup/backup-scheduler)
+        (mount/stop #'backup/backup-scheduler))
+      (is (= kept (names dir)) "with nightly backups off too"))))
+
+(deftest leftovers-are-removed-before-each-backup
+  (with-temp-directory
+    (fn [dir]
+      (leftovers! dir)
+      (let [zip (backup/backup-once! db dir 5)]
+        (is (= #{(.getName zip)} (names dir)))))))
+
+(deftest leftovers-stay-while-a-backup-is-written
+  ;; A backup taken by hand can be running when the sweep comes, and its own
+  ;; temporaries are then not leftovers.
+  (with-temp-directory
+    (fn [dir]
+      (with-redefs [plaid.server.config/config {:plaid.backup/config {:directory (str dir)}}]
+        (while-a-backup-is-written
+         dir
+         (fn []
+           (let [before (names dir)]
+             (is (some #(.endsWith ^String % ".db.tmp") before))
+             (#'backup/remove-leftovers!)
+             (is (= before (names dir))))))))))

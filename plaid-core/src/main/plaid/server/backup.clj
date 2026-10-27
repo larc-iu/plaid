@@ -128,6 +128,22 @@
       (catch AtomicMoveNotSupportedException _
         (Files/move source target replace-options)))))
 
+(def ^:private temporary-name
+  ;; What `write-backup!` names its snapshot and its zip while they are being
+  ;; written, and nothing else.
+  #"\.plaid-backup-\d{8}-\d{6}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(db|zip)\.tmp")
+
+(defn- remove-temporaries!
+  "Delete what a backup stopped part way (the server shut down while it was
+  being written) left in `dir`: its snapshot, as large as the database, and
+  its temporary zip. Only called while no backup is being written."
+  [^File dir]
+  (doseq [^File f (.listFiles dir)
+          :when (and (.isFile f) (re-matches temporary-name (.getName f)))]
+    (if (.delete f)
+      (log/info "Removed a backup file left unfinished:" (.getName f))
+      (log/warn "Could not remove a backup file left unfinished:" (.getName f)))))
+
 (defn- prune!
   "Delete all but the `retention` newest backup zips in `dir`. Filenames embed
    a sortable timestamp, so lexicographic order is chronological."
@@ -145,6 +161,18 @@
   (atom nil))
 
 (declare write-backup!)
+
+(defn- remove-leftovers!
+  "Remove unfinished backup files from the configured directory, unless a
+  backup is being written now (its own files are not leftovers)."
+  []
+  (when (compare-and-set! running nil (java.time.Instant/now))
+    (try
+      (let [dir (io/file (:directory (backup-config)))]
+        (when (.isDirectory dir) (remove-temporaries! dir)))
+      (catch Exception e
+        (log/warn e "Could not look for unfinished backup files"))
+      (finally (reset! running nil)))))
 
 (defn backup-once!
   "Take one backup now: snapshot `ds` into a timestamped zip under `dir`, then
@@ -170,6 +198,7 @@
         zip      (io/file dir-file (str file-prefix stamp ".zip"))]
     (try
       (.mkdirs dir-file)
+      (remove-temporaries! dir-file)
       (snapshot! ds snapshot)
       (let [check (quick-check snapshot)]
         (if (not= "ok" check)
@@ -269,6 +298,7 @@
 
 (defstate backup-scheduler
   :start (let [{:keys [enabled? directory retention time]} (backup-config)]
+           (remove-leftovers!)
            (if-not enabled?
              (do (log/info "Nightly database backup disabled ([backup] enabled = false).") nil)
              (let [exec (Executors/newSingleThreadScheduledExecutor
