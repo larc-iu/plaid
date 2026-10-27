@@ -3,9 +3,11 @@
 
    A single daemon thread that, once a day at a configured wall-clock time,
    writes a consistent, compacted snapshot of the database via `VACUUM INTO`
-   (WAL-safe with the server running — it only reads the source DB), zips it
-   into the backup directory as `plaid-backup-<timestamp>.zip`, and prunes all
-   but the most recent N zips.
+   (WAL-safe with the server running, since it only reads the source DB),
+   checks the snapshot with `PRAGMA quick_check`, zips it into the backup
+   directory as `plaid-backup-<timestamp>.zip` holding one entry, `plaid.db`,
+   and prunes all but the most recent N zips. A snapshot that fails the check
+   is not zipped, and the older zips stay as they are.
 
    Everything is driven from the `[backup]` config section (see config.toml).
    The scheduler reschedules itself after each run so it tracks the configured
@@ -19,12 +21,14 @@
             [plaid.server.sql :refer [datasource]]
             [taoensso.timbre :as log])
   (:import [java.io File]
+           [java.sql DriverManager]
            [java.nio.file AtomicMoveNotSupportedException CopyOption Files StandardCopyOption]
            [java.time LocalDateTime LocalTime]
            [java.time.format DateTimeFormatter]
            [java.time.temporal ChronoUnit]
            [java.util.concurrent Executors ScheduledExecutorService ThreadFactory TimeUnit]
-           [java.util.zip ZipEntry ZipFile ZipOutputStream]))
+           [java.util.zip ZipEntry ZipFile ZipOutputStream]
+           [org.sqlite SQLiteConfig]))
 
 (def ^:private defaults
   {:enabled?  true
@@ -60,11 +64,39 @@
   [s]
   (str \' (str/replace s "'" "''") \'))
 
+(def ^:private entry-name
+  "The one entry in every backup zip, named as the live database is, so it
+  unzips to the file a restore puts back."
+  "plaid.db")
+
+(defn- snapshot!
+  "Write a consistent copy of the database behind `ds` to `target`."
+  [ds ^File target]
+  ;; VACUUM INTO produces a fresh, defragmented, transactionally-consistent
+  ;; copy. It only reads the source, so it's safe with writers active and
+  ;; captures committed WAL frames without an explicit checkpoint.
+  (jdbc/execute-one! ds [(str "VACUUM INTO " (sqlite-quote (.getAbsolutePath target)))]))
+
+(defn- quick-check
+  "Run `PRAGMA quick_check` on the database file `f`, opened read-only.
+  Returns its rows (at most ten) joined, \"ok\" for a sound file, or the error message
+  when the file cannot be read as a database at all."
+  [^File f]
+  (try
+    (let [props (.toProperties (doto (SQLiteConfig.) (.setReadOnly true)))]
+      (with-open [conn (DriverManager/getConnection (str "jdbc:sqlite:" (.getAbsolutePath f)) props)
+                  stmt (.createStatement conn)
+                  rs (.executeQuery stmt "PRAGMA quick_check(10)")]
+        (str/join "; " (loop [rows []]
+                         (if (.next rs) (recur (conj rows (.getString rs 1))) rows)))))
+    (catch java.sql.SQLException e
+      (.getMessage e))))
+
 (defn- zip-file!
-  "Write `src` into `zip` as a single entry named after `src`."
+  "Write `src` into `zip` as its single entry, `entry-name`."
   [^File src ^File zip]
   (with-open [out (ZipOutputStream. (io/output-stream zip))]
-    (.putNextEntry out (ZipEntry. (.getName src)))
+    (.putNextEntry out (ZipEntry. ^String entry-name))
     (io/copy src out)
     (.closeEntry out)))
 
@@ -138,20 +170,24 @@
         zip      (io/file dir-file (str file-prefix stamp ".zip"))]
     (try
       (.mkdirs dir-file)
-      ;; VACUUM INTO produces a fresh, defragmented, transactionally-consistent
-      ;; copy. It only reads the source, so it's safe with writers active and
-      ;; captures committed WAL frames without an explicit checkpoint.
-      (jdbc/execute-one! ds [(str "VACUUM INTO " (sqlite-quote (.getAbsolutePath snapshot)))])
-      (zip-file! snapshot temp-zip)
-      (validate-zip! temp-zip (.getName snapshot))
-      (publish-zip! temp-zip zip)
-      (try
-        (prune! dir-file retention)
-        (catch Exception e
-          (log/warn e "Database backup succeeded, but retention pruning failed")))
-      (log/info (format "Database backup written: %s (%d KB)"
-                        (.getName zip) (quot (.length zip) 1024)))
-      zip
+      (snapshot! ds snapshot)
+      (let [check (quick-check snapshot)]
+        (if (not= "ok" check)
+          ;; Older zips are kept, so the newest one on disk is still sound.
+          (do (log/error (format "Database backup %s not written: its snapshot failed quick_check: %s"
+                                 (.getName zip) check))
+              nil)
+          (do
+            (zip-file! snapshot temp-zip)
+            (validate-zip! temp-zip entry-name)
+            (publish-zip! temp-zip zip)
+            (try
+              (prune! dir-file retention)
+              (catch Exception e
+                (log/warn e "Database backup succeeded, but retention pruning failed")))
+            (log/info (format "Database backup written: %s (%d KB)"
+                              (.getName zip) (quot (.length zip) 1024)))
+            zip)))
       (catch Exception e
         (log/error e "Database backup failed")
         nil)

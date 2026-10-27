@@ -3,8 +3,10 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [db with-db]]
             [plaid.server.backup :as backup]
-            [plaid.server.config])
-  (:import [java.nio.file Files]
+            [plaid.server.config]
+            [taoensso.timbre :as log])
+  (:import [java.io RandomAccessFile]
+           [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]
            [java.util.zip ZipFile]))
 
@@ -29,6 +31,73 @@
           (is (= 1 (count (enumeration-seq (.entries archive))))))
         (is (= [(.getName zip)] (mapv #(.getName %) (.listFiles dir)))
             "No snapshot or temporary zip remains after success")))))
+
+;; RESTORE-DRILL gap 1: the entry was the temporary snapshot's dotfile name,
+;; which `unzip` hides and which reads as "not the real thing".
+(deftest the-zip-holds-plaid-db
+  (with-temp-directory
+    (fn [dir]
+      (let [zip (backup/backup-once! db dir 2)]
+        (with-open [archive (ZipFile. zip)]
+          (is (= ["plaid.db"] (mapv #(.getName %) (enumeration-seq (.entries archive))))))))))
+
+(defn- old-zip! [dir stamp]
+  (let [f (io/file dir (str "plaid-backup-" stamp ".zip"))]
+    (spit f "an older backup")
+    f))
+
+(deftest rotation-keeps-the-newest
+  (with-temp-directory
+    (fn [dir]
+      (doseq [stamp ["20200101-030000" "20200102-030000" "20200103-030000"]]
+        (old-zip! dir stamp))
+      (let [zip (backup/backup-once! db dir 2)]
+        (is (= #{"plaid-backup-20200103-030000.zip" (.getName zip)}
+               (set (map #(.getName %) (.listFiles dir)))))))))
+
+(defn- corrupt!
+  "Overwrite every page after the first with 0xFF, so the file still opens as
+  a database but its tables are garbage."
+  [^java.io.File f]
+  (with-open [raf (RandomAccessFile. f "rw")]
+    (let [page 4096
+          junk (byte-array page (unchecked-byte 0xFF))]
+      (loop [offset page]
+        (when (< offset (.length raf))
+          (.seek raf offset)
+          (.write raf junk)
+          (recur (+ offset page)))))))
+
+(defn- logged-errors
+  "Run `f`, returning [its value, the messages it logged at ERROR]."
+  [f]
+  (let [errors (atom [])
+        v (log/with-merged-config
+            {:appenders {:capture {:enabled? true
+                                   :min-level :error
+                                   :fn (fn [{:keys [level vargs]}]
+                                         (when (= :error level)
+                                           (swap! errors conj (pr-str vargs))))}}}
+            (f))]
+    [v @errors]))
+
+;; RESTORE-DRILL gap 5: nothing checked a snapshot before it was shipped.
+(deftest a-corrupt-snapshot-is-not-published
+  (with-temp-directory
+    (fn [dir]
+      (let [older (old-zip! dir "20200101-030000")
+            snapshot! @#'backup/snapshot!
+            [zip errors] (logged-errors
+                          #(with-redefs-fn {#'backup/snapshot! (fn [ds f]
+                                                                 (snapshot! ds f)
+                                                                 (corrupt! f))}
+                             (fn [] (backup/backup-once! db dir 1))))]
+        (is (nil? zip))
+        (is (= [(.getName older)] (mapv #(.getName %) (.listFiles dir)))
+            "no new zip, no temporary file, and the older zip is kept")
+        (is (= "an older backup" (slurp older)))
+        (is (some #(re-find #"plaid-backup-\d{8}-\d{6}\.zip" %) errors)
+            "the error names the backup")))))
 
 (deftest failed-zip-is-never-published
   (with-temp-directory
