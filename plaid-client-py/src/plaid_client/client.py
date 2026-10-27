@@ -3169,9 +3169,12 @@ class AdminResource(_Resource):
     def backup(self) -> Any:
         """Take a database backup right now, outside the nightly schedule.
 
-        Returns the backup block, with ``ok`` reporting whether the snapshot
-        succeeded. Uses VACUUM INTO, which only reads, so it is safe while
-        people are working.
+        Returns the backup block, with ``ok`` true, once the backup is
+        written. A backup the server could not write raises
+        :class:`PlaidAPIError` with status 500, and its ``response_data`` is
+        the backup block with ``ok`` false (the reason is in the server log).
+        Uses VACUUM INTO, which only reads, so it is safe while people are
+        working.
 
         The server answers once the backup is written, which takes minutes on
         a large database, so this waits up to ``BACKUP_TIMEOUT_S`` (30

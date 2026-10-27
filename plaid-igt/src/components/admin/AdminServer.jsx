@@ -127,8 +127,11 @@ export const AdminServer = ({ client }) => {
   // The server answers once the zip is written. When that answer does not
   // come (a proxy gives up first), or a backup is already running (409), the
   // backup goes on, and the page waits for its file instead of calling it
-  // failed.
+  // failed. A backup the server could not write answers 500 with the backup
+  // block and ok: false, and its reason is only in the log.
   const runBackup = async () => {
+    const notWritten = () =>
+      notifyError('The server could not write the backup. Check the log.', 'Failed to back up');
     const known = new Set((report?.backup?.backups || []).map((b) => b.name));
     setBackingUpSince(Date.now());
     try {
@@ -151,10 +154,11 @@ export const AdminServer = ({ client }) => {
         notifySuccess(result.backups?.[0]?.name || 'Backup written', 'Backup complete');
         setReport((r) => (r ? { ...r, backup: result } : r));
       } else {
-        notifyError('The server could not write the backup. Check the log.', 'Failed to back up');
+        notWritten();
       }
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to back up');
+      if (statusOf(err) === 500 && err.responseData?.ok === false) notWritten();
+      else notifyError(humanizeError(err), 'Failed to back up');
     } finally {
       if (shown.current) setBackingUpSince(null);
     }

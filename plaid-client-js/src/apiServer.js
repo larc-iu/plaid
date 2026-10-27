@@ -186,9 +186,11 @@ export function adminApi(client) {
     server: () => client._request("GET", "/api/v1/admin/server"),
     /**
      * Take a database backup right now, outside the nightly schedule.
-     * Resolves to the backup block with `ok` reporting whether the snapshot
-     * succeeded. Uses VACUUM INTO, which only reads, so it is safe while
-     * people are working. Admin only.
+     * Resolves to the backup block, with `ok` true, once the backup is
+     * written. A backup the server could not write rejects with status 500,
+     * and the error's `responseData` is the backup block with `ok` false (the
+     * reason is in the server log). Uses VACUUM INTO, which only reads, so it
+     * is safe while people are working. Admin only.
      *
      * The server answers once the backup is written, which takes minutes on
      * a large database, so this waits up to `BACKUP_TIMEOUT_MS` (30 minutes)

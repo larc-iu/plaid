@@ -106,8 +106,14 @@ describe('Back up now', () => {
     await view.unmount();
   });
 
-  it('still says a refusal is a failure', async () => {
-    const refused = Object.assign(new Error('HTTP 500'), { status: 500, method: 'POST' });
+  it('says a backup the server could not write is in the log', async () => {
+    // The server answers 500 with the backup block and ok: false, which the
+    // client throws. Trying again does not help, the reason is in the log.
+    const refused = Object.assign(new Error('HTTP 500'), {
+      status: 500,
+      method: 'POST',
+      responseData: { ok: false, enabled: true, backups: [] },
+    });
     const client = clientWith({
       backup: async () => {
         throw refused;
@@ -116,8 +122,31 @@ describe('Back up now', () => {
     });
     const view = await run(client);
     await view.step(async () => {});
-    expect(feedback.notifyError).toHaveBeenCalledWith(expect.any(String), 'Failed to back up');
+    expect(feedback.notifyError).toHaveBeenCalledWith(
+      'The server could not write the backup. Check the log.',
+      'Failed to back up',
+    );
     expect(client.admin.server).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('shows any other server error as it is', async () => {
+    const broken = Object.assign(new Error('HTTP 500'), {
+      status: 500,
+      method: 'POST',
+      responseData: { error: 'Internal server error' },
+    });
+    const client = clientWith({
+      backup: async () => {
+        throw broken;
+      },
+      reports: [report([])],
+    });
+    const view = await run(client);
+    await view.step(async () => {});
+    const { humanizeError } = await import('@ui/lib/errors.js');
+    expect(feedback.notifyError).toHaveBeenCalledWith(humanizeError(broken), 'Failed to back up');
+    expect(humanizeError(broken)).not.toBe('The server could not write the backup. Check the log.');
     await view.unmount();
   });
 });
