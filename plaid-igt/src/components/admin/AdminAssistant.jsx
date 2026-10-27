@@ -50,10 +50,10 @@ const META_PATTERN = '*:assistant:*:meta:*';
 // cannot.
 const OWN_APP = 'igt';
 
-// `<app>:assistant:<project>:meta:<id>`. Both ids are UUIDs, so no segment can
-// contain the separator.
 const isTime = (v) => typeof v === 'string' && !Number.isNaN(new Date(v).getTime());
 
+// `<app>:assistant:<project>:meta:<id>`. Both ids are UUIDs, so no segment can
+// contain the separator.
 const parseKey = (key) => {
   const parts = String(key).split(':');
   if (parts.length !== 5 || parts[1] !== 'assistant') return null;
