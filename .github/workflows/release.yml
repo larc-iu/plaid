@@ -2,7 +2,8 @@ name: Release
 
 # Tag-driven release. Push a tag like `v0.2.0-alpha.1` (e.g. via `bb release
 # 0.2.0-alpha.1`) and this workflow:
-#   1. runs the full test suite (gate — nothing publishes if it's red),
+#   1. checks that CI and a nightly both passed on the tagged commit
+#      (`bb release-gate`, nothing builds or publishes otherwise),
 #   2. builds ALL artifacts (uberjar with the plaid-ud + plaid-igt + plaid-dict
 #      + plaid-umr SPAs and the official services bundled, npm tarball, Python
 #      sdist/wheel)
@@ -10,10 +11,10 @@ name: Release
 #   3. publishes everything LAST, in one job, each step idempotent
 #      (skip-if-version-already-exists) so re-running a failed tag is safe.
 #
-# The test + build logic is SHARED with local dev via babashka: `bb test` and
-# `bb build` (see bb/pipeline.clj) are the single source of truth, so what CI
-# runs is exactly what you can run on your laptop — no drift. Only publishing
-# lives here (it's CI-only: OIDC trusted publishing + the GitHub Release).
+# The gate and build logic is SHARED with local dev via babashka:
+# `bb release-gate` and `bb build` (see bb/pipeline.clj) are the single source
+# of truth, so what CI runs is exactly what you can run on your laptop. Only
+# publishing lives here (it's CI-only: OIDC trusted publishing + the GitHub Release).
 #
 # The git tag is the SOLE source of truth for the version. In-repo manifests
 # stay at a placeholder (0.0.0) and are stamped from the tag at build time
@@ -36,56 +37,31 @@ permissions:
 
 jobs:
   # --------------------------------------------------------------------------
-  # Gate: every suite (`bb test`): the Clojure core, every JavaScript package,
-  # and the Python assistant, client and services. ci.yml runs the same suites
-  # per push and nightly.yml every night. The fidelity round trips and the
-  # Playwright suites (`bb e2e`) run only in nightly.yml. A red suite aborts
-  # the whole release before anything is published.
+  # Gate: the tagged commit must already have passed CI (a push run of
+  # ci.yml) and a nightly (a scheduled or dispatched run of nightly.yml, with
+  # its suites run, not skipped), every job green. `bb release-gate` reads
+  # those runs through the GitHub API and fails, naming what is missing,
+  # before anything is built or published. The suites are not run again here:
+  # a re-run on a fresh runner failed on timing flakes and burned
+  # alpha.24, .25, .27, .28 and .31, none of them on a real bug.
+  # `bb release` runs the same check before it tags.
   # --------------------------------------------------------------------------
-  test:
+  gate:
     runs-on: ubuntu-24.04
-    # About 20 minutes. A suite that hangs is stopped here rather than at
-    # GitHub's 6 hours (v0.2.0-alpha.27 hung for 3.5 hours until cancelled).
-    timeout-minutes: 60
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read   # read ci.yml's and nightly.yml's runs for this commit
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
       - uses: DeLaGuardo/setup-clojure@13.6.1
         with:
-          cli: latest
           bb: latest
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Cache Maven + gitlibs
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.m2
-            ~/.gitlibs
-          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
-          restore-keys: ${{ runner.os }}-cljdeps-
-      # The client goes in first and editable, so the assistant resolves its
-      # `larc-plaid-client` dependency against THIS checkout rather than
-      # against whatever is on PyPI.
-      - name: Install the Python packages under test
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ./plaid-client-py
-          pip install -e './plaid-agent[dev]'
-          # plaid-umr's comparison service scores with the ancast package, and
-          # its tests run the real metric.
-          pip install ancast
-      - name: Run tests
+      - name: CI and a nightly passed on this commit
         env:
-          PLAID_PYTHON: python
-        run: bb test
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bb release-gate HEAD
 
   # --------------------------------------------------------------------------
   # Build every artifact via `bb build` — the SAME task used locally, so the
@@ -94,7 +70,7 @@ jobs:
   # to fail on except the registries themselves.
   # --------------------------------------------------------------------------
   build:
-    needs: test
+    needs: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -107,12 +83,12 @@ jobs:
         with:
           cli: latest
           bb: latest
-      # Node 24, the same as the test job: the lockfiles every app commits
-      # are written by npm 11 on Node 24, and npm 10 (which ships with Node 20)
-      # computes a different ideal tree from them, so `npm ci` refuses one it
-      # cannot satisfy — v0.2.0-alpha.12's first cut died on plaid-dict with
-      # "Missing: esbuild@0.28.2 from lock file" while the test job, on 24,
-      # installed the same lock without complaint.
+      # Node 24, the same as ci.yml and nightly.yml: the lockfiles every app
+      # commits are written by npm 11 on Node 24, and npm 10 (which ships with
+      # Node 20) computes a different ideal tree from them, so `npm ci` refuses
+      # one it cannot satisfy — v0.2.0-alpha.12's first cut died on plaid-dict
+      # with "Missing: esbuild@0.28.2 from lock file" while the release's own
+      # test job of that time, on 24, installed the same lock without complaint.
       - uses: actions/setup-node@v6
         with:
           node-version: '24'

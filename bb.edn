@@ -4,7 +4,7 @@
  :paths ["bb"]
  :tasks
  {test
-  {:doc "Run every test suite — the same gate release.yml runs before building: plaid-core (Clojure), the plaid-ud / plaid-igt / plaid-dict / plaid-umr SPAs and the shared plaid-ui package (npm test and npm run lint, with an npm install first), and the Python assistant and bundled services (pytest, the assistant's suite booting a private plaid-core from source for its query engine, on its own port and database). Every Python step runs one interpreter, PLAID_PYTHON, else PLAID_AGENT_PYTHON, else the `plaid-agent` env's python, never the first `python` on PATH, with PYTHONPATH set to this checkout's plaid-client-py and plaid-agent sources. Prereqs: Node >= 24 active (e.g. `nvm use 24.1.0`) and the `plaid-agent` env. That env also needs `ancast`, which plaid-umr's comparison tests run for real (`pip install ancast`), the way release.yml installs it."
+  {:doc "Run every test suite, as nightly.yml's test job runs it (ci.yml runs the same suites per push, a job each): plaid-core (Clojure), the plaid-ud / plaid-igt / plaid-dict / plaid-umr SPAs and the shared plaid-ui package (npm test and npm run lint, with an npm install first), and the Python assistant and bundled services (pytest, the assistant's suite booting a private plaid-core from source for its query engine, on its own port and database). Every Python step runs one interpreter, PLAID_PYTHON, else PLAID_AGENT_PYTHON, else the `plaid-agent` env's python, never the first `python` on PATH, with PYTHONPATH set to this checkout's plaid-client-py and plaid-agent sources. Prereqs: Node >= 24 active (e.g. `nvm use 24.1.0`) and the `plaid-agent` env. That env also needs `ancast`, which plaid-umr's comparison tests run for real (`pip install ancast`), the way nightly.yml installs it."
    :requires ([pipeline :as pl])
    :task (pl/run-tests!)}
 
@@ -19,7 +19,7 @@
    :task (pl/build-artifacts! (pl/parse-build-args *command-line-args*))}
 
   ci
-  {:doc "Run the whole non-publishing release pipeline locally: the test gate, then build all artifacts. Usage: bb ci [version] [--no-smoke] [--skip-clients]."
+  {:doc "Run every test suite (`bb test`), then build all artifacts, locally and without publishing. Usage: bb ci [version] [--no-smoke] [--skip-clients]."
    :requires ([pipeline :as pl])
    :task (do (pl/run-tests!)
              (pl/build-artifacts! (pl/parse-build-args *command-line-args*)))}
@@ -49,9 +49,14 @@
    :requires ([pipeline :as pl])
    :task (pl/clean!)}
 
+  release-gate
+  {:doc "Check that a commit passed CI (a push run of ci.yml) and a nightly (a scheduled or dispatched run of nightly.yml), every job of each run green, and fail naming what is missing. Usage: bb release-gate [rev], rev defaults to HEAD. Reads the runs with `gh api`, so it needs gh signed in (GH_TOKEN in CI). release.yml runs it before building and `bb release` before tagging."
+   :requires ([pipeline :as pl])
+   :task (pl/release-gate! (first *command-line-args*))}
+
   release
-  {:doc "Cut a release. Usage: bb release 0.2.0-alpha.1  — validates a clean tree on master, tags vX.Y.Z, and pushes. The release.yml workflow then tests, builds, and publishes everything. The git tag is the sole source of truth for the version."
-   :requires ([clojure.string :as str])
+  {:doc "Cut a release. Usage: bb release 0.2.0-alpha.1. Checks the version shape, master, a clean tree and that the tag is new, then that CI and a nightly passed on HEAD (`bb release-gate`), tags vX.Y.Z and pushes the tag. release.yml then checks the same runs, builds and publishes everything. The git tag is the sole source of truth for the version."
+   :requires ([clojure.string :as str] [pipeline :as pl])
    :task
    (let [version (first *command-line-args*)
          tag     (str "v" version)
@@ -76,6 +81,9 @@
                                  "git" "rev-parse" "--verify" "--quiet" tag)]
        (when (zero? exit)
          (fail (str "tag " tag " already exists"))))
+     ;; CI and a nightly must have passed on HEAD. release.yml refuses the tag
+     ;; otherwise, and a refused tag burns its number.
+     (pl/release-gate! "HEAD")
      ;; Warn if local master is behind/ahead of origin (non-fatal).
      (shell {:continue true} "git" "fetch" "--quiet" "origin" "master")
      (let [local  (git-out "rev-parse" "HEAD")

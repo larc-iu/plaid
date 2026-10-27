@@ -7,6 +7,7 @@
   (default 0.0.0-alpha.0)."
   (:require [babashka.fs :as fs]
             [babashka.process :as p]
+            [cheshire.core :as json]
             [clojure.string :as str]))
 
 (defn fail [msg]
@@ -609,3 +610,71 @@
   (doseq [d (fs/glob "plaid-client-js/src" "*.d.ts")]
     (fs/delete d))
   (println "✓ cleaned local build outputs"))
+
+;; The release gate. A tag is cut and built only on a commit that already
+;; passed CI (ci.yml, the per-push check) and a nightly (nightly.yml: every
+;; unit suite, the fidelity round trips and e2e). release.yml used to run
+;; `bb test` again on a fresh runner, and timing flakes there burned five
+;; version numbers (alpha.24, .25, .27, .28 and .31) with no real bug among
+;; them. `bb release` runs this before it tags and release.yml before it
+;; builds, so both read the same runs on GitHub.
+;;
+;; A run counts when it finished with success AND every one of its jobs did.
+;; A quiet night's nightly reports success with its suites skipped, which
+;; tested nothing.
+(def ^:private release-gate-workflows
+  [{:file "ci.yml" :name "CI" :events #{"push"}
+    :how "push the commit to master (git push origin master) and wait for CI"}
+   {:file "nightly.yml" :name "Nightly Tests" :events #{"schedule" "workflow_dispatch"}
+    :how "run one on master's head with `gh workflow run nightly.yml --ref master` and wait for it"}])
+
+(defn- gh-api [path]
+  (let [{:keys [exit out err]} (p/sh "gh" "api" path)]
+    (when-not (zero? exit)
+      (fail (str "`gh api " path "` failed: " (str/trim (str err)))))
+    (json/parse-string out true)))
+
+(defn- run-jobs-passed? [run]
+  (let [jobs (:jobs (gh-api (str "repos/{owner}/{repo}/actions/runs/" (:id run) "/jobs?per_page=100")))]
+    (and (seq jobs) (every? #(= "success" (:conclusion %)) jobs))))
+
+(defn- workflow-verdict
+  "nil when `sha` has a passing run of the workflow, else why not."
+  [sha {:keys [file name events how]}]
+  (let [runs (->> (:workflow_runs
+                   (gh-api (str "repos/{owner}/{repo}/actions/workflows/" file
+                                "/runs?head_sha=" sha "&per_page=100")))
+                  (filter #(contains? events (:event %))))
+        done (filter #(= "completed" (:status %)) runs)
+        won  (filter #(= "success" (:conclusion %)) done)]
+    (cond
+      (some run-jobs-passed? won) nil
+      (empty? runs)
+      (str name " has no " (str/join " or " (sort events)) " run on this commit: " how ".")
+      (seq won)
+      (str name " passed on this commit only with jobs skipped (" (str/join ", " (map :html_url won))
+           "), so its suites did not run: " how ".")
+      (empty? done)
+      (str name " is still running on this commit (" (str/join ", " (map :html_url runs)) "): wait for it.")
+      :else
+      (str name " did not pass on this commit ("
+           (str/join ", " (map #(str (:conclusion %) " " (:html_url %)) done))
+           "): fix the failure, or if it was a flake re-run it with `gh run rerun --failed <id>`, or " how "."))))
+
+(defn release-gate!
+  "Exit non-zero unless `rev` (default HEAD) has passed CI and a nightly."
+  [rev]
+  (ensure-repo-root!)
+  (when-not (fs/which "gh")
+    (fail "gh (the GitHub CLI) is not on PATH: the release gate reads CI and nightly runs through it"))
+  (let [{:keys [exit out]} (p/sh "git" "rev-parse" "--verify" (str (or rev "HEAD") "^{commit}"))
+        sha (str/trim out)]
+    (when-not (zero? exit)
+      (fail (str "not a commit: " rev)))
+    (step (str "Check that CI and a nightly passed on " sha))
+    (let [problems (keep #(workflow-verdict sha %) release-gate-workflows)]
+      (when (seq problems)
+        (binding [*out* *err*]
+          (doseq [msg problems] (println "✗" msg)))
+        (fail (str "no release from " sha " until CI and a nightly have both passed on it")))
+      (println "✓ CI and a nightly passed on" sha))))

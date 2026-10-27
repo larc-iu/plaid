@@ -63,7 +63,7 @@ Plaid is a monorepo:
 
 == Building From Source
 
-Builds are driven by https://babashka.org/[babashka] tasks defined in `bb.edn`, which reproduce the release workflow (`.github/workflows/release.yml`) locally, everything except publishing.
+Builds are driven by https://babashka.org/[babashka] tasks defined in `bb.edn`, which reproduce the GitHub Actions workflows (`.github/workflows/`) locally, everything except publishing.
 Run every task from the repository root.
 
 === Prerequisites
@@ -103,14 +103,30 @@ NOTE: `bb build` leaves the built SPAs, services, and `version.edn` inside `plai
 
 [cols="1,3"]
 |===
-| `bb test` | Run the full `plaid-core` test suite, the same gate CI runs before building.
-| `bb ci` | `bb test` followed by `bb build`: the whole non-publishing release pipeline.
+| `bb test` | Run every test suite: `plaid-core`, each JavaScript package and the Python packages, as the nightly workflow runs them.
+| `bb ci` | `bb test` followed by `bb build`.
 | `bb docs` | Build this documentation site into `_site/` for local preview. Requires `gem install asciidoctor coderay`.
 | `bb clean` | Remove all local build outputs.
-| `bb release <version>` | Tag and push a release, and CI does the rest. Requires a clean tree on `master`.
+| `bb release-gate [rev]` | Check that a commit (default `HEAD`) passed CI and a nightly run. Requires `gh`, signed in.
+| `bb release <version>` | Tag and push a release, and CI does the rest. Requires a clean tree on `master` and `bb release-gate` passing on `HEAD`.
 |===
 
 Run `bb tasks` for the full list.
+
+=== Releases
+
+A release is cut from a commit on `master` that has already passed two GitHub Actions workflows: CI (`ci.yml`, run on every push) and a nightly run (`nightly.yml`, every unit suite plus the fidelity round trips and the Playwright suites).
+The release workflow does not run the suites again.
+Its first job checks both runs through the GitHub API and stops before building when either is missing, still running or red.
+A nightly run whose suites were skipped, on a night `master` did not move, does not count.
+
+. Push `master`: `git push origin master`.
+. Wait for CI on that commit.
+. Start a nightly run on it, unless a night already tested it: `gh workflow run nightly.yml --ref master`. Wait for it.
+. Run `bb release <version>`, for example `bb release 0.2.0-alpha.1`. It checks the same two runs on `HEAD` and refuses to tag without them, then tags `HEAD` and pushes the tag.
+
+The tag starts `release.yml`, which builds the jar, the npm package and the Python package, smoke-tests the jar and publishes all three.
+A version number whose release failed is not used again: the next attempt takes the next number.
 
 == Working on plaid-core
 

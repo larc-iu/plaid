@@ -1,10 +1,13 @@
 name: Nightly Tests
 
-# Every night master moved: `bb test` (every unit suite in one job, as the
-# release gate runs it), the fidelity round trips (`bb fidelity`), and, in a
-# job of its own, the Playwright suites of igt, ud and umr, each on a private
-# core with a fresh database (`bb e2e`). ci.yml runs the unit suites per push.
-# The fidelity round trips and e2e run only here.
+# Every night master moved: `bb test` (every unit suite in one job), the
+# fidelity round trips (`bb fidelity`), and, in a job of its own, the
+# Playwright suites of igt, ud and umr, each on a private core with a fresh
+# database (`bb e2e`). ci.yml runs the unit suites per push.
+# The fidelity round trips and e2e run only here. A release needs a green run
+# of this workflow on the tagged commit with its suites run, not skipped
+# (`bb release-gate`), so before a release on a commit no night has tested,
+# dispatch one: `gh workflow run nightly.yml --ref master`.
 #
 # Notification: GitHub emails the repository owner automatically when a
 # SCHEDULED workflow run fails, so no extra notify step is needed. Wire a Slack
@@ -94,7 +97,7 @@ jobs:
           # its tests run the real metric.
           pip install ancast
       # `bb test` is every suite: the Clojure core, all three SPAs, and the
-      # Python assistant and services. Shared with release.yml and local dev
+      # Python assistant and services. Shared with ci.yml and local dev
       # (bb/pipeline.clj), so the gate can't drift. The assistant's suite boots
       # a private plaid-core from source (the Java and Clojure set up above)
       # for igt's corpus tools, and fails if it cannot.

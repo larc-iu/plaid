@@ -9,8 +9,10 @@ name: CI
 # What runs elsewhere:
 # - nightly.yml: `bb test` (the same suites in one job), the fidelity round
 #   trips (`bb fidelity`) and the Playwright suites on private cores (`bb e2e`).
-# - release.yml, on a tag: `bb test`, then `bb build` with the jar smoke test,
-#   then the publish. Neither the fidelity round trips nor e2e run there.
+# - release.yml, on a tag: no suites. `bb release-gate` checks that this
+#   workflow (a push run) and a nightly (its suites run, not skipped) both
+#   passed on the tagged commit, then `bb build` with the jar smoke test, then
+#   the publish. `bb release` runs the same check before it tags.
 
 on:
   push:
