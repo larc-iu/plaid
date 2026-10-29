@@ -181,7 +181,7 @@ def test_lexicon_and_document_ops():
     call_tool(w2, 'delete_entry', {'entry_id': 'vi-ali'})
     assert w2.ops[-1]['kind'] == 'delete_entry' and w2.ops[-1]['links'] == ['l-1']
     call_tool(w, 'rename_entry', {'entry_id': 'vi-gam', 'new_form': 'gam1'})
-    assert w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam', 'form': 'gam1', 'label': 'Rename entry "gam#1" (fish) → "gam1"'}
+    assert w.ops[-1].pop('entry_read') and w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam', 'form': 'gam1', 'label': 'Rename entry "gam#1" (fish) → "gam1"'}
     call_tool(w, 'rename_document', {'document': 'Text 1', 'new_name': 'Text One'})
     assert w.ops[-1] == {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': 'Rename document "Text 1" → "Text One"'}
     assert call_tool(w, 'rename_document', {'document': 'Text 1', 'new_name': 'Text 1'}).startswith('Planned 0')

@@ -378,7 +378,7 @@ def test_entry_gloss_singles_out_a_homograph():
     out = call_tool(w, 'lexicon_entry', {'entry_form': 'gam', 'entry_gloss': 'fish'})
     assert 'gloss: fish' in out and 'net' not in out
     call_tool(w, 'rename_entry', {'entry_form': 'gam', 'entry_gloss': 'net', 'new_form': 'gham'})
-    assert w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'gham', 'label': 'Rename entry "gam#2" (net) → "gham"'}
+    assert w.ops[-1].pop('entry_read') and w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'gham', 'label': 'Rename entry "gam#2" (net) → "gham"'}
     merge = {'keep_form': 'gam', 'keep_gloss': 'fish', 'remove_form': 'gam', 'remove_gloss': 'net'}
     # The link and the rename planned above both write to the entry the merge
     # removes, so the merge refuses until the plan is discarded.

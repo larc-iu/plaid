@@ -146,6 +146,14 @@ APP = 'app'
 # entry (a rename, a merge, a delete, and the repairs a delete or a merge
 # carries), after every document write (`_write_lexicon`).
 LEXICON = 'lexicon'
+#: The key on a change to an entry's fields or structure (a kind declaring
+#: ``extra['pins_entry']``) holding the entry as the plan read it
+#: (:func:`entry_stamp`). Such a change is written over what was read (a
+#: field's value, the whole examples list, a sense order counted from the
+#: tree, a headword and the type its markers name), so it is refused when the
+#: entry has changed since, as a change to a document is when the document
+#: has moved.
+ENTRY_READ = 'entry_read'
 #: The key on an entry structure change a delete or a merge carries, naming
 #: the entry it removes: the change is written with it or not at all.
 REPAIR_OF = 'repair_of'
@@ -1019,7 +1027,10 @@ KIND = ok.registry([
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), replaces=None, required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
-           compact_each=('item_id', 'form'), extra={'names_entry': ('item_id',)}),
+           # Pinned too: it writes the headword, and the type the new one's
+           # markers name, over what was read (REV-FX-R1-1).
+           compact_each=('item_id', 'form', ENTRY_READ),
+           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id'}),
     # Settings: the app writes them on approval and the executor reads them
     # back (`_execute`), so no pass of the executor applies one.
     # Settings, not annotation: nobody's work is in a tagset's list.
@@ -1222,15 +1233,6 @@ def _gone(op: Dict[str, Any], by_lexicon: bool = False) -> str:
         return (f"{_entry_named(op)} no longer exists in this project's lexicons (deleted, merged away or its "
                 'lexicon taken out of the project since the plan was made)')
     return f'{_entry_named(op)} no longer exists (deleted or merged away since the plan was made)'
-
-
-#: The key on a change to an entry's fields or structure (a kind declaring
-#: ``extra['pins_entry']``) holding the entry as the plan read it
-#: (:func:`entry_stamp`). Such a change is written over what was read (a
-#: field's value, the whole examples list, a sense order counted from the
-#: tree), so it is refused when the entry has changed since, as a change to a
-#: document is when the document has moved.
-ENTRY_READ = 'entry_read'
 
 
 def entry_stamp(item: Dict[str, Any]) -> str:

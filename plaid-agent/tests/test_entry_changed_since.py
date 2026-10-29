@@ -61,3 +61,30 @@ def test_an_entry_left_alone_since_the_plan_takes_the_change(live_client):
         assert (entry(c, s, 'vi-ali').get('metadata') or {}).get('gloss') == 'plan'
     finally:
         s.delete()
+
+
+def test_a_headword_corrected_since_the_plan_is_not_renamed_over(live_client):
+    c = live_client
+    s, ws = seeded(c, base_project(), _docs(), name='entry changed since: rename form')
+    try:
+        call_tool(ws, 'rename_entry', {'entry_form': 'Ali', 'new_form': 'Aly'})
+        c.vocab_items.update(s.ids['vi-ali'], 'Alí')  # the person's correction in the lexicon screen
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert h.errors and 'changed since the plan was made' in ' '.join(h.errors), (h.errors, h.done)
+        assert entry(c, s, 'vi-ali')['form'] == 'Alí'
+    finally:
+        s.delete()
+
+
+def test_a_type_set_since_the_plan_is_not_overwritten_by_a_rename(live_client):
+    c = live_client
+    s, ws = seeded(c, base_project(), _docs(), name='entry changed since: rename type')
+    try:
+        # "-gam" names a suffix, so the rename of the untyped entry also sets its type.
+        call_tool(ws, 'rename_entry', {'entry_form': 'gam#1', 'new_form': '-gam'})
+        c.vocab_items.patch_metadata(s.ids['vi-gam'], [{'op': 'set', 'path': ['morphType'], 'value': 'enclitic'}])
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert h.errors and 'changed since the plan was made' in ' '.join(h.errors), (h.errors, h.done)
+        assert (entry(c, s, 'vi-gam').get('metadata') or {}).get('morphType') == 'enclitic'
+    finally:
+        s.delete()
