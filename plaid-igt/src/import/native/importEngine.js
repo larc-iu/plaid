@@ -1491,8 +1491,22 @@ export async function finishArchiveImport({
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
-  const known = made ?? (await madeSoFar(client, projectId, plan));
-  const { itemIdMap, docIdMap, docMaps, vocabularies } = known;
+  const held = await heldNow(client, projectId);
+  const known = made ?? (await madeSoFar(client, projectId, plan, held));
+  const { itemIdMap, docIdMap, docMaps } = known;
+  // Each entry as it is now, not as the archive has it: a person may have
+  // placed a sense or set an Entry field while the import was stopped, and
+  // the relink only rewrites what still names the archive.
+  const vocabularies = known.vocabularies.map((v) => ({
+    ...v,
+    items: (v.items || []).map((it) => {
+      const now = held.items.get(itemIdMap.get(it.id));
+      if (!now) return it;
+      const { [NATIVE_ITEM_KEY]: _stamp, ...metadata } = now.metadata || {};
+      return { ...it, metadata };
+    }),
+  }));
+  const live = { items: new Set(held.items.keys()), docs: held.docs };
   const archived = new Set(plan.documents || []);
   const gone = new Set([...archived].filter((id) => !docIdMap.has(id)));
   let dropped = 0;
@@ -1540,6 +1554,7 @@ export async function finishArchiveImport({
       docMaps,
       docIdMap,
       gone,
+      live,
       warnings,
       shouldStop,
     });
@@ -1579,6 +1594,23 @@ async function storedRules(client, project, rule) {
 }
 
 /**
+ * What the project holds now: its vocabularies with their entries (`items`,
+ * every entry by id), and its documents' ids.
+ */
+async function heldNow(client, projectId) {
+  const project = await client.projects.get(projectId);
+  const vocabs = [];
+  const items = new Map();
+  for (const v of project?.vocabs || []) {
+    const full = await client.vocabLayers.get(v.id, true);
+    vocabs.push({ ...full, name: full?.name ?? v.name });
+    for (const it of full?.items || []) items.set(it.id, it);
+  }
+  const docs = new Set((await client.projects.listDocuments(projectId)).map((d) => d.id));
+  return { project, vocabs, items, docs };
+}
+
+/**
  * What a stopped import made, read from the project for `finishArchiveImport`:
  * each entry by the archive id it is marked with, each document by its import
  * mark (finished or not), both as the import record names the ones made
@@ -1586,21 +1618,18 @@ async function storedRules(client, project, rule) {
  * vocabularies' entries as `planVocabRelink` takes an archive's, with the
  * metadata they hold now.
  */
-async function madeSoFar(client, projectId, plan) {
-  const project = await client.projects.get(projectId);
-  const record = readImportState(project?.config);
+async function madeSoFar(client, projectId, plan, held) {
+  const record = readImportState(held.project?.config);
   const unmarkedEntries = record?.unmarked?.entries || {};
   const unmarkedDocs = record?.unmarked?.documents || {};
+  const archiveIdOf = new Map(Object.entries(unmarkedEntries).map(([a, id]) => [id, a]));
   const itemIdMap = new Map();
   const vocabularies = [];
-  for (const v of project?.vocabs || []) {
-    const full = await client.vocabLayers.get(v.id, true);
-    const present = new Map((full?.items || []).map((it) => [it.id, it]));
-    const archiveIdOf = new Map(Object.entries(unmarkedEntries).map(([a, id]) => [id, a]));
+  for (const full of held.vocabs) {
     const items = [];
     for (const it of full?.items || []) {
       const archiveId = it.metadata?.[NATIVE_ITEM_KEY] ?? archiveIdOf.get(it.id);
-      if (archiveId == null || !present.has(it.id)) continue;
+      if (archiveId == null) continue;
       itemIdMap.set(archiveId, it.id);
       const { [NATIVE_ITEM_KEY]: _stamp, ...metadata } = it.metadata || {};
       items.push({ id: archiveId, form: it.form, metadata });
@@ -1610,14 +1639,13 @@ async function madeSoFar(client, projectId, plan) {
       type: f?.type ?? null,
       many: !!f?.many,
     }));
-    vocabularies.push({ name: v.name, fields, items });
+    vocabularies.push({ name: full.name, fields, items });
   }
   const prior = await priorImports(client, projectId);
-  const listed = new Set((await client.projects.listDocuments(projectId)).map((d) => d.id));
   const docIdMap = new Map();
   for (const archiveId of plan.documents || []) {
     const found = prior.find(archiveId)?.id ?? unmarkedDocs[archiveId]?.id;
-    if (found && listed.has(found)) docIdMap.set(archiveId, found);
+    if (found && held.docs.has(found)) docIdMap.set(archiveId, found);
   }
   const docMaps = new Map();
   for (const [archiveId, kept] of Object.entries(plan.exampleTokens || {})) {
@@ -1768,10 +1796,11 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
  * update entries with every reference mapped onto the ids the import made:
  * `parent`, each Entry-typed field, and the `examples` list's {document, token}
  * pairs. A reference to something that did not survive is dropped, and said.
- * A reference already naming an entry or a document the import made (an
- * earlier pass rewrote it) is kept. `gone` holds the archive ids of documents
- * the import never made (it stopped first): any other value naming one is
- * dropped too (`dropReferences`).
+ * A reference already naming an entry or a document the project holds (`live`,
+ * besides what the import made: an earlier pass rewrote it, or a person set
+ * it while the import was stopped) is never touched. `gone` holds the archive
+ * ids of documents the import never made (it stopped first): any other value
+ * naming one is dropped too (`dropReferences`).
  *
  * `metadata` is a PATCH against the map the item was created with (the
  * archive's, plus this run's stamp — see the create above), so a reference that
@@ -1781,15 +1810,22 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
  * it holds and nulling one already gone are both no-ops, and a key somebody has
  * added by hand since is no longer swept away with them.
  */
-export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null, gone = null) {
+export function planVocabRelink(
+  vocabData,
+  itemIdMap,
+  docMaps,
+  docIdMap = null,
+  gone = null,
+  live = null,
+) {
   const refFields = (vocabData.fields || []).filter((f) => f.type === 'item');
   // Any other value naming an entry or a document by its archive id is a
   // reference too (./references.js). The import's own stamp names the archive
   // entry on purpose, and is written afresh below anyway.
   const lookup = (id) => itemIdMap.get(id) ?? docIdMap?.get(id);
   const stamp = new Set([NATIVE_ITEM_KEY]);
-  const madeItems = new Set(itemIdMap.values());
-  const madeDocs = new Set(docIdMap?.values() ?? []);
+  const madeItems = new Set([...itemIdMap.values(), ...(live?.items ?? [])]);
+  const madeDocs = new Set([...(docIdMap?.values() ?? []), ...(live?.docs ?? [])]);
   const entryId = (id) => itemIdMap.get(id) ?? (madeItems.has(id) ? id : null);
   const out = [];
   const dropped = [];
@@ -1871,10 +1907,11 @@ async function relinkVocabStructure({
   docMaps,
   docIdMap,
   gone = null,
+  live = null,
   warnings,
   shouldStop,
 }) {
-  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap, gone);
+  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap, gone, live);
   // One bulk update per chunk, not a batch of one write per entry: a batch
   // re-dispatches the whole REST stack per op inside the held write lock, and an
   // archive's lexicon has as many of these as it has cross-references.

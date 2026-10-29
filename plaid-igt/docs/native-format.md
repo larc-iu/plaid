@@ -466,7 +466,8 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    where it sits and its name (a token layer also by its overlap mode and parent).
    Config a layer already holds is not written again.
 4. Per vocabulary, LAST, once every document exists: rewrite the ids inside item
-   metadata through the maps built above (`parent`, every `type: "item"` field,
+   metadata as the entry holds it now, through the maps built above (`parent`,
+   every `type: "item"` field,
    and each `{document, token}` example, whose document AND token both have to
    have arrived). `senseOrder` is not an id and is only dropped when its
    `parent` is. What did not survive is dropped and counted in a warning. This
@@ -474,7 +475,11 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    replaces the whole metadata map and restores `nativeImportId` as it goes, so
    a resume still recognizes an item this pass reached. Any other value in item
    metadata that names an entry or a document of the archive is rewritten too
-   (see References in metadata), `nativeImportId` excepted. This last step
+   (see References in metadata), `nativeImportId` excepted. A value that already
+   names an entry or document of the project (a person set it while the import
+   was stopped) is never touched. An example into a document an earlier run
+   finished is matched to its token by extent and text, and dropped when the
+   text there is no longer the archive's. This last step
    (with the relink of what names a later document, of other apps' project
    settings, and the layer rules of every app) is one finish step, which also
    runs when an import that stopped is ended with "Use the project as it is".

@@ -427,7 +427,13 @@ const callsOf = (client, name) => client.calls.filter(([n]) => n === name);
 // The last write of the import before the layer rules, which go on the
 // project once every document is in.
 const lastDocumentCall = (client) =>
-  client.calls.filter(([n]) => n !== 'projects.get' && !n.endsWith('Constraints')).at(-1);
+  client.calls
+    .filter(
+      ([n]) =>
+        !['projects.get', 'projects.listDocuments', 'vocabLayers.get'].includes(n) &&
+        !n.endsWith('Constraints'),
+    )
+    .at(-1);
 const argsOf = (client, name) => callsOf(client, name).map((c) => c.slice(1));
 
 // A vocab bulkCreate carries many entries in one call; flatten them back to
@@ -1812,6 +1818,45 @@ describe('an import that stopped, then resumed or ended as it is', () => {
     );
     expect(store.docs.has(half.id)).toBe(true);
     expect([...store.docs.values()].map((d) => d.name)).toEqual(['Doc 1', 'Doc 2', 'Doc 3']);
+  });
+
+  // While the import is stopped, a person adds an entry to the lexicon,
+  // which is open, and places the imported sense under it and points the
+  // imported entry's variantOf at it, as the lexicon editor writes them.
+  const editLexicon = (store) => {
+    store.items.push({ id: 'mine', vocabId: 'newvocab', form: 'perrito', metadata: {} });
+    byGloss(store, 'lion').metadata.parent = 'mine';
+    byGloss(store, 'run').metadata.variantOf = 'mine';
+  };
+
+  it('ended as it is, keeps a sense placement and an Entry field a person set during the stop (REV-FX-R4-IMP-1)', async () => {
+    const store = makeStore();
+    await stopInSecond(store);
+    editLexicon(store);
+    const { cleared, warnings } = await finishImport(stubClient({ store }), 'newp');
+    expect(cleared).toBe(true);
+    expect(byGloss(store, 'lion').metadata).toMatchObject({ parent: 'mine', senseOrder: 1 });
+    expect(byGloss(store, 'run').metadata.variantOf).toBe('mine');
+    expect(warnings.join(' ')).not.toMatch(/parent|variantOf/);
+  });
+
+  it('resumed, keeps a sense placement and an Entry field a person set during the stop (REV-FX-R4-IMP-3)', async () => {
+    const store = makeStore();
+    await stopInSecond(store);
+    editLexicon(store);
+    const result = await runNativeImport({
+      client: stubClient({ store }),
+      projectId: 'newp',
+      archive: stoppedArchive(),
+    });
+    expect(byGloss(store, 'lion').metadata).toMatchObject({ parent: 'mine', senseOrder: 1 });
+    expect(byGloss(store, 'run').metadata.variantOf).toBe('mine');
+    // What still named the archive is pointed at what the import made.
+    const docs = [...store.docs.values()];
+    expect(byGloss(store, 'run').metadata.examples.map((e) => e.document)).toEqual(
+      ['Doc 1', 'Doc 2', 'Doc 3'].map((n) => docs.find((d) => d.name === n).id),
+    );
+    expect(result.warnings.join(' ')).not.toMatch(/parent|variantOf/);
   });
 
   it('remakes a half-made document nobody wrote to after the stop (R4-2)', async () => {
