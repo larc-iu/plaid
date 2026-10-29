@@ -1641,8 +1641,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     batch fails: batches are atomic individually, the plan as a whole is not.
     ``detail`` is what the writes' provDetail names (see :class:`Stamps`).
     ``seed`` is the plan's id: every row the plan creates is named by an id
-    drawn from it (:class:`Minter`), so applying the same plan again names
-    the same rows. Without one they are drawn from a fresh id."""
+    drawn from it (:class:`Minter`), so a request sent again after its
+    answer was lost names the same rows. Without one they are drawn from a fresh id."""
     return run_plan(
         KIND, client, ops, source=source, stamp_mode=stamp_mode, contributor=contributor, detail=detail, seed=seed,
         validate=validate_ops, resolve=lambda o: resolve_scopes(client, project, o, requester),

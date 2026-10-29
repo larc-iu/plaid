@@ -64,7 +64,8 @@ class RecordOps:
         an old page's marker): a turn's marker is cleared and nothing is
         added, since an unanswered question already reads as one with Retry.
         An approval's plan is settled partly applied, since any of its changes
-        may be written (`DIED_OUTCOME`), and the model is told so. The record
+        may be written (`DIED_OUTCOME`), recorded as the run wrote (its
+        marker's ``stamp``), and the model is told so. The record
         as written, or None when it is gone."""
         dead = pending.get('request_id') if isinstance(pending, dict) else None
         plan_id = pending.get('plan_id') if isinstance(pending, dict) and pending.get('kind') == 'apply' else None
@@ -75,8 +76,9 @@ class RecordOps:
             index, item = find_plan(stored, plan_id)
             if item is None or item.get('status') is not None:
                 return stored
+            stamp = pending.get('stamp')
             return settle_plan(stored, index, 'partial', DIED_NOTE, written=[], outcome=DIED_OUTCOME,
-                               as_human=bool(pending.get('as_human')))
+                               as_human=stamp == 'human', **({'contributed': True} if stamp == 'contributed' else {}))
         out = {}
 
         def meta_of(conv, prev):

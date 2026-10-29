@@ -104,8 +104,7 @@ class Approving:
             marker = meta.get('pending')
             if not (isinstance(marker, dict) and marker.get('request_id') == ctx.request_id):
                 mark = {'kind': 'apply', 'request_id': ctx.request_id, 'service_id': self.service_id,
-                        'plan_id': plan_id, 'as_human': bool(ctx.data.get('as_human')),
-                        'started_at': now_iso()}
+                        'plan_id': plan_id, 'started_at': now_iso()}
                 written = ctx.store.write_meta(
                     ctx.conv_id, lambda m: m if _marks(m, ctx.request_id) else None if busy_why(m.get('pending'))
                     else self._holding(ctx, {**m, 'pending': mark}))
@@ -192,6 +191,7 @@ class Approving:
             response_helper.error(self._review_unread(e))
             return
         stamp_mode = 'contributed' if contributor else 'human' if approve.get('as_human') else 'verified'
+        self._mark_stamp(store, conv_id, request_id, stamp_mode)
         documents = plan.get('documents') or []
         ap.run_with(ops, documents, plan.get('summary') or self.summarize(ops), stamp_mode, contributor,
                     detail=proposed_by(item), proposer=item['service'])
@@ -218,6 +218,17 @@ class Approving:
                         f'({requester_message(e.cause, secrets=self.REQUEST_SECRETS)}). Approve again.')
             outcome = Outcome.refused(f'Nothing was written. {said}')
         self._settle(ap, outcome)
+
+    @staticmethod
+    def _mark_stamp(store, conv_id, request_id, stamp_mode) -> None:
+        """How the run writes, put on its marker before the first send, so a
+        dead run's plan is settled as it was written (`_settle_dead`). A
+        failed write leaves the marker without it: the run goes on."""
+        try:
+            store.write_meta(conv_id, lambda m: {**m, 'pending': {**m['pending'], 'stamp': stamp_mode}}
+                             if _marks(m, request_id) else None)
+        except Exception as e:  # noqa: BLE001 - the stamp only labels a dead run's plan
+            print(f'Conversation {conv_id}: the run\'s stamp was not put on its marker ({e}).')
 
     def _settle(self, ap: 'Approval', outcome: Outcome) -> None:
         """Write what an approval's run came to on the record and answer the

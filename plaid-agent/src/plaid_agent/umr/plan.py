@@ -648,7 +648,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     Per-kind counts of what was applied, plus ``notes``. ``detail`` is what
     the writes' provDetail names (see :class:`Stamps`). ``seed`` is the
     plan's id: every row the plan creates is named by an id drawn from it
-    (:class:`Minter`), so applying the same plan again names the same rows.
+    (:class:`Minter`), so a request sent again after its answer was lost
+    names the same rows.
     Without one they are drawn from a fresh id. Raises :class:`PlanError`
     with the applied count if a later batch fails."""
     return run_plan(

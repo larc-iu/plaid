@@ -18,11 +18,13 @@ class _Died(BaseException):
     """The service process going away in the middle of a run."""
 
 
-def _die_while_applying(client, *, after_write=False):
+def _die_while_applying(client, *, after_write=False, as_human=False, reviewed=False):
     """Approve the plan on a service that dies before it sends its first
     change, or after it (``after_write``). Its marker stays on the record,
     naming a request no process runs any more."""
     svc = _service()
+    if reviewed:
+        svc._reviewed = lambda *a: True
 
     def execute(*a, **k):
         if after_write:
@@ -30,7 +32,7 @@ def _die_while_applying(client, *, after_write=False):
         raise _Died()
     svc.execute_plan = execute
     try:
-        svc.process_request(_req(client, 'approve', plan_id=PLAN1), Helper(request_id='r-dead'))
+        svc.process_request(_req(client, 'approve', plan_id=PLAN1, as_human=as_human), Helper(request_id='r-dead'))
     except _Died:
         pass
 
@@ -87,14 +89,28 @@ def test_a_run_that_died_after_writing_settles_the_same_way():
     assert len(client.payloads('spans.create')) == 1, 'nothing written a second time'
 
 
-def test_a_dead_approval_keeps_how_it_was_asked_to_be_recorded():
+def test_a_dead_approval_records_the_runs_stamp_not_the_pages():
+    """The page asked for human-made, but the approver's work is reviewed, so
+    the run wrote as contributed: the dead settle says what the run wrote
+    as (REV-FX-R53 S5)."""
     client = FakeClient()
-    _seed_plan(client, request_id='r-dead')
-    _set_meta(client, pending={'kind': 'apply', 'request_id': 'r-dead', 'service_id': 'igt:assist:fake',
-                               'plan_id': PLAN1, 'as_human': True})
+    _seed_plan(client, request_id=None)
+    _set_meta(client, pending=None)
+    _die_while_applying(client, after_write=True, as_human=True, reviewed=True)
     _service().process_request(_req(client, 'hold'), Helper(request_id='h1'))
     _, _, item = _settled_item(client)
-    assert item['status'] == 'partial' and item['as_human'] is True
+    assert item['status'] == 'partial'
+    assert item['as_human'] is False and item['contributed'] is True
+
+
+def test_a_dead_approval_asked_human_made_records_it():
+    client = FakeClient()
+    _seed_plan(client, request_id=None)
+    _set_meta(client, pending=None)
+    _die_while_applying(client, after_write=True, as_human=True)
+    _service().process_request(_req(client, 'hold'), Helper(request_id='h1'))
+    _, _, item = _settled_item(client)
+    assert item['status'] == 'partial' and item['as_human'] is True and not item.get('contributed')
 
 
 def test_a_run_another_process_took_for_dead_settles_applied_once_it_writes_everything():
