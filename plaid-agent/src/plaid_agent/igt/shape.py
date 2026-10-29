@@ -150,6 +150,22 @@ def _collapsed_mwes(words: List[Word]) -> list:
     return out
 
 
+CUT_IN_MERGE = ('{ref}: a sentence boundary and a word merge are planned at the same place, and a merged word '
+                'cannot be cut by a sentence boundary. Plan one of them, or discard_plan to start over')
+
+
+def _refuse_cut_in_merge(ws: Workspace, sentence_id: str, words: List[Word], ref: str) -> None:
+    """A word merge whose words a sentence split in the plan puts a boundary
+    between: the cut would fall inside the merged word, cutting it again into
+    a word ending in a space and a bare one (R1-2). ``words`` are the merged
+    words in text order, and a boundary between two of them is at the start
+    of the second."""
+    cuts = {op.get('position') for op in ws.ops
+            if op.get('kind') == 'split_sentence' and op.get('sentence_id') == sentence_id}
+    if any(w.begin in cuts for w in words[1:]):
+        raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict')
+
+
 def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     """PLAN: split one word into two at a character position."""
     doc = ws.doc(document)
@@ -226,6 +242,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
                             'Respell or delete the punctuation first if the merge is really wanted.', kind='conflict')
     for w in words:
         _guard(ws, w, word_ref(next(s for s in doc.sentences if s.id in sents), w), merging=True)
+    _refuse_cut_in_merge(ws, next(iter(sents)), words, ' + '.join(refs))
     first, last = words[0], words[-1]
     merged = doc.body[first.begin:last.end]
     spans = _joined_spans(words, ws.project)
@@ -319,6 +336,10 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
         raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)',
                         kind='invalid-argument')
     w = s.words[n - 1]
+    # The same, staged the other way round: a word a merge folds into the
+    # word before it starts no sentence.
+    if any(w.id in (op.get('other_ids') or []) for op in ws.ops if op.get('kind') == 'merge_words'):
+        raise ToolError(CUT_IN_MERGE.format(ref=ref), kind='conflict')
     left = doc.body[s.begin:w.begin].strip()
     right = doc.body[w.begin:s.end].strip()
     note = ' (sentence values such as the translation stay with the first part)' if s.fields else ''
