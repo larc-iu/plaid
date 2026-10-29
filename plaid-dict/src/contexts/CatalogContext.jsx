@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useEffect, useState } from 'react';
+import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { vocabImporting } from '@igt/domain/igtConfig.js';
 
@@ -15,7 +15,15 @@ export const useCatalog = () => {
 
 export const CatalogProvider = ({ children }) => {
   const { client, logout } = useAuth();
-  const [vocabularies, setVocabularies] = useState([]);
+  // Every vocabulary the user can read, and the ones that are dictionaries:
+  // all but one an unfinished import made, which is no dictionary until that
+  // import is over (igt's R58), so it is neither listed nor reached by its
+  // address. It still holds its address, which Setup counts as taken.
+  const [allVocabularies, setAllVocabularies] = useState([]);
+  const vocabularies = useMemo(
+    () => allVocabularies.filter((v) => !vocabImporting(v.config)),
+    [allVocabularies],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // vocabLayerId -> entry count. Null until the query answers, and left null
@@ -27,9 +35,7 @@ export const CatalogProvider = ({ children }) => {
     if (!client) return;
     setLoading(true);
     try {
-      // One an unfinished import made is no dictionary until that import is
-      // over (igt's R58), so it is neither listed nor reached by its address.
-      setVocabularies((await client.vocabLayers.list()).filter((v) => !vocabImporting(v.config)));
+      setAllVocabularies(await client.vocabLayers.list());
       setError('');
     } catch (err) {
       if (err.status === 401) {
@@ -83,7 +89,9 @@ export const CatalogProvider = ({ children }) => {
   }, [client, vocabularies]);
 
   return (
-    <CatalogContext.Provider value={{ vocabularies, itemCounts, loading, error, reload }}>
+    <CatalogContext.Provider
+      value={{ vocabularies, allVocabularies, itemCounts, loading, error, reload }}
+    >
       {children}
     </CatalogContext.Provider>
   );

@@ -70,7 +70,12 @@ vi.mock('@/contexts/CatalogContext', async () => {
   return {
     useCatalog: () => {
       const [vocabularies, setVocabularies] = useState(() => [vocab()]);
-      return { vocabularies, loading: false, reload: async () => setVocabularies([vocab()]) };
+      return {
+        vocabularies,
+        allVocabularies: vocabularies,
+        loading: false,
+        reload: async () => setVocabularies([vocab()]),
+      };
     },
   };
 });

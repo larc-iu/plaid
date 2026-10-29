@@ -57,3 +57,35 @@ describe('the catalog entry counts', () => {
     await view.unmount();
   });
 });
+
+// R58 left a vocabulary an unfinished import made out of the catalog. Its
+// dictionary address is still its own, so Setup's taken addresses read the
+// whole list (REV-FX-R57-3-2).
+describe('the catalog and an unfinished import’s vocabulary', () => {
+  it('leaves it out of the dictionaries and keeps it in the whole list', async () => {
+    const half = {
+      id: 'half',
+      config: { igt: { import: { projectId: 'p9' } }, dict: { slug: 'sena' } },
+    };
+    const client = {
+      vocabLayers: { list: async () => [{ id: 'mine', config: {} }, half] },
+      query: async () => ({ results: [] }),
+      projects: { list: async () => [] },
+    };
+    auth.current = { client, logout: () => {} };
+    let seen = null;
+    const Probe = () => {
+      seen = useCatalog();
+      return null;
+    };
+    const view = await renderComponent(
+      <CatalogProvider>
+        <Probe />
+      </CatalogProvider>,
+    );
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(seen.vocabularies.map((v) => v.id)).toEqual(['mine']);
+    expect(seen.allVocabularies.map((v) => v.id)).toEqual(['mine', 'half']);
+    await view.unmount();
+  });
+});

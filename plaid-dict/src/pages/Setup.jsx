@@ -147,14 +147,19 @@ export const Setup = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
   const { client, user } = useAuth();
-  const { vocabularies, loading: catalogLoading, reload } = useCatalog();
+  const { vocabularies, allVocabularies, loading: catalogLoading, reload } = useCatalog();
 
   const vocab = useMemo(
     () => vocabularies.find((v) => v.id === vocabularyId) || null,
     [vocabularies, vocabularyId],
   );
   const saved = useMemo(() => readDictRecord(vocab?.config), [vocab?.config]);
-  const taken = useMemo(() => takenSlugs(vocabularies, vocabularyId), [vocabularies, vocabularyId]);
+  // From every vocabulary, a dictionary or not: one an unfinished import made
+  // keeps its address (REV-FX-R57-3-2).
+  const taken = useMemo(
+    () => takenSlugs(allVocabularies, vocabularyId),
+    [allVocabularies, vocabularyId],
+  );
 
   useDocumentTitle(vocab?.name, 'Setup');
 
