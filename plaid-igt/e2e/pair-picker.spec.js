@@ -11,7 +11,7 @@ import { getFixture, roleOf } from './fixtureProject.js';
 
 const NONCE = Date.now().toString(36);
 const FORM = `kat${NONCE}`;
-const BODY = `${FORM} ${FORM}`;
+const BODY = `${FORM} ${FORM} ${FORM}`;
 const MACHINE = { prov: 'inferred', provSource: 'service:e2e' };
 
 let client;
@@ -152,4 +152,21 @@ test('a pick from the link chip sets the link and the gloss, and both are there 
   await openAnalyze(page);
   await expect(cell).toHaveValue('feline');
   expect(await stored(ids.m[1])).toEqual({ item: sense.feline, gloss: 'feline' });
+});
+
+test('Enter right after Alt+Down takes the highlighted row, link and gloss together', async ({
+  page,
+}) => {
+  await openAnalyze(page);
+  const cell = page.locator(`.igt-field[data-cell-key="ma:${ids.m[2]}:Gloss"]`);
+  await cell.click();
+  await page.keyboard.press('Alt+ArrowDown');
+  const active = page.locator('.igt-alts__item.is-active');
+  await expect(active.locator('.igt-pair__value')).toHaveText('feline');
+  await page.keyboard.press('Enter');
+  await expect(cell).toHaveValue('feline');
+  await saved(page);
+  await openAnalyze(page);
+  await expect(cell).toHaveValue('feline');
+  expect(await stored(ids.m[2])).toEqual({ item: sense.feline, gloss: 'feline' });
 });

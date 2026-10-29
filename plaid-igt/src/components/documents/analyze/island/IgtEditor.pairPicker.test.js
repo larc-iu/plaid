@@ -235,6 +235,31 @@ describe('a pick from Alt+Down', () => {
     expect(link.args[2]).toMatchObject({ provSource: 'service:m', provConfirmed: true });
   });
 
+  it('Enter at once takes the highlighted row, link and gloss, on an empty cell', async () => {
+    const { doc } = mount();
+    await settle(4);
+    const el = cell('ma:m-4:Gloss');
+    openAlts(el);
+    const active = document.querySelector('.igt-alts__item.is-active');
+    expect(active.querySelector('.igt-pair__value').textContent).toBe('feline');
+    key(el, 'Enter');
+    await settle(6);
+    expect(morph(doc, 3).annotations.Gloss?.value).toBe('feline');
+    expect(morph(doc, 3).vocabItem?.id).toBe('c1');
+  });
+
+  it('Enter at once takes the highlighted current pair, confirming its link and gloss', async () => {
+    const { doc } = mount();
+    await settle(4);
+    const el = cell('ma:m-2:Gloss');
+    openAlts(el);
+    key(el, 'Enter');
+    await settle(6);
+    expect(morph(doc).annotations.Gloss.value).toBe('feline');
+    expect(morph(doc).vocabItem).toMatchObject({ id: 'c1' });
+    expect(morph(doc).vocabItem.prov).not.toBe('machine');
+  });
+
   it('typing the other sense’s gloss changes the gloss only', async () => {
     const { doc, client } = mount();
     await settle(4);
@@ -388,7 +413,7 @@ describe('a pick from the chip', () => {
 describe('a governed gloss cell', () => {
   const TAGS = { mode: 'closed', values: [{ value: 'DEF' }, { value: 'PL' }] };
 
-  it('opens the pair rows on focus, and hands an unsteered Enter back to the cell', async () => {
+  it('opens the pair rows on focus, and hands Enter back to the cell', async () => {
     const { doc, client } = mount({ tagset: TAGS });
     await settle(4);
     const el = cell('ma:m-1:Gloss');

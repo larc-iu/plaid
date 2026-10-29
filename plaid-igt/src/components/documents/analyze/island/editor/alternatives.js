@@ -15,14 +15,15 @@ export const alternatives = {
   // through the guess-adoption path (data-guess-* + blur-commit), so it is
   // written born-verified with the row's source, exactly like adopting a
   // placeholder guess; the cell keeps focus.
-  // `explicit`: the user asked for the list (Alt+Down), as opposed to a
-  // governed cell opening it on focus. Escape reads the difference.
-  _openAlts(el, { explicit = false } = {}) {
+  // `asked`: the person asked for the list (Alt+Down), as opposed to a
+  // governed cell opening it on focus. Moving in a list asks for it too.
+  // Enter and Escape read the difference.
+  _openAlts(el, { asked = false } = {}) {
     const items = this._altsItems(el, '');
     if (!items.length) return;
     // A pair list starts where the chip's does (pairPicker.js).
     const active = items[0]?.pair ? this._pairDefaultRow(items) : 0;
-    this._alts = { cellKey: el.dataset.cellKey, active, filter: '', visible: [], explicit };
+    this._alts = { cellKey: el.dataset.cellKey, active, filter: '', visible: [], asked };
     this._altsPos = this._computeAltsPos(el, items.length);
     this._renderAlts();
   },
@@ -73,12 +74,12 @@ export const alternatives = {
     const open = !!this._alts && this._alts.cellKey === el.dataset.cellKey;
     if (keys.is('analyze.alternatives', e)) {
       e.preventDefault();
-      if (!open) this._openAlts(el, { explicit: true });
+      if (!open) this._openAlts(el, { asked: true });
       return true;
     }
     if (!open) return false;
     // Ctrl/Cmd+Enter is the whole-word accept wherever it is pressed; the list
-    // never takes it, steered or not.
+    // never takes it.
     // Any Ctrl/Cmd+Enter as well, whatever it is bound to now: with a modifier
     // held it is never "take the highlighted row".
     if (keys.is('analyze.accept', e) || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
@@ -94,33 +95,24 @@ export const alternatives = {
         const from =
           this._alts.active < 0 ? (e.key === 'ArrowDown' ? n - 1 : 0) : this._alts.active;
         this._alts.active = (from + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
-        // The user has now steered the list, so Enter belongs to it.
-        this._alts.steered = true;
+        // The person is now addressing the list, so Enter belongs to it.
+        this._alts.asked = true;
         this._renderAlts();
       }
       return true;
     }
     if (e.key === 'Enter') {
-      // Whose key is this, the list's or the cell's? The list opens on focus
-      // for a governed cell, so Enter arrives here on every plain "commit and
-      // move on" too, and those have to be handed back. The list keeps Enter
-      // only when taking the highlighted row is plainly what the user wants:
+      // Whose key is this, the list's or the cell's? A list the person asked
+      // for (Alt+Down, or moved in) takes Enter on its highlighted row,
+      // whatever it is (R55). A list a governed cell opened on focus hands
+      // Enter back, since that Enter is the ordinary "commit and move on"
+      // (it once replaced a stored PL with the form's most frequent gloss),
+      // unless the person is completing: on an ENFORCING tagset they typed a
+      // prefix that is not itself a legal value and a row matches it.
       //
-      //   steered      they arrowed to a row. Theirs, whatever the mode.
-      //   completing   on an ENFORCING tagset they typed a prefix that is not
-      //                itself a legal value, and a row matches it. The prefix
-      //                cannot be committed, so the row is what they can have.
-      //
-      // Everything else falls through to the ordinary Enter: nothing typed
-      // (an untouched cell — Enter there once replaced a stored PL with the
-      // form's most frequent gloss, and in part mode the first part of
-      // 1SG.NOM, since focus select-all leaves the caret at 0), a suggesting
-      // tagset (the typed text is a legal new value), a typed part that is
-      // already legal (NOM typed out in full), or a pick that would not
-      // change the value.
-      //
-      // A pair row also acts when it changes the link, or confirms the
-      // current link and value.
+      // A row that would write nothing (a pair row that changes neither
+      // value nor link and confirms nothing, a value row the cell already
+      // holds) hands Enter back too, and the cell commits as it is.
       const it = items.length && this._alts.active >= 0 ? items[this._alts.active] : null;
       const typed = this._alts.filter || '';
       const enforcing = el.dataset.tagsetEnforces === '1';
@@ -134,7 +126,7 @@ export const alternatives = {
             : it.value;
       const acts = !!it && (it.pair ? this._pairActs(it, el.value) : would !== el.value);
       const completing = typed !== '' && enforcing && !isValueAllowed(typed, el.igtTagset ?? null);
-      if (!acts || !(this._alts.steered || completing)) {
+      if (!acts || !(this._alts.asked || completing)) {
         this._closeAlts();
         return false; // fall through to the normal commit path
       }
@@ -144,13 +136,12 @@ export const alternatives = {
     }
     if (e.key === 'Escape') {
       // The same question as Enter: is the list what the user is addressing?
-      // A list that opened on its own and has not been typed into or steered
-      // is not, so Escape falls through and reverts the cell in one press,
-      // as it does everywhere else. A list the user ASKED for (Alt+Down) is,
-      // and so is one mid-completion: Escape closes the list, keeps what was
-      // typed, and leaves the cell where it is.
-      const engaged =
-        !!this._alts.steered || !!this._alts.explicit || (this._alts.filter || '') !== '';
+      // A list that opened on its own and has not been typed into or moved
+      // in is not, so Escape falls through and reverts the cell in one press,
+      // as it does everywhere else. A list the person asked for is, and so
+      // is one mid-completion: Escape closes the list, keeps what was typed,
+      // and leaves the cell where it is.
+      const engaged = !!this._alts.asked || (this._alts.filter || '') !== '';
       this._closeAlts();
       if (!engaged) return false;
       e.preventDefault();
