@@ -394,41 +394,6 @@ def test_an_approval_run_again_after_a_restart_makes_nothing_twice(app, monkeypa
     assert conv['display'][1]['status'] == 'applied'
 
 
-@pytest.mark.parametrize('app', sorted(sbs.APPS))
-def test_an_approval_run_again_claims_the_versions_its_first_run_held(app, monkeypatch):
-    """A keyed request names the document version it claims, so a run again
-    that claimed the version the document has now was another request, which
-    the core refuses with 422 instead of answering it from its first send. The
-    first run writes the versions it holds onto the plan before it sends, and
-    a run again holds the documents at them."""
-    spec = sbs.APPS[app]()
-    client = spec['client']()
-    plan, _ = sbs._plan(spec, client)
-    record = {}
-    real = core_plan.Batcher.flush
-
-    def lost(self):
-        # The service stops here: the batch committed, the record as it is.
-        real(self)
-        record.update(copy.deepcopy(_user_data(client)))
-        raise la._lost()
-
-    monkeypatch.setattr(core_plan.Batcher, 'flush', lost)
-    first = len(client.stamps)
-    sbs._approve(spec, client, plan)
-    claimed = [v for _, _, v in client.stamps[first:]]
-    assert claimed and record
-    monkeypatch.setattr(core_plan.Batcher, 'flush', real)
-    # What the batch did to the document: its version moved on.
-    client._documents[spec['did']]['version'] += 1
-    _user_data(client).clear()
-    _user_data(client).update(record)
-    again = len(client.stamps)
-    helper = sbs._approve(spec, client, plan)
-    assert not helper.errors, helper.errors
-    assert [v for _, _, v in client.stamps[again:]][:len(claimed)] == claimed
-
-
 def test_a_run_that_wrote_nothing_leaves_the_next_to_hold_the_versions_then(monkeypatch):
     """A refused run wrote nothing, so there is nothing to repeat: an
     approval after an edit claims the version the edit left."""

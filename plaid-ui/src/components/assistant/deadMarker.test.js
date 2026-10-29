@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // A request whose service went away leaves its marker in the record, and the
 // service settles it on the next op on the conversation (a turn's marker
-// cleared, an approval's plan marked interrupted). A rejoin that ends with the
-// record still naming its request asks for that at once, with a hold, so the
-// card says Not finished without the reader having to act first (SW-1, live).
+// cleared, an approval's plan settled partly applied). A rejoin that ends with
+// the record still naming its request asks for that at once, with a hold, so
+// the card says Partly applied without the reader having to act first (SW-1,
+// live).
 
 vi.mock('../../lib/notify.js', () => ({
   notifySuccess: vi.fn(),
@@ -43,7 +44,7 @@ const setup = ({ fails = { status: 404 } } = {}) => {
       records.set(KEYS.conv, {
         ...conv,
         display: conv.display.map((d) =>
-          d.plan?.id === 'plan-1' ? { ...d, interrupted: true } : d,
+          d.plan?.id === 'plan-1' ? { ...d, status: 'partial', written: [] } : d,
         ),
       });
       records.set(KEYS.meta, { ...meta, pending: null });
@@ -82,7 +83,7 @@ describe('a rejoin of a request whose service went away', () => {
     expect(asked).toEqual([
       expect.objectContaining({ op: 'hold', conversationId: 'c1', tab: 'tab-1' }),
     ]);
-    expect(result.conv.display[0].interrupted).toBe(true);
+    expect(result.conv.display[0].status).toBe('partial');
     expect(result.meta.pending).toBe(null);
   });
 
@@ -134,10 +135,10 @@ describe('a rejoin that fails on a plan the record has settled', () => {
     await j.promise;
   };
 
-  it('raises no error toast for a plan already Not finished', async () => {
+  it('raises no error toast for a plan already partly applied', async () => {
     const { notifyError } = await import('../../lib/notify.js');
     notifyError.mockClear();
-    await rejoin({ status: null, interrupted: true });
+    await rejoin({ status: 'partial', written: [] });
     expect(notifyError).not.toHaveBeenCalled();
   });
 

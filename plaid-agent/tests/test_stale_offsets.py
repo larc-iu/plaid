@@ -251,8 +251,8 @@ def test_a_rebase_refuses_a_create_over_a_token_gone_or_of_another_length(extent
 
 
 def test_a_cut_is_refused_only_when_its_token_is_gone():
-    """A run applied again after its own cut landed finds the token already
-    cut, and sends the cut where its first run did."""
+    """A cut is not asked its token's length: a token of another length still
+    takes the cut where it was planned."""
     from plaid_agent.core.plan import PlanOutOfDate
     cut = {'kind': 'cut', 'word_id': 'w', 'position': 12, 'token_at': {'begin': 10, 'end': 14}}
     with pytest.raises(PlanOutOfDate):
@@ -262,9 +262,8 @@ def test_a_cut_is_refused_only_when_its_token_is_gone():
 
 
 def test_a_document_a_change_pins_whole_is_left_as_planned():
-    """A text edit in the plan pins its document, so nothing in it moved but
-    by the plan's own writes: a run again after its text edit landed sends
-    its creates as its first run did."""
+    """A text edit in the plan pins its document, so nothing in it moved and
+    its creates are sent as planned."""
     ops = [{'kind': 'make', 'word_id': 'w', 'begin': 10, 'end': 14, 'text_id': 't1'},
            {'kind': 'edit', 'text_id': 't1', 'begin': 2, 'end': 3}]
     made, _ = fp.rebase_offsets(_Client({'w': (11, 15)}), _REG, ops)

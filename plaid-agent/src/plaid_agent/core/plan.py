@@ -15,12 +15,10 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 :class:`PlanError` out.
 """
 
-import base64
 import json
 import logging
 import unicodedata
 import uuid
-import zlib
 from contextlib import ExitStack, contextmanager
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -130,16 +128,15 @@ class Minter:
     """The ids an applied plan creates its rows under, drawn in order from a
     seed: the plan's own id, a UUIDv7 minted when the plan was staged.
 
-    Applying the same plan again draws the same ids in the same order, so a
-    create whose first send landed (its answer lost, the service restarted)
-    is answered from that send under its Idempotency-Key, or refused as
+    A create sent again after its answer was lost names the same id, so it
+    is answered from its first send under its Idempotency-Key, or refused as
     ``id-taken``, and never makes a second row. The nth id is a UUIDv7 just
     after the seed, one step of its 12-bit counter each, so the ids sort in
     the order they were drawn and are dated when the plan was staged. Its 62
     random bits are a hash of the seed and n.
 
     A create refused ``id-taken`` for one of these ids was made by an earlier
-    run of the same plan (:meth:`made`): the row it names exists, and the
+    send of the same plan (:meth:`made`): the row it names exists, and the
     plan goes on past it.
     """
 
@@ -159,14 +156,13 @@ class Minter:
 
     def made(self, error, whole: bool = False) -> bool:
         """Whether ``error`` refuses a create because an id this plan drew is
-        taken: an earlier run of the plan made that row. Its answer was lost,
-        or the service stopped before the record said so, and the key that
-        would have replayed it is gone or was never the plan's (a batch of
-        comments alone takes one of its own).
+        taken: an earlier send of the plan made that row. Its answer was
+        lost, and the key that would have replayed it is gone or was never
+        the plan's (a batch of comments alone takes one of its own).
 
         For a single create, not when that row has been deleted since: the
         client's rule (``minted_taken``). For a batch or a bulk create
-        (``whole``), one transaction, a taken id means the earlier run made
+        (``whole``), one transaction, a taken id means the earlier send made
         all of it, whichever row the server names and whether a person
         deleted it since."""
         if not isinstance(error, PlaidAPIError):
@@ -178,7 +174,7 @@ class Minter:
 
     def once(self, create, whole: bool = False):
         """Run ``create()``, a write made on the client that makes rows under
-        ids this plan drew. Refused because an earlier run made them, it is
+        ids this plan drew. Refused because an earlier send made them, it is
         taken as made and answers None. ``whole`` for a batch or a bulk
         create (see :meth:`made`)."""
         try:
@@ -187,349 +183,6 @@ class Minter:
             if self.made(e, whole=whole):
                 return None
             raise
-
-
-# The version a document had when the first run of a plan took hold of it,
-# kept on the plan's record of that document.
-HELD_FROM = 'held_from'
-
-
-def held_from(client, documents: List[Dict[str, Any]], remember) -> bool:
-    """Hold each document the plan holds (``holding``) at the version its
-    first run held it at, so a run again sends the requests the first run sent
-    (the document version is part of a keyed request) and the ones that landed
-    are answered from their first send. Each answer moves the version on as
-    it did the first time.
-
-    The first run records the versions on the plan's ``documents`` (compacted
-    away once the plan is settled) and writes the record with ``remember()``
-    before anything is sent, so a service that stops partway leaves them for
-    the next approval. True when it wrote the record."""
-    held = getattr(client, HELD_DOCUMENTS, None) or {client.strict_mode_document_id} - {None}
-    fresh = False
-    for d in documents or []:
-        if not isinstance(d, dict) or d.get('id') not in held:
-            continue
-        if d.get(HELD_FROM) is not None:
-            client.document_versions[d['id']] = d[HELD_FROM]
-        elif client.document_versions.get(d['id']) is not None:
-            d[HELD_FROM] = client.document_versions[d['id']]
-            fresh = True
-    if fresh:
-        remember()
-    return fresh
-
-
-#: Set on a plan while an approval of it may have written (:func:`writing`),
-#: and dropped again by a run that certainly wrote nothing. The page reads it
-#: on a plan whose approval was interrupted: such a plan cannot be discarded,
-#: since some of its changes may be in the project. ``{'run', 'inside'}``:
-#: ``run`` names the run that set it, so each run writes the record before it
-#: sends anything, and ``inside`` says that every change of the plan lands in a
-#: document the run held, at the version it recorded (:data:`HELD_FROM`), so a
-#: page that finds each of them still at that version knows nothing was
-#: written and may discard the plan after all.
-WRITING = 'writing'
-
-#: Said when the record has no room for what an approval keeps on the plan
-#: while it runs. The same words as the page's for a message (plaid-ui
-#: jobs.js `CONVERSATION_FULL`).
-RECORD_FULL = 'This conversation is full, so the plan was not applied. Start a new conversation to go on.'
-
-
-class RecordFull(ValueError):
-    """The conversation record refused (413) what an approval writes on its
-    plan before the first change is sent. Nothing was sent."""
-
-    def __init__(self):
-        super().__init__(RECORD_FULL)
-
-
-class PlanMovedOn(ValueError):
-    """The record no longer has the plan undecided under this approval when
-    the run is about to send its first change: it was decided elsewhere (a
-    discard in another tab), another request took the conversation, or the
-    conversation was deleted. Nothing was sent."""
-
-
-def writing(client, plan: Dict[str, Any], documents: List[Dict[str, Any]], mark, run: Any = True,
-            ops: Optional[List[Dict[str, Any]]] = None, stamp: Optional[str] = None,
-            contributor: Optional[str] = None) -> None:
-    """Before the first change of a run is sent: the plan says that it may
-    have written (:data:`WRITING`, naming the run ``run``, whether every
-    one of ``ops`` lands only in documents the run holds, and how its writes
-    are stamped, ``stamp`` with its ``contributor``, which a run again sends
-    the same under the same keys) and which versions
-    the run holds its documents at (:func:`held_from`), in one write of the
-    record, ``mark()``. Every run makes it, a run again too, and it is made
-    only on a plan the record still has undecided (``mark`` answers False
-    otherwise): that write is where an approval and a discard of the same
-    plan meet, so a plan is never written after the record says it was
-    decided. Raises :class:`PlanMovedOn` then, and :class:`RecordFull` when
-    the record cannot take the write."""
-    try:
-        held_from(client, documents, lambda: None)
-        held = {d.get('id') for d in documents or [] if isinstance(d, dict) and d.get(HELD_FROM) is not None}
-        reach = [docs_of_op(op) for op in expand_ops(ops or [])]
-        plan[WRITING] = {'run': run, 'inside': bool(reach) and all(r and r <= held for r in reach),
-                         **({'stamp': stamp} if stamp else {}),
-                         **({'contributor': contributor} if contributor else {})}
-        if not mark():
-            raise PlanMovedOn('the plan was decided elsewhere')
-    except PlaidAPIError as e:
-        if getattr(e, 'status', 0) == 413:
-            raise RecordFull() from e
-        raise
-
-
-def stamp_of(mark: Any) -> Optional[tuple]:
-    """How the run a writing mark names stamped its writes, ``(stamp_mode,
-    contributor)``, or None when the mark says nothing of it."""
-    stamp = mark.get('stamp') if isinstance(mark, dict) else None
-    if stamp not in STAMP_MODES:
-        return None
-    contributor = mark.get('contributor') if stamp == 'contributed' else None
-    if stamp == 'contributed' and not contributor:
-        return None
-    return stamp, contributor
-
-
-#: The key on a plan holding what each of its scopes resolved to on the first
-#: run of an approval (see :class:`Expansion`), dropped once it settles.
-EXPANSION = 'expansion'
-
-# A value a change does not carry at all, as against one it carries as None.
-_ABSENT = object()
-
-
-def _canonical_uuid(v: Any) -> bool:
-    if not isinstance(v, str) or len(v) != 36:
-        return False
-    try:
-        return str(uuid.UUID(v)) == v
-    except ValueError:
-        return False
-
-
-def _put_varint(n: int, out: bytearray) -> None:
-    while True:
-        b = n & 0x7F
-        n >>= 7
-        if n:
-            out.append(b | 0x80)
-        else:
-            out.append(b)
-            return
-
-
-def _get_varint(buf: bytes, i: int):
-    n = shift = 0
-    while True:
-        b = buf[i]
-        i += 1
-        n |= (b & 0x7F) << shift
-        if not b & 0x80:
-            return n, i
-        shift += 7
-
-
-def _json(v: Any) -> str:
-    return json.dumps(v, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
-
-
-def pack_found(ops: List[Dict[str, Any]], known: Iterable[Any] = ()) -> Dict[str, Any]:
-    """``ops`` as one short string, column by column, for :class:`Expansion`.
-
-    A column of ids, nearly all different, is kept as 16 bytes an id. Any
-    other column keeps each different value once and an index a change, so
-    what is the same across a rule's changes (its kind, its field, the value
-    it writes, the document) costs next to nothing. ``known`` are values the
-    stored rule already holds (its documents and arguments): an index names
-    them without their being stored again. The whole is compressed, and
-    ``fp`` is the digest of the changes it gives back (:func:`unpack_found`).
-
-    Missing keys stay missing and None stays None, so the changes come back
-    equal to ``ops`` as JSON keeps them, in the same order."""
-    plain = json.loads(json.dumps(ops))
-    keys: List[str] = []
-    for o in plain:
-        for k in o:
-            if k not in keys:
-                keys.append(k)
-    seeds = list(dict.fromkeys(_json(v) for v in known))
-    cols: List[list] = []
-    body = bytearray()
-    for k in keys:
-        vals = [o.get(k, _ABSENT) if k in o else _ABSENT for o in plain]
-        ids = [v for v in vals if isinstance(v, str)]
-        if ids and all(v is _ABSENT or v is None or _canonical_uuid(v) for v in vals) \
-                and 2 * len(set(ids)) > len(ids):
-            cols.append([k, 'u'])
-            body += bytes(0 if v is _ABSENT else 1 if v is None else 2 for v in vals)
-            for v in ids:
-                body += uuid.UUID(v).bytes
-            continue
-        table = {s: i for i, s in enumerate(seeds)}
-        new: List[str] = []
-        for v in vals:
-            if v is _ABSENT:
-                _put_varint(0, body)
-                continue
-            s = _json(v)
-            if s not in table:
-                table[s] = len(table)
-                new.append(s)
-            _put_varint(table[s] + 1, body)
-        cols.append([k, 'd', new])
-    header = json.dumps({'n': len(plain), 'cols': cols}, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-    blob = bytearray()
-    _put_varint(len(header), blob)
-    blob += header + body
-    z = base64.urlsafe_b64encode(zlib.compress(bytes(blob), 9)).decode('ascii').rstrip('=')
-    return {'n': len(plain), 'z': z, 'fp': fp_digest(plain)}
-
-
-def unpack_found(packed: Dict[str, Any], known: Iterable[Any] = ()) -> List[Dict[str, Any]]:
-    """The changes :func:`pack_found` packed, with the same ``known``.
-    Raises ValueError when they do not give back its digest."""
-    z = packed['z']
-    blob = zlib.decompress(base64.urlsafe_b64decode(z + '=' * (-len(z) % 4)))
-    n_header, i = _get_varint(blob, 0)
-    header = json.loads(blob[i:i + n_header].decode('utf-8'))
-    i += n_header
-    n = int(header['n'])
-    seeds = list(dict.fromkeys(_json(v) for v in known))
-    out: List[Dict[str, Any]] = [{} for _ in range(n)]
-    for col in header['cols']:
-        k, mode = col[0], col[1]
-        if mode == 'u':
-            tags = blob[i:i + n]
-            i += n
-            for o, t in zip(out, tags):
-                if t == 1:
-                    o[k] = None
-                elif t == 2:
-                    o[k] = str(uuid.UUID(bytes=bytes(blob[i:i + 16])))
-                    i += 16
-            continue
-        table = seeds + list(col[2])
-        for o in out:
-            j, i = _get_varint(blob, i)
-            if j:
-                o[k] = json.loads(table[j - 1])
-    if len(out) != packed.get('n') or fp_digest(out) != packed.get('fp'):
-        from .tools import ValueRefusal
-        raise ValueRefusal('what the first run of this plan found does not read back. Ask the assistant to plan '
-                           'it again', kind='conflict')
-    return out
-
-
-def fp_digest(ops: List[Dict[str, Any]]) -> str:
-    from .fingerprint import fingerprint
-    return fingerprint(ops)
-
-
-def rule_known(op: Dict[str, Any]) -> List[Any]:
-    """What a stored rule already says that its changes repeat: the documents
-    it matched and its arguments."""
-    return ([m[0] for m in op.get('matched') or [] if isinstance(m, list) and m]
-            + [v for _k, v in sorted((op.get('args') or {}).items())])
-
-
-class ExpansionUnreadable(Exception):
-    """What an earlier run of a plan recorded (:class:`Expansion`) does not
-    read back: a digest that does not match, a damaged record, or one written
-    in another shape. That run began writing, so some of the plan may stand,
-    and a run again that resolved its scopes afresh would send other requests
-    under the keys the earlier run used. Nothing more is sent."""
-
-    def __init__(self):
-        super().__init__('what the earlier run of this plan found cannot be read back')
-
-
-class Expansion:
-    """What the scopes of one plan resolved to, kept on the plan
-    (:data:`EXPANSION`, by row) from the first run of an approval, written
-    with ``remember()`` before anything is sent.
-
-    A scope is resolved by reading the corpus. Approved again after a run
-    that wrote part of it (``held_from``), it would read that run's own writes
-    and stand for fewer changes, and its batches would differ from the first
-    run's under the same keys, which the server refuses. So a run again reads
-    what the first run found instead. A run that certainly wrote nothing
-    forgets it (:meth:`forget`), and the next one resolves afresh.
-
-    What is kept is what a run again needs to send the same requests: each
-    change the scope writes (after the plan's own changes and later rules
-    take theirs), packed by :func:`pack_found`. Its ids are kept, since a
-    request names them and an id a first run deleted cannot be read back.
-    Its values are kept once each, since a replacement's new value comes
-    from the value as found, which the first run overwrote. What the stored
-    rule holds (its documents, its arguments) is named, not repeated. About
-    30 to 40 bytes a change while the approval is in flight. A record that
-    cannot take them refuses the approval before anything is written."""
-
-    def __init__(self, plan: Dict[str, Any], remember):
-        self.plan = plan
-        self.remember = remember
-        self.fresh = False
-
-    def recorded(self, op: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
-        stored = (self.plan.get(EXPANSION) or {}).get(str(op.get(ROW)))
-        if stored is None or ROW not in op:
-            return None
-        try:
-            return unpack_found(stored, rule_known(op))
-        except Exception as e:  # noqa: BLE001 - every way a record fails to read back is one refusal
-            raise ExpansionUnreadable() from e
-
-    def record(self, op: Dict[str, Any], found: List[Dict[str, Any]]) -> None:
-        if ROW not in op:
-            return
-        plain = [{k: v for k, v in o.items() if k not in (ROW, MEMBER) and k not in PRESENTATION_KEYS}
-                 for o in found]
-        self.plan.setdefault(EXPANSION, {})[str(op[ROW])] = pack_found(plain, rule_known(op))
-        self.fresh = True
-
-    def save(self) -> None:
-        if not self.fresh:
-            return
-        self.fresh = False
-        try:
-            self.remember()
-        except PlaidAPIError as e:
-            if getattr(e, 'status', 0) == 413:
-                # The plan is within its limits (they were checked when it was
-                # staged): what is full is the conversation's record.
-                self.forget()
-                raise RecordFull() from e
-            raise
-
-    def forget(self) -> None:
-        self.plan.pop(EXPANSION, None)
-
-
-@contextmanager
-def expanding(client, expansion: Optional['Expansion']):
-    """``expansion`` on the client for the block, where every app's
-    ``opkind.resolve_ops`` finds it."""
-    from .opkind import EXPANDING
-    if expansion is None:
-        yield
-        return
-    setattr(client, EXPANDING, expansion)
-    try:
-        yield
-    finally:
-        setattr(client, EXPANDING, None)
-
-
-def forget_held(documents: List[Dict[str, Any]]) -> None:
-    """A run that wrote nothing leaves no versions to repeat: the next one
-    holds the documents as they are then."""
-    for d in documents or []:
-        if isinstance(d, dict):
-            d.pop(HELD_FROM, None)
 
 
 class Batcher:
@@ -693,10 +346,10 @@ class Batcher:
         except PlaidAPIError as e:
             if not self.new_id.made(e, whole=True):
                 raise
-            # An earlier run of this plan committed this very batch: the same
-            # plan draws the same ids and cuts the same batches, and a batch
-            # is written whole or not at all, so one row of it made means all
-            # of it was. It counts as written, and the plan goes on.
+            # An earlier send of this very batch was committed, its answer
+            # lost, and a batch is written whole or not at all, so one row of
+            # it made means all of it was. It counts as written, and the plan
+            # goes on.
             res = [None] * self._pending
         self.results.extend(res or [])
         self._pending = 0
@@ -804,35 +457,6 @@ class TrackingBatcher(Batcher):
                 out[row] = out.get(row, 0) + 1
         whole = set(self.written_rows())
         return {r: n for r, n in out.items() if r not in whole}
-
-
-def may_have_written(item: Dict[str, Any]) -> bool:
-    """Whether some of an undecided plan's changes may be in the project:
-    its approval was cut off after the run marked it :data:`WRITING`. As
-    plaid-ui ``mayHaveWritten``."""
-    plan = item.get('plan') if isinstance(item, dict) else None
-    return bool(plan) and item.get('status') is None and bool(item.get('interrupted')) and bool(plan.get(WRITING))
-
-
-def nothing_landed(client, item: Dict[str, Any]) -> bool:
-    """Whether such a plan's documents show its run wrote nothing after all
-    (cut off between marking the plan and sending its first change): every
-    document the run held is still at the version it held it at. Only for a
-    plan whose every change lands in those documents, which its mark says
-    (``inside``). False whenever it cannot be told."""
-    if not may_have_written(item):
-        return False
-    mark = item['plan'].get(WRITING)
-    if not isinstance(mark, dict) or mark.get('inside') is not True:
-        return False
-    held = [d for d in item['plan'].get('documents') or []
-            if isinstance(d, dict) and d.get('id') and d.get(HELD_FROM) is not None]
-    if not held:
-        return False
-    try:
-        return all((client.documents.get(d['id']) or {}).get('version') == d[HELD_FROM] for d in held)
-    except Exception:  # noqa: BLE001 - not known, so not nothing
-        return False
 
 
 def outcome_unknown(error) -> bool:
@@ -1538,10 +1162,10 @@ def waiting_plan(display: Iterable[Any]) -> Optional[Dict[str, Any]]:
     """The plan an earlier message staged that is still waiting on its card,
     as ``{'count', 'summary', 'rows'}``, or None. The test is the one a new
     plan's turn uses to mark it replaced (`conversation.replace_undecided`):
-    a plan with no status that no approval was interrupted on. ``rows`` are
-    its card's rows as plan_status lists them."""
+    a plan with no status. ``rows`` are its card's rows as plan_status lists
+    them."""
     waiting = [d for d in display or () if isinstance(d, dict) and isinstance(d.get('plan'), dict)
-               and d.get('status') is None and not d.get('interrupted')]
+               and d.get('status') is None]
     if not waiting:
         return None
     plan = waiting[-1]['plan']

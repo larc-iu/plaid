@@ -211,7 +211,6 @@ const ConversationDetail = ({ client, row, backTo }) => {
                     homeName={row.projectName}
                     canWrite={false}
                     busy={false}
-                    interrupted={!!d.interrupted}
                     applying={false}
                     readOnly
                   />

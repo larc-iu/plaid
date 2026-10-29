@@ -229,7 +229,7 @@ describe('the admin transcript of an igt conversation', () => {
     expect(cards[0].textContent).toContain('Gloss = "fish"');
     expect(cards[1].textContent).toContain('Applied');
     const shown = buttons(container).join(' | ');
-    expect(shown).not.toMatch(/Approve|Discard|Apply again/);
+    expect(shown).not.toMatch(/Approve|Discard/);
     expect(container.textContent).not.toContain('Applying needs write access');
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
     await unmount();

@@ -6,22 +6,16 @@ tab's message claimed it) wrote its changes and left the plan undecided, the
 model never heard it was applied, and a second approval answered "duplicate"
 and changed nothing on the record.
 
-H10-RECORD-3: a plan whose interrupted approval may have written could be
-discarded with "nothing was changed". The run now marks the plan ``writing``
-before it sends anything, so the page can tell.
-
-H10-RECORD-6: an approval refused because the record was full said the plan
-was too large to apply in one go.
+A plan whose approval's run died is settled partly applied by the next op
+(Luke's ruling R53, 2026-10-29, test_dead_approval.py), so it is never
+discarded as if nothing had happened.
 """
-
-from plaid_client import PlaidAPIError
 
 from fixtures import FakeClient
 from test_service_flow import PLAN1, Helper, _request, _seed_plan, _service
 
-from plaid_agent.core import plan as core_plan
-from plaid_agent.core.conversation import ConversationStore, compact_plan, meta_key
-from plaid_agent.core.plan import RECORD_FULL, WRITING, PlanError, RecordFull, writing
+from plaid_agent.core.conversation import ConversationStore, meta_key
+from plaid_agent.core.plan import PlanError
 
 
 def _claim(client, request_id='r-turn'):
@@ -55,45 +49,20 @@ def test_an_approval_whose_conversation_moved_on_still_settles_the_plan_applied(
     assert meta['pending']['request_id'] == 'r-turn'
 
 
-def test_a_second_approval_settles_a_plan_this_process_applied_and_says_so():
+def test_a_second_approval_of_an_applied_plan_writes_nothing_again():
     client = FakeClient()
-    store = _seed_plan(client, request_id='r10')
-    svc = _service()
-    svc._remember_applied(PLAN1, 'applied', '(note) The plan was approved and applied: 1 field value.',
-                          {'as_human': False})
+    store = _seed_plan(client, status='applied', request_id='r10')
     helper = Helper(request_id='r10')
-    svc.process_request(_request(client, approve={'plan_id': PLAN1}), helper)
+    _service().process_request(_request(client, approve={'plan_id': PLAN1}), helper)
     assert helper.done[0]['duplicate'] is True
     assert helper.done[0]['message'] == 'This plan was already applied. Nothing was written again.'
     assert not client.payloads('spans.create')
     conv, meta = store.load('c1')
     assert conv['display'][1]['status'] == 'applied'
-    assert conv['messages'][-1]['content'] == '(note) The plan was approved and applied: 1 field value.'
     assert meta['pending'] is None
 
 
-def test_a_run_marks_the_plan_writing_before_its_first_change_is_sent():
-    client = FakeClient()
-    store = _seed_plan(client)
-    svc = _service()
-    real = svc.execute_plan
-    seen = []
-
-    def execute(*a, **k):
-        conv, _ = store.load('c1')
-        seen.append(conv['display'][1]['plan'].get(WRITING))
-        return real(*a, **k)
-
-    svc.execute_plan = execute
-    svc.process_request(_request(client, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
-    assert [m['run'] for m in seen] == ['r9'], 'marked, naming the run'
-    conv, _ = store.load('c1')
-    # Settled, so compacted: the mark goes with the rest of what approving needed.
-    assert conv['display'][1]['status'] == 'applied'
-    assert WRITING not in conv['display'][1]['plan']
-
-
-def test_a_run_that_certainly_wrote_nothing_drops_the_mark():
+def test_a_run_that_certainly_wrote_nothing_leaves_the_plan_undecided():
     client = FakeClient()
     store = _seed_plan(client)
     svc = _service()
@@ -107,47 +76,14 @@ def test_a_run_that_certainly_wrote_nothing_drops_the_mark():
     assert helper.errors and 'Nothing was written' in helper.errors[0]
     conv, meta = store.load('c1')
     item = conv['display'][1]
-    assert item['status'] is None and WRITING not in item['plan']
+    assert item['status'] is None and item['plan']['ops']
     assert meta['pending'] is None
-
-
-def test_every_run_marks_the_plan_in_one_write_naming_the_run():
-    """A run again writes the record before it sends anything too: that write
-    is where an approval meets a discard of the same plan (REV-FX12)."""
-    plan = {'id': PLAN1}
-    calls = []
-    client = FakeClient()
-    writing(client, plan, [], lambda: calls.append(dict(plan)) or True, run='r1')
-    assert plan[WRITING]['run'] == 'r1' and len(calls) == 1
-    writing(client, plan, [], lambda: calls.append(dict(plan)) or True, run='r2')
-    assert len(calls) == 2 and calls[-1][WRITING]['run'] == 'r2'
-
-
-def test_the_mark_says_whether_every_change_lands_in_a_held_document():
-    """Only then do the documents' versions tell whether anything was
-    written: an entry of the lexicon, or a document the plan creates, is
-    written nowhere a held version counts (REV-FX12)."""
-    client = FakeClient()
-    client.plan_held_documents = {'d1'}
-    client.document_versions = {'d1': 7}
-    docs = [{'id': 'd1', 'name': 'Text 1', 'version': 7}]
-    span = {'kind': 'set_span', 'document_id': 'd1', 'token_id': 'w', 'value': 'x'}
-    entry = {'kind': 'create_entry', 'vocab_id': 'v1', 'form': 'kai', 'key': 'k1'}
-    plan = {'id': PLAN1}
-    writing(client, plan, docs, lambda: True, run='r1', ops=[span])
-    assert plan[WRITING] == {'run': 'r1', 'inside': True}
-    assert docs[0][core_plan.HELD_FROM] == 7
-    writing(client, plan, docs, lambda: True, run='r2', ops=[span, entry])
-    assert plan[WRITING]['inside'] is False
-    other = {**span, 'document_id': 'd2'}
-    writing(client, plan, docs, lambda: True, run='r3', ops=[other])
-    assert plan[WRITING]['inside'] is False
 
 
 def _discard_before_the_first_send(client, svc):
     """Another tab's discard lands after the approval read the record and
-    before its run marks the plan: a write held up past the discard's claim
-    (REV-FX12)."""
+    before its run sends its first change: a write held up past the discard's
+    claim (REV-FX12)."""
     real = svc._stale
 
     def stale(*a, **k):
@@ -174,73 +110,3 @@ def test_an_approval_never_writes_a_plan_discarded_before_its_first_change():
     assert conv['display'][1]['status'] == 'discarded'
     assert not any('applied' in (m.get('content') or '') for m in conv['messages'])
     assert meta['pending'] is None
-
-
-def test_a_run_again_that_writes_nothing_keeps_the_mark_and_the_held_versions():
-    """Its earlier run may have written: the plan stays one that cannot be
-    discarded as if nothing had happened, and a later run repeats the earlier
-    run's requests."""
-    client = FakeClient()
-    store = _seed_plan(client)
-    conv, meta = store.load('c1')
-    conv['display'][1]['interrupted'] = True
-    conv['display'][1]['plan'][WRITING] = {'run': 'r-first', 'inside': True}
-    conv['display'][1]['plan']['documents'][0][core_plan.HELD_FROM] = 7
-    store.save('c1', conv, meta)
-    svc = _service()
-
-    def execute(*a, **k):
-        raise PlanError('refused', applied=0, total=1)
-
-    svc.execute_plan = execute
-    helper = Helper(request_id='r9')
-    svc.process_request(_request(client, approve={'plan_id': PLAN1}), helper)
-    assert helper.errors and 'Nothing was written' in helper.errors[0]
-    conv, meta = store.load('c1')
-    plan = conv['display'][1]['plan']
-    assert conv['display'][1]['status'] is None
-    assert plan.get(WRITING) == {'run': 'r-first', 'inside': True}
-    assert plan['documents'][0].get(core_plan.HELD_FROM) == 7
-
-
-def test_a_record_too_full_for_the_approval_says_the_conversation_is_full():
-    client = FakeClient()
-    store = _seed_plan(client)
-    real = client.user_data.put
-
-    def put(user_id, key, value, version=None):
-        if ':conv:' in key:
-            raise PlaidAPIError('HTTP 413 Value exceeds 1048576 bytes', status=413, method='PUT')
-        return real(user_id, key, value, version=version)
-
-    client.user_data.put = put
-    helper = Helper(request_id='r9')
-    _service().process_request(_request(client, approve={'plan_id': PLAN1}), helper)
-    assert helper.errors == [RECORD_FULL]
-    assert RECORD_FULL == 'This conversation is full, so the plan was not applied. Start a new conversation to go on.'
-    assert not client.payloads('spans.create')
-    conv, meta = store.load('c1')
-    assert conv['display'][1]['status'] is None and meta['pending'] is None
-
-
-def test_an_expansion_the_record_cannot_take_is_the_record_being_full():
-    def remember():
-        raise PlaidAPIError('HTTP 413', status=413, method='PUT')
-
-    expansion = core_plan.Expansion({'id': PLAN1}, remember)
-    expansion.record({core_plan.ROW: 0}, [{'kind': 'set_span', 'span_id': 's1', 'value': 'x'}])
-    try:
-        expansion.save()
-    except RecordFull as e:
-        assert str(e) == RECORD_FULL
-    else:
-        raise AssertionError('not refused')
-    assert core_plan.EXPANSION not in expansion.plan
-
-
-def test_the_mark_is_compacted_away_once_settled():
-    item = {'kind': 'assistant', 'status': 'discarded',
-            'plan': {'id': PLAN1, 'ops': [{}], 'documents': [], WRITING: True}}
-    assert WRITING not in compact_plan(item)['plan']
-    undecided = {**item, 'status': None}
-    assert compact_plan(undecided)['plan'][WRITING] is True

@@ -424,14 +424,9 @@ describe('a plan a later one replaced', () => {
 describe('a plan read by someone other than its owner', () => {
   // The admin area draws a person's conversation with the chat's own card.
   it('shows the status and the changes and offers no decision, in every state', async () => {
-    for (const [status, interrupted] of [
-      [null, false],
-      [null, true],
-      ['stale', false],
-    ]) {
+    for (const status of [null, 'partial', 'stale']) {
       const view = await mount(plan([{ label: 's1 Gloss = "x"' }]), {
         status,
-        interrupted,
         readOnly: true,
       });
       expect(view.container.textContent).toContain('s1 Gloss = "x"');
@@ -447,66 +442,6 @@ describe('a plan read by someone other than its owner', () => {
       adapter: { ...adapter, rowText: (row) => row.label },
     });
     expect(view.container.textContent).toContain('s2.w1 lemma = kitab');
-    await view.unmount();
-  });
-});
-
-describe('an approval interrupted after its run began writing (H10-RECORD-3)', () => {
-  it('offers Apply again and History, and no Discard', async () => {
-    const p = { ...plan([{ label: 'Gloss = "house"' }]), writing: true };
-    const view = await mount(p, { interrupted: true });
-    const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
-    expect(buttons).toContain('Apply again');
-    expect(buttons).not.toContain('Discard');
-    expect(
-      byText(
-        view.container,
-        'p',
-        'Applying did not finish. Some changes may be written. Apply again to finish, or undo them in History.',
-      ),
-    ).not.toBeNull();
-    await view.unmount();
-  });
-
-  // H14-APPROVE-1: applying again sends what the first run sent, so the box
-  // shows how that run was approved and is not a choice, also after a reload.
-  it('shows the box as the first run had it, read-only, and applies again with it', async () => {
-    const approvals = [];
-    const p = { ...plan([{ label: 'Gloss = "house"' }]), writing: { run: 'r1', stamp: 'human' } };
-    const view = await mount(p, { interrupted: true, onApprove: (o) => approvals.push(o) });
-    const box = view.container.querySelector('input[type=checkbox]');
-    expect(box.checked).toBe(true);
-    expect(box.disabled).toBe(true);
-    const again = all(view.container, 'button').find((b) => b.textContent.trim() === 'Apply again');
-    await view.step(() => again.click());
-    expect(approvals).toEqual([{ asHuman: true }]);
-    await view.unmount();
-  });
-
-  it('shows no box when the first run was a contribution, whatever the setting is now', async () => {
-    const p = {
-      ...plan([{ label: 'Gloss = "house"' }]),
-      writing: { run: 'r1', stamp: 'verified' },
-    };
-    const view = await mount(p, { interrupted: true, contributor: true });
-    const box = view.container.querySelector('input[type=checkbox]');
-    expect(box.checked).toBe(false);
-    expect(box.disabled).toBe(true);
-    await view.unmount();
-    const q = {
-      ...plan([{ label: 'Gloss = "house"' }]),
-      writing: { run: 'r1', stamp: 'contributed', contributor: 'u@x' },
-    };
-    const other = await mount(q, { interrupted: true });
-    expect(other.container.querySelector('input[type=checkbox]')).toBeNull();
-    await other.unmount();
-  });
-
-  it('keeps Discard when the run certainly wrote nothing', async () => {
-    const view = await mount(plan([{ label: 'Gloss = "house"' }]), { interrupted: true });
-    const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
-    expect(buttons).toEqual(expect.arrayContaining(['Apply again', 'Discard']));
-    expect(byText(view.container, 'p', 'Applying did not finish.')).not.toBeNull();
     await view.unmount();
   });
 });

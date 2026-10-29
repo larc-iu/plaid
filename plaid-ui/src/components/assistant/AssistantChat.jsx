@@ -53,10 +53,8 @@ import {
   changesTheView,
   followable,
   jobFor,
-  mayHaveWritten,
   metaOf,
   newConversation,
-  nothingLanded,
   readConv,
   settleApplyToasts,
   planOperation,
@@ -204,10 +202,6 @@ export const AssistantChat = ({
   // composer: work under way elsewhere, or the conversation deleted. Held with
   // its conversation, as {convId, text, gone}.
   const [notice, setNotice] = useState(null);
-  // The plans of the open conversation whose interrupted approval was marked
-  // as writing but whose documents show it wrote nothing (`nothingLanded`):
-  // they can be discarded like any other.
-  const [unwritten, setUnwritten] = useState(() => new Set());
 
   const list = useConversationList({
     client,
@@ -899,15 +893,8 @@ export const AssistantChat = ({
     const m = metaOf(store, result);
     if (m) applyMeta(m);
     if (result?.kind === 'refused') {
-      if (result.why === 'written' || result.why === 'decided') {
+      if (result.why === 'decided') {
         notifyWarning(result.message, 'Not discarded');
-        if (result.why === 'written') {
-          setUnwritten((was) => {
-            const now = new Set(was);
-            now.delete(planId);
-            return now;
-          });
-        }
       } else {
         setNotice({ convId: conv.id, text: result.message, gone: result.why === 'gone' });
       }
@@ -987,37 +974,8 @@ export const AssistantChat = ({
     // the one answering here for a row of this project.
     onRename: service ? (m, title) => list.rename(m, title, { service, tab: held.tab }) : null,
   };
-  // Which plans of the conversation may be partly written yet show nothing
-  // written in their documents, read whenever that set may have changed.
-  const maybeWrittenIds = display
-    .filter(mayHaveWritten)
-    .map((d) => d.plan.id)
-    .join(' ');
-  useEffect(() => {
-    if (!maybeWrittenIds || busy) {
-      setUnwritten((was) => (was.size ? new Set() : was));
-      return undefined;
-    }
-    let live = true;
-    const items = (activeRef.current?.display || []).filter(mayHaveWritten);
-    Promise.all(items.map(async (d) => ((await nothingLanded(store, d)) ? d.plan.id : null))).then(
-      (ids) => {
-        if (live) setUnwritten(new Set(ids.filter(Boolean)));
-      },
-    );
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, maybeWrittenIds, busy]);
-  // What the composer invites while a plan waits: a decision, or, when every
-  // waiting plan may be partly written and offers no Discard, applying it again.
-  const waiting = display.filter((d) => d.plan && d.status === null);
-  const pendingPlan = !waiting.length
-    ? false
-    : waiting.every((d) => mayHaveWritten(d) && !unwritten.has(d.plan.id))
-      ? 'again'
-      : 'decide';
+  // What the composer invites while a plan waits: a decision.
+  const pendingPlan = display.some((d) => d.plan && d.status === null);
   // Nothing is running for this conversation, so anything left mid-flight in
   // it was lost rather than in progress.
   const idle = !busy && !jobFor(active?.id);
@@ -1040,9 +998,7 @@ export const AssistantChat = ({
   const markedPlanId =
     activeMeta?.pending?.kind === 'apply' ? activeMeta.pending.planId || null : null;
   const applyingHere = (d) =>
-    !!d.plan &&
-    (applyingPlanId === d.plan.id ||
-      (markedPlanId === d.plan.id && d.status == null && !d.interrupted));
+    !!d.plan && (applyingPlanId === d.plan.id || (markedPlanId === d.plan.id && d.status == null));
   // What the surface's own chrome is drawn from.
   const chrome = {
     conversation: active,
@@ -1159,8 +1115,6 @@ export const AssistantChat = ({
                   readOnly={readOnly}
                   contributor={contributor}
                   busy={!!busy || applyingHere(d)}
-                  interrupted={!!d.interrupted}
-                  nothingWritten={!!d.plan && unwritten.has(d.plan.id)}
                   applying={applyingHere(d)}
                   onDownloadFile={downloadFile}
                   onApprove={(opts) => approve(d.plan, opts, d.service)}

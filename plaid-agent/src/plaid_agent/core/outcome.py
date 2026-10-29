@@ -18,10 +18,9 @@ class Outcome:
     ``counts``: applied, the per-kind counts of what was written (with
     ``notes`` and ``unwritten`` as the executor gives them). Otherwise the
     plan is settled as ``status`` (None leaves it undecided and only clears
-    the marker) with ``note`` and ``fields``, after ``forget`` drops what a
-    run that wrote nothing held, and the user is told ``message``: as a
-    partly applied answer with ``written`` changes when that is given, else
-    as an error. ``moved_on`` words the message from the record as it is once
+    the marker) with ``note`` and ``fields``, and the user is told
+    ``message``: as a partly applied answer with ``written`` changes when
+    that is given, else as an error. ``moved_on`` words the message from the record as it is once
     settled (`approval._moved_on`). ``failure``: the run failed, and is
     worded as one of the others once settled."""
 
@@ -29,7 +28,6 @@ class Outcome:
     status: Optional[str] = None
     note: Optional[str] = None
     message: str = ''
-    forget: bool = False
     fields: Dict[str, Any] = field(default_factory=dict)
     written: Optional[int] = None
     moved_on: bool = False
@@ -47,8 +45,8 @@ class Outcome:
 
     @classmethod
     def refused(cls, message: str = '', status: Optional[str] = None, note: Optional[str] = None,
-                forget: bool = False, moved_on: bool = False, **fields) -> 'Outcome':
-        return cls(status=status, note=note, message=message, forget=forget, fields=fields, moved_on=moved_on)
+                moved_on: bool = False, **fields) -> 'Outcome':
+        return cls(status=status, note=note, message=message, fields=fields, moved_on=moved_on)
 
 
 def _sentence(text: str) -> str:

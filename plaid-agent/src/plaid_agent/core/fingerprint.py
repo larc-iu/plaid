@@ -256,13 +256,11 @@ def rebase_offsets(client, reg: Mapping[str, Any], ops: List[Dict[str, Any]]) ->
     (:class:`~plaid_agent.core.plan.PlanOutOfDate`) before anything is
     written, whatever let it through: a change made for other text never
     lands on this text. A cut moves by as much as its token's start has, and
-    is not asked its token's length, since a run applied again after its own
-    cut landed finds the token already cut.
+    is not asked its token's length.
 
     A document any change of the plan pins whole (:func:`offsets_follow`) is
     left as planned: approval refused it after any edit, so nothing in it has
-    moved but by the plan's own writes, and a run applied again after its own
-    text edit landed must send its earlier requests as they were first sent."""
+    moved."""
     from .plan import PlanOutOfDate
     whole = set()
     for op in ops:

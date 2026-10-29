@@ -256,11 +256,3 @@ def test_an_approval_settling_twice_writes_its_note_once():
     stored = plan_settling('p1', 'applied', '(note) applied')(_with_plan())
     assert plan_settling('p1', 'applied', '(note) applied')(stored) is stored
     assert [m['content'] for m in stored['messages']].count('(note) applied') == 1
-
-
-def test_the_versions_an_approval_holds_reach_the_record_while_it_is_undecided():
-    stored = _with_plan()
-    docs = [{'id': 'd', 'held_from': 7}]
-    after = plan_settling('p1', documents=docs)(stored)
-    assert after['display'][1]['plan']['documents'] == docs
-    assert plan_settling('p1', documents=docs)(after) is after

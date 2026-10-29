@@ -12,12 +12,11 @@ from typing import Any, Dict, Optional
 
 from plaid_client import ServiceCancelled
 
-from .conversation import (DISCARDED_NOTE, MESSAGE_ROOM, MissingConversation, build_meta, conversation_bytes,
+from .conversation import (DIED_NOTE, DIED_OUTCOME, DISCARDED_NOTE, MESSAGE_ROOM, MissingConversation, build_meta, conversation_bytes,
                            error_item, find_plan, kept_meta, now_iso, prune, record_budget, rewind_for_retry,
                            settle_plan, title_from, turn_ending, user_item, value_cap)
 from .files import store_parts, sweep_orphans
 from .ops import CONVERSATION_FULL, MESSAGE_TOO_LONG, about_of, busy_why, hold_free, refused
-from .plan import WRITING, may_have_written, nothing_landed, stamp_of
 
 
 class RecordOps:
@@ -64,8 +63,9 @@ class RecordOps:
         """What a request that will never end left (the service restarted, or
         an old page's marker): a turn's marker is cleared and nothing is
         added, since an unanswered question already reads as one with Retry.
-        An approval's plan is marked interrupted, so its card offers Apply
-        again. The record as written, or None when it is gone."""
+        An approval's plan is settled partly applied, since any of its changes
+        may be written (`DIED_OUTCOME`), and the model is told so. The record
+        as written, or None when it is gone."""
         dead = pending.get('request_id') if isinstance(pending, dict) else None
         plan_id = pending.get('plan_id') if isinstance(pending, dict) and pending.get('kind') == 'apply' else None
 
@@ -73,16 +73,10 @@ class RecordOps:
             if not plan_id:
                 return stored
             index, item = find_plan(stored, plan_id)
-            if item is None or item.get('status') is not None or item.get('interrupted'):
+            if item is None or item.get('status') is not None:
                 return stored
-            display = list(stored['display'])
-            # How it was approved, so the card shows the box as it was: the
-            # stamp its run wrote with when it began writing, which a run again
-            # keeps, else what the approval asked.
-            stamp = stamp_of((item.get('plan') or {}).get(WRITING))
-            as_human = stamp[0] == 'human' if stamp else bool(pending.get('as_human'))
-            display[index] = {**item, 'interrupted': True, 'as_human': as_human}
-            return {'messages': stored['messages'], 'display': display}
+            return settle_plan(stored, index, 'partial', DIED_NOTE, written=[], outcome=DIED_OUTCOME,
+                               as_human=bool(pending.get('as_human')))
         out = {}
 
         def meta_of(conv, prev):
@@ -203,9 +197,6 @@ class RecordOps:
                 return
             elif item.get('status') is not None:
                 self._refuse(ctx, 'decided', meta=meta)
-                return
-            elif may_have_written(item) and not nothing_landed(ctx.client, item):
-                self._refuse(ctx, 'written', meta=meta)
                 return
             elif self._discard_page_written(ctx, item, plan_id, meta):
                 return

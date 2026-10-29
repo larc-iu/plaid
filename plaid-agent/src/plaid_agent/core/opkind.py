@@ -65,12 +65,6 @@ ROW = '_row'
 # were written. Put on by ``core.plan.expand_ops``, and never written.
 MEMBER = '_member'
 
-# The attribute a client carries while an approval runs: the record of what
-# each scope of the plan resolved to (``core.plan.Expansion``), which
-# :func:`resolve_ops` reads instead of resolving again when an earlier run of
-# the same plan wrote it, and writes otherwise.
-EXPANDING = 'plan_expansion'
-
 
 # The default of a field every kind must declare, even as None.
 UNSAID = object()
@@ -277,45 +271,22 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
     did not know reached the executor, which refuses a kind staged
     :data:`RESOLVED`: the plan failed after the user had approved it."""
     out: List[Dict[str, Any]] = []
-    # Approved again after a run that wrote part of the plan, a scope read
-    # afresh would find the values that run already changed gone, and stand
-    # for other writes than the ones it sent under the same keys. What the
-    # first run wrote of each scope is kept on the plan before its first
-    # write and read back here. ``keep`` and ``final`` only ever drop, and
-    # drop nothing more the second time.
-    record = getattr(getattr(ctx, 'client', None), EXPANDING, None)
-    fresh: List[Dict[str, Any]] = []
     for op in ops:
         fn = resolver(reg, op)
         if fn is None:
             out.append(op)
             continue
-        found = record.recorded(op) if record is not None else None
-        replayed = found is not None
-        if not replayed:
-            found = list(fn(ctx, op))
-            if record is not None and ROW in op:
-                fresh.append(op)
+        found = list(fn(ctx, op))
         # A rule's row counts each change it stands for (``core.rules``), so
         # each is numbered as a folded group's members are.
         member = ROW in op and isinstance(op.get('matched'), list)
         resolved = [({**o, **{k: op[k] for k in (ROW, MEMBER) if k in op}, **({MEMBER: i} if member else {})}
                      if ROW in op else o) for i, o in enumerate(found)]
-        # What an earlier run found was checked then, and the corpus now
-        # holds that run's own writes.
-        if check is not None and not replayed:
+        if check is not None:
             check(op, resolved)
         out.extend(o for o in resolved if keep is None or keep(o))
     if final is not None:
         out = final(out)
-    if record is not None:
-        rows: Dict[Any, List[Dict[str, Any]]] = {op[ROW]: [] for op in fresh}
-        for o in out:
-            if o.get(ROW) in rows:
-                rows[o[ROW]].append(o)
-        for op in fresh:
-            record.record(op, rows[op[ROW]])
-        record.save()
     return out
 
 

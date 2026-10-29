@@ -145,7 +145,7 @@ One row per plan.
 | plan_id | the plan's id |
 | conversation_id, app, project_id, project, user, item_index, turn | where it was proposed and whose conversation it is |
 | status | `applied`, `partial` (applying stopped partway), `discarded` (by the user), `stale` (refused on approval: the documents changed, or made by an older assistant), `replaced` (a newer plan in the same conversation replaced it before a decision), `undecided` |
-| interrupted | an approval was cut off and its outcome is not known |
+| interrupted | an approval was cut off and its outcome is not known (records before 2026-10-29: since then such a plan is settled `partial` with `written` empty, R53) |
 | dismissed, dismissed_at | for a `stale` plan: the reader discarded the card after the refusal, and when. The status stays `stale` |
 | model, version, service | the turn that proposed it |
 | proposed_at | when it was staged, from its UUIDv7 id |

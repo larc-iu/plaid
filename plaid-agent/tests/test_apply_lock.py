@@ -288,32 +288,19 @@ def test_a_failure_whose_text_ends_in_a_period_is_not_given_a_second(spec, monke
         helper.errors
 
 
-def test_a_stopped_run_of_the_same_plan_says_when_to_apply_again(spec):
-    """The service killed while it applied a plan leaves the plan's lock on the
-    document until it lapses. Applying again in that minute is refused, and
-    the user is told a previous run stopped and when to apply again, not to
-    wait for a run that will never finish (H12-RULES-4)."""
-    import time
+def test_a_document_another_run_holds_refuses_the_approval_with_nothing_written(spec):
+    """A run of the same user's that stopped (the service killed while it
+    applied) holds the lock until it lapses, and so does any other run: the
+    approval is refused, and the user is told to try again in a minute."""
     client = spec['client']()
-    plan, store = sbs._plan(spec, client)
-    # the record as the killed run left it: it may have written
-    conv, meta = store.load('c1')
-    conv['display'][1]['plan']['writing'] = {'run': 'the run that was killed', 'inside': True}
-    store.save('c1', conv, meta)
+    plan, _ = sbs._plan(spec, client)
 
     def refuse(document_id, **kw):
         raise PlaidAPIError(f'Document {document_id} is locked', status=423)
 
     client.documents.locked = refuse
-    client.documents.check_lock = lambda document_id: {
-        'user_id': 'u@x', 'expires_at': int(time.time() * 1000) + 40900}
     helper = sbs._approve(spec, client, plan)
     assert not helper.done
     said = helper.errors[-1]
-    assert said.startswith('Nothing was written. A previous run of this plan stopped and still holds '), said
-    assert said.endswith('Apply again in 41 seconds.'), said
-    # held by someone else, it is another run, and no time is promised
-    client.documents.check_lock = lambda document_id: {
-        'user_id': 'second@x.com', 'expires_at': int(time.time() * 1000) + 40900}
-    helper = sbs._approve(spec, client, plan)
-    assert 'is locked by another run. Try again in a minute.' in helper.errors[-1]
+    assert said.startswith('Nothing was written. '), said
+    assert said.endswith('is locked by another run. Try again in a minute.'), said

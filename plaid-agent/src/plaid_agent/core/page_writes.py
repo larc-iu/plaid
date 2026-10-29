@@ -11,7 +11,6 @@ from plaid_client.service import requester_message
 
 from .conversation import find_plan, now_iso, plan_settling
 from .ops import parse_time
-from .plan import EXPANSION, WRITING, stamp_of
 from .conversation import WROTE
 from .approval import decided_refusal
 
@@ -232,12 +231,8 @@ class PageWrites:
             reviewed = self._reviewed_now(ctx, item)
         if as_human is None:
             as_human = bool(ctx.data.get('as_human'))
-        earlier = stamp_of(plan.get(WRITING))
-        stamp_mode = earlier[0] if earlier else ('contributed' if reviewed else 'human' if as_human else 'verified')
-        outcome = {'as_human': stamp_mode == 'human', **({'contributed': True} if stamp_mode == 'contributed' else {})}
-        self._remember_applied(plan_id, 'applied', note, outcome)
-        change = plan_settling(plan_id, 'applied', note, documents=plan.get('documents'),
-                               expansion=plan.get(EXPANSION), writing=plan.get(WRITING), **outcome)
+        outcome = {'as_human': not reviewed and as_human, **({'contributed': True} if reviewed else {})}
+        change = plan_settling(plan_id, 'applied', note, **outcome)
         if not self._write(ctx.store, ctx.conv_id, change, None):
             return None
         return ctx.store.meta(ctx.conv_id) or {}

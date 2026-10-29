@@ -7,10 +7,9 @@ import { mentionsClient as fakeClient } from '../../test/fakeClient.js';
 // Every marker and every card has a way out the reader can reach (REV-FX12, the
 // review of the claim protocol, polish campaign of 2026-10-02).
 //
-// - An approval cut off after its run marked the plan as writing but before it
-//   sent anything left a card that said "Some changes may be written" and
-//   offered no Discard, so the only way out was to apply the plan.
-//   The service checks it again when Discard is pressed (test_single_writer.py).
+// - An approval whose run died is settled partly applied by the service (Luke's
+//   ruling R53, test_dead_approval.py): its card offers nothing more, and the
+//   reader asks the assistant to plan the rest.
 // - A turn that ends on a conversation deleted elsewhere says so at once.
 
 vi.mock('../../lib/notify.js', () => ({
@@ -19,21 +18,24 @@ vi.mock('../../lib/notify.js', () => ({
   notifyWarning: vi.fn(),
 }));
 
-const { DELETED, jobs, nothingLanded, readConv, startTurn } = await import('./jobs.js');
+const { DELETED, jobs, readConv, startTurn } = await import('./jobs.js');
 
 const KEYS = { conv: 'igt:assistant:proj:conv:c1', meta: 'igt:assistant:proj:meta:c1' };
 const q1 = { kind: 'user', text: 'Gloss it.', createdAt: '2026-10-06T00:00:00.000Z' };
-const DOCS = [
-  { id: 'd1', name: 'Story 1', version: 40, heldFrom: 40 },
-  { id: 'd2', name: 'Story 2', version: 28, heldFrom: 28 },
-];
-const plan = { id: 'p1', summary: '11 field values', ops: [{ kind: 'x' }], documents: DOCS };
-const cut = {
+const plan = {
+  id: 'p1',
+  summary: '11 field values',
+  changes: [{ label: 'Gloss = "house"' }],
+  opCount: 1,
+};
+// As the service settles a plan whose approval's run died.
+const died = {
   kind: 'assistant',
   text: 'A plan.',
-  plan: { ...plan, writing: { run: 'r1', inside: true } },
-  status: null,
-  interrupted: true,
+  plan,
+  status: 'partial',
+  written: [],
+  outcome: 'Applying stopped before it finished. Some changes may be written.',
 };
 
 const setup = (versions = { d1: 40, d2: 28 }) => {
@@ -67,35 +69,21 @@ const setup = (versions = { d1: 40, d2: 28 }) => {
       attachServiceRequest: vi.fn(() => new Promise(() => {})),
     },
   };
-  write(KEYS.conv, { messages: [{ role: 'user', content: q1.text }], display: [q1, cut] });
+  write(KEYS.conv, { messages: [{ role: 'user', content: q1.text }], display: [q1, died] });
   write(KEYS.meta, { id: 'c1', title: 't', updatedAt: 'a', pending: null });
   return { data, write, client, store: { client, userId: 'u1', app: 'igt', projectId: 'proj' } };
 };
 
 beforeEach(() => jobs.clear());
 
-describe('an approval cut off after marking its plan and before sending anything', () => {
-  it('is found to have written nothing when every document it held is at the version held', async () => {
-    expect(await nothingLanded(setup().store, cut)).toBe(true);
-  });
-
-  it('is not, when a document moved on, is gone, or held no version', async () => {
-    expect(await nothingLanded(setup({ d1: 41, d2: 28 }).store, cut)).toBe(false);
-    expect(await nothingLanded(setup({ d1: 40 }).store, cut)).toBe(false);
-    const unheld = { ...cut, plan: { ...cut.plan, documents: [{ id: 'd1', version: 40 }] } };
-    expect(await nothingLanded(setup().store, unheld)).toBe(false);
-    // A plan that also writes a lexicon entry, which moves no document's version.
-    const outside = { ...cut, plan: { ...cut.plan, writing: { run: 'r1', inside: false } } };
-    expect(await nothingLanded(setup().store, outside)).toBe(false);
-  });
-
-  it('shows Discard and the plain line on its card', async () => {
+describe('an approval whose run died', () => {
+  it('reads Partly applied, says changes may be written, and offers no decision', async () => {
     const view = await renderComponent(
       <PlanCard
-        plan={cut.plan}
-        status={null}
-        interrupted
-        nothingWritten
+        plan={died.plan}
+        status={died.status}
+        written={died.written}
+        outcome={died.outcome}
         canWrite
         busy={false}
         onApprove={() => {}}
@@ -108,14 +96,14 @@ describe('an approval cut off after marking its plan and before sending anything
         }}
       />,
     );
-    const buttons = all(view.container, 'button').map((b) => b.textContent.trim());
-    expect(buttons).toEqual(expect.arrayContaining(['Apply again', 'Discard']));
-    expect(byText(view.container, 'p', 'Applying did not finish.')).not.toBeNull();
+    expect(view.container.textContent).toContain('Partly applied');
+    expect(byText(view.container, 'p', died.outcome)).not.toBeNull();
+    expect(all(view.container, 'button').map((b) => b.textContent.trim())).toEqual([]);
     await view.unmount();
   });
 });
 
-describe('the composer under a plan with no Discard', () => {
+describe('the composer under a waiting plan', () => {
   const mount = (pendingPlan, extra = {}) =>
     renderComponent(
       <AssistantComposer
@@ -138,16 +126,8 @@ describe('the composer under a plan with no Discard', () => {
       />,
     );
 
-  it('invites applying it again, not a discard', async () => {
-    const view = await mount('again');
-    expect(view.container.querySelector('textarea').getAttribute('placeholder')).toBe(
-      'Apply the plan above again, or keep talking',
-    );
-    await view.unmount();
-  });
-
-  it('still invites a decision when a plan can be discarded', async () => {
-    const view = await mount('decide');
+  it('invites a decision', async () => {
+    const view = await mount(true);
     expect(view.container.querySelector('textarea').getAttribute('placeholder')).toBe(
       'Approve or discard the plan above, or keep talking',
     );

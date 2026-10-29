@@ -70,7 +70,7 @@ export const replyToMarkdown = (text, citations, ctx) => {
 // A plan that stopped partway says how much was written in the service's own
 // count (`outcome` on the record), which counts each change a folded row
 // stands for, as the card's message did.
-const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) => {
+const planToMarkdown = (plan, status, outcome, inProject, reason) => {
   const said =
     status === 'applied'
       ? 'Approved and applied.'
@@ -82,9 +82,7 @@ const planToMarkdown = (plan, status, interrupted, outcome, inProject, reason) =
             ? 'Out of date.'
             : status === 'replaced'
               ? 'Replaced by a later plan.'
-              : interrupted
-                ? 'Approved, but applying did not finish.'
-                : 'Not yet approved.';
+              : 'Not yet approved.';
   const where = inProject ? ` in ${markdownText(inProject)}` : '';
   const lines = [`**Proposed changes${where}:** ${markdownText(plan.summary)} (${said})`, ''];
   // The card's sentence saying why an out-of-date plan was refused.
@@ -192,16 +190,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       }
       if (d.plan)
         out.push(
-          plain(
-            planToMarkdown(
-              d.plan,
-              d.status,
-              !!d.interrupted,
-              d.outcome,
-              planProjectAt(display, i),
-              d.reason,
-            ),
-          ),
+          plain(planToMarkdown(d.plan, d.status, d.outcome, planProjectAt(display, i), d.reason)),
           '',
         );
     }

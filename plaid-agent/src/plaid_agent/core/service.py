@@ -103,12 +103,6 @@ class BaseAssistantService(ServiceCli, RecordOps, Approving, PageWrites, Turn, B
         self.cfg: Optional[ModelConfig] = None
         self.web_cfg: Optional[WebConfig] = None
         self.kit: Optional[Toolkit] = None
-        # Plan ids already applied by this process, so a second approval of
-        # the same plan (a retried request after a client timeout, a double
-        # click) does not write it twice. Bounded, most recent last.
-        #: plan id -> how this process settled it ({'status', 'note', 'fields'},
-        #: status None while it is not known yet), newest last.
-        self._applied_plans: Dict[str, Dict[str, Any]] = {}
         # One conversation, one thing at a time (see `_conv_lock`): a lock per
         # conversation, keyed (user, project, conversation), and what runs
         # there in this process, {request_id, kind, plan_id, cancel}.
@@ -378,13 +372,3 @@ class BaseAssistantService(ServiceCli, RecordOps, Approving, PageWrites, Turn, B
                     close()
                 except Exception:  # noqa: BLE001 - releasing must never turn a finished turn into a failed one
                     traceback.print_exc()
-
-    def _remember_applied(self, plan_id: str, status: Optional[str] = None, note: Optional[str] = None,
-                          fields: Optional[Dict[str, Any]] = None) -> None:
-        """A plan this process wrote, and how it settled it once that is
-        known, so a second approval neither writes it again nor leaves the
-        record undecided."""
-        self._applied_plans.pop(plan_id, None)
-        self._applied_plans[plan_id] = {'status': status, 'note': note, 'fields': dict(fields or {})}
-        while len(self._applied_plans) > 500:
-            del self._applied_plans[next(iter(self._applied_plans))]

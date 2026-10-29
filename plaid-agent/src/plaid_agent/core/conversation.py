@@ -695,9 +695,7 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     nothing reads them again: the card is drawn from ``changes``, and the
     audit log is the record of what was written.
     ``op_count`` keeps the card's rows lined up with the ops they stood for
-    (`planRows` in plaid-ui). ``expansion``, what its corpus-wide changes
-    found while an approval ran (`plan.Expansion`), goes with them, and so
-    does ``writing``, which says an approval under way may have written.
+    (`planRows` in plaid-ui).
     Of ``changes`` the first :data:`SETTLED_ROWS_MAX` stay, and
     ``omitted`` says what the rest held: how many rows, how many of them
     rewrote the text and how many of a person's values they replaced, the
@@ -733,11 +731,10 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     ruled = [{'row': i, **c} for i, c in rest if isinstance(c, dict) and c.get('rule') is not None]
     rows = len(changes) - len(ruled)
     keeps_ops = bool(plan.get('page_writes'))
-    if (('ops' not in plan or keeps_ops) and 'expansion' not in plan and 'writing' not in plan
-            and 'page_writing' not in plan and rows <= SETTLED_ROWS_MAX):
+    if ('ops' not in plan or keeps_ops) and 'page_writing' not in plan and rows <= SETTLED_ROWS_MAX:
         return item
     # ``page_writing`` (a ready preflight's mark, core.service) is over once settled.
-    dropped_keys = ('documents', 'expansion', 'writing', 'page_writing') + (() if keeps_ops else ('ops',))
+    dropped_keys = ('documents', 'page_writing') + (() if keeps_ops else ('ops',))
     kept = {k: v for k, v in plan.items() if k not in dropped_keys}
     if 'ops' in plan and not keeps_ops:
         kept['op_count'] = len(plan.get('ops') or [])
@@ -778,12 +775,11 @@ def replace_undecided(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     staging a new plan calls this before adding its own. The model starts
     each turn with an empty plan and restates what still applies, so an older
     card left approvable offered a second, overlapping set of changes beside
-    the newer one (Luke's ruling, 2026-10-05). A plan whose approval was
-    interrupted is left alone: its changes may have been written."""
+    the newer one (Luke's ruling, 2026-10-05)."""
     stamp = now_iso()
     return [
         compact_plan({**d, 'status': 'replaced', 'settled_at': stamp})
-        if isinstance(d, dict) and d.get('plan') and d.get('status') is None and not d.get('interrupted')
+        if isinstance(d, dict) and d.get('plan') and d.get('status') is None
         else d
         for d in display
     ]
@@ -855,55 +851,33 @@ DISCARDED_NOTE = '(note) The user discarded the plan; nothing was changed.'
 # The outcomes of a plan that wrote to the project.
 WROTE = ('applied', 'partial')
 
+#: How a plan whose approval's run died is settled (Luke's ruling R53,
+#: 2026-10-29): partly applied, since any of its changes may be written. It is
+#: never applied again: the user asks for the rest, as after a run that
+#: stopped partway. The card's line, and what the model is told.
+DIED_OUTCOME = 'Applying stopped before it finished. Some changes may be written.'
+DIED_NOTE = ('(note) Applying stopped before it finished, since the assistant stopped while applying the plan: '
+             'which of its changes were written is not known. Read the documents before planning any of them '
+             'again.')
 
-_KEEP = object()
 
-
-def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str] = None,
-                  documents: Optional[List[Dict[str, Any]]] = None, expansion: Any = _KEEP,
-                  writing: Any = _KEEP, undecided: bool = False, **fields):
+def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str] = None, **fields):
     """The change an approval writes on the plan ``plan_id``: ``status``
     (with ``note`` for the model and ``fields`` on the card, `settle_plan`),
-    or with no status, the plan's ``documents`` as the run holds them (the
-    versions it held them at, `plan.held_from`) while it is undecided, and
-    ``expansion``, what its scopes resolved to on that run (`plan.Expansion`),
-    None to forget it, and ``writing`` (`plan.WRITING`), falsy to drop it.
+    or with no status, nothing (the request's marker is cleared beside it).
     A plan already settled (see `WROTE` for the one exception), or one that
-    is gone, leaves the record as it is, or with ``undecided`` (a run about to
-    send its first change, `plan.writing`) is not written at all."""
+    is gone, leaves the record as it is."""
     def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         index, item = find_plan(stored, plan_id)
-        if item is None:
-            return None if undecided else stored
-        if status is not None:
-            was = item.get('status')
-            # A plan settled meanwhile keeps that outcome, unless this run
-            # wrote (applied, partial) and the outcome there says it did not
-            # (discarded in another tab while the run held the documents).
-            if was == status or (was is not None and (status not in WROTE or was in WROTE)):
-                return stored
-            return settle_plan(stored, index, status, note, **fields)
-        plan = item.get('plan') or {}
-        if item.get('status') is not None:
-            return None if undecided else stored
-        new = dict(plan)
-        if documents is not None and 'documents' in plan:
-            new['documents'] = json.loads(json.dumps(documents))
-        if expansion is not _KEEP:
-            if expansion is None:
-                new.pop('expansion', None)
-            else:
-                new['expansion'] = json.loads(json.dumps(expansion))
-        if writing is not _KEEP:
-            if writing:
-                new['writing'] = writing
-            else:
-                new.pop('writing', None)
-        if new == plan:
+        if item is None or status is None:
             return stored
-        display = list(stored['display'])
-        display[index] = {**item, 'plan': new}
-        return {'messages': stored['messages'], 'display': display}
+        was = item.get('status')
+        # A plan settled meanwhile keeps that outcome, unless this run
+        # wrote (applied, partial) and the outcome there says it did not
+        # (discarded in another tab while the run held the documents).
+        if was == status or (was is not None and (status not in WROTE or was in WROTE)):
+            return stored
+        return settle_plan(stored, index, status, note, **fields)
     return change
 
 

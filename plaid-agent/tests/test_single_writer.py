@@ -21,7 +21,6 @@ from plaid_agent.core.agent import TurnResult
 from plaid_agent.core.conversation import (DISCARDED_NOTE, ConversationStore, conv_key, conversation_bytes,
                                            meta_key, now_iso)
 from plaid_agent.core.ops import LEASE_S, STALE_PAGE
-from plaid_agent.core.plan import WRITING
 
 TAB = 'tab-a'
 OTHER_TAB = 'tab-b'
@@ -326,31 +325,6 @@ def test_h10_record_2_an_approval_and_a_message_one_runs_the_other_is_refused(mo
     assert approve.done[0]['why'] == 'busy' and approve.done[0]['message'] == 'A message is being answered.'
 
 
-def test_h10_record_3_an_interrupted_approval_that_may_have_written_is_not_discarded():
-    client = FakeClient()
-    store = _seed_plan(client, request_id=None)
-    conv, meta = store.load('c1')
-    item = conv['display'][1]
-    item['interrupted'] = True
-    item['plan'][WRITING] = {'run': 'r-dead', 'inside': True}
-    item['plan']['documents'][0]['held_from'] = 7
-    client._documents['d1']['version'] = 9  # something was written
-    store.save('c1', conv, {**meta, 'pending': None})
-    svc = _service()
-    helper = Helper(request_id='d1')
-    svc.process_request(_req(client, 'discard', plan_id=PLAN1), helper)
-    assert helper.done[0]['why'] == 'written'
-    assert helper.done[0]['message'] == 'Some of its changes may be written. Apply again to finish them.'
-    assert store.load('c1')[0]['display'][1]['status'] is None
-    # Every held document unmoved and every change inside them: nothing landed.
-    client._documents['d1']['version'] = 7
-    helper = Helper(request_id='d2')
-    svc.process_request(_req(client, 'discard', plan_id=PLAN1), helper)
-    assert helper.done[0]['kind'] == 'done'
-    conv, _ = store.load('c1')
-    assert conv['display'][1]['status'] == 'discarded' and conv['messages'][-1]['content'] == DISCARDED_NOTE
-
-
 def test_h10_record_4_two_sends_at_once_run_one_turn_and_one_model_call(monkeypatch):
     client = FakeClient()
     calls = []
@@ -378,25 +352,6 @@ def test_h10_record_4_two_sends_at_once_run_one_turn_and_one_model_call(monkeypa
     assert len(calls) == 2, 'one model call for the first message, one for the race'
     conv, _ = _store(client).load('c1')
     assert [d['kind'] for d in conv['display']] == ['user', 'assistant', 'user', 'assistant']
-
-
-def test_h10_record_6_an_approval_in_a_full_conversation_writes_nothing():
-    client = FakeClient()
-    store = _seed_plan(client, request_id=None)
-    _set_meta(client, pending=None)
-    real = client.user_data.put
-
-    def put(user_id, key, value, version=None):
-        if ':conv:' in key:
-            raise PlaidAPIError('HTTP 413 Value exceeds 1048576 bytes', status=413, method='PUT')
-        return real(user_id, key, value, version=version)
-    client.user_data.put = put
-    helper = Helper(request_id='r9')
-    _service().process_request(_req(client, 'approve', plan_id=PLAN1), helper)
-    assert helper.errors == ['This conversation is full, so the plan was not applied. Start a new conversation to go on.']
-    assert not client.payloads('spans.create')
-    conv, meta = store.load('c1')
-    assert conv['display'][1]['status'] is None and meta['pending'] is None
 
 
 # --- retry ----------------------------------------------------------------------------
@@ -458,7 +413,7 @@ def test_a_dead_turn_marker_of_this_service_is_cleared_by_the_next_op(monkeypatc
     assert helper.done[0]['kind'] == 'done' and helper.done[0]['meta']['pending'] is None
 
 
-def test_a_dead_apply_marker_interrupts_its_plan_so_the_card_offers_apply_again():
+def test_a_dead_apply_marker_settles_its_plan_partly_applied():
     client = FakeClient()
     store = _seed_plan(client, request_id='r-dead')
     _set_meta(client, pending={'kind': 'apply', 'request_id': 'r-dead', 'service_id': 'igt:assist:fake',
@@ -466,28 +421,8 @@ def test_a_dead_apply_marker_interrupts_its_plan_so_the_card_offers_apply_again(
     helper = Helper(request_id='h1')
     _service().process_request(_req(client, 'hold'), helper)
     conv, meta = store.load('c1')
-    assert conv['display'][1]['interrupted'] is True and conv['display'][1]['status'] is None
+    assert conv['display'][1]['status'] == 'partial' and 'interrupted' not in conv['display'][1]
     assert meta['pending'] is None
-
-
-def test_an_interrupted_plan_keeps_how_it_was_approved(monkeypatch):
-    """The card shows the box as the first run had it (H14-APPROVE-1): the
-    stamp its run began writing with, else what the approval asked."""
-    for writing, asked, shown in (({'run': 'r-dead', 'inside': True, 'stamp': 'human'}, False, True),
-                                  ({'run': 'r-dead', 'inside': True, 'stamp': 'verified'}, True, False),
-                                  (None, True, True)):
-        client = FakeClient()
-        store = _seed_plan(client, request_id='r-dead')
-        if writing:
-            conv, meta = store.load('c1')
-            conv['display'][1]['plan']['writing'] = writing
-            store.save('c1', conv, meta)
-        _set_meta(client, pending={'kind': 'apply', 'request_id': 'r-dead', 'service_id': 'igt:assist:fake',
-                                   'plan_id': PLAN1, 'as_human': asked})
-        _service().process_request(_req(client, 'hold'), Helper(request_id='h1'))
-        conv, _ = store.load('c1')
-        assert conv['display'][1]['interrupted'] is True
-        assert conv['display'][1]['as_human'] is shown, (writing, asked)
 
 
 def test_an_old_page_marker_with_no_service_is_cleared(monkeypatch):

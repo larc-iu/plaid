@@ -39,7 +39,7 @@ def test_the_waiting_plan_is_the_last_undecided_one_with_its_rows():
                                      {'label': 'Gloss "VASP" → "ASP"', 'rule': rule}]}},
                user_item('b')]
     assert waiting_plan(display) == {'count': 114, 'summary': '114 values', 'rows': ROWS}
-    display[2]['interrupted'] = True
+    display[2]['status'] = 'partial'
     assert waiting_plan(display) is None
     assert waiting_plan([user_item('a')]) is None
 

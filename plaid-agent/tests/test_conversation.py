@@ -258,8 +258,7 @@ def test_a_model_of_unknown_window_keeps_the_old_byte_bound_on_its_transcript():
 def test_a_new_plan_replaces_every_plan_still_waiting_and_no_other():
     """Luke's ruling (2026-10-05). Eline's thread had two approvable cards over
     overlapping changes after the model restaged its plan without Q. A settled
-    plan keeps its outcome, and an interrupted approval is left alone, since
-    its changes may have been written."""
+    plan keeps its outcome."""
     from plaid_agent.core.conversation import replace_undecided
 
     def item(pid, status=None, **extra):
@@ -269,10 +268,10 @@ def test_a_new_plan_replaces_every_plan_still_waiting_and_no_other():
                                  [], [], '', 'm'), 'status': status, **extra}
 
     display = [user_item('q'), item('waiting'), item('applied', 'applied'),
-               item('lost', None, interrupted=True), assistant_item('no plan', None, [], [], '', 'm')]
+               item('waiting too'), assistant_item('no plan', None, [], [], '', 'm')]
     out = replace_undecided(display)
     assert out[1]['status'] == 'replaced' and out[1]['settled_at']
     assert 'ops' not in out[1]['plan'] and out[1]['plan']['op_count'] == 1
     assert out[2]['status'] == 'applied'
-    assert out[3]['status'] is None and out[3]['plan']['ops'], 'an interrupted approval may have landed'
+    assert out[3]['status'] == 'replaced'
     assert out[0] == display[0] and out[4] == display[4]

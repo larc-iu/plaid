@@ -1,14 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import {
-  RotateCcw,
-  Check,
-  X,
-  Loader2,
-  ChevronDown,
-  PenLine,
-  UserCheck,
-  FolderOpen,
-} from 'lucide-react';
+import { Check, X, Loader2, ChevronDown, PenLine, UserCheck, FolderOpen } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
@@ -57,9 +48,6 @@ export const PlanCard = ({
   // An out-of-date plan the reader discarded. It stays out of date (the
   // record of an approval that was refused) and offers nothing more.
   dismissed = false,
-  interrupted,
-  // Its run was marked as writing, but its documents show nothing written.
-  nothingWritten = false,
   applying,
   canWrite,
   busy,
@@ -113,20 +101,6 @@ export const PlanCard = ({
   const stale = status === 'stale';
   // A later turn staged a plan of its own, which restates what still applies.
   const superseded = status === 'replaced';
-  // The record says the plan was approved but the request that applied it is
-  // gone, so whether the changes landed is unknown. The same buttons as an
-  // undecided plan: applying again is safe, since the service refuses to
-  // write the same plan twice.
-  const lost = undecided && interrupted && !applying;
-  // Its run marked it as writing before it was cut off, so some of its
-  // changes may be in the project: applying again finishes them, History
-  // undoes them, and it is not discarded as if nothing had happened. Unless
-  // its documents show that nothing was written after all.
-  const maybeWritten = lost && !!plan.writing && !nothingWritten;
-  // How its run stamped what it began writing (`stamp` in the writing mark).
-  // Applying again sends the same, so the box shows it and is not a choice.
-  const firstStamp = lost ? plan.writing?.stamp || null : null;
-  const shownAsHuman = firstStamp ? firstStamp === 'human' : asHuman;
   // Stopped partway, and settled so: finishing it is a new plan.
   const partial = status === 'partial';
   const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);
@@ -141,11 +115,7 @@ export const PlanCard = ({
   // approving it would write nothing, so it can only be discarded (Luke
   // 2026-10-16).
   const nothingToWrite =
-    undecided &&
-    !lost &&
-    allRows.length > 0 &&
-    changeCount(allRows) === 0 &&
-    changesOmitted(plan) === 0;
+    undecided && allRows.length > 0 && changeCount(allRows) === 0 && changesOmitted(plan) === 0;
   return (
     <div
       className={cn(
@@ -191,14 +161,9 @@ export const PlanCard = ({
             <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Applying…
           </Badge>
         )}
-        {lost && (
-          <Badge variant="outline" className="ml-auto">
-            Not finished
-          </Badge>
-        )}
         {/* Read by someone who cannot decide it: the state, in place of the
             buttons. */}
-        {readOnly && undecided && !lost && !applying && (
+        {readOnly && undecided && !applying && (
           <Badge variant="outline" className="ml-auto">
             Waiting for approval
           </Badge>
@@ -211,13 +176,6 @@ export const PlanCard = ({
             In <bdi className="font-medium text-foreground">{planProject}</bdi>
           </span>
         </div>
-      )}
-      {lost && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {maybeWritten
-            ? 'Applying did not finish. Some changes may be written. Apply again to finish, or undo them in History.'
-            : 'Applying did not finish.'}
-        </p>
       )}
       {stale && reason && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="stale-reason">
@@ -371,49 +329,27 @@ export const PlanCard = ({
       {undecided && !nothingToWrite && !readOnly && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {canWrite ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => onApprove({ asHuman: shownAsHuman })}
-              disabled={busy}
-            >
-              {lost ? (
-                <>
-                  <RotateCcw className="h-4 w-4" /> Apply again
-                </>
-              ) : (
-                <>
-                  <Check className="h-4 w-4" /> Approve and apply
-                </>
-              )}
+            <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
+              <Check className="h-4 w-4" /> Approve and apply
             </Button>
           ) : (
             <span className="text-muted-foreground">Applying needs write access.</span>
           )}
-          {!maybeWritten && (
-            <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
-              <X className="h-4 w-4" /> Discard
-            </Button>
-          )}
-          {canWrite && (firstStamp ? firstStamp !== 'contributed' : !contributor) && (
+          <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
+            <X className="h-4 w-4" /> Discard
+          </Button>
+          {canWrite && !contributor && (
             <label
               htmlFor={humanId}
-              className={cn(
-                'ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground',
-                firstStamp ? 'cursor-default' : 'cursor-pointer',
-              )}
-              title={
-                firstStamp
-                  ? 'As first approved.'
-                  : 'By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance).'
-              }
+              className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground"
+              title="By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance)."
             >
               <input
                 id={humanId}
                 type="checkbox"
                 className="h-3.5 w-3.5"
-                checked={shownAsHuman}
-                disabled={busy || !!firstStamp}
+                checked={asHuman}
+                disabled={busy}
                 onChange={(e) => setAsHuman(e.target.checked)}
               />
               Record as human-made

@@ -99,7 +99,6 @@ export const ExportPage = ({
                 homeName={projectName}
                 canWrite={false}
                 busy={false}
-                interrupted={!!d.interrupted}
                 applying={false}
                 readOnly
               />

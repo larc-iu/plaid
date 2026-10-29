@@ -383,9 +383,9 @@ const finishJob = async (j, store) => {
   }
   // The request is over and the record still names it: the service that ran
   // it went away. Any op on the conversation has the service settle what it
-  // left (a turn's marker cleared, an approval's plan marked interrupted, so
-  // its card offers Apply again), and a hold is the one that changes nothing
-  // else. A request this page only lost contact with is still running.
+  // left (a turn's marker cleared, an approval's plan settled partly applied,
+  // since its changes may be written), and a hold is the one that changes
+  // nothing else. A request this page only lost contact with is still running.
   // Asked of the assistant that ran it when it is online, and otherwise of
   // any assistant of this app online on the project, which settles a marker
   // naming one that is not (asking only the one gone was refused every time,
@@ -552,16 +552,14 @@ export const startTurn = ({
 // the same thing again is noise, so the success one is left out.
 // Only the success one goes: a hard failure leaves the card undecided with no
 // inline explanation, so that toast is the only place the reason appears.
-// Where the record leaves a plan: its status, "unfinished" for an approval
-// that was interrupted, or null while it is undecided.
-const verdictOf = (item) => item?.status ?? (item?.interrupted ? 'unfinished' : null);
+// Where the record leaves a plan: its status, or null while it is undecided.
+const verdictOf = (item) => item?.status ?? null;
 
 // The "Not applied" error toast of each plan, by plan id, with the verdict
 // the record gave the plan when its approval began. It is dismissed once the
 // record gives the plan another verdict (`settleApplyToasts`): the card then
 // says how the approval ended, so a "Service disconnected" from an assistant
-// that died meanwhile is no longer news. A refusal of Apply again leaves the
-// verdict as it was, so its reason stays.
+// that died meanwhile is no longer news.
 const applyErrorToasts = new Map();
 const applyToastId = (planId) => `assistant-apply-error:${planId}`;
 
@@ -764,36 +762,12 @@ export const startApply = ({
   return j;
 };
 
-// Whether some of an undecided plan's changes may be in the project: its
-// approval was interrupted after the run marked it as writing (the service
-// does so before it sends the first change, `plan.WRITING` in plaid-agent).
-// Such a plan cannot be discarded: applying it again finishes it.
-export const mayHaveWritten = (item) =>
-  !!item?.plan && item.status == null && !!item.interrupted && !!item.plan.writing;
-
-// Whether such a plan's documents show that its run wrote nothing after all,
-// so the card offers Discard (the service checks it again when asked,
-// `plan.nothing_landed`). Each document the run held is still at the version
-// it held it at, and every change lands in those documents (`inside`). False
-// whenever that cannot be told.
-export const nothingLanded = async (store, item) => {
-  if (!mayHaveWritten(item) || item.plan.writing?.inside !== true) return false;
-  const held = (item.plan.documents || []).filter((d) => d?.id && d.heldFrom != null);
-  if (!held.length) return false;
-  try {
-    const now = await Promise.all(held.map((d) => store.client.documents.get(d.id)));
-    return now.every((doc, i) => doc?.version === held[i].heldFrom);
-  } catch {
-    return false;
-  }
-};
-
 // Rejoin the request a conversation's record says is under way (it was
 // submitted from a page that is gone, or from another tab). The record gets
 // the outcome either way; this is for showing progress and refreshing when it
 // lands. A request the server no longer knows (404) is over: the service is
 // asked to settle what it left (`finishJob`), and the record then shows the
-// question unanswered with Retry, or the plan Not finished. `tab` is the tab
+// question unanswered with Retry, or the plan partly applied. `tab` is the tab
 // asking.
 export const attachJob = ({ store, conv, meta, docked = false, tab = null }) => {
   const { client, projectId } = store;

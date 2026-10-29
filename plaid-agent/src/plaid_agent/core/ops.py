@@ -60,7 +60,6 @@ REFUSALS = {
     'delete-applying': 'That conversation is still applying changes. Delete it once they finish.',
     'gone': 'This conversation was deleted.',
     'decided': 'This plan was already decided.',
-    'written': 'Some of its changes may be written. Apply again to finish them.',
     'answered': 'That message has an answer.',
 }
 

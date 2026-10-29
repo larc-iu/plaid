@@ -1817,7 +1817,7 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, and the words a Baseline save gives a
     first text, which the server makes). Each is made under an id from ``new_id()`` (a :class:`Minter`),
-    and one an earlier run of the plan made is taken as made. Returns the new
+    and one an earlier send of the plan made is taken as made. Returns the new
     document id."""
     doc_id = new_id()
     # No metadata is none sent: a null is refused as a metadata map.
@@ -1825,9 +1825,8 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
         new_id.once(lambda: client.documents.create(project.id, name, metadata, id=doc_id))
     else:
         new_id.once(lambda: client.documents.create(project.id, name, id=doc_id))
-    # A failure here leaves the document as made: the plan approved again
-    # draws the same ids, takes it as made and finishes it. Deleted, its id
-    # would be refused as taken on every approval after.
+    # A failure here leaves the document as made, and the plan settles as
+    # partly applied.
     _seed_text(client, project, doc_id, text, new_id)
     return doc_id
 

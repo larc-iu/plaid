@@ -6,8 +6,6 @@ from typing import Dict, List, Optional
 
 from plaid_client.service import requester_message
 
-from .plan import HELD_FROM
-
 
 def _named(name) -> str:
     """A document as the user knows it: by name, never by id."""
@@ -47,15 +45,7 @@ def stale_documents(client, documents: list, reread=None) -> list:
     moved: ``reread(document_id)`` gives the fingerprints as they are now, and
     only those sentences are compared, so an edit elsewhere in the document
     does not refuse the plan (ruled 2026-09-28). Without a list, or
-    without ``reread``, the version alone decides, as it always did.
-
-    A document an earlier run of the plan held (``held_from``) is not
-    compared: that run may have written to it, which moves its version and
-    changes its sentences, and the check would refuse the run again saying
-    nothing was written. The run again holds it at the version the first run
-    held it at, so what landed is answered from its first send, and what did
-    not claims the version the answers leave, which the server refuses if
-    anyone else has written since."""
+    without ``reread``, the version alone decides, as it always did."""
     out = []
     for d in documents:
         # A record with no id or no version cannot be checked, and skipping it
@@ -77,7 +67,7 @@ def stale_documents(client, documents: list, reread=None) -> list:
         # Reached by rules alone: what they match there is checked by its
         # digest when they are found again (`core.rules.check_matched`), so an
         # edit elsewhere in the document does not refuse the plan.
-        if now.get('version') == d['version'] or d.get(HELD_FROM) is not None or d.get('rule'):
+        if now.get('version') == d['version'] or d.get('rule'):
             continue
         named = _named(now.get('name') or d.get('name'))
         changed = None
