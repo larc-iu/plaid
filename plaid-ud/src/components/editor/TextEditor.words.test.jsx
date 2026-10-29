@@ -38,6 +38,7 @@ const setup = (
     other = { annotations: 0, links: 0 },
     clear,
     split,
+    joinFields = [],
     tokenizeLoss,
     serviceLoss,
     service = null,
@@ -59,6 +60,7 @@ const setup = (
     otherLossForWord: vi.fn(() => other),
     clearLoss: vi.fn(() => clear),
     otherLossForSentenceSplit: vi.fn(() => split || { annotations: 0, links: 0 }),
+    sentenceFieldsLostByJoin: vi.fn(() => joinFields),
     clearTokens: vi.fn(async () => true),
     tokenizeLoss: vi.fn(() => tokenizeLoss || { annotations: 0, links: 0 }),
     serviceTokenizeLoss: vi.fn(() => serviceLoss || { annotations: 0, links: 0 }),
@@ -295,6 +297,39 @@ describe('the Text Editor asking before the sentences go', () => {
     await press('Split');
     await act(async () => done);
     expect(doc.toggleSentenceBoundary).toHaveBeenCalledWith(2);
+    await view.unmount();
+  });
+
+  // R54: a join deletes the joined sentence's fields, and asks first.
+  it("a sentence join asks when it deletes the joined sentence's fields", async () => {
+    const doc = setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { joinFields: ['translation', 'note'] },
+    );
+    let view = await mount();
+    let done;
+    await act(async () => {
+      done = visualized.props.onSentenceToggle(2);
+    });
+    expect(dialog().textContent).toContain('Join sentences?');
+    expect(dialog().textContent).toContain('Deletes 2 sentence fields: translation, note.');
+    await press('Cancel');
+    await act(async () => done);
+    expect(doc.toggleSentenceBoundary).not.toHaveBeenCalled();
+    await view.unmount();
+
+    const again = setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { joinFields: ['translation'] },
+    );
+    view = await mount();
+    await act(async () => {
+      done = visualized.props.onSentenceToggle(2);
+    });
+    expect(dialog().textContent).toContain('Deletes 1 sentence field: translation.');
+    await press('Join');
+    await act(async () => done);
+    expect(again.toggleSentenceBoundary).toHaveBeenCalledWith(2);
     await view.unmount();
   });
 });

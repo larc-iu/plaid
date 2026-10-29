@@ -440,6 +440,9 @@ class UdDoc:
     #: have no number and are not in ``sentences``, as the app shows no row
     #: for them. A merge across one takes it in.
     wordless: List[Tuple[str, int, int]] = dc_field(default_factory=list)
+    #: Each wordless sentence's metadata, by its id: the fields a merge across
+    #: it deletes.
+    wordless_metadata: Dict[str, dict] = dc_field(default_factory=dict)
     #: How a sentence names the document: quoted, an inner quote escaped
     #: (core.bidi.qname), which document= reads back. Set by the workspace
     #: that loads it.
@@ -563,6 +566,7 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
     by_lemma_span: Dict[str, Word] = {}
     sentences: List[Sentence] = []
     wordless: List[Tuple[str, int, int]] = []
+    wordless_metadata: Dict[str, dict] = {}
     ti = 0
     for s in sorted(sent_layer.get('tokens') or [], key=lambda t: t['begin']):
         while ti < len(tokens) and tokens[ti]['begin'] < s['begin']:
@@ -599,6 +603,7 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
             # (sentenceRows.js `sentenceHoldsWords`), and the rows after it
             # number on without a gap. The mirror test holds the two together.
             wordless.append((s['id'], s['begin'], s['end']))
+            wordless_metadata[s['id']] = s.get('metadata') or {}
             continue
         sentences.append(Sentence(
             id=s['id'], index=len(sentences) + 1, begin=s['begin'], end=s['end'],
@@ -619,7 +624,8 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
         target.relation_metadata = rel.get('metadata')
     suppressors = _read_enhanced(word_layer, project, basic, by_lemma_span, sentences)
     return UdDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences,
-                 raw.get('metadata') or {}, raw.get('version'), suppressors, wordless)
+                 raw.get('metadata') or {}, raw.get('version'), suppressors, wordless,
+                 wordless_metadata=wordless_metadata)
 
 
 def _read_enhanced(word_layer, project: UdProject, basic: List[dict],

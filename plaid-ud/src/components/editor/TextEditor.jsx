@@ -340,9 +340,21 @@ export const TextEditor = () => {
   };
 
   // A split that would take relations another layer keeps inside one
-  // sentence asks first. This editor's own dependencies go without asking.
+  // sentence asks first. This editor's own dependencies go without asking. A
+  // join that would delete the joined sentence's fields asks first too (R54).
   const handleSentenceBoundaryToggle = async (charPos) => {
     if (!doc) return;
+    const fields = doc.sentenceFieldsLostByJoin(charPos);
+    if (fields.length > 0) {
+      const ok = await confirm({
+        title: 'Join sentences?',
+        description: `Deletes ${countOf(fields.length, 'sentence field')}: ${[...new Set(fields)].join(', ')}.`,
+        confirmLabel: 'Join',
+        destructive: true,
+      });
+      if (!ok) return;
+      return doc.toggleSentenceBoundary(charPos);
+    }
     const loss = lossPhrase(doc.otherLossForSentenceSplit(charPos));
     if (loss) {
       const ok = await confirm({

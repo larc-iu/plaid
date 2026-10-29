@@ -153,6 +153,7 @@ A **green** border marks the first token of each sentence, and a **teal** chip m
 
 Click any token to toggle whether a sentence starts there.
 Removing a boundary joins the sentence to the one above it.
+The joined sentence keeps the fields of the one above, and the fields of the one below are deleted, after a question that names them.
 Splitting a sentence removes the dependency relations that would cross the new boundary, and asks first if other annotations would go too.
 
 Hover over a token to open its panel, where you can toggle **Start of sentence**, edit the token's **words**, or **delete** the token.

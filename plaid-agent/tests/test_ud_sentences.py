@@ -107,6 +107,31 @@ def test_merging_the_first_sentence_is_refused(ws):
     assert 'nothing before it' in out
 
 
+def test_a_merge_names_the_fields_of_the_sentence_it_joins_on_the_card(ws):
+    """R54: the sentence before keeps its fields, and the joined sentence's go
+    with it. The card names them, and the summary counts them."""
+    from plaid_agent.ud.plan import summarize
+
+    doc = ws.doc('Viaje')
+    doc.sentences[0].metadata.update({'translation': 'We go to the sea.'})
+    doc.sentences[1].metadata.update({'sent_id': 'train-2', 'translation': 'Run.', 'note': 'by hand',
+                                      'prov': 'inferred'})
+    out = run(ws, 'merge_sentences', document='Viaje', ref='s2')
+    op = ws.ops[-1]
+    assert op['deleted_fields'] == ['translation', 'note']
+    assert op['label'] == 'merge s1 and s2, deleting 2 sentence fields (translation, note)'
+    assert 'It deletes 2 sentence fields (translation, note) of s2.' in out, out
+    assert summarize([op]) == '2 removed sentence fields, 1 sentence merge'
+
+
+def test_a_merge_of_a_sentence_with_no_fields_names_none(ws):
+    out = run(ws, 'merge_sentences', document='Viaje', ref='s2')
+    op = ws.ops[-1]
+    assert 'deleted_fields' not in op
+    assert op['label'] == 'merge s1 and s2'
+    assert 'deletes' not in out, out
+
+
 def test_a_boundary_and_an_edit_cannot_share_a_plan(ws):
     """Every reference is positional, so s2.w1 means a different word once a
     boundary has moved. The plan refuses rather than resolving it by a rule

@@ -400,6 +400,15 @@ def _split_sentence_summary(op, n):
     return out
 
 
+def _merge_sentences_summary(op, n):
+    out = [(('sentence merge', 'sentence merges'), n)]
+    # The joined sentence's fields go with it (R54).
+    gone = len(op.get('deleted_fields') or [])
+    if gone:
+        out.append((('removed sentence field', 'removed sentence fields'), gone))
+    return out
+
+
 def _run_parse_summary(op, n):
     return [(('parsed document', 'parsed documents'), len(op.get('document_ids') or []))]
 
@@ -655,10 +664,12 @@ KIND = ok.registry([
            # The cut moves with its sentence (core.fingerprint, `token_at`).
            extra={'anchors': lambda op: [('char_pos', op.get('sentence_id')),
                                          ('token_at', op.get('sentence_id'))]}),
-    # A join only widens a sentence, so it takes no relation.
+    # A join only widens a sentence, so it takes no relation. It deletes the
+    # joined sentence's fields, which its label names and its summary counts.
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), replaces=None,
            apply=_apply_merge_sentences,
-           required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE),
+           required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE,
+           summary=_merge_sentences_summary),
     # A second restore of the SAME document replaces the first, the way every
     # other corrected instruction does: the plan still holds one restore, and
     # a model that named the wrong as_of can say so without the user having to

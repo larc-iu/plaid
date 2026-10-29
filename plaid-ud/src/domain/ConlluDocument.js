@@ -72,6 +72,13 @@ const TEXT_UNREAD = 'The saved text could not be read. Try again.';
 // The body `gaps` make of `base`.
 const gapsBody = (base, gaps) => applyTextOps(base, gapsToOps(gaps));
 
+// A sentence's fields: its metadata lines but `sent_id`, `text` and
+// provenance.
+const sentenceFieldKeys = (sentence) =>
+  Object.keys(sentence.metadata || {}).filter(
+    (k) => k !== 'sent_id' && k !== 'text' && !isProvKey(k),
+  );
+
 export class ConlluDocument extends DocumentModel {
   // Import a CoNLL-U text into a new document in the given project. The work
   // is `importConlluDocument`, which reads no loaded document at all: this is
@@ -534,6 +541,45 @@ export class ConlluDocument extends DocumentModel {
     return otherDeleteLoss(this.layerInfo, [word.id]);
   }
 
+  // The join a click at `charPos` makes, or null when no sentence starts
+  // there or none comes before: `{ prevSent, between, startsHere }`. A
+  // sentence with no words between has no row (`sentenceHoldsWords`), so the
+  // sentence before on screen is the nearest one with words, and the
+  // word-less ones between join it too.
+  _sentenceJoin(charPos) {
+    const sentenceTokens = this.layerInfo.sentenceTokenLayer?.tokens || [];
+    const startsHere = sentenceTokens.find((s) => s.begin === charPos);
+    if (!startsHere) return null;
+    let prevSent = sentenceTokens.find((s) => s.end === charPos);
+    if (!prevSent) return null;
+    const sorted = (layer) => [...(layer?.tokens || [])].sort((a, b) => a.begin - b.begin);
+    const words = sorted(this.layerInfo.wordTokenLayer);
+    const morphemes = sorted(this.layerInfo.morphemeTokenLayer);
+    const between = [];
+    for (;;) {
+      if (sentenceHoldsWords(prevSent, words, morphemes)) break;
+      const earlier = sentenceTokens.find((s) => s.end === prevSent.begin && s !== prevSent);
+      if (!earlier) break;
+      between.unshift(prevSent);
+      prevSent = earlier;
+    }
+    if (!sentenceHoldsWords(prevSent, words, morphemes)) {
+      // Nothing before holds words: join the sentence right before, as ever.
+      prevSent = between.pop() ?? prevSent;
+      between.length = 0;
+    }
+    return { prevSent, between, startsHere };
+  }
+
+  // The sentence fields a join at `charPos` deletes: the field names of
+  // every sentence that joins the one before, in order, one per field (R54).
+  // The sentence before keeps its own.
+  sentenceFieldsLostByJoin(charPos) {
+    const join = this._sentenceJoin(charPos);
+    if (!join) return [];
+    return [...join.between, join.startsHere].flatMap(sentenceFieldKeys);
+  }
+
   // What splitting the sentence at `charPos` takes on the text's other layers:
   // the relations a layer keeps inside one sentence that would cross the new
   // boundary. This editor's own dependencies go without a question.
@@ -655,31 +701,11 @@ export class ConlluDocument extends DocumentModel {
     const { sentenceTokenLayer } = this.layerInfo;
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
 
-    const startsHere = sentenceTokens.find((s) => s.begin === charPos);
-    if (startsHere) {
+    const join = this._sentenceJoin(charPos);
+    if (join) {
       // Remove the boundary: merge with the preceding sentence. Merging
       // only widens a sentence, so no dependency relation can become invalid.
-      // A sentence with no words between has no row (`sentenceHoldsWords`),
-      // so the sentence before on screen is the nearest one with words, and
-      // the word-less ones between join it too.
-      let prevSent = sentenceTokens.find((s) => s.end === charPos);
-      if (!prevSent) return false;
-      const sorted = (layer) => [...(layer?.tokens || [])].sort((a, b) => a.begin - b.begin);
-      const words = sorted(this.layerInfo.wordTokenLayer);
-      const morphemes = sorted(this.layerInfo.morphemeTokenLayer);
-      const between = [];
-      for (;;) {
-        if (sentenceHoldsWords(prevSent, words, morphemes)) break;
-        const earlier = sentenceTokens.find((s) => s.end === prevSent.begin && s !== prevSent);
-        if (!earlier) break;
-        between.unshift(prevSent);
-        prevSent = earlier;
-      }
-      if (!sentenceHoldsWords(prevSent, words, morphemes)) {
-        // Nothing before holds words: join the sentence right before, as ever.
-        prevSent = between.pop() ?? prevSent;
-        between.length = 0;
-      }
+      const { prevSent, between, startsHere } = join;
       if (!this._canWrite(label)) return false;
       const joined = new Set([...between, startsHere].map((t) => t.id));
       const beganAt = new Map([...between, startsHere].map((t) => [t.id, t.begin]));
@@ -1042,14 +1068,7 @@ export class ConlluDocument extends DocumentModel {
     const sentences = (this.layerInfo.sentenceTokenLayer?.tokens || []).filter((t) =>
       deletesSentenceOrRow(ranges, t, this.body),
     );
-    const sentenceFields = sentences.reduce(
-      (n, t) =>
-        n +
-        Object.keys(t.metadata || {}).filter(
-          (k) => k !== 'sent_id' && k !== 'text' && !isProvKey(k),
-        ).length,
-      0,
-    );
+    const sentenceFields = sentences.reduce((n, t) => n + sentenceFieldKeys(t).length, 0);
     const relations = new Set();
     let words = 0;
     let annotations = 0;

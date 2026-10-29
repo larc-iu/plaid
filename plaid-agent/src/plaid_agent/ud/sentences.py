@@ -41,6 +41,7 @@ cut. One whose head points nowhere is left alone rather than guessed at.
 from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import same_ancestor_layer
+from plaid_client.provenance import PROVENANCE_KEYS
 
 from ..core.bidi import qv
 from ..core.loss import _token_layers, other_layers_crossing
@@ -335,7 +336,25 @@ def merge_op(ws: Workspace, doc, ref: str):
     between = [i for i, b, e in doc.wordless if before.end <= b and e <= sentence.begin]
     if between:
         op['between_ids'] = between
+    # The sentence before keeps its fields, and the joined ones' fields go
+    # with them (R54): the card names them.
+    fields = [k for m in [doc.wordless_metadata.get(i) or {} for i in between] + [sentence.metadata]
+              for k in sentence_fields(m)]
+    if fields:
+        op['deleted_fields'] = fields
+        op['label'] += f', deleting {_named_fields(fields)}'
     return op, before, sentence
+
+
+def sentence_fields(metadata: dict) -> List[str]:
+    """A sentence's fields: its metadata keys but ``sent_id``, ``text`` and
+    provenance, as plaid-ud's ``sentenceFieldKeys`` reads them."""
+    return [k for k in (metadata or {}) if k not in ('sent_id', 'text') and k not in PROVENANCE_KEYS]
+
+
+def _named_fields(fields: List[str]) -> str:
+    names = ', '.join(dict.fromkeys(fields))
+    return f'{len(fields)} sentence field{"" if len(fields) == 1 else "s"} ({names})'
 
 
 def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root_head=None,
@@ -347,8 +366,10 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root
     # Merging only widens a sentence, so no arc becomes invalid. Its roots are
     # the one rule it can break, settled above.
     ws.add_ops([op] + ([root_op] if root_op else []))
+    gone = (f' It deletes {_named_fields(op["deleted_fields"])} of s{sentence.index}.'
+            if op.get('deleted_fields') else '')
     return (f'Planned: s{before.index} and s{sentence.index} become one sentence'
-            + (f', and {root_op["label"]}' if root_op else '') + '. Sentences after them renumber.')
+            + (f', and {root_op["label"]}' if root_op else '') + '. Sentences after them renumber.' + gone)
 
 
 def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
