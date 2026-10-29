@@ -823,9 +823,13 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what)}', f'unlink {qv(_linked(ws, obj.link))}')})
     if only_mwe and not staged and not planned:
         raise ToolError('; '.join(only_mwe), kind='not-found')
+    from .shape import restage_merges
     with ws.staging():
         taken = _take_out(ws, [key for _, key in planned])
         ws.add_ops(staged)
+        # A planned merge of an unlinked word keeps another link, or none,
+        # and runs after the unlink.
+        restage_merges(ws, doc, [op['token_id_hint'] for op in staged])
     note = ws.planned_note(len(staged))
     if taken:
         note += (f' The planned link on {", ".join(ref for ref, key in planned if key in taken)} was taken out '

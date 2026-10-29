@@ -123,15 +123,18 @@ def _combined_values(spans: List[Dict[str, Any]], project) -> str:
     return ', '.join(bits)
 
 
-def _kept_link(words: List[Word]) -> Dict[str, Any]:
+def _kept_link(words: List[Word], unlinked=frozenset()) -> Dict[str, Any]:
     """Which lexicon link the server's merge keeps, for the card: the
     survivor's own, else the one with the smallest id. The others are deleted
     by the layer rule the word layer declares (one link per word), in the
-    merge's own transaction."""
-    links = [w.link for w in words if w.link]
+    merge's own transaction. A link the plan ``unlinked`` is gone before the
+    merge runs (an unlink of a merged word is staged ahead of its merge, see
+    :func:`restage_merges`), so it is none of them."""
+    links = [w.link for w in words if w.link and w.link.id not in unlinked]
     if len(links) < 2:
         return {'keep_id': links[0].id if links else None, 'delete_ids': []}
-    keep = words[0].link or min(links, key=lambda l: l.id)
+    own = words[0].link if words[0].link in links else None
+    keep = own or min(links, key=lambda l: l.id)
     return {'keep_id': keep.id, 'delete_ids': [l.id for l in links if l is not keep]}
 
 
@@ -165,6 +168,26 @@ def _collapsed_mwes(ws: Workspace, words: List[Word]) -> list:
                 seen.add(l.id)
                 out.append(l)
     return out
+
+
+def _planned_unlinks(ws: Workspace) -> set:
+    return {op.get('link_id') for op in ws.ops if op.get('kind') == 'unlink'}
+
+
+def restage_merges(ws: Workspace, doc, word_ids) -> None:
+    """Stage again, after everything planned so far, each word merge of
+    ``doc`` that takes one of ``word_ids``: an unlink just staged on one of
+    them changes which link the merge keeps, and the merge's card line says
+    which. The merge then runs after the unlink, as its line reads (R1-6)."""
+    for op in [o for o in ws.ops if o.get('kind') == 'merge_words' and o.get('document_id') == doc.id
+               and {o.get('word_id'), *(o.get('other_ids') or [])} & set(word_ids)]:
+        refs = []
+        for wid in [op['word_id'], *op['other_ids']]:
+            s, w, _m = doc.find(wid)
+            refs.append(word_ref(s, w))
+        ws.ops[:] = [o for o in ws.ops if o is not op]
+        ws._gone_at = -1
+        t_merge_words(ws, doc.id, refs)
 
 
 CUT_IN_MERGE = ('{ref}: a sentence boundary and a word merge are planned at the same place, and a merged word '
@@ -263,7 +286,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     first, last = words[0], words[-1]
     merged = doc.body[first.begin:last.end]
     spans = _joined_spans(words, ws.project)
-    links = _kept_link(words)
+    links = _kept_link(words, _planned_unlinks(ws))
     morphs = [m.id for w in words for m in w.morphemes]
     analysed = sum(1 for w in words if len(w.morphemes) > 1 or any(m.fields or m.link for m in w.morphemes))
     note = ''

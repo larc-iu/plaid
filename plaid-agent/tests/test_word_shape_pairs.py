@@ -80,3 +80,40 @@ def test_a_merge_after_a_delete_that_leaves_an_expression_one_word_drops_it(live
         assert not any(m for sent in _words(c, s) for _w, _l, m in sent), _words(c, s)
     finally:
         s.delete()
+
+
+@pytest.mark.parametrize('unlink_first', [True, False])
+def test_an_unlinked_word_merged_away_leaves_no_link(live_client, unlink_first):
+    c = live_client
+    s, ws = seeded(c, base_project(), _four([('vi-ali', (2,))]), name=f'shape pairs: unlink merged {unlink_first}')
+    try:
+        steps = [('unlink_entry', {'document': 'Doc A', 'refs': ['s1.w3']}),
+                 ('merge_words', {'document': 'Doc A', 'refs': ['s1.w2', 's1.w3']})]
+        for tool, args in (steps if unlink_first else steps[::-1]):
+            call_tool(ws, tool, args)
+        p, h, _ = approve(c, s.project_id, ws)
+        rows = [r.get('label') or '' for r in p['changes']]
+        assert 'unlink "Ali"' in rows[0] and 'merge' in rows[1] and 'keeps the link' not in rows[1], rows
+        assert not h.errors, h.errors
+        assert _words(c, s)[0][1][:2] == ('bb cc', None), _words(c, s)
+    finally:
+        s.delete()
+
+
+@pytest.mark.parametrize('unlink_first', [True, False])
+def test_a_merge_line_says_which_link_is_kept_once_the_plan_unlinks_one(live_client, unlink_first):
+    c = live_client
+    s, ws = seeded(c, base_project(), _four([('vi-ali', (1,)), ('vi-gam', (2,))]),
+                   name=f'shape pairs: unlink survivor {unlink_first}')
+    try:
+        steps = [('unlink_entry', {'document': 'Doc A', 'refs': ['s1.w2']}),
+                 ('merge_words', {'document': 'Doc A', 'refs': ['s1.w2', 's1.w3']})]
+        for tool, args in (steps if unlink_first else steps[::-1]):
+            call_tool(ws, tool, args)
+        p, h, _ = approve(c, s.project_id, ws)
+        rows = [r.get('label') or '' for r in p['changes']]
+        assert 'unlink "Ali"' in rows[0] and 'keeps the link' not in rows[1], rows
+        assert not h.errors, h.errors
+        assert _words(c, s)[0][1][:2] == ('bb cc', 'gam'), _words(c, s)
+    finally:
+        s.delete()

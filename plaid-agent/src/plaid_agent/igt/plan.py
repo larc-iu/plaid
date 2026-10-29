@@ -1732,8 +1732,11 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for _tid in _bulk_gone(ops):
             ctx.gone.add(('tokens', _tid))
         # Certainly: a text edit's token deletes are a guess, and an unlink
-        # skipped on a guess would leave the link.
-        ctx.dead_tokens = ok.removed_tokens(KIND, ops, only_certain=True)
+        # skipped on a guess would leave the link. A word a merge folds away
+        # is deleted, but core's merge moves its link onto the survivor, so
+        # an unlink of that link is written (R1-6).
+        ctx.dead_tokens = ok.removed_tokens(KIND, ops, only_certain=True) - {
+            t for op in ops if KIND[op['kind']].extra.get('merge') for t in op.get('other_ids') or []}
 
         for op in ops:
             spec = KIND[op['kind']]
