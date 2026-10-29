@@ -1491,9 +1491,42 @@
               bid)))
       (random-uuid)))
 
+(defn- finish-constraints!
+  "The layer constraints part of `finish!`."
+  [tx user]
+  (let [pending psaw/*pending*
+        notes (some-> pending deref)]
+    (if (empty? notes)
+      #{}
+      (let [docs (distinct (keep (comp u :doc) (vals notes)))
+            layers (when (seq docs) (constrained-layers tx docs))]
+        (if (empty? layers)
+          #{}
+          (let [cs (instances layers)
+                ctx (make-ctx tx notes)
+                vs (check-all ctx cs)]
+            (if (empty? vs)
+              #{}
+              (let [refused (filter #(or (not (remediable (:type %))) (direct? ctx %)) vs)]
+                (when (seq refused)
+                  (throw (refusal tx refused)))
+                (let [by-doc (group-by :document vs)
+                      batch-id (shared-batch-id! tx)
+                      bumped (binding [op/*current-batch-id* batch-id]
+                               (into #{} (mapcat (fn [doc]
+                                                   (:documents (remedy-document! tx user cs doc ctx
+                                                                                 :layer/apply-constraints))))
+                                     (sort-by str (keys by-doc))))
+                      left (check-all (make-ctx tx @pending) cs)]
+                  (when (seq left)
+                    (log/error "Layer rules left violations after their remedies:" (pr-str (map wire left)))
+                    (throw (ex-info "Layer rules left violations after their remedies." {:code 500})))
+                  bumped)))))))))
+
 (defn finish!
-  "Check the layer constraints the transaction's writes could break, at its
-  end, inside it. Refuses (throws a 422 `refusal`) when a violation is
+  "First the partitions of the texts the transaction saved
+  (`plaid.sql.text/finish-partitions!`). Then check the layer constraints
+  the transaction's writes could break, at its end, inside it. Refuses (throws a 422 `refusal`) when a violation is
   direct or of a type with no remedy. Otherwise applies each structural
   violation's remedy, one `layer/apply-constraints` operation per document,
   and checks again: a violation left then is a bug (500). Returns the set of
@@ -1502,34 +1535,8 @@
   Cheap when nothing is declared: three reads of the layer tables."
   ([tx] (finish! tx (:user psaw/*op*)))
   ([tx user]
-   (let [pending psaw/*pending*
-         notes (some-> pending deref)]
-     (if (empty? notes)
-       #{}
-       (let [docs (distinct (keep (comp u :doc) (vals notes)))
-             layers (when (seq docs) (constrained-layers tx docs))]
-         (if (empty? layers)
-           #{}
-           (let [cs (instances layers)
-                 ctx (make-ctx tx notes)
-                 vs (check-all ctx cs)]
-             (if (empty? vs)
-               #{}
-               (let [refused (filter #(or (not (remediable (:type %))) (direct? ctx %)) vs)]
-                 (when (seq refused)
-                   (throw (refusal tx refused)))
-                 (let [by-doc (group-by :document vs)
-                       batch-id (shared-batch-id! tx)
-                       bumped (binding [op/*current-batch-id* batch-id]
-                                (into #{} (mapcat (fn [doc]
-                                                    (:documents (remedy-document! tx user cs doc ctx
-                                                                                  :layer/apply-constraints))))
-                                      (sort-by str (keys by-doc))))
-                       left (check-all (make-ctx tx @pending) cs)]
-                   (when (seq left)
-                     (log/error "Layer rules left violations after their remedies:" (pr-str (map wire left)))
-                     (throw (ex-info "Layer rules left violations after their remedies." {:code 500})))
-                   bumped))))))))))
+   (into ((requiring-resolve 'plaid.sql.text/finish-partitions!) tx user #(shared-batch-id! tx))
+         (finish-constraints! tx user))))
 
 (defn- batch-group
   "The operation group every grouped operation of the current batch names,

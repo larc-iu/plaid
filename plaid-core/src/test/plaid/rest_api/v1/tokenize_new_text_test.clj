@@ -175,15 +175,36 @@
     (assert-ok (patch text {:edits [{:type "delete" :index 0 :value (count old)}]}))
     (is (= [] (sentences-of sentences)))))
 
-(deftest a-partition-never-made-stays-empty
-  ;; a text whose sentences are made after the edit (igt's first save of a
-  ;; text with no token sends the edit and the sentences in one batch)
+(deftest new-words-in-a-text-whose-sentences-were-never-made-get-one-sentence
+  ;; REV-FX-R3-1: words made under a partition that never held a token, on
+  ;; an empty text and on one with no token, by every save form
+  (doseq [[how old change] [["edits on an empty text" "" {:edits [(ins 0 "caf\u0065\u0301 one\ntwo")]}]
+                            ["edits on a text with no token" "hh" {:edits [{:type "replace" :index 0 :length 2
+                                                                            :value "caf\u0065\u0301 one\ntwo"}]}]
+                            ["a whole body" "hh" {:body "caf\u0065\u0301 one\ntwo"}]
+                            ["ops as the body" "hh" {:body [{:type "replace" :index 0 :length 2
+                                                             :value "caf\u0065\u0301 one\ntwo"}]}]]]
+    (testing how
+      (let [{:keys [proj tl words sentences]} (setup "")
+            doc2 (create-test-document admin-request proj "Doc2")
+            text (-> (create-text admin-request tl doc2 old) :body :id)
+            res (patch text (assoc change :tokenize-layer words))]
+        (assert-ok res)
+        (is (= [[0 12]] (sentences-of sentences)))
+        (is (= [[0 4] [5 8] [9 12]] (words-of words)))
+        (let [w (psc/q1 db {:select [:id :end_] :from [:tokens] :where [:= :token_layer_id words]
+                            :order-by [[:begin :asc]]})]
+          (assert-ok (update-token admin-request (:id w) :end (:end_ w))))))))
+
+(deftest a-partition-with-nothing-under-it-is-never-made
+  ;; with no word made, a text whose sentences were never made keeps none,
+  ;; for the app to make them (igt's first save of a text with no token)
   (let [{:keys [proj tl words sentences]} (setup "")
         doc2 (create-test-document admin-request proj "Doc2")
         text (-> (create-text admin-request tl doc2 "hh") :body :id)]
-    (assert-ok (patch text {:edits [(ins 2 " cat")] :tokenize-layer words}))
+    (assert-ok (patch text {:edits [(ins 2 " cat")]}))
     (is (= [] (sentences-of sentences)))
-    (is (= [[3 6]] (words-of words)))))
+    (is (= [] (words-of words)))))
 
 (deftest a-save-that-would-store-a-word-outside-every-parent-is-refused
   ;; words under a layer that is no partition, holding only the first word:
@@ -203,3 +224,45 @@
       (is (re-find #"Words" (str (-> res :body :error)))))
     (is (= [[0 2]] (words-of words)))
     (is (= "hh" (:body (psc/q1 db {:select [:body] :from [:texts] :where [:= :id text]}))))))
+
+(deftest a-word-under-an-empty-parent-that-is-no-partition-is-refused
+  ;; the parent layer holds no token and is no partition, so nothing makes
+  ;; one: the new word would sit in no parent, and nothing is stored
+  (let [proj (create-test-project admin-request "TokProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        phrases (-> (create-token-layer-opts admin-request tl "Phrases" {:overlap-mode "non-overlapping"}) :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"
+                                                                     :parent-token-layer-id phrases})
+                  :body :id)
+        text (-> (create-text admin-request tl doc "hh") :body :id)]
+    (assert-status 409 (patch text {:edits [(ins 2 " cat")] :tokenize-layer words}))
+    (is (= [] (words-of words)))))
+
+(deftest a-batch-that-makes-the-sentences-after-the-edit-makes-them-itself
+  ;; igt's first save of a text with no token, igt's segment writes and the
+  ;; ASR alignment send the edit with "Tokenize new text" and then the
+  ;; sentences, in one batch: the partition is judged at the batch's end
+  (let [{:keys [proj tl words sentences]} (setup "")
+        doc2 (create-test-document admin-request proj "Doc2")
+        text (-> (create-text admin-request tl doc2 "hh") :body :id)
+        res (api-call admin-request {:method :post :path "/api/v1/batch"
+                                     :body [{:path (str "/api/v1/texts/" text) :method "patch"
+                                             :body {:edits [(ins 2 " cat\ndog")] :tokenize-layer words}}
+                                            {:path "/api/v1/tokens/bulk" :method "post"
+                                             :body [{:token-layer-id sentences :text text :begin 0 :end 7}
+                                                    {:token-layer-id sentences :text text :begin 7 :end 10}]}]})]
+    (assert-ok res)
+    (is (= [[0 7] [7 10]] (sentences-of sentences)))
+    (is (= [[3 6] [7 10]] (words-of words)))))
+
+(deftest the-sentence-made-at-the-end-comes-in-the-saves-reshape
+  (let [{:keys [proj tl words sentences]} (setup "")
+        doc2 (create-test-document admin-request proj "Doc2")
+        text (-> (create-text admin-request tl doc2 "hh") :body :id)
+        res (patch text {:edits [(ins 2 " cat")] :tokenize-layer words})
+        made (filter #(= (str sentences) (str (:layer %))) (-> res :body :reshape :tokens))]
+    (assert-ok res)
+    (is (= [[0 6]] (sentences-of sentences)))
+    (is (= [[0 6]] (map (juxt :begin :end) made)))
+    (is (every? #(empty? (:metadata %)) made))))

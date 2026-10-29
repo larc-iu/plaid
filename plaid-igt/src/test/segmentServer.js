@@ -31,7 +31,9 @@
 //
 // - A text write that leaves a partitioning layer that held a token with none
 //   over a body with text makes one token over the whole body, as the core
-//   does, named in its reshape with its layer and text. A sentence a gap
+//   does, named in its reshape with its layer and text. So does a request
+//   that saved a text and ends with words under a sentence layer with no
+//   token (`madeAtEnd`). A sentence a gap
 //   covers whole goes unless the gap is exactly its text (R45, Q1).
 //
 // `other` writes as another user, with an entry in the audit log naming the
@@ -211,6 +213,23 @@ function madePartitions(before, raw, textId, mint) {
     });
 }
 
+// The end of a request that saved text `textId`: a sentence layer with no
+// token over a body with text, while words or morphemes stand under it, gets
+// one sentence over the whole body, as the core makes it at the end of the
+// transaction (FX-R3, `finish-partitions!`), so a batch that makes the
+// sentences after its edit makes them itself. Returned as reshape entries.
+function madeAtEnd(raw, textId, mint) {
+  const len = [...(textOf(raw).body ?? '')].length;
+  const info = getIgtLayerInfo(raw);
+  const sentences = info.sentenceTokenLayer;
+  const under = [info.primaryTokenLayer, info.morphemeTokenLayer];
+  if (!len || !sentences || (sentences.tokens || []).length) return [];
+  if (!under.some((l) => (l?.tokens || []).length)) return [];
+  const token = { id: mint(), text: textId, begin: 0, end: len, metadata: {} };
+  sentences.tokens = [token];
+  return [{ ...token, layer: sentences.id }];
+}
+
 // The writes the two tabs send, applied to `raw` in place. Each answers what
 // the server answers.
 // The words the stand-in "Tokenize new text" makes on layer `layerId` of
@@ -250,7 +269,10 @@ const writesOn = (raw, { mint, claim }) => {
       });
     }
   };
+  // The texts whose body the request saved (`madeAtEnd`).
+  const saved = new Set();
   const on = {
+    saved,
     // A document's first text, under the id it names.
     'texts.create': (layerId, documentId, body, tokenEdges, auditMessage, opts = {}) => {
       if (textOf(raw)) throw refused(409, { error: 'The document has a text in this layer.' });
@@ -261,6 +283,7 @@ const writesOn = (raw, { mint, claim }) => {
     },
     'texts.update': (textId, ops, auditMessage, { base, tokenizeLayer } = {}) => {
       checkBase(base);
+      saved.add(textId);
       const before = structuredClone(raw);
       const text = textOf(raw);
       if (typeof ops === 'string') {
@@ -282,6 +305,7 @@ const writesOn = (raw, { mint, claim }) => {
     },
     'texts.edit': (textId, ops, auditMessage, { base, tokenizeLayer } = {}) => {
       checkBase(base);
+      saved.add(textId);
       const before = structuredClone(raw);
       // The side an op was typed on stays with its gap (one gap per op here).
       const gaps = composeTextEdits(textOf(raw).body, ops);
@@ -509,6 +533,14 @@ export function segmentServer(raw) {
           if (i === checkAt && stamp !== version) throw refused(409, { error: VERSION_MISMATCH });
           return { status: 200, body: on[kind](...args) };
         });
+        for (const textId of on.saved) {
+          const made = madeAtEnd(draft, textId, mint);
+          const answer = results.find((r) => r.body?.id === textId && 'digest' in r.body)?.body;
+          if (made.length && answer) {
+            answer.reshape ??= { tokens: [], deleted: {} };
+            answer.reshape.tokens.push(...made);
+          }
+        }
         stored = draft;
         for (const id of idsIn(stored)) everHeld.add(id);
         version += 1;

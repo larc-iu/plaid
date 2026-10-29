@@ -239,14 +239,11 @@ export const documentMutations = {
       // A text whose sentences were never made gets them, one per line.
       await this._client.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body));
       await this._reloadInSend();
-    } else if (
-      plan.sentences.size > 0 &&
-      sentencesAfter.length === 1 &&
-      !plan.sentences.has(sentencesAfter[0].id)
-    ) {
-      // An edit that took every sentence with it leaves the one the server
-      // made over the whole text, which is cut into one sentence per line,
-      // as a new text's are. Each cut keeps the sentence on its left.
+    } else if (sentencesAfter.length === 1 && !plan.sentences.has(sentencesAfter[0].id)) {
+      // An edit that left the text none of its sentences (it took them all,
+      // or they were never made and the edit made words) leaves the one the
+      // server made over the whole text, which is cut into one sentence per
+      // line, as a new text's are. Each cut keeps the sentence on its left.
       const cuts = sentenceSeed(sentenceLayer.id, textId, body)
         .slice(1)
         .map((s) => s.begin)

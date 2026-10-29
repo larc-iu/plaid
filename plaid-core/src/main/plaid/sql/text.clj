@@ -9,7 +9,8 @@
   committed in between. Deleting the tokens a save leaves with no letter
   and refilling the partitions are `plaid.sql.token`'s
   `multi-delete!` and `compensate-partition-layers!`."
-  (:require [plaid.algos.text :as ta]
+  (:require [clojure.string :as str]
+            [plaid.algos.text :as ta]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
@@ -342,8 +343,9 @@
           ;; Never a token outside every token of its parent layer that was
           ;; not so before the save: should a rule above ever leave one, the
           ;; save is refused rather than stored, as the token routes refuse
-          ;; it. A parent layer holding no token (a partition not made yet,
-          ;; which a batch makes after the save) holds no child.
+          ;; it. A parent layer holding no token here (a partition not made
+          ;; yet, which a batch may make after the save) is judged at the end
+          ;; of the transaction instead (`finish-partitions!`).
           _ (let [parent-of (into {} (keep (fn [r] (when-let [p (:parent_token_layer_id r)] [(:id r) p]))) shape)
                   was-out (into #{} (map :token/id) (outside-parents parent-of tokens))
                   partition? (into #{} (keep #(when (= "partitioning" (:overlap_mode %)) (:id %))) shape)
@@ -520,10 +522,82 @@
              (when from
                (token/inherit-preserved! tx id from layer)))
            (compensate-partition-layers! tx (into survivors heads) new-text-length)
+           ;; checked again at the end of the transaction (`finish-partitions!`)
+           (when-let [pending psaw/*pending*]
+             (swap! pending vary-meta update ::saved-texts (fnil conj #{}) eid))
            eid))]
     (cond-> result
       (and (:success result) @op) (assoc :op @op)
       (and (= 409 (:code result)) (= text-changed (:error result))) (assoc :text-changed true))))
+
+(defn finish-partitions!
+  "The end of a transaction that saved a text body (`save!*` names the
+  texts): a partitioning layer of such a text over a body with text that
+  holds no token while a token stands on a layer under it gets one token over
+  the whole body, bare, made in one `layer/apply-constraints` operation per
+  document, so the save's `reshape` names it. A batch that makes the
+  partition itself after the save (a first save that sends its sentences
+  with the edit) leaves nothing to make. Then a token the transaction made on
+  a layer whose parent layer still holds no token is refused (409), as the
+  token routes refuse it. Returns the documents the operations bumped.
+  `batch-id` gives the batch the operations join, the save's, so History
+  shows the save and the token as one step."
+  [tx user batch-id]
+  (reduce
+   (fn [bumped eid]
+     (if-let [row (psc/fetch-by-id tx :texts eid)]
+       (let [n (cp/cp-count (:body row))
+             doc (:document_id row)
+             layers (psc/q tx {:select [:id :name :overlap_mode :parent_token_layer_id]
+                               :from [:token_layers]
+                               :where [:= :text_layer_id (:text_layer_id row)]})
+             parent-of (into {} (keep (fn [r] (when-let [p (:parent_token_layer_id r)] [(:id r) p]))) layers)
+             under? (fn [layer p] (loop [l (parent-of layer)]
+                                    (cond (nil? l) false (= l p) true :else (recur (parent-of l)))))
+             held (into #{} (map :token_layer_id)
+                        (psc/q tx {:select-distinct [:token_layer_id] :from [:tokens] :where [:= :text_id eid]}))
+             make (when (pos? n)
+                    (filterv (fn [{:keys [id overlap_mode]}]
+                               (and (= "partitioning" overlap_mode) (not (held id)) (some #(under? % id) held)))
+                             layers))
+             named (fn [l] (or (some #(when (= l (:id %)) (:name %)) layers) l))
+             result (when (seq make)
+                      (binding [op/*current-batch-id* (batch-id)
+                                psaw/*expected-document-version* nil
+                                psaw/*batch-validated-document-versions* nil
+                                op/*custom-description* nil]
+                        (op/submit-operation*
+                         tx
+                         {:type :layer/apply-constraints
+                          :project (:project_id (psc/q1 tx {:select [:project_id] :from :documents :where [:= :id doc]}))
+                          :document doc
+                          :user user
+                          :skip-lock-check? true
+                          :description (str "Made a token over the whole text on "
+                                            (str/join ", " (map #(str "\"" (:name %) "\"") make)))}
+                         (fn [tx]
+                           (doseq [{:keys [id]} make]
+                             (crud/insert! tx :tokens {:id (psc/new-uuid) :text_id eid :token_layer_id id
+                                                       :document_id doc :begin 0 :end_ n}))
+                           eid))))
+             _ (when (and result (not (:success result)))
+                 (throw (ex-info (str "Making a partition token for text " eid " failed: " (:error result))
+                                 {:code 500})))
+             held (into held (map :id) make)
+             made-here (keep (fn [{:keys [table pre deleted? layer] :as info}]
+                               (when (and (= "tokens" table) (nil? pre) (not deleted?) (= doc (:doc info))
+                                          (parent-of layer) (not (held (parent-of layer))))
+                                 layer))
+                             (vals @psaw/*pending*))]
+         (when-let [l (first made-here)]
+           (throw (ex-info (str "The change would leave a token of layer \"" (named l)
+                                "\" outside every token of layer \"" (named (parent-of l))
+                                "\", which the layer does not allow.")
+                           {:code 409 :id eid :layer l})))
+         (into bumped (:documents result)))
+       bumped))
+   #{}
+   (sort-by str (some-> psaw/*pending* deref meta ::saved-texts))))
 
 (defn update-body
   "Change the textual content of `eid`, reindexing tokens to match.
