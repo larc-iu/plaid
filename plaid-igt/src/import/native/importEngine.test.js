@@ -1894,6 +1894,19 @@ describe('an import that stopped, then resumed or ended as it is', () => {
     },
   );
 
+  it('says an example into a kept document whose word changed was dropped for that (REV-FX-R4-IMP-2 S4)', async () => {
+    const store = makeStore();
+    const [, half] = await stopInSecond(store);
+    const result = await runNativeImport({
+      client: stubClient({ store, edited: new Set([half.id]) }),
+      projectId: 'newp',
+      archive: stoppedArchive(),
+    });
+    // The stub's copy of the kept document holds none of the archive's words.
+    expect(result.warnings).toContain('"Lex": 1 example dropped, its word changed (run)');
+    expect(result.warnings.join(' ')).not.toMatch(/not imported/);
+  });
+
   it('remakes a half-made document nobody wrote to after the stop (R4-2)', async () => {
     const store = makeStore();
     const [, half] = await stopInSecond(store);

@@ -1348,11 +1348,13 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       if (cited.has(doc.data?.id)) {
         // What the run that finished it recorded, or else what its tokens are.
         const recorded = plan.exampleTokens?.[doc.data.id];
-        const tokenIdMap =
-          recorded?.document === existing.id
-            ? new Map(Object.entries(recorded.tokens || {}))
-            : await rebuildTokenMap({ client, docId: existing.id, docData: doc.data, targets });
-        docMaps.set(doc.data.id, { docId: existing.id, tokenIdMap });
+        const recordedHere = recorded?.document === existing.id;
+        const tokenIdMap = recordedHere
+          ? new Map(Object.entries(recorded.tokens || {}))
+          : await rebuildTokenMap({ client, docId: existing.id, docData: doc.data, targets });
+        // A map rebuilt from what the document holds now: a token missing
+        // from it is a word that changed there, not one the archive lacks.
+        docMaps.set(doc.data.id, { docId: existing.id, tokenIdMap, rebuilt: !recordedHere });
       }
       continue;
     }
@@ -1837,6 +1839,9 @@ export function planVocabRelink(
   const entryId = (id) => itemIdMap.get(id) ?? (madeItems.has(id) ? id : null);
   const out = [];
   const dropped = [];
+  // Examples into a document whose word at that place is no longer the
+  // archive's (somebody edited it), said apart from what was never imported.
+  const wordChanged = [];
   for (const it of vocabData.items || []) {
     const newId = itemIdMap.get(it.id);
     const meta = it.metadata;
@@ -1873,6 +1878,7 @@ export function planVocabRelink(
         const doc = docMaps?.get(ex.document);
         const token = doc?.tokenIdMap.get(ex.token);
         if (doc && token) kept.push({ ...ex, document: doc.docId, token });
+        else if (doc?.rebuilt) wordChanged.push(it.form);
         else if (!doc && madeDocs.has(ex.document)) kept.push(ex);
         else dropped.push(`${it.form}: example`);
       }
@@ -1905,7 +1911,7 @@ export function planVocabRelink(
     );
     if (patch.length) out.push({ id: newId, metadata: patch });
   }
-  return { patches: out, dropped };
+  return { patches: out, dropped, wordChanged };
 }
 
 async function relinkVocabStructure({
@@ -1919,7 +1925,14 @@ async function relinkVocabStructure({
   warnings,
   shouldStop,
 }) {
-  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap, gone, live);
+  const { patches, dropped, wordChanged } = planVocabRelink(
+    vocabData,
+    itemIdMap,
+    docMaps,
+    docIdMap,
+    gone,
+    live,
+  );
   // One bulk update per chunk, not a batch of one write per entry: a batch
   // re-dispatches the whole REST stack per op inside the held write lock, and an
   // archive's lexicon has as many of these as it has cross-references.
@@ -1932,5 +1945,10 @@ async function relinkVocabStructure({
       `"${vocabData.name}": ${countOf(dropped.length, 'reference')} pointed at something not imported and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
     );
   }
-  return dropped.length;
+  if (wordChanged.length) {
+    warnings.push(
+      `"${vocabData.name}": ${countOf(wordChanged.length, 'example')} dropped, ${wordChanged.length === 1 ? 'its' : 'their'} word changed (${wordChanged.slice(0, 5).join('; ')}${wordChanged.length > 5 ? '; …' : ''})`,
+    );
+  }
+  return dropped.length + wordChanged.length;
 }
