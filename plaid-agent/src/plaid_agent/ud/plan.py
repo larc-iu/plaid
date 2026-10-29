@@ -172,13 +172,14 @@ def _apply_set_span(ctx: Context, op) -> int:
         if value == '':
             return 0  # a stand-in holds nothing to clear
         token = _word(ctx, op, op['token_id'])
-        made = ctx.creating.get((op['layer_id'], token))
-        if made is not None:
-            # The lemma the word was just made with takes the value.
-            ctx.b.update('spans', made, value=value, metadata=metadata_ops(ctx.restamp()))
+        lemma = ctx.lemma_at[token]
+        if ctx.creating.get((op['layer_id'], token)) == lemma:
+            # The lemma the word was just made with takes the value. Any
+            # other layer gets a span of its own per write: a word holds one
+            # FEATS span per feature.
+            ctx.b.update('spans', lemma, value=value, metadata=metadata_ops(ctx.restamp()))
         else:
-            made = ctx.creating[(op['layer_id'], token)] = ctx.b.new_id()
-            ctx.b.add(lambda batch, o=op, v=value, i=made: batch.spans.create(
+            ctx.b.add(lambda batch, o=op, v=value, i=ctx.b.new_id(): batch.spans.create(
                 o['layer_id'], [token], v, ctx.stamp(), id=i))
         return 1
     if span_id and value == '' and op.get('field') == 'lemma':

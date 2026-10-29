@@ -27,12 +27,13 @@ import tempfile
 
 import pytest
 
+from live import Seeded, live_client, seed  # noqa: F401 - fixture
 from plaid_agent.ud.plan import execute_plan
-from plaid_agent.ud.project import load_project, parse_document
+from plaid_agent.ud.project import load_document, load_project, parse_document
 from plaid_agent.ud.toolkit import call_tool
 from plaid_agent.ud.tools import Workspace
 from test_enhanced_mirror import _camel, _node
-from ud_fixtures import PID, SENT_LAYER, TOK_LAYER, WORD_LAYER, document_raw, project_raw, ud_client
+from ud_fixtures import DEPREL, LEMMA, PID, SENT_LAYER, TOK_LAYER, WORD_LAYER, document_raw, project_raw, ud_client
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'ud_rows_mirror.mjs')
@@ -191,6 +192,26 @@ def test_a_lemma_planned_on_a_stand_in_is_the_lemma_it_is_made_with():
     assert (update['id'], update['value']) == (lemma, 'marea')
 
 
+def test_two_features_on_a_stand_in_are_each_written():
+    """Each feature is a span of its own: two planned on one stand-in make
+    two spans, and the second does not take over the first. Only a lemma is
+    the span the word is made with (R2-UD-1)."""
+    ws = _bare_ws()
+    got = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w4'], 'field': 'features',
+                                      'value': 'Gender=Masc|Number=Sing'})
+    assert got.startswith('Planned'), got
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    calls = [c for batch in ws.client.batches for c in batch]
+    word = next(p for k, p in calls if k == 'tokens.create')['kwargs']['id']
+    feats = {p['kwargs']['id']: p['args'][2] for k, p in calls
+             if k == 'spans.create' and p['args'][:2] == ('u-feats', [word])}
+    for k, p in calls:
+        for u in (p if k == 'spans.bulk_update' else ()):
+            if u['id'] in feats and 'value' in u:
+                feats[u['id']] = u['value']
+    assert sorted(feats.values()) == ['Gender=Masc', 'Number=Sing'], feats
+
+
 def test_reads_on_a_stand_in_plan_nothing():
     ws = _bare_ws()
     for name, args in (('del_relation', {'refs': ['s1.w4']}),
@@ -255,3 +276,62 @@ def test_a_merge_takes_in_the_sentence_with_no_words_between():
 
     apply_merge_sentences(merge, B(), None)
     assert batch.merges == [('us-1', 'us-gap'), ('us-1', 'us-2')]
+
+
+# --- in a real core ----------------------------------------------------------------
+
+def _partes_bare():
+    """test_ud_split_token's document with "Ella" (s1.w1) left without a UD
+    word, as a token another app made stands."""
+    from test_ud_split_token import _doc
+    raw = _doc()
+    words = raw['text_layers'][0]['token_layers'][2]
+    words['tokens'] = [t for t in words['tokens'] if t['id'] != 'w1']
+    for sl in words['span_layers']:
+        sl['spans'] = [sp for sp in sl['spans'] if 'w1' not in sp['tokens']]
+        for rl in sl.get('relation_layers') or []:
+            rl['relations'] = [r for r in rl['relations'] if 'lw1' not in (r['source'], r['target'])]
+    return raw
+
+
+@pytest.fixture
+def partes_bare(live_client):
+    raw = project_raw()
+    words = raw['text_layers'][0]['token_layers'][2]
+    words['config'] = {'plaid': {'role': 'morpheme'}}
+    s = seed(live_client, raw, {'sd1': _partes_bare()}, {}, name='ud-agent stand-in features test')
+    lemma = next(sl for sl in words['span_layers'] if sl['id'] == LEMMA)
+    doc = _partes_bare()
+    with live_client.batched() as b:
+        b.token_layers.set_config(s.ids[WORD_LAYER], 'plaid', 'role', 'syntactic-word')
+        b.token_layers.set_constraints(s.ids[WORD_LAYER], 'ud', [{'type': 'coextensive'}])
+        for rl in lemma['relation_layers']:
+            rid = s._mint(rl['id'])
+            b.relation_layers.create(s.ids[LEMMA], rl['name'], id=rid)
+            Seeded._configs(b.relation_layers, rid, rl.get('config'))
+        rels = doc['text_layers'][0]['token_layers'][2]['span_layers'][1]['relation_layers'][0]['relations']
+        for r in rels:
+            b.relations.create(s.ids[DEPREL], s.ids[r['source']], s.ids[r['target']], r['value'],
+                               id=s._mint(r['id']))
+    yield s
+    s.delete()
+
+
+def test_two_features_and_a_lemma_on_a_stand_in_all_land(partes_bare):
+    """In a real core: the card's two features and its lemma are what the
+    made word holds after approval (R2-UD-1)."""
+    s = partes_bare
+    project = load_project(s.client, s.project_id)
+    ws = Workspace(s.client, project)
+    out = call_tool(ws, 'read_document', {'document': 'Partes'})
+    assert '1\tElla\t_\t' in out, out[:600]
+    for name, args in (('set_field', {'refs': ['s1.w1'], 'field': 'features', 'value': 'Number=Sing|Person=3'}),
+                       ('set_field', {'refs': ['s1.w1'], 'field': 'lemma', 'value': 'él'})):
+        got = call_tool(ws, name, {'document': 'Partes', **args})
+        assert got.startswith('Planned'), got
+    payload = ws.plan_payload()
+    assert [c['label'] for c in payload['changes']] == ['Number=Sing', 'Person=3', 'lemma = "él"']
+    execute_plan(s.client, copy.deepcopy(payload['ops']), source='test', label='l', project=project)
+    w = load_document(s.client, project, s.ids['sd1']).sentences[0].words[0]
+    assert not w.virtual
+    assert (w.value('features'), w.value('lemma')) == ('Number=Sing|Person=3', 'él')
