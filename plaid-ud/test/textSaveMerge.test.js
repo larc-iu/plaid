@@ -651,3 +651,64 @@ test('a save takes the edits typed, never a whole new body, which would delete t
     { type: 'replace', index: 13, length: 1, value: 'i' },
   ]);
 });
+
+// An edit over every sentence (select all and type) leaves the one sentence
+// the server made over the new text. It is cut as Tokenize cuts a text with
+// no sentence, a sentence per run of lines, so Tokenize gives what it gave
+// when such an edit left the text with none (FX-R3).
+const madeSentenceSetup = () => {
+  const made = setup();
+  const { doc } = made;
+  const old = doc.layerInfo.sentenceTokenLayer.tokens.map((t) => t.id);
+  const oldTokens = doc.layerInfo.textLayer.tokenLayers.flatMap((l) =>
+    (l.tokens || []).map((t) => t.id),
+  );
+  const edit = doc._client.texts.edit;
+  doc._client.texts.edit = async (...args) => {
+    const answer = await edit(...args);
+    const stillThere = answer.body === made.base;
+    return {
+      ...answer,
+      reshape: {
+        tokens: stillThere
+          ? []
+          : [
+              {
+                id: 'sent-made',
+                layer: 'sentence-layer',
+                text: 'text-1',
+                begin: 0,
+                end: [...answer.body].length,
+                metadata: {},
+              },
+            ],
+        spans: [],
+        vocabLinks: [],
+        deleted: { tokens: stillThere ? [] : oldTokens, spans: [], relations: [], vocabLinks: [] },
+      },
+    };
+  };
+  const splits = [];
+  doc._client.batched = async (fn) => fn({ tokens: { split: (...a) => splits.push(a) } });
+  return { ...made, old, splits };
+};
+
+test('a save that took every sentence cuts the one the server made, a sentence per run of lines', async () => {
+  const { doc, base, splits, server } = madeSentenceSetup();
+  assert.equal(await doc.saveText(edited(base, 'xy zw\n\nq r\ns')), true);
+  assert.deepEqual(
+    splits.map((a) => a.slice(0, 2)),
+    [
+      ['sent-made', 11],
+      ['sent-made', 7],
+    ],
+  );
+  // read again after the cut
+  assert.ok(server.reads >= 1);
+});
+
+test('a save that took every sentence of a one-line text cuts nothing', async () => {
+  const { doc, base, splits } = madeSentenceSetup();
+  assert.equal(await doc.saveText(edited(base, 'xy zw')), true);
+  assert.deepEqual(splits, []);
+});

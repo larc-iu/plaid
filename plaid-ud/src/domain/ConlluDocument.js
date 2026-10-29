@@ -248,6 +248,8 @@ export class ConlluDocument extends DocumentModel {
       onStored?.(body, null);
       return;
     }
+    // The sentences before the edit, read at the first send.
+    plan.sentences ??= new Set((this.layerInfo.sentenceTokenLayer?.tokens || []).map((s) => s.id));
     // Whether the request last sent went under keys it was sent with before,
     // so its answer may be the first send's (a lost answer goes to the queue,
     // which runs this again with the plan as it is).
@@ -279,6 +281,7 @@ export class ConlluDocument extends DocumentModel {
     });
     if ('stored' in result || result.nothing) {
       const now = 'stored' in result ? result.stored : this._storedText(text.id);
+      await this._cutMadeSentence(text.id, plan.sentences);
       onStored?.(now.body, now.digest);
       return;
     }
@@ -302,8 +305,29 @@ export class ConlluDocument extends DocumentModel {
     } else {
       await this._reloadInSend();
     }
+    await this._cutMadeSentence(text.id, plan.sentences);
     const now = this._storedText(text.id);
     onStored?.(now.body, now.digest);
+  }
+
+  // An edit that took every sentence with it leaves the one sentence the
+  // server made over the whole text. It is cut as Tokenize cuts a text with
+  // no sentence, one per run of lines (newlineSentenceRanges), in one batch.
+  // Each cut keeps the sentence on its left. `before` is the sentences'
+  // ids before the edit.
+  async _cutMadeSentence(textId, before) {
+    const sentences = this.layerInfo.sentenceTokenLayer?.tokens || [];
+    if (!before?.size || sentences.length !== 1 || before.has(sentences[0].id)) return;
+    const cuts = newlineSentenceRanges(this._storedText(textId).body)
+      .slice(1)
+      .map(([begin]) => begin)
+      .reverse();
+    if (!cuts.length) return;
+    const id = sentences[0].id;
+    await this._client.batched(async (b) => {
+      for (const at of cuts) b.tokens.split(id, at);
+    });
+    await this._reloadInSend();
   }
 
   // Makes `plan` (see saveText) ready to send on the text as last read, by
