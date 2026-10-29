@@ -410,6 +410,135 @@ describe('a pick from the chip', () => {
   });
 });
 
+describe('Alt+Down then Enter (R55, REV-FX-R55)', () => {
+  // A tagset the senses' glosses pass, so a governed cell's rows keep them.
+  const OPEN = { mode: 'suggest', values: [{ value: 'DEF' }, { value: 'PL' }] };
+  const active = () => document.querySelector('.igt-alts__item.is-active');
+  // Keyboard arrival: the cell is focused by the grid, not clicked. The grid
+  // moves by layout, so the morpheme gloss cells are laid out in one row.
+  const arrive = async (from, k, init = {}) => {
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const m = /^ma:m-(\d+):Gloss$/.exec(this.dataset?.cellKey ?? '');
+      if (!m) return real.call(this);
+      const left = Number(m[1]) * 100;
+      return {
+        left,
+        right: left + 80,
+        top: 100,
+        bottom: 120,
+        width: 80,
+        height: 20,
+        x: left,
+        y: 100,
+      };
+    });
+    focus(cell(from));
+    key(cell(from), k, init);
+    await settle(2);
+    vi.restoreAllMocks();
+    return document.activeElement;
+  };
+
+  for (const [how, from, k, init, target, expected] of [
+    ['Enter', 'ma:m-3:Gloss', 'Enter', {}, 'ma:m-4:Gloss', ['feline', 'c1', 3]],
+    ['Tab', 'ma:m-3:Gloss', 'Tab', {}, 'ma:m-4:Gloss', ['feline', 'c1', 3]],
+    ['Shift+Enter', 'ma:m-4:Gloss', 'Enter', { shiftKey: true }, 'ma:m-3:Gloss', ['DEF', 't', 2]],
+  ]) {
+    it(`takes the highlighted row on a governed cell reached by ${how}, where the list is already open`, async () => {
+      const { doc } = mount({ tagset: OPEN });
+      await settle(4);
+      const el = await arrive(from, k, init);
+      expect(el?.dataset.cellKey).toBe(target);
+      // The list opened on arrival.
+      expect(document.querySelector('.igt-alts .igt-pair')).not.toBeNull();
+      key(el, 'ArrowDown', { altKey: true });
+      key(el, 'Enter');
+      await settle(6);
+      const [value, item, w] = expected;
+      expect(morph(doc, w).annotations.Gloss?.value).toBe(value);
+      expect(morph(doc, w).vocabItem?.id).toBe(item);
+    });
+  }
+
+  it('takes the highlighted row on a governed cell reached by a click', async () => {
+    const { doc } = mount({ tagset: OPEN });
+    await settle(4);
+    const el = cell('ma:m-4:Gloss');
+    focus(el);
+    key(el, 'ArrowDown', { altKey: true });
+    key(el, 'Enter');
+    await settle(6);
+    expect(morph(doc, 3).annotations.Gloss?.value).toBe('feline');
+    expect(morph(doc, 3).vocabItem?.id).toBe('c1');
+  });
+
+  for (const tagset of [null, OPEN]) {
+    const where = tagset ? 'a governed cell' : 'a cell';
+    it(`keeps what is typed after Alt+Down on ${where}, a row's prefix or a row itself`, async () => {
+      const { doc, client } = mount({ tagset });
+      await settle(4);
+      const el = cell('ma:m-4:Gloss');
+      focus(el);
+      key(el, 'ArrowDown', { altKey: true });
+      type(el, 'fel');
+      key(el, 'Enter');
+      await settle(6);
+      expect(morph(doc, 3).annotations.Gloss?.value).toBe('fel');
+      expect(morph(doc, 3).vocabItem ?? null).toBeNull();
+      // The other sense's gloss typed in full changes the gloss only.
+      const linked = cell('ma:m-2:Gloss');
+      focus(linked);
+      key(linked, 'ArrowDown', { altKey: true });
+      type(linked, 'jazzman');
+      key(linked, 'Enter');
+      await settle(6);
+      expect(morph(doc).annotations.Gloss.value).toBe('jazzman');
+      expect(morph(doc).vocabItem.id).toBe('c1');
+      expect(kinds(client).some((k) => k.startsWith('vocabLinks'))).toBe(false);
+    });
+  }
+
+  it('gives Enter back to the list once an arrow moves in it after typing', async () => {
+    const { doc } = mount();
+    await settle(4);
+    const el = cell('ma:m-4:Gloss');
+    focus(el);
+    key(el, 'ArrowDown', { altKey: true });
+    type(el, 'jazz');
+    key(el, 'ArrowDown');
+    key(el, 'ArrowUp');
+    expect(active().querySelector('.igt-pair__value').textContent).toBe('jazzman');
+    key(el, 'Enter');
+    await settle(6);
+    expect(morph(doc, 3).annotations.Gloss?.value).toBe('jazzman');
+    expect(morph(doc, 3).vocabItem?.id).toBe('c2');
+  });
+
+  it('starts on the cell’s own gloss when it has no link, so Enter leaves it as it was', async () => {
+    const { doc, client } = mount();
+    await settle(4);
+    const el = cell('ma:m-4:Gloss');
+    focus(el);
+    type(el, 'PL');
+    key(el, 'Enter');
+    await settle(6);
+    expect(morph(doc, 3).annotations.Gloss.value).toBe('PL');
+    const before = client.calls.length;
+    const again = cell('ma:m-4:Gloss');
+    focus(again);
+    key(again, 'ArrowDown', { altKey: true });
+    expect(active().querySelector('.igt-pair__value').textContent).toBe('PL');
+    key(again, 'Enter');
+    await settle(6);
+    expect(morph(doc, 3).annotations.Gloss.value).toBe('PL');
+    expect(morph(doc, 3).vocabItem ?? null).toBeNull();
+    expect(client.calls.slice(before).filter((c) => /batch|vocabLinks|spans/.test(c.kind))).toEqual(
+      [],
+    );
+  });
+});
+
 describe('a governed gloss cell', () => {
   const TAGS = { mode: 'closed', values: [{ value: 'DEF' }, { value: 'PL' }] };
 

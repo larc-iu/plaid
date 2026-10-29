@@ -187,6 +187,9 @@ export const cells = {
     if (this._alts && this._alts.cellKey === key) {
       this._alts.filter = this._filterTextFor(e.target);
       this._alts.active = 0;
+      // A person's keystroke makes the value theirs: Enter commits what they
+      // typed until an arrow moves in the list again (REV-FX-R55-1).
+      if (!synthetic) this._alts.asked = false;
       this._renderAlts();
     }
   },

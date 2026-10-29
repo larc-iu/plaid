@@ -16,16 +16,29 @@ export const alternatives = {
   // written born-verified with the row's source, exactly like adopting a
   // placeholder guess; the cell keeps focus.
   // `asked`: the person asked for the list (Alt+Down), as opposed to a
-  // governed cell opening it on focus. Moving in a list asks for it too.
-  // Enter and Escape read the difference.
+  // governed cell opening it on focus. Moving in a list asks for it too, and
+  // typing in the cell takes it back (cells.js _onFieldInput), so Enter
+  // commits what was typed. Enter and Escape read the difference.
   _openAlts(el, { asked = false } = {}) {
     const items = this._altsItems(el, '');
     if (!items.length) return;
-    // A pair list starts where the chip's does (pairPicker.js).
-    const active = items[0]?.pair ? this._pairDefaultRow(items) : 0;
+    const active = this._altsStartRow(el, items);
     this._alts = { cellKey: el.dataset.cellKey, active, filter: '', visible: [], asked };
     this._altsPos = this._computeAltsPos(el, items.length);
     this._renderAlts();
+  },
+
+  // The row a list starts on: the one holding what the cell holds (on a pair
+  // list the current pair, its gloss with its link or with none), so Enter
+  // there leaves the cell as it was. Else a pair list starts where the
+  // chip's does (pairPicker.js), and a value list on its first row.
+  _altsStartRow(el, items) {
+    const pair = !!items[0]?.pair;
+    const own = items.findIndex((it) =>
+      pair ? it.current && it.value === el.value : el.value !== '' && it.value === el.value,
+    );
+    if (own >= 0) return own;
+    return pair ? this._pairDefaultRow(items) : 0;
   },
 
   _closeAlts() {
@@ -74,7 +87,10 @@ export const alternatives = {
     const open = !!this._alts && this._alts.cellKey === el.dataset.cellKey;
     if (keys.is('analyze.alternatives', e)) {
       e.preventDefault();
+      // On a list a governed cell opened by itself (a cell reached by Enter,
+      // Shift+Enter or Tab), Alt+Down asks for it all the same.
       if (!open) this._openAlts(el, { asked: true });
+      else this._alts.asked = true;
       return true;
     }
     if (!open) return false;
