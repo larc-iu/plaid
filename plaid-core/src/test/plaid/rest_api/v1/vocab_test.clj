@@ -1423,3 +1423,26 @@
       (assert-ok (get-vocab-item user1-request item))
       (assert-no-content (unlink-vocab-from-project user1-request proj other-vocab))
       (assert-status 403 (get-vocab-item user1-request item)))))
+
+(deftest vocab-delete-only-in-project
+  ;; R58: an unfinished import's Delete removes a vocabulary the import made
+  ;; only when no other project links it, whether or not the person deleting
+  ;; can read that project. Core is the one that knows every link.
+  (let [proj-a (create-test-project admin-request "OnlyInA")
+        proj-b (create-test-project admin-request "OnlyInB")
+        vocab-id (-> (create-vocab-layer admin-request "OnlyInVocab") :body :id)
+        delete-only-in (fn [project-id]
+                         (api-call admin-request {:method :delete
+                                                  :path (str "/api/v1/vocab-layers/" vocab-id
+                                                             "?only-in-project=" project-id)}))]
+    (assert-no-content (link-vocab-to-project admin-request proj-a vocab-id))
+    (assert-no-content (link-vocab-to-project admin-request proj-b vocab-id))
+    (testing "refused while another project links it, and nothing goes"
+      (assert-status 409 (delete-only-in proj-a))
+      (assert-ok (get-vocab-layer admin-request vocab-id)))
+    (testing "deleted once only that project links it"
+      (assert-no-content (unlink-vocab-from-project admin-request proj-b vocab-id))
+      (assert-no-content (delete-only-in proj-a))
+      (assert-not-found (get-vocab-layer admin-request vocab-id)))
+    (assert-no-content (delete-test-project admin-request proj-a))
+    (assert-no-content (delete-test-project admin-request proj-b))))

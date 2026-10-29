@@ -17,7 +17,7 @@ vi.mock('@/components/projects/setup/executeSetup', () => ({
     client.made.add(projectId);
     await onProjectCreated(projectId);
     const vocabId = `v${made.count}`;
-    client.vocabs.set(vocabId, { id: vocabId, name: `Lexicon ${made.count}` });
+    client.vocabs.set(vocabId, { id: vocabId, name: `Lexicon ${made.count}`, config: {} });
     client.links.set(projectId, [vocabId]);
     await onVocabCreated(vocabId);
     return { projectId, failures: [], resources: {} };
@@ -33,6 +33,7 @@ vi.mock('@/utils/feedback', () => ({
 const { useProjectImportRun } = await import('./useProjectImportRun.js');
 const { FinishPending, ImportRunPanel } = await import('@/components/projects/ImportPanels.jsx');
 const { ImportCancelled } = await import('@/import/stamps.js');
+const { notifyWarning } = await import('@/utils/feedback');
 
 // A server holding each project's igt config, its vocabularies and which
 // project links which.
@@ -85,7 +86,26 @@ const serverClient = () => {
         if (!v) throw Object.assign(new Error('Not found'), { status: 404 });
         return v;
       },
-      delete: async (id) => {
+      setConfig: async (id, ns, key, value) => {
+        const v = client.vocabs.get(id);
+        v.config = { ...v.config, [ns]: { ...(v.config[ns] || {}), [key]: value } };
+      },
+      deleteConfig: async (id, ns, key) => {
+        const v = client.vocabs.get(id);
+        const { [key]: _, ...rest } = v.config[ns] || {};
+        v.config = { ...v.config, [ns]: rest };
+      },
+      // As core answers it: with onlyInProject, refused while any other
+      // project links the vocabulary, readable by the caller or not.
+      delete: async (id, _message, { onlyInProject } = {}) => {
+        const elsewhere = [...client.links.entries()].some(
+          ([pid, ids]) => pid !== onlyInProject && ids.includes(id),
+        );
+        if (onlyInProject && elsewhere) {
+          throw Object.assign(new Error('Another project uses this vocabulary.'), {
+            status: 409,
+          });
+        }
         vocabsDeleted.push(id);
         client.vocabs.delete(id);
       },
@@ -163,6 +183,8 @@ describe('a project import that stops', () => {
     const record = client.config.get(id).import;
     expect(record).toMatchObject({ kind: 'CLDF' });
     expect(record.vocabsMade).toHaveLength(1);
+    // R58: the vocabulary it made is marked with it, so it does not open either.
+    expect(client.vocabs.get(record.vocabsMade[0]).config.igt.import).toEqual({ projectId: id });
     expect(view.container.textContent).toContain('Import stopped');
     expect(view.container.textContent).toContain(
       'This import did not finish. Delete it and import again.',
@@ -177,26 +199,46 @@ describe('a project import that stops', () => {
     await view.unmount();
   });
 
-  // REV-FX-R57-2: a vocabulary another project links is kept, and said.
-  it('keeps a vocabulary the import made that another project now links, and says so', async () => {
+  // REV-FX-R57-2-2: core decides, from every project linking it, readable by
+  // the person deleting or not. One another project links stays, and is named.
+  it('keeps a vocabulary the import made that another project links, even one the deleter cannot read', async () => {
     const client = serverClient();
     const { view, read } = await mount(client, stopping);
     await view.step(async () => buttons('Go')[0].click());
     const { id } = read().unfinished;
     const [vocab] = client.config.get(id).import.vocabsMade;
-    client.made.add('other');
-    client.links.set('other', [vocab]);
-    await view.step(async () => buttons('Delete')[0].click());
-    expect(document.body.querySelector('[role="alertdialog"]').textContent).toContain(
-      `“${client.vocabs.get(vocab).name}” stays (used by another project).`,
-    );
-    await typeName(view, 'Half');
-    const confirm = [...document.body.querySelectorAll('[role="alertdialog"] button')].find(
-      (b) => b.textContent.trim() === 'Delete project',
-    );
-    await view.step(async () => confirm.click());
+    // Someone else's project, which projects.list() does not show.
+    client.links.set('someone-elses', [vocab]);
+    notifyWarning.mockClear();
+    await confirmDelete(view, 'Half');
     expect(client.deleted).toEqual([id]);
     expect(client.vocabsDeleted).toEqual([]);
+    expect(client.vocabs.has(vocab)).toBe(true);
+    expect(notifyWarning).toHaveBeenCalledWith(
+      `“${client.vocabs.get(vocab).name}” stays (used by another project, or you do not maintain it).`,
+      'Vocabularies kept',
+    );
+    await view.unmount();
+  });
+
+  // R59: entries the import added to a lexicon the person keeps stay there,
+  // and the screen says how many.
+  it('says how many entries it added to a lexicon the person keeps', async () => {
+    const client = serverClient();
+    client.vocabs.set('kept', { id: 'kept', name: 'Our lexicon', config: {} });
+    const run = async ({ onEntriesMade }) => {
+      await onEntriesMade('kept', 2);
+      await onEntriesMade('kept', 1);
+      throw new ImportCancelled();
+    };
+    const { view } = await mount(client, run);
+    await view.step(async () => buttons('Go')[0].click());
+    await view.step(async () => {});
+    expect(view.container.textContent).toContain(
+      'The import added 3 entries to “Our lexicon” before it stopped. They stay there.',
+    );
+    await confirmDelete(view, 'Half');
+    expect(client.vocabs.has('kept')).toBe(true);
     await view.unmount();
   });
 
@@ -230,6 +272,9 @@ describe('a project import that stops', () => {
     expect(read().stage).toBe('done');
     expect(read().projectIdRef.current).not.toBe(first);
     expect(client.config.get(read().projectIdRef.current).import).toBeUndefined();
+    // The whole run's vocabulary opens: its mark went with the record.
+    const second = `v${read().projectIdRef.current.slice(1)}`;
+    expect(client.vocabs.get(second).config.igt.import).toBeUndefined();
     // Nothing deleted the first: only the person does.
     expect(client.config.get(first).import).toMatchObject({ kind: 'CLDF' });
     await view.unmount();

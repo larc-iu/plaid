@@ -499,6 +499,9 @@ const CONFIG_KEYS = {
     'written by setup on every project, an import runs setup again',
   ),
   'projects igt.import': notData('an import in flight, removed when it finishes'),
+  'vocabLayers igt.import': notData(
+    'a vocabulary an import in flight made, unmarked when the import finishes',
+  ),
   'projects igt.languages': covers(
     'project.languageObject',
     'project.languageMeta',

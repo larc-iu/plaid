@@ -49,6 +49,7 @@ import { readTextFile } from '@ui/lib/textFile.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { readyRecordings } from '@/utils/readyRecordings';
+import { vocabImporting } from '@/domain/igtConfig';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`).
@@ -212,7 +213,12 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       if (!flextext) {
         client.vocabLayers
           .list()
-          .then((all) => setExistingVocabs((all || []).filter((v) => canManageVocabulary(v, user))))
+          .then((all) =>
+            setExistingVocabs(
+              // One an unfinished import made takes no entries (R58).
+              (all || []).filter((v) => canManageVocabulary(v, user) && !vocabImporting(v.config)),
+            ),
+          )
           .catch((err) => console.warn('Could not list vocabularies:', err));
       }
     } catch (e) {
@@ -328,7 +334,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         return vocabs.find((v) => sameName(v.name, vocabName))?.id ?? null;
       },
       requireVocab: flextext ? null : 'The lexicon this import writes into is not on the project.',
-      run: ({ projectId, vocabId, shouldStop, setProgress }) => {
+      run: ({ projectId, vocabId, shouldStop, setProgress, onEntriesMade }) => {
         const totalDocs = filteredBuild.documents.length;
         return runImport({
           operation: fmt.operation,
@@ -340,6 +346,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
           config,
           vocabId,
           shouldStop,
+          onEntriesMade,
           onProgress: (p) => {
             if (p.phase === 'lexicon') {
               setProgress({

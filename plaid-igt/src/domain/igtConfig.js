@@ -342,11 +342,14 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
  * An import writes this on the project it is filling when the project is made
  * and removes it once the whole import has run, so a project whose import was
  * stopped, failed or was closed does not open as if it were complete:
- * `{kind, source, startedAt, vocabsMade}`, `kind` being the format ('FLEx',
- * 'FLEx .flextext', 'CLDF', 'ELAN', 'Plaid IGT archive'), `source` the file it
- * was reading, and `vocabsMade` the ids of the vocabularies the import made,
- * which a Delete of the project deletes with it. Such a project is only
- * deleted, never finished.
+ * `{kind, source, startedAt, vocabsMade, entriesAdded}`, `kind` being the
+ * format ('FLEx', 'FLEx .flextext', 'CLDF', 'ELAN', 'Plaid IGT archive'),
+ * `source` the file it was reading, `vocabsMade` the ids of the vocabularies
+ * the import made (each marked as importing too, see `vocabImporting`), which
+ * a Delete of the project deletes with it when no other project links one,
+ * and `entriesAdded` how many entries it made in each vocabulary it did not
+ * make, `{vocabId: n}`, which stay. Such a project is only deleted, never
+ * finished.
  */
 const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
@@ -369,20 +372,50 @@ export const markImportStarted = async (client, projectId, kind, source) => {
 
 /**
  * Add a vocabulary the import has just made to its `record`, as written
- * before. Answers the new record. Throws when it cannot be written.
+ * before, and mark the vocabulary as importing into `projectId` (R58): until
+ * the whole import has run it does not open, takes no entries and is linked
+ * into no other project. Answers the new record. Throws when a write fails.
  */
 export const recordImportVocab = async (client, projectId, record, vocabId) => {
+  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, IMPORT_KEY, { projectId });
   const next = { ...record, vocabsMade: [...(record.vocabsMade || []), vocabId] };
   await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, next);
   return next;
 };
 
 /**
- * Record that it finished. Says whether the record went, since a project
- * that keeps it does not open.
+ * Count `n` more entries the import made in `vocabId`, a vocabulary it did
+ * not make, on its `record`. Answers the new record. Throws when it cannot
+ * be written.
+ */
+export const recordImportEntries = async (client, projectId, record, vocabId, n) => {
+  const added = record.entriesAdded || {};
+  const next = { ...record, entriesAdded: { ...added, [vocabId]: (added[vocabId] || 0) + n } };
+  await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, next);
+  return next;
+};
+
+/**
+ * Whether a vocabulary's `config` marks it as made by an import that did not
+ * finish (`recordImportVocab`): it does not open, takes no entries and is not
+ * linked into another project.
+ */
+export const vocabImporting = (config) => readIgt(config, IMPORT_KEY) != null;
+
+/**
+ * Record that it finished: the mark comes off every vocabulary the record
+ * names, then the record goes. Says whether it all went, since a project that
+ * keeps its record does not open.
  */
 export const markImportFinished = async (client, projectId) => {
   try {
+    const record = readImportState((await client.projects.get(projectId))?.config);
+    for (const vocabId of record?.vocabsMade ?? []) {
+      const vocab = await client.vocabLayers.get(vocabId);
+      if (vocabImporting(vocab?.config)) {
+        await client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, IMPORT_KEY);
+      }
+    }
     await client.projects.deleteConfig(projectId, IGT_NAMESPACE, IMPORT_KEY);
     return true;
   } catch (err) {

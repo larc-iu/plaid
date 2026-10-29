@@ -1,6 +1,7 @@
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { vocabImporting } from '@/domain/igtConfig';
 
 export const VocabularyStep = ({ data, onDataChange, client }) => {
   const { user } = useAuth();
@@ -19,7 +20,9 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
         isCustom: false, // Existing vocabs from API
         // Setup links the ticked ones at the end, and only a maintainer of a
         // vocabulary may link it, so the others cannot be ticked here.
-        canLink: canManageVocabulary(vocab, user),
+        // One an unfinished import made is linked into no project (R58).
+        canLink: canManageVocabulary(vocab, user) && !vocabImporting(vocab.config),
+        ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
       }));
 
       return { vocabularies: initialVocabs };

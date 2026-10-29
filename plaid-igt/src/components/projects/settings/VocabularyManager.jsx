@@ -16,7 +16,8 @@ import { sameNameIgnoringCase } from '@/domain/nameMatch';
 import { RowControls } from '@/components/shared/RowControls';
 
 // A row the user may not link: an unlinked vocabulary whose row says so
-// (`canLink: false`, set by the screen that loaded it). A linked row is always
+// (`canLink: false`, set by the screen that loaded it, with `lockNote` when
+// the reason is not maintainership). A linked row is always
 // free to unlink, and once unlinked it locks again.
 const isLocked = (vocab) => !vocab.enabled && vocab.canLink === false;
 
@@ -345,7 +346,7 @@ export const VocabularyManager = ({
                         )}
                         {isLocked(record) && (
                           <span className="block text-xs not-italic text-muted-foreground">
-                            Only its maintainers can link it.
+                            {record.lockNote ?? 'Only its maintainers can link it.'}
                           </span>
                         )}
                       </span>

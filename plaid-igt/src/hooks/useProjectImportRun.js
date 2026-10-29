@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react';
 import { executeProjectSetup } from '@/components/projects/setup/executeSetup';
-import { markImportFinished, markImportStarted, recordImportVocab } from '@/domain/igtConfig';
+import {
+  markImportFinished,
+  markImportStarted,
+  recordImportEntries,
+  recordImportVocab,
+} from '@/domain/igtConfig';
 import { finishImport } from '@/domain/importFinish';
 import { ImportCancelled } from '@/import/stamps';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
@@ -32,8 +37,10 @@ import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 //     vocabId:      the lexicon the run writes into: an id, null, or an async
 //                   function of { projectId, setup }
 //     requireVocab: the error to raise when no lexicon could be found
-//     run:          ({ projectId, vocabId, shouldStop, setProgress }) => the
-//                   engine's result, with `imported` and maybe `warnings`
+//     run:          ({ projectId, vocabId, shouldStop, setProgress,
+//                   onEntriesMade }) => the engine's result, with `imported`
+//                   and maybe `warnings`. `onEntriesMade(vocabId, n)` is
+//                   awaited after each chunk of entries the engine makes.
 // How long the run waits before each further try of the record clear, in ms.
 const RETRY_WAITS = [500, 1500, 3000];
 
@@ -100,6 +107,12 @@ export function useProjectImportRun({ client, kind }) {
         vocabId: vocab,
         shouldStop: () => stopRef.current,
         setProgress,
+        // Entries made in a vocabulary this import did not make, counted on
+        // the record as they are made: they stay whatever becomes of the run.
+        onEntriesMade: async (vocabularyId, n) => {
+          if (!n || record.vocabsMade.includes(vocabularyId)) return;
+          record = await recordImportEntries(client, projectId, record, vocabularyId, n);
+        },
       });
       const finished = await finishImport(client, projectId);
       // The import is whole whatever this answers: the clear is tried again,

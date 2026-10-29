@@ -5,6 +5,7 @@ import { notifyError } from '@/utils/feedback';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
+import { vocabImporting } from '@/domain/igtConfig';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -35,7 +36,9 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
         id: vocab.id,
         enabled: linkedVocabIds.includes(vocab.id),
         isCustom: false, // All existing vocabs from API are not custom
-        canLink: canManageVocabulary(vocab, user),
+        // One an unfinished import made is linked into no other project (R58).
+        canLink: canManageVocabulary(vocab, user) && !vocabImporting(vocab.config),
+        ...(vocabImporting(vocab.config) ? { lockNote: 'Import did not finish.' } : {}),
       }));
 
       return { vocabularies };

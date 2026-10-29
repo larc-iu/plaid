@@ -19,6 +19,12 @@ const client = {
     list: vi.fn(async () => [
       { id: 'v1', name: 'Mine', maintainers: ['me@x.org'] },
       { id: 'v2', name: 'Theirs', maintainers: ['other@x.org'] },
+      {
+        id: 'v3',
+        name: 'Half',
+        maintainers: ['me@x.org'],
+        config: { igt: { import: { projectId: 'p9' } } },
+      },
     ]),
   },
 };
@@ -52,6 +58,14 @@ describe('the setup wizard, Vocabularies', () => {
     expect(onDataChange).toHaveBeenCalledTimes(1);
     const sent = onDataChange.mock.calls[0][0].vocabularies;
     expect(sent.filter((v) => v.enabled).map((v) => v.id)).toEqual(['v1']);
+    await view.unmount();
+  });
+
+  // R58: a vocabulary an unfinished import made is linked into no project.
+  it('will not tick a vocabulary an unfinished import made, and says why', async () => {
+    const view = await mount();
+    expect(boxOf(view.container, 'Half').disabled).toBe(true);
+    expect(rowOf(view.container, 'Half').textContent).toContain('Import did not finish.');
     await view.unmount();
   });
 

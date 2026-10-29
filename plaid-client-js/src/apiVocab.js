@@ -181,13 +181,19 @@ export function vocabLayersApi(client) {
         body: bodyOf({ name }),
       }),
     /**
-     * Delete a vocab layer.
+     * Delete a vocab layer. With `onlyInProject`, refused (409) when any
+     * other project links it, including projects the caller cannot read.
      * @param {string} id - The resource ID
      * @param {string} [auditMessage] - Audit message for this write
+     * @param {object} [opts]
+     * @param {string} [opts.onlyInProject] - The one project allowed to link it
      * @returns {Promise<void>}
      */
-    delete: (id, auditMessage) =>
-      client._request("DELETE", `/api/v1/vocab-layers/${id}`, { auditMessage }),
+    delete: (id, auditMessage, { onlyInProject } = {}) =>
+      client._request("DELETE", `/api/v1/vocab-layers/${id}`, {
+        auditMessage,
+        ...(onlyInProject ? { queryParams: { "only-in-project": onlyInProject } } : {}),
+      }),
     /**
      * Get the audit log of a vocabulary: every change to it or to its
      * entries, folded into entries as the document log is. Links are not

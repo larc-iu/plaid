@@ -20,6 +20,9 @@ import {
   hasLanguageIdentity,
   markImportStarted,
   recordImportVocab,
+  recordImportEntries,
+  vocabImporting,
+  markImportFinished,
   readImportState,
   IGNORED_TOKEN_MODES,
   DEFAULT_IGNORED_TOKENS,
@@ -258,7 +261,11 @@ describe('hasLanguageIdentity', () => {
 describe('the import record', () => {
   it('names the format, the file and the vocabularies made, and reads back as written', async () => {
     const written = [];
-    const client = { projects: { setConfig: async (...args) => written.push(args) } };
+    const vocabWritten = [];
+    const client = {
+      projects: { setConfig: async (...args) => written.push(args) },
+      vocabLayers: { setConfig: async (...args) => vocabWritten.push(args) },
+    };
     const record = await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup');
     const [projectId, ns, key, value] = written[0];
     expect([projectId, ns, key]).toEqual(['p1', 'igt', 'import']);
@@ -267,6 +274,33 @@ describe('the import record', () => {
     const next = await recordImportVocab(client, 'p1', record, 'v1');
     expect(written[1][3]).toEqual({ ...record, vocabsMade: ['v1'] });
     expect(readImportState({ igt: { import: next } })).toEqual(next);
+    // R58: the vocabulary is marked with the project it is importing into.
+    expect(vocabWritten).toEqual([['v1', 'igt', 'import', { projectId: 'p1' }]]);
+    expect(vocabImporting({ igt: { import: { projectId: 'p1' } } })).toBe(true);
+    expect(vocabImporting({ igt: {} })).toBe(false);
+    const more = await recordImportEntries(client, 'p1', next, 'kept', 2);
+    expect((await recordImportEntries(client, 'p1', more, 'kept', 3)).entriesAdded).toEqual({
+      kept: 5,
+    });
+  });
+
+  it('takes the mark off every vocabulary the import made before the record goes', async () => {
+    const calls = [];
+    const client = {
+      projects: {
+        get: async () => ({ config: { igt: { import: { kind: 'CLDF', vocabsMade: ['v1'] } } } }),
+        deleteConfig: async (...a) => calls.push(['project', ...a]),
+      },
+      vocabLayers: {
+        get: async () => ({ config: { igt: { import: { projectId: 'p1' } } } }),
+        deleteConfig: async (...a) => calls.push(['vocab', ...a]),
+      },
+    };
+    expect(await markImportFinished(client, 'p1')).toBe(true);
+    expect(calls).toEqual([
+      ['vocab', 'v1', 'igt', 'import'],
+      ['project', 'p1', 'igt', 'import'],
+    ]);
   });
 
   it('fails the import when it cannot be written', async () => {

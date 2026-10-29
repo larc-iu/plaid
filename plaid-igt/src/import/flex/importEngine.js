@@ -297,6 +297,8 @@ export async function importLexicon({
   variants = false,
   onProgress,
   shouldStop,
+  // Told how many entries each chunk made, once they are made.
+  onEntriesMade = null,
 }) {
   const existing = await client.vocabLayers.get(vocabId, true);
   const senseToItem = itemsBySourceKey(existing.items, 'flexSense');
@@ -457,6 +459,9 @@ export async function importLexicon({
     entries: pending,
     known: senseToItem,
     check,
+    onChunk: onEntriesMade
+      ? (_chunk, ids) => onEntriesMade(vocabId, ids.filter(Boolean).length)
+      : undefined,
     onProgress: (done, total) => onProgress?.({ phase: 'lexicon', done, total }),
   });
 
@@ -852,6 +857,7 @@ async function runImportImpl({
   vocabId,
   onProgress,
   shouldStop,
+  onEntriesMade = null,
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, config);
@@ -881,6 +887,7 @@ async function runImportImpl({
         variants: config.variants === true,
         onProgress,
         shouldStop,
+        onEntriesMade,
       });
 
   const results = { imported: 0, warnings: [] };

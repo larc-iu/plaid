@@ -110,3 +110,32 @@ describe('the vocabulary screen when the reader walks to another vocabulary', ()
     await view.unmount();
   });
 });
+
+// R58: a vocabulary an unfinished import made does not open until that import
+// is over. It says so, and leads to the project, where Delete is.
+describe('a vocabulary an unfinished import made', () => {
+  it('opens on that alone, with the way to its project', async () => {
+    auth.client = {
+      vocabLayers: {
+        get: async () => ({
+          id: 'A',
+          name: 'Half lexicon',
+          config: { igt: { import: { projectId: 'P1' } } },
+          maintainers: ['u'],
+        }),
+      },
+      projects: { list: async () => [] },
+    };
+    const view = await renderComponent(app);
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(view.container.textContent).toContain(
+      'This vocabulary belongs to an import that did not finish.',
+    );
+    expect(heading(view.container)).not.toBe('Half lexicon');
+    const link = [...view.container.querySelectorAll('a')].find(
+      (a) => a.textContent === 'Open its project',
+    );
+    expect(link.getAttribute('href')).toBe('/projects/P1');
+    await view.unmount();
+  });
+});

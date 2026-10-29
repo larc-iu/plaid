@@ -512,13 +512,16 @@ class VocabLayersResource(_ConfigMethods, _Resource):
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def delete(self, id: str, audit_message=None) -> Any:
-        """Delete a vocab layer.
+    def delete(self, id: str, audit_message=None, *, only_in_project: str | None = None) -> Any:
+        """Delete a vocab layer. With ``only_in_project``, refused (409) when any
+        other project links it, including projects the caller cannot read.
 
         Args:
             id: The resource ID
+            only_in_project: The one project allowed to link it
         """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message,
+                             query_params={'only-in-project': only_in_project})
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,

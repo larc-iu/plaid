@@ -11,6 +11,7 @@ import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { textIncludes } from '@ui/domain/collation.js';
+import { vocabImporting } from '@/domain/igtConfig';
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');
@@ -89,10 +90,13 @@ export const VocabularyList = () => {
       fill: true,
       sort: (v) => v.name?.toLowerCase() ?? '',
       cell: (v) => (
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <div className="truncate font-medium" title={v.name}>
             {v.name}
           </div>
+          {vocabImporting(v.config) && (
+            <span className="shrink-0 text-xs text-muted-foreground">Import did not finish</span>
+          )}
         </div>
       ),
     },

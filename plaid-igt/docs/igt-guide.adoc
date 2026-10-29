@@ -894,8 +894,10 @@ A file imported before says so on its row, and you choose whether to keep that d
 
 An import that stops before it finishes, whether you stop it, it fails, or the tab is closed, leaves a project that does not open.
 Wherever it would open, it reads **This import did not finish. Delete it and import again.**, with **Delete** for a project maintainer.
+A vocabulary the import made does not open either, and cannot be linked into another project, until the import is deleted.
 **Delete** asks for the project's name, and deletes the project and the vocabularies the import made for it.
-A vocabulary another project uses by then stays, and so does a lexicon you chose to import into.
+A vocabulary another project uses stays, and so does a lexicon you chose to import into.
+Entries the import added to such a lexicon stay there, and the screen says how many.
 Nothing deletes it on its own, since the import may still be running in another tab.
 An import that finished but could not be marked done says so on the import screen, with **Try again**.
 

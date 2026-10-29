@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
@@ -6,37 +6,39 @@ import { Button } from '@ui/components/ui/button';
 import { DeleteProjectDialog } from '@ui/components/shared/DeleteProjectDialog.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { statusOf } from '@ui/lib/errors.js';
-import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
+import { countOf } from '@ui/lib/plural.js';
+import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { readImportState } from '@/domain/igtConfig';
 
 const quoted = (vocabs) => vocabs.map((v) => `“${v.name}”`).join(', ');
-const kept = (vocabs) =>
-  `${quoted(vocabs)} ${vocabs.length === 1 ? 'stays' : 'stay'} (used by another project).`;
+
+// A vocabulary's name, or null when it cannot be read.
+const nameOf = async (client, id) => {
+  try {
+    return (await client.vocabLayers.get(id))?.name ?? null;
+  } catch {
+    return null;
+  }
+};
 
 /**
- * The vocabularies the import made (the record's `vocabsMade`), split into
- * those Delete takes and those another project links, which stay. A
- * vocabulary the person chose that was there before is never on the record.
+ * What the import record says the import left in vocabularies: the ones it
+ * made (`made`, which Delete takes unless another project links one) and the
+ * entries it added to a lexicon the person keeps (`added`, `[{name, n}]`,
+ * which stay).
  */
-async function vocabsOf(client, projectId) {
-  const project = await client.projects.get(projectId);
-  const made = readImportState(project?.config)?.vocabsMade ?? [];
-  if (!made.length) return { remove: [], keep: [] };
-  const others = (await client.projects.list()).filter((p) => p.id !== projectId);
-  const linkedElsewhere = new Set(others.flatMap((p) => (p.vocabs || []).map((v) => v.id)));
-  const remove = [];
-  const keep = [];
-  for (const id of made) {
-    let vocab;
-    try {
-      vocab = await client.vocabLayers.get(id);
-    } catch (err) {
-      if (statusOf(err) === 404) continue;
-      throw err;
-    }
-    (linkedElsewhere.has(id) ? keep : remove).push({ id, name: vocab?.name ?? id });
+async function whatItLeft(client, project) {
+  const config = project.config ?? (await client.projects.get(project.id))?.config;
+  const record = readImportState(config) ?? {};
+  const made = [];
+  for (const id of record.vocabsMade ?? []) {
+    made.push({ id, name: (await nameOf(client, id)) ?? 'an unnamed vocabulary' });
   }
-  return { remove, keep };
+  const added = [];
+  for (const [id, n] of Object.entries(record.entriesAdded ?? {})) {
+    if (n > 0) added.push({ name: (await nameOf(client, id)) ?? 'a lexicon', n });
+  }
+  return { made, added };
 }
 
 /**
@@ -44,61 +46,63 @@ async function vocabsOf(client, projectId) {
  * (config.igt.import, see `readImportState`): its page, a link to one of its
  * documents or another of its screens, and the import page once its run
  * stops. Such a project is only ever deleted, by a maintainer and only on
- * request: an import may still be running in another tab. Delete takes the
- * vocabularies the import made, unless another project links one, which
- * stays and is named.
+ * request: an import may still be running in another tab.
  *
- * `project` is `{id, name}`. `onDeleted` runs once the project is gone.
+ * Delete takes the vocabularies the import made (R58), each only when no
+ * project but this one links it. Core decides that, from every project
+ * linking it whether or not the person can read it, and a vocabulary it keeps
+ * is named. Entries the import added to a lexicon the person keeps stay, and
+ * the screen says how many (R59).
+ *
+ * `project` is `{id, name}`, with `config` when the caller has it.
+ * `onDeleted` runs once the project is gone.
  */
 export const UnfinishedImport = ({ client, project, canManage, onDeleted }) => {
   const [open, setOpen] = useState(false);
-  const [vocabs, setVocabs] = useState({ remove: [], keep: [] });
+  const [left, setLeft] = useState({ made: [], added: [] });
 
-  const ask = async () => {
-    try {
-      setVocabs(await vocabsOf(client, project.id));
-      setOpen(true);
-    } catch (err) {
-      console.error('Could not read what the import made:', err);
-      notifyError(humanizeError(err), 'Failed to delete project');
-    }
-  };
+  useEffect(() => {
+    let alive = true;
+    whatItLeft(client, project)
+      .then((l) => alive && setLeft(l))
+      .catch((err) => console.error('Could not read what the import made:', err));
+    return () => {
+      alive = false;
+    };
+  }, [client, project]);
 
   const remove = async () => {
     await client.projects.delete(project.id);
-    const failed = [];
-    for (const v of vocabs.remove) {
+    const kept = [];
+    for (const v of left.made) {
       try {
-        await client.vocabLayers.delete(v.id);
+        await client.vocabLayers.delete(v.id, undefined, { onlyInProject: project.id });
       } catch (err) {
+        if (statusOf(err) === 404) continue;
         console.error('Could not delete the vocabulary:', err);
-        failed.push(v);
+        kept.push(v);
       }
     }
     notifySuccess(`Deleted “${project.name ?? 'the project'}”`);
-    if (failed.length) {
-      notifyWarning(`${quoted(failed)} could not be deleted.`, 'Vocabularies kept');
-    }
-    if (vocabs.keep.length) {
-      notifyWarning(kept(vocabs.keep), 'Vocabularies kept');
+    if (kept.length) {
+      notifyWarning(
+        `${quoted(kept)} ${kept.length === 1 ? 'stays' : 'stay'} (used by another project, or you do not maintain it).`,
+        'Vocabularies kept',
+      );
     }
     setOpen(false);
     onDeleted?.();
   };
 
-  const name = (
-    <strong className="font-text text-foreground" dir="auto">
-      {project.name}
-    </strong>
-  );
   const consequence = (
     <>
-      {name}
-      {vocabs.remove.length
-        ? ` and the vocabularies its import made (${quoted(vocabs.remove)}) are deleted.`
+      <strong className="font-text text-foreground" dir="auto">
+        {project.name}
+      </strong>
+      {left.made.length
+        ? ` and the vocabularies its import made (${quoted(left.made)}) are deleted, a vocabulary another project uses excepted.`
         : ' is deleted.'}{' '}
       This cannot be undone.
-      {vocabs.keep.length ? ` ${kept(vocabs.keep)}` : ''}
     </>
   );
 
@@ -108,8 +112,19 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted }) => {
         This import did not finish.{' '}
         {canManage ? 'Delete it and import again.' : 'A project maintainer can delete it.'}
       </p>
+      {left.added.map((a) => (
+        <p key={a.name}>
+          The import added {countOf(a.n, 'entry', 'entries')} to “{a.name}” before it stopped. They
+          stay there.
+        </p>
+      ))}
       {canManage && (
-        <Button variant="outline" size="sm" className={DELETE_BUTTON_CLASS} onClick={ask}>
+        <Button
+          variant="outline"
+          size="sm"
+          className={DELETE_BUTTON_CLASS}
+          onClick={() => setOpen(true)}
+        >
           Delete
         </Button>
       )}

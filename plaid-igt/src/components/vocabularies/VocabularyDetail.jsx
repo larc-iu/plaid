@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   BookText,
@@ -24,7 +24,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@ui/components/ui/select';
-import { readVocabFields, IGT_NAMESPACE } from '@/domain/igtConfig';
+import { readVocabFields, IGT_NAMESPACE, vocabImporting } from '@/domain/igtConfig';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -1108,6 +1108,22 @@ export const VocabularyDetail = () => {
     return (
       <Notice tone="error">
         <p className="font-medium">Vocabulary not found</p>
+      </Notice>
+    );
+  }
+
+  // R58: made by an import that did not finish, it does not open until that
+  // import is deleted (or, never, finished). Its project offers the Delete.
+  if (!isNewVocabulary && vocabImporting(vocabulary?.config)) {
+    const projectId = vocabulary.config[IGT_NAMESPACE].import?.projectId;
+    return (
+      <Notice role="status" icon={null}>
+        <p>This vocabulary belongs to an import that did not finish.</p>
+        {projectId && (
+          <Link className="underline" to={`/projects/${projectId}`}>
+            Open its project
+          </Link>
+        )}
       </Notice>
     );
   }

@@ -141,13 +141,17 @@
                              {:status 200 :body (vocab/get db id)} db (pra/readable-document-ids req documents))
                             (prm/op-error result {:message nil}))))}
 
-     :delete {:summary "Delete a vocab layer."
+     :delete {:summary (str "Delete a vocab layer. With <query>only-in-project</query>, refused (409) when any "
+                            "other project links it, including projects the caller cannot read.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
               :plaid/vocabulary-admin true
-              :handler (fn [{{{:keys [id]} :path} :parameters
+              :parameters {:query [:map [:only-in-project {:optional true} :uuid]]}
+              :handler (fn [{{{:keys [id]} :path
+                              {:keys [only-in-project]} :query} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success documents] :as result} (vocab/delete db id user-id)]
+                         (let [{:keys [success documents] :as result}
+                               (vocab/delete db id user-id {:only-in-project only-in-project})]
                            (if success
                              ;; Deleting a vocabulary unlinks it from the
                              ;; documents that used it, which bumps their

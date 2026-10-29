@@ -468,10 +468,13 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 
 The project carries an import record (`config.igt.import`, `{kind, source,
 startedAt, vocabsMade}`) from the moment it exists until the whole import has
-run. `vocabsMade` lists the vocabularies setup made, each as soon as it exists.
-An import that stops leaves the record there, and a project with the record does
-not open: it is deleted, with the vocabularies the record names that no other
-project links, and imported again, never carried on.
+run. `vocabsMade` lists the vocabularies setup made, each as soon as it exists,
+and each of those carries `config.igt.import = {projectId}` until the record
+goes. An import that stops leaves both there. A project with the record does not
+open, nor does a vocabulary with the mark: the project is deleted, with each
+vocabulary the record names that core says no other project links
+(`DELETE /vocab-layers/:id?only-in-project=`), and imported again, never carried
+on.
 
 ### References in metadata
 

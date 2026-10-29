@@ -385,47 +385,57 @@
       cascade, we emit a :projects :update audit (pre = grants before
       the cascade, post = grants after the cascade — i.e. with `eid`
       removed) under the unnamespaced `:vocabs` key so ETL replay sees
-      the grant transition."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :vocab/delete
-                             :project nil
-                             :document nil
-                             :description (str "Delete vocab " eid)
-                             :user user-id}]
-                     (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
-                       (let [vi-ids (->> (psc/q tx {:select [:id]
-                                                    :from :vocab_items
-                                                    :where [:= :vocab_layer_id eid]})
-                                         (mapv :id))]
-                         (when (seq vi-ids)
-                           (cascade-stats/prepare! tx)
+      the grant transition.
+
+  With `only-in-project`, the delete is refused (409, nothing written) when
+  any project but that one links the vocabulary, whether or not the caller
+  can read that project (R58: an unfinished import's Delete takes the
+  vocabulary it made only when no other project uses it)."
+  ([db eid user-id] (delete db eid user-id nil))
+  ([db eid user-id {:keys [only-in-project]}]
+   (submit-operation! [tx db {:type :vocab/delete
+                              :project nil
+                              :document nil
+                              :description (str "Delete vocab " eid)
+                              :user user-id}]
+                      (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
+                        (when (nil? existing)
+                          (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))
+                        (when (and only-in-project
+                                   (some #(not= (str %) (str only-in-project))
+                                         (fetch-vocab-project-grants tx eid)))
+                          (throw (ex-info "Another project uses this vocabulary." {:code 409 :id eid})))
+                        (let [vi-ids (->> (psc/q tx {:select [:id]
+                                                     :from :vocab_items
+                                                     :where [:= :vocab_layer_id eid]})
+                                          (mapv :id))]
+                          (when (seq vi-ids)
+                            (cascade-stats/prepare! tx)
                            ;; R39: a link in a project being deleted is
                            ;; removed without an audit row or a version
                            ;; bump. Nothing travels back to that project,
                            ;; and the purge never reaches rows written
                            ;; under this op, which names no project.
-                           (let [all-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
-                                                          "idx_vocab_links_item" vi-ids)
-                                 hidden (hidden-document-ids tx (map :document_id all-rows))
-                                 gone-ids (into [] (comp (filter #(contains? hidden (:document_id %))) (map :id))
-                                                all-rows)]
-                             (when (seq gone-ids)
-                               (crud/delete-ids-unaudited! tx :vocab_links gone-ids)
-                               (crud/delete-entity-metadata! tx "vocab-link" gone-ids)))
+                            (let [all-rows (crud/select-in tx :vocab_links "id, document_id" :vocab_item_id
+                                                           "idx_vocab_links_item" vi-ids)
+                                  hidden (hidden-document-ids tx (map :document_id all-rows))
+                                  gone-ids (into [] (comp (filter #(contains? hidden (:document_id %))) (map :id))
+                                                 all-rows)]
+                              (when (seq gone-ids)
+                                (crud/delete-ids-unaudited! tx :vocab_links gone-ids)
+                                (crud/delete-entity-metadata! tx "vocab-link" gone-ids)))
                            ;; The items by the one item delete path: the
                            ;; other links, audited, a version bump on every
                            ;; document that lost one (the op-attrs carry
                            ;; :document nil, so the post-body bump does not
                            ;; fire), then the items with their metadata.
-                           (vocab-item/delete-items! tx vi-ids)))
+                            (vocab-item/delete-items! tx vi-ids)))
                        ;; Snapshot junction-table state BEFORE the row
                        ;; goes away (FK CASCADE would erase
                        ;; vocab_maintainers + project_vocabs rows
                        ;; silently otherwise).
-                       (let [pre-maintainers (fetch-vocab-maintainer-ids tx eid)
-                             grant-project-ids (fetch-vocab-project-grants tx eid)
+                        (let [pre-maintainers (fetch-vocab-maintainer-ids tx eid)
+                              grant-project-ids (fetch-vocab-project-grants tx eid)
                              ;; Per-project pre-image of vocab grants (one snapshot per
                              ;; project) so the synthetic :projects audits show the right
                              ;; "before" state.
@@ -435,14 +445,14 @@
                              ;; fetch-project-vocab-grants — or scan-order
                              ;; variance registers as spurious history
                              ;; "changes".
-                             pre-grants-by-proj
-                             (into {}
-                                   (map (fn [pid] [pid (->> (psc/q tx {:select [:vocab_layer_id]
-                                                                       :from [:project_vocabs]
-                                                                       :where [:= :project_id pid]
-                                                                       :order-by [:vocab_layer_id]})
-                                                            (mapv :vocab_layer_id))]))
-                                   grant-project-ids)
+                              pre-grants-by-proj
+                              (into {}
+                                    (map (fn [pid] [pid (->> (psc/q tx {:select [:vocab_layer_id]
+                                                                        :from [:project_vocabs]
+                                                                        :where [:= :project_id pid]
+                                                                        :order-by [:vocab_layer_id]})
+                                                             (mapv :vocab_layer_id))]))
+                                    grant-project-ids)
                              ;; Emit the vocab_layer's :delete audit with
                              ;; maintainers folded into the pre-image —
                              ;; matches the parent-row-carries-junction
@@ -451,24 +461,24 @@
                              ;; pre-image carries :maintainers
                              ;; (unnamespaced) rather than just
                              ;; the raw row.
-                             vl-row (psc/fetch-by-id tx :vocab_layers eid)
-                             vl-pre-image (assoc vl-row :maintainers pre-maintainers)]
-                         (psc/execute! tx {:delete-from :vocab_layers
-                                           :where [:= :id eid]})
-                         (psaw/record-audit-write! tx :vocab_layers eid :delete vl-pre-image nil)
+                              vl-row (psc/fetch-by-id tx :vocab_layers eid)
+                              vl-pre-image (assoc vl-row :maintainers pre-maintainers)]
+                          (psc/execute! tx {:delete-from :vocab_layers
+                                            :where [:= :id eid]})
+                          (psaw/record-audit-write! tx :vocab_layers eid :delete vl-pre-image nil)
                          ;; Per-project audits for the project_vocabs
                          ;; FK-cascade losses. Each project sees one
                          ;; :update row showing its vocab-grant list
                          ;; shrink by `eid` under the unnamespaced
                          ;; `:vocabs` key.
-                         (doseq [pid grant-project-ids]
-                           (let [proj-row (psc/fetch-by-id tx :projects pid)
-                                 pre-grants (clojure.core/get pre-grants-by-proj pid [])
-                                 post-grants (vec (remove #(= % eid) pre-grants))
-                                 pre-image (assoc proj-row :vocabs pre-grants)
-                                 post-image (assoc proj-row :vocabs post-grants)]
-                             (psaw/record-audit-write! tx :projects pid :update pre-image post-image))))
-                       eid)))
+                          (doseq [pid grant-project-ids]
+                            (let [proj-row (psc/fetch-by-id tx :projects pid)
+                                  pre-grants (clojure.core/get pre-grants-by-proj pid [])
+                                  post-grants (vec (remove #(= % eid) pre-grants))
+                                  pre-image (assoc proj-row :vocabs pre-grants)
+                                  post-image (assoc proj-row :vocabs post-grants)]
+                              (psaw/record-audit-write! tx :projects pid :update pre-image post-image))))
+                        eid))))
 
 ;; ============================================================
 ;; Maintainer management (vocab_maintainers join table)
