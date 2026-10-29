@@ -396,6 +396,20 @@ export const recordImportEntries = async (client, projectId, record, vocabId, n)
 };
 
 /**
+ * Take the import's mark off a vocabulary, so it is an ordinary one again.
+ * Says whether it did.
+ */
+export const unmarkVocab = async (client, vocabId) => {
+  try {
+    await client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, IMPORT_KEY);
+    return true;
+  } catch (err) {
+    console.error('Could not take the import mark off the vocabulary:', err);
+    return false;
+  }
+};
+
+/**
  * Whether a vocabulary's `config` marks it as made by an import that did not
  * finish (`recordImportVocab`): it does not open, takes no entries and is not
  * linked into another project.

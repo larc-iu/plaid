@@ -124,7 +124,8 @@ describe('a vocabulary an unfinished import made', () => {
           maintainers: ['u'],
         }),
       },
-      projects: { list: async () => [] },
+      // Its project is still there, with its import unfinished.
+      projects: { list: async () => [], get: async () => ({ id: 'P1' }) },
     };
     const view = await renderComponent(app);
     await view.step(() => new Promise((r) => setTimeout(r, 0)));
@@ -136,6 +137,39 @@ describe('a vocabulary an unfinished import made', () => {
       (a) => a.textContent === 'Open its project',
     );
     expect(link.getAttribute('href')).toBe('/projects/P1');
+    await view.unmount();
+  });
+});
+
+// REV-FX-R57-3-1: a mark left on a vocabulary whose project is gone (a
+// Delete whose unmark failed) never keeps it shut: the page opens, and a
+// maintainer's visit takes the mark off.
+describe('a vocabulary marked for a project that is gone', () => {
+  it('opens as an ordinary vocabulary, and loses the mark', async () => {
+    const unmarked = [];
+    auth.client = {
+      vocabLayers: {
+        get: async () => ({
+          id: 'A',
+          name: 'Left lexicon',
+          config: { igt: { import: { projectId: 'GONE' } } },
+          maintainers: ['u'],
+        }),
+        deleteConfig: async (...a) => unmarked.push(a),
+      },
+      projects: {
+        list: async () => [],
+        get: async () => {
+          throw Object.assign(new Error('Project not found'), { status: 404 });
+        },
+      },
+    };
+    const view = await renderComponent(app);
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(view.container.textContent).not.toContain('belongs to an import that did not finish');
+    expect(heading(view.container)).toBe('Left lexicon');
+    expect(unmarked).toEqual([['A', 'igt', 'import']]);
     await view.unmount();
   });
 });

@@ -24,7 +24,8 @@ import {
   SelectContent,
   SelectItem,
 } from '@ui/components/ui/select';
-import { readVocabFields, IGT_NAMESPACE, vocabImporting } from '@/domain/igtConfig';
+import { readVocabFields, IGT_NAMESPACE, unmarkVocab, vocabImporting } from '@/domain/igtConfig';
+import { statusOf } from '@ui/lib/errors.js';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -141,6 +142,28 @@ export const VocabularyDetail = () => {
   useEffect(() => {
     mintRef.current = null;
   }, [editedName]);
+  // A mark naming a project that is gone (a Delete that could not take it
+  // off) never keeps the vocabulary shut: it opens as an ordinary one, and a
+  // maintainer's visit takes the mark off (REV-FX-R57-3-1).
+  const [staleMark, setStaleMark] = useState(false);
+  const markedFor = vocabImporting(vocabulary?.config)
+    ? (vocabulary.config[IGT_NAMESPACE].import?.projectId ?? null)
+    : null;
+  useEffect(() => {
+    setStaleMark(false);
+    if (!markedFor) return undefined;
+    let alive = true;
+    client.projects.get(markedFor).catch(async (err) => {
+      if (!alive || statusOf(err) !== 404) return;
+      setStaleMark(true);
+      if (canManageVocabulary(vocabulary, user)) await unmarkVocab(client, vocabulary.id);
+    });
+    return () => {
+      alive = false;
+    };
+    // The mark and the vocabulary it is on are what this waits on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, markedFor, vocabulary?.id]);
   // Normalized field inventory: [{name, inline, immutable}], morphType always present.
   const [fields, setFields] = useState([]);
   const [newFieldName, setNewFieldName] = useState('');
@@ -1114,8 +1137,8 @@ export const VocabularyDetail = () => {
 
   // R58: made by an import that did not finish, it does not open until that
   // import is deleted (or, never, finished). Its project offers the Delete.
-  if (!isNewVocabulary && vocabImporting(vocabulary?.config)) {
-    const projectId = vocabulary.config[IGT_NAMESPACE].import?.projectId;
+  if (!isNewVocabulary && vocabImporting(vocabulary?.config) && !staleMark) {
+    const projectId = markedFor;
     return (
       <Notice role="status" icon={null}>
         <p>This vocabulary belongs to an import that did not finish.</p>

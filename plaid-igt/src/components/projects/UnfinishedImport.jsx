@@ -8,7 +8,7 @@ import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { countOf } from '@ui/lib/plural.js';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
-import { readImportState } from '@/domain/igtConfig';
+import { readImportState, unmarkVocab } from '@/domain/igtConfig';
 
 const quoted = (vocabs) => vocabs.map((v) => `“${v.name}”`).join(', ');
 
@@ -73,23 +73,31 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted }) => {
 
   const remove = async () => {
     await client.projects.delete(project.id);
-    const kept = [];
+    // What core kept, by why: another project links it (409), the person does
+    // not maintain it (403), or the delete failed. Each is an ordinary
+    // vocabulary again, never one left marked for a project that is gone
+    // (REV-FX-R57-3-1).
+    const kept = { linked: [], notYours: [], failed: [] };
     for (const v of left.made) {
       try {
         await client.vocabLayers.delete(v.id, undefined, { onlyInProject: project.id });
       } catch (err) {
-        if (statusOf(err) === 404) continue;
+        const status = statusOf(err);
+        if (status === 404) continue;
         console.error('Could not delete the vocabulary:', err);
-        kept.push(v);
+        kept[status === 409 ? 'linked' : status === 403 ? 'notYours' : 'failed'].push(v);
+        await unmarkVocab(client, v.id);
       }
     }
     notifySuccess(`Deleted “${project.name ?? 'the project'}”`);
-    if (kept.length) {
-      notifyWarning(
-        `${quoted(kept)} ${kept.length === 1 ? 'stays' : 'stay'} (used by another project, or you do not maintain it).`,
-        'Vocabularies kept',
-      );
-    }
+    const stays = (vs, why) => `${quoted(vs)} ${vs.length === 1 ? 'stays' : 'stay'} (${why}).`;
+    const said = [
+      kept.linked.length && stays(kept.linked, 'used by another project'),
+      kept.notYours.length && stays(kept.notYours, 'you do not maintain it'),
+      kept.failed.length &&
+        `${quoted(kept.failed)} could not be deleted. Try again from the Vocabularies page.`,
+    ].filter(Boolean);
+    if (said.length) notifyWarning(said.join(' '), 'Vocabularies kept');
     setOpen(false);
     onDeleted?.();
   };

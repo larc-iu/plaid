@@ -98,6 +98,7 @@ const serverClient = () => {
       // As core answers it: with onlyInProject, refused while any other
       // project links the vocabulary, readable by the caller or not.
       delete: async (id, _message, { onlyInProject } = {}) => {
+        if (client.failVocabDelete) throw client.failVocabDelete;
         const elsewhere = [...client.links.entries()].some(
           ([pid, ids]) => pid !== onlyInProject && ids.includes(id),
         );
@@ -215,11 +216,39 @@ describe('a project import that stops', () => {
     expect(client.vocabsDeleted).toEqual([]);
     expect(client.vocabs.has(vocab)).toBe(true);
     expect(notifyWarning).toHaveBeenCalledWith(
-      `“${client.vocabs.get(vocab).name}” stays (used by another project, or you do not maintain it).`,
+      `“${client.vocabs.get(vocab).name}” stays (used by another project).`,
       'Vocabularies kept',
     );
+    // REV-FX-R57-3-1: kept, it is an ordinary vocabulary again.
+    expect(client.vocabs.get(vocab).config.igt.import).toBeUndefined();
     await view.unmount();
   });
+
+  // REV-FX-R57-3-1: a vocabulary Delete could not remove is never left
+  // marked, and the notice says why it stayed.
+  it.each([
+    [403, 'stays (you do not maintain it).'],
+    [502, 'could not be deleted. Try again from the Vocabularies page.'],
+  ])(
+    'takes the mark off a vocabulary whose delete answers %s, and says so',
+    async (status, said) => {
+      const client = serverClient();
+      const { view, read } = await mount(client, stopping);
+      await view.step(async () => buttons('Go')[0].click());
+      const { id } = read().unfinished;
+      const [vocab] = client.config.get(id).import.vocabsMade;
+      client.failVocabDelete = Object.assign(new Error('refused'), { status });
+      notifyWarning.mockClear();
+      await confirmDelete(view, 'Half');
+      expect(client.deleted).toEqual([id]);
+      expect(client.vocabs.get(vocab).config.igt.import).toBeUndefined();
+      expect(notifyWarning).toHaveBeenCalledWith(
+        `“${client.vocabs.get(vocab).name}” ${said}`,
+        'Vocabularies kept',
+      );
+      await view.unmount();
+    },
+  );
 
   // R59: entries the import added to a lexicon the person keeps stay there,
   // and the screen says how many.
