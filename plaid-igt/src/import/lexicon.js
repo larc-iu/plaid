@@ -107,16 +107,17 @@ export async function writeVocabConfig(vocab, ns, key, value, write) {
  * its parent, once every item has an id.
  *
  * Only a sense that has no parent yet is placed: a sense someone has moved
- * under another entry keeps that place.
+ * under another entry keeps that place. `only` narrows it further to the
+ * items in that set.
  *
  * One bulk update per chunk, not a batch of one patch per sense: a batch
  * re-dispatches the whole REST stack per op inside the held write lock.
  */
-export async function placeSenses({ client, existing, places, check = () => {} }) {
+export async function placeSenses({ client, existing, places, only = null, check = () => {} }) {
   const placedAlready = new Set(
     (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
   );
-  const fresh = places.filter((p) => !placedAlready.has(p.id));
+  const fresh = places.filter((p) => !placedAlready.has(p.id) && (!only || only.has(p.id)));
   for (let i = 0; i < fresh.length; i += CHUNK) {
     check();
     await client.vocabItems.bulkUpdate(

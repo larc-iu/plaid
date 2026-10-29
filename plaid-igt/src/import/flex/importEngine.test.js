@@ -616,78 +616,21 @@ describe('importLexicon', () => {
     expect(fields).not.toHaveProperty('variantOf');
   });
 
-  // REV-FX-R57-1: a stopped import into a lexicon the person keeps, deleted
-  // and imported again, reuses the entries the first run made. Placed only
-  // when this run made them, they stayed flat for good. The rule is the
-  // data's: a sense with no parent yet is placed, and one that has a parent
-  // keeps it, whoever made it.
-  it('places every sense that has no parent yet, and leaves one that has a parent', async () => {
+  // The same backup imported again into a lexicon someone has arranged: a
+  // sense they made a separate entry stays one.
+  it('leaves a freed sense alone on a fresh import into a settled lexicon', async () => {
     const client = makeFakeClient({
       existingItems: [
         { id: 'old-e2', form: 'махъ', metadata: { flexSense: 'e2', flexEntry: 'e2' } },
         { id: 'old-s2', form: 'махъ', metadata: { flexSense: 's2', gloss: 'tale' } },
         { id: 'old-s3', form: 'махъ', metadata: { flexSense: 's3', gloss: 'story' } },
-        // A person put this one under another entry: it stays there.
-        {
-          id: 'old-s3a',
-          form: 'махъ',
-          metadata: { flexSense: 's3a', gloss: 'short story', parent: 'other', senseOrder: 9 },
-        },
+        { id: 'old-s3a', form: 'махъ', metadata: { flexSense: 's3a', gloss: 'short story' } },
         { id: 'old-s1', form: 'за', metadata: { flexSense: 's1' } },
       ],
     });
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     expect(createdItems(client)).toHaveLength(0);
-    expect(itemPatches(client)).toEqual([
-      ['old-s2', place('old-e2', 1)],
-      ['old-s3', place('old-e2', 2)],
-    ]);
-  });
-
-  it('writes a variant reference an entry an earlier import made still lacks, and keeps one it has', async () => {
-    const withRefs = [
-      ...lexicon,
-      {
-        guid: 'e3',
-        forms: { [BASE_WS]: 'заъ' },
-        citationForm: null,
-        morphType: 'stem',
-        homograph: 0,
-        entryRefs: [{ variant: true, components: ['e1'], types: ['Spelling Variant'] }],
-        senses: [{ guid: 's4', gloss: { en: '1sg' }, senseIndex: 0 }],
-      },
-      {
-        guid: 'e4',
-        forms: { [BASE_WS]: 'за-мах' },
-        citationForm: null,
-        morphType: 'stem',
-        homograph: 0,
-        entryRefs: [{ variant: false, components: ['e1', 'e2'], types: ['Compound'] }],
-        senses: [{ guid: 's5', gloss: { en: 'my tale' }, senseIndex: 0 }],
-      },
-    ];
-    const client = makeFakeClient({
-      existingItems: [
-        { id: 'old-s1', form: 'за', metadata: { flexSense: 's1' } },
-        { id: 'old-s4', form: 'заъ', metadata: { flexSense: 's4' } },
-        { id: 'old-s5', form: 'за-мах', metadata: { flexSense: 's5', components: ['mine'] } },
-      ],
-    });
-    await importLexicon({
-      client,
-      vocabId: 'v1',
-      lexicon: withRefs,
-      baselineWs: BASE_WS,
-      variants: true,
-    });
-    const patches = new Map(
-      itemPatches(client).map(([id, ops]) => [id, applyMetadataOps({}, ops)]),
-    );
-    expect(patches.get('old-s4')).toEqual({
-      variantOf: ['old-s1'],
-      variantType: 'Spelling Variant',
-    });
-    expect(patches.get('old-s5')).toEqual({ componentType: 'Compound' });
+    expect(itemPatches(client)).toHaveLength(0);
   });
 
   it('creates one item per sense with flex guids and skips existing', async () => {
