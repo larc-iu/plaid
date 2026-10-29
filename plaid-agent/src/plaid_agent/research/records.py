@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..core import agent
+from ..core.conversation import DIED_OUTCOME
 from .pseudo import Pseudonyms, clip
 
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
@@ -493,7 +494,9 @@ class Conversations:
             + int((plan.get('omitted') or {}).get('count') or 0),
             'as_human': item.get('as_human'), 'contributed': bool(item.get('contributed')),
             'partly_applied': status == 'partial', 'rows_written': len(item.get('written') or []),
-            'outcome_unknown': bool(item.get('unknown')),
+            # A dead run's plan (R53) is settled with no row known written:
+            # which were is not known, as when the server stopped answering.
+            'outcome_unknown': bool(item.get('unknown')) or item.get('outcome') == DIED_OUTCOME,
             'apply_notes': len(item.get('apply_notes') or []), 'unwritten_rows': len(item.get('unwritten') or []),
             'kinds': sorted({str(c[0]) for c in proposed or [] if isinstance(c, list) and c}),
             # A corpus-wide change stored as one row (core/rules.py): how many

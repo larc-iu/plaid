@@ -478,3 +478,24 @@ def test_a_step_is_failed_only_by_its_flag_in_every_shape():
         assert row['failed'] is want, (steps, row)
         assert row['error_class'] == ('not-found' if want else None)
         assert conv.turns[0]['n_failed_steps'] == int(want)
+
+
+def test_a_plan_whose_approvals_run_died_exports_with_its_outcome_unknown():
+    """R53 settles a dead run's plan partial with no row known written
+    (`DIED_OUTCOME`). Which of its rows were written is not known, so the
+    dataset says so rather than "none written" (REV-FX-R53-1)."""
+    from plaid_agent.core.conversation import DIED_OUTCOME
+    from plaid_agent.research.records import Conversations
+    rows = Conversations(Pseudonyms(b'salt'))
+    plan = {'id': '01a10fc5-61d6-7000-8588-500000000004', 'summary': 'x', 'changes': [{'label': 'r'}]}
+    conv = {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}],
+            'display': [{'kind': 'user', 'text': 'q'},
+                        {'kind': 'assistant', 'text': 'a', 'plan': plan, 'status': 'partial', 'written': [],
+                         'outcome': DIED_OUTCOME},
+                        {'kind': 'assistant', 'text': 'b', 'status': 'partial', 'written': [0],
+                         'outcome': '1 of 2 changes written.',
+                         'plan': {**plan, 'id': '01a10fc5-61d6-7000-8588-500000000005'}}]}
+    rows.add('u@x', 'igt', 'p1', 'c1', conv, {}, 10, None)
+    died, stopped = rows.plans
+    assert (died['partly_applied'], died['outcome_unknown']) == (True, True)
+    assert (stopped['partly_applied'], stopped['outcome_unknown']) == (True, False)

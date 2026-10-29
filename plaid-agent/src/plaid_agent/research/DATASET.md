@@ -159,7 +159,7 @@ One row per plan.
 | as_human | the approver had the changes recorded as their own work, not the assistant's |
 | contributed | the approver's work is reviewed in the project, so the changes were stamped as their contribution |
 | partly_applied, rows_written | for a partial plan: the card rows written in full |
-| outcome_unknown | the server did not answer for part of it |
+| outcome_unknown | the server did not answer for part of it, or the approval's run died and which rows were written is not known (R53, `rows_written` is then 0) |
 | apply_notes | notes applying made (a change a later one superseded) |
 | unwritten_rows | rows that wrote nothing under this approval |
 | kinds | the kinds of change it proposed |
