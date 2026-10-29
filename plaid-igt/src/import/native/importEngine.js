@@ -1102,7 +1102,12 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   // What the finish step needs that the project will not hold, on the import
   // record from the start, so "Use the project as it is" can run it.
   const plan = finishPlan(archive, unmarked.finish());
+  // This run's operation, beside the earlier runs': a write to what the
+  // import made that is under none of them is somebody's.
+  const runOp = client.operationGroup?.id;
+  if (runOp && !plan.operations.includes(runOp)) plan.operations.push(runOp);
   await unmarked.setFinish(plan);
+  const ownOperations = new Set(plan.operations);
 
   const schema = archive.manifest.schema || {};
   // Igt's own settings, fields and rules, only for a project that had them.
@@ -1323,7 +1328,8 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     // A half-made document somebody wrote to after the import stopped
     // (another app opens it) holds their work: it is left as it is,
     // unfinished, and named, for the person to decide.
-    const kept = existing && !existing.done && (await editedSinceImport(client, existing.id));
+    const kept =
+      existing && !existing.done && (await editedSinceImport(client, existing.id, ownOperations));
     if (existing?.done || kept) {
       if (kept) {
         results.kept += 1;
@@ -1409,13 +1415,14 @@ function citedTokens(archive) {
 }
 
 /**
- * Whether anyone wrote to a document an import made, other than an import:
- * an entry of its history that is not an import's. Every write of an import
- * run is filed under its one import operation.
+ * Whether anyone but this import wrote to a document it made: an entry of the
+ * document's history under none of the operations its runs were filed under
+ * (`ownOperations`). Every write of a run joins its one operation, so another
+ * app's write, an import of another file onto the document included, is not.
  */
-async function editedSinceImport(client, docId) {
+async function editedSinceImport(client, docId, ownOperations) {
   const entries = await client.documents.audit(docId);
-  return (entries || []).some((e) => e.kind !== 'import');
+  return (entries || []).some((e) => !(e.groupId && ownOperations.has(e.groupId)));
 }
 
 /**
@@ -1424,7 +1431,8 @@ async function editedSinceImport(client, docId) {
  * archive's document ids, to tell a reference to one the import never made;
  * those whose file names another document; the layer rules of other apps, as
  * `restoreOtherLayers` makes their layers; and the tokens each finished
- * document's examples name. An earlier run's rules and tokens are kept.
+ * document's examples name; and the operation of each run, which is how a
+ * resume tells a document somebody wrote to. An earlier run's are kept.
  */
 function finishPlan(archive, earlier = null) {
   const documents = archive.documents.map((d) => d.data?.id).filter((id) => id != null);
@@ -1436,6 +1444,7 @@ function finishPlan(archive, earlier = null) {
       .map((d) => d.data.id),
     rules: earlier?.rules ?? [],
     exampleTokens: earlier?.exampleTokens ?? {},
+    operations: [...(earlier?.operations ?? [])],
   };
 }
 

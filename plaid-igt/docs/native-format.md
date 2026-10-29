@@ -457,8 +457,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    marked done (`metadata.importDone`) only after every write succeeded, and any
    such key the archive's own metadata holds is dropped first; resume skips
    done documents and deletes + redoes half-imported ones, except one somebody
-   wrote to since (its history holds an entry that is not an import's), which
-   is left as it is and named in a warning. Other apps' layers are
+   wrote to since (its history holds an entry under none of the operations
+   this import's runs were filed under, which the plan below keeps), which is
+   left as it is and named in a warning. Other apps' layers are
    made once per project, not per document, so a resume finds the ones an earlier
    run made rather than making them again: setup makes only this app's layers, so
    any other layer in the project is the import's own, and it is recognized by
@@ -479,9 +480,11 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    runs when an import that stopped is ended with "Use the project as it is".
    It then works from the project and a plan the import keeps on its record
    (`config.igt.import.finish`: the archive's document ids, which of them name
-   another, other apps' layer rules, and the tokens each finished document's
-   examples name). A reference to something the import never made is dropped
-   and counted, never left naming the archive's id.
+   another, other apps' layer rules, the tokens each finished document's
+   examples name, and the operation each run was filed under). A reference to
+   something the import never made is dropped and counted, never left naming
+   the archive's id. A layer rule whose declaration fails leaves the plan on
+   the record, so ending the import again declares it.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
    An entry or document whose metadata is at core's key cap (500 keys, counted
    at every level) has no room for the import's marks. It is created unmarked

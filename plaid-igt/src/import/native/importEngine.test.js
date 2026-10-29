@@ -142,6 +142,8 @@ function stubClient({
   failAt = null,
   // Documents someone wrote to besides the import (their history says so).
   edited = new Set(),
+  // More of a document's history, by document id.
+  history = new Map(),
 } = {}) {
   const calls = [];
   const written = store?.docs ?? new Map();
@@ -319,7 +321,18 @@ function stubClient({
           ids: body.map(() => fresh('link')),
         }),
     },
-    withOperation: async (_message, fn) => fn(() => {}),
+    // One operation per run, under an id of its own, which every write in it
+    // joins (the history a document keeps names it).
+    withOperation: async (_message, fn) => {
+      const outer = client.operationGroup;
+      client.operationGroup = outer ?? { id: fresh('op') };
+      try {
+        return await fn(() => {});
+      } finally {
+        client.operationGroup = outer;
+      }
+    },
+    operationGroup: null,
     // A batch: a view of the client whose writes queue, handed to `fn` the way
     // the real client hands one over. This fake records a write the same way on
     // either, so the view is the client itself.
@@ -340,7 +353,7 @@ function stubClient({
         const made = record('documents.create', [projectId, name, metadata], {
           id: id ?? fresh('doc'),
         });
-        written.set(made.id, { id: made.id, name, metadata });
+        written.set(made.id, { id: made.id, name, metadata, groups: [client.operationGroup?.id] });
         return made;
       },
       get: async (id) =>
@@ -365,8 +378,11 @@ function stubClient({
           'documents.audit',
           [id],
           [
-            { kind: 'import', ref: 'format:native' },
+            ...(written.get(id)?.groups ?? existingDocs.find((d) => d.id === id)?.groups ?? []).map(
+              (groupId) => ({ kind: 'import', ref: 'format:native', groupId }),
+            ),
             ...(edited.has(id) ? [{ kind: undefined, user: { id: 'someone' } }] : []),
+            ...(history.get(id) ?? []),
           ],
         ),
       uploadMedia: async (id, file) => record('documents.uploadMedia', [id, file?.name]),
@@ -1815,6 +1831,24 @@ describe('an import that stopped, then resumed or ended as it is', () => {
       ['Doc 1', 'Doc 2', 'Doc 3'].map((n) => docs.find((d) => d.name === n).id),
     );
     expect(store.config.igt.import.finish).toBeUndefined();
+  });
+
+  it("leaves a half-made document another file's import was written onto (REV-FX-R4-IMP-2)", async () => {
+    const store = makeStore();
+    const [, half] = await stopInSecond(store);
+    // An import of another kind, as plaid-umr's of a .umr file is: kind
+    // `import` too, under an operation of its own.
+    const history = new Map([
+      [half.id, [{ kind: 'import', ref: 'format:umr', groupId: 'umr-import' }]],
+    ]);
+    const client = stubClient({ store, history });
+    const result = await runNativeImport({
+      client,
+      projectId: 'newp',
+      archive: stoppedArchive(),
+    });
+    expect(callsOf(client, 'documents.delete')).toEqual([]);
+    expect(result).toMatchObject({ kept: 1, redone: 0 });
   });
 });
 
