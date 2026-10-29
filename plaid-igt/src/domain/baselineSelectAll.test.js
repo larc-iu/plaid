@@ -105,11 +105,12 @@ it('a split refused after the edit landed says the sentences were not split, not
   };
   const doc = makeIgtDoc({ raw: structuredClone(server.stored), client });
   const errors = [];
-  doc.onError = (message) => errors.push(message);
+  doc.onError = (message, err, label) => errors.push([message, label]);
   const gaps = [{ start: 0, end: 7, value: 'xy\nzw' }];
   expect(await doc.editBaselineText({ base: 'ab. cd.', digest: server.digest, gaps })).toBe(true);
   while (doc.isSaving) await new Promise((r) => setTimeout(r, 0));
   expect(server.body).toBe('xy\nzw');
-  expect(errors).toEqual(['The text is saved. Its sentences were not split at line breaks.']);
+  // no title, so not the screen's "Not changed"
+  expect(errors).toEqual([['The text is saved. Its sentences were not split at line breaks.', '']]);
   expect(sentencesOf(doc._raw)).toEqual([[0, 5]]);
 });

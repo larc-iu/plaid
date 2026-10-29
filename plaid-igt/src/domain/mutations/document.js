@@ -275,7 +275,8 @@ export const documentMutations = {
     } catch (err) {
       if (isUnreachable(err) || isUnknownOutcome(err)) throw err;
       console.error(message, err);
-      this.refuse(message);
+      // Said with no title: the screen's "Not changed" would contradict it.
+      this.onError?.(message, null, '');
     }
     try {
       await this._reloadInSend();
