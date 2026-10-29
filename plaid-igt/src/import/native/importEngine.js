@@ -31,6 +31,7 @@ import {
   PLAID_NAMESPACE,
   ROLES,
   cpLength,
+  cpSlicer,
   createdIds,
   entryForm,
   uuidv7,
@@ -1424,7 +1425,7 @@ async function editedSinceImport(client, docId) {
  * `restoreOtherLayers` makes their layers; and the tokens each finished
  * document's examples name. An earlier run's rules and tokens are kept.
  */
-export function finishPlan(archive, earlier = null) {
+function finishPlan(archive, earlier = null) {
   const documents = archive.documents.map((d) => d.data?.id).filter((id) => id != null);
   const archived = new Set(documents);
   return {
@@ -1692,11 +1693,18 @@ export async function restoreLayerNamesAndOrder({ client, projectId, project, ma
  * The archive-to-server token map for a document an earlier run finished, so a
  * resume can still rewrite the examples that point into it. Tokens are matched
  * on what they ARE rather than on the order they were created in: a sentence
- * or a word by its extent, a morpheme by its extent and its place in the word.
- * Only what an example can point at is mapped.
+ * or a word by its extent and its text, a morpheme by those and its place in
+ * the word. A document somebody edited may hold another word where the
+ * archive's was, and a token whose text differs is not mapped (its example
+ * is dropped and counted), never taken for the archive's. Only what an
+ * example can point at is mapped.
  */
 export async function rebuildTokenMap({ client, docId, docData, targets }) {
   const raw = await client.documents.get(docId, true);
+  const baseline =
+    (raw.textLayers || []).find((t) => t.id === targets.textLayerId) ?? raw.textLayers?.[0];
+  const textHere = cpSlicer(baseline?.text?.body ?? '');
+  const textThere = cpSlicer(docData.baseline?.body ?? '');
   const byKey = new Map();
   const kindOf = (tl) => {
     if (tl.id === targets.wordLayerId) return 'w';
@@ -1712,19 +1720,21 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
         kind === 'm'
           ? `m:${t.begin}:${t.end}:${t.precedence ?? null}`
           : `${kind}:${t.begin}:${t.end}`;
-      if (!byKey.has(key)) byKey.set(key, t.id);
+      const k = `${key}:${textHere(t.begin, t.end)}`;
+      if (!byKey.has(k)) byKey.set(k, t.id);
     }
   }
   const map = new Map();
   for (const s of docData.sentences || []) {
     // An example may cite a whole sentence, so sentence tokens are mapped too.
-    const sentenceId = byKey.get(`s:${s.begin}:${s.end}`);
+    const there = (n) => textThere(n.begin, n.end);
+    const sentenceId = byKey.get(`s:${s.begin}:${s.end}:${there(s)}`);
     if (sentenceId) map.set(s.id, sentenceId);
     for (const w of s.words || []) {
-      const wordId = byKey.get(`w:${w.begin}:${w.end}`);
+      const wordId = byKey.get(`w:${w.begin}:${w.end}:${there(w)}`);
       if (wordId) map.set(w.id, wordId);
       for (const m of w.morphemes || []) {
-        const morphId = byKey.get(`m:${m.begin}:${m.end}:${m.precedence ?? null}`);
+        const morphId = byKey.get(`m:${m.begin}:${m.end}:${m.precedence ?? null}:${there(m)}`);
         if (morphId) map.set(m.id, morphId);
       }
     }

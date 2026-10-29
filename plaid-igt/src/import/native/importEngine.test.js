@@ -1885,6 +1885,51 @@ describe('rebuildTokenMap', () => {
   });
 });
 
+describe('rebuildTokenMap, a document somebody edited', () => {
+  it('maps no word whose text is not the archive one at that place (REV-FX-R4-IMP-4)', async () => {
+    const docData = {
+      baseline: { body: 'kata lion' },
+      sentences: [
+        {
+          id: 's1',
+          begin: 0,
+          end: 9,
+          words: [
+            { id: 'w1', begin: 0, end: 4, morphemes: [] },
+            { id: 'w2', begin: 5, end: 9, morphemes: [] },
+          ],
+        },
+      ],
+    };
+    // "kata" was deleted and "mesa" typed in its place.
+    const raw = {
+      textLayers: [
+        {
+          id: 'T',
+          text: { body: 'mesa lion' },
+          tokenLayers: [
+            {
+              id: 'W',
+              tokens: [
+                { id: 'nw1', begin: 0, end: 4 },
+                { id: 'nw2', begin: 5, end: 9 },
+              ],
+            },
+            { id: 'S', tokens: [{ id: 'ns1', begin: 0, end: 9 }] },
+          ],
+        },
+      ],
+    };
+    const map = await rebuildTokenMap({
+      client: { documents: { get: async () => raw } },
+      docId: 'new-doc',
+      docData,
+      targets: { textLayerId: 'T', wordLayerId: 'W', morphemeLayerId: 'M', sentenceLayerId: 'S' },
+    });
+    expect([...map]).toEqual([['w2', 'nw2']]);
+  });
+});
+
 describe('resolveNativeTargets', () => {
   it('throws when a schema field has no span layer', () => {
     const project = targetProject();
@@ -2031,6 +2076,7 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
           // The server's copy of it, with ids of its own.
           textLayers: [
             {
+              text: { body: archive.documents[0].data.baseline.body },
               tokenLayers: [
                 { id: 'new-wl', tokens: [{ id: 'srv-w1', begin: word.begin, end: word.end }] },
               ],
