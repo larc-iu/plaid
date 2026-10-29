@@ -97,6 +97,9 @@ async function executeProjectSetupImpl({
   setupData,
   onProgress,
   onProjectCreated,
+  // Told each vocabulary's id as soon as it is made, before it is linked, and
+  // awaited. A throw fails the vocabulary's step.
+  onVocabCreated,
   // Where the ids of the project and each vocabulary this setup makes are
   // kept between presses (createOnce.js): the caller holds one object for
   // the life of its screen, so a press after an answer that never came names
@@ -488,6 +491,7 @@ async function executeProjectSetupImpl({
           const newVocab = await createOnce(mintOf(`vocab:${nameKey(vocab.name)}`), (id) =>
             client.vocabLayers.create(vocab.name, undefined, { id }),
           );
+          await onVocabCreated?.(newVocab.id);
           // A new vocabulary starts with the core fields plus Status and its
           // list, the same setup every creation path does (statusFieldSeed).
           // Written only where it is missing, so finishing one an earlier press

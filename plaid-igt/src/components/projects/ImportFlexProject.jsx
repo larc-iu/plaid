@@ -17,6 +17,7 @@ import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
 import {
   FileDropZone,
+  FinishPending,
   ImportHeader,
   ImportRunPanel,
   ProjectNameField,
@@ -118,6 +119,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     projectIdRef,
     unfinished,
     clearUnfinished,
+    finishPending,
+    retryFinish,
     stop,
     start,
   } = useProjectImportRun({ client, kind: fmt.kind });
@@ -831,6 +834,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               </div>
             )}
 
+            {stage === 'done' && finishPending && <FinishPending onRetry={retryFinish} />}
+
             {stage === 'done' && (
               <Notice tone="success" className="p-4">
                 <p className="font-medium">Import complete</p>
@@ -842,9 +847,11 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                     ))}
                   </ul>
                 )}
-                <Button className="mt-3" asChild>
-                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
-                </Button>
+                {!finishPending && (
+                  <Button className="mt-3" asChild>
+                    <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                  </Button>
+                )}
               </Notice>
             )}
           </div>

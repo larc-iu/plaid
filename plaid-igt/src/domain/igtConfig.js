@@ -342,24 +342,39 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
  * An import writes this on the project it is filling when the project is made
  * and removes it once the whole import has run, so a project whose import was
  * stopped, failed or was closed does not open as if it were complete:
- * `{kind, source, startedAt}`, `kind` being the format ('FLEx', 'FLEx
- * .flextext', 'CLDF', 'ELAN', 'Plaid IGT archive') and `source` the file it
- * was reading. Such a project is only deleted, never finished.
+ * `{kind, source, startedAt, vocabsMade}`, `kind` being the format ('FLEx',
+ * 'FLEx .flextext', 'CLDF', 'ELAN', 'Plaid IGT archive'), `source` the file it
+ * was reading, and `vocabsMade` the ids of the vocabularies the import made,
+ * which a Delete of the project deletes with it. Such a project is only
+ * deleted, never finished.
  */
 const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
 
-/** Record that an import into this project has begun. Never fails the import. */
+/**
+ * Record that an import into this project has begun. Answers the record.
+ * Throws when it cannot be written: a project the import cannot mark would
+ * open as if complete, so the import stops there.
+ */
 export const markImportStarted = async (client, projectId, kind, source) => {
-  try {
-    await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
-      kind,
-      source: source ?? null,
-      startedAt: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('Could not record the import as started:', err);
-  }
+  const record = {
+    kind,
+    source: source ?? null,
+    startedAt: new Date().toISOString(),
+    vocabsMade: [],
+  };
+  await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, record);
+  return record;
+};
+
+/**
+ * Add a vocabulary the import has just made to its `record`, as written
+ * before. Answers the new record. Throws when it cannot be written.
+ */
+export const recordImportVocab = async (client, projectId, record, vocabId) => {
+  const next = { ...record, vocabsMade: [...(record.vocabsMade || []), vocabId] };
+  await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, next);
+  return next;
 };
 
 /**

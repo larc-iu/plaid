@@ -8,6 +8,7 @@
 // progress bar and three did not, and the same failure was reported in four
 // wordings.
 
+import { useState } from 'react';
 import { Square, Upload } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -168,6 +169,34 @@ export const ProjectNameField = ({ id, value, onChange, disabled }) => (
     <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
   </div>
 );
+
+/**
+ * A whole run whose record could not be cleared: the project holds everything
+ * and opens once **Try again** clears it (`onRetry`, answering whether it did).
+ */
+export const FinishPending = ({ onRetry }) => {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Panel tone="error" title="The import finished but could not be marked done.">
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-2"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onRetry();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Try again
+      </Button>
+    </Panel>
+  );
+};
 
 // The one formula. A phase that reports past its share of the bar (a corpus
 // whose document count grew between runs) fills it rather than overflowing it.

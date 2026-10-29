@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import {
   FileDropZone,
+  FinishPending,
   ImportHeader,
   ImportRunPanel,
   ProjectNameField,
@@ -47,6 +48,8 @@ export const ImportNativeProject = () => {
     projectIdRef,
     unfinished,
     clearUnfinished,
+    finishPending,
+    retryFinish,
     stop,
     start,
   } = useProjectImportRun({ client, kind: NATIVE_IMPORT_KIND });
@@ -169,6 +172,8 @@ export const ImportNativeProject = () => {
               onStop={stop}
             />
 
+            {stage === 'done' && finishPending && <FinishPending onRetry={retryFinish} />}
+
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
                 <p className="font-medium">Imported {countOf(results.imported, 'document')}</p>
@@ -191,7 +196,7 @@ export const ImportNativeProject = () => {
                   Create project and import
                 </Button>
               )}
-              {stage === 'done' && (
+              {stage === 'done' && !finishPending && (
                 <Button asChild>
                   <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
                 </Button>

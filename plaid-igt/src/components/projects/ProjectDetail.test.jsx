@@ -440,6 +440,7 @@ describe('a project whose import did not finish', () => {
       projects: {
         get: async () => unfinished,
         listDocuments: async () => [{ id: 'U-doc', name: 'U doc' }],
+        list: async () => [unfinished],
         delete: async (id) => deleted.push(id),
       },
     };
@@ -468,10 +469,14 @@ describe('a project whose import did not finish', () => {
     expect(deleted).toEqual([]);
     await view.step(async () => button('Delete').click());
     expect(deleted).toEqual([]);
-    const confirmDelete = [...document.body.querySelectorAll('[role="alertdialog"] button')].find(
-      (b) => b.textContent.trim() === 'Delete',
-    );
-    await view.step(async () => confirmDelete.click());
+    // Like every project delete, it asks for the name typed out.
+    const input = document.body.querySelector('#delete-project-confirm');
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    await view.step(async () => {
+      set.call(input, 'Half');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await view.step(async () => button('Delete project').click());
     expect(deleted).toEqual(['U']);
     expect(view.container.querySelector('[data-testid="where"]')?.textContent).toBe('/projects');
     await view.unmount();

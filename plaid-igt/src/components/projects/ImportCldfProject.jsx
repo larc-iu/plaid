@@ -11,6 +11,7 @@ import { Input } from '@ui/components/ui/input';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import {
   FileDropZone,
+  FinishPending,
   ImportHeader,
   ImportRunPanel,
   ProjectNameField,
@@ -65,6 +66,8 @@ export const ImportCldfProject = () => {
     projectIdRef,
     unfinished,
     clearUnfinished,
+    finishPending,
+    retryFinish,
     stop,
     start,
   } = useProjectImportRun({ client, kind: 'CLDF' });
@@ -357,6 +360,8 @@ export const ImportCldfProject = () => {
               onStop={stop}
             />
 
+            {stage === 'done' && finishPending && <FinishPending onRetry={retryFinish} />}
+
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
                 <p className="font-medium">Imported {countOf(results.imported, 'text')}</p>
@@ -382,7 +387,7 @@ export const ImportCldfProject = () => {
                   Create project and import
                 </Button>
               )}
-              {stage === 'done' && (
+              {stage === 'done' && !finishPending && (
                 <Button asChild>
                   <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
                 </Button>

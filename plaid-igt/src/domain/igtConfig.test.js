@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { ROLES } from '@larc-iu/plaid-client';
 import { ZERO_MORPH } from './zeroMorph.js';
 import {
@@ -19,6 +19,7 @@ import {
   readLanguages,
   hasLanguageIdentity,
   markImportStarted,
+  recordImportVocab,
   readImportState,
   IGNORED_TOKEN_MODES,
   DEFAULT_IGNORED_TOKENS,
@@ -255,18 +256,20 @@ describe('hasLanguageIdentity', () => {
 
 // What an import leaves on the project while it runs.
 describe('the import record', () => {
-  it('names the format and the file, and reads back as written', async () => {
+  it('names the format, the file and the vocabularies made, and reads back as written', async () => {
     const written = [];
     const client = { projects: { setConfig: async (...args) => written.push(args) } };
-    await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup');
+    const record = await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup');
     const [projectId, ns, key, value] = written[0];
     expect([projectId, ns, key]).toEqual(['p1', 'igt', 'import']);
-    expect(value).toMatchObject({ kind: 'FLEx', source: 'lezgi.fwbackup' });
-    expect(Object.keys(value).sort()).toEqual(['kind', 'source', 'startedAt']);
-    expect(readImportState({ igt: { import: value } })).toEqual(value);
+    expect(value).toEqual(record);
+    expect(value).toMatchObject({ kind: 'FLEx', source: 'lezgi.fwbackup', vocabsMade: [] });
+    const next = await recordImportVocab(client, 'p1', record, 'v1');
+    expect(written[1][3]).toEqual({ ...record, vocabsMade: ['v1'] });
+    expect(readImportState({ igt: { import: next } })).toEqual(next);
   });
 
-  it('does not fail the import when it cannot be written', async () => {
+  it('fails the import when it cannot be written', async () => {
     const client = {
       projects: {
         setConfig: async () => {
@@ -274,9 +277,7 @@ describe('the import record', () => {
         },
       },
     };
-    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(markImportStarted(client, 'p1', 'CLDF', null)).resolves.toBeUndefined();
-    quiet.mockRestore();
+    await expect(markImportStarted(client, 'p1', 'CLDF', null)).rejects.toThrow('offline');
   });
 });
 

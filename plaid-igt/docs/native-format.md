@@ -467,9 +467,11 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 6. References in metadata are rewritten throughout (below).
 
 The project carries an import record (`config.igt.import`, `{kind, source,
-startedAt}`) from the moment it exists until the whole import has run. An import
-that stops leaves it there, and a project with the record does not open: it is
-deleted and imported again, never carried on.
+startedAt, vocabsMade}`) from the moment it exists until the whole import has
+run. `vocabsMade` lists the vocabularies setup made, each as soon as it exists.
+An import that stops leaves the record there, and a project with the record does
+not open: it is deleted, with the vocabularies the record names that no other
+project links, and imported again, never carried on.
 
 ### References in metadata
 

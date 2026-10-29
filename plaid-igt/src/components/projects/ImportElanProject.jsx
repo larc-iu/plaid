@@ -19,11 +19,12 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  FileDropZone,
+  FinishPending,
+  ImportHeader,
   ImportRunPanel,
   Panel,
   ProjectNameField,
-  FileDropZone,
-  ImportHeader,
   WarningLog,
 } from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
@@ -71,6 +72,8 @@ export const ImportElanProject = () => {
     projectIdRef,
     unfinished,
     clearUnfinished,
+    finishPending,
+    retryFinish,
     stop,
     start,
   } = useProjectImportRun({ client, kind: 'ELAN' });
@@ -245,6 +248,7 @@ export const ImportElanProject = () => {
 
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
+            {finishPending && <FinishPending onRetry={retryFinish} />}
             <Panel tone="success" title="Import complete">
               <p className="mt-1 text-xs">{results.imported} imported.</p>
             </Panel>
@@ -261,11 +265,13 @@ export const ImportElanProject = () => {
                 </Panel>
               )
             )}
-            <div>
-              <Button asChild>
-                <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
-              </Button>
-            </div>
+            {!finishPending && (
+              <div>
+                <Button asChild>
+                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
