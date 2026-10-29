@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.provenance import PROVENANCE_KEYS, project_role
 from plaid_client.workflows.igt.config import is_orthography_key, orthography_name
+from plaid_client.workflows.igt.tagsets import CLOSED
 
 from ..core import docload, opkind
 from ..core.bidi import plain_quote, qname, qv
@@ -54,13 +55,29 @@ MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can change its
                     'Tell them a maintainer of that lexicon has to make this change.')
 # The types the app's Create gives a new entry over several words.
 PHRASE_TYPES = frozenset({'phrase', 'discontiguous phrase'})
+
+# The kinds of field a staged value may be for besides an annotation field's
+# layer (Workspace.staged_values).
+DOC_FIELD = 'document metadata'
+ENTRY_FIELD = 'entry field'
+# The entry metadata key holding an entry's type.
+MORPH_TYPE_KEY = 'morphType'
+
+
+def tagset_rules(tagset: Optional[dict]) -> List[dict]:
+    """The value-set rule a CLOSED tagset holds its field to, as core holds a
+    span field to one (``field_constraints``), or none."""
+    if not tagset or tagset.get('mode') != CLOSED:
+        return []
+    return [{'type': 'value-set', 'values': [t['value'] for t in tagset.get('values') or []],
+             'delimiters': tagset.get('delimiters') or '', 'parts': 'all'}]
 NEW_ENTRY_FORM_ONLY = ('The person you are acting for does not maintain the lexicon "{lexicon}", so an entry '
                        'they create has its form and nothing else (a phrase entry also its type), as in the '
                        'app. Its fields and its type are for a maintainer of that lexicon to fill in. Nothing was planned. Create the '
                        'entry with its form alone, and tell them a maintainer has to add the rest.')
 from .project import (BAD_REF, FORMAT_LEGEND, MARKERS, IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual,
                       load_document, read_view, render_document, resolve)
-from .lexview import LexView, _dict_hits, entry_line
+from .lexview import FLEX_MORPH_TYPES, LexView, _dict_hits, entry_line
 from .tagsets import SETTINGS_APART
 from .vocab import ENTRY_IMPORT_STAMP_KEYS, PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 from plaid_client.workflows.igt.senses import entry_morph_types
@@ -781,15 +798,44 @@ class Workspace(BaseWorkspace):
         return names
 
     def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
-        if op.get('kind') == 'set_span':
+        """Every value ``op`` writes into a field a list may hold: an
+        annotation field by its layer id, a document metadata field as
+        ``(DOC_FIELD, name)`` and a lexicon entry field, its type among them,
+        as ``(ENTRY_FIELD, lexicon id, name)``. :meth:`value_rules` says what
+        each may take, so the one check refuses an off-list value of any of
+        them (R1-1)."""
+        kind = op.get('kind')
+        if kind == 'set_span':
             return [(op.get('layer_id'), op.get('value'))]
-        if op.get('kind') == 'set_analysis':
+        if kind == 'set_analysis':
             return [(fv.get('layer_id'), fv.get('value'))
                     for m in op.get('morphemes') or [] for fv in m.get('fields') or []]
+        if kind == 'set_doc_metadata':
+            return [((DOC_FIELD, op.get('field')), op.get('value'))]
+        if kind == 'create_document':
+            return [((DOC_FIELD, k), v) for k, v in (op.get('metadata') or {}).items()]
+        if kind == 'set_entry_field':
+            v = self.vocab_of_item(op.get('item_id'))
+            return [((ENTRY_FIELD, v['id'], op.get('field')), op.get('value'))] if v else []
+        if kind == 'create_entry':
+            return [((ENTRY_FIELD, op.get('vocab_id'), k), v) for k, v in (op.get('metadata') or {}).items()]
         return super().staged_values(op)
 
-    def value_rules(self, layer_id: str) -> tuple:
-        f = self.project.field_by_layer(layer_id) if layer_id else None
+    def value_rules(self, key) -> tuple:
+        """``(field name, value-set rules)`` for a key of :meth:`staged_values`:
+        an annotation field's stored rules (core enforces them), and for a
+        document metadata or entry field the rule its closed tagset makes, as
+        the app's screens hold it. An entry's type is held to the types the
+        app knows."""
+        if isinstance(key, tuple) and key[0] == DOC_FIELD:
+            return key[1], tagset_rules(self.project.metadata_tagsets.get(key[1]))
+        if isinstance(key, tuple) and key[0] == ENTRY_FIELD:
+            _kind, vocab_id, name = key
+            if name == MORPH_TYPE_KEY:
+                return name, [{'type': 'value-set', 'values': list(FLEX_MORPH_TYPES)}]
+            v = next((x for x in self.project.vocabs if x['id'] == vocab_id), None)
+            return name, tagset_rules(((v or {}).get('tagsets') or {}).get(name))
+        f = self.project.field_by_layer(key) if key else None
         return (f.name, f.value_sets) if f else ('', [])
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:

@@ -196,10 +196,14 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
         ws.guard_new_entry_field(e.get('vocab_id'))
         if vocab and f['scope'] == SCOPE_ENTRY and parent_of(e):
             raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense.', kind='invalid-argument')
+        meta = _entry_field_write(ws, vocab, f, value, e['metadata'], None)
+        # Written onto the create in place, past add_op: held to the field's
+        # list here.
+        ws.refuse_off_list({'kind': 'create_entry', 'vocab_id': e.get('vocab_id'), 'metadata': meta})
         # The pending entry and the op that creates it carry the same fields,
         # so they are written together or not at all.
         with ws.staging():
-            e['metadata'] = _entry_field_write(ws, vocab, f, value, e['metadata'], None)
+            e['metadata'] = meta
             for op in ws.ops:
                 if op.get('kind') == 'create_entry' and op.get('key') == target:
                     op['metadata'] = dict(e['metadata'])
