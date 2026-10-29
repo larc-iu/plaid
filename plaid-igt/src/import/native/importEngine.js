@@ -1369,7 +1369,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     if (docId && doc.data?.id != null) madeDocs.set(doc.data.id, docId);
     results.imported += 1;
   }
-  const { dropped } = await finishArchiveImport({
+  const { dropped, rulesFailed } = await finishArchiveImport({
     client,
     projectId,
     plan,
@@ -1383,8 +1383,9 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     warnings,
     shouldStop,
   });
-  // Done: nothing is left for "Use the project as it is" to finish.
-  await unmarked.setFinish(null);
+  // Done: nothing is left for "Use the project as it is" to finish, unless a
+  // layer rule could not be declared, which ending the import tries again.
+  if (!rulesFailed) await unmarked.setFinish(null);
   onProgress?.({ phase: 'done', ...results });
   return { ...results, dropped, warnings };
 }
@@ -1463,7 +1464,10 @@ const planRules = (restored) =>
  * none, all of it is read from the project, through the import's marks and
  * the plan. A reference to something the import never made (it stopped
  * first) is dropped, never left naming the archive's id, and counted:
- * returns `{dropped}`, with a warning for each place that dropped any.
+ * returns `{dropped, rulesFailed}`, with a warning for each place that
+ * dropped any. `rulesFailed` says a rule declaration failed (not one the data
+ * breaks, which is only named): the caller keeps the plan so ending the
+ * import again declares it.
  * Idempotent, so a resume or a second call changes nothing more.
  */
 export async function finishArchiveImport({
@@ -1534,15 +1538,20 @@ export async function finishArchiveImport({
   // Other apps' layer rules, declared again once every document is in, so
   // their layers hold the rules the archived project's did.
   check();
+  let failed = 0;
   if (plan.rules?.length) {
     const project = await client.projects.get(projectId);
     const rules = [];
     for (const r of plan.rules) rules.push({ ...r, stored: await storedRules(client, project, r) });
-    await declareOtherLayerRules({ client, restored: { rules, ids: new Map() }, warnings });
+    failed += await declareOtherLayerRules({
+      client,
+      restored: { rules, ids: new Map() },
+      warnings,
+    });
   }
   const ownRules = igt ?? readInitialized((await client.projects.get(projectId))?.config);
-  if (ownRules) await declareRulesAtEnd({ client, projectId, warnings });
-  return { dropped };
+  if (ownRules && !(await declareRulesAtEnd({ client, projectId, warnings }))) failed += 1;
+  return { dropped, rulesFailed: failed > 0 };
 }
 
 /** A layer's rules as the server holds them now, for a declaration to name. */
@@ -1621,6 +1630,7 @@ async function madeSoFar(client, projectId, plan) {
  * the documents went in, come back. Nothing is repaired: a list the stored
  * values still break, or one annotation a unit where a unit holds two, is
  * left out and named in a warning, as is a declaration the server refuses.
+ * False when declaring failed.
  */
 async function declareRulesAtEnd({ client, projectId, warnings = [] }) {
   try {
@@ -1628,8 +1638,10 @@ async function declareRulesAtEnd({ client, projectId, warnings = [] }) {
     // stay, and their field is named.
     const { notInForce } = await declareIgtRules(client, projectId, { repair: false });
     warnings.push(...notInForce.map((f) => notInForceText([f])));
+    return true;
   } catch (err) {
     warnings.push(`The annotation rules were not set: ${humanizeError(err)}`);
+    return false;
   }
 }
 

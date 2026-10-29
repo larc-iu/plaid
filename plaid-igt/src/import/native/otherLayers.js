@@ -438,10 +438,12 @@ export async function relinkOtherSettings({ client, projectId, ids, gone = [] })
  * import is never refused by them partway. A rule naming a layer by its
  * archive id names the layer made for it. Rules the stored data still breaks
  * are left out and named in a warning, as are rules the server refuses. A
- * layer that holds them already (a resumed import) is left alone.
+ * layer that holds them already (a resumed import) is left alone. Returns how
+ * many layers' declarations failed.
  */
 export async function declareOtherLayerRules({ client, restored, warnings = [] }) {
-  if (!restored?.rules?.length) return;
+  if (!restored?.rules?.length) return 0;
+  let failed = 0;
   const ids = restored.ids ?? restoredIds(restored);
   for (const r of restored.rules) {
     const wanted = Object.entries(r.constraints)
@@ -462,8 +464,10 @@ export async function declareOtherLayerRules({ client, restored, warnings = [] }
       }
     } catch (err) {
       warnings.push(`Another app's rules for "${r.name}" were not set: ${humanizeError(err)}`);
+      failed += 1;
     }
   }
+  return failed;
 }
 
 /**

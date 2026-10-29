@@ -29,7 +29,8 @@ export const importRepairs = (config) => readImportState(config)?.kind !== NATIV
  * Returns `{cleared, warnings}`: whether the record went, and a line for
  * each list left out of force, each reference dropped or a failure to
  * declare. The record is cleared all the same, but for an archive's last
- * step that fails, which stays on the record to be run again.
+ * step that fails or fails to declare a rule, which stays on the record to
+ * be run again.
  */
 export const finishImport = async (client, projectId) => {
   const warnings = [];
@@ -41,7 +42,14 @@ export const finishImport = async (client, projectId) => {
       // it: a project left naming the archive's ids is worse than one that
       // still opens on its import.
       try {
-        await finishArchiveImport({ client, projectId, plan: record.finish, warnings });
+        const { rulesFailed } = await finishArchiveImport({
+          client,
+          projectId,
+          plan: record.finish,
+          warnings,
+        });
+        // A rule left undeclared by a failure would stay off for good.
+        if (rulesFailed) return { cleared: false, warnings };
       } catch (err) {
         console.error('Could not finish the import:', err);
         return { cleared: false, warnings: [...warnings, 'The import could not be finished.'] };

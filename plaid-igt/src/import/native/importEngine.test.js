@@ -2451,6 +2451,39 @@ describe("runNativeImport, other apps' layers", () => {
     ]);
   });
 
+  it('keeps the import record when a layer rule could not be declared, so ending again declares it (REV-FX-R4-IMP S3)', async () => {
+    const archive = otherAppArchive();
+    archive.manifest.otherLayers.tokenLayers.find((tl) => tl.name === 'Words').constraints = {
+      other: [{ type: 'coextensive' }],
+    };
+    const store = makeStore();
+    let made = false;
+    const first = stubClient({
+      store,
+      failAt: (name) => {
+        if (name === 'documents.create') made = true;
+        return false;
+      },
+    });
+    await expect(
+      runNativeImport({ client: first, projectId: 'newp', archive, shouldStop: () => made }),
+    ).rejects.toBeInstanceOf(ImportCancelled);
+    const wordsId = madeBy(first, 'tokenLayers.create', (c) => c[2] === 'Words');
+
+    const refused = stubClient({ store, failAt: (name) => name === 'tokenLayers.setConstraints' });
+    const once = await finishImport(refused, 'newp');
+    expect(once.cleared).toBe(false);
+    expect(once.warnings.join(' ')).toMatch(/were not set/);
+    expect(store.config.igt.import.finish).toBeDefined();
+
+    const again = stubClient({ store });
+    expect((await finishImport(again, 'newp')).cleared).toBe(true);
+    expect(argsOf(again, 'tokenLayers.setConstraints')).toEqual([
+      [wordsId, 'other', [{ type: 'coextensive' }], undefined, { expected: null }],
+    ]);
+    expect(store.config.igt.import).toBeUndefined();
+  });
+
   it('points every layer id in a restored setting at the layer made for it, at any depth', async () => {
     const archive = otherAppArchive();
     const { manifest } = archive;
