@@ -31,6 +31,7 @@ import {
   restoreLayerNamesAndOrder,
 } from './importEngine.js';
 import { mintedId, mintedSpecs } from '../test-helpers.js';
+import { finishImport } from '../../domain/importFinish.js';
 
 // ---- the archive under test: built by the REAL exporter --------------------
 // Export the loss-trap fixture document, then import the result — the test is
@@ -192,6 +193,11 @@ function stubClient({
         record('projects.setConfig', a);
         if (store) store.config[ns] = { ...store.config[ns], [key]: value };
       },
+      deleteConfig: async (...a) => {
+        const [, ns, key] = a;
+        record('projects.deleteConfig', a);
+        if (store?.config[ns]) delete store.config[ns][key];
+      },
       listDocuments: async (id) =>
         record(
           'projects.listDocuments',
@@ -208,9 +214,18 @@ function stubClient({
       get: async (id) =>
         record('vocabLayers.get', [id], {
           id,
+          ...(store?.vocabConfig?.[id] ? { config: store.vocabConfig[id] } : {}),
           items: [...existingItems, ...(store?.items.filter((it) => it.vocabId === id) ?? [])],
         }),
-      setConfig: async (...a) => record('vocabLayers.setConfig', a),
+      setConfig: async (...a) => {
+        const [id, ns, key, value] = a;
+        if (store) {
+          store.vocabConfig ||= {};
+          const held = (store.vocabConfig[id] ||= {});
+          held[ns] = { ...held[ns], [key]: value };
+        }
+        return record('vocabLayers.setConfig', a);
+      },
       deleteConfig: async (...a) => record('vocabLayers.deleteConfig', a),
     },
     spanLayers: {
@@ -281,7 +296,13 @@ function stubClient({
         return made;
       },
       setMetadata: async (...a) => record('vocabItems.setMetadata', a),
-      bulkUpdate: async (body) => record('vocabItems.bulkUpdate', [body], { count: body.length }),
+      bulkUpdate: async (body) => {
+        for (const { id, metadata } of body) {
+          const it = store?.items.find((x) => x.id === id);
+          if (it) it.metadata = applyMetadataOps(it.metadata || {}, metadata);
+        }
+        return record('vocabItems.bulkUpdate', [body], { count: body.length });
+      },
       deleteMetadata: async (...a) => record('vocabItems.deleteMetadata', a),
     },
     vocabLinks: {
@@ -335,6 +356,17 @@ function stubClient({
         return record('documents.setMetadata', [id, metadata]);
       },
       patchMetadata: async (...a) => record('documents.patchMetadata', a),
+      // A document's history: the import's own operation, and a person's
+      // write besides for one `edited` names.
+      audit: async (id) =>
+        record(
+          'documents.audit',
+          [id],
+          [
+            { kind: 'import', ref: 'format:native' },
+            ...(edited.has(id) ? [{ kind: undefined, user: { id: 'someone' } }] : []),
+          ],
+        ),
       uploadMedia: async (id, file) => record('documents.uploadMedia', [id, file?.name]),
     },
     texts: {
@@ -1635,6 +1667,118 @@ describe('a resume and what was made at the metadata key cap', () => {
   });
 });
 
+describe('an import that stopped, ended as it is', () => {
+  // Three documents and a lexicon whose entries name each other and the
+  // documents, and another app's setting naming each document.
+  const stoppedArchive = () => {
+    const project = makeNativeProject();
+    const docs = ['doc1', 'doc2', 'doc3'].map((id, i) => {
+      const raw = makeNativeRaw();
+      raw.id = id;
+      raw.name = `Doc ${i + 1}`;
+      const igtDoc = new IgtDocument({ raw, project, vocabularies: {} });
+      const row = { id, name: raw.name, file: `documents/${id}.json`, mediaFile: null };
+      return { ...row, data: serializeDocumentNative(igtDoc, {}), mediaBytes: null };
+    });
+    const word = (i) => docs[i].data.sentences[0].words[0].id;
+    const vocab = {
+      ...VOCAB,
+      config: {
+        igt: {
+          fields: { gloss: { inline: true }, variantOf: { inline: false, type: 'item' } },
+        },
+      },
+      items: [
+        { id: 'a-head', form: 'kat', metadata: { gloss: 'cat' } },
+        {
+          id: 'a-sense',
+          form: 'kat',
+          metadata: { gloss: 'lion', parent: 'a-head', senseOrder: 1 },
+        },
+        {
+          id: 'a-run',
+          form: 'run',
+          metadata: {
+            gloss: 'run',
+            variantOf: 'a-head',
+            examples: [
+              { document: 'doc1', token: word(0) },
+              { document: 'doc2', token: word(1) },
+              { document: 'doc3', token: word(2) },
+            ],
+          },
+        },
+      ],
+    };
+    const vocabRow = { id: 'vocab1', name: 'Lex', file: 'vocabularies/Lex.json' };
+    const manifest = buildProjectFile({
+      project,
+      documents: docs.map(({ data: _d, mediaBytes: _m, ...row }) => row),
+      vocabularies: [vocabRow],
+      exportedAt: '2026-10-29T00:00:00.000Z',
+    });
+    manifest.otherConfig = {
+      ...manifest.otherConfig,
+      umr: { importManifest: { document_ids: { a: 'doc1', b: 'doc2', c: 'doc3' } } },
+    };
+    return {
+      manifest,
+      vocabularies: [{ ...vocabRow, data: serializeVocabularyNative(vocab) }],
+      documents: docs,
+    };
+  };
+  // Stopped once the second document exists: the first is done, the second
+  // half made and the third never begun.
+  const stopInSecond = async (store) => {
+    let creates = 0;
+    const client = stubClient({
+      store,
+      failAt: (name) => {
+        if (name === 'documents.create') creates += 1;
+        return false;
+      },
+    });
+    await expect(
+      runNativeImport({
+        client,
+        projectId: 'newp',
+        archive: stoppedArchive(),
+        shouldStop: () => creates >= 2,
+      }),
+    ).rejects.toBeInstanceOf(ImportCancelled);
+    return [...store.docs.values()];
+  };
+  const byGloss = (store, gloss) => store.items.find((it) => it.metadata?.gloss === gloss);
+
+  it('ended as it is, points the lexicon and settings at what it made and drops what it never made (R4-5)', async () => {
+    const store = makeStore();
+    const [one, two] = await stopInSecond(store);
+    expect([one.name, two.name, two.metadata.importDone]).toEqual(['Doc 1', 'Doc 2', undefined]);
+
+    const { cleared, warnings } = await finishImport(stubClient({ store }), 'newp');
+    expect(cleared).toBe(true);
+    expect(store.config.igt.import).toBeUndefined();
+    const head = byGloss(store, 'cat');
+    expect(byGloss(store, 'lion').metadata.parent).toBe(head.id);
+    const run = byGloss(store, 'run');
+    expect(run.metadata.variantOf).toBe(head.id);
+    // The finished document's example points at the token made for it. The
+    // half-made one's tokens are not known, and the third was never made.
+    expect(run.metadata.examples).toEqual([
+      { document: one.id, token: expect.stringMatching(/^tok-/) },
+    ]);
+    expect(store.config.umr.importManifest).toEqual({
+      document_ids: { a: one.id, b: two.id },
+    });
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        '1 reference in project settings named a document not imported and was dropped',
+        '"Lex": 2 references pointed at something not imported and were dropped (run: example; run: example)',
+      ]),
+    );
+  });
+});
+
 describe('rebuildTokenMap', () => {
   it('maps a finished document by what its tokens are, not by creation order', async () => {
     // What a resume has to work from: the archive's document, and the server's
@@ -2174,6 +2318,52 @@ describe("runNativeImport, other apps' layers", () => {
     expect(names.indexOf('relationLayers.setConstraints')).toBeGreaterThan(
       names.lastIndexOf('relations.bulkCreate'),
     );
+  });
+
+  it("puts another app's layer rules in force when a stopped import is ended as it is (R4-4)", async () => {
+    const archive = otherAppArchive();
+    const described = archive.manifest.otherLayers;
+    const sentenceLayer = archive.manifest.layers.sentence;
+    const concepts = described.tokenLayers.find((tl) => tl.name === 'Nodes').spanLayers[0];
+    concepts.relationLayers[0].constraints = {
+      other: [{ type: 'same-ancestor', tokenLayer: sentenceLayer }],
+    };
+    described.tokenLayers.find((tl) => tl.name === 'Words').constraints = {
+      other: [{ type: 'coextensive' }],
+    };
+    const store = makeStore();
+    let made = false;
+    const first = stubClient({
+      store,
+      failAt: (name) => {
+        if (name === 'documents.create') made = true;
+        return false;
+      },
+    });
+    await expect(
+      runNativeImport({ client: first, projectId: 'newp', archive, shouldStop: () => made }),
+    ).rejects.toBeInstanceOf(ImportCancelled);
+    expect(callsOf(first, 'tokenLayers.setConstraints')).toEqual([]);
+
+    const client = stubClient({ store });
+    await finishImport(client, 'newp');
+    const relsId = madeBy(first, 'relationLayers.create', (c) => c[2] === 'Relations');
+    const wordsId = madeBy(first, 'tokenLayers.create', (c) => c[2] === 'Words');
+    const newSentenceLayer = targetProject().textLayers[0].tokenLayers.find(
+      (tl) => tl.config?.plaid?.role === 'sentence',
+    ).id;
+    expect(argsOf(client, 'relationLayers.setConstraints')).toEqual([
+      [
+        relsId,
+        'other',
+        [{ type: 'same-ancestor', tokenLayer: newSentenceLayer }],
+        undefined,
+        { expected: null },
+      ],
+    ]);
+    expect(argsOf(client, 'tokenLayers.setConstraints')).toEqual([
+      [wordsId, 'other', [{ type: 'coextensive' }], undefined, { expected: null }],
+    ]);
   });
 
   it('points every layer id in a restored setting at the layer made for it, at any depth', async () => {

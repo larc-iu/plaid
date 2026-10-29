@@ -24,7 +24,7 @@
 // items are deduped by metadata.nativeImportId (the archive item id, stamped
 // at creation — it doubles as provenance back to the source archive). An entry
 // or document whose metadata has no room for those marks is named on the
-// project's import record instead (`unmarkedLedger`).
+// project's import record instead (`importLedger`).
 
 import {
   IGNORED_TOKENS_KEY,
@@ -63,6 +63,8 @@ import {
 import {
   archivedIds,
   documentReferences,
+  dropReferences,
+  namesAnotherDocument,
   relinkDocumentReferences,
   rewriteReferences,
 } from './references.js';
@@ -73,6 +75,7 @@ import {
   findWordTokenLayer,
   readScope,
   readImportState,
+  readInitialized,
   recordImportUnmarked,
   orthographyKey,
 } from '../../domain/igtConfig.js';
@@ -193,19 +196,31 @@ export function resolveNativeTargets(project, manifest) {
 }
 
 /**
- * What this import made without its marks, because the entity's metadata was
- * at core's key cap: the archive's entries and documents, by archive id, kept
- * on the project's import record so a resume finds them as it finds a marked
- * one. The record is removed when the import finishes, so nothing stays on
- * the data. With no record (the engine run on its own) there is no resume to
- * serve and nothing is written.
+ * What this import keeps on the project's import record, so a resume or "Use
+ * the project as it is" can work from the project alone. The record is removed
+ * when the import finishes, so nothing stays on the data. With no record (the
+ * engine run on its own) there is no resume to serve and nothing is written.
+ *
+ * `unmarked`: what was made without the import's marks, because the entity's
+ * metadata was at core's key cap: the archive's entries and documents, by
+ * archive id, so a resume finds them as it finds a marked one.
+ *
+ * `finish`: what the finish step (`finishArchiveImport`) needs that the
+ * project does not hold (`finishPlan`), so that the step does the same work
+ * after a stop as at the end of a run.
  */
-function unmarkedLedger({ client, projectId, project }) {
+function importLedger({ client, projectId, project }) {
   const record = readImportState(project?.config);
   const documents = { ...(record?.unmarked?.documents || {}) };
   const entries = { ...(record?.unmarked?.entries || {}) };
+  let finish = record?.finish ?? null;
   const save = async () => {
-    if (record) await recordImportUnmarked(client, projectId, record, { documents, entries });
+    if (!record) return;
+    const { finish: _earlier, ...rest } = record;
+    await recordImportUnmarked(client, projectId, finish ? { ...rest, finish } : rest, {
+      documents,
+      entries,
+    });
   };
   return {
     /** The entry an earlier run made for this archive entry, or null. */
@@ -219,6 +234,13 @@ function unmarkedLedger({ client, projectId, project }) {
     },
     documentMade: async (archiveId, id, done) => {
       documents[String(archiveId)] = { id, done };
+      await save();
+    },
+    /** The finish plan as an earlier run left it, or null. */
+    finish: () => finish,
+    /** Record `next` as the finish plan, or drop it (null). */
+    setFinish: async (next) => {
+      finish = next;
       await save();
     },
   };
@@ -247,7 +269,7 @@ async function slugTakenElsewhere(client, vocabId, config) {
  * Import one vocabulary's items IN ARRAY ORDER (the entry-numbering
  * contract). Returns Map<archiveItemId, newItemId>. Resume-safe: items
  * already stamped with a matching nativeImportId are reused, and so are the
- * ones `unmarked` (an `unmarkedLedger`) names.
+ * ones `unmarked` (an `importLedger`) names.
  */
 export async function importVocabulary({
   client,
@@ -534,8 +556,11 @@ async function importNativeDocument({
   // Archive document id -> the project's document, for every document that is
   // finished: what a reference to a document resolves through.
   docIdMap = new Map(),
-  // Where a document made without the import's marks is named (unmarkedLedger).
+  // Where a document made without the import's marks is named (importLedger).
   unmarked = null,
+  // Called with the document and its token map (archive id → new id) once
+  // every write but the media is done and before the document is marked done.
+  beforeDone = null,
 }) {
   const progress = documentProgress({
     onProgress,
@@ -1007,6 +1032,7 @@ async function importNativeDocument({
   //
   // The metadata goes again whole, now that what it names in the document
   // itself exists. From here on another document's reference to it resolves.
+  await beforeDone?.(docId, tokenIdMap);
   if (!mediaFailed) {
     await client.documents.setMetadata(
       docId,
@@ -1071,7 +1097,11 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const project = await client.projects.get(projectId);
   const targets = resolveNativeTargets(project, archive.manifest);
   const warnings = [];
-  const unmarked = unmarkedLedger({ client, projectId, project });
+  const unmarked = importLedger({ client, projectId, project });
+  // What the finish step needs that the project will not hold, on the import
+  // record from the start, so "Use the project as it is" can run it.
+  const plan = finishPlan(archive, unmarked.finish());
+  await unmarked.setFinish(plan);
 
   const schema = archive.manifest.schema || {};
   // Igt's own settings, fields and rules, only for a project that had them.
@@ -1173,6 +1203,12 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     manifest: archive.manifest,
     layerIds: knownLayerIds(archive, project, targets),
     warnings,
+    // Recorded once the layers are there and before the settings naming them
+    // are written.
+    onLayers: async (restored) => {
+      plan.rules = planRules(restored);
+      await unmarked.setFinish(plan);
+    },
     check: () => {
       if (shouldStop?.()) throw new ImportCancelled();
     },
@@ -1245,21 +1281,29 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   };
 
   const docMaps = new Map(); // archive document id → {docId, tokenIdMap}
-  // The documents a promoted example points into. A resume skips a document an
-  // earlier run finished, and the last pass would then have no map for it and
-  // would drop those examples, so the map is rebuilt for these.
-  const cited = new Set();
-  for (const vocab of archive.vocabularies) {
-    for (const it of vocab.data?.items || []) {
-      for (const ex of it.metadata?.examples || []) {
-        if (ex && typeof ex.document === 'string') cited.add(ex.document);
-      }
+  // The documents a promoted example points into, and the tokens it names in
+  // each. A resume skips a document an earlier run finished, and the last pass
+  // would then have no map for it and would drop those examples, so the map
+  // is rebuilt for these.
+  const cited = citedTokens(archive);
+  // The tokens an example names in a document, as made here, on the import
+  // record before the document is marked done, so ending a stopped import as
+  // it is keeps the examples of every finished document.
+  const recordCited = async (archiveId, docId, tokenIdMap) => {
+    const tokens = {};
+    for (const t of cited.get(archiveId) || []) {
+      if (tokenIdMap.has(t)) tokens[t] = tokenIdMap.get(t);
     }
-  }
+    plan.exampleTokens = { ...plan.exampleTokens, [archiveId]: { document: docId, tokens } };
+    await unmarked.setFinish(plan);
+  };
   const results = { imported: 0, skipped: 0, redone: 0 };
   // The documents a reference can already be resolved to: those an earlier
   // run finished. Each one this run finishes joins them.
   const docIdMap = new Map();
+  // Every document the project holds for one of the archive's, finished or
+  // not: what the finish step resolves a reference to a document through.
+  const madeDocs = new Map();
   for (const doc of archive.documents) {
     const existing = earlierRun(doc.data?.id);
     if (existing?.done) docIdMap.set(doc.data.id, existing.id);
@@ -1277,13 +1321,14 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     const existing = earlierRun(doc.data?.id);
     if (existing?.done) {
       results.skipped += 1;
+      madeDocs.set(doc.data.id, existing.id);
       if (cited.has(doc.data?.id)) {
-        const tokenIdMap = await rebuildTokenMap({
-          client,
-          docId: existing.id,
-          docData: doc.data,
-          targets,
-        });
+        // What the run that finished it recorded, or else what its tokens are.
+        const recorded = plan.exampleTokens?.[doc.data.id];
+        const tokenIdMap =
+          recorded?.document === existing.id
+            ? new Map(Object.entries(recorded.tokens || {}))
+            : await rebuildTokenMap({ client, docId: existing.id, docData: doc.data, targets });
         docMaps.set(doc.data.id, { docId: existing.id, tokenIdMap });
       }
       continue;
@@ -1292,7 +1337,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       await client.documents.delete(existing.id); // half-imported: redo cleanly
       results.redone += 1;
     }
-    await importNativeDocument({
+    const docId = await importNativeDocument({
       client,
       projectId,
       targets,
@@ -1308,54 +1353,244 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       onProgress,
       shouldStop,
       warnings,
+      beforeDone: cited.has(doc.data?.id)
+        ? (id, tokenIdMap) => recordCited(doc.data.id, id, tokenIdMap)
+        : null,
     });
+    if (docId && doc.data?.id != null) madeDocs.set(doc.data.id, docId);
     results.imported += 1;
   }
-  // What names a document made after the one naming it, now that every
-  // document is in. Idempotent, so a resume redoes it harmlessly.
-  await relinkDocumentReferences({
-    client,
-    documents: archive.documents.map((d) => d.data),
-    docIdMap,
-    stampKeys: new Set(IMPORT_STAMP_KEYS),
-    check: () => {
-      if (shouldStop?.()) throw new ImportCancelled();
-    },
-  });
-  // And what another app's project settings name: a document or an entry,
-  // which did not exist when those settings were written.
-  if (shouldStop?.()) throw new ImportCancelled();
-  await relinkOtherSettings({
+  const { dropped } = await finishArchiveImport({
     client,
     projectId,
-    manifest: archive.manifest,
-    layerIds,
-    ids: new Map([...docIdMap, ...itemIdMap]),
+    plan,
+    igt,
+    made: {
+      itemIdMap,
+      docIdMap: madeDocs,
+      docMaps,
+      vocabularies: archive.vocabularies.map((v) => v.data),
+    },
+    warnings,
+    shouldStop,
   });
+  // Done: nothing is left for "Use the project as it is" to finish.
+  await unmarked.setFinish(null);
+  onProgress?.({ phase: 'done', ...results });
+  return { ...results, dropped, warnings };
+}
 
-  // Last: the structure a vocabulary keeps in item metadata (parents, Entry
-  // fields, examples) names ids from the archive, so it is
-  // rewritten through the maps now that every item, document and token
-  // exists. Idempotent, so a resume redoes it harmlessly.
+/**
+ * The tokens each document's promoted examples name, by archive document id:
+ * what an example can be pointed at the new project through.
+ */
+function citedTokens(archive) {
+  const cited = new Map();
   for (const vocab of archive.vocabularies) {
+    for (const it of vocab.data?.items || []) {
+      for (const ex of it.metadata?.examples || []) {
+        if (!ex || typeof ex.document !== 'string') continue;
+        if (!cited.has(ex.document)) cited.set(ex.document, new Set());
+        if (typeof ex.token === 'string') cited.get(ex.document).add(ex.token);
+      }
+    }
+  }
+  return cited;
+}
+
+/**
+ * What the finish step needs from the archive that the project does not hold,
+ * written on the import record as the run begins (`importLedger`): the
+ * archive's document ids, to tell a reference to one the import never made;
+ * those whose file names another document; the layer rules of other apps, as
+ * `restoreOtherLayers` makes their layers; and the tokens each finished
+ * document's examples name. An earlier run's rules and tokens are kept.
+ */
+export function finishPlan(archive, earlier = null) {
+  const documents = archive.documents.map((d) => d.data?.id).filter((id) => id != null);
+  const archived = new Set(documents);
+  return {
+    documents,
+    naming: archive.documents
+      .filter((d) => d.data?.id != null && namesAnotherDocument(d.data, archived))
+      .map((d) => d.data.id),
+    rules: earlier?.rules ?? [],
+    exampleTokens: earlier?.exampleTokens ?? {},
+  };
+}
+
+/**
+ * The rules `restoreOtherLayers` found for the layers it made or found, as the
+ * finish plan keeps them: each layer and rule naming the layers made here.
+ */
+const planRules = (restored) =>
+  (restored.rules || []).map((r) => ({
+    kind: r.kind,
+    layerId: r.layerId,
+    name: r.name,
+    constraints: remapIds(r.constraints, restored.ids ?? new Map()),
+  }));
+
+/**
+ * The end of an archive import, whether the run reaches it or "Use the
+ * project as it is" ends one that stopped (domain/importFinish.js). In order:
+ * what names a document made after the one naming it, what other apps'
+ * project settings name, the structure the lexicon keeps in entry metadata
+ * (sense parents, Entry fields, promoted examples), other apps' layer rules,
+ * and this app's own (`igt`). `plan` is `finishPlan`'s.
+ *
+ * `made` is what the run knows: archive id to new id for entries and
+ * documents, each document's token map, and the archive's vocabularies. With
+ * none, all of it is read from the project, through the import's marks and
+ * the plan. A reference to something the import never made (it stopped
+ * first) is dropped, never left naming the archive's id, and counted:
+ * returns `{dropped}`, with a warning for each place that dropped any.
+ * Idempotent, so a resume or a second call changes nothing more.
+ */
+export async function finishArchiveImport({
+  client,
+  projectId,
+  plan,
+  igt = null,
+  made = null,
+  warnings = [],
+  shouldStop = null,
+}) {
+  const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
-    await relinkVocabStructure({
+  };
+  const known = made ?? (await madeSoFar(client, projectId, plan));
+  const { itemIdMap, docIdMap, docMaps, vocabularies } = known;
+  const archived = new Set(plan.documents || []);
+  const gone = new Set([...archived].filter((id) => !docIdMap.has(id)));
+  let dropped = 0;
+
+  // What names a document made after the one naming it.
+  const inDocuments = await relinkDocumentReferences({
+    client,
+    archived,
+    naming: plan.naming || [],
+    docIdMap,
+    stampKeys: new Set(IMPORT_STAMP_KEYS),
+    check,
+  });
+  if (inDocuments) {
+    warnings.push(
+      `${countOf(inDocuments, 'reference')} in documents named a document not imported and ${inDocuments === 1 ? 'was' : 'were'} dropped`,
+    );
+  }
+  dropped += inDocuments;
+  // What another app's project settings name: a document or an entry, which
+  // did not exist when those settings were written.
+  check();
+  const inSettings = await relinkOtherSettings({
+    client,
+    projectId,
+    ids: new Map([...docIdMap, ...itemIdMap]),
+    gone,
+  });
+  if (inSettings) {
+    warnings.push(
+      `${countOf(inSettings, 'reference')} in project settings named a document not imported and ${inSettings === 1 ? 'was' : 'were'} dropped`,
+    );
+  }
+  dropped += inSettings;
+
+  // The structure a vocabulary keeps in item metadata (parents, Entry fields,
+  // examples) names ids from the archive, so it is rewritten through the
+  // maps now that every item, document and token there is exists.
+  for (const vocabData of vocabularies) {
+    check();
+    dropped += await relinkVocabStructure({
       client,
-      vocabData: vocab.data,
+      vocabData,
       itemIdMap,
       docMaps,
       docIdMap,
+      gone,
       warnings,
       shouldStop,
     });
   }
   // Other apps' layer rules, declared again once every document is in, so
   // their layers hold the rules the archived project's did.
-  if (shouldStop?.()) throw new ImportCancelled();
-  await declareOtherLayerRules({ client, restored: targets.otherLayers, warnings });
-  if (igt) await declareRulesAtEnd({ client, projectId, warnings });
-  onProgress?.({ phase: 'done', ...results });
-  return { ...results, warnings };
+  check();
+  if (plan.rules?.length) {
+    const project = await client.projects.get(projectId);
+    const rules = [];
+    for (const r of plan.rules) rules.push({ ...r, stored: await storedRules(client, project, r) });
+    await declareOtherLayerRules({ client, restored: { rules, ids: new Map() }, warnings });
+  }
+  const ownRules = igt ?? readInitialized((await client.projects.get(projectId))?.config);
+  if (ownRules) await declareRulesAtEnd({ client, projectId, warnings });
+  return { dropped };
+}
+
+/** A layer's rules as the server holds them now, for a declaration to name. */
+async function storedRules(client, project, rule) {
+  if (rule.kind === 'token')
+    return (await client.tokenLayers.get(rule.layerId))?.constraints ?? null;
+  for (const tl of (project?.textLayers || []).flatMap((t) => t.tokenLayers || [])) {
+    for (const sl of tl.spanLayers || []) {
+      if (rule.kind === 'span' && sl.id === rule.layerId) return sl.constraints ?? null;
+      for (const rl of sl.relationLayers || []) {
+        if (rule.kind === 'relation' && rl.id === rule.layerId) return rl.constraints ?? null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * What a stopped import made, read from the project for `finishArchiveImport`:
+ * each entry by the archive id it is marked with, each document by its import
+ * mark (finished or not), both as the import record names the ones made
+ * without marks, the token maps the plan kept for finished documents, and the
+ * vocabularies' entries as `planVocabRelink` takes an archive's, with the
+ * metadata they hold now.
+ */
+async function madeSoFar(client, projectId, plan) {
+  const project = await client.projects.get(projectId);
+  const record = readImportState(project?.config);
+  const unmarkedEntries = record?.unmarked?.entries || {};
+  const unmarkedDocs = record?.unmarked?.documents || {};
+  const itemIdMap = new Map();
+  const vocabularies = [];
+  for (const v of project?.vocabs || []) {
+    const full = await client.vocabLayers.get(v.id, true);
+    const present = new Map((full?.items || []).map((it) => [it.id, it]));
+    const archiveIdOf = new Map(Object.entries(unmarkedEntries).map(([a, id]) => [id, a]));
+    const items = [];
+    for (const it of full?.items || []) {
+      const archiveId = it.metadata?.[NATIVE_ITEM_KEY] ?? archiveIdOf.get(it.id);
+      if (archiveId == null || !present.has(it.id)) continue;
+      itemIdMap.set(archiveId, it.id);
+      const { [NATIVE_ITEM_KEY]: _stamp, ...metadata } = it.metadata || {};
+      items.push({ id: archiveId, form: it.form, metadata });
+    }
+    const fields = Object.entries(full?.config?.[IGT_NAMESPACE]?.fields || {}).map(([name, f]) => ({
+      name,
+      type: f?.type ?? null,
+      many: !!f?.many,
+    }));
+    vocabularies.push({ name: v.name, fields, items });
+  }
+  const prior = await priorImports(client, projectId);
+  const listed = new Set((await client.projects.listDocuments(projectId)).map((d) => d.id));
+  const docIdMap = new Map();
+  for (const archiveId of plan.documents || []) {
+    const found = prior.find(archiveId)?.id ?? unmarkedDocs[archiveId]?.id;
+    if (found && listed.has(found)) docIdMap.set(archiveId, found);
+  }
+  const docMaps = new Map();
+  for (const [archiveId, kept] of Object.entries(plan.exampleTokens || {})) {
+    if (!kept || docIdMap.get(archiveId) !== kept.document) continue;
+    docMaps.set(archiveId, {
+      docId: kept.document,
+      tokenIdMap: new Map(Object.entries(kept.tokens || {})),
+    });
+  }
+  return { itemIdMap, docIdMap, docMaps, vocabularies };
 }
 
 /**
@@ -1484,6 +1719,10 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
  * update entries with every reference mapped onto the ids the import made:
  * `parent`, each Entry-typed field, and the `examples` list's {document, token}
  * pairs. A reference to something that did not survive is dropped, and said.
+ * A reference already naming an entry or a document the import made (an
+ * earlier pass rewrote it) is kept. `gone` holds the archive ids of documents
+ * the import never made (it stopped first): any other value naming one is
+ * dropped too (`dropReferences`).
  *
  * `metadata` is a PATCH against the map the item was created with (the
  * archive's, plus this run's stamp — see the create above), so a reference that
@@ -1493,13 +1732,16 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
  * it holds and nulling one already gone are both no-ops, and a key somebody has
  * added by hand since is no longer swept away with them.
  */
-export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) {
+export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null, gone = null) {
   const refFields = (vocabData.fields || []).filter((f) => f.type === 'item');
   // Any other value naming an entry or a document by its archive id is a
   // reference too (./references.js). The import's own stamp names the archive
   // entry on purpose, and is written afresh below anyway.
   const lookup = (id) => itemIdMap.get(id) ?? docIdMap?.get(id);
   const stamp = new Set([NATIVE_ITEM_KEY]);
+  const madeItems = new Set(itemIdMap.values());
+  const madeDocs = new Set(docIdMap?.values() ?? []);
+  const entryId = (id) => itemIdMap.get(id) ?? (madeItems.has(id) ? id : null);
   const out = [];
   const dropped = [];
   for (const it of vocabData.items || []) {
@@ -1509,7 +1751,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
     let next = { ...meta };
     let changed = false;
     if (typeof meta.parent === 'string') {
-      const p = itemIdMap.get(meta.parent);
+      const p = entryId(meta.parent);
       if (p) next.parent = p;
       else {
         delete next.parent;
@@ -1522,7 +1764,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
       const v = meta[f.name];
       if (v == null) continue;
       const ids = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string');
-      const mapped = ids.map((x) => itemIdMap.get(x)).filter(Boolean);
+      const mapped = ids.map(entryId).filter(Boolean);
       if (mapped.length !== ids.length) dropped.push(`${it.form}: ${f.name}`);
       if (mapped.length) next[f.name] = f.many ? mapped : mapped[0];
       else delete next[f.name];
@@ -1538,6 +1780,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
         const doc = docMaps?.get(ex.document);
         const token = doc?.tokenIdMap.get(ex.token);
         if (doc && token) kept.push({ ...ex, document: doc.docId, token });
+        else if (!doc && madeDocs.has(ex.document)) kept.push(ex);
         else dropped.push(`${it.form}: example`);
       }
       if (kept.length) next.examples = kept;
@@ -1548,6 +1791,14 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
     if (rewritten !== next) {
       next = rewritten;
       changed = true;
+    }
+    if (gone?.size) {
+      const { value, count } = dropReferences(next, (v) => gone.has(v), stamp);
+      for (let i = 0; i < count; i += 1) dropped.push(`${it.form}: reference`);
+      if (count) {
+        next = value;
+        changed = true;
+      }
     }
     // `meta` is the ARCHIVE's copy, which carries no stamp of this run (and may
     // carry the stale one of the run that produced the archive), while the item
@@ -1570,10 +1821,11 @@ async function relinkVocabStructure({
   itemIdMap,
   docMaps,
   docIdMap,
+  gone = null,
   warnings,
   shouldStop,
 }) {
-  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap);
+  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap, gone);
   // One bulk update per chunk, not a batch of one write per entry: a batch
   // re-dispatches the whole REST stack per op inside the held write lock, and an
   // archive's lexicon has as many of these as it has cross-references.
@@ -1583,7 +1835,8 @@ async function relinkVocabStructure({
   }
   if (dropped.length) {
     warnings.push(
-      `"${vocabData.name}": ${countOf(dropped.length, 'reference')} pointed at something not in the archive and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
+      `"${vocabData.name}": ${countOf(dropped.length, 'reference')} pointed at something not imported and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
     );
   }
+  return dropped.length;
 }

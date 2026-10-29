@@ -364,8 +364,8 @@ export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
  * `{name: id}`, written while setup runs: it is what a resumed setup reads to
  * finish those rather than make them again.
  *
- * The record is rewritten on every run, so the `unmarked` an earlier run of
- * the same import wrote is read first and kept.
+ * The record is rewritten on every run, so the `unmarked` and `finish` an
+ * earlier run of the same import wrote are read first and kept.
  */
 export const markImportStarted = async (
   client,
@@ -388,6 +388,7 @@ export const markImportStarted = async (
       choices: choices ?? null,
       vocabsMade: vocabsMade ?? null,
       ...(earlier?.unmarked ? { unmarked: earlier.unmarked } : {}),
+      ...(earlier?.finish ? { finish: earlier.finish } : {}),
       startedAt: new Date().toISOString(),
     });
   } catch (err) {

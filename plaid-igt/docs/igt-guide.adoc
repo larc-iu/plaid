@@ -895,6 +895,7 @@ An import that stops before it finishes, whether you cancel it, it fails, or the
 Opening such a project takes you back to the import: choose the same file or files and it carries on, keeping what is already there.
 If what arrived is enough, **Use the project as it is** puts the project back in your hands.
 Its closed tagsets apply from then on, as they do when an import finishes.
+After a Plaid IGT archive, its lexicon, settings and layer rules are also completed as at the end of a whole import, and a reference to something that did not arrive is dropped and counted.
 Only a maintainer of the project's vocabulary can carry on an import that still has to change that vocabulary's settings.
 
 == Exporting

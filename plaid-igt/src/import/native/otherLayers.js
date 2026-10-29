@@ -19,6 +19,7 @@ import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { escapeJsRegex } from '../../../../plaid-ui/src/lib/jsRegex.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
+import { dropReferences } from './references.js';
 import {
   UNCARRIED_PLAID_KEYS,
   otherTokenLayers,
@@ -104,6 +105,9 @@ export async function restoreOtherLayers({
   layerIds = new Map(),
   warnings = [],
   check = () => {},
+  // Called with what was found or made once every layer is there, before the
+  // settings naming them are written.
+  onLayers = null,
 }) {
   const out = noOtherLayers();
   const described = manifest?.otherLayers || {};
@@ -326,6 +330,7 @@ export async function restoreOtherLayers({
 
   async function finish() {
     out.ids = new Map([...layerIds, ...restoredIds(out)]);
+    await onLayers?.(out);
     for (const [setConfig, id, current, config, ...rest] of writes) {
       check();
       await writeConfigNow(setConfig, id, current, remapIds(config, out.ids), ...rest);
@@ -373,37 +378,58 @@ export const remapIds = (value, ids) => {
 };
 
 /**
- * Once every document is in: the project settings `restoreOtherLayers` wrote,
- * again with each id of a document or a vocabulary entry the archive carries
- * replaced by what this import made for it (`ids`), as each layer id was then
- * (`layerIds`). Another app may name a document in its settings (plaid-umr's
- * import manifest does), and no document exists when those are first written.
- * Asks the project and writes only what differs, so a resume or a second call
- * writes nothing.
+ * Once every document is in, or when an import that stopped is ended as it
+ * is: the project settings `restoreOtherLayers` wrote, as the project holds
+ * them, with each id of a document or a vocabulary entry the archive carries
+ * replaced by what this import made for it (`ids`), as each layer id was when
+ * they were written. Another app may name a document in its settings
+ * (plaid-umr's import manifest does), and no document exists when those are
+ * first written. A string naming a document the project does not hold
+ * (`gone`, archive ids, an import that stopped before making it) is dropped,
+ * as `dropReferences` drops one, and a setting left with nothing is removed.
+ * Writes only what differs, so a resume or a second call writes nothing.
+ * Returns how many references it dropped.
  */
-export async function relinkOtherSettings({ client, projectId, manifest, layerIds, ids }) {
-  if (!manifest?.otherConfig || !ids?.size) return;
-  const first = remapIds(manifest.otherConfig, layerIds || new Map());
-  const now = remapIds(manifest.otherConfig, new Map([...(layerIds || []), ...ids]));
-  // Only the settings that name one: the rest are as they were written.
+export async function relinkOtherSettings({ client, projectId, ids, gone = [] }) {
+  const goneIds = [...gone].filter((id) => typeof id === 'string' && id);
+  if (!ids?.size && !goneIds.length) return 0;
+  const project = await client.projects.get(projectId);
+  const goneRe = goneIds.length
+    ? new RegExp(
+        [...goneIds]
+          .sort((a, b) => b.length - a.length)
+          .map(escapeJsRegex)
+          .join('|'),
+      )
+    : null;
+  const skipped = UNCARRIED_PLAID_KEYS.project;
   const changed = {};
-  for (const [ns, keys] of Object.entries(now)) {
-    if (!isMap(keys)) continue;
+  const removed = [];
+  let dropped = 0;
+  for (const [ns, keys] of Object.entries(project?.config || {})) {
+    if (ns === IGT_NAMESPACE || !isMap(keys)) continue;
     for (const [key, value] of Object.entries(keys)) {
-      if (sameConfig(first?.[ns]?.[key], value)) continue;
-      (changed[ns] ||= {})[key] = value;
+      if (ns === PLAID_NAMESPACE && skipped.includes(key)) continue;
+      let next = ids?.size ? remapIds(value, ids) : value;
+      if (goneRe) {
+        const r = dropReferences(next, (str) => goneRe.test(str));
+        dropped += r.count;
+        next = r.value;
+      }
+      if (next === undefined) removed.push([ns, key]);
+      else if (!sameConfig(value, next)) (changed[ns] ||= {})[key] = next;
     }
   }
-  if (!Object.keys(changed).length) return;
-  const project = await client.projects.get(projectId);
   await writeConfigNow(
     (id, ns, key, value) => client.projects.setConfig(id, ns, key, value),
     projectId,
     project?.config,
     changed,
     [IGT_NAMESPACE],
-    { [PLAID_NAMESPACE]: UNCARRIED_PLAID_KEYS.project },
+    { [PLAID_NAMESPACE]: skipped },
   );
+  for (const [ns, key] of removed) await client.projects.deleteConfig(projectId, ns, key);
+  return dropped;
 }
 
 /**

@@ -4,6 +4,7 @@
 import { markImportFinished, readImportState, readInitialized } from './igtConfig.js';
 import { declareIgtRules } from './igtConstraints.js';
 import { notInForceText } from '../components/projects/settings/refusedValues.js';
+import { finishArchiveImport } from '../import/native/importEngine.js';
 
 /** The import record's kind for a Plaid IGT archive (ImportNativeProject.jsx). */
 export const NATIVE_IMPORT_KIND = 'Plaid IGT archive';
@@ -22,14 +23,31 @@ export const importRepairs = (config) => readImportState(config)?.kind !== NATIV
  * import record so the project opens. An
  * import stopped part way has written its tagsets and each field's reference
  * to one, so a closed list goes in force here even though the import never
- * reached its own last step. Returns `{cleared, warnings}`: whether the
- * record went, and a line for each list left out of force or a failure to
- * declare (the record is cleared all the same).
+ * reached its own last step. A native archive's import that stopped runs its
+ * own last step instead (`finishArchiveImport`, from the plan it keeps on the
+ * record): every reference it rewrites, other apps' layer rules and IGT's.
+ * Returns `{cleared, warnings}`: whether the record went, and a line for
+ * each list left out of force, each reference dropped or a failure to
+ * declare. The record is cleared all the same, but for an archive's last
+ * step that fails, which stays on the record to be run again.
  */
 export const finishImport = async (client, projectId) => {
   const warnings = [];
   try {
     const config = (await client.projects.get(projectId))?.config;
+    const record = readImportState(config);
+    if (record?.kind === NATIVE_IMPORT_KIND && record.finish) {
+      // Left on the record when it fails, so ending the import again redoes
+      // it: a project left naming the archive's ids is worse than one that
+      // still opens on its import.
+      try {
+        await finishArchiveImport({ client, projectId, plan: record.finish, warnings });
+      } catch (err) {
+        console.error('Could not finish the import:', err);
+        return { cleared: false, warnings: [...warnings, 'The import could not be finished.'] };
+      }
+      return { cleared: await markImportFinished(client, projectId), warnings };
+    }
     // A project igt did not set up (a native archive of another app's
     // project) gets none of igt's rules.
     if (!readInitialized(config)) {

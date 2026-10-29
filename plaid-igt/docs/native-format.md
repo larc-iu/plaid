@@ -471,7 +471,15 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    replaces the whole metadata map and restores `nativeImportId` as it goes, so
    a resume still recognizes an item this pass reached. Any other value in item
    metadata that names an entry or a document of the archive is rewritten too
-   (see References in metadata), `nativeImportId` excepted.
+   (see References in metadata), `nativeImportId` excepted. This last step
+   (with the relink of what names a later document, of other apps' project
+   settings, and the layer rules of every app) is one finish step, which also
+   runs when an import that stopped is ended with "Use the project as it is".
+   It then works from the project and a plan the import keeps on its record
+   (`config.igt.import.finish`: the archive's document ids, which of them name
+   another, other apps' layer rules, and the tokens each finished document's
+   examples name). A reference to something the import never made is dropped
+   and counted, never left naming the archive's id.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
    An entry or document whose metadata is at core's key cap (500 keys, counted
    at every level) has no room for the import's marks. It is created unmarked
