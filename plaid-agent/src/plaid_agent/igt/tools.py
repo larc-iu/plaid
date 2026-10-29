@@ -1177,10 +1177,21 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
         staged.append({'kind': 'discard_analysis', 'word_id': w.id, 'link_ids': link_ids, 'span_ids': span_ids,
                        'morpheme_ids': morpheme_ids, 'reset_first_id': reset_first, 'renumber': renumber,
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(w.surface)}', f'discard unverified {bits}')})
-    ws.add_ops(staged)
+    # A value planned earlier on a span the discard deletes is taken out: the
+    # discard, staged after it, is the last word, and the value's write would
+    # name a span the same batch has deleted.
+    doomed = {sid for op in staged for sid in op['span_ids']}
+    taken = [o for o in ws.ops if o.get('kind') == 'set_span' and o.get('span_id') in doomed]
+    with ws.staging():
+        ws.take_back(taken)
+        ws.add_ops(staged)
     if not staged:
         return 'Nothing to discard: no machine-made, unconfirmed analysis there.'
-    return ws.planned_note(len(staged))
+    note = ws.planned_note(len(staged))
+    if taken:
+        note += (f' {len(taken)} value{"s" if len(taken) != 1 else ""} planned on what it discards '
+                 f'{"were" if len(taken) != 1 else "was"} taken out of the plan.')
+    return note
 
 
 def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] = None,

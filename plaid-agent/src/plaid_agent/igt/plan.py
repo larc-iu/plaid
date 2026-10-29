@@ -281,6 +281,10 @@ def _anchors(op) -> List[tuple]:
 
 def _apply_set_span(ctx: Context, op) -> int:
     span_id, value = op.get('span_id'), op.get('value') or ''
+    if span_id and ('spans', span_id) in ctx.gone:
+        # Deleted earlier in the plan (a discard of the word's unverified
+        # analysis): the value planned after it is written as a new one.
+        span_id = None
     if span_id and value == '':
         ctx.drop('spans', span_id)
     elif span_id:
