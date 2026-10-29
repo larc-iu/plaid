@@ -456,7 +456,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    marked (`metadata.importSource`, the archive document id, at creation) and
    marked done (`metadata.importDone`) only after every write succeeded, and any
    such key the archive's own metadata holds is dropped first; resume skips
-   done documents and deletes + redoes half-imported ones. Other apps' layers are
+   done documents and deletes + redoes half-imported ones, except one somebody
+   wrote to since (its history holds an entry that is not an import's), which
+   is left as it is and named in a warning. Other apps' layers are
    made once per project, not per document, so a resume finds the ones an earlier
    run made rather than making them again: setup makes only this app's layers, so
    any other layer in the project is the import's own, and it is recognized by

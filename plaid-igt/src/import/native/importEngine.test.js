@@ -140,6 +140,8 @@ function stubClient({
   // Asked before each call. Returning true makes that call fail, as a lost
   // connection would.
   failAt = null,
+  // Documents someone wrote to besides the import (their history says so).
+  edited = new Set(),
 } = {}) {
   const calls = [];
   const written = store?.docs ?? new Map();
@@ -1667,7 +1669,7 @@ describe('a resume and what was made at the metadata key cap', () => {
   });
 });
 
-describe('an import that stopped, ended as it is', () => {
+describe('an import that stopped, then resumed or ended as it is', () => {
   // Three documents and a lexicon whose entries name each other and the
   // documents, and another app's setting naming each document.
   const stoppedArchive = () => {
@@ -1776,6 +1778,43 @@ describe('an import that stopped, ended as it is', () => {
         '"Lex": 2 references pointed at something not imported and were dropped (run: example; run: example)',
       ]),
     );
+  });
+
+  it('leaves a half-made document someone wrote to after the stop as it is, and names it (R4-2)', async () => {
+    const store = makeStore();
+    const [, half] = await stopInSecond(store);
+    const client = stubClient({ store, edited: new Set([half.id]) });
+    const result = await runNativeImport({
+      client,
+      projectId: 'newp',
+      archive: stoppedArchive(),
+    });
+    expect(callsOf(client, 'documents.delete')).toEqual([]);
+    expect(result).toMatchObject({ imported: 1, skipped: 1, redone: 0, kept: 1 });
+    expect(result.warnings).toContain(
+      '"Doc 2": edited after the import stopped. Left as it is, unfinished.',
+    );
+    expect(store.docs.has(half.id)).toBe(true);
+    expect([...store.docs.values()].map((d) => d.name)).toEqual(['Doc 1', 'Doc 2', 'Doc 3']);
+  });
+
+  it('remakes a half-made document nobody wrote to after the stop (R4-2)', async () => {
+    const store = makeStore();
+    const [, half] = await stopInSecond(store);
+    const client = stubClient({ store });
+    const result = await runNativeImport({
+      client,
+      projectId: 'newp',
+      archive: stoppedArchive(),
+    });
+    expect(argsOf(client, 'documents.delete')).toEqual([[half.id]]);
+    expect(result).toMatchObject({ imported: 2, skipped: 1, redone: 1, kept: 0 });
+    // Run to its end, the import points every reference at what it made.
+    const docs = [...store.docs.values()];
+    expect(byGloss(store, 'run').metadata.examples.map((e) => e.document)).toEqual(
+      ['Doc 1', 'Doc 2', 'Doc 3'].map((n) => docs.find((d) => d.name === n).id),
+    );
+    expect(store.config.igt.import.finish).toBeUndefined();
   });
 });
 

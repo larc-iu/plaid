@@ -1297,7 +1297,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     plan.exampleTokens = { ...plan.exampleTokens, [archiveId]: { document: docId, tokens } };
     await unmarked.setFinish(plan);
   };
-  const results = { imported: 0, skipped: 0, redone: 0 };
+  const results = { imported: 0, skipped: 0, redone: 0, kept: 0 };
   // The documents a reference can already be resolved to: those an earlier
   // run finished. Each one this run finishes joins them.
   const docIdMap = new Map();
@@ -1319,8 +1319,16 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       step: 'Starting',
     });
     const existing = earlierRun(doc.data?.id);
-    if (existing?.done) {
-      results.skipped += 1;
+    // A half-made document somebody wrote to after the import stopped
+    // (another app opens it) holds their work: it is left as it is,
+    // unfinished, and named, for the person to decide.
+    const kept = existing && !existing.done && (await editedSinceImport(client, existing.id));
+    if (existing?.done || kept) {
+      if (kept) {
+        results.kept += 1;
+        warnings.push(`"${doc.name}": edited after the import stopped. Left as it is, unfinished.`);
+        docIdMap.set(doc.data.id, existing.id);
+      } else results.skipped += 1;
       madeDocs.set(doc.data.id, existing.id);
       if (cited.has(doc.data?.id)) {
         // What the run that finished it recorded, or else what its tokens are.
@@ -1396,6 +1404,16 @@ function citedTokens(archive) {
     }
   }
   return cited;
+}
+
+/**
+ * Whether anyone wrote to a document an import made, other than an import:
+ * an entry of its history that is not an import's. Every write of an import
+ * run is filed under its one import operation.
+ */
+async function editedSinceImport(client, docId) {
+  const entries = await client.documents.audit(docId);
+  return (entries || []).some((e) => e.kind !== 'import');
 }
 
 /**
