@@ -157,6 +157,13 @@ ENTRY_READ = 'entry_read'
 #: The key on an entry structure change a delete or a merge carries, naming
 #: the entry it removes: the change is written with it or not at all.
 REPAIR_OF = 'repair_of'
+#: The key on a delete or a merge of an entry holding the ids of the senses
+#: directly under it as the plan read them, which its repairs free or move,
+#: left out when there were none. A sense added under the entry since would
+#: be left under an entry that is gone, so the plan is refused then
+#: (`check_entries`).
+SENSES_READ = 'senses_read'
+
 
 class Context:
     """What one run of the executor carries between operations: the batcher,
@@ -1252,7 +1259,8 @@ def pinned_entry(op: Dict[str, Any]) -> Optional[str]:
 def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     """Refuse the plan, before anything is written, when an entry it names is
     gone from the server, or one it changes as it read it (:data:`ENTRY_READ`)
-    has changed since.
+    has changed since, or one it deletes or merges away has a sense under it
+    the plan did not read (:data:`SENSES_READ`).
 
     An entry deleted or merged away since the plan was made, where no
     document the plan pins links it, moved no version the staleness check
@@ -1276,6 +1284,19 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     unsure: Dict[str, Dict[str, Any]] = {}
     # Each entry as it is now, by id.
     now: Dict[str, Dict[str, Any]] = {}
+    layers: Dict[str, List[Dict[str, Any]]] = {}
+
+    def lexicon(vid: str) -> List[Dict[str, Any]]:
+        """The items of the project's lexicon ``vid`` as they are now, read once."""
+        if vid not in layers:
+            try:
+                layers[vid] = list(client.vocab_layers.get(vid, include_items=True).get('items') or [])
+            except Exception as e:  # noqa: BLE001 - the entries cannot be checked: the plan cannot apply
+                name = next((v.get('name') for v in project.vocabs if v.get('id') == vid), None)
+                where = f'the lexicon "{name}"' if name else 'a lexicon of this project'
+                raise PlanOutOfDate(reasons + [f'{where} could not be read to check the entries this plan names '
+                                               f'({requester_message(e)})']) from e
+        return layers[vid]
     if vocab_ids and len(named) > ENTRY_READS_ONE_BY_ONE:
         unsure = dict(named)
     else:
@@ -1293,16 +1314,24 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     if unsure:
         held = set()
         for vid in vocab_ids:
-            try:
-                layer = client.vocab_layers.get(vid, include_items=True)
-            except Exception as e:  # noqa: BLE001 - the entries cannot be checked: the plan cannot apply
-                name = next((v.get('name') for v in project.vocabs if v.get('id') == vid), None)
-                where = f'the lexicon "{name}"' if name else 'a lexicon of this project'
-                raise PlanOutOfDate(reasons + [f'{where} could not be read to check the entries this plan names '
-                                               f'({requester_message(e)})']) from e
-            held.update(it.get('id') for it in layer.get('items') or [])
-            now.update((it['id'], it) for it in layer.get('items') or [] if it.get('id') in unsure)
+            layer = lexicon(vid)
+            held.update(it.get('id') for it in layer)
+            now.update((it['id'], it) for it in layer if it.get('id') in unsure)
         reasons.extend(_gone(op, by_lexicon=True) for item_id, op in unsure.items() if item_id not in held)
+    # A delete or a merge frees or moves the senses it read: one added under
+    # the entry since would be left under an entry that is gone.
+    removing = [op for op in ops if (KIND[op['kind']].extra.get('removes_entry') if op.get('kind') in KIND else None)]
+    if removing and vocab_ids:
+        under: Dict[str, set] = {}
+        for vid in vocab_ids:
+            for it in lexicon(vid):
+                under.setdefault(parent_of(it), set()).add(it.get('id'))
+        for op in removing:
+            item_id = op.get(KIND[op['kind']].extra['removes_entry'][0])
+            if under.get(item_id, set()) - set(op.get(SENSES_READ) or ()):
+                form = (now.get(item_id) or {}).get('form')
+                reasons.append(f'the lexicon entry "{form}" got a sense since the plan was made' if form
+                               else f'{_entry_named(op)} got a sense since the plan was made')
     changed = set()
     for op in ops:
         item_id = pinned_entry(op)

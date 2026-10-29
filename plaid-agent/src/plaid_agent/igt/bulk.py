@@ -19,7 +19,7 @@ from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
 from ..core.replace import replacer as _replacer
 from ..core.provenance import unmark
-from .plan import KIND, REPAIR_OF, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
+from .plan import KIND, REPAIR_OF, SENSES_READ, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
@@ -27,7 +27,7 @@ from .tools import (parse_analysis, analysis_op, stage_equals, no_scope_reaches,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
-from .vocab import morph_type_of, plan_delete_refs, plan_merge_refs, ref_ids, stored_entry_form
+from .vocab import morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids, stored_entry_form
 
 
 def _bulk_note(ws: Workspace, ops: List[Dict[str, Any]], what: str) -> str:
@@ -1639,6 +1639,15 @@ def _ref_repair_ops(ws: Workspace, view, planner, *args) -> List[Dict[str, Any]]
     return ops
 
 
+def _senses_read(ws: Workspace, item_id: str) -> Dict[str, Any]:
+    """The senses directly under entry ``item_id`` as the server has them,
+    which a delete or a merge of it repairs (``plan.SENSES_READ``), carried
+    when there are any."""
+    v = ws.vocab_of_item(item_id)
+    senses = [it['id'] for it in (ws.lexicon(v) if v else []) if parent_of(it) == item_id]
+    return {SENSES_READ: senses} if senses else {}
+
+
 def _repairs_of(removed: str, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """``ops``, the repairs a delete or a merge of entry ``removed`` carries,
     marked as its own: approval writes them in the batch that removes the
@@ -1695,6 +1704,7 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     # entry it removes, while the model was told the call had failed.
     with ws.staging():
         ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
+                   **_senses_read(ws, remove['id']),
                    'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
                             f'{move_phrase(len(links))}, delete the former'})
         refs = _repairs_of(remove['id'], _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']]))
@@ -1717,6 +1727,7 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     view = ws.view_of_item(it['id'])
     with ws.staging():
         ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
+                   **_senses_read(ws, it['id']),
                    'name': _name(view, it),
                    'label': f'Delete entry {_name(view, it)} '
                             f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
