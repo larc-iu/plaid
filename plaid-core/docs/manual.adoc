@@ -966,6 +966,8 @@ A sentence or a row (see below) holds the text typed over part of it.
 One whose exact text is replaced, with nothing more, keeps its place and its annotations on the new text, and a row its times.
 One that a replacement covers along with more text is deleted with its annotations, as a deletion of it would be.
 In `one two. three four.` pasted over as `uno dos. tres cuatro.`, the two share only the final `.`, so the first sentence lies inside the replacement and is deleted, and the second, which the replacement only cuts, takes the new text.
+A save that deletes every token of a `partitioning` layer and leaves text in the body makes one new token of that layer over the whole body, with no metadata, so the partition still covers the text and the words the save makes are inside it. An app can then split it.
+A save that would leave a token outside every token of its parent layer, while that layer holds one, is refused with a 409 naming the two layers, and nothing is stored.
 
 A next-line character (U+0085) is whitespace to all of these rules, as a line feed is: it parts two words, ends a line, and counts as whitespace at a sentence's or a row's edge.
 
@@ -1227,6 +1229,7 @@ A partitioning layer is, at every moment, in exactly one of two valid states for
 Plaid never lets it reach a _partial_ state in between: every operation either moves it between empty and complete, or is rejected.
 
 In particular, there is no automatic establishment—a newly created partitioning layer is empty until you `bulk-create` its partition, and `bulk-delete` (which must remove the whole partition at once) returns it to empty.
+A text save that deletes the whole partition and leaves text in the body makes one token over the whole body instead (see <<Changing a text's body>>), and one that leaves the body empty leaves the layer empty.
 The editing operations below each preserve the complete-partition state: a split divides one token, a merge joins two adjacent ones, and a boundary shift only moves a shared boundary _within_ the two tokens it separates (a shift that would collapse, invert, or overshoot a token is rejected).
 ====
 

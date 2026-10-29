@@ -170,6 +170,78 @@ describe('editBaselineText', () => {
     expect(doc.body).toBe('one\ntwo');
   });
 
+  // R3-1: an edit over every sentence leaves the one sentence the server
+  // made over the new text, and igt cuts it into one per line.
+  it('cuts the sentence the server made over a text that lost every sentence, one per line', async () => {
+    const before = withDigest(
+      buildRawDoc({
+        body: 'ab. cd.',
+        words: [],
+        morphemes: [],
+        sentences: [
+          { id: 's-1', begin: 0, end: 4 },
+          { id: 's-2', begin: 4, end: 7 },
+        ],
+      }),
+      'd0',
+    );
+    const after = (sentences) =>
+      withDigest(buildRawDoc({ body: 'xy\nzw', words: [], morphemes: [], sentences }), 'd1');
+    const client = makeFakeClient({
+      reloadDoc: after([
+        { id: 's-9', begin: 0, end: 3 },
+        { id: 's-10', begin: 3, end: 5 },
+      ]),
+    });
+    client.texts.edit = async (id, ops, auditMessage, options) => {
+      client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });
+      return {
+        id,
+        body: 'xy\nzw',
+        digest: 'd1',
+        reshape: {
+          tokens: [{ id: 's-9', layer: 'sentL', text: 'text-1', begin: 0, end: 5, metadata: {} }],
+          spans: [],
+          vocabLinks: [],
+          deleted: { tokens: ['s-1', 's-2'], spans: [], relations: [], vocabLinks: [] },
+        },
+      };
+    };
+    const doc = makeDoc({ raw: before, client });
+    const gaps = [{ start: 0, end: 7, value: 'xy\nzw' }];
+    expect(await doc.editBaselineText({ base: 'ab. cd.', digest: 'd0', gaps })).toBe(true);
+    expect(
+      client.calls.filter((c) => c.kind === 'tokens.split').map((c) => c.args.slice(0, 2)),
+    ).toEqual([['s-9', 3]]);
+    expect(client.calls.some((c) => c.kind === 'tokens.bulkCreate')).toBe(false);
+    expect(doc.layerInfo.sentenceTokenLayer.tokens.map((t) => [t.begin, t.end])).toEqual([
+      [0, 3],
+      [3, 5],
+    ]);
+  });
+
+  it('cuts nothing when a sentence from before the edit is left', async () => {
+    const client = makeFakeClient();
+    client.texts.edit = async (id, ops, auditMessage, options) => {
+      client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });
+      return {
+        id,
+        body: 'the cat\nzw',
+        digest: 'd1',
+        reshape: {
+          tokens: [{ id: 's-1', begin: 0, end: 10 }],
+          spans: [],
+          vocabLinks: [],
+          deleted: {},
+        },
+      };
+    };
+    const doc = makeDoc({ raw: withDigest(buildRawDoc({ body: 'the cat' }), 'd0'), client });
+    const gaps = [{ start: 7, end: 7, value: '\nzw' }];
+    expect(await doc.editBaselineText({ base: 'the cat', digest: 'd0', gaps })).toBe(true);
+    expect(client.calls.some((c) => c.kind === 'tokens.split')).toBe(false);
+  });
+
   // Which token takes a typed mark, and so whether the server composes it
   // with the letter before, is the server's rule to say: here the segment
   // takes it and the server stores "ká", one character shorter than typed.

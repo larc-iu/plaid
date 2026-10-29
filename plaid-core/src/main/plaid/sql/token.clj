@@ -1189,6 +1189,24 @@
 ;; Text-edit cascade compensator (called by plaid.sql.text)
 ;; ============================================================
 
+(defn partition-cover
+  "The tokens of one partitioning layer, `sorted` by begin, as a save's gap
+  fill leaves them over a body `new-text-length` code points long: the
+  first begins at 0, each other ends where the next begins (never
+  shrinking), and the last ends at the body's end."
+  [sorted new-text-length]
+  (let [n (count sorted)]
+    (vec (map-indexed
+          (fn [i tok]
+            (cond-> tok
+              (zero? i) (assoc :token/begin 0)
+              true (assoc :token/end
+                          (if (= i (dec n))
+                            new-text-length
+                            (max (:token/end tok)
+                                 (:token/begin (nth sorted (inc i))))))))
+          sorted))))
+
 (defn compensate-partition-layers!
   "After a text-body edit reindexes/deletes tokens, extend remaining
   tokens in every :partitioning layer to close any gap left by the
@@ -1203,7 +1221,9 @@
   contract an EMPTY layer is a valid state (\"always empty or a
   complete cover\"). The pure deletion case (all tokens consumed by
   the deleted range) lands in that valid empty state and needs no
-  compensation. A concurrent establishment against the old text length
+  compensation when the body is left empty. Over a body with text, the
+  save makes one token over the whole body for a layer it left with none
+  (see `plaid.sql.text/save-plan`), so it arrives here. A concurrent establishment against the old text length
   cannot race it under the serializable tx.
 
   Partial-cover invariant: given that `apply-text-edits` preserves
@@ -1238,18 +1258,7 @@
     (doseq [[layer-id layer-tokens] by-layer]
       (when (= :partitioning (clojure.core/get modes layer-id))
         (let [sorted (vec (sort-by :token/begin layer-tokens))
-              n (count sorted)
-              final
-              (vec (map-indexed
-                    (fn [i tok]
-                      (cond-> tok
-                        (zero? i) (assoc :token/begin 0)
-                        true (assoc :token/end
-                                    (if (= i (dec n))
-                                      new-text-length
-                                      (max (:token/end tok)
-                                           (:token/begin (nth sorted (inc i))))))))
-                    sorted))
+              final (partition-cover sorted new-text-length)
               ;; Build a [id attrs] seq for the layer, restricted to
               ;; tokens whose coordinates actually changed. Pass as a seq
               ;; (not a map) so bulk-update-by-id! emits audit rows in

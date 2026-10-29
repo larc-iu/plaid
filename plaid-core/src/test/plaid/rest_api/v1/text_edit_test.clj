@@ -226,7 +226,9 @@
             {:keys [tokens deleted]} (-> res :body :reshape)
             patched (as-> before m
                       (apply dissoc m (map str (:tokens deleted)))
-                      (reduce (fn [m {:keys [id begin end]}] (if (contains? m (str id)) (assoc m (str id) [begin end]) m))
+                      ;; a token the save made comes with its layer
+                      (reduce (fn [m {:keys [id begin end layer]}]
+                                (if (or layer (contains? m (str id))) (assoc m (str id) [begin end]) m))
                               m tokens))]
         (is (= (tokens-of) patched) (pr-str body op))))))
 

@@ -195,6 +195,30 @@
   "The error of an edit whose `base` is not the stored body's digest."
   "The text was changed since it was read.")
 
+(defn- outside-parents
+  "The tokens of `ts` on a layer with a parent layer (`parent-of`, layer to
+  parent layer) that no token of the parent layer in `ts` contains (a child
+  as long as its parent is inside it), when the parent layer holds one."
+  [parent-of ts]
+  (let [by-layer (group-by :token/layer ts)]
+    (into []
+          (mapcat (fn [[layer children]]
+                    (when-let [parents (some->> (parent-of layer) by-layer (sort-by :token/begin) seq)]
+                      (let [begins (long-array (map :token/begin parents))
+                            ;; the furthest end of the parents beginning at or before each
+                            reach (long-array (reductions max (map :token/end parents)))
+                            inside? (fn [{:token/keys [begin end]}]
+                                      (let [i (java.util.Arrays/binarySearch begins (long begin))
+                                            ;; the last parent beginning at or before `begin`
+                                            i (if (neg? i)
+                                                (- (- i) 2)
+                                                (loop [i i] (if (and (< (inc i) (alength begins))
+                                                                     (= (aget begins (inc i)) begin))
+                                                              (recur (inc i)) i)))]
+                                        (and (>= i 0) (>= (aget reach i) end))))]
+                        (remove inside? children)))))
+          by-layer)))
+
 (defn- save-plan
   "Work out what a body save writes, from what `db` holds now: the new body,
   the tokens to delete, the new extents of the others, and the tokens that
@@ -272,6 +296,27 @@
           ;; covered as well as a whole new body.
           _ (storable/assert-storable! "Text body" sent-body)
           deleted-set (set deleted-ids)
+          ;; The token layers of the text: their names, partitions and
+          ;; parents, for the two rules below.
+          shape (when (seq tokens)
+                  (or layer-rows
+                      (psc/q db {:select [:id :name :overlap_mode :parent_token_layer_id]
+                                 :from [:token_layers]
+                                 :where [:= :text_layer_id (:text_layer_id text-row)]})))
+          ;; A partition that held a token keeps one over a body with text:
+          ;; when the save leaves it none (a paste over every sentence), it
+          ;; makes one over the whole body, bare as a head sentence, which the
+          ;; words the save makes then sit in. A partition never made stays
+          ;; empty, and so does one over an empty body.
+          sent-heads (let [n (cp/cp-count sent-body)
+                           had (into #{} (map :token/layer) tokens)
+                           has (into #{} (comp (remove #(deleted-set (:token/id %))) (map :token/layer))
+                                     (concat sent-tokens sent-heads sent-made))]
+                       (into (vec sent-heads)
+                             (keep (fn [{:keys [id overlap_mode]}]
+                                     (when (and (pos? n) (= "partitioning" overlap_mode) (had id) (not (has id)))
+                                       {:token/layer id :token/begin 0 :token/end n})))
+                             shape))
           ;; "Tokenize new text": the words of the text the save typed, made
           ;; on the tokens as the save leaves them (see `ta/new-words`).
           sent-made (cond-> (vec sent-made)
@@ -293,7 +338,29 @@
           move (fn [t] (-> t (update :token/begin at) (update :token/end at)))
           new-tokens (mapv move sent-tokens)
           heads (mapv move sent-heads)
-          made (mapv move sent-made)]
+          made (mapv move sent-made)
+          ;; Never a token outside every token of its parent layer that was
+          ;; not so before the save: should a rule above ever leave one, the
+          ;; save is refused rather than stored, as the token routes refuse
+          ;; it. A parent layer holding no token (a partition not made yet,
+          ;; which a batch makes after the save) holds no child.
+          _ (let [parent-of (into {} (keep (fn [r] (when-let [p (:parent_token_layer_id r)] [(:id r) p]))) shape)
+                  was-out (into #{} (map :token/id) (outside-parents parent-of tokens))
+                  partition? (into #{} (keep #(when (= "partitioning" (:overlap_mode %)) (:id %))) shape)
+                  ;; partitions as the gap fill leaves them
+                  after (->> (concat (remove #(deleted-set (:token/id %)) new-tokens) heads made)
+                             (group-by #(partition? (:token/layer %)))
+                             (mapcat (fn [[p? ts]]
+                                       (if p?
+                                         (mapcat #(token/partition-cover (vec (sort-by :token/begin %)) (cp/cp-count new-body))
+                                                 (vals (group-by :token/layer ts)))
+                                         ts))))]
+              (when-let [t (first (remove #(was-out (:token/id %)) (outside-parents parent-of after)))]
+                (let [named (fn [l] (or (some #(when (= l (:id %)) (:name %)) shape) l))]
+                  (throw (ex-info (str "The change would leave a token of layer \"" (named (:token/layer t))
+                                       "\" outside every token of layer \"" (named (parent-of (:token/layer t)))
+                                       "\", which the layer does not allow.")
+                                  {:code 409 :id eid :layer (:token/layer t)})))))]
       {:new-body new-body
        ;; Code-point length: feeds compensate-partition-layers! /
        ;; validate-partition!, which compare it against (code-point)
@@ -486,7 +553,9 @@
        through spans/relations/vocab_links).
     2. Tokens whose extent shifts get their new extent.
     3. The texts row's body is updated.
-    4. The tokens the save makes are inserted, and partitioning-mode
+    4. The tokens the save makes are inserted (among them one over the
+       whole body for a partitioning layer the save left with none over a
+       body with text), and partitioning-mode
        token layers get gap-filled by
        plaid.sql.token/compensate-partition-layers! — the LAST step so
        it sees the final post-edit token positions.

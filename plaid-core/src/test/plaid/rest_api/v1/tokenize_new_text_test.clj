@@ -131,3 +131,75 @@
                                              :body {:text-layer-id tl :document-id doc2
                                                     :body "one two.\nthree" :tokenize-layer words}}))
     (is (= [[0 3] [4 7] [9 14]] (words-of words)))))
+
+(defn- sentences-of [layer] (words-of layer))
+
+(deftest a-save-that-takes-every-sentence-leaves-one-over-the-body-with-the-new-words-in-it
+  ;; R3-1: select all over two sentences and paste text sharing no letter at
+  ;; either end. Every sentence goes (R45), and the partition is not left
+  ;; empty under the words the save makes.
+  (let [old "the cat sat. the dog ran."
+        ;; no letter of it is in the old text, so a whole body's diff keeps none
+        new "Αβγ δεζ ηθ"]
+    (doseq [[how change] [["edits" {:edits [{:type "replace" :index 0 :length (count old) :value new}]}]
+                          ["a whole body" {:body new}]
+                          ["ops as the body" {:body [{:type "replace" :index 0 :length (count old) :value new}]}]]]
+      (testing how
+        (let [{:keys [text words sentences]} (setup old :sents [[0 13] [13 25]])
+              res (patch text (assoc change :tokenize-layer words))]
+          (assert-ok res)
+          (is (= [[0 (count new)]] (sentences-of sentences)))
+          (is (= [[0 3] [4 7] [8 10]] (words-of words)))
+          ;; a whole body's diff keeps a space of the old text, and with it
+          ;; the sentence that held it, which the gap fill stretches
+          (when-not (= how "a whole body")
+            (testing "the sentence comes in the reshape as a made token, bare"
+              (let [made (filter #(= (str sentences) (str (:layer %))) (-> res :body :reshape :tokens))]
+                (is (= [[0 (count new)]] (map (juxt :begin :end) made)))
+                (is (every? #(empty? (:metadata %)) made)))))
+          (testing "core's own token routes take the words"
+            (let [w (psc/q1 db {:select [:id :end_] :from [:tokens] :where [:= :token_layer_id words]
+                                :order-by [[:begin :asc]]})]
+              (assert-ok (update-token admin-request (:id w) :end (:end_ w))))))))))
+
+(deftest a-save-that-takes-every-sentence-without-tokenizing-leaves-one-too
+  (let [old "the cat sat. the dog ran."
+        {:keys [text words sentences]} (setup old :sents [[0 13] [13 25]])]
+    (assert-ok (patch text {:edits [{:type "replace" :index 0 :length (count old) :value "zz"}]}))
+    (is (= [[0 2]] (sentences-of sentences)))
+    (is (= [] (words-of words)))))
+
+(deftest a-save-that-empties-the-body-leaves-the-partition-empty
+  (let [old "the cat sat. the dog ran."
+        {:keys [text sentences]} (setup old :sents [[0 13] [13 25]])]
+    (assert-ok (patch text {:edits [{:type "delete" :index 0 :value (count old)}]}))
+    (is (= [] (sentences-of sentences)))))
+
+(deftest a-partition-never-made-stays-empty
+  ;; a text whose sentences are made after the edit (igt's first save of a
+  ;; text with no token sends the edit and the sentences in one batch)
+  (let [{:keys [proj tl words sentences]} (setup "")
+        doc2 (create-test-document admin-request proj "Doc2")
+        text (-> (create-text admin-request tl doc2 "hh") :body :id)]
+    (assert-ok (patch text {:edits [(ins 2 " cat")] :tokenize-layer words}))
+    (is (= [] (sentences-of sentences)))
+    (is (= [[3 6]] (words-of words)))))
+
+(deftest a-save-that-would-store-a-word-outside-every-parent-is-refused
+  ;; words under a layer that is no partition, holding only the first word:
+  ;; "Tokenize new text" would make a word in no parent, so nothing is stored
+  (let [proj (create-test-project admin-request "TokProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        phrases (-> (create-token-layer-opts admin-request tl "Phrases" {:overlap-mode "non-overlapping"}) :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"
+                                                                     :parent-token-layer-id phrases})
+                  :body :id)
+        text (-> (create-text admin-request tl doc "hh") :body :id)]
+    (assert-created (create-token admin-request phrases text 0 2))
+    (assert-created (create-token admin-request words text 0 2))
+    (let [res (patch text {:edits [(ins 2 " cat")] :tokenize-layer words})]
+      (assert-status 409 res)
+      (is (re-find #"Words" (str (-> res :body :error)))))
+    (is (= [[0 2]] (words-of words)))
+    (is (= "hh" (:body (psc/q1 db {:select [:body] :from [:texts] :where [:= :id text]}))))))

@@ -229,17 +229,34 @@ export const documentMutations = {
   // The send of `editBaselineText`.
   async _saveBaselineEdit(textId, plan) {
     plan.forms ??= soleForms(this.layerInfo, this.body);
+    plan.sentences ??= new Set((this.layerInfo.sentenceTokenLayer?.tokens || []).map((s) => s.id));
     if (await this._sendBaselineEdit(textId, plan)) await this._reloadInSend();
     await this._followSoleForms(plan.forms);
-    // An edit that took every sentence with it leaves a text with none, so
-    // the partition is seeded again, one sentence per line.
     const body = this.body;
-    const sentencesAfter = this.layerInfo.sentenceTokenLayer?.tokens || [];
+    const sentenceLayer = this.layerInfo.sentenceTokenLayer;
+    const sentencesAfter = sentenceLayer?.tokens || [];
     if (cpLength(body) > 0 && sentencesAfter.length === 0) {
-      await this._client.tokens.bulkCreate(
-        sentenceSeed(this.layerInfo.sentenceTokenLayer.id, textId, body),
-      );
+      // A text whose sentences were never made gets them, one per line.
+      await this._client.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body));
       await this._reloadInSend();
+    } else if (
+      plan.sentences.size > 0 &&
+      sentencesAfter.length === 1 &&
+      !plan.sentences.has(sentencesAfter[0].id)
+    ) {
+      // An edit that took every sentence with it leaves the one the server
+      // made over the whole text, which is cut into one sentence per line,
+      // as a new text's are. Each cut keeps the sentence on its left.
+      const cuts = sentenceSeed(sentenceLayer.id, textId, body)
+        .slice(1)
+        .map((s) => s.begin)
+        .reverse();
+      if (cuts.length) {
+        await this._client.batched(async (b) => {
+          for (const at of cuts) b.tokens.split(sentencesAfter[0].id, at);
+        });
+        await this._reloadInSend();
+      }
     }
   },
 
