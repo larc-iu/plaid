@@ -72,3 +72,15 @@ def test_the_cards_count_the_words_about_to_be_made():
         w2 = fake_ws(_client(tokenize))
         out = call_tool(w2, 'create_document', {'name': 'Text 2', 'text': 'Gam akuna. 我今天去北京。 Ok.'})
         assert f'{count} words' in w2.ops[0]['label'] and f'{count} words' in out
+
+
+def test_a_new_documents_text_and_its_sentences_go_in_one_batch():
+    # REV-FX-R3-2-1: the words "Tokenize new text" makes with the text sit in
+    # no sentence until the sentences are made, so a run that stops between
+    # two requests left them there. One batch makes both or neither.
+    c = _client()
+    ops = [{'kind': 'create_document', 'name': 'Text 2', 'text': 'Ali gam.\nYes.\n',
+            'metadata': {}, 'label': ''}]
+    execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
+    [batch] = [b for b in c.batches if any(k == 'texts.create' for k, _ in b)]
+    assert [k for k, _ in batch] == ['texts.create', 'tokens.bulk_create']

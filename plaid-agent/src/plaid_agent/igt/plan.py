@@ -1985,27 +1985,45 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     text = compose_text(text)[0]
     text_id = new_id()
     tokenize = project.word_layer_id if project.tokenize_new_text else None
-    new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id,
-                                            tokenize_layer=tokenize))
-    _seed_sentences(client, project, text_id, text, new_id)
+    made, sentences = _sentence_rows(project, text_id, text, new_id)
+
+    # One batch, as igt's own first save sends it: the words the create makes
+    # sit in no sentence until the sentences are made, so a run that stopped
+    # between two requests would leave them there.
+    def send():
+        with client.batched() as b:
+            b.texts.create(project.text_layer_id, doc_id, text, id=text_id, tokenize_layer=tokenize)
+            if sentences:
+                b.tokens.bulk_create(sentences)
+
+    new_id.once(send, whole=True)
     return text_id
 
 
-def _seed_sentences(client, project, text_id: str, body: str, new_id) -> List[tuple]:
+def _sentence_rows(project, text_id: str, body: str, new_id) -> Tuple[List[tuple], List[Dict[str, Any]]]:
     """The sentence partition of a text that has none, one sentence per
-    line, as igt's own saves seed it: made whole in one bulk create, since
-    the server refuses a single token on a partitioning layer. A text of
-    whitespace only is one sentence. Returns the (begin, end, id) made."""
+    line, as igt's own saves seed it, to be made whole in one bulk create,
+    since the server refuses a single token on a partitioning layer. A text of
+    whitespace only is one sentence. Returns the (begin, end, id) of each and
+    the bulk create's rows."""
     from .project import split_sentences
     if not body:
-        return []
+        return [], []
     lines = split_sentences(body)
     starts = [0] + [b for b, _ in lines[1:]]
     ends = starts[1:] + [len(body)]
     made = [(b, e, new_id()) for b, e in zip(starts, ends)]
     sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e,
                   'id': i} for b, e, i in made]
-    new_id.once(lambda: client.tokens.bulk_create(sentences), whole=True)
+    return made, sentences
+
+
+def _seed_sentences(client, project, text_id: str, body: str, new_id) -> List[tuple]:
+    """The sentence partition of a text that has none (see `_sentence_rows`),
+    made in one bulk create. Returns the (begin, end, id) made."""
+    made, sentences = _sentence_rows(project, text_id, body, new_id)
+    if sentences:
+        new_id.once(lambda: client.tokens.bulk_create(sentences), whole=True)
     return made
 
 

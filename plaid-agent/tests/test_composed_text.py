@@ -1,6 +1,7 @@
 """The assistant's new document text is written composed (NFC), as the server
 stores it, so its sentences are measured on the text stored."""
 
+import contextlib
 from types import SimpleNamespace
 
 from plaid_agent.igt import plan as igt_plan
@@ -20,11 +21,13 @@ class _NewId:
 
 def test_a_new_documents_text_is_composed_and_its_sentences_measured_on_it():
     sent = {'texts': [], 'tokens': []}
-    client = SimpleNamespace(
+    batch = SimpleNamespace(
         texts=SimpleNamespace(create=lambda layer, doc, text, id=None, tokenize_layer=None:
                               sent['texts'].append((text, tokenize_layer))),
         tokens=SimpleNamespace(bulk_create=lambda ops: sent['tokens'].append(ops)),
     )
+    # the text and its sentences go in one batch
+    client = SimpleNamespace(batched=lambda: contextlib.nullcontext(batch))
     project = SimpleNamespace(text_layer_id='tl', sentence_layer_id='sl', word_layer_id='wl',
                               tokenize_new_text=True, ignored_cfg=None)
     igt_plan._seed_text(client, project, 'doc', 'pʰa\u0301 bo\u0301\nca\u0301', _NewId())
