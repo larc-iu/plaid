@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { humanizeError } from '../../lib/errors.js';
 import { notifyError } from '../../lib/notify.js';
 import { nameKey } from '../../lib/nameKey.js';
@@ -20,6 +20,11 @@ export const DeleteProjectDialog = ({ open, onOpenChange, project, consequence, 
   const [deleting, setDeleting] = useState(false);
   const name = project?.name ?? '';
   const matches = nameKey(typed).trim().toLowerCase() === nameKey(name).trim().toLowerCase();
+  // Empty every time it opens, whoever opens it: a name typed before a Cancel
+  // must not leave the delete armed.
+  useEffect(() => {
+    if (open) setTyped('');
+  }, [open]);
 
   const handleDelete = async (event) => {
     event?.preventDefault();
@@ -40,10 +45,7 @@ export const DeleteProjectDialog = ({ open, onOpenChange, project, consequence, 
     <ConfirmDeleteDialog
       open={open}
       onOpenChange={(next) => {
-        if (!deleting) {
-          if (next) setTyped('');
-          onOpenChange(next);
-        }
+        if (!deleting) onOpenChange(next);
       }}
       title="Delete project?"
       confirmLabel={deleting ? 'Deleting…' : 'Delete project'}

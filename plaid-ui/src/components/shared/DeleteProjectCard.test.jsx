@@ -116,3 +116,19 @@ describe('DeleteProjectCard', () => {
     expect(view.container.textContent).not.toContain('the project list');
   });
 });
+
+// REV-FX-R57-2 S5: a name typed before Cancel stayed in the field, and the
+// confirm opened again already armed.
+describe('the confirm opened again after Cancel', () => {
+  it('starts with an empty name and the delete disabled', async () => {
+    await mount();
+    let dialog = await openConfirm();
+    const input = dialog.querySelector('#delete-project-confirm');
+    await view.step(() => typeInto(input, 'Lezgian Texts'));
+    await view.step(() => button(dialog, 'Cancel').click());
+    dialog = await openConfirm();
+    expect(dialog.querySelector('#delete-project-confirm').value).toBe('');
+    expect(button(dialog, 'Delete project').disabled).toBe(true);
+    expect(remove).not.toHaveBeenCalled();
+  });
+});
