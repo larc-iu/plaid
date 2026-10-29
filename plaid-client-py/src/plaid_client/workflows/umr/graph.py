@@ -510,11 +510,11 @@ def _tokens_of(layer) -> List[dict]:
     return sorted((layer or {}).get('tokens') or [], key=lambda t: (t['begin'], t['end']))
 
 
-#: A variable's sentence number, then a letter and whatever follows.
 #: A variable a graph kept as text defines: the name before a slash after an
 #: opening bracket (``KEPT_VARIABLE`` in sentenceGraph.js).
 KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
 
+#: A variable's sentence number, then a letter and whatever follows.
 _NUMBERED = re.compile(r'^s([0-9]+)([^\W\d_].*)$')
 
 

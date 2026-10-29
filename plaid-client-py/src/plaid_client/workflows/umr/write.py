@@ -539,9 +539,10 @@ def _begin_draft(client, request_data: Dict[str, Any], response_helper) -> Draft
     and so is one that another sentence's block writes an edge or triple on
     (the machine-writer contract), as igt's analyzers redraft machine output
     only. A graph an import kept as text (:attr:`Sentence.kept_text`) is kept
-    too, counted with the person's, and its names stay taken. With ``overwrite`` off the rest of the sentences with a graph are
-    skipped: the ones an overwrite would redraft. A sentence number the
-    document does not have is a ValueError."""
+    too, counted with the person's, and its names stay taken. With
+    ``overwrite`` off the rest of the sentences with a graph are skipped: the
+    ones an overwrite would redraft. A sentence number the document does not
+    have is a ValueError."""
     document_id = request_data['document_id']
     # The parameters as BaseService coerced them against draft_params().
     scope, overwrite, wanted = request_data['scope'], request_data['overwrite'], int(request_data['sentence'])
