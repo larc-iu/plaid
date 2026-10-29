@@ -229,8 +229,9 @@ async function runElanImportImpl({
   };
   for (const w of build.warnings) note(w);
 
-  // What an earlier import made, by .eaf file name. The screen reads this too, to say which files are already in the project, and
-  // hands over what it read rather than paying for the listing twice.
+  // What an earlier import made, by .eaf file name. The screen reads this
+  // too, to say which files are already in the project, and hands over what
+  // it read rather than paying for the listing twice.
   const prior = priorGiven ?? (await priorImports(client, projectId));
 
   const results = {

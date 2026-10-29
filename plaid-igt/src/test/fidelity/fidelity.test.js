@@ -617,10 +617,8 @@ const RESERVED_ITEM_KEY_COVERAGE = {
   flexEntry: covers('item.flexIdentity'),
   flexSense: covers('item.flexIdentity'),
   homograph: covers('item.homographNumber'),
-  cldfEntry: notData('an import stamp, the CLDF entry id a resumed import finds the entry by'),
-  nativeImportId: notData(
-    'an import stamp, the archive entry id a resumed import finds the entry by',
-  ),
+  cldfEntry: notData('an import stamp, the CLDF entry id the entry was made from'),
+  nativeImportId: notData('an import stamp, the archive entry id the entry was made from'),
 };
 
 const unknownCovered = (entries) =>

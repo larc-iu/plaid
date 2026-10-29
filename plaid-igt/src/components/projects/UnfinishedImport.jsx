@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { Button } from '@ui/components/ui/button';
 import { DeleteProjectDialog } from '@ui/components/shared/DeleteProjectDialog.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
@@ -117,6 +120,27 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted }) => {
         consequence={consequence}
         onDelete={remove}
       />
+    </div>
+  );
+};
+
+/**
+ * A maintainer's screen of the project (setup, Add ELAN documents) reached by
+ * address while its import did not finish: the same notice in place of the
+ * screen. Delete goes to the project list.
+ */
+export const UnfinishedImportScreen = ({ client, project }) => {
+  const navigate = useNavigate();
+  return (
+    <div className={FORM_PAGE_WIDTH}>
+      <Notice role="status" icon={null}>
+        <UnfinishedImport
+          client={client}
+          project={project}
+          canManage
+          onDeleted={() => navigate('/projects', { replace: true })}
+        />
+      </Notice>
     </div>
   );
 };

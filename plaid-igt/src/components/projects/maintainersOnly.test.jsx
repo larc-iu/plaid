@@ -64,6 +64,23 @@ describe.each([
     await view.unmount();
   });
 
+  // R57 (REV-FX-R57 S5): a project whose import did not finish does not open,
+  // this screen included.
+  it('shows a maintainer of a project whose import did not finish only that, with Delete', async () => {
+    const unfinished = { ...PROJECT, config: { igt: { import: { kind: 'ELAN', source: null } } } };
+    signIn('m@x.com', async () => unfinished);
+    const view = await mount(screen, element());
+    await settle(view);
+    expect(view.container.textContent).not.toContain(heading);
+    expect(view.container.textContent).toContain(
+      'This import did not finish. Delete it and import again.',
+    );
+    expect(
+      [...view.container.querySelectorAll('button')].some((b) => b.textContent === 'Delete'),
+    ).toBe(true);
+    await view.unmount();
+  });
+
   it('shows a maintainer the wizard', async () => {
     signIn('m@x.com', async () => PROJECT);
     const view = await mount(screen, element());

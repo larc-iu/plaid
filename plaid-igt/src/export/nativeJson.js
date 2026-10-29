@@ -872,10 +872,8 @@ export function serializeDocumentNative(
     name: raw.name ?? null,
     version: raw.version ?? null,
     mediaFile,
-    // Wholesale, since the derived view filters this, except for an import's
-    // own marks: a document carrying `importDone` into another import is
-    // marked finished from the moment it exists, and a resume would skip it
-    // half made.
+    // Wholesale, since the derived view filters this, except for the marks
+    // an import leaves (stamps.js), which are its bookkeeping, not data.
     metadata: withoutStampKeys(raw.metadata),
     baseline: withMetadata({ textId: text?.id ?? null, body: text?.body ?? '' }, text?.metadata),
     sentences,

@@ -7,9 +7,8 @@
 //   2. Export A as a Plaid IGT JSON archive
 //      + references to entities in metadata, which an import has to point at
 //      what it made
-//   3. Import that archive into a fresh project B (the native importer), then
-//      run the import again over B, as a resume would, to see it make nothing
-//      twice
+//   3. Import that archive into a fresh project B (the native importer), and
+//      check B has as many layers as A, so nothing was made twice
 //   4. Export B the same way
 //   5. Compare the two archives SEMANTICALLY (ids are correlation keys, so
 //      both sides are normalized to id-free shapes; the importer's bookkeeping
@@ -272,8 +271,7 @@ function normalize(archive) {
 
       const normalized = {
         name: d.name,
-        // `importSource` is the resume bookkeeping the importer that MADE the
-        // document stamps on it, so A's names a FLEx file and B's names A.
+        // `importSource` is a mark an older import left on a document.
         // Bookkeeping, like nativeImported, not a fact about the corpus.
         metadata: omit(data.metadata, ['nativeImported', 'importSource']),
         body: data.baseline?.body,
@@ -779,9 +777,8 @@ try {
   );
   check(importRes.imported === archiveA.documents.length, 'all documents imported');
 
-  // A resume runs the same import over the same project. Every document is
-  // done, so it skips them, and the other app's layers it made the first time
-  // must be found again rather than made a second time.
+  // One import makes each layer once: B holds as many as A, other apps'
+  // layers included.
   const layerCounts = async (projectId) => {
     const p = await client.projects.get(projectId);
     const tokenLayers = (p.textLayers || []).flatMap((tl) => tl.tokenLayers || []);
@@ -792,18 +789,12 @@ try {
       relation: spanLayers.flatMap((sl) => sl.relationLayers || []).length,
     };
   };
-  const countsBefore = await layerCounts(setupB.projectId);
-  const again = await runNativeImport({ client, projectId: setupB.projectId, archive: archiveA });
-  const countsAfter = await layerCounts(setupB.projectId);
+  const countsA = await layerCounts(setupA.projectId);
+  const countsB = await layerCounts(setupB.projectId);
   check(
-    again.skipped === archiveA.documents.length && again.warnings.length === 0,
-    'a second run over project B skips every document, without warnings',
-    `${again.skipped} skipped; ${again.warnings.join('; ')}`,
-  );
-  check(
-    stableStringify(countsBefore) === stableStringify(countsAfter),
-    "a second run makes none of the other app's layers again",
-    `${JSON.stringify(countsBefore)} vs ${JSON.stringify(countsAfter)}`,
+    stableStringify(countsA) === stableStringify(countsB),
+    'project B has the layers project A has, each once',
+    `${JSON.stringify(countsA)} vs ${JSON.stringify(countsB)}`,
   );
 
   // Attribution: the server restamps author and dates, so what must survive is

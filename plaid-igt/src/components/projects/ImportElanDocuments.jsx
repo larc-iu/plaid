@@ -62,6 +62,8 @@ import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { useMaintainersOnly } from './useMaintainersOnly.js';
+import { UnfinishedImportScreen } from './UnfinishedImport.jsx';
+import { readImportState } from '@/domain/igtConfig';
 import { countOf } from '@ui/lib/plural.js';
 
 const NEW_FIELD = '__new__';
@@ -353,6 +355,10 @@ export const ImportElanDocuments = () => {
   }
 
   if (allowed !== true) return <div className={FORM_PAGE_WIDTH} />;
+  // A project whose import did not finish does not open, this screen included.
+  if (readImportState(project?.config)) {
+    return <UnfinishedImportScreen client={client} project={project} />;
+  }
 
   return (
     <div className={FORM_PAGE_WIDTH}>

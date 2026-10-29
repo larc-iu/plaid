@@ -8,9 +8,10 @@
 //    creation so the caller can remember it);
 //  - substrate layers are adopted by shared role, span layers are reused by
 //    name+parent, and vocabularies already linked are not re-created;
-//  - a vocabulary an interrupted run made but did not get to link is opened
-//    again by the id the first run minted for it (see "ONE RULE FOR COMPLETE"
-//    below);
+//  - a caller that keeps `mints` between presses has a vocabulary an
+//    interrupted press made but did not get to link opened again by the id
+//    that press minted (see "ONE RULE FOR COMPLETE" below). The import run
+//    keeps none, since each run makes a project of its own;
 //  - the initialized flag is only written when no step failed.
 //
 // Returns { projectId, resources, failures, alreadyInitialized }.
@@ -75,8 +76,8 @@ const BASELINE_LAYER_NAME = 'Main Text';
 // ONE RULE FOR "COMPLETE". A vocabulary takes two requests: a create, and the
 // link that says it is this project's. A lost response between the two leaves
 // something no later look for the finished shape can see, so the create goes
-// under the id the caller keeps (`mints`), and a second press opens what the
-// first made rather than making another. A text,
+// under an id the caller may keep (`mints`, ConfirmationStep does), and a
+// second press opens what the first made rather than making another. A text,
 // token or span layer is made in one batch with its role tag (and its rules),
 // so it is never half made, and a layer without a role is never setup's,
 // whatever it is called.

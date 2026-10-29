@@ -19,6 +19,8 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { Panel } from './ImportPanels.jsx';
 import { useMaintainersOnly } from './useMaintainersOnly.js';
+import { UnfinishedImportScreen } from './UnfinishedImport.jsx';
+import { readImportState } from '@/domain/igtConfig';
 
 export const ProjectSetup = () => {
   useDocumentTitle('Project setup');
@@ -181,6 +183,11 @@ export const ProjectSetup = () => {
         {loadError && <Panel tone="error" title="This project could not be loaded." />}
       </div>
     );
+  }
+
+  // A project whose import did not finish does not open, this screen included.
+  if (!isNewProject && readImportState(project?.config)) {
+    return <UnfinishedImportScreen client={client} project={project} />;
   }
 
   return (
