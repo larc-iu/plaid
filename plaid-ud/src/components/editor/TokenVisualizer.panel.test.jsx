@@ -136,6 +136,115 @@ describe('the token panel', () => {
     await view.unmount();
   });
 
+  // P3-2: "Remove word" unmounted itself, focus fell to the page, and the
+  // pointer over a badge below the shrunk panel swapped the panel to that
+  // token. Save then wrote the merged form over the other token.
+  const typeInto = (view, input, value) =>
+    view.step(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  const mwtProps = () => ({
+    text: TEXT,
+    originalText: TEXT,
+    sentenceTokens: [{ id: 's1', begin: 0, end: 14 }],
+    wordTokens: words,
+    morphemeTokens: morphemes,
+    morphemeForms: new Map([
+      ['m3a', 'de'],
+      ['m3b', 'el'],
+    ]),
+    onWordDelete: vi.fn(),
+    onSetWordMorphemes: vi.fn(),
+    onSentenceToggle: vi.fn(),
+  });
+  const removeButtons = () =>
+    all(panel(), 'button').filter((b) => b.getAttribute('aria-label') === 'Remove word');
+
+  it('keeps a panel with a draft on its token when another token is hovered', async () => {
+    const props = mwtProps();
+    const view = await renderComponent(<TokenVisualizer {...props} />);
+    const badges = all(view.container, '[data-mwt]');
+    await hover(view, badges[2]);
+    expect(all(panel(), 'input').map((i) => i.value)).toEqual(['de', 'el']);
+
+    await view.step(async () => removeButtons()[1].click());
+    expect(all(panel(), 'input').map((i) => i.value)).toEqual(['de']);
+    // The pointer lands on the badge below the shrunk panel.
+    await hover(view, badges[3]);
+    expect(all(panel(), 'input').map((i) => i.value)).toEqual(['de']);
+    // And the pointer leaving the panel does not drop the draft either.
+    await view.step(async () =>
+      panel().dispatchEvent(new MouseEvent('mouseout', { bubbles: true })),
+    );
+    await view.step(() => new Promise((r) => setTimeout(r, 300)));
+    expect(all(panel(), 'input').map((i) => i.value)).toEqual(['de']);
+
+    await typeInto(view, all(panel(), 'input')[0], 'del');
+    const save = all(panel(), 'button').find((b) => b.textContent.includes('Save'));
+    await view.step(async () => save.click());
+    expect(props.onSetWordMorphemes).toHaveBeenCalledTimes(1);
+    expect(props.onSetWordMorphemes.mock.calls[0][0].id).toBe('w3');
+    expect(props.onSetWordMorphemes.mock.calls[0][1]).toEqual(['del']);
+    await view.unmount();
+  });
+
+  it('lets a panel with no draft follow the pointer, and Escape drops a draft', async () => {
+    const props = mwtProps();
+    const view = await renderComponent(<TokenVisualizer {...props} />);
+    const badges = all(view.container, '[data-mwt]');
+    await hover(view, badges[2]);
+    await typeInto(view, all(panel(), 'input')[1], 'ell');
+    await typeInto(view, all(panel(), 'input')[1], 'el');
+    // Typed back to what is stored: no draft, so the pointer moves it on.
+    await hover(view, badges[3]);
+    expect(all(panel(), 'input').map((i) => i.value)).toEqual(['😀x']);
+
+    await hover(view, badges[2]);
+    await typeInto(view, all(panel(), 'input')[1], 'la');
+    await view.step(async () =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      ),
+    );
+    expect(panel()).toBeNull();
+    expect(props.onSetWordMorphemes).not.toHaveBeenCalled();
+    await hover(view, badges[1]);
+    expect(panel()?.textContent).toContain('dog');
+    await view.unmount();
+  });
+
+  it('drops a draft for a click on another token and opens that token', async () => {
+    const props = mwtProps();
+    const view = await renderComponent(<TokenVisualizer {...props} />);
+    const badges = all(view.container, '[data-mwt]');
+    await hover(view, badges[2]);
+    await typeInto(view, all(panel(), 'input')[1], 'la');
+    await view.step(async () => {
+      badges[1].dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await view.step(async () => {
+      badges[1].click();
+      await new Promise((r) => setTimeout(r, 200));
+    });
+    expect(panel()?.textContent).toContain('dog');
+    expect(props.onSetWordMorphemes).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('hands focus to a word in the panel when its Remove word button goes', async () => {
+    const view = await renderComponent(<TokenVisualizer {...mwtProps()} />);
+    await hover(view, all(view.container, '[data-mwt]')[2]);
+    // The last row's button, then the only one left: both unmount.
+    await view.step(async () => removeButtons()[1].focus());
+    await view.step(async () => removeButtons()[1].click());
+    expect(removeButtons()).toEqual([]);
+    expect(document.activeElement).toBe(all(panel(), 'input')[0]);
+    await view.unmount();
+  });
+
   it('opens no panel while the text has unsaved edits', async () => {
     const view = await renderComponent(
       <TokenVisualizer

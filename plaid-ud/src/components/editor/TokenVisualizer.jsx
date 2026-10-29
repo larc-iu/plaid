@@ -22,10 +22,11 @@ import classes from './TokenVisualizer.module.css';
 // Hovering a token opens its panel — token text + range, a sentence-start
 // toggle, the word editor inline (split a token into words / a multi-word
 // token), and a Delete. The panel is a popover opened on hover but PINNED while
-// you're editing inside it (so it never vanishes mid-edit). It dismisses on
-// click-outside and Escape. Selecting text creates a token, and a
-// live preview relocates tokens when the document text is edited after
-// tokenization. There is deliberately NO token-resize affordance: a resize
+// focus is inside it or its words differ from the token's (so it never vanishes
+// or moves to another token mid-edit). It dismisses on click-outside and
+// Escape, and a click on a token then opens that token's panel. Selecting text
+// creates a token, and a live preview relocates tokens when the document text
+// is edited after tokenization. There is deliberately NO token-resize affordance: a resize
 // keeps token identity while changing what the token means, so annotations
 // (incl. other apps' glosses on a shared substrate) silently drift onto
 // different text. Boundary fixes are delete + re-create.
@@ -63,6 +64,9 @@ export const TokenVisualizer = ({
   // Set by Add word, so the input it adds takes the caret when it mounts.
   // Opening a panel on hover mounts the inputs too, and must not.
   const focusAddedWord = useRef(false);
+  // Set by Remove word, the place of the word removed. Its button can go with
+  // it, and focus then goes to the word input at that place.
+  const focusWordAt = useRef(null);
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
 
@@ -148,6 +152,13 @@ export const TokenVisualizer = ({
   };
   // True while focus is inside the open panel — i.e. the user is editing.
   const isEditing = () => !!(panelRef.current && panelRef.current.contains(document.activeElement));
+  // True while the open panel's words differ from its token's: a draft. Read
+  // by the hover timers, so it is kept for the latest render.
+  const openWord = openId != null ? wordById.get(openId) : null;
+  const draftHeld = useRef(false);
+  draftHeld.current =
+    !!openWord && JSON.stringify(draftForms) !== JSON.stringify(currentFormsOf(openWord));
+  const isPinned = () => isEditing() || draftHeld.current;
   // The badge of a token as it is on screen now, found by the token's id. A
   // badge is drawn again in another sentence block when a sentence is split
   // or merged at it, so an element kept from before can be off the page. The
@@ -167,17 +178,20 @@ export const TokenVisualizer = ({
   // element is a new anchor, so the panel is placed again when the badge moves.
   const [anchorEl, setAnchorEl] = useState(null);
   const anchorRef = useMemo(() => ({ current: anchorEl }), [anchorEl]);
+  const openNow = (id) => {
+    const word = wordById.get(id);
+    focusAddedWord.current = false;
+    if (word) setDraftForms(currentFormsOf(word)); // seed editor with current words
+    setOpenId(id);
+  };
   const requestOpen = (id) => {
     clearClose();
     if (openId === id) return;
-    if (isEditing()) return; // don't yank focus away from an in-progress edit
+    if (isPinned()) return; // an edit under way keeps its panel on its token
     clearOpen();
     openTimer.current = setTimeout(() => {
       openTimer.current = null;
-      const word = wordById.get(id);
-      focusAddedWord.current = false;
-      if (word) setDraftForms(currentFormsOf(word)); // seed editor with current words
-      setOpenId(id);
+      openNow(id);
     }, OPEN_DELAY);
   };
   const requestClose = () => {
@@ -185,7 +199,7 @@ export const TokenVisualizer = ({
     clearClose();
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
-      if (isEditing()) return; // keep open while editing
+      if (isPinned()) return; // keep open while editing
       setOpenId(null);
     }, CLOSE_DELAY);
   };
@@ -207,6 +221,16 @@ export const TokenVisualizer = ({
     const el = openId == null ? null : badgeOf(openId);
     if (openId != null && !el) closePanel();
     if (el !== anchorEl) setAnchorEl(el);
+  });
+  // After Remove word, a word input takes focus if focus left the panel with
+  // the button, so the pointer and keys stay on this panel.
+  useLayoutEffect(() => {
+    const at = focusWordAt.current;
+    if (at == null) return;
+    focusWordAt.current = null;
+    const panel = panelRef.current;
+    if (!panel || panel.contains(document.activeElement)) return;
+    panel.querySelector(`input[aria-label="Word ${at + 1}"]`)?.focus();
   });
   useEffect(
     () => () => {
@@ -408,6 +432,10 @@ export const TokenVisualizer = ({
     }
     const word = wordById.get(id);
     if (word) toggleSentence(word);
+    // A click on a token dismisses the open panel (a click outside it), and
+    // no hover follows while the pointer stays put. The clicked token's panel
+    // opens once the dismissal has run.
+    if (!isTextDirty) setTimeout(() => openNow(id), 0);
   };
   // No panel while the text is dirty: the badges are relocated previews, and
   // editing is blocked until the text is saved.
@@ -529,9 +557,10 @@ export const TokenVisualizer = ({
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 shrink-0"
-                          onClick={() =>
-                            setDraftForms((prev) => prev.filter((_, idx) => idx !== i))
-                          }
+                          onClick={() => {
+                            focusWordAt.current = Math.min(i, draftForms.length - 2);
+                            setDraftForms((prev) => prev.filter((_, idx) => idx !== i));
+                          }}
                           aria-label="Remove word"
                         >
                           <X className="h-3.5 w-3.5" />
