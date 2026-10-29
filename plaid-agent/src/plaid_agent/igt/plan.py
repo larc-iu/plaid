@@ -87,6 +87,8 @@ wire's key recasing):
 Each also carries a human ``label`` for the approval UI.
 """
 
+import hashlib
+import json
 import re
 import unicodedata
 from collections import Counter
@@ -962,10 +964,11 @@ KIND = ok.registry([
     OpKind('set_entry_field', ('entry field', 'entry fields'), replaces=None, required=('item_id', 'field'),
            apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('entry_field', op.get('item_id'), op.get('field')),
-           extra={'names_entry': ('item_id',)}),
+           extra={'names_entry': ('item_id',), 'pins_entry': 'item_id'}),
     OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'), replaces=None,
            required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
-           token_keys=('item_id',), extra={'names_entry': ('item_id',), 'hangs_off': _sense_moved_under},
+           token_keys=('item_id',), extra={'names_entry': ('item_id',), 'hangs_off': _sense_moved_under,
+                                            'pins_entry': 'item_id'},
            # Keyed by the keys it writes, so renumbering a sense and promoting
            # an example on one entry are two changes rather than one replacing
            # the other.
@@ -1194,9 +1197,33 @@ def _gone(op: Dict[str, Any], by_lexicon: bool = False) -> str:
     return f'{_entry_named(op)} no longer exists (deleted or merged away since the plan was made)'
 
 
+#: The key on a change to an entry's fields or structure (a kind declaring
+#: ``extra['pins_entry']``) holding the entry as the plan read it
+#: (:func:`entry_stamp`). Such a change is written over what was read (a
+#: field's value, the whole examples list, a sense order counted from the
+#: tree), so it is refused when the entry has changed since, as a change to a
+#: document is when the document has moved.
+ENTRY_READ = 'entry_read'
+
+
+def entry_stamp(item: Dict[str, Any]) -> str:
+    """An entry's headword and metadata as one short digest. Core keeps no
+    version of an entry, so its content is the version."""
+    raw = json.dumps([item.get('form'), item.get('metadata') or {}], sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
+
+
+def pinned_entry(op: Dict[str, Any]) -> Optional[str]:
+    """The entry ``op`` is written over as it was read, or None."""
+    spec = KIND.get(op.get('kind'))
+    key = spec.extra.get('pins_entry') if spec is not None else None
+    return op.get(key) if key else None
+
+
 def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     """Refuse the plan, before anything is written, when an entry it names is
-    gone from the server.
+    gone from the server, or one it changes as it read it (:data:`ENTRY_READ`)
+    has changed since.
 
     An entry deleted or merged away since the plan was made, where no
     document the plan pins links it, moved no version the staleness check
@@ -1218,12 +1245,14 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     vocab_ids = [v['id'] for v in (getattr(project, 'vocabs', None) or []) if v.get('id')]
     reasons = []
     unsure: Dict[str, Dict[str, Any]] = {}
+    # Each entry as it is now, by id.
+    now: Dict[str, Dict[str, Any]] = {}
     if vocab_ids and len(named) > ENTRY_READS_ONE_BY_ONE:
         unsure = dict(named)
     else:
         for item_id, op in named.items():
             try:
-                client.vocab_items.get(item_id)
+                now[item_id] = client.vocab_items.get(item_id)
             except Exception as e:  # noqa: BLE001 - gone or unreadable: the plan cannot apply
                 status = getattr(e, 'status', None)
                 if status == 404 or (status == 403 and not vocab_ids):
@@ -1243,7 +1272,16 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
                 raise PlanOutOfDate(reasons + [f'{where} could not be read to check the entries this plan names '
                                                f'({requester_message(e)})']) from e
             held.update(it.get('id') for it in layer.get('items') or [])
+            now.update((it['id'], it) for it in layer.get('items') or [] if it.get('id') in unsure)
         reasons.extend(_gone(op, by_lexicon=True) for item_id, op in unsure.items() if item_id not in held)
+    changed = set()
+    for op in ops:
+        item_id = pinned_entry(op)
+        item = now.get(item_id)
+        if item is None or not op.get(ENTRY_READ) or item_id in changed or entry_stamp(item) == op[ENTRY_READ]:
+            continue
+        changed.add(item_id)
+        reasons.append(f'the lexicon entry "{item.get("form") or item_id}" changed since the plan was made')
     if reasons:
         raise PlanOutOfDate(reasons)
 

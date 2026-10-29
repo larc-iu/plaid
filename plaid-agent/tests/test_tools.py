@@ -4,6 +4,7 @@ from fixtures import fake_ws, FakeClient
 
 from plaid_agent.core.bidi import for_model
 from plaid_agent.igt.toolkit import call_tool, TOOLS, _IMPL
+from plaid_agent.igt.plan import entry_stamp
 
 
 def ws():
@@ -159,7 +160,10 @@ def test_orthography_respell_links_entries():
     call_tool(w, 'set_entry_field', {'entry_form': 'akun', 'field': 'pos', 'value': 'V'})
     assert w.ops[-2]['metadata'] == {'gloss': 'see', 'morphType': 'stem', 'pos': 'V'}  # folded into the pending create
     call_tool(w, 'set_entry_field', {'entry_id': 'vi-ali', 'field': 'pos', 'value': 'PN'})
-    assert w.ops[-1] == {'kind': 'set_entry_field', 'item_id': 'vi-ali', 'field': 'pos', 'value': 'PN',
+    # Pinned to the entry as read, so approval refuses it once the entry changes (R1-7).
+    assert w.ops[-1]['entry_read'] == entry_stamp(next(it for it in w.lexicon(w.project.vocabs[0])
+                                                       if it['id'] == 'vi-ali'))
+    assert {k: v for k, v in w.ops[-1].items() if k != 'entry_read'} == {'kind': 'set_entry_field', 'item_id': 'vi-ali', 'field': 'pos', 'value': 'PN',
                          'label': 'entry "Ali": pos "N" → "PN"', 'change_at': 13}
     payload = w.plan_payload()
     assert payload['summary'].startswith('1 orthography value, 1 respelling')

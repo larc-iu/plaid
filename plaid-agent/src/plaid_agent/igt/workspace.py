@@ -31,8 +31,9 @@ from ..core.refs import read_ref, same_form
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import (ANALYSIS, ENTRY, KIND, MORPHEME_KEY, MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE, _found,
-                   analysed_morphemes, planned_morpheme, removed_entries, settle_merges)
+from .plan import (ANALYSIS, ENTRY, ENTRY_READ, KIND, MORPHEME_KEY, MORPHEME_WRITERS, SETTINGS_KINDS, TEXT_SHAPE,
+                   _found, analysed_morphemes, entry_stamp, pinned_entry, planned_morpheme, removed_entries,
+                   settle_merges)
 
 # What only a maintainer of the lexicon may do to its entries, and what a tool
 # says to anyone else. The app's own screens are the rule (ruling A1-IGT-6):
@@ -881,6 +882,7 @@ class Workspace(BaseWorkspace):
 
     def add_op(self, op: Dict[str, Any]) -> None:
         self.place_virtual(op)
+        self.pin_entry(op)
         # When it was staged, among the named values and rules: a rule
         # rewrites a value named before it, never one named after it.
         from .bulk import SEQ, next_seq, sequenced
@@ -893,6 +895,16 @@ class Workspace(BaseWorkspace):
             spec = KIND.get(op.get('kind'))
             if spec is not None and spec.shape == ANALYSIS:
                 self.unlink_orphans()
+
+    def pin_entry(self, op: Dict[str, Any]) -> None:
+        """Note on a change to an entry's fields or structure the entry as
+        this turn read it from the server (``plan.ENTRY_READ``), so approval
+        refuses it when the entry has changed since."""
+        item_id = pinned_entry(op)
+        v = self.vocab_of_item(item_id) if item_id else None
+        if v is None:
+            return
+        op[ENTRY_READ] = entry_stamp(next(it for it in self.lexicon(v) if it['id'] == item_id))
 
     def add_ops(self, ops: List[Dict[str, Any]]) -> None:
         # Before the funnel asks whether any of them clashes with the plan: a
