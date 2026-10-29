@@ -29,6 +29,11 @@
 //   answer's reshape with its layer, text and metadata: a stand-in for the core's
 //   "Tokenize new text" (`new-words`), which the core's own tests hold.
 //
+// - A text write that leaves a partitioning layer that held a token with none
+//   over a body with text makes one token over the whole body, as the core
+//   does, named in its reshape with its layer and text. A sentence a gap
+//   covers whole goes unless the gap is exactly its text (R45, Q1).
+//
 // `other` writes as another user, with an entry in the audit log naming the
 // rows it wrote, so a toast can say who changed a segment. Not imported by app
 // code.
@@ -151,10 +156,22 @@ function takeEdit(raw, textId, gaps, vocabs) {
     }
     return [start + front, end - back];
   });
+  // A sentence goes too when the gap covers more than its exact text (R45):
+  // only a sentence typed over exactly keeps its token (Q1).
+  const sentences = new Set([info.sentenceTokenLayer?.id]);
   const typedOver = (textLayer.tokenLayers || [])
-    .filter((layer) => !holds.has(layer.id))
-    .flatMap((layer) => layer.tokens || [])
-    .filter((t) => t.begin < t.end && deleting.some(([b, e]) => b <= t.begin && t.end <= e))
+    .flatMap((layer) =>
+      (layer.tokens || []).filter(
+        (t) =>
+          t.begin < t.end &&
+          deleting.some(
+            ([b, e]) =>
+              b <= t.begin &&
+              t.end <= e &&
+              (!holds.has(layer.id) || (sentences.has(layer.id) && (b < t.begin || t.end < e))),
+          ),
+      ),
+    )
     .map((t) => t.id);
   for (const gap of [...gaps].reverse()) {
     applyGapsLocally(raw, textId, [gap]);
@@ -172,6 +189,26 @@ function takeEdit(raw, textId, gaps, vocabs) {
     for (const t of layer.tokens || []) if (t.begin >= t.end) gone.add(t.id);
   }
   if (gone.size) removeTokensLocally(raw, textId, [...gone], vocabs);
+}
+
+// A partitioning layer that held a token and that a text write left with
+// none over a body with text gets one token over the whole body, bare, as the
+// core makes it (FX-R3), each as a reshape entry with its layer and text.
+function madePartitions(before, raw, textId, mint) {
+  const len = [...(textOf(raw).body ?? '')].length;
+  if (!len) return [];
+  return layersOf(raw)
+    .filter(
+      (l) =>
+        l.overlapMode === 'partitioning' &&
+        (layerOf(before, l.id)?.tokens || []).length > 0 &&
+        !(l.tokens || []).length,
+    )
+    .map((l) => {
+      const token = { id: mint(), text: textId, begin: 0, end: len, metadata: {} };
+      l.tokens = [token];
+      return { ...token, layer: l.id };
+    });
 }
 
 // The writes the two tabs send, applied to `raw` in place. Each answers what
@@ -224,6 +261,7 @@ const writesOn = (raw, { mint, claim }) => {
     },
     'texts.update': (textId, ops, auditMessage, { base, tokenizeLayer } = {}) => {
       checkBase(base);
+      const before = structuredClone(raw);
       const text = textOf(raw);
       if (typeof ops === 'string') {
         text.body = ops;
@@ -231,7 +269,10 @@ const writesOn = (raw, { mint, claim }) => {
         applyTextEditsLocally(raw, textId, ops, vocabsIn(raw));
       }
       text.digest = digestOf(text.body);
-      const made = tokenizeLayer ? madeWords(raw, textId, tokenizeLayer, mint) : [];
+      const made = [
+        ...madePartitions(before, raw, textId, mint),
+        ...(tokenizeLayer ? madeWords(raw, textId, tokenizeLayer, mint) : []),
+      ];
       return {
         id: textId,
         body: text.body,
@@ -248,7 +289,9 @@ const writesOn = (raw, { mint, claim }) => {
       takeEdit(raw, textId, gaps, vocabsIn(raw));
       const text = textOf(raw);
       text.digest = digestOf(text.body);
+      const partitions = madePartitions(before, raw, textId, mint);
       const reshape = reshapeOf(before, raw);
+      reshape.tokens.push(...partitions);
       if (tokenizeLayer) reshape.tokens.push(...madeWords(raw, textId, tokenizeLayer, mint));
       return { id: textId, body: text.body, digest: text.digest, reshape };
     },
@@ -303,6 +346,25 @@ const writesOn = (raw, { mint, claim }) => {
       token.begin = b;
       token.end = e;
       return {};
+    },
+    // The token keeps its id on the left, and the right half is new.
+    'tokens.split': (id, position, auditMessage, opts) => {
+      const layer = layersOf(raw).find((l) => (l.tokens || []).some((t) => t.id === id));
+      const token = layer?.tokens.find((t) => t.id === id);
+      if (!token || position <= token.begin || position >= token.end) {
+        throw refused(400, { error: 'The split position is not inside the token.' });
+      }
+      const right = {
+        id: claim(opts?.id) ?? mint(),
+        text: token.text,
+        begin: position,
+        end: token.end,
+        metadata: {},
+      };
+      token.end = position;
+      layer.tokens.push(right);
+      layer.tokens.sort((a, b) => a.begin - b.begin);
+      return { id: right.id };
     },
     'tokens.patchMetadata': (id, ops) => {
       const token = layersOf(raw)
@@ -488,6 +550,7 @@ export function segmentServer(raw) {
       'tokens.update',
       'tokens.delete',
       'tokens.bulkCreate',
+      'tokens.split',
       'tokens.patchMetadata',
       'tokens.bulkUpdate',
     ];
