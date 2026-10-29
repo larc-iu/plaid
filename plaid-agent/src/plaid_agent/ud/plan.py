@@ -402,8 +402,9 @@ def _split_sentence_summary(op, n):
 
 def _merge_sentences_summary(op, n):
     out = [(('sentence merge', 'sentence merges'), n)]
-    # The joined sentence's fields go with it (R54).
-    gone = len(op.get('deleted_fields') or [])
+    # The joined sentence's fields go with it (R54), counted by name as the
+    # label names them.
+    gone = len(dict.fromkeys(op.get('deleted_fields') or []))
     if gone:
         out.append((('removed sentence field', 'removed sentence fields'), gone))
     return out

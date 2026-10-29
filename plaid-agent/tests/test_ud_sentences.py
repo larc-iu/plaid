@@ -124,6 +124,27 @@ def test_a_merge_names_the_fields_of_the_sentence_it_joins_on_the_card(ws):
     assert summarize([op]) == '2 removed sentence fields, 1 sentence merge'
 
 
+def test_a_merge_names_each_field_with_the_sentence_that_holds_it(ws):
+    """REV-FX-R54 S5: a sentence with no words between the two and the joined
+    one both hold translation. The card counts the names it lists, and the
+    answer to the model names the sentence each field is on."""
+    from plaid_agent.ud.plan import summarize
+
+    doc = ws.doc('Viaje')
+    before, sentence = doc.sentences[0], doc.sentences[1]
+    doc.wordless.append(('wordless-1', before.end, before.end))
+    doc.wordless_metadata['wordless-1'] = {'translation': 'Hm.', 'hidden': 'x'}
+    sentence.metadata.update({'translation': 'Run.', 'note': 'by hand'})
+    out = run(ws, 'merge_sentences', document='Viaje', ref='s2')
+    op = ws.ops[-1]
+    assert op['between_ids'] == ['wordless-1']
+    assert op['deleted_fields'] == ['translation', 'hidden', 'translation', 'note']
+    assert op['label'] == 'merge s1 and s2, deleting 3 sentence fields (translation, hidden, note)'
+    assert ('It deletes 2 sentence fields (translation, hidden) of the sentence with no words between s1 '
+            'and s2 and 2 sentence fields (translation, note) of s2.') in out, out
+    assert summarize([op]) == '3 removed sentence fields, 1 sentence merge'
+
+
 def test_a_merge_of_a_sentence_with_no_fields_names_none(ws):
     out = run(ws, 'merge_sentences', document='Viaje', ref='s2')
     op = ws.ops[-1]

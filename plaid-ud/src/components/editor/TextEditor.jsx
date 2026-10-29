@@ -344,11 +344,12 @@ export const TextEditor = () => {
   // join that would delete the joined sentence's fields asks first too (R54).
   const handleSentenceBoundaryToggle = async (charPos) => {
     if (!doc) return;
-    const fields = doc.sentenceFieldsLostByJoin(charPos);
+    // Counted by name: two joined sentences that both hold a field name it once.
+    const fields = [...new Set(doc.sentenceFieldsLostByJoin(charPos))];
     if (fields.length > 0) {
       const ok = await confirm({
         title: 'Join sentences?',
-        description: `Deletes ${countOf(fields.length, 'sentence field')}: ${[...new Set(fields)].join(', ')}.`,
+        description: `Deletes ${countOf(fields.length, 'sentence field')}: ${fields.join(', ')}.`,
         confirmLabel: 'Join',
         destructive: true,
       });

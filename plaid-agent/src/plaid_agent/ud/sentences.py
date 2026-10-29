@@ -346,6 +346,21 @@ def merge_op(ws: Workspace, doc, ref: str):
     return op, before, sentence
 
 
+def _deleted_fields_phrase(doc, op, before, sentence) -> str:
+    """What a merge deletes, each field with the sentence that holds it: the
+    joined sentence by number, a sentence with no words between by that."""
+    between = [k for i in op.get('between_ids') or [] for k in sentence_fields(doc.wordless_metadata.get(i))]
+    own = sentence_fields(sentence.metadata)
+    parts = []
+    if between:
+        held = 'sentence' if len(op['between_ids']) == 1 else 'sentences'
+        parts.append(f'{_named_fields(between)} of the {held} with no words between s{before.index} '
+                     f'and s{sentence.index}')
+    if own:
+        parts.append(f'{_named_fields(own)} of s{sentence.index}')
+    return ' and '.join(parts)
+
+
 def sentence_fields(metadata: dict) -> List[str]:
     """A sentence's fields: its metadata keys but ``sent_id``, ``text`` and
     provenance, as plaid-ud's ``sentenceFieldKeys`` reads them."""
@@ -353,8 +368,8 @@ def sentence_fields(metadata: dict) -> List[str]:
 
 
 def _named_fields(fields: List[str]) -> str:
-    names = ', '.join(dict.fromkeys(fields))
-    return f'{len(fields)} sentence field{"" if len(fields) == 1 else "s"} ({names})'
+    names = list(dict.fromkeys(fields))
+    return f'{len(names)} sentence field{"" if len(names) == 1 else "s"} ({", ".join(names)})'
 
 
 def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root_head=None,
@@ -366,7 +381,7 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root
     # Merging only widens a sentence, so no arc becomes invalid. Its roots are
     # the one rule it can break, settled above.
     ws.add_ops([op] + ([root_op] if root_op else []))
-    gone = (f' It deletes {_named_fields(op["deleted_fields"])} of s{sentence.index}.'
+    gone = (f' It deletes {_deleted_fields_phrase(doc, op, before, sentence)}.'
             if op.get('deleted_fields') else '')
     return (f'Planned: s{before.index} and s{sentence.index} become one sentence'
             + (f', and {root_op["label"]}' if root_op else '') + '. Sentences after them renumber.' + gone)

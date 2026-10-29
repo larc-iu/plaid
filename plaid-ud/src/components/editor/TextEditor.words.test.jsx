@@ -332,6 +332,24 @@ describe('the Text Editor asking before the sentences go', () => {
     expect(again.toggleSentenceBoundary).toHaveBeenCalledWith(2);
     await view.unmount();
   });
+
+  // REV-FX-R54 S5: a sentence with no words between and the joined one both
+  // hold translation. The count is of the names the question lists.
+  it('a sentence join counts a field name two sentences share once', async () => {
+    setup(
+      { annotations: 0, relations: 0, forms: 0 },
+      { joinFields: ['translation', 'translation', 'note'] },
+    );
+    const view = await mount();
+    let done;
+    await act(async () => {
+      done = visualized.props.onSentenceToggle(2);
+    });
+    expect(dialog().textContent).toContain('Deletes 2 sentence fields: translation, note.');
+    await press('Cancel');
+    await act(async () => done);
+    await view.unmount();
+  });
 });
 
 // REV-N5-CORE F3: the sentences Tokenize makes can cut relations another
