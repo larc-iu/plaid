@@ -135,16 +135,33 @@ def _kept_link(words: List[Word]) -> Dict[str, Any]:
     return {'keep_id': keep.id, 'delete_ids': [l.id for l in links if l is not keep]}
 
 
-def _collapsed_mwes(words: List[Word]) -> list:
-    """Multi-word expressions made of nothing but the merged words: after the
-    merge they would sit on one token, which is no expression; the server
-    would keep a phrase link on a single word, so the plan removes them. One
-    reaching outside the merged words keeps its other members and stays."""
-    ids = {w.id for w in words}
+def _members_left(ws: Workspace, link, going=(), merging=()) -> int:
+    """How many words multi-word expression ``link`` keeps once the plan's
+    word deletes and merges stand, with this call's deletes (``going``) or
+    merge (``merging``, its words in text order) beside them: a deleted
+    member is gone, and members merged into one word count once. One member
+    left is no expression, which core drops (R1-4)."""
+    gone = set(going)
+    into: Dict[str, str] = {}
+    for op in ws.ops:
+        if op.get('kind') == 'delete_word':
+            gone.add(op.get('word_id'))
+        elif op.get('kind') == 'merge_words':
+            into.update((o, op.get('word_id')) for o in op.get('other_ids') or [])
+    into.update((o, merging[0]) for o in merging[1:])
+    return len({into.get(t, t) for t in link.tokens if t not in gone})
+
+
+def _collapsed_mwes(ws: Workspace, words: List[Word]) -> list:
+    """Multi-word expressions the merge leaves on one word, counting the
+    plan's other deletes and merges: after the merge they would sit on one
+    token, which is no expression; the server would keep a phrase link on a
+    single word, so the plan removes them. One keeping another member stays."""
+    ids = [w.id for w in words]
     out, seen = [], set()
     for w in words:
         for l in w.mwes:
-            if l.id not in seen and set(l.tokens) <= ids:
+            if l.id not in seen and _members_left(ws, l, merging=ids) < 2:
                 seen.add(l.id)
                 out.append(l)
     return out
@@ -258,7 +275,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     if links['delete_ids']:
         kept = next(w.link.form for w in words if w.link and w.link.id == links['keep_id'])
         note += f' (keeps the link "{kept}", drops {len(links["delete_ids"])})'
-    collapsed = _collapsed_mwes(words)
+    collapsed = _collapsed_mwes(ws, words)
     if collapsed:
         note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in collapsed) \
             + ' is dropped: its words become one)'
@@ -298,7 +315,7 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
         for l in w.mwes:
             if l.id in gone_mwes:
                 continue
-            if len([t for t in l.tokens if t not in going]) < 2:
+            if _members_left(ws, l, going) < 2:
                 gone_mwes.add(l.id)
                 dropped.append(l)
         note = ' (its analysis, values, and link are deleted, the text is unchanged)' if had else ' (the text is unchanged)'
