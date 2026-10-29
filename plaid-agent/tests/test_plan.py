@@ -639,15 +639,17 @@ def test_execute_lexicon_and_document_ops():
            {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': ''}]
     counts = execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
     assert counts == {'merged entries': 1, 'deleted entries': 1, 'renamed entries': 1, 'renamed documents': 1}
-    first = c.batches[0]
-    # A deleted entry's links go with it (l-9 is not deleted by id).
-    assert first == [('vocab_items.update', ('vi-gam2', 'net')), ('documents.update', ('d1', 'Text One'))]
-    # Entries are merged and deleted last, in the second batch. The merge is
-    # the core's, which moves every link the entry has when it runs, one made
-    # since the plan was read included (conc-2026-09-29 D7).
-    # The delete claims the links it read at apply, none here, so a link
-    # made in between is refused rather than deleted with the entry.
-    assert c.batches[1] == [('vocab_items.merge', ('vi-ali', ['vi-erg'])),
+    assert c.batches[0] == [('documents.update', ('d1', 'Text One'))]
+    # Entries are renamed, merged and deleted last, in a batch of their own
+    # after every document write, since each moves the version of every
+    # document linking the entry (R1-5). The merge is the core's, which moves
+    # every link the entry has when it runs, one made since the plan was read
+    # included (conc-2026-09-29 D7). A deleted entry's links go with it (l-9
+    # is not deleted by id). The delete claims the links it read at apply,
+    # none here, so a link made in between is refused rather than deleted
+    # with the entry.
+    assert c.batches[1] == [('vocab_items.update', ('vi-gam2', 'net')),
+                            ('vocab_items.merge', ('vi-ali', ['vi-erg'])),
                             ('vocab_items.delete', {'args': ('vi-gam',),
                                                     'kwargs': {'expected_link_count': 0}})]
 

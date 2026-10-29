@@ -142,6 +142,14 @@ APP = 'app'
 
 # --- the executor's shared state -------------------------------------------------
 
+# The pass that writes what moves the version of every document linking an
+# entry (a rename, a merge, a delete, and the repairs a delete or a merge
+# carries), after every document write (`_write_lexicon`).
+LEXICON = 'lexicon'
+#: The key on an entry structure change a delete or a merge carries, naming
+#: the entry it removes: the change is written with it or not at all.
+REPAIR_OF = 'repair_of'
+
 class Context:
     """What one run of the executor carries between operations: the batcher,
     the provenance stamps, and the work each pass defers to the next."""
@@ -164,8 +172,12 @@ class Context:
         # The id of each entry the plan creates, by its key.
         self.entry_ids: Dict[str, str] = {}
         self.respells: Dict[str, List[tuple]] = {}
-        self.pending_deletes: List[Dict[str, Any]] = []  # delete_entry ops, once their links are gone
-        self.pending_merges: List[tuple] = []  # (kept entry, entry merged into it), after the links
+        # The lexicon's last batch (`_write_lexicon`): what moves the version
+        # of every document linking an entry, after every document write.
+        self.pending_deletes: List[Dict[str, Any]] = []  # delete_entry ops
+        self.pending_merges: List[Dict[str, Any]] = []   # merge_entries ops
+        self.pending_renames: List[Dict[str, Any]] = []  # rename_entry ops
+        self.repairs: List[Dict[str, Any]] = []          # what a delete or a merge repairs (REPAIR_OF)
         # Ops with writes after the first pass, by the pass that ends them, so
         # each is finished (TrackingBatcher.finish) only once those stand.
         self.later: Dict[str, List[Dict[str, Any]]] = {}
@@ -437,10 +449,20 @@ def _apply_set_entry_field(ctx: Context, op) -> int:
 
 
 def _apply_set_entry_metadata(ctx: Context, op) -> int:
+    # What a delete or a merge repairs is written with it, in the lexicon's
+    # last batch, so the repairs stand only if the entry goes.
+    if op.get(REPAIR_OF):
+        ctx.repairs.append(op)
+        ctx.defer(op, LEXICON)
+        return 1
+    _write_entry_metadata(ctx, op)
+    return 1
+
+
+def _write_entry_metadata(ctx: Context, op) -> None:
     # A patch, so a null clears that key and the rest of the entry's metadata
     # is left alone.
     ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(o['item_id'], metadata_ops(o['patch'])))
-    return 1
 
 
 def _apply_set_doc_metadata(ctx: Context, op) -> int:
@@ -461,8 +483,8 @@ def _apply_merge_entries(ctx: Context, op) -> int:
     # read included, and deletes it. Moved one by one from the links the plan
     # read, a link made in between was deleted with the entry. The op's
     # `links` are what the card shows.
-    ctx.pending_merges.append((op['keep_id'], op['remove_id']))
-    ctx.defer(op)
+    ctx.pending_merges.append(op)
+    ctx.defer(op, LEXICON)
     return 1
 
 
@@ -474,17 +496,22 @@ def _apply_delete_entry(ctx: Context, op) -> int:
     # lists them, for what the plan removes, and for the count the delete
     # claims (`_entry_links_now`).
     ctx.pending_deletes.append(op)
-    ctx.defer(op)
+    ctx.defer(op, LEXICON)
     return 1
 
 
 def _apply_rename_entry(ctx: Context, op) -> int:
+    ctx.pending_renames.append(op)
+    ctx.defer(op, LEXICON)
+    return 1
+
+
+def _write_rename_entry(ctx: Context, op) -> None:
     ctx.b.add(lambda batch, o=op: batch.vocab_items.update(o['item_id'], o['form']))
     # An untyped entry whose new headword's markers named a type takes it (R27, R38).
     if op.get('morph_type'):
         ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(
             o['item_id'], [{'op': 'set', 'path': ['morphType'], 'value': o['morph_type']}]))
-    return 1
 
 
 def _apply_rename_document(ctx: Context, op) -> int:
@@ -1723,12 +1750,6 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             if not ctx.deferred(op) and not any(op is r for r in ctx.restores):
                 b.finish(op)
 
-        # A delete_entry reads the entry's links once the plan's own changes
-        # stand (`_entry_links_now`), so they land first. Otherwise the whole
-        # plan goes in one batch.
-        if ctx.pending_deletes:
-            b.flush()
-
         # Second pass: what names a change the plan makes after it (a link to
         # an entry or a morpheme created later on), by the id it is made under.
         for tokens, key, document in ctx.pending_links:
@@ -1737,30 +1758,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for op in ctx.planned_links:
             with b.writing_for(op):
                 _link_planned_morpheme(ctx, op)
-        for keep, remove in ctx.pending_merges:
-            if ('vocab_items', remove) in ctx.gone:
-                continue
-            ctx.gone.add(('vocab_items', remove))
-            b.add(lambda batch, k=keep, r=remove: batch.vocab_items.merge(k, [r]))
-        for op in ctx.pending_deletes:
-            iid = op['item_id']
-            if ('vocab_items', iid) in ctx.gone:
-                continue
-            links = _entry_links_now(client, project, op)
-            if any(link not in set(op.get('links') or []) for link in links):
-                raise PlanError(f'An entry got a link after this plan was read, so it was not '
-                                f'deleted ({op.get("label") or "Delete entry"}).', b.applied, len(ops))
-            ctx.gone.add(('vocab_items', iid))
-            b.add(lambda batch, i=iid, n=len(links): batch.vocab_items.delete(i, expected_link_count=n))
-        try:
-            b.flush()
-        except PlaidAPIError as e:
-            # Every link it has in this project is one the plan read, so the
-            # server counting more means links in projects this one cannot
-            # open, which the assistant can neither see nor take.
-            if ctx.pending_deletes and e.status == 409 and 'links' in (e.response_data or {}):
-                raise _linked_elsewhere(ctx.pending_deletes) from e
-            raise
+        b.flush()
         for op in ctx.later.get('second', ()):
             b.finish(op)
         _confirm_merged(ctx)
@@ -1806,11 +1804,76 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             finally:
                 client.strict_mode_document_id = held
             b.finish(op)
+        _write_lexicon(ctx, ops)
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
         unwritten = ctx.confirm_rows.unwritten()
     return executed(counts, notes, unwritten)
+
+
+def _write_lexicon(ctx: Context, ops) -> None:
+    """The plan's last batch: the entry renames, merges and deletes, each
+    with the repairs it carries (R1-3). Each moves the version of every
+    document linking the entry, so it comes after every document write: a
+    write of the plan's to such a document after it carried a version the
+    plan had itself moved past (R1-5).
+
+    A Delete entry reads the entry's links now, once the plan's own changes
+    to them stand (`_entry_links_now`), and claims their number, so the
+    server refuses it, with everything else in the batch, when a link was
+    made since or the entry is linked in projects this one cannot open.
+    Either way nothing of the batch is written: no sense freed and no
+    reference cleared for an entry that stays."""
+    if not (ctx.pending_renames or ctx.pending_merges or ctx.pending_deletes or ctx.repairs):
+        return
+    b = ctx.b
+    b.flush()
+    deletes = []
+    for op in ctx.pending_deletes:
+        if any(m['remove_id'] == op['item_id'] for m in ctx.pending_merges) \
+                or any(d is not op and d['item_id'] == op['item_id'] for d, _n in deletes):
+            continue
+        links = _entry_links_now(ctx.client, ctx.project, op)
+        if any(link not in set(op.get('links') or []) for link in links):
+            raise PlanError(f'An entry got a link after this plan was read, so it was not '
+                            f'deleted ({op.get("label") or "Delete entry"}).', b.applied, len(ops))
+        deletes.append((op, len(links)))
+    repairs: Dict[str, List[Dict[str, Any]]] = {}
+    for op in ctx.repairs:
+        repairs.setdefault(op[REPAIR_OF], []).append(op)
+    for op in ctx.pending_renames:
+        with b.writing_for(op):
+            _write_rename_entry(ctx, op)
+    merged = set()
+    for op in ctx.pending_merges:
+        if op['remove_id'] in merged:
+            continue
+        merged.add(op['remove_id'])
+        with b.writing_for(op):
+            for r in repairs.pop(op['remove_id'], ()):
+                _write_entry_metadata(ctx, r)
+            b.add(lambda batch, k=op['keep_id'], r=op['remove_id']: batch.vocab_items.merge(k, [r]))
+    for op, n in deletes:
+        with b.writing_for(op):
+            for r in repairs.pop(op['item_id'], ()):
+                _write_entry_metadata(ctx, r)
+            b.add(lambda batch, i=op['item_id'], n=n: batch.vocab_items.delete(i, expected_link_count=n))
+    # A repair whose delete or merge the plan no longer holds.
+    for r in [r for rs in repairs.values() for r in rs]:
+        with b.writing_for(r):
+            _write_entry_metadata(ctx, r)
+    try:
+        b.flush()
+    except PlaidAPIError as e:
+        # Every link it has in this project is one the plan read, so the
+        # server counting more means links in projects this one cannot
+        # open, which the assistant can neither see nor take.
+        if deletes and e.status == 409 and 'links' in (e.response_data or {}):
+            raise _linked_elsewhere([op for op, _n in deletes]) from e
+        raise
+    for op in ctx.later.get(LEXICON, ()):
+        b.finish(op)
 
 
 def _document_of_text(ops) -> Optional[str]:

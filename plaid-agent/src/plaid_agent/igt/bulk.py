@@ -19,7 +19,7 @@ from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
 from ..core.replace import replacer as _replacer
 from ..core.provenance import unmark
-from .plan import KIND, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
+from .plan import KIND, REPAIR_OF, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
@@ -1639,6 +1639,13 @@ def _ref_repair_ops(ws: Workspace, view, planner, *args) -> List[Dict[str, Any]]
     return ops
 
 
+def _repairs_of(removed: str, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``ops``, the repairs a delete or a merge of entry ``removed`` carries,
+    marked as its own: approval writes them in the batch that removes the
+    entry, so they stand only if it goes (``plan.REPAIR_OF``)."""
+    return [{**op, REPAIR_OF: removed} for op in ops]
+
+
 def _repair_says(before: dict, after: dict, view) -> str:
     """What one repair does, for the line the user approves."""
     bits = []
@@ -1690,7 +1697,7 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
         ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
                    'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
                             f'{move_phrase(len(links))}, delete the former'})
-        refs = _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']])
+        refs = _repairs_of(remove['id'], _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']]))
         ws.add_ops(refs)
     # Less any link another change in the plan takes (plan.settle_merges),
     # which the note beside this one names.
@@ -1713,7 +1720,7 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
                    'name': _name(view, it),
                    'label': f'Delete entry {_name(view, it)} '
                             f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
-        refs = _ref_repair_ops(ws, view, plan_delete_refs, [it['id']])
+        refs = _repairs_of(it['id'], _ref_repair_ops(ws, view, plan_delete_refs, [it['id']]))
         ws.add_ops(refs)
     note = ws.planned_note(1 + len(refs)) + f' {len(links)} link(s) would be removed.'
     return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} freed or cleared.' if refs else '')

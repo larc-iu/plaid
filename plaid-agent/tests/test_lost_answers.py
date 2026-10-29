@@ -420,7 +420,8 @@ def test_an_igt_change_finished_in_the_second_batch_is_not_written_when_it_fails
     c = IgtClient()
     with pytest.raises(core_plan.PlanError) as caught:
         execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
-    assert caught.value.written == [0, 2], 'the entry delete is in the second batch'
+    # The entry rename and delete are the lexicon's last batch, after every document write.
+    assert caught.value.written == [2], 'the entry rename and delete are in the second batch'
 
 
 def test_a_ud_head_and_the_lemma_it_hangs_on_go_in_one_batch():
