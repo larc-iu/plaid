@@ -75,3 +75,41 @@ it('a composing paste into a text with no token ends with one sentence per line'
   expect(kinds).not.toContain('tokens.bulkCreate');
   expect(sentencesOf(doc._raw)).toEqual(sentencesOf(server.stored));
 });
+
+it('a split refused after the edit landed says the sentences were not split, not that the save failed', async () => {
+  const raw = buildRawDoc({
+    body: 'ab. cd.',
+    words: [],
+    morphemes: [],
+    sentences: [
+      { id: 's-1', begin: 0, end: 4 },
+      { id: 's-2', begin: 4, end: 7 },
+    ],
+  });
+  const server = segmentServer(raw);
+  const client = server.client;
+  const batched = client.batched;
+  client.batched = async (fn) => {
+    let splits = false;
+    await fn({
+      texts: {},
+      tokens: new Proxy({}, { get: (_, k) => (k === 'split' ? () => (splits = true) : () => {}) }),
+    });
+    if (splits) {
+      throw Object.assign(new Error('HTTP 400 The split position is not inside the token.'), {
+        status: 400,
+        method: 'POST',
+      });
+    }
+    return batched(fn);
+  };
+  const doc = makeIgtDoc({ raw: structuredClone(server.stored), client });
+  const errors = [];
+  doc.onError = (message) => errors.push(message);
+  const gaps = [{ start: 0, end: 7, value: 'xy\nzw' }];
+  expect(await doc.editBaselineText({ base: 'ab. cd.', digest: server.digest, gaps })).toBe(true);
+  while (doc.isSaving) await new Promise((r) => setTimeout(r, 0));
+  expect(server.body).toBe('xy\nzw');
+  expect(errors).toEqual(['The text is saved. Its sentences were not split at line breaks.']);
+  expect(sentencesOf(doc._raw)).toEqual([[0, 5]]);
+});

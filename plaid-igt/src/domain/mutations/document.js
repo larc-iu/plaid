@@ -18,7 +18,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { isTextChanged, statusOf } from '@ui/lib/errors.js';
+import { isTextChanged, isUnknownOutcome, isUnreachable, statusOf } from '@ui/lib/errors.js';
 import { makeTextPlan, planOn, sendTextPlan, sendingPlan } from '@ui/lib/textSave.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
 import { storedHolds } from '@ui/lib/editLog.js';
@@ -39,6 +39,11 @@ const sentenceSeed = (tokenLayerId, text, body) =>
 
 // What a save whose draft cannot be put onto the stored text is refused with.
 const BASELINE_CONFLICT = 'The same passage was changed elsewhere. Cancel and redo the edit.';
+
+// What a Baseline save says when its edit landed and the sentences after it
+// did not.
+const SENTENCES_NOT_MADE = 'The text is saved. Its sentences were not made.';
+const SENTENCES_NOT_CUT = 'The text is saved. Its sentences were not split at line breaks.';
 
 // What a save is refused with when the server gives no digest for the text:
 // an edit never goes without one.
@@ -237,8 +242,9 @@ export const documentMutations = {
     const sentencesAfter = sentenceLayer?.tokens || [];
     if (cpLength(body) > 0 && sentencesAfter.length === 0) {
       // A text whose sentences were never made gets them, one per line.
-      await this._client.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body));
-      await this._reloadInSend();
+      await this._afterBaselineEdit(SENTENCES_NOT_MADE, () =>
+        this._client.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body)),
+      );
     } else if (sentencesAfter.length === 1 && !plan.sentences.has(sentencesAfter[0].id)) {
       // An edit that left the text none of its sentences (it took them all,
       // or they were never made and the edit made words) leaves the one the
@@ -249,11 +255,32 @@ export const documentMutations = {
         .map((s) => s.begin)
         .reverse();
       if (cuts.length) {
-        await this._client.batched(async (b) => {
-          for (const at of cuts) b.tokens.split(sentencesAfter[0].id, at);
-        });
-        await this._reloadInSend();
+        await this._afterBaselineEdit(SENTENCES_NOT_CUT, () =>
+          this._client.batched(async (b) => {
+            for (const at of cuts) b.tokens.split(sentencesAfter[0].id, at);
+          }),
+        );
       }
+    }
+  },
+
+  // A write after the Baseline edit has landed, then the document read. The
+  // text is stored whatever becomes of it, so a refusal is said as what was
+  // not done (`message`), not as a failed save. A write the network lost goes
+  // to the queue, which runs the save again: its edit is answered from what
+  // it stored, and this step looks again at the sentences stored.
+  async _afterBaselineEdit(message, write) {
+    try {
+      await write();
+    } catch (err) {
+      if (isUnreachable(err) || isUnknownOutcome(err)) throw err;
+      console.error(message, err);
+      this.refuse(message);
+    }
+    try {
+      await this._reloadInSend();
+    } catch (err) {
+      console.error('Reading the document after the Baseline save failed:', err);
     }
   },
 

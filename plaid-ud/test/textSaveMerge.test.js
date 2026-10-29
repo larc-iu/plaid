@@ -712,3 +712,24 @@ test('a save that took every sentence of a one-line text cuts nothing', async ()
   assert.equal(await doc.saveText(edited(base, 'xy zw')), true);
   assert.deepEqual(splits, []);
 });
+
+test('a cut refused after the text landed says the sentences were not split, and the save stands', async () => {
+  const { doc, base, server } = madeSentenceSetup();
+  doc._client.batched = async () => {
+    throw Object.assign(new Error('HTTP 400 The split position is not inside the token.'), {
+      status: 400,
+      method: 'POST',
+    });
+  };
+  const errors = [];
+  doc.onError = (message) => errors.push(message);
+  const logged = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(await doc.saveText(edited(base, 'xy zw\nq')), true);
+  } finally {
+    console.error = logged;
+  }
+  assert.equal(server.body, 'xy zw\nq');
+  assert.deepEqual(errors, ['The text is saved. Its sentences were not split at line breaks.']);
+});

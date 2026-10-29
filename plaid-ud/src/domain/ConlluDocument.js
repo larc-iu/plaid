@@ -32,6 +32,7 @@ import {
   storedHolds,
 } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
+import { isUnknownOutcome, isUnreachable } from '../../../plaid-ui/src/lib/errors.js';
 import { joinSpansOn, singleSpanRule } from '../../../plaid-ui/src/domain/mergeRules.js';
 import {
   applyTokenDelete,
@@ -78,6 +79,10 @@ const sentenceFieldKeys = (sentence) =>
   Object.keys(sentence.metadata || {}).filter(
     (k) => k !== 'sent_id' && k !== 'text' && !isProvKey(k),
   );
+
+// What a Text Editor save says when its text landed and the cut of its
+// sentences after it did not.
+const SENTENCES_NOT_CUT = 'The text is saved. Its sentences were not split at line breaks.';
 
 export class ConlluDocument extends DocumentModel {
   // Import a CoNLL-U text into a new document in the given project. The work
@@ -331,10 +336,24 @@ export class ConlluDocument extends DocumentModel {
       .reverse();
     if (!cuts.length) return;
     const id = sentences[0].id;
-    await this._client.batched(async (b) => {
-      for (const at of cuts) b.tokens.split(id, at);
-    });
-    await this._reloadInSend();
+    // The text is stored whatever becomes of the cut, so a refused one is
+    // said as what was not done, not as a failed save. One the network lost
+    // goes to the queue, which runs the save again: its edit is answered from
+    // what it stored, and the sentences stored are looked at again.
+    try {
+      await this._client.batched(async (b) => {
+        for (const at of cuts) b.tokens.split(id, at);
+      });
+    } catch (err) {
+      if (isUnreachable(err) || isUnknownOutcome(err)) throw err;
+      console.error(SENTENCES_NOT_CUT, err);
+      this.refuse(SENTENCES_NOT_CUT);
+    }
+    try {
+      await this._reloadInSend();
+    } catch (err) {
+      console.error('Reading the document after the save failed:', err);
+    }
   }
 
   // Makes `plan` (see saveText) ready to send on the text as last read, by
