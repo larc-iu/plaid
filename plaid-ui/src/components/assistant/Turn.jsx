@@ -423,6 +423,7 @@ export const Turn = ({
         )}
         {item.plan && (
           <PlanCard
+            key={item.plan.id}
             plan={item.plan}
             status={item.status}
             written={item.written}

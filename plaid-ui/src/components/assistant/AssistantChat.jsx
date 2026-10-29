@@ -1140,8 +1140,11 @@ export const AssistantChat = ({
               !d.steps?.length &&
               !d.partial &&
               !d.replyRound ? null : (
+                // Keyed by conversation as well as place: a turn's own state
+                // (a plan card's human-made box, what is folded open) is not
+                // carried to the turn at the same place in another one.
                 <Turn
-                  key={i}
+                  key={`${active?.id}:${i}`}
                   item={d}
                   projectId={projectId}
                   adapter={adapter}
