@@ -174,6 +174,74 @@ describe('the morpheme type control (R48)', () => {
   });
 });
 
+describe('the type control while + Create is open (R56)', () => {
+  const createInput = () => popover().querySelector('.igt-vocab-pop__create-input');
+  // A single click on the create row opens its form once the double-click
+  // window has passed.
+  const openCreate = async () => {
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    await new Promise((r) => setTimeout(r, 300));
+  };
+  const enter = (el) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+
+  it('on a linked morpheme, sets the new entry’s type and leaves the linked entry alone', async () => {
+    const { doc, client } = mount({ linked: true });
+    openOn('m-2');
+    await openCreate();
+    expect(createInput()).not.toBeNull();
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.textContent).toContain('Type (new entry)');
+    expect(row.querySelector('option[selected]').value).toBe('');
+    expect(popover().querySelector('.igt-vocab-pop__type-note')).toBeNull();
+    choose('suffix');
+    await settle(2);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
+    expect(createInput()).not.toBeNull();
+    enter(createInput());
+    await settle(6);
+    const create = client.calls.find((c) => c.kind === 'vocabItems.create');
+    expect(create.args[2]).toMatchObject({ morphType: 'suffix' });
+    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
+    expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('suffix');
+  });
+
+  it('on an unlinked morpheme, sets the new entry’s type, not the morpheme’s', async () => {
+    const { client } = mount();
+    openOn('m-1');
+    await openCreate();
+    choose('stem');
+    enter(createInput());
+    await settle(6);
+    expect(client.calls.find((c) => c.kind === 'vocabItems.create').args[2]).toMatchObject({
+      morphType: 'stem',
+    });
+    expect(client.calls.some((c) => c.kind === 'tokens.patchMetadata')).toBe(false);
+  });
+
+  it('edits the linked entry’s type again once the create is cancelled', async () => {
+    const { client } = mount({ linked: true });
+    openOn('m-2');
+    await openCreate();
+    choose('suffix');
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    createInput().dispatchEvent(esc);
+    await settle(2);
+    expect(createInput()).toBeNull();
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.textContent).toContain('Type (entry)');
+    expect(row.querySelector('option[selected]').value).toBe('enclitic');
+    choose('prefix');
+    await settle(4);
+    expect(client.calls.find((c) => c.kind === 'vocabItems.patchMetadata').args).toEqual([
+      'i-ri',
+      [{ op: 'set', path: ['morphType'], value: 'prefix' }],
+    ]);
+  });
+});
+
 describe('the clitic side of "=" (R49)', () => {
   it('sets "=" against an enclitic with a hair space on the host side', () => {
     mount({ linked: true });

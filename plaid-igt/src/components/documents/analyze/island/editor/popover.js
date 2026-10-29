@@ -52,6 +52,7 @@ export const popover = {
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
     this._popoverCreateEdit = null; // string while the "+ Create" row is being edited
+    this._popoverCreateType = null; // the type the Type row gives the entry being created
     clearTimeout(this._createClickTimer);
     this._createClickTimer = null;
     this._popoverReturnId = null;

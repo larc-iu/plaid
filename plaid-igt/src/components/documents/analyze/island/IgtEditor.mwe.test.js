@@ -24,7 +24,7 @@ let host;
 let editor;
 
 // "the cat sat down", one sentence, and a lexicon with a phrase entry.
-function mount({ links = [] } = {}) {
+function mount({ links = [], maintainer = false } = {}) {
   const raw = buildRawDoc({
     body: 'the cat sat down',
     words: [
@@ -54,7 +54,7 @@ function mount({ links = [] } = {}) {
     client,
   });
   client.documents.get = async () => doc.raw;
-  ({ host, editor } = mountIsland(doc));
+  ({ host, editor } = mountIsland(doc, maintainer ? { canManageVocab: () => true } : {}));
   return { doc, client };
 }
 
@@ -156,6 +156,21 @@ describe('a linked multi-word expression', () => {
     expect(client.calls.map((c) => c.kind)).toContain('vocabLinks.delete');
     expect(doc.sentences[0].mwes).toEqual([]);
     expect(pieces('mwe:lk-1')).toEqual([]);
+  });
+
+  it('with + Create open, its Type row is the new entry’s, not the linked one’s (R56)', async () => {
+    mount({ links: [linkOver('lk-1', ['w-3', 'w-4'])], maintainer: true });
+    click(label('mwe:lk-1'));
+    const linkedType = popover().querySelector('.igt-vocab-pop__type');
+    expect(linkedType.textContent).toContain('Type (entry)');
+    expect(linkedType.querySelector('select').disabled).toBe(false);
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(popover().querySelector('.igt-vocab-pop__create-input')).not.toBeNull();
+    const row = popover().querySelector('.igt-vocab-pop__type');
+    expect(row.textContent).not.toContain('(entry)');
+    expect(row.querySelector('select').disabled).toBe(true);
+    expect(row.querySelector('option[selected]').value).toBe('phrase');
   });
 
   it('choosing another entry relinks the same words', async () => {

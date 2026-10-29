@@ -131,6 +131,7 @@ export const linking = {
   // Enter creates. Double-click creates immediately without the editor.
   _openCreateEdit(form) {
     this._popoverCreateEdit = form ?? '';
+    this._popoverCreateType = null;
     this._render(true);
     const input = this.container.querySelector('.igt-vocab-pop__create-input');
     if (input) {
@@ -145,6 +146,7 @@ export const linking = {
 
   _cancelCreateEdit() {
     this._popoverCreateEdit = null;
+    this._popoverCreateType = null;
     this._render(true);
     const search = this.container.querySelector('.igt-vocab-pop__search');
     if (search) {
@@ -157,12 +159,15 @@ export const linking = {
   },
 
   // `all`: {ids, formText} for the other unlinked tokens reading the same, when
-  // the row's "all" was taken. One operation with the create.
-  async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null) {
+  // the row's "all" was taken. One operation with the create. `metadata`: the
+  // new entry's, its type when one was chosen in the create form.
+  async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null, metadata = {}) {
     this._closePopover(returnFocus);
     if (!form) return;
     const ok = await this._runThenFocus({ vocabOpener: tokenId }, () =>
-      this.doc.createAndLinkVocabItem(tokenId, vocabId, form, {}, { alsoLink: all?.ids ?? [] }),
+      this.doc.createAndLinkVocabItem(tokenId, vocabId, form, metadata, {
+        alsoLink: all?.ids ?? [],
+      }),
     );
     if (ok && all?.ids.length) {
       notifyInfo(

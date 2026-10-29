@@ -254,6 +254,10 @@ export const vocabPopover = {
     const canCreate = !!(createForm && activeVocab && !this.readOnly);
     // While the row is being edited the entry's form is whatever is typed.
     const editingCreate = canCreate && this._popoverCreateEdit != null;
+    // The type the Type row gives the entry being created (R56), none unless
+    // chosen there.
+    const createMeta =
+      editingCreate && this._popoverCreateType ? { morphType: this._popoverCreateType } : {};
     const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
     // If the form already exists in the active vocab, the new entry would be
     // spelled like an existing one. Preview the number it would get (existing
@@ -350,6 +354,7 @@ export const vocabPopover = {
               form,
               rf,
               all && canTakeAll ? { ids: others, formText } : null,
+              createMeta,
             ),
     };
     const pos = this._popoverPos;
@@ -700,9 +705,11 @@ export const vocabPopover = {
           </button>`;
         })()}
         ${kind === 'morpheme'
-          ? this._morphTypeRow(tokenId, currentItem)
+          ? editingCreate
+            ? this._newEntryTypeRow()
+            : this._morphTypeRow(tokenId, currentItem)
           : isMwe
-            ? this._mweTypeRow(currentItem)
+            ? this._mweTypeRow(editingCreate ? null : currentItem)
             : nothing}
         ${vocabs.length
           ? html`<div
@@ -880,6 +887,39 @@ export const vocabPopover = {
     const first = items.find((it) => !covered(it)) ?? items[0];
     const best = entryRows.findIndex((r) => !r._context && r.id === first?.id);
     return { limited: entryRows, truncated, best };
+  },
+
+  // While "+ Create" is open the Type row is the new entry's (R56): a pick
+  // is held and goes with the create, and focus goes back to the form so
+  // Enter creates. Cancelling the create brings back the row of the linked
+  // entry or the morpheme.
+  _newEntryTypeRow() {
+    const current = this._popoverCreateType || '';
+    return html`
+      <label
+        class="igt-vocab-pop__type"
+        title="Type of the new entry"
+        @click=${(e) => e.stopPropagation()}
+      >
+        <span>Type (new entry)</span>
+        <select
+          ?disabled=${this.readOnly}
+          aria-label="New entry morpheme type"
+          @change=${(e) => {
+            e.stopPropagation();
+            this._popoverCreateType = e.target.value || null;
+            this._render(true);
+            this.container.querySelector('.igt-vocab-pop__create-input')?.focus();
+          }}
+        >
+          <option value="" ?selected=${current === ''}>—</option>
+          ${morphTypeOptions(current).map(
+            (t) =>
+              html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
+          )}
+        </select>
+      </label>
+    `;
   },
 
   // Morpheme type editor (popover footer row): metadata.morphType from FLEx's
