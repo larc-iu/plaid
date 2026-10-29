@@ -445,13 +445,10 @@ export async function importLexicon({
       BARE_PRIMARY.has(n) && !field.lang ? { ...field, lang: primaryAnalysisWs } : field,
   });
 
-  // The items this run made. An import into a lexicon someone already has
-  // arranges only what it adds, so a sense they made a separate entry stays
-  // one.
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
-  const created = await createEntriesOnce({
+  await createEntriesOnce({
     client,
     vocabId,
     entries: pending,
@@ -460,17 +457,13 @@ export async function importLexicon({
     onProgress: (done, total) => onProgress?.({ phase: 'lexicon', done, total }),
   });
 
-  await placeEntrySenses({ client, lexicon, senseToItem, existing, only: created, check });
+  // What the lexicon keeps between entries is asked of the data, whoever made
+  // the entry: a sense with no parent yet is placed, and a reference an entry
+  // lacks is written. A parent or a reference already there, a person's or
+  // an earlier import's, stays (REV-FX-R57-1).
+  await placeEntrySenses({ client, lexicon, senseToItem, existing, check });
   if (variants) {
-    await placeVariants({
-      client,
-      vocabId,
-      lexicon,
-      senseToItem,
-      existing,
-      only: created,
-      shouldStop,
-    });
+    await placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
   }
   return senseToItem;
 }
@@ -478,11 +471,9 @@ export async function importLexicon({
 // The vocabulary keeps FLEx's sense structure: an entry with several senses
 // is a container item, its senses are senses of it in FLEx order, and a
 // subsense is a sense of the sense that owned it.
-// Written after creation, since a parent is an item id; only items made in
-// this run are placed, so an entry already in the lexicon is left as it is.
-// `only` is the items this run made, so in a lexicon already arranged by hand
-// a sense they made a separate entry stays one.
-async function placeEntrySenses({ client, lexicon, senseToItem, existing, only, check }) {
+// Written after creation, since a parent is an item id. A sense that already
+// has a parent keeps it (placeSenses).
+async function placeEntrySenses({ client, lexicon, senseToItem, existing, check }) {
   const patches = [];
   for (const entry of lexicon) {
     if (entry.senses.length < 2) continue;
@@ -495,7 +486,7 @@ async function placeEntrySenses({ client, lexicon, senseToItem, existing, only, 
       patches.push({ id, parent, senseOrder: s.senseIndex + 1 });
     }
   }
-  await placeSenses({ client, existing, places: patches, only, check });
+  await placeSenses({ client, existing, places: patches, check });
 }
 
 // The fields FLEx's variants and complex forms land in. A variant entry
@@ -511,19 +502,11 @@ const VARIANT_FIELDS = {
 
 /**
  * Variants and complex forms, written after creation for the same reason the
- * sense tree is: a reference is an item id. Only items made in this run are
- * given references, so an entry already in the lexicon keeps what it has.
+ * sense tree is: a reference is an item id. A field an entry already holds
+ * keeps what it has.
  * The fields are declared only if something landed in them.
  */
-async function placeVariants({
-  client,
-  vocabId,
-  lexicon,
-  senseToItem,
-  existing,
-  only = null,
-  shouldStop,
-}) {
+async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop }) {
   // The item that IS an entry: the container of a multi-sense entry, or a
   // senseless entry's own item, else the item its first sense became.
   const headOf = (entry) =>
@@ -545,7 +528,7 @@ async function placeVariants({
   for (const entry of lexicon) {
     if (!entry.entryRefs?.length) continue;
     const id = headOf(entry);
-    if (!id || (only && !only.has(id))) continue;
+    if (!id) continue;
     const patch = patches.get(id) ?? {};
     for (const ref of entry.entryRefs) {
       const targets = ref.components.map(itemFor).filter((t) => t && t !== id);
