@@ -33,7 +33,7 @@ const secs = () => `${((Date.now() - t0) / 1000).toFixed(0)}s`;
 const fixture = (name) => readFile(new URL(`./fixtures/${name}`, import.meta.url));
 
 // Two imports of one archive compared as they are, less the project's name
-// and the import's own stamps (as resume.mjs compares them).
+// and the import's own stamps.
 function comparable(snapshot) {
   const s = clone(snapshot);
   delete s.name;

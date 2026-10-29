@@ -19,13 +19,7 @@ import { sameConfig } from '../../../../plaid-ui/src/domain/configCells.js';
 import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { escapeJsRegex } from '../../../../plaid-ui/src/lib/jsRegex.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
-import { dropReferences } from './references.js';
-import {
-  UNCARRIED_PLAID_KEYS,
-  otherTokenLayers,
-  ownTokenLayers,
-  parentsFirst,
-} from '../../domain/otherLayers.js';
+import { UNCARRIED_PLAID_KEYS, ownTokenLayers, parentsFirst } from '../../domain/otherLayers.js';
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
@@ -69,8 +63,7 @@ export const noOtherLayers = () => ({
 /**
  * Write each key of `config` that the layer (or project) does not already
  * hold, one at a time as setConfig takes them. A key that already has the
- * value is left alone, so a resumed import writes only what an interrupted
- * one did not get to.
+ * value is left alone.
  */
 async function writeConfigNow(setConfig, id, current, config, skip = [], skipKeys = {}) {
   for (const [ns, keys] of Object.entries(config || {})) {
@@ -86,16 +79,8 @@ async function writeConfigNow(setConfig, id, current, config, skip = [], skipKey
 /**
  * Put back the project settings and layers the archive's `otherConfig` and
  * `otherLayers` describe. `project` is the target project as read before this
- * import wrote anything to its layers.
- *
- * A layer already in the project is used rather than made again, which is what
- * keeps a resumed import from doubling them. Setup makes only this app's own
- * layers, so any other layer in a project being imported into is one an
- * earlier run of this import made. It is recognized by where it sits and what
- * it is called: a token layer by its name, overlap mode and parent, a span
- * layer by its name on its token layer, a relation layer by its name on its
- * span layer. When the archive holds two alike, the first found goes to the
- * first described, which is the order an earlier run made them in.
+ * import wrote anything to its layers. Setup makes only this app's own
+ * layers, so every other layer is made here.
  */
 export async function restoreOtherLayers({
   client,
@@ -105,9 +90,6 @@ export async function restoreOtherLayers({
   layerIds = new Map(),
   warnings = [],
   check = () => {},
-  // Called with what was found or made once every layer is there, before the
-  // settings naming them are written.
-  onLayers = null,
 }) {
   const out = noOtherLayers();
   const described = manifest?.otherLayers || {};
@@ -154,26 +136,16 @@ export async function restoreOtherLayers({
     });
   };
 
-  const claimed = new Set();
-  const claim = (candidates, matches) => {
-    const found = (candidates || []).find((c) => !claimed.has(c.id) && matches(c));
-    if (found) claimed.add(found.id);
-    return found ?? null;
-  };
   const newId = (made) => made?.id ?? made;
 
   const restoreRelationLayers = async (spanLayer, rows) => {
     for (const row of rows || []) {
       check();
-      // name-ok: within one project, the archive's own layers (ruling C4)
-      let layer = claim(spanLayer.relationLayers, (c) => c.name === row.name);
-      if (!layer) {
-        layer = {
-          id: newId(
-            await client.relationLayers.create(spanLayer.id, row.name, undefined, { id: uuidv7() }),
-          ),
-        };
-      }
+      const layer = {
+        id: newId(
+          await client.relationLayers.create(spanLayer.id, row.name, undefined, { id: uuidv7() }),
+        ),
+      };
       out.relationLayers.set(row.id, layer.id);
       keepRules('relation', layer, row);
       await writeConfig(
@@ -220,13 +192,9 @@ export async function restoreOtherLayers({
         (sl) => readScope(sl.config) === row.scope && sl.name === row.name,
       );
     } else if (host) {
-      // name-ok: within one project, the archive's own layers (ruling C4)
-      layer = claim(host.spanLayers, (c) => !readScope(c.config) && c.name === row.name);
-      if (!layer) {
-        layer = {
-          id: newId(await client.spanLayers.create(host.id, row.name, undefined, { id: uuidv7() })),
-        };
-      }
+      layer = {
+        id: newId(await client.spanLayers.create(host.id, row.name, undefined, { id: uuidv7() })),
+      };
     }
     if (!layer) {
       const missing = host
@@ -247,22 +215,8 @@ export async function restoreOtherLayers({
     await restoreRelationLayers(layer, row.relationLayers);
   }
 
-  // Token layers this app does not own, parents first. A project read leaves
-  // out a token layer's overlap mode and parent, so the layers an earlier run
-  // made are read one at a time to be recognized, and only on a resume, when
-  // there are any.
+  // Token layers this app does not own, parents first.
   const rows = parentsFirst(described.tokenLayers || [], (row) => row.parent?.id ?? null);
-  const candidates = [];
-  if (rows.length) {
-    for (const tl of otherTokenLayers(tokenLayers)) {
-      const shape = tl.overlapMode === undefined ? await client.tokenLayers.get(tl.id) : tl;
-      candidates.push({
-        ...tl,
-        overlapMode: shape?.overlapMode ?? null,
-        parentTokenLayer: shape?.parentTokenLayer ?? null,
-      });
-    }
-  }
   for (const row of rows) {
     check();
     let parentId = null;
@@ -273,28 +227,18 @@ export async function restoreOtherLayers({
       continue;
     }
     const overlapMode = row.overlapMode ?? 'any';
-    let layer = claim(
-      candidates,
-      (c) =>
-        // name-ok: within one project, the archive's own layers (ruling C4)
-        c.name === row.name &&
-        (c.overlapMode ?? 'any') === overlapMode &&
-        (c.parentTokenLayer ?? null) === parentId,
-    );
-    if (!layer) {
-      layer = {
-        id: newId(
-          await client.tokenLayers.create(
-            textLayer.id,
-            row.name,
-            overlapMode,
-            parentId ?? undefined,
-            undefined,
-            { id: uuidv7() },
-          ),
+    const layer = {
+      id: newId(
+        await client.tokenLayers.create(
+          textLayer.id,
+          row.name,
+          overlapMode,
+          parentId ?? undefined,
+          undefined,
+          { id: uuidv7() },
         ),
-      };
-    }
+      ),
+    };
     out.tokenLayers.set(row.id, { id: layer.id, overlapMode });
     out.order.push(row.id);
     keepRules('token', layer, row);
@@ -306,15 +250,11 @@ export async function restoreOtherLayers({
     );
     for (const spanRow of row.spanLayers || []) {
       check();
-      // name-ok: within one project, the archive's own layers (ruling C4)
-      let spanLayer = claim(layer.spanLayers, (c) => c.name === spanRow.name);
-      if (!spanLayer) {
-        spanLayer = {
-          id: newId(
-            await client.spanLayers.create(layer.id, spanRow.name, undefined, { id: uuidv7() }),
-          ),
-        };
-      }
+      const spanLayer = {
+        id: newId(
+          await client.spanLayers.create(layer.id, spanRow.name, undefined, { id: uuidv7() }),
+        ),
+      };
       out.spanLayers.set(spanRow.id, spanLayer.id);
       keepRules('span', spanLayer, spanRow);
       await writeConfig(
@@ -330,7 +270,6 @@ export async function restoreOtherLayers({
 
   async function finish() {
     out.ids = new Map([...layerIds, ...restoredIds(out)]);
-    await onLayers?.(out);
     for (const [setConfig, id, current, config, ...rest] of writes) {
       check();
       await writeConfigNow(setConfig, id, current, remapIds(config, out.ids), ...rest);
@@ -378,58 +317,36 @@ export const remapIds = (value, ids) => {
 };
 
 /**
- * Once every document is in, or when an import that stopped is ended as it
- * is: the project settings `restoreOtherLayers` wrote, as the project holds
- * them, with each id of a document or a vocabulary entry the archive carries
- * replaced by what this import made for it (`ids`), as each layer id was when
- * they were written. Another app may name a document in its settings
- * (plaid-umr's import manifest does), and no document exists when those are
- * first written. A string naming a document the project does not hold
- * (`gone`, archive ids, an import that stopped before making it) is dropped,
- * as `dropReferences` drops one, and a setting left with nothing is removed.
- * Writes only what differs, so a resume or a second call writes nothing.
- * Returns how many references it dropped.
+ * Once every document is in: the project settings `restoreOtherLayers` wrote,
+ * again with each id of a document or a vocabulary entry the archive carries
+ * replaced by what this import made for it (`ids`), as each layer id was then
+ * (`layerIds`). Another app may name a document in its settings (plaid-umr's
+ * import manifest does), and no document exists when those are first written.
+ * Asks the project and writes only what differs.
  */
-export async function relinkOtherSettings({ client, projectId, ids, gone = [] }) {
-  const goneIds = [...gone].filter((id) => typeof id === 'string' && id);
-  if (!ids?.size && !goneIds.length) return 0;
-  const project = await client.projects.get(projectId);
-  const goneRe = goneIds.length
-    ? new RegExp(
-        [...goneIds]
-          .sort((a, b) => b.length - a.length)
-          .map(escapeJsRegex)
-          .join('|'),
-      )
-    : null;
-  const skipped = UNCARRIED_PLAID_KEYS.project;
+export async function relinkOtherSettings({ client, projectId, manifest, layerIds, ids }) {
+  if (!manifest?.otherConfig || !ids?.size) return;
+  const first = remapIds(manifest.otherConfig, layerIds || new Map());
+  const now = remapIds(manifest.otherConfig, new Map([...(layerIds || []), ...ids]));
+  // Only the settings that name one: the rest are as they were written.
   const changed = {};
-  const removed = [];
-  let dropped = 0;
-  for (const [ns, keys] of Object.entries(project?.config || {})) {
-    if (ns === IGT_NAMESPACE || !isMap(keys)) continue;
+  for (const [ns, keys] of Object.entries(now)) {
+    if (!isMap(keys)) continue;
     for (const [key, value] of Object.entries(keys)) {
-      if (ns === PLAID_NAMESPACE && skipped.includes(key)) continue;
-      let next = ids?.size ? remapIds(value, ids) : value;
-      if (goneRe) {
-        const r = dropReferences(next, (str) => goneRe.test(str));
-        dropped += r.count;
-        next = r.value;
-      }
-      if (next === undefined) removed.push([ns, key]);
-      else if (!sameConfig(value, next)) (changed[ns] ||= {})[key] = next;
+      if (sameConfig(first?.[ns]?.[key], value)) continue;
+      (changed[ns] ||= {})[key] = value;
     }
   }
+  if (!Object.keys(changed).length) return;
+  const project = await client.projects.get(projectId);
   await writeConfigNow(
     (id, ns, key, value) => client.projects.setConfig(id, ns, key, value),
     projectId,
     project?.config,
     changed,
     [IGT_NAMESPACE],
-    { [PLAID_NAMESPACE]: skipped },
+    { [PLAID_NAMESPACE]: UNCARRIED_PLAID_KEYS.project },
   );
-  for (const [ns, key] of removed) await client.projects.deleteConfig(projectId, ns, key);
-  return dropped;
 }
 
 /**
@@ -437,13 +354,10 @@ export async function relinkOtherSettings({ client, projectId, ids, gone = [] })
  * `restoreOtherLayers` made or found, once every document is in, so the
  * import is never refused by them partway. A rule naming a layer by its
  * archive id names the layer made for it. Rules the stored data still breaks
- * are left out and named in a warning, as are rules the server refuses. A
- * layer that holds them already (a resumed import) is left alone. Returns how
- * many layers' declarations failed.
+ * are left out and named in a warning, as are rules the server refuses.
  */
 export async function declareOtherLayerRules({ client, restored, warnings = [] }) {
-  if (!restored?.rules?.length) return 0;
-  let failed = 0;
+  if (!restored?.rules?.length) return;
   const ids = restored.ids ?? restoredIds(restored);
   for (const r of restored.rules) {
     const wanted = Object.entries(r.constraints)
@@ -464,10 +378,8 @@ export async function declareOtherLayerRules({ client, restored, warnings = [] }
       }
     } catch (err) {
       warnings.push(`Another app's rules for "${r.name}" were not set: ${humanizeError(err)}`);
-      failed += 1;
     }
   }
-  return failed;
 }
 
 /**

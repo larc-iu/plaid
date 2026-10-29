@@ -1,6 +1,6 @@
 // Engine unit tests against a fake recording client — verifies the exact API
-// call shapes (bulk bodies, metadata conventions, provenance stamps) and the
-// resume semantics without a live server. Live verification happens in e2e.
+// call shapes (bulk bodies, metadata conventions, provenance stamps) without a
+// live server. Live verification happens in e2e.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { deriveImportConfig, resolveTargets, importLexicon, runImport } from './importEngine.js';
@@ -616,41 +616,8 @@ describe('importLexicon', () => {
     expect(fields).not.toHaveProperty('variantOf');
   });
 
-  it('places the senses a cancelled run left flat, and leaves an arranged one alone', async () => {
-    // What an interrupted run leaves behind: the items exist, stamped with
-    // their FLEx guids, and none of them has a parent yet.
-    const client = makeFakeClient({
-      existingItems: [
-        { id: 'old-e2', form: 'махъ', metadata: { flexSense: 'e2', flexEntry: 'e2' } },
-        { id: 'old-s2', form: 'махъ', metadata: { flexSense: 's2', gloss: 'tale' } },
-        { id: 'old-s3', form: 'махъ', metadata: { flexSense: 's3', gloss: 'story' } },
-        // This one a person has already put somewhere by hand.
-        {
-          id: 'old-s3a',
-          form: 'махъ',
-          metadata: { flexSense: 's3a', gloss: 'short story', parent: 'old-e2', senseOrder: 9 },
-        },
-        { id: 'old-s1', form: 'за', metadata: { flexSense: 's1' } },
-      ],
-    });
-    await importLexicon({
-      client,
-      vocabId: 'v1',
-      lexicon,
-      baselineWs: BASE_WS,
-      resume: true,
-    });
-    // Nothing to create: every sense is already there.
-    expect(createdItems(client)).toHaveLength(0);
-    expect(itemPatches(client)).toEqual([
-      ['old-s2', place('old-e2', 1)],
-      ['old-s3', place('old-e2', 2)],
-    ]);
-  });
-
   // The same backup imported again into a lexicon someone has arranged: a
-  // sense they made a separate entry stays one. Only a RESUME heals what an
-  // earlier run left unplaced.
+  // sense they made a separate entry stays one.
   it('leaves a freed sense alone on a fresh import into a settled lexicon', async () => {
     const client = makeFakeClient({
       existingItems: [
@@ -958,14 +925,10 @@ describe('runImport', () => {
     expect(align[0]).toMatchObject({ begin: 0, end: 12, metadata: { timeBegin: 0, timeEnd: 1.5 } });
     const kinds = client.calls.map((c) => c.kind);
     expect(kinds).toContain('documents.uploadMedia');
-    // Done is marked after the upload.
-    expect(kinds.lastIndexOf('documents.setMetadata')).toBeGreaterThan(
-      kinds.indexOf('documents.uploadMedia'),
-    );
     expect(results.warnings).toEqual([]);
   });
 
-  it('leaves a document whose recording failed to upload unfinished, and says so', async () => {
+  it('says so when a recording failed to upload, and keeps the document', async () => {
     client = makeFakeClient();
     const failing = {
       ...build,
@@ -983,12 +946,7 @@ describe('runImport', () => {
     });
     expect(results.warnings).toHaveLength(1);
     expect(results.warnings[0]).toContain('media upload failed');
-    // Resume treats an unmarked document as unfinished and makes it again.
-    const marks = client.calls.filter(
-      (c) =>
-        c.kind === 'documents.setMetadata' && JSON.stringify(c.args.body).includes('importDone'),
-    );
-    expect(marks).toEqual([]);
+    expect(results.imported).toBe(1);
   });
 
   it('says a recording the server refused as too large is over the limit', async () => {
@@ -1088,7 +1046,7 @@ describe('runImport', () => {
       config,
       vocabId: 'v1',
     });
-    expect(results).toMatchObject({ imported: 1, skipped: 0, redone: 0 });
+    expect(results).toMatchObject({ imported: 1 });
 
     const bulks = client.calls.filter((c) => c.kind === 'tokens.bulkCreate');
     expect(bulks).toHaveLength(3); // sentences, words, morphemes
@@ -1227,12 +1185,10 @@ describe('runImport', () => {
     // Unapproved: FLEx's own parser proposed it, and the source says which.
     expect(links[1].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import:M3Parser' });
 
-    // document done-marker written last, with FLEx metadata preserved
-    const last = client.calls[client.calls.length - 1];
-    expect(last.kind).toBe('documents.setMetadata');
-    expect(last.args.body).toMatchObject({
-      importDone: true,
-      importSource: `${last.args.docId}:g-doc1`,
+    // The document is made with FLEx's metadata, and nothing of the import's.
+    const made = client.calls.find((c) => c.kind === 'documents.create');
+    expect(made.args.metadata).not.toHaveProperty('importSource');
+    expect(made.args.metadata).toMatchObject({
       Source: 'Rosa',
       Genre: 'Folktale',
       'Title (en)': 'The Tale',
@@ -1243,45 +1199,7 @@ describe('runImport', () => {
       Participants: 'Bo Vega; Narrator: Cy Nam',
       Locations: 'Qusar',
     });
-    expect(last.args.body.Sources).toBeUndefined();
-  });
-
-  it('skips done documents and redoes half-imported ones', async () => {
-    client = makeFakeClient({
-      // Stamped with the text's guid but not marked done.
-      existingDocs: [
-        { id: 'doc-old', name: '01 Мах', metadata: { importSource: 'doc-old:g-doc1' } },
-      ],
-    });
-    const results = await runImport({
-      client,
-      projectId: 'p1',
-      build,
-      lexicon,
-      config,
-      vocabId: 'v1',
-    });
-    expect(results).toMatchObject({ imported: 1, redone: 1, skipped: 0 });
-    expect(client.calls.some((c) => c.kind === 'documents.delete')).toBe(true);
-
-    client = makeFakeClient({
-      existingDocs: [
-        {
-          id: 'doc-old',
-          name: '01 Мах',
-          metadata: { importSource: 'doc-old:g-doc1', importDone: true },
-        },
-      ],
-    });
-    const results2 = await runImport({
-      client,
-      projectId: 'p1',
-      build,
-      lexicon,
-      config,
-      vocabId: 'v1',
-    });
-    expect(results2).toMatchObject({ imported: 0, skipped: 1, redone: 0 });
-    expect(client.calls.some((c) => c.kind === 'documents.create')).toBe(false);
+    expect(made.args.metadata.Sources).toBeUndefined();
+    expect(client.calls.some((c) => c.kind === 'documents.setMetadata')).toBe(false);
   });
 });

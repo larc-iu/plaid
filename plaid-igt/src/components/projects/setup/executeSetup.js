@@ -8,9 +8,9 @@
 //    creation so the caller can remember it);
 //  - substrate layers are adopted by shared role, span layers are reused by
 //    name+parent, and vocabularies already linked are not re-created;
-//  - a text layer, token layer or vocabulary an interrupted run made but did
-//    not get to tag or link is finished rather than made again (see "ONE RULE
-//    FOR COMPLETE" below);
+//  - a vocabulary an interrupted run made but did not get to link is opened
+//    again by the id the first run minted for it (see "ONE RULE FOR COMPLETE"
+//    below);
 //  - the initialized flag is only written when no step failed.
 //
 // Returns { projectId, resources, failures, alreadyInitialized }.
@@ -44,7 +44,6 @@ import {
   IGT_NAMESPACE,
   fieldConfigCells,
   parentLayerFor,
-  readImportState,
   readInitialized,
   findBaselineTextLayer,
   findSentenceTokenLayer,
@@ -65,7 +64,6 @@ import { nameKey, sameName } from '../../../../../plaid-ui/src/lib/nameKey.js';
 import { storedConfig } from '../../../../../plaid-ui/src/domain/configCells.js';
 import { createOnce } from '../../../../../plaid-ui/src/lib/createOnce.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
-import { importRepairs } from '../../../domain/importFinish.js';
 import { proposeServiceFieldDefaults } from '../../../domain/serviceFieldDefaults.js';
 import { entryRolesByKey } from '../../../domain/lexiconField.js';
 import { withSentenceRoles } from '../../../domain/sentenceRole.js';
@@ -76,8 +74,9 @@ const BASELINE_LAYER_NAME = 'Main Text';
 
 // ONE RULE FOR "COMPLETE". A vocabulary takes two requests: a create, and the
 // link that says it is this project's. A lost response between the two leaves
-// something no later look for the finished shape can see, so the vocabulary
-// is looked for twice, at step 8, where the unlinked ones are read. A text,
+// something no later look for the finished shape can see, so the create goes
+// under the id the caller keeps (`mints`), and a second press opens what the
+// first made rather than making another. A text,
 // token or span layer is made in one batch with its role tag (and its rules),
 // so it is never half made, and a layer without a role is never setup's,
 // whatever it is called.
@@ -98,7 +97,6 @@ async function executeProjectSetupImpl({
   setupData,
   onProgress,
   onProjectCreated,
-  onVocabCreated,
   // Where the ids of the project and each vocabulary this setup makes are
   // kept between presses (createOnce.js): the caller holds one object for
   // the life of its screen, so a press after an answer that never came names
@@ -470,45 +468,13 @@ async function executeProjectSetupImpl({
   }
 
   // Step 8: Vocabularies. Resume-safe: already-linked vocabs are reused, and
-  // so is one an interrupted run made and did not get to link.
+  // a press after an answer that never came opens what the first made
+  // (createOnce).
   if (setupData.vocabulary?.vocabularies?.length > 0) {
     updateProgress(70, 'Configuring vocabularies…');
     const enabledVocabs = setupData.vocabulary.vocabularies.filter((vocab) => vocab.enabled);
     const linkedVocabs = existingProject?.vocabs || [];
     const vocabulariesProcessed = [];
-
-    // The vocabulary's half-made shape: created, not linked. A project read
-    // names only the linked ones, so the rest are read once and only on a
-    // resume, where a half-made one can exist. Never fatal: without the list
-    // this is the behaviour it had before, which is to make a second one.
-    //
-    // WHICH of them is the import record's to say. `GET /vocab-layers` lists
-    // every vocabulary the user can read, in any project, and its rows say
-    // nothing about which project owns them: a name is shared by every run
-    // of the same import, so matching on one linked a colleague's lexicon
-    // into this project and wrote this import's entries into it. A run
-    // records every vocabulary it makes, by name, the moment it exists
-    // (onVocabCreated), so only one this project's own record names is
-    // adopted. One recorded id was not enough: an import that makes several
-    // vocabularies overwrote it with each, and a resume adopted the last and
-    // made the others again.
-    const madeVocabs = { ...(readImportState(existingProject?.config)?.vocabsMade ?? {}) };
-    let unlinked = null;
-    const madeEarlier = async (name) => {
-      const recordedId = madeVocabs[nameKey(name)];
-      if (!existingProject || !recordedId) return null;
-      if (!unlinked) {
-        const linkedIds = new Set(linkedVocabs.map((v) => v.id));
-        let all = [];
-        try {
-          all = (await client.vocabLayers.list()) || [];
-        } catch (listError) {
-          console.warn('Could not list vocabularies while resuming setup:', listError);
-        }
-        unlinked = all.filter((v) => !linkedIds.has(v.id));
-      }
-      return unlinked.find((v) => v.id === recordedId && sameName(v.name, name)) ?? null;
-    };
 
     for (const vocab of enabledVocabs) {
       try {
@@ -518,22 +484,14 @@ async function executeProjectSetupImpl({
             vocabulariesProcessed.push(alreadyLinked);
             continue;
           }
-          let newVocab = await madeEarlier(vocab.name);
-          if (!newVocab) {
-            updateProgress(70, `Creating vocabulary: ${vocab.name}…`);
-            newVocab = await createOnce(mintOf(`vocab:${nameKey(vocab.name)}`), (id) =>
-              client.vocabLayers.create(vocab.name, undefined, { id }),
-            );
-            // Said before it is linked, so a run that dies in between leaves
-            // a record naming it and the next one finishes it rather than
-            // making a second.
-            madeVocabs[nameKey(vocab.name)] = newVocab.id;
-            await onVocabCreated?.(newVocab.id, { ...madeVocabs });
-          }
+          updateProgress(70, `Creating vocabulary: ${vocab.name}…`);
+          const newVocab = await createOnce(mintOf(`vocab:${nameKey(vocab.name)}`), (id) =>
+            client.vocabLayers.create(vocab.name, undefined, { id }),
+          );
           // A new vocabulary starts with the core fields plus Status and its
           // list, the same setup every creation path does (statusFieldSeed).
-          // Written only where it is missing, so finishing one an earlier run
-          // started does not overwrite what that run already put there.
+          // Written only where it is missing, so finishing one an earlier press
+          // made does not overwrite what that press already put there.
           const stored = newVocab.config?.[IGT_NAMESPACE] || {};
           const add = statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} });
           if (igt && !stored.tagsets) {
@@ -601,10 +559,7 @@ async function executeProjectSetupImpl({
   // Nothing declares it later on its own.
   updateProgress(85, 'Setting up annotation rules…');
   try {
-    // A resumed native import holds the archive's data as it was: nothing is
-    // repaired (importFinish.js `importRepairs`).
-    const repair = importRepairs((await client.projects.get(currentProjectId))?.config);
-    const rules = await declareIgtRules(client, currentProjectId, { repair });
+    const rules = await declareIgtRules(client, currentProjectId);
     if (rules.notInForce.length) console.warn('Annotation rules not in force:', rules.notInForce);
   } catch (rulesError) {
     console.warn('Failed to set up the annotation rules:', rulesError);

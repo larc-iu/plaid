@@ -13,8 +13,8 @@ import { valueSetAllows } from '../../../plaid-client-js/src/constraints.js';
 import { sameConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 
 // The invariant FX-D-WIRE fixes by (B/fixes/FX-D-WIRE.md): once
-// `declareIgtRules` has run, which every settings save, import, resume and
-// "Use the project as it is" ends with, every IGT field's rules on the server
+// `declareIgtRules` has run, which every settings save and import ends with,
+// every IGT field's rules on the server
 // are what its settings want, unless the server would refuse stored values,
 // and then the field is named with those values and keeps the list it held
 // (nothing is enforced less than before). Checked over a generated sweep of

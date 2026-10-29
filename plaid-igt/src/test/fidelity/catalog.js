@@ -67,8 +67,8 @@ const vocabFieldEntries = (s) =>
 // Status is seeded on every new vocabulary (statusFieldSeed) and lexemeForm is
 // built in (vocabFields.js), so both count as core here.
 const CORE_ITEM_FIELDS = new Set([...CORE_VOCAB_FIELDS.map((f) => f.name), 'status', 'lexemeForm']);
-// What an importer stamps to find its own work again (import/resume.js and
-// the entry keys in the CLDF and archive importers). Bookkeeping, not data.
+// What an importer stamps on what it makes (import/stamps.js and the entry
+// keys in the CLDF and archive importers). Bookkeeping, not data.
 const DOCUMENT_STAMPS = new Set(['importSource', 'importDone']);
 const ITEM_STAMPS = new Set(['cldfEntry', 'nativeImportId']);
 const IGT_ROLES = new Set(['baseline', 'sentence', 'word', 'morpheme', 'time-alignment']);

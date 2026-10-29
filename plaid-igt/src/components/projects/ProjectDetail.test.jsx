@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 
 // One route component serves every project id, so walking from A to B keeps
 // this screen mounted and starts a second load without ending the first.
@@ -420,5 +421,69 @@ describe('a path that names no project', () => {
     expect(view.container.textContent).toContain('Project not found.');
     expect(view.container.textContent).not.toContain('Retry');
     await view.unmount();
+  });
+});
+
+// R57: an import that did not finish leaves a project that does not open. Its
+// maintainer is offered to delete it, and nothing deletes it unasked.
+describe('a project whose import did not finish', () => {
+  const unfinished = {
+    id: 'U',
+    name: 'Half',
+    config: { igt: { initialized: true, import: { kind: 'FLEx', source: 'x.fwbackup' } } },
+  };
+  const Where = () => <p data-testid="where">{useLocation().pathname}</p>;
+  const open = async (user) => {
+    const deleted = [];
+    auth.user = user;
+    auth.client = {
+      projects: {
+        get: async () => unfinished,
+        listDocuments: async () => [{ id: 'U-doc', name: 'U doc' }],
+        delete: async (id) => deleted.push(id),
+      },
+    };
+    const view = await renderComponent(
+      <ConfirmProvider>
+        <MemoryRouter initialEntries={['/projects/U']}>
+          <Routes>
+            <Route path="/projects/:projectId" element={<ProjectDetail />} />
+            <Route path="/projects" element={<Where />} />
+          </Routes>
+        </MemoryRouter>
+      </ConfirmProvider>,
+    );
+    await view.step(async () => {});
+    return { view, deleted };
+  };
+  const button = (label) =>
+    [...document.body.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
+
+  it('opens on that alone, and Delete removes it once confirmed', async () => {
+    const { view, deleted } = await open({ id: 'u', isAdmin: true });
+    expect(view.container.textContent).toContain(
+      'This import did not finish. Delete it and import again.',
+    );
+    expect(docs(view.container)).toBe('');
+    expect(deleted).toEqual([]);
+    await view.step(async () => button('Delete').click());
+    expect(deleted).toEqual([]);
+    const confirmDelete = [...document.body.querySelectorAll('[role="alertdialog"] button')].find(
+      (b) => b.textContent.trim() === 'Delete',
+    );
+    await view.step(async () => confirmDelete.click());
+    expect(deleted).toEqual(['U']);
+    expect(view.container.querySelector('[data-testid="where"]')?.textContent).toBe('/projects');
+    await view.unmount();
+  });
+
+  it('offers no Delete to someone who cannot manage the project', async () => {
+    const { view } = await open({ id: 'reader', isAdmin: false });
+    expect(view.container.textContent).toContain(
+      'This import did not finish. A project maintainer can delete it.',
+    );
+    expect(button('Delete')).toBeUndefined();
+    await view.unmount();
+    auth.user = { id: 'u', isAdmin: true };
   });
 });

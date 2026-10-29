@@ -90,9 +90,6 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
     export refusal `refusals.mjs` lists is a skip, any other refusal a failure.
     Every project is validated in every format, whatever formats the round trip
     reads it back through.
-  - `resume.mjs` — stops an import after the Nth write, resumes it the way the
-    unfinished-import screen does, and compares the project with one imported
-    straight through.
   - `vocabTsv.mjs` — a vocabulary TSV bulk-added back into an empty vocabulary
     that declares the same fields.
   - `flexAccount.mjs` — the FLEx import, which cannot be round-tripped because

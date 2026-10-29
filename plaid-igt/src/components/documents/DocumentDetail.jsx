@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { DOC_GUTTER } from '@ui/lib/pageWidth.js';
 import { TASKS, cpSlice } from '@larc-iu/plaid-client';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
@@ -6,7 +6,8 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { igtWordCount } from './igtWordCount.js';
-import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
+import { readInitialized, readImportState } from '@/domain/igtConfig';
+import { UnfinishedImport } from '../projects/UnfinishedImport.jsx';
 import { notifyError, notifyWarning } from '@/utils/feedback';
 import { announceLinkConflict } from '@ui/lib/cellConflict.js';
 import { DocumentEditorShell } from '@ui/components/shared/DocumentEditorShell.jsx';
@@ -157,29 +158,24 @@ const DocumentBody = ({ tab, context }) => {
     assistantAvailable,
     goToTab,
   } = context;
-  const { user } = useAuth();
+  const { user, client: session } = useAuth();
+  const navigate = useNavigate();
   const permissions = useDocumentPermissions(project);
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(project);
   const isViewingHistorical = !!asOf;
 
-  // A project whose import never finished sends its maintainers back to the
-  // wizard, and the resume DELETES the documents it did not complete.
-  // Annotating one of them would be work thrown away.
-  const unfinishedImport = readImportState(project?.config);
-  if (unfinishedImport) {
-    const to = importRouteFor(unfinishedImport.kind);
+  // A project whose import did not finish does not open, its documents
+  // included: it is only deleted.
+  if (readImportState(project?.config)) {
     return (
       <Gate>
-        The {unfinishedImport.kind} import
-        {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.{' '}
-        {permissions.canManage && to ? (
-          <Link className="underline" to={`${to}?resume=${projectId}`}>
-            Finish it
-          </Link>
-        ) : (
-          'A project maintainer can finish it.'
-        )}
+        <UnfinishedImport
+          client={session}
+          project={{ id: projectId, name: project?.name }}
+          canManage={permissions.canManage}
+          onDeleted={() => navigate('/projects', { replace: true })}
+        />
       </Gate>
     );
   }

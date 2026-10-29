@@ -339,56 +339,22 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
 // --- An import in flight ---------------------------------------------------
 
 /**
- * An import writes this on the project it is filling and removes it when it
- * finishes, so a project whose import was cancelled, lost or closed is not
- * mistaken for a complete one: `{kind, source, vocabId, vocabsMade, choices,
- * startedAt}`, `kind` being the format ('FLEx', 'FLEx .flextext', 'CLDF',
- * 'ELAN', 'Plaid IGT archive'), `source` the file it was reading, `vocabId`
- * the lexicon it writes into once known and `vocabsMade` the vocabularies
- * project setup has made so far. The archive import adds `unmarked` (see
- * `recordImportUnmarked`).
- * Every importer resumes, so the way to clear it is to run the same import
- * again.
+ * An import writes this on the project it is filling when the project is made
+ * and removes it once the whole import has run, so a project whose import was
+ * stopped, failed or was closed does not open as if it were complete:
+ * `{kind, source, startedAt}`, `kind` being the format ('FLEx', 'FLEx
+ * .flextext', 'CLDF', 'ELAN', 'Plaid IGT archive') and `source` the file it
+ * was reading. Such a project is only deleted, never finished.
  */
 const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
 
-/**
- * Record that an import into this project has begun. Never fails the import.
- *
- * `vocabId` is the lexicon the run writes into, once it is known. A resume
- * reads it from here rather than looking the vocabulary up by a name it
- * recomputes, which a renamed project or a hand-named lexicon does not match.
- *
- * `vocabsMade` is every vocabulary project setup has made so far, as
- * `{name: id}`, written while setup runs: it is what a resumed setup reads to
- * finish those rather than make them again.
- *
- * The record is rewritten on every run, so the `unmarked` and `finish` an
- * earlier run of the same import wrote are read first and kept.
- */
-export const markImportStarted = async (
-  client,
-  projectId,
-  kind,
-  source,
-  vocabId = null,
-  choices = null,
-  vocabsMade = null,
-) => {
+/** Record that an import into this project has begun. Never fails the import. */
+export const markImportStarted = async (client, projectId, kind, source) => {
   try {
-    const earlier = readImportState((await client.projects.get(projectId))?.config);
     await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
       kind,
       source: source ?? null,
-      vocabId,
-      // What the review screen was told, so a resume can be given the same
-      // answers rather than the defaults it would pick for itself. Opaque
-      // here: each wizard writes and reads its own shape.
-      choices: choices ?? null,
-      vocabsMade: vocabsMade ?? null,
-      ...(earlier?.unmarked ? { unmarked: earlier.unmarked } : {}),
-      ...(earlier?.finish ? { finish: earlier.finish } : {}),
       startedAt: new Date().toISOString(),
     });
   } catch (err) {
@@ -397,48 +363,8 @@ export const markImportStarted = async (
 };
 
 /**
- * Record what an import made without its marks on `record`, the import record
- * as the run read it. An archive entry or document whose metadata is at core's
- * key cap has no room for the marks a resume finds it by, so the record names
- * it instead: `unmarked = {documents: {archiveId: {id, done}}, entries:
- * {archiveId: id}}`. Throws when the write fails, since a resume would make
- * again what the record does not name.
- */
-export const recordImportUnmarked = (client, projectId, record, unmarked) =>
-  client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, { ...record, unmarked });
-
-/**
- * Record that an archive import is being ended as it is ("Use the project as
- * it is"), before that writes anything: from then on the import is only ended
- * again, never resumed, since a resume would take what the ending wrote for a
- * person's work. `record` is the import record as read. Throws when the
- * write fails.
- */
-export const markImportEnding = (client, projectId, record) =>
-  client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
-    ...record,
-    finish: { ...record.finish, endingAsIs: true },
-  });
-
-/** Whether the import `config` records is being ended as it is. */
-export const importEnding = (config) => readImportState(config)?.finish?.endingAsIs === true;
-
-/**
- * Where an unfinished import of `kind` is picked up again (the routes are in
- * App.jsx). Null for a kind this app has no wizard for.
- */
-export const importRouteFor = (kind) =>
-  ({
-    FLEx: '/projects/import',
-    'FLEx .flextext': '/projects/import-flextext',
-    CLDF: '/projects/import-cldf',
-    ELAN: '/projects/import-elan',
-    'Plaid IGT archive': '/projects/import-archive',
-  })[kind] ?? null;
-
-/**
  * Record that it finished. Says whether the record went, since a project
- * that keeps it goes on opening the import wizard rather than itself.
+ * that keeps it does not open.
  */
 export const markImportFinished = async (client, projectId) => {
   try {

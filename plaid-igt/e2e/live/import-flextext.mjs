@@ -1,7 +1,7 @@
 // Live e2e for the FLEx .flextext import. Drives the REAL setup and import
-// engine against the live core (:8085) with real files, stops the run part way
-// and resumes it, then reads every document back through IgtDocument (the
-// editor's own read path) and counts it against what the files hold.
+// engine against the live core (:8085) with real files, then reads every
+// document back through IgtDocument (the editor's own read path) and counts it
+// against what the files hold.
 //
 //   node --import ./e2e/live/aliases.mjs e2e/live/import-flextext.mjs [--keep] [files…]
 //
@@ -19,7 +19,6 @@ import { deriveImportConfig, runImport } from '../../src/import/flex/importEngin
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { setupDataFor } from '../../src/import/project.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
-import { priorImports } from '../../src/import/resume.js';
 import { readIgnoredTokens } from '../../src/domain/igtConfig.js';
 import { isTokenIgnored } from '@ui/domain/igtWordBreaks.js';
 import { fixture } from '../../src/test/fixturesDir.js';
@@ -72,38 +71,29 @@ check(setup.failures.length === 0, 'setup completed', setup.failures.join('; '))
 const projectId = setup.projectId;
 
 try {
-  // ---- import, stopped part way, then resumed ----
-  const run = (shouldStop, onProgress) =>
-    runImport({
-      operation: 'Import FLEx texts',
-      client,
-      projectId,
-      build,
-      lexicon: ir.lexicon,
-      config,
-      vocabId: null,
-      shouldStop,
-      onProgress,
-    });
-  const stopAfter = Math.min(2, build.documents.length - 1);
-  let started = 0;
-  let cancelled = false;
-  try {
-    await run(
-      () => started > stopAfter,
-      (p) => {
-        if (p.phase === 'document' && p.step === 'Starting') started += 1;
-      },
-    );
-  } catch (e) {
-    cancelled = /cancelled/i.test(e.message);
-    if (!cancelled) throw e;
-  }
-  check(cancelled || stopAfter < 1, `import stopped after ${stopAfter} documents`);
+  // ---- import ----
+  // The documents the run makes, in the order it makes them, which is the
+  // build's order: two texts may share a name.
+  const made = [];
+  const create = client.documents.create.bind(client.documents);
+  client.documents.create = async (...a) => {
+    const doc = await create(...a);
+    made.push(doc.id ?? doc);
+    return doc;
+  };
   const t1 = Date.now();
-  const res = await run(null, null);
-  console.log(`resumed in ${((Date.now() - t1) / 1000).toFixed(1)}s:`, JSON.stringify(res));
-  check(res.imported + res.skipped === build.documents.length, 'every document accounted for');
+  const res = await runImport({
+    operation: 'Import FLEx texts',
+    client,
+    projectId,
+    build,
+    lexicon: ir.lexicon,
+    config,
+    vocabId: null,
+  });
+  client.documents.create = create;
+  console.log(`imported in ${((Date.now() - t1) / 1000).toFixed(1)}s:`, JSON.stringify(res));
+  check(res.imported === build.documents.length, 'every document imported');
 
   const project = await client.projects.get(projectId);
   check((project.vocabs ?? []).length === 0, 'no vocabulary made');
@@ -111,9 +101,6 @@ try {
   // ---- every document, read back ----
   const docs = await client.projects.listDocuments(projectId);
   check(docs.length === build.documents.length, `${build.documents.length} documents`);
-  // By the id each document was stamped with at import, since two texts may
-  // share a name, read as a resume reads it (import/resume.js).
-  const prior = await priorImports(client, projectId);
   const values = (list, key) => list.filter((x) => key(x) != null).length;
   let bodies = 0;
   let words = 0;
@@ -129,13 +116,12 @@ try {
   const trField = config.fields.find((f) => f.kind === 'freeTranslation');
   let wantGlosses = 0;
   let wantTranslations = 0;
-  for (const target of build.documents) {
-    const entry = prior.find(target.guid);
-    if (!entry) {
+  for (const [i, target] of build.documents.entries()) {
+    if (!made[i]) {
       check(false, `document "${target.name}" exists`);
       continue;
     }
-    const doc = await IgtDocument.load(client, { projectId, documentId: entry.id });
+    const doc = await IgtDocument.load(client, { projectId, documentId: made[i] });
     if (doc.body === target.body) bodies += 1;
     const tokens = doc.sortedSentences.flatMap((s) => s.tokens);
     words += tokens.length;

@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { finishImport } from './importFinish.js';
 
-// REV3-WIRE-1: an import stopped part way and ended with "Use the project as
-// it is" has written its tagsets and each field's reference to one, but never
-// reached its own last step. Finishing it puts the lists in force first.
+// REV3-WIRE-1: the end of an import puts the tagsets' lists in force, on
+// the project as the import left it.
 
 const vs = { type: 'value-set', values: ['PL'], delimiters: '.', parts: 'all' };
 const project = () => ({

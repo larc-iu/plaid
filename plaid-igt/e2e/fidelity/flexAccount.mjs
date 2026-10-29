@@ -59,9 +59,6 @@ const t0 = Date.now();
 const secs = () => `${((Date.now() - t0) / 1000).toFixed(0)}s`;
 
 const filled = (v) => typeof v === 'string' && v.trim() !== '';
-// What an import writes on a document to know where it got to: not the text's
-// own doing, so not counted as one of its facts.
-const STAMPS = new Set(['importSource', 'importDone']);
 /** The non-empty strings in a multi-writing-system value ({ws: text}). */
 const strings = (m) => (m && typeof m === 'object' ? Object.values(m).filter(filled) : []);
 const sum = (xs, f) => xs.reduce((n, x) => n + f(x), 0);
@@ -271,10 +268,7 @@ function countProject(snapshot, build) {
   return {
     // One of the text's titles became the document's name rather than a
     // metadata value, so it is counted back in.
-    textFacts: sum(
-      docs,
-      (d) => Object.keys(d.metadata || {}).filter((k) => !STAMPS.has(k)).length + 1,
-    ),
+    textFacts: sum(docs, (d) => Object.keys(d.metadata || {}).length + 1),
     links: docs.flatMap((d) => d.links || []).length,
     examples: sum(items, (it) =>
       Array.isArray(it.metadata?.examples) ? it.metadata.examples.length : 0,

@@ -13,15 +13,11 @@
 // Reading the batch and mapping its tiers is `useElanBatch` + `ElanTierReview`,
 // shared with ImportElanDocuments, which runs the same import into a project
 // that already exists. What is particular to this page is the project it
-// creates first.
-//
-// Resume mirrors the other import pages: the created project id and setup
-// completion live in refs for this page session, so Retry re-runs against the
-// same project and the engine skips documents already marked done.
+// creates first. A run that stops leaves a project that is only deleted
+// (useProjectImportRun).
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
 import {
   ImportRunPanel,
   Panel,
@@ -35,8 +31,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
-import { readImportState } from '../../domain/igtConfig';
-import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -67,42 +61,19 @@ export const ImportElanProject = () => {
   const limits = useServerLimits();
   const conversion = useRecordingConversion(batch.setMediaFiles);
   const durations = useMediaDurations(batch.mediaFiles);
-  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
-  // A resume is the same import again, so the batch is given the mapping the
-  // first run was answered with rather than one suggested afresh: the memory
-  // note records that a second speaker's tier tree is mapped by hand and never
-  // suggested, so a re-suggested mapping drops it without a word.
-  const resumeChoices = resumeProject
-    ? (readImportState(resumeProject.config)?.choices ?? null)
-    : null;
   const {
     stage,
     setStage,
     progress,
     runError,
-    retryable,
     stopped,
     results,
     projectIdRef,
+    unfinished,
+    clearUnfinished,
     stop,
     start,
-  } = useProjectImportRun({ client, kind: 'ELAN', resumeId });
-
-  // The record may still be on its way when the files are read: nothing gates
-  // the file input on that fetch, and a person who drops a folder straight
-  // away gets a mapping suggested afresh and then locked read-only, with the
-  // hand-mapped tier tree gone and no way to put it back. So the answers are
-  // applied once both the parse and the record are in hand, as the CLDF
-  // wizard does with its options.
-  const choicesApplied = useRef(false);
-  useEffect(() => {
-    if (!batch.files || !resumeChoices || choicesApplied.current) return;
-    choicesApplied.current = true;
-    batch.applyRecorded(resumeChoices);
-    // `batch` is a new object every render; the parse and the record are what
-    // this waits on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch.files, resumeChoices]);
+  } = useProjectImportRun({ client, kind: 'ELAN' });
 
   const handleFiles = async (fileList) => {
     // Cancelling the file dialog is not an error to report at someone.
@@ -111,7 +82,7 @@ export const ImportElanProject = () => {
     // what would throw the tier mapping away.
     if (partitionPicked(fileList).eafs.length) setStage('parsing');
     try {
-      await batch.readFiles(fileList, resumeChoices);
+      await batch.readFiles(fileList);
       setProjectName((name) => name || 'ELAN corpus');
       setStage('review');
     } catch (e) {
@@ -125,8 +96,6 @@ export const ImportElanProject = () => {
     setLog([]);
     return start({
       setupData: () => deriveSetupData(batch.build, projectName.trim()),
-      // The answers this screen was given, so a resume repeats them.
-      choices: batch.choices,
       run: ({ projectId, shouldStop, setProgress }) =>
         runElanImport({
           client,
@@ -147,10 +116,8 @@ export const ImportElanProject = () => {
     });
   };
 
-  const editable = stage === 'review';
-  // The mapping locks on a resume: it deletes and redoes the unfinished
-  // documents against the answers the first run was given.
-  const mappingEditable = editable && !resumeId;
+  // The answers lock while a stopped run's project is still there.
+  const editable = stage === 'review' && !unfinished;
   const canRun =
     editable && !!batch.build && !!projectName.trim() && batch.undecidedNearMisses.length === 0;
 
@@ -169,17 +136,7 @@ export const ImportElanProject = () => {
         }}
       />
       <div className="flex flex-col gap-6">
-        <ImportHeader
-          title="Import an ELAN corpus"
-          resume={
-            resumeId && {
-              name: resumeName,
-              again:
-                'Choose the same files: what is already there is unchanged, and the first run’s answers are used again.',
-              onFinishAsIs: finishAsIs,
-            }
-          }
-        >
+        <ImportHeader title="Import an ELAN corpus">
           Create a project from a set of{' '}
           <a
             href="https://archive.mpi.nl/tla/elan"
@@ -229,10 +186,9 @@ export const ImportElanProject = () => {
               <>
                 <ProjectNameField
                   id="project-name"
-                  value={resumeId ? (resumeName ?? '') : projectName}
+                  value={projectName}
                   onChange={setProjectName}
-                  disabled={!!resumeId || !editable}
-                  resuming={!!resumeId}
+                  disabled={!editable}
                 />
 
                 <ElanFiles
@@ -242,7 +198,6 @@ export const ImportElanProject = () => {
                   durations={durations}
                   maxBytes={limits?.mediaFileBytes ?? null}
                   editable={editable}
-                  choicesEditable={mappingEditable}
                   converting={conversion.converting}
                   documents={batch.build?.documents ?? null}
                   onAddFiles={() => fileInputRef.current?.click()}
@@ -254,11 +209,7 @@ export const ImportElanProject = () => {
                   onRecordMediaName={batch.setRecordMediaName}
                 />
 
-                <ElanTierReview
-                  batch={batch}
-                  editable={editable}
-                  mappingEditable={mappingEditable}
-                />
+                <ElanTierReview batch={batch} editable={editable} />
 
                 <ElanPreview build={batch.build} />
 
@@ -267,8 +218,10 @@ export const ImportElanProject = () => {
                 <ImportRunPanel
                   stage={stage}
                   runError={runError}
-                  retryable={retryable}
                   stopped={stopped}
+                  unfinished={unfinished}
+                  client={client}
+                  onDeleted={clearUnfinished}
                   progress={progress}
                   onStop={stop}
                 >
@@ -276,15 +229,9 @@ export const ImportElanProject = () => {
                 </ImportRunPanel>
 
                 <div className="flex items-center gap-2">
-                  {(retryable || !runError) && (
+                  {!unfinished && (
                     <Button onClick={startImport} disabled={!canRun}>
-                      {runError ? (
-                        <>
-                          <RefreshCw className="h-4 w-4" /> Retry import
-                        </>
-                      ) : (
-                        'Import'
-                      )}
+                      Import
                     </Button>
                   )}
                   <span className="ms-2 text-xs text-muted-foreground">
@@ -299,11 +246,7 @@ export const ImportElanProject = () => {
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
             <Panel tone="success" title="Import complete">
-              <p className="mt-1 text-xs">
-                {results.imported - results.redone} imported
-                {results.skipped ? `, ${results.skipped} already done` : ''}
-                {results.redone ? `, ${results.redone} redone` : ''}.
-              </p>
+              <p className="mt-1 text-xs">{results.imported} imported.</p>
             </Panel>
             {log.length > 0 ? (
               <WarningLog log={log} />

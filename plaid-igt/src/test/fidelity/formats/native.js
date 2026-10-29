@@ -37,8 +37,7 @@ export default {
     // Setup marks the project initialized, and an import in flight is recorded under `import`
     // until it finishes.
     projectConfig: ['initialized', 'import'],
-    // src/import/resume.js: the archive's document id, and the done marker written last.
-    documentMetadata: ['importSource', 'importDone'],
+    documentMetadata: [],
     tokenMetadata: [],
     // The archive item id, stamped on every entry the importer creates.
     itemMetadata: ['nativeImportId'],

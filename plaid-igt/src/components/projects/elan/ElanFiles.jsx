@@ -76,9 +76,6 @@ const PRIOR_MODES = [
  *                    and then no row says "new" either.
  * @param recordMediaName  whether each recording's file name goes in a Media
  *                    file metadata field, and onRecordMediaName to change it
- * @param choicesEditable  whether the answers a resume would repeat can still
- *                    be changed. False on a resume, where the files can still
- *                    be added and removed but the first run's answers stand.
  */
 export const ElanFiles = ({
   step = 1,
@@ -88,7 +85,6 @@ export const ElanFiles = ({
   durations,
   maxBytes = null,
   editable = true,
-  choicesEditable = null,
   converting = null,
   documents = null,
   imported = null,
@@ -104,7 +100,6 @@ export const ElanFiles = ({
   onRecordMediaName = null,
 }) => {
   const [showAll, setShowAll] = useState(false);
-  const canChoose = choicesEditable ?? editable;
   if (!files?.length && !mediaFiles?.length) return null;
 
   const docOf = new Map((documents || []).map((d) => [d.id, d]));
@@ -246,7 +241,7 @@ export const ElanFiles = ({
         <label className="flex cursor-pointer items-center gap-2 text-xs">
           <input
             type="checkbox"
-            disabled={!canChoose}
+            disabled={!editable}
             checked={recordMediaName}
             onChange={(e) => onRecordMediaName(e.target.checked)}
           />

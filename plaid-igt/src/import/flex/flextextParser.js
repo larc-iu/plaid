@@ -532,7 +532,6 @@ const byCount = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([lang])
  * parseFwdata returns, so buildDocuments and the FLEx import engine take it
  * as they take a backup. It has no lexicon. On top of that shape:
  *   text.guid          the FLEx guid, or "<file>#<n>" for a text without one
- *                      (the key an interrupted import resumes by)
  *   text.fallbackName  the file's name, for a text with no title
  *   posWs              the writing system the categories are written in
  *   unread             [{label, count}]: what the files hold that is not read

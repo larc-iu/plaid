@@ -1,6 +1,6 @@
 // Live e2e for the FLEx .fwbackup import (scratchpad-convention: disposable).
 // Drives the REAL setup + import engine against the live core (:8085) with the
-// Lezgi sample, exercising cancel/resume, then verifies the imported data via
+// Lezgi sample, then verifies the imported data via
 // IgtDocument (the exact read path the editor uses).
 //
 //   node --import ./e2e/live/aliases.mjs e2e/live/import-flex.mjs [--keep] [--small]
@@ -80,29 +80,7 @@ const vocabId = setup.resources.vocabularies[0].id;
 console.log(`project ${projectId} set up in ${Date.now() - t0}ms`);
 
 try {
-  // ---- import with mid-run cancel, then resume ----
-  let docsDone = 0;
-  const stopAfter = SMALL ? 1 : 3;
-  let cancelled = false;
-  try {
-    await runImport({
-      client,
-      projectId,
-      build,
-      lexicon: ir.lexicon,
-      config,
-      vocabId,
-      shouldStop: () => docsDone >= stopAfter,
-      onProgress: (p) => {
-        if (p.phase === 'document' && p.step === 'Linking lexicon') docsDone += 1;
-      },
-    });
-  } catch (e) {
-    cancelled = /cancelled/.test(e.message);
-    if (!cancelled) throw e;
-  }
-  check(cancelled, `import cancelled mid-run after ~${stopAfter} documents`);
-
+  // ---- import ----
   const t1 = Date.now();
   const res = await runImport({
     client,
@@ -120,11 +98,10 @@ try {
     },
   });
   console.log(
-    `\nresume finished in ${((Date.now() - t1) / 1000).toFixed(1)}s:`,
+    `\nimport finished in ${((Date.now() - t1) / 1000).toFixed(1)}s:`,
     JSON.stringify(res),
   );
-  check(res.skipped >= stopAfter - 1, 'resume skipped completed documents', JSON.stringify(res));
-  check(res.imported + res.skipped === build.documents.length, 'all documents accounted for');
+  check(res.imported === build.documents.length, 'all documents imported', JSON.stringify(res));
 
   // ---- verify ----
   const docs = await client.projects.listDocuments(projectId);

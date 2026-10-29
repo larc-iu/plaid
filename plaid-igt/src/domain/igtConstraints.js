@@ -252,9 +252,8 @@ const reachableCount = async (client, p, fixable) => {
  *
  * This is the one place a stored rule is brought back to the settings, so
  * every path that leaves the settings and the server apart calls it: setup,
- * the end of an import or a resume, "Use the project as it is", and after
- * every tagset or field save (which also heals a field another maintainer's
- * save, a script or an unfinished import left behind).
+ * the end of an import, and after every tagset or field save (which also
+ * heals a field another maintainer's save or a script left behind).
  *
  * A closed list the stored values break (`refusedValues`, with its
  * exemptions) is not declared, and a list the field already holds stays, so

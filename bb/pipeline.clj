@@ -288,7 +288,6 @@
    ["validate.mjs" "every export passes its own format's validator"]
    ["mirror.mjs" "the editor shows what the server keeps after each reshape, and asks about what it deletes"]
    ["composedArchive.mjs" "an archive whose text keeps a mark apart for its own token imports, and round trips identical"]
-   ["resume.mjs" "an import stopped after the Nth write and resumed ends where a straight import ends"]
    ["vocabTsv.mjs" "a vocabulary TSV export reads back through Bulk Add"]])
 
 (defn run-fidelity! []

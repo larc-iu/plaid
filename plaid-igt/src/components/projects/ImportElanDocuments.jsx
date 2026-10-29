@@ -10,15 +10,14 @@
 // a field is possible and deliberate: it is a separate choice in the picker,
 // and a name that reads like an existing field says so before the run.
 //
-// NOTHING IS LOCKED. The unfinished-import record (config.igt.import) sends a
-// project's maintainers back to the wizard and refuses to open any document
-// until the import is over, which is right for a project that is nothing but
-// the import and wrong for one with a year of work in it. Resume here rests on
-// the per-document stamps instead: a document an earlier run left unfinished is
-// named on this screen and redone when the same files are imported again. One
-// it finished is named too, with the choice of keeping it, replacing it, or
-// adding a copy beside it (a sandbox to try things in was the first request),
-// and a recording chosen beside a kept one is added to it when it has none.
+// NOTHING IS LOCKED. The unfinished-import record (config.igt.import) keeps a
+// project from opening until it is deleted, which is right for a project that
+// is nothing but the import and wrong for one with a year of work in it. This
+// screen writes no record. It reads the per-document marks instead: a document
+// an earlier import made is named on this screen, with the choice of keeping
+// it, replacing it, or adding a copy beside it (a sandbox to try things in was
+// the first request), and a recording chosen beside a kept one is added to it
+// when it has none. A run that stops removes the document it was making.
 //
 // EMPTY TIERS ARE OFF. A corpus template carries tiers nobody has filled in
 // yet, and in a project that already has its fields those would only add empty
@@ -42,7 +41,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';
-import { ImportCancelled, priorImports } from '../../import/resume';
+import { ImportCancelled, priorImports } from '../../import/stamps';
 import { elanTally } from '../../import/elan/tally';
 import { missingFields, similarField } from '../../import/elan/fieldTargets';
 import { existingFields } from '../../domain/fieldInventory';
@@ -179,10 +178,9 @@ export const ImportElanDocuments = () => {
     };
   }, [client, projectId, project]);
 
-  // Files an earlier run imported, finished or not: this project is open for
-  // work, so a document a run left unfinished may hold someone's work and
-  // gets the same Keep, Replace or Add copies choice as a finished one.
-  // Keyed by .eaf file name, which is what a document's resume stamp holds.
+  // Files an earlier import brought in, each with the Keep, Replace or Add
+  // copies choice. Keyed by .eaf file name, which is what a document's mark
+  // holds.
   // Null until the listing is read, so no row claims "new" on a guess.
   const imported = prior
     ? new Map(
@@ -223,7 +221,6 @@ export const ImportElanDocuments = () => {
         prior: retrying ? null : prior,
         redo: leftovers,
         priorMode,
-        projectOpen: true,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
         onProgress: (p) => {

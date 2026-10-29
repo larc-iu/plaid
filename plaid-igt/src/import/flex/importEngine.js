@@ -6,19 +6,11 @@
 // the project vocabulary, then each document (text, sentence partition, word
 // tokens with orthographies, morpheme tokens, annotation spans, vocab links).
 //
-// Resumability: a document is only marked done (metadata.flexImported) after
-// every write for it succeeded. On resume, done documents are skipped and
-// half-imported ones are deleted and redone. Lexicon items are deduped by
-// their FLEx sense guid (metadata.flexSense).
+// Lexicon items are matched by their FLEx sense guid (metadata.flexSense), so
+// an import into a lexicon that already holds them reuses them.
 
 import { stampInferred, confirmedInferred, metadataOps, entryForm } from '@larc-iu/plaid-client';
-import {
-  ImportCancelled,
-  importStamp,
-  priorImports,
-  writeVocabConfig,
-  settlePrior,
-} from '../resume.js';
+import { ImportCancelled } from '../stamps.js';
 import { CHUNK, bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
@@ -37,7 +29,13 @@ import {
   writeAlignments,
   writeDocumentLayers,
 } from '../project.js';
-import { createEntriesOnce, itemsBySourceKey, mergeFieldSchema, placeSenses } from '../lexicon.js';
+import {
+  createEntriesOnce,
+  itemsBySourceKey,
+  mergeFieldSchema,
+  placeSenses,
+  writeVocabConfig,
+} from '../lexicon.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -283,8 +281,8 @@ export function resolveTargets(project, config) {
  * bare key (`gloss`), the others suffixed (`gloss (ru)`). `analysisWss`
  * (null = all) limits which are kept.
  *
- * Resume-safe: items already in the vocab with a matching metadata.flexSense
- * are reused, not duplicated.
+ * Items already in the vocab with a matching metadata.flexSense are reused,
+ * not duplicated.
  */
 export async function importLexicon({
   client,
@@ -297,7 +295,6 @@ export async function importLexicon({
   lexiconFields = [],
   customFieldWs = {},
   variants = false,
-  resume = false,
   onProgress,
   shouldStop,
 }) {
@@ -448,9 +445,9 @@ export async function importLexicon({
       BARE_PRIMARY.has(n) && !field.lang ? { ...field, lang: primaryAnalysisWs } : field,
   });
 
-  // The items this run made. A RESUME heals everything an earlier run left
-  // unplaced; a fresh import into a lexicon someone already has arranges only
-  // what it adds, so a sense they made a separate entry stays one.
+  // The items this run made. An import into a lexicon someone already has
+  // arranges only what it adds, so a sense they made a separate entry stays
+  // one.
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
@@ -463,10 +460,18 @@ export async function importLexicon({
     onProgress: (done, total) => onProgress?.({ phase: 'lexicon', done, total }),
   });
 
-  const only = resume ? null : created;
-  await placeEntrySenses({ client, lexicon, senseToItem, existing, only, check });
-  if (variants)
-    await placeVariants({ client, vocabId, lexicon, senseToItem, existing, only, shouldStop });
+  await placeEntrySenses({ client, lexicon, senseToItem, existing, only: created, check });
+  if (variants) {
+    await placeVariants({
+      client,
+      vocabId,
+      lexicon,
+      senseToItem,
+      existing,
+      only: created,
+      shouldStop,
+    });
+  }
   return senseToItem;
 }
 
@@ -475,7 +480,7 @@ export async function importLexicon({
 // subsense is a sense of the sense that owned it.
 // Written after creation, since a parent is an item id; only items made in
 // this run are placed, so an entry already in the lexicon is left as it is.
-// `only` is set for a fresh import into a lexicon already arranged by hand, so
+// `only` is the items this run made, so in a lexicon already arranged by hand
 // a sense they made a separate entry stays one.
 async function placeEntrySenses({ client, lexicon, senseToItem, existing, only, check }) {
   const patches = [];
@@ -534,7 +539,7 @@ async function placeVariants({
   };
 
   // Same rule as placeSenses: write a reference the entry does not have yet,
-  // so an interrupted run is healed and a person's own edit is not.
+  // so a person's own edit stays.
   const existingMeta = new Map((existing.items || []).map((it) => [it.id, it.metadata || {}]));
   const patches = new Map();
   for (const entry of lexicon) {
@@ -556,8 +561,7 @@ async function placeVariants({
         patch[typeField] = [...types].join(', ');
       }
     }
-    // Drop what the entry already carries: a value there is either this
-    // import's own from an earlier run, or somebody's edit.
+    // Drop what the entry already carries: a value there is somebody's edit.
     const held = existingMeta.get(id);
     if (held) for (const k of Object.keys(patch)) if (held[k] != null) delete patch[k];
     if (Object.keys(patch).length) patches.set(id, patch);
@@ -697,7 +701,7 @@ async function importDocument({
     projectId,
     targets,
     name: doc.name,
-    metadata: (id) => importStamp(documentMetadataOf(doc), doc.guid, id),
+    metadata: documentMetadataOf(doc),
     body: doc.body,
     tokenEdges: doc.tokenEdges,
     sentences,
@@ -804,14 +808,12 @@ async function importDocument({
   }
 
   // The recording the text's sentences point to, when the user picked it. A
-  // run that finishes with a failed upload leaves nothing to resume: its
-  // warning sends the user to the Media tab.
+  // failed upload's warning sends the user to the Media tab.
   await finishDocument({
     client,
     documentId: docId,
     name: doc.name,
     media: doc.mediaFile,
-    stamp: { metadata: documentMetadataOf(doc), sourceId: doc.guid },
     onProgress,
     progress,
     check,
@@ -821,13 +823,11 @@ async function importDocument({
 }
 
 /**
- * Run a full import against a set-up project. Skips documents already marked
- * imported; deletes and redoes half-imported ones. onProgress receives
+ * Run a full import against a set-up project. onProgress receives
  * {phase: 'lexicon'|'document'|'done', ...} updates throughout.
  */
 // The whole import is ONE logical operation in the audit log (vocabulary +
-// every document); each write keeps its own description underneath. Resumable
-// retries start a fresh operation, which is the honest reading of the log.
+// every document); each write keeps its own description underneath.
 // `operation` names it in the log, and `format` ('fwbackup' or 'flextext')
 // is the file it came from, which the operation records as its ref. A null
 // `vocabId` imports the texts alone (a .flextext has no lexicon), and then
@@ -879,15 +879,11 @@ async function runImportImpl({
         analysisWss: config.analysisWss ?? null,
         lexiconFields: config.lexiconFields ?? [],
         variants: config.variants === true,
-        resume: config.resume === true,
         onProgress,
         shouldStop,
       });
 
-  // Resume bookkeeping: what an earlier run made, by FLEx text guid.
-  const prior = await priorImports(client, projectId);
-
-  const results = { imported: 0, skipped: 0, redone: 0, warnings: [] };
+  const results = { imported: 0, warnings: [] };
   for (let i = 0; i < build.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = build.documents[i];
@@ -898,7 +894,6 @@ async function runImportImpl({
       total: build.documents.length,
       step: 'Starting',
     });
-    if (!(await settlePrior(client, prior, doc.guid, results))) continue;
     await importDocument({
       client,
       projectId,

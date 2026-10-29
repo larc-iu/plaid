@@ -1,16 +1,17 @@
 // The lexicon half of an importer that is not about its format.
 //
 // Three importers write vocabulary entries (FLEx, CLDF, the archive). Each
-// plans its own entries, with its own source key stamped on what it makes so a
-// resume can ask the data which entries are already there. Under that
-// planning they do the same things, which live here: find the entries an
-// earlier run made, create the rest in chunks, put a sense that has no parent
-// yet under its entry, and merge new fields into the vocabulary's schema.
+// plans its own entries, with its own source key stamped on what it makes, so
+// an import into a lexicon that already holds an entry finds it. Under that
+// planning they do the same things, which live here: find the entries already
+// there, create the rest in chunks, put a sense that has no parent yet under
+// its entry, and merge new fields into the vocabulary's schema.
 
 import { createdIds } from '@larc-iu/plaid-client';
+import { statusOf } from '@ui/lib/errors.js';
+import { sameConfig } from '@ui/domain/configCells.js';
 import { CHUNK, withMintedIds } from '../domain/bulk.js';
 import { IGT_NAMESPACE, readVocabFields } from '../domain/igtConfig.js';
-import { writeVocabConfig } from './resume.js';
 
 /**
  * The key the archive import stamps on an entry it made, the archive item id.
@@ -77,15 +78,37 @@ export async function createEntriesOnce({
 }
 
 /**
+ * Run `write`, the write of `value` to key `key` of namespace `ns` in
+ * vocabulary `vocab`'s config (`vocab` as read, with `id`, `name` and
+ * `config`; `value` undefined for a removal), only when the stored value
+ * differs. Only a maintainer of the vocabulary may change its config, and an
+ * import into a lexicon someone else keeps may not be one: it then writes
+ * nothing that is already there, and a write still needed and refused says
+ * who can make it. The caller makes the call itself, so the config keys each
+ * importer writes stay readable at its call site. True when it wrote.
+ */
+export async function writeVocabConfig(vocab, ns, key, value, write) {
+  const stored = vocab?.config?.[ns]?.[key];
+  if (value === undefined ? stored === undefined : sameConfig(stored, value)) return false;
+  try {
+    await write();
+  } catch (err) {
+    if (statusOf(err) !== 403) throw err;
+    throw new Error(
+      `Only a maintainer of the vocabulary “${vocab?.name ?? vocab?.id}” can import into it.`,
+      { cause: err },
+    );
+  }
+  return true;
+}
+
+/**
  * Puts each sense of `places` (`{id, parent, senseOrder}`, as item ids) under
  * its parent, once every item has an id.
  *
- * Only a sense that has no parent YET is placed, rather than one this run
- * created. An entry created by a run that was cancelled or lost part way
- * through has none either, and asking "did this run make it" left such an
- * entry flat forever: the resume neither recreates it nor places it. A sense
- * someone has since moved under another entry keeps that place. `only` narrows
- * it further to the items in that set.
+ * Only a sense that has no parent yet is placed: a sense someone has moved
+ * under another entry keeps that place. `only` narrows it further to the
+ * items in that set.
  *
  * One bulk update per chunk, not a batch of one patch per sense: a batch
  * re-dispatches the whole REST stack per op inside the held write lock.
@@ -111,7 +134,7 @@ export async function placeSenses({ client, existing, places, only = null, check
 
 /**
  * The vocabulary's field schema with `keys` merged in, written where it
- * differs (so a resume writes nothing the first run already did). MERGED
+ * differs. MERGED
  * into what the vocabulary already declares, never written over it: project
  * setup puts fields there when it makes the vocabulary, and a vocabulary being
  * added to keeps its own fields, order and inline flags. A key new to it is

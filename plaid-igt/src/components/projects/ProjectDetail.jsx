@@ -16,7 +16,6 @@ import {
   readIgnoredTokens,
   readInitialized,
   readImportState,
-  importRouteFor,
   wordValueSpec,
 } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
@@ -28,6 +27,7 @@ import { notifyNotAMaintainer } from '@ui/hooks/useManagedProject.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
+import { UnfinishedImport } from './UnfinishedImport.jsx';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -176,23 +176,15 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
   // non-maintainers can't create layers, so they get an informational notice
   // (rendered below) rather than a dead-end redirect into a wizard they can't
   // complete.
+  // An import that never reported finishing: the project is half filled and
+  // does not open. It is only deleted.
+  const unfinishedImport = !!readImportState(project.config);
   const initialized = readInitialized(project.config);
   useEffect(() => {
-    if (!initialized && canManage) navigate(`/projects/${projectId}/setup`, { replace: true });
-  }, [initialized, projectId, navigate, canManage]);
-
-  // An import that never reported finishing: the project is half filled, and
-  // the resume DELETES the documents it did not complete, so there is nothing
-  // safe to do here until it is over. A maintainer is sent back to the wizard
-  // to finish it (or to declare it finished as it stands); anyone else gets
-  // the notice below, since they cannot run an import.
-  const unfinishedImport = readImportState(project.config);
-  const importResumeTo = unfinishedImport && importRouteFor(unfinishedImport.kind);
-  useEffect(() => {
-    if (importResumeTo && canManage) {
-      navigate(`${importResumeTo}?resume=${projectId}`, { replace: true });
+    if (!initialized && !unfinishedImport && canManage) {
+      navigate(`/projects/${projectId}/setup`, { replace: true });
     }
-  }, [importResumeTo, canManage, projectId, navigate]);
+  }, [initialized, unfinishedImport, projectId, navigate, canManage]);
 
   // The New document control beside the list's heading. One component for as
   // long as what it is given stays the same, so its dialog survives a render.
@@ -211,13 +203,14 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
     </Notice>
   );
 
-  if (unfinishedImport && !(canManage && importResumeTo)) {
+  if (unfinishedImport) {
     return notice(
-      <>
-        The {unfinishedImport.kind} import
-        {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
-        {canManage ? ' Continuing it…' : ' A project maintainer can finish it.'}
-      </>,
+      <UnfinishedImport
+        client={client}
+        project={project}
+        canManage={canManage}
+        onDeleted={() => navigate('/projects', { replace: true })}
+      />,
     );
   }
 

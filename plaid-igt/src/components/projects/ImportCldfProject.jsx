@@ -1,16 +1,11 @@
 // "Import CLDF" — create a project from a CLDF dataset (https://cldf.clld.org).
 // Flow: pick file → read + build client-side → review (name, contents, how the
 // gloss is scoped, what to do with columns CLDF has no term for) → run (shared
-// project setup, then the CLDF import engine) → done.
-//
-// Resume mirrors the other import pages: the created project id and setup
-// completion live in refs for this page session, so Retry re-runs against the
-// same project; the engine skips documents already marked done, redoes
-// half-imported ones, and dedupes lexicon items by their stamped entry id.
+// project setup, then the CLDF import engine) → done. A run that stops leaves
+// a project that is only deleted (useProjectImportRun).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Notice } from '@ui/components/shared/Notice.jsx';
@@ -37,12 +32,9 @@ import {
   deriveImportOptions,
   customColumnChoices,
   groupingChoices,
-  restoreImportOptions,
   SINGLE_TEXT,
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
-import { readImportState } from '../../domain/igtConfig';
-import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 import { countOf } from '@ui/lib/plural.js';
 
@@ -63,24 +55,19 @@ export const ImportCldfProject = () => {
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');
 
-  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
-  const resumeChoices = resumeProject
-    ? (readImportState(resumeProject.config)?.choices ?? null)
-    : null;
-
   const {
     stage,
     setStage,
     progress,
     runError,
-    retryable,
     stopped,
     results,
     projectIdRef,
-    setupDoneRef,
+    unfinished,
+    clearUnfinished,
     stop,
     start,
-  } = useProjectImportRun({ client, kind: 'CLDF', resumeId });
+  } = useProjectImportRun({ client, kind: 'CLDF' });
 
   // The build is re-derived whenever an option changes, so the review numbers
   // and warnings always describe what the import would actually do.
@@ -108,21 +95,6 @@ export const ImportCldfProject = () => {
     }
   };
 
-  // A resume is the same import again, so the screen is given the answers the
-  // first run was given rather than the ones this dataset would suggest now.
-  // The record may still be loading when the file is read, so this waits for
-  // both. Without it a changed gloss scope makes the engine look for a field
-  // the project never created, and a changed grouping cuts the documents the
-  // resume adds differently from the ones already there.
-  // Keyed on the read rather than once per page, so a dataset read again
-  // gets them again.
-  const choicesAppliedTo = useRef(null);
-  useEffect(() => {
-    if (!dataset || !resumeChoices || choicesAppliedTo.current === dataset) return;
-    choicesAppliedTo.current = dataset;
-    setOptions((o) => restoreImportOptions(dataset, o, resumeChoices));
-  }, [dataset, resumeChoices]);
-
   const setColumn = (column, mapping) =>
     setOptions((o) => ({ ...o, customColumns: { ...o.customColumns, [column]: mapping } }));
 
@@ -130,11 +102,6 @@ export const ImportCldfProject = () => {
     start({
       source: dataset?.title ?? null,
       setupData: () => deriveSetupData(build, projectName.trim()),
-      // The answers this screen was given, so a resume repeats them.
-      choices: options,
-      // The lexicon setup made, so the record names it.
-      vocabId: async ({ projectId }) =>
-        ((await client.projects.get(projectId)).vocabs || [])[0]?.id ?? null,
       run: ({ projectId, shouldStop, setProgress }) =>
         runCldfImport({
           client,
@@ -158,24 +125,13 @@ export const ImportCldfProject = () => {
     });
 
   const editable = stage === 'review';
-  // The review answers lock once setup has run, and on a resume: the resume
-  // deletes and redoes the unfinished documents against them.
-  const locked = !editable || setupDoneRef.current || !!resumeId;
+  // The answers lock while a stopped run's project is still there.
+  const locked = !editable || !!unfinished;
 
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <ImportHeader
-          title="Import a CLDF dataset"
-          resume={
-            resumeId && {
-              name: resumeName,
-              again:
-                'Choose the same file: what is already there is unchanged, and the first run’s answers are used again.',
-              onFinishAsIs: finishAsIs,
-            }
-          }
-        >
+        <ImportHeader title="Import a CLDF dataset">
           Create a project from a{' '}
           <a
             href="https://cldf.clld.org"
@@ -239,10 +195,9 @@ export const ImportCldfProject = () => {
 
             <ProjectNameField
               id="cldf-project-name"
-              value={resumeId ? (resumeName ?? '') : projectName}
+              value={projectName}
               onChange={setProjectName}
-              disabled={!!resumeId || !editable || setupDoneRef.current}
-              resuming={!!resumeId}
+              disabled={locked}
             />
 
             <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
@@ -394,19 +349,17 @@ export const ImportCldfProject = () => {
             <ImportRunPanel
               stage={stage}
               runError={runError}
-              retryable={retryable}
               stopped={stopped}
+              unfinished={unfinished}
+              client={client}
+              onDeleted={clearUnfinished}
               progress={progress}
               onStop={stop}
             />
 
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
-                <p className="font-medium">
-                  Imported {countOf(results.imported, 'text')}
-                  {results.skipped ? ` (${results.skipped} already done)` : ''}
-                  {results.redone ? ` (${results.redone} redone)` : ''}
-                </p>
+                <p className="font-medium">Imported {countOf(results.imported, 'text')}</p>
                 {results.warnings.length > 0 && (
                   <ul className="mt-2 list-disc pl-5">
                     {results.warnings.slice(0, 8).map((w, i) => (
@@ -421,18 +374,12 @@ export const ImportCldfProject = () => {
             )}
 
             <div className="flex justify-end gap-2">
-              {editable && (retryable || !runError) && (
+              {editable && !unfinished && (
                 <Button
                   onClick={startImport}
                   disabled={!projectName.trim() || !build.documents.length}
                 >
-                  {runError ? (
-                    <>
-                      <RefreshCw className="h-4 w-4" /> Retry import
-                    </>
-                  ) : (
-                    'Create project and import'
-                  )}
+                  Create project and import
                 </Button>
               )}
               {stage === 'done' && (

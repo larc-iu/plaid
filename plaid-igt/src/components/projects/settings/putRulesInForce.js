@@ -5,8 +5,8 @@ import { NOT_IN_FORCE_TITLE, notInForceText } from './refusedValues.js';
 /**
  * After a save of tagsets or fields: every field's rules on the server made
  * what its settings want (`declareIgtRules`), read fresh, so a field another
- * maintainer pointed at a tagset while this save was on its way, or one an
- * unfinished import or a script left behind, is brought in line too. No
+ * maintainer pointed at a tagset while this save was on its way, or one a
+ * script left behind, is brought in line too. No
  * annotation is changed: a list the stored values break stays out of force,
  * and so does a rule only a repair would bring in, and a notice names them.
  * The save has landed whatever this answers. Returns the fields left out of

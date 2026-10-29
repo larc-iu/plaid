@@ -6,16 +6,12 @@
 //
 // Flow: pick file(s) → parse client-side (streaming, drops non-IGT objects) →
 // review (project name, orthography names, derived fields, alignment
-// warnings) → run (shared project setup, then the import engine) → done.
-//
-// Resume: the created project id and setup completion are kept in refs for
-// the lifetime of this page, so Retry after a mid-import failure re-runs
-// against the same project; the engine skips documents already marked done
-// and redoes half-imported ones.
+// warnings) → run (shared project setup, then the import engine) → done. A
+// run that stops leaves a project that is only deleted (useProjectImportRun).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileUp, RefreshCw, X } from 'lucide-react';
+import { FileUp, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
@@ -37,8 +33,6 @@ import { buildDocuments } from '../../import/flex/buildDocuments';
 import { matchKey } from '../../import/elan/buildDocuments';
 import { matchRecordings } from '../../import/flex/recordings';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
-import { readImportState } from '../../domain/igtConfig';
-import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { formatBytes } from '@/utils/formatBytes';
@@ -56,7 +50,7 @@ import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { readyRecordings } from '@/utils/readyRecordings';
 
 // What differs between the two FieldWorks formats, on screen and in the
-// import record (`kind`, which also names the route a resume comes back to).
+// import record (`kind`).
 const FORMATS = {
   fwbackup: {
     kind: 'FLEx',
@@ -66,7 +60,6 @@ const FORMATS = {
     drop: 'Drop a .fwbackup file and its recordings here, or click to choose',
     where: 'In FieldWorks: File → Project Management → Back up this Project',
     reading: 'Reading backup…',
-    again: 'Choose the same backup: what is already there is unchanged.',
     operation: 'Import FLEx project',
   },
   flextext: {
@@ -77,7 +70,6 @@ const FORMATS = {
     drop: 'Drop .flextext files here, or click to choose',
     where: 'In FieldWorks: File → Export Interlinear → FLExText',
     reading: 'Reading files…',
-    again: 'Choose the same files: what is already there is unchanged.',
     operation: 'Import FLEx texts',
   },
 };
@@ -116,26 +108,19 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const [decoding, setDecoding] = useState(null);
   const mediaInputRef = useRef(null);
 
-  // Survive retries within this page session (see header comment).
-  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
   const {
     stage,
     setStage,
     progress,
     runError,
-    retryable,
     stopped,
     results,
     projectIdRef,
-    setupDoneRef,
+    unfinished,
+    clearUnfinished,
     stop,
     start,
-  } = useProjectImportRun({ client, kind: fmt.kind, resumeId });
-  // On a resume the lexicon is the one the record names: the run writes into
-  // it whatever the screen would otherwise offer.
-  const resumeRecord = resumeProject ? readImportState(resumeProject.config) : null;
-  const resumedLexicon =
-    (resumeProject?.vocabs || []).find((v) => v.id === resumeRecord?.vocabId) ?? null;
+  } = useProjectImportRun({ client, kind: fmt.kind });
 
   // A backup is one file, and names its project, and the recordings its
   // texts were timed against may come with it. A .flextext is one of any
@@ -237,37 +222,6 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     }
   };
 
-  // A resume is the same import again, so the screen is given the answers the
-  // first run was given: the record carries them, and the file is read again
-  // here to check them against. Without this a resume sent the defaults, which
-  // could write the wrong orthography, leave out a language the first run kept
-  // (and then fail on a field that is missing), or import the texts that were
-  // unticked.
-  //
-  // Applied to every read of the file, not once per page: "Choose another
-  // file" reads it again and resets every choice to its default, and a resume
-  // locks the review, so defaults put back then could not be unticked. The
-  // ref holds the read they were last applied to.
-  const resumeChoices = resumeRecord?.choices ?? null;
-  const choicesAppliedTo = useRef(null);
-  useEffect(() => {
-    if (!parsed || !resumeChoices || choicesAppliedTo.current === parsed) return;
-    choicesAppliedTo.current = parsed;
-    const known = (list, available) => new Set((list || []).filter((x) => available.has(x)));
-    setSelectedTexts(
-      known(resumeChoices.texts, new Set(parsed.build.documents.map((d) => d.guid))),
-    );
-    setSelectedWss(known(resumeChoices.analysisWss, new Set(parsed.analysisWssAvailable)));
-    if ((parsed.ir.posWss ?? []).includes(resumeChoices.posWs)) setPosWs(resumeChoices.posWs);
-    setSelectedLexFields(
-      known(resumeChoices.lexiconFields, new Set(parsed.ir.lexiconFields.map((f) => f.name))),
-    );
-    if (resumeChoices.orthoNames) {
-      setOrthoNames((prev) => ({ ...prev, ...resumeChoices.orthoNames }));
-    }
-    setImportVariants(!!resumeChoices.importVariants);
-  }, [parsed, resumeChoices]);
-
   const limits = useServerLimits();
   const maxBytes = limits?.mediaFileBytes ?? null;
   const recordings = useMemo(
@@ -299,11 +253,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         analysisWss: [...selectedWss],
         posWs,
         lexiconFields: [...selectedLexFields],
-        // A resume heals what an earlier run left unplaced; a fresh import
-        // into a lexicon already arranged leaves that arrangement alone.
-        resume: !!resumeId,
       }),
-    [parsed, filteredBuild, selectedWss, posWs, selectedLexFields, resumeId],
+    [parsed, filteredBuild, selectedWss, posWs, selectedLexFields],
   );
 
   // Entries FLEx marks as a variant of, or a complex form built from, others.
@@ -336,16 +287,6 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     return start({
       source: parsed.sourceName,
       setupShare: 0.1,
-      // The answers this screen was given, so a resume writes the same shape
-      // rather than the defaults it would pick for itself.
-      choices: {
-        texts: [...selectedTexts],
-        analysisWss: [...selectedWss],
-        posWs,
-        lexiconFields: [...selectedLexFields],
-        orthoNames,
-        importVariants,
-      },
       setupData: () =>
         setupDataFor({
           projectName: projectName.trim(),
@@ -373,32 +314,15 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               ],
           documentMetadata: config.documentMetadata.map((m) => m.name),
         }),
-      // The lexicon the record names. A resume writes into the one its record
-      // already names: setup returned early for a project already set up, so
-      // a choice made on this screen would name a vocabulary the project is
-      // never linked to. Otherwise it is the choice made here, or the one
-      // setup just created. Read before the record is written, since writing
-      // it replaces the whole value.
+      // The lexicon the run writes into: the one chosen here, or the one
+      // setup just created.
       vocabId: async ({ projectId, setup }) => {
         if (flextext) return null;
-        const chosen = resumeId
-          ? null
-          : lexiconMode === 'existing'
-            ? existingVocab.id
-            : (setup?.resources.vocabularies?.[0]?.id ?? null);
-        if (chosen) return chosen;
-        const project = await client.projects.get(projectId);
-        const vocabs = project.vocabs || [];
-        // The record's lexicon only if the project still carries it: one
-        // deleted since would be written into forever, request after request.
-        // Failing that, the name this screen computes from the backup's file
-        // name, which a run that renamed the lexicon leaves nothing matching.
-        const recorded = readImportState(project.config)?.vocabId;
-        return (
-          (vocabs.some((v) => v.id === recorded) ? recorded : null) ??
-          vocabs.find((v) => sameName(v.name, vocabName))?.id ??
-          null
-        );
+        if (lexiconMode === 'existing') return existingVocab.id;
+        const made = setup.resources.vocabularies?.[0]?.id;
+        if (made) return made;
+        const vocabs = (await client.projects.get(projectId)).vocabs || [];
+        return vocabs.find((v) => sameName(v.name, vocabName))?.id ?? null;
       },
       requireVocab: flextext ? null : 'The lexicon this import writes into is not on the project.',
       run: ({ projectId, vocabId, shouldStop, setProgress }) => {
@@ -440,17 +364,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   // alignment warnings above, and a sign some data silently didn't come across.
   const irWarnings = parsed?.ir.warnings ?? [];
   const irWarningSamples = irWarnings.slice(0, 8);
-  // Selections lock once setup has run: a resume must re-target the same
-  // project shape, and the engine skips/redoes per document by name.
-  const locked = stage !== 'review' || setupDoneRef.current || !!resumeId;
+  // The answers lock while a stopped run's project is still there.
+  const locked = stage !== 'review' || !!unfinished;
 
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <ImportHeader
-          title={fmt.title}
-          resume={resumeId && { name: resumeName, again: fmt.again, onFinishAsIs: finishAsIs }}
-        >
+        <ImportHeader title={fmt.title}>
           {flextext ? (
             <>
               Create a project from FLEx interlinear texts (<code>.flextext</code>). Texts, glosses,
@@ -584,10 +504,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
             <ProjectNameField
               id="flex-project-name"
-              value={resumeId ? (resumeName ?? '') : projectName}
+              value={projectName}
               onChange={setProjectName}
-              disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
-              resuming={!!resumeId}
+              disabled={locked}
             />
 
             {!flextext && (
@@ -598,78 +517,65 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   the vocabulary the interlinear links to.
                 </p>
                 <div className="flex flex-col gap-3">
-                  {resumeId ? (
-                    <p className="text-sm">
-                      Entries go into{' '}
-                      <strong>
-                        {resumedLexicon?.name ??
-                          (resumeProject ? 'a lexicon no longer on the project' : '…')}
-                      </strong>
-                      .
-                    </p>
-                  ) : (
-                    <>
-                      <label className="flex cursor-pointer items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name="flex-lexicon-mode"
-                          checked={lexiconMode === 'new'}
-                          disabled={locked}
-                          onChange={() => setLexiconMode('new')}
-                        />
-                        Create a new lexicon
-                      </label>
-                      {lexiconMode === 'new' && (
-                        <Input
-                          id="flex-lexicon-name"
-                          aria-label="Lexicon name"
-                          className="ml-6 max-w-md"
-                          value={effectiveLexiconName}
-                          onChange={(e) => setLexiconName(e.target.value)}
-                          disabled={locked}
-                        />
-                      )}
-                      <label
-                        className={`flex items-center gap-2 text-sm ${
-                          existingVocabs.length ? 'cursor-pointer' : 'text-muted-foreground'
-                        }`}
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="flex-lexicon-mode"
+                      checked={lexiconMode === 'new'}
+                      disabled={locked}
+                      onChange={() => setLexiconMode('new')}
+                    />
+                    Create a new lexicon
+                  </label>
+                  {lexiconMode === 'new' && (
+                    <Input
+                      id="flex-lexicon-name"
+                      aria-label="Lexicon name"
+                      className="ml-6 max-w-md"
+                      value={effectiveLexiconName}
+                      onChange={(e) => setLexiconName(e.target.value)}
+                      disabled={locked}
+                    />
+                  )}
+                  <label
+                    className={`flex items-center gap-2 text-sm ${
+                      existingVocabs.length ? 'cursor-pointer' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="flex-lexicon-mode"
+                      checked={lexiconMode === 'existing'}
+                      disabled={locked || existingVocabs.length === 0}
+                      onChange={() => setLexiconMode('existing')}
+                    />
+                    Add to a lexicon you maintain
+                    {existingVocabs.length === 0 && (
+                      <span className="text-xs">(none available)</span>
+                    )}
+                  </label>
+                  {lexiconMode === 'existing' && (
+                    <div className="ml-6 flex flex-col gap-1.5">
+                      <select
+                        id="flex-lexicon-existing"
+                        aria-label="Existing lexicon"
+                        className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        value={existingVocabId}
+                        disabled={locked}
+                        onChange={(e) => setExistingVocabId(e.target.value)}
                       >
-                        <input
-                          type="radio"
-                          name="flex-lexicon-mode"
-                          checked={lexiconMode === 'existing'}
-                          disabled={locked || existingVocabs.length === 0}
-                          onChange={() => setLexiconMode('existing')}
-                        />
-                        Add to a lexicon you maintain
-                        {existingVocabs.length === 0 && (
-                          <span className="text-xs">(none available)</span>
-                        )}
-                      </label>
-                      {lexiconMode === 'existing' && (
-                        <div className="ml-6 flex flex-col gap-1.5">
-                          <select
-                            id="flex-lexicon-existing"
-                            aria-label="Existing lexicon"
-                            className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                            value={existingVocabId}
-                            disabled={locked}
-                            onChange={(e) => setExistingVocabId(e.target.value)}
-                          >
-                            <option value="">Choose a lexicon…</option>
-                            {existingVocabs.map((v) => (
-                              <option key={v.id} value={v.id}>
-                                {v.name}
-                              </option>
-                            ))}
-                          </select>
-                          <p className="text-xs text-muted-foreground">
-                            Entries are added to it and its existing fields stay as they are. Senses
-                            already imported from this FLEx project are reused, not duplicated.
-                          </p>
-                        </div>
-                      )}
-                    </>
+                        <option value="">Choose a lexicon…</option>
+                        {existingVocabs.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        Entries are added to it and its existing fields stay as they are. Senses
+                        already imported from this FLEx project are reused, not duplicated.
+                      </p>
+                    </div>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
                     Senses are kept under their entry, in FLEx order.
@@ -892,8 +798,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             <ImportRunPanel
               stage={stage}
               runError={runError}
-              retryable={retryable}
               stopped={stopped}
+              unfinished={unfinished}
+              client={client}
+              onDeleted={clearUnfinished}
               progress={progress}
               onStop={stop}
             />
@@ -906,30 +814,18 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                     setParsed(null);
                     setStage('pick');
                   }}
-                  disabled={setupDoneRef.current}
+                  disabled={!!unfinished}
                 >
                   Choose another file
                 </Button>
-                {(retryable || !runError) && (
+                {!unfinished && (
                   <Button
                     onClick={startImport}
                     disabled={
                       !projectName.trim() || selectedTexts.size === 0 || !lexiconChoiceValid
                     }
                   >
-                    {runError ? (
-                      <>
-                        <RefreshCw className="h-4 w-4" /> Retry import
-                      </>
-                    ) : projectIdRef.current ? (
-                      <>
-                        <RefreshCw className="h-4 w-4" /> Resume import
-                      </>
-                    ) : (
-                      <>
-                        <FileUp className="h-4 w-4" /> Import {countOf(selectedTexts.size, 'text')}
-                      </>
-                    )}
+                    <FileUp className="h-4 w-4" /> Import {countOf(selectedTexts.size, 'text')}
                   </Button>
                 )}
               </div>
@@ -938,11 +834,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             {stage === 'done' && (
               <Notice tone="success" className="p-4">
                 <p className="font-medium">Import complete</p>
-                <p className="mt-1">
-                  {(results?.imported ?? 0) - (results?.redone ?? 0)} imported
-                  {results?.skipped ? `, ${results.skipped} already present` : ''}
-                  {results?.redone ? `, ${results.redone} redone` : ''}.
-                </p>
+                <p className="mt-1">{results?.imported ?? 0} imported.</p>
                 {results?.warnings?.length > 0 && (
                   <ul className="mt-2 list-disc ps-5">
                     {results.warnings.map((w, i) => (

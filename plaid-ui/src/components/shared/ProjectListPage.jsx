@@ -20,6 +20,8 @@ import { ProjectTartan } from './ProjectTartan.jsx';
  * with no words yet, as its document list does (see wordCountsByProject).
  * `wordValue(project)`, optional, keeps the count to tokens whose surface
  * matches it (plaid-igt's ignored-tokens rule).
+ * `note(project)`, optional, is a few words the app shows after a project's
+ * name, or null.
  * `newProject` is the label on the button and in the empty state. The button
  * opens `form`, the app's new-project dialog, or links to `newProjectTo`, the
  * app's new-project page.
@@ -28,6 +30,7 @@ export const ProjectListPage = ({
   wordLayerId,
   seedLayerId,
   wordValue,
+  note,
   newProject,
   form: NewProject,
   newProjectTo,
@@ -127,6 +130,7 @@ export const ProjectListPage = ({
           <div className="truncate font-text font-medium" title={p.name}>
             {p.name}
           </div>
+          {note?.(p) && <span className="shrink-0 text-xs text-muted-foreground">{note(p)}</span>}
         </div>
       ),
     },

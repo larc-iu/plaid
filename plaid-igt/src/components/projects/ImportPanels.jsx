@@ -1,7 +1,6 @@
 // Shared chrome for the four project-import wizards (FLEx, CLDF, ELAN, the
 // archive): the page's header, the place a file is dropped, the boxed notice
-// every step uses, the grouped copyable warning list
-// a long run produces, the banner that says a run is being continued, the
+// every step uses, the grouped copyable warning list a long run produces, the
 // project-name box, and what a run shows while it goes and when it stops.
 //
 // The wizards differ in what they read and what they ask; they do not differ in
@@ -21,6 +20,7 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { notifySuccess } from '@/utils/feedback';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { countOf } from '@ui/lib/plural.js';
+import { UnfinishedImport } from './UnfinishedImport.jsx';
 
 const NEW_PROJECT_CRUMBS = [
   { label: 'Projects', to: '/projects', fixed: true },
@@ -29,16 +29,14 @@ const NEW_PROJECT_CRUMBS = [
 
 /**
  * The top of an import page: where it sits (`crumbs`, by default under New
- * project), its title, what it does (`children`, one paragraph), and the
- * ResumeBanner when `resume` holds its props.
+ * project), its title, and what it does (`children`, one paragraph).
  */
-export const ImportHeader = ({ crumbs = NEW_PROJECT_CRUMBS, title, resume = null, children }) => (
+export const ImportHeader = ({ crumbs = NEW_PROJECT_CRUMBS, title, children }) => (
   <>
     <Breadcrumb items={crumbs} />
     <div>
       <h1 className={TYPE.page}>{title}</h1>
       <p className="text-sm text-muted-foreground">{children}</p>
-      {resume && <ResumeBanner {...resume} />}
     </div>
   </>
 );
@@ -161,36 +159,13 @@ export const WarningLog = ({ log }) => {
   );
 };
 
-/**
- * The project this wizard is continuing an unfinished import into. `again`
- * says which file to choose again, in the words of the format.
- */
-export const ResumeBanner = ({ name, again, onFinishAsIs }) => (
-  <p className="mt-2 text-sm">
-    Continuing the unfinished import into{' '}
-    <span className="font-medium">{name ?? 'this project'}</span>. {again}{' '}
-    <button
-      type="button"
-      onClick={onFinishAsIs}
-      className="font-medium text-primary hover:underline"
-    >
-      Use the project as it is
-    </button>
-  </p>
-);
-
-/** The project's name. Fixed on a resume: the project already has one. */
-export const ProjectNameField = ({ id, value, onChange, disabled, resuming }) => (
+/** The project's name. */
+export const ProjectNameField = ({ id, value, onChange, disabled }) => (
   <div className="rounded-lg border bg-card p-4">
     <Label className="mb-1 block text-sm font-medium" htmlFor={id}>
       Project name
     </Label>
     <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
-    {resuming && (
-      <p className="mt-1 text-xs text-muted-foreground">
-        Continuing an import into this project. What it already holds is unchanged.
-      </p>
-    )}
   </div>
 );
 
@@ -203,8 +178,9 @@ const barWidth = (pct) => Math.min(100, Math.max(0, Math.round(pct ?? 0)));
  * once it has. `children` sit between the two, which is where ELAN puts its
  * warning log.
  *
- * `retryable` is false when a retry by this person would fail the same way
- * (a resume only a vocabulary's maintainer can finish).
+ * `unfinished` is the project a run that stopped left (`{id, name}`), offered
+ * for deletion (UnfinishedImport) with `client`, and `onDeleted` once it is
+ * gone.
  *
  * `stopped` is the run hook's own answer to whether the Stop button ended
  * it. Reading that off the error's wording titled any failure whose message
@@ -214,8 +190,10 @@ const barWidth = (pct) => Math.min(100, Math.max(0, Math.round(pct ?? 0)));
 export const ImportRunPanel = ({
   stage,
   runError,
-  retryable = true,
   stopped = false,
+  unfinished = null,
+  client = null,
+  onDeleted,
   progress,
   onStop,
   children,
@@ -224,7 +202,16 @@ export const ImportRunPanel = ({
     {runError && stage !== 'running' && (
       <Panel tone="error" title={stopped ? 'Import stopped' : 'Failed to import'}>
         {!stopped && <p className="mt-1 text-xs">{runError}</p>}
-        {retryable && <p className="mt-1 text-xs">Retry continues where it left off.</p>}
+        {unfinished && (
+          <div className="mt-2 text-xs">
+            <UnfinishedImport
+              client={client}
+              project={unfinished}
+              canManage
+              onDeleted={onDeleted}
+            />
+          </div>
+        )}
       </Panel>
     )}
     {children}

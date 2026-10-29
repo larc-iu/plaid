@@ -87,15 +87,6 @@ const stub = (project, tokenLayerShapes = {}) => {
   return { client, calls };
 };
 
-// The import record an interrupted run leaves on the project. It names the
-// vocabularies that run made, which is the only thing that says one belongs
-// to this project rather than to somebody else's of the same name.
-const importRecord = (vocabsMade) => ({
-  [IGT_NAMESPACE]: {
-    import: { kind: 'FLEx', source: null, vocabId: null, choices: null, vocabsMade },
-  },
-});
-
 const SETUP_DATA = {
   basicInfo: { projectName: 'Lezgi' },
   orthographies: { orthographies: [{ name: 'Baseline', isBaseline: true }] },
@@ -141,65 +132,6 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     expect(tag).toMatchObject({ ns: PLAID_NAMESPACE, value: ROLES.BASELINE });
     expect(tag.id).not.toBe('tl-other');
     expect(batches).toBeGreaterThan(0);
-  });
-
-  it('links a vocabulary an earlier run made rather than making a second one', async () => {
-    const project = {
-      id: 'p1',
-      config: importRecord({ 'Lezgi Lexicon': 'v-half' }),
-      textLayers: [
-        {
-          id: 'tl',
-          name: 'Main Text',
-          config: { [PLAID_NAMESPACE]: { [ROLE_KEY]: ROLES.BASELINE } },
-          tokenLayers: [],
-        },
-      ],
-      vocabs: [],
-    };
-    const { client, calls } = stub(project);
-    calls.vocabList = [
-      { id: 'v-other', name: 'Somebody else', config: {} },
-      { id: 'v-half', name: 'Lezgi Lexicon', config: {} },
-    ];
-    const result = await run(client, 'p1');
-    expect(result.failures).toEqual([]);
-    expect(madeOf(calls, 'vocab')).toEqual([]);
-    expect(calls.linked).toEqual(['v-half']);
-    // It is seeded like a fresh one, since the earlier run never got that far.
-    expect(
-      calls.config
-        .filter((c) => c.kind === 'vocab')
-        .map((c) => c.key)
-        .sort(),
-    ).toEqual(['fields', 'tagsets']);
-  });
-
-  it('leaves the fields an earlier run already wrote on that vocabulary alone', async () => {
-    const project = {
-      id: 'p1',
-      config: importRecord({ 'Lezgi Lexicon': 'v-half' }),
-      textLayers: [
-        {
-          id: 'tl',
-          name: 'Main Text',
-          config: { [PLAID_NAMESPACE]: { [ROLE_KEY]: ROLES.BASELINE } },
-          tokenLayers: [],
-        },
-      ],
-      vocabs: [],
-    };
-    const { client, calls } = stub(project);
-    calls.vocabList = [
-      {
-        id: 'v-half',
-        name: 'Lezgi Lexicon',
-        config: { [IGT_NAMESPACE]: { fields: [{ name: 'Mine' }], tagsets: {} } },
-      },
-    ];
-    await run(client, 'p1');
-    expect(calls.config.filter((c) => c.kind === 'vocab')).toEqual([]);
-    expect(calls.linked).toEqual(['v-half']);
   });
 
   it('builds on the text layer the wizard was answered with, stray "Main Text" or not', async () => {
@@ -252,7 +184,7 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     // entries into it.
     const project = {
       id: 'p1',
-      config: importRecord(null),
+      config: {},
       textLayers: [
         {
           id: 'tl',
@@ -277,25 +209,6 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     expect(calls.linked).toHaveLength(1);
     expect(calls.linked[0]).not.toBe('v-other-project');
     expect(calls.linked[0]).toMatch(/^vocab-/);
-  });
-
-  it('says which vocabulary it made before it links it', async () => {
-    // The record is what a later run reads to tell this project's half-made
-    // lexicon from anyone else's, so it is written between the two requests
-    // rather than after both.
-    const { client, calls } = stub(null);
-    const said = [];
-    await executeProjectSetup({
-      client,
-      isNewProject: true,
-      resumeProjectId: null,
-      setupData: SETUP_DATA,
-      onProgress: () => {},
-      onVocabCreated: (id, made) => said.push({ said: id, made, linkedSoFar: [...calls.linked] }),
-    });
-    expect(said).toEqual([
-      { said: calls.linked[0], made: { 'Lezgi Lexicon': calls.linked[0] }, linkedSoFar: [] },
-    ]);
   });
 
   it('makes both from scratch when there is nothing to finish', async () => {
@@ -377,55 +290,6 @@ describe('setup and the word layer’s splitOnSpace', () => {
     const { client, calls } = stub(project);
     await run(client, 'p1');
     expect(splits(calls)).toEqual([]);
-  });
-});
-
-describe('a resumed setup, vocabularies', () => {
-  const TWO = {
-    ...SETUP_DATA,
-    vocabulary: {
-      vocabularies: [
-        { id: 'new-a', name: 'Lezgi Lexicon', enabled: true, isCustom: true },
-        { id: 'new-b', name: 'Lezgi Glosses', enabled: true, isCustom: true },
-      ],
-    },
-  };
-
-  it('finishes every vocabulary the record names, not only the last', async () => {
-    const project = withText([], importRecord({ 'Lezgi Lexicon': 'v-a', 'Lezgi Glosses': 'v-b' }));
-    const { client, calls } = stub(project);
-    calls.vocabList = [
-      { id: 'v-a', name: 'Lezgi Lexicon', config: {} },
-      { id: 'v-b', name: 'Lezgi Glosses', config: {} },
-    ];
-    const result = await executeProjectSetup({
-      client,
-      isNewProject: true,
-      resumeProjectId: 'p1',
-      setupData: TWO,
-      onProgress: () => {},
-    });
-    expect(result.failures).toEqual([]);
-    expect(madeOf(calls, 'vocab')).toEqual([]);
-    expect(calls.linked).toEqual(['v-a', 'v-b']);
-  });
-
-  it('names every vocabulary made so far each time it makes one', async () => {
-    // The first run made the lexicon and died; this one makes the second and
-    // must still name the first, or a later resume makes it again.
-    const project = withText([], importRecord({ 'Lezgi Lexicon': 'v-a' }));
-    const { client, calls } = stub(project);
-    calls.vocabList = [{ id: 'v-a', name: 'Lezgi Lexicon', config: {} }];
-    const said = [];
-    await executeProjectSetup({
-      client,
-      isNewProject: true,
-      resumeProjectId: 'p1',
-      setupData: TWO,
-      onProgress: () => {},
-      onVocabCreated: (id, made) => said.push(made),
-    });
-    expect(said).toEqual([{ 'Lezgi Lexicon': 'v-a', 'Lezgi Glosses': calls.linked[1] }]);
   });
 });
 
@@ -917,9 +781,7 @@ describe("setup writes each field's record", () => {
       onProgress: () => {},
     });
   const spanCells = (calls) =>
-    calls.config
-      .filter((c) => c.kind === 'span')
-      .map((c) => [c.ns, c.key, c.value]);
+    calls.config.filter((c) => c.kind === 'span').map((c) => [c.ns, c.key, c.value]);
 
   it('writes the whole record on each layer it makes, under the scope’s token layer', async () => {
     const { client, calls } = stub(tokenLayers([], [], []));

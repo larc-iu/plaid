@@ -81,12 +81,9 @@ export const exportDocument = (client, projectId, documentId, formatId) =>
   exportScope(client, projectId, formatId, { type: 'document', id: documentId });
 
 // useProjectImportRun's `start`, without the React state: setup, the import
-// record written as soon as the project exists and again once the lexicon is
-// known, the engine, and the record cleared.
-async function runProjectImport(
-  client,
-  { kind, source, setupData, vocabId = null, run, shouldStop = () => false },
-) {
+// record written as soon as the project exists, the engine, and the record
+// cleared.
+async function runProjectImport(client, { kind, source, setupData, vocabId = null, run }) {
   const pending = [];
   const setup = await executeProjectSetup({
     client,
@@ -99,46 +96,26 @@ async function runProjectImport(
   if (setup.failures.length > 0) throw new Error(`setup failed: ${setup.failures.join('. ')}`);
   const projectId = setup.projectId;
   const vocab = typeof vocabId === 'function' ? await vocabId({ projectId, setup }) : vocabId;
-  await markImportStarted(client, projectId, kind, source, vocab);
-  // The record cleared as the wizards clear it, with IGT's rules put in
-  // force first. Returns the warnings the run's own did not already give.
-  const finish = async (said = []) => {
-    const { cleared, warnings } = await finishImport(client, projectId);
-    if (!cleared) throw new Error('the import record could not be cleared');
-    return warnings.filter((w) => !said.includes(w));
-  };
-  // `resume` is what the unfinished-import screen does: the same engine over
-  // the same file again, on the project that is already there. The engines
-  // skip what they find done, so a resume has to ask the data, not a tally.
-  const resume = async () => {
-    const again = await run({ projectId, vocabId: vocab, shouldStop: () => false });
-    const said = again?.warnings ?? [];
-    return { projectId, warnings: [...said, ...(await finish(said))] };
-  };
-  let res;
-  try {
-    res = await run({ projectId, vocabId: vocab, shouldStop });
-  } catch (err) {
-    if (!/cancel/i.test(err.message)) throw err;
-    return { projectId, cancelled: true, warnings: [], resume };
-  }
+  const res = await run({ projectId, vocabId: vocab });
   const said = res?.warnings ?? [];
-  return { projectId, cancelled: false, warnings: [...said, ...(await finish(said))], resume };
+  // The record cleared as the wizards clear it, with IGT's rules put in
+  // force first, and the warnings the run's own did not already give.
+  const { cleared, warnings } = await finishImport(client, projectId);
+  if (!cleared) throw new Error('the import record could not be cleared');
+  return { projectId, warnings: [...said, ...warnings.filter((w) => !said.includes(w))] };
 }
 
-async function importNative(client, bytes, name, shouldStop) {
+async function importNative(client, bytes, name) {
   const archive = readNativeArchive(bytes);
   return runProjectImport(client, {
     kind: 'Plaid IGT archive',
     source: archive.manifest?.project?.name ?? null,
     setupData: nativeSetupData(archive.manifest, name),
-    shouldStop,
-    run: (ctx) =>
-      runNativeImport({ client, projectId: ctx.projectId, archive, shouldStop: ctx.shouldStop }),
+    run: (ctx) => runNativeImport({ client, projectId: ctx.projectId, archive }),
   });
 }
 
-async function importCldf(client, bytes, name, shouldStop) {
+async function importCldf(client, bytes, name) {
   const dataset = readCldfDataset(bytes);
   const build = buildCldfDocuments(dataset, deriveImportOptions(dataset));
   const out = await runProjectImport(client, {
@@ -147,9 +124,7 @@ async function importCldf(client, bytes, name, shouldStop) {
     setupData: cldfSetupData(build, name),
     vocabId: async ({ projectId }) =>
       ((await client.projects.get(projectId)).vocabs || [])[0]?.id ?? null,
-    shouldStop,
-    run: (ctx) =>
-      runCldfImport({ client, projectId: ctx.projectId, build, shouldStop: ctx.shouldStop }),
+    run: (ctx) => runCldfImport({ client, projectId: ctx.projectId, build }),
   });
   return { ...out, warnings: [...(dataset.warnings || []), ...out.warnings] };
 }
@@ -160,7 +135,7 @@ const EAF = /\.eaf$/i;
 // recording is not zipped).
 const isZip = (bytes) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
-async function importElan(client, bytes, name, shouldStop) {
+async function importElan(client, bytes, name) {
   const entries = isZip(bytes) ? unzipSync(bytes) : { [`${name}.eaf`]: bytes };
   const paths = Object.keys(entries).sort();
   const decoder = new TextDecoder();
@@ -205,21 +180,14 @@ async function importElan(client, bytes, name, shouldStop) {
     kind: 'ELAN',
     source: null,
     setupData: elanSetupData(build, name),
-    shouldStop,
-    run: (ctx) =>
-      runElanImport({ client, projectId: ctx.projectId, build, shouldStop: ctx.shouldStop }),
+    run: (ctx) => runElanImport({ client, projectId: ctx.projectId, build }),
   });
   return { ...out, notes };
 }
 
-/**
- * @param shouldStop  called by the engine as it writes; returning true stops
- *                    the import where it stands, as the screen's Stop button
- *                    does. The result then carries `cancelled` and `resume`.
- */
-export async function importProject(client, formatId, bytes, name, shouldStop = () => false) {
+export async function importProject(client, formatId, bytes, name) {
   const run = { native: importNative, cldf: importCldf, elan: importElan }[formatId];
   if (!run) throw new Error(`no import driver for ${formatId}`);
-  const out = await run(client, bytes, name, shouldStop);
+  const out = await run(client, bytes, name);
   return { notes: [], ...out };
 }

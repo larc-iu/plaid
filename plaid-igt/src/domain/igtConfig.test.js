@@ -20,7 +20,6 @@ import {
   hasLanguageIdentity,
   markImportStarted,
   readImportState,
-  recordImportUnmarked,
   IGNORED_TOKEN_MODES,
   DEFAULT_IGNORED_TOKENS,
   defaultIgnoredTokensSetup,
@@ -254,72 +253,30 @@ describe('hasLanguageIdentity', () => {
   });
 });
 
-// A resume must be able to repeat the run that was stopped, so the record
-// carries what the review screen was answered with.
+// What an import leaves on the project while it runs.
 describe('the import record', () => {
-  it('keeps the review screen’s answers for a resume', async () => {
+  it('names the format and the file, and reads back as written', async () => {
     const written = [];
-    const client = {
-      projects: {
-        get: async () => ({ config: {} }),
-        setConfig: async (...args) => written.push(args),
-      },
-    };
-    const choices = { texts: ['g1'], analysisWss: ['ru'], orthoNames: { xx: 'IPA' } };
-    await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup', 'v1', choices);
-    const [, , , value] = written[0];
-    expect(value.choices).toEqual(choices);
+    const client = { projects: { setConfig: async (...args) => written.push(args) } };
+    await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup');
+    const [projectId, ns, key, value] = written[0];
+    expect([projectId, ns, key]).toEqual(['p1', 'igt', 'import']);
+    expect(value).toMatchObject({ kind: 'FLEx', source: 'lezgi.fwbackup' });
+    expect(Object.keys(value).sort()).toEqual(['kind', 'source', 'startedAt']);
     expect(readImportState({ igt: { import: value } })).toEqual(value);
   });
 
-  it('records no answers when a wizard offers none', async () => {
-    const written = [];
+  it('does not fail the import when it cannot be written', async () => {
     const client = {
       projects: {
-        get: async () => ({ config: {} }),
-        setConfig: async (...args) => written.push(args),
-      },
-    };
-    await markImportStarted(client, 'p1', 'Plaid IGT archive', null);
-    expect(written[0][3].choices).toBe(null);
-    expect(written[0][3]).not.toHaveProperty('unmarked');
-  });
-
-  it('keeps what an earlier run of the import made unmarked', async () => {
-    // The wizard rewrites the record before each run, and a resume needs the
-    // entries and documents the stopped run named there.
-    const written = [];
-    const unmarked = { documents: { d1: { id: 'x', done: false } }, entries: { i1: 'y' } };
-    const config = { igt: { import: { kind: 'Plaid IGT archive', source: 'P', unmarked } } };
-    const client = {
-      projects: { get: async () => ({ config }), setConfig: async (...args) => written.push(args) },
-    };
-    await markImportStarted(client, 'p1', 'Plaid IGT archive', 'P');
-    expect(written[0][3].unmarked).toEqual(unmarked);
-    await recordImportUnmarked(client, 'p1', written[0][3], {
-      documents: {},
-      entries: { i2: 'z' },
-    });
-    expect(written[1][3]).toMatchObject({
-      kind: 'Plaid IGT archive',
-      unmarked: { entries: { i2: 'z' } },
-    });
-  });
-
-  it('leaves the record as it was when the project cannot be read', async () => {
-    const written = [];
-    const client = {
-      projects: {
-        get: async () => {
+        setConfig: async () => {
           throw new Error('offline');
         },
-        setConfig: async (...args) => written.push(args),
       },
     };
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await markImportStarted(client, 'p1', 'Plaid IGT archive', 'P');
+    await expect(markImportStarted(client, 'p1', 'CLDF', null)).resolves.toBeUndefined();
     quiet.mockRestore();
-    expect(written).toEqual([]);
   });
 });
 

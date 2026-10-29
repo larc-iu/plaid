@@ -5,13 +5,10 @@
 // deriveSetupData and runs the normal setup), and this engine runs AFTER setup
 // against the resolved project.
 //
-// Resumability follows the same scheme (see ../resume.js): a document is
-// stamped with its .eaf file name and marked done only once every write for it
-// succeeded, so on resume finished documents are skipped and half-imported ones
-// are deleted and redone. Into a project open for work (`projectOpen`) nothing
-// is deleted unasked: a document an earlier run left unfinished is kept like a
-// finished one unless the person says Replace, and a run that stops removes
-// only the document it was making.
+// A document is marked with its .eaf file name (see ../stamps.js), so a later
+// import of the same files into the project finds it. Nothing is deleted
+// unasked: a document an earlier import made is kept unless the person says
+// Replace, and a run that stops removes only the document it was making.
 //
 // The engine is indifferent to WHERE it writes: it resolves every layer and
 // field off the project it is handed, so the same run imports into a project
@@ -29,7 +26,7 @@ import {
   importStamp,
   priorImports,
   settlePrior,
-} from '../resume.js';
+} from '../stamps.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   createDocumentShell,
@@ -67,9 +64,8 @@ export function resolveTargets(project, build) {
  *
  * `copyName` makes it a COPY beside a document the file already produced: it
  * takes that name, or the first free "name (2)" core gives it, and carries no
- * resume stamp, so it is the person's own
- * document from then on and a later run of the same import neither skips,
- * replaces nor resumes it.
+ * mark, so it is the person's own document from then on and a later import of
+ * the same file neither keeps nor replaces it.
  */
 export async function importDocument({
   client,
@@ -128,16 +124,14 @@ export async function importDocument({
     await writeBuiltDocument({ client, targets, textId, sentenceIds, doc, check, progress });
   }
 
-  // The recording the .eaf names, when the user supplied it. Into an open
-  // project a document whose upload failed is kept, and importing the file
-  // again with its recording adds the recording to it
-  // (addRecordingToExisting). A copy is never resumed, so it is never marked.
+  // The recording the .eaf names, when the user supplied it. A document whose
+  // upload failed is kept, and importing the file again with its recording
+  // adds the recording to it (addRecordingToExisting).
   await finishDocument({
     client,
     documentId: docId,
     name: doc.name,
     media: doc.mediaFile,
-    stamp: copyName ? null : { metadata: doc.metadata, sourceId: doc.id },
     onProgress,
     progress,
     check,
@@ -170,8 +164,8 @@ async function addRecordingToExisting({ client, existing, doc, results, onProgre
   }
 }
 
-// The document a stopped or failed run was making, in a project open for
-// work. A later run would list it as imported before and keep it, half made.
+// The document a stopped or failed run was making. A later run would list it
+// as imported before and keep it, half made.
 // When the delete fails too, it stays, and the error names it
 // (`unfinishedLeft`), so the screen can say so and its retry redo it.
 async function removeUnfinished(client, documentId, name, err) {
@@ -204,14 +198,9 @@ async function runElanImportImpl({
   onWarning,
   shouldStop,
   prior: priorGiven = null,
-  // What to do with a file an earlier run imported: keep its document, replace
-  // it, or make a copy beside it.
+  // What to do with a file an earlier import brought in: keep its document,
+  // replace it, or make a copy beside it.
   priorMode = 'skip',
-  // The project is open for work (no import record locks it), so a document
-  // an earlier run left unfinished may hold someone's work: priorMode decides
-  // for it as for a finished one, and a run that stops or fails deletes the
-  // document it was making, which no one has had the chance to work on.
-  projectOpen = false,
   // Documents a failed run of this screen made and could not remove: no one
   // has worked on them, so they are redone whatever priorMode says.
   redo = [],
@@ -240,8 +229,7 @@ async function runElanImportImpl({
   };
   for (const w of build.warnings) note(w);
 
-  // Resume bookkeeping: what an earlier run made, by .eaf file name. The
-  // screen reads this too, to say which files are already in the project, and
+  // What an earlier import made, by .eaf file name. The screen reads this too, to say which files are already in the project, and
   // hands over what it read rather than paying for the listing twice.
   const prior = priorGiven ?? (await priorImports(client, projectId));
 
@@ -263,18 +251,11 @@ async function runElanImportImpl({
     const warn = (text) => note(text, doc.name);
     const existing = prior.find(doc.id);
     const leftover = !!existing && redo.includes(existing.id);
-    // A copy is only a copy of a document that is finished, or one an open
-    // project keeps. One a resume left half done is redone, which is what
-    // resume has always meant.
     // Core names the copy "Name (2)" (createDocumentShell's freeName).
-    const copyName =
-      priorMode === 'copy' && existing && !leftover && (prior.done(existing) || projectOpen)
-        ? doc.name
-        : null;
+    const copyName = priorMode === 'copy' && existing && !leftover ? doc.name : null;
     if (!copyName) {
       const proceed = await settlePrior(client, prior, doc.id, results, {
         replace: priorMode === 'replace' || leftover,
-        keepUnfinished: projectOpen,
       });
       if (!proceed) {
         await addRecordingToExisting({
@@ -306,7 +287,7 @@ async function runElanImportImpl({
         warnings: { push: (...w) => w.forEach(warn) },
       });
     } catch (err) {
-      if (projectOpen && making) await removeUnfinished(client, making, doc.name, err);
+      if (making) await removeUnfinished(client, making, doc.name, err);
       throw err;
     }
     for (const w of doc.warnings) warn(w);

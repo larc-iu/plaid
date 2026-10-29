@@ -10,7 +10,7 @@
 //   createDocumentShell the document row, its baseline text, and the sentence
 //                       partition over it
 //   writeDocumentLayers its words, morphemes and annotations, and
-//   finishDocument      its recording and the done mark
+//   finishDocument      its recording
 //
 // They live here so a project-level fact learned by one importer is learned by
 // all four, and so the rules under them — what `lang` means on a field, what
@@ -22,7 +22,6 @@ import { createdIds, uuidv7 } from '@larc-iu/plaid-client';
 import { bulkInChunks, withMintedIds } from '../domain/bulk.js';
 import { convertedNote, prepareRecording } from '../domain/media/playableRecording.js';
 import { mediaUploadFailure } from './mediaUpload.js';
-import { importStamp } from './resume.js';
 import {
   defaultIgnoredTokensSetup,
   findAlignmentTokenLayer,
@@ -162,7 +161,7 @@ export function resolveIgtTargets(project, fields = [], { substrateOnly = false 
  * row is still there and may hold metadata and comments).
  *
  * `metadata` is the caller's. As a function it is given the id the document
- * is created under, which an import's stamp names (resume.js). `textMetadata` is the baseline
+ * is created under, which an import's mark names (stamps.js). `textMetadata` is the baseline
  * text's, if the source carries one; as a function it is called once the
  * document exists, which is what an engine that resolves references against
  * the new document needs. `onDocument` is told the new id as soon as there is
@@ -421,12 +420,8 @@ export async function writeAlignments({
 }
 
 /**
- * A document's last two writes: its recording, if the person supplied one,
- * then the done mark (`stamp`, the metadata `importStamp` was given, with the
- * source's id). A failed upload is a warning and leaves the document unmarked,
- * so a resume redoes it with its recording. Marked LAST: resume treats an
- * unmarked document as partial. A null `stamp` (a copy, which is never
- * resumed) leaves it unmarked.
+ * A document's last write: its recording, if the person supplied one. A
+ * failed upload is a warning that sends the person to the Media tab.
  *
  * `prepare` converts a recording no browser plays before it goes up (an ADPCM
  * WAV goes up as PCM), and refuses one it cannot convert.
@@ -437,13 +432,11 @@ export async function finishDocument({
   name,
   media = null,
   prepare = false,
-  stamp = null,
   onProgress,
   progress = () => {},
   check = () => {},
   warnings,
 }) {
-  let mediaFailed = false;
   if (media) {
     check();
     progress('Uploading media');
@@ -464,18 +457,11 @@ export async function finishDocument({
         });
       }
     } catch (err) {
-      mediaFailed = true;
       warnings?.push(
         `"${name}": media upload failed. ${await mediaUploadFailure(client, err)} ` +
           "Upload the recording on the document's Media tab.",
       );
     }
-  }
-  if (!mediaFailed && stamp) {
-    await client.documents.setMetadata(
-      documentId,
-      importStamp(stamp.metadata, stamp.sourceId, documentId, true),
-    );
   }
 }
 

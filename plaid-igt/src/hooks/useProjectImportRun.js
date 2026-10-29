@@ -2,53 +2,47 @@ import { useRef, useState } from 'react';
 import { executeProjectSetup } from '@/components/projects/setup/executeSetup';
 import { markImportStarted } from '@/domain/igtConfig';
 import { finishImport } from '@/domain/importFinish';
-import { ImportCancelled, NotYoursToFinish } from '@/import/resume';
+import { ImportCancelled } from '@/import/stamps';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 // The run of a project import, shared by the four wizards that make a project
 // from a file (FLEx, CLDF, ELAN, the archive). A wizard reads its file, shows
 // a review, and then calls `start` with what differs: the setup-wizard input
-// its file implies, the lexicon the record should name, and the engine call.
-// Everything around that is the same for all of them and lives here: the
-// stages, the progress bar, the stop flag, the import record on the project,
-// the finished-and-warnings toasts, and the retry that continues where it
-// left off.
+// its file implies and the engine call. Everything around that is the same
+// for all of them and lives here: the stages, the progress bar, the stop
+// flag, the import record on the project, and the finished-and-warnings
+// toasts.
 //
-// Setup runs once per page session and the record goes on the project the
-// moment it exists, so a setup that fails part way leaves a project that
-// reopens this import rather than one with no way back into it. The record is
-// rewritten after setup (with the lexicon, once there is one) and removed when
-// the run finishes, so a cancelled or lost import shows on the project rather
-// than passing for a complete one.
+// The record goes on the project the moment it exists and is removed once
+// the whole run is over, so a run that stops, fails or is closed leaves a
+// project that does not open (`readImportState`). Such a project is never
+// finished: `unfinished` names it, and the screen offers to delete it
+// (`clearUnfinished` once it is gone), after which `start` makes a new one.
 //
-//   client, kind, resumeId:  the app client, the record's kind ("FLEx"), and
-//                            the project being resumed, if any
+//   client, kind:  the app client and the record's kind ("FLEx")
 //   start({ source, setupData, setupShare, vocabId, requireVocab, run })
 //     source:       what the record names as the file (or null)
 //     setupData:    the setup-wizard input, or a function that makes it
 //     setupShare:   how much of the bar setup takes, 0.15 unless said
-//     vocabId:      the lexicon to record: an id, null, or an async function
-//                   of { projectId, setup } (setup is null once it has run)
-//     requireVocab: the error to raise when no lexicon could be found, after
-//                   the record is written so the project is still flagged
+//     vocabId:      the lexicon the run writes into: an id, null, or an async
+//                   function of { projectId, setup }
+//     requireVocab: the error to raise when no lexicon could be found
 //     run:          ({ projectId, vocabId, shouldStop, setProgress }) => the
 //                   engine's result, with `imported` and maybe `warnings`
-export function useProjectImportRun({ client, kind, resumeId }) {
+export function useProjectImportRun({ client, kind }) {
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [progress, setProgress] = useState(null); // {label, pct} | null
   const [runError, setRunError] = useState(null);
-  // False when a retry by this person would fail the same way.
-  const [retryable, setRetryable] = useState(true);
   // Whether that error was the Stop button rather than a failure. The run
   // knows; the screen must not have to guess it from the wording.
   const [stopped, setStopped] = useState(false);
   const [results, setResults] = useState(null);
-  const projectIdRef = useRef(resumeId || null);
-  const setupDoneRef = useRef(false);
+  // The project the run made: the one to open once it is done, and the one
+  // left unfinished when it stops.
+  const projectIdRef = useRef(null);
+  const [unfinished, setUnfinished] = useState(null); // {id, name} | null
   const stopRef = useRef(false);
-  // The ids setup names on what it makes, kept across retries (executeSetup.js).
-  const mints = useRef({}).current;
 
   const start = async ({
     source = null,
@@ -56,46 +50,31 @@ export function useProjectImportRun({ client, kind, resumeId }) {
     setupShare = 0.15,
     vocabId = null,
     requireVocab = null,
-    // What the review screen was answered with, kept on the record so a
-    // resume repeats this run rather than starting from its own defaults.
-    choices = null,
     run,
   }) => {
     setStage('running');
     setRunError(null);
-    setRetryable(true);
     setStopped(false);
+    setUnfinished(null);
     stopRef.current = false;
+    projectIdRef.current = null;
+    const data = typeof setupData === 'function' ? setupData() : setupData;
     try {
-      let setup = null;
-      if (!setupDoneRef.current) {
-        setup = await executeProjectSetup({
-          client,
-          isNewProject: true,
-          resumeProjectId: projectIdRef.current,
-          setupData: typeof setupData === 'function' ? setupData() : setupData,
-          onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * setupShare }),
-          onProjectCreated: async (id) => {
-            projectIdRef.current = id;
-            await markImportStarted(client, id, kind, source, null, choices);
-          },
-          // Each vocabulary setup makes, named on the record as soon as it
-          // exists: a run that dies between creating one and linking it
-          // leaves nothing else that says which vocabulary was this
-          // project's, and the resume needs that to finish it rather than
-          // make a second one. `made` is all of them so far, since one
-          // import can make several.
-          onVocabCreated: (vocab, made) =>
-            markImportStarted(client, projectIdRef.current, kind, source, vocab, choices, made),
-          mints,
-        });
-        if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
-        projectIdRef.current = setup.projectId;
-        setupDoneRef.current = true;
-      }
-      const projectId = projectIdRef.current;
+      const setup = await executeProjectSetup({
+        client,
+        isNewProject: true,
+        resumeProjectId: null,
+        setupData: data,
+        onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * setupShare }),
+        onProjectCreated: async (id) => {
+          projectIdRef.current = id;
+          await markImportStarted(client, id, kind, source);
+        },
+      });
+      if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
+      const projectId = setup.projectId;
+      projectIdRef.current = projectId;
       const vocab = typeof vocabId === 'function' ? await vocabId({ projectId, setup }) : vocabId;
-      await markImportStarted(client, projectId, kind, source, vocab, choices);
       if (requireVocab && !vocab) throw new Error(requireVocab);
 
       const ran = await run({
@@ -105,9 +84,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
         setProgress,
       });
       const finished = await finishImport(client, projectId);
-      if (!finished.cleared) {
-        notifyWarning('The project still opens on this import.', 'Import complete');
-      }
+      if (!finished.cleared) throw new Error('The import could not be recorded as finished.');
       const said = new Set(ran?.warnings || []);
       const more = finished.warnings.filter((w) => !said.has(w));
       const res = more.length ? { ...ran, warnings: [...(ran?.warnings || []), ...more] } : ran;
@@ -121,12 +98,13 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       }
       return res;
     } catch (e) {
-      const notYours = e instanceof NotYoursToFinish;
-      if (!notYours) console.error(`${kind} import failed:`, e);
       const cancelled = e instanceof ImportCancelled;
+      if (!cancelled) console.error(`${kind} import failed:`, e);
       setRunError(humanizeError(e));
-      setRetryable(!notYours);
       setStopped(cancelled);
+      if (projectIdRef.current) {
+        setUnfinished({ id: projectIdRef.current, name: data?.basicInfo?.projectName ?? null });
+      }
       setStage('review');
       if (!cancelled) notifyError(humanizeError(e), 'Failed to import');
       return null;
@@ -137,17 +115,25 @@ export function useProjectImportRun({ client, kind, resumeId }) {
     stopRef.current = true;
   };
 
+  // The unfinished project is gone: the next `start` makes a new one.
+  const clearUnfinished = () => {
+    projectIdRef.current = null;
+    setUnfinished(null);
+    setRunError(null);
+    setStopped(false);
+  };
+
   return {
     stage,
     setStage,
     progress,
     setProgress,
     runError,
-    retryable,
     stopped,
     results,
     projectIdRef,
-    setupDoneRef,
+    unfinished,
+    clearUnfinished,
     stop,
     start,
   };

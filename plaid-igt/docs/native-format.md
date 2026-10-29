@@ -56,9 +56,8 @@ the upload's media type is validated from its filename.
 - Every id in the archive is a **correlation key**, not a value to write back: a
   re-importer creates fresh entities and maps old ids to new ones. That includes
   an id another app keeps inside metadata (see References in metadata).
-- A document's `id` is required and unique within the archive. A resume finds
-  what an earlier run made by it, so a reader refuses an archive in which one is
-  missing or repeated.
+- A document's `id` is required and unique within the archive, so a reader
+  refuses an archive in which one is missing or repeated.
 
 ## project.json
 
@@ -139,9 +138,7 @@ the upload's media type is validated from its filename.
   `flexEntry` and `flexSense` are FLEx's own guids and mean nothing here.
   The rewrite is a LAST pass, after every document has been created, and a
   reference whose target is not in the archive is dropped and counted in the
-  import's warnings. It rewrites the whole metadata map, so it also writes
-  `nativeImportId` back: without it a run interrupted during this pass would
-  come back unable to recognize the items it had already made.
+  import's warnings.
 - **Items keep the order the server returned them in, and that order is
   contractual.** It is creation order, which is what homonym subscripts
   (form₁, form₂, …) are numbered by, so a re-importer must recreate items **in
@@ -160,8 +157,8 @@ the upload's media type is validated from its filename.
 
 Top level: `id`, `name`, `version` (debugging only), `mediaFile` (archive path or
 null), `metadata` (**the raw document metadata, wholesale** — including keys not in
-`schema.documentMetadata`, e.g. `flexImported` — except an import's own marks,
-`importSource` and `importDone`, which are left out), `baseline` (`{textId, body, metadata?}`,
+`schema.documentMetadata`, e.g. `flexImported` — except the marks an import
+leaves, `importSource` and `importDone`, which are left out), `baseline` (`{textId, body, metadata?}`,
 where `textId` is null when the document has no text row and set for a text whose
 body is empty),
 `sentences`, `alignment`, three completeness sections (below), and `otherLayers` when
@@ -432,10 +429,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    ids to new. Item
    metadata is written as it stands here, ids and all, and corrected in step 4.
    The importer stamps each created item's metadata with `nativeImportId` (the
-   archive item id) for resume dedupe and provenance. Then `comments.create`
-   per archived entry comment, against the mapped item id (see Comments). Items
-   are reused on resume rather than redone, so a comment already on the
-   vocabulary with the same anchor and body is not posted again.
+   archive item id) as provenance, unless the metadata is at core's key cap
+   (500 keys, counted at every level). Then `comments.create` per archived
+   entry comment, against the mapped item id (see Comments).
 3. Per document: `documents.create(name, metadata)` → `texts.create(body)` →
    `tokens.bulkCreate` for sentences, words (metadata ∪ reconstituted `orthog:*`),
    morphemes (`form`/`morphType` folded back into metadata, `precedence` as
@@ -452,55 +448,28 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    be mapped is skipped and counted in a warning) →
    `vocabLinks.create(itemId, tokens, metadata)` for inline and extra links →
    `comments.create` per archived comment (anchors resolved through the same
-   old→new maps; see Comments) → upload media from `mediaFile`. A document is
-   marked (`metadata.importSource`, the archive document id, at creation) and
-   marked done (`metadata.importDone`) only after every write succeeded, and any
-   such key the archive's own metadata holds is dropped first; resume skips
-   done documents and deletes + redoes half-imported ones, except one somebody
-   wrote to since (its history holds an entry under none of the operations
-   this import's runs were filed under, which the plan below keeps), which is
-   left as it is and named in a warning. Other apps' layers are
-   made once per project, not per document, so a resume finds the ones an earlier
-   run made rather than making them again: setup makes only this app's layers, so
-   any other layer in the project is the import's own, and it is recognized by
-   where it sits and its name (a token layer also by its overlap mode and parent).
-   Config a layer already holds is not written again.
+   old→new maps; see Comments) → upload media from `mediaFile` → the document's
+   metadata written again, now that what it names in the document exists.
+   Other apps' layers are made once per project, not per document.
 4. Per vocabulary, LAST, once every document exists: rewrite the ids inside item
    metadata as the entry holds it now, through the maps built above (`parent`,
    every `type: "item"` field,
    and each `{document, token}` example, whose document AND token both have to
    have arrived). `senseOrder` is not an id and is only dropped when its
    `parent` is. What did not survive is dropped and counted in a warning. This
-   runs after the documents because an example points into one. The write
-   replaces the whole metadata map and restores `nativeImportId` as it goes, so
-   a resume still recognizes an item this pass reached. Any other value in item
-   metadata that names an entry or a document of the archive is rewritten too
-   (see References in metadata), `nativeImportId` excepted. A value that already
-   names an entry or document of the project (a person set it while the import
-   was stopped) is never touched. An example into a document an earlier run
-   finished is matched to its token by extent and text, and dropped when the
-   text there is no longer the archive's. This last step
-   (with the relink of what names a later document, of other apps' project
-   settings, and the layer rules of every app) is one finish step, which also
-   runs when an import that stopped is ended with "Use the project as it is".
-   It then works from the project and a plan the import keeps on its record
-   (`config.igt.import.finish`: the archive's document ids, which of them name
-   another, other apps' layer rules, the tokens each finished document's
-   examples name, and the operation each run was filed under). A reference to
-   something the import never made is dropped and counted, never left naming
-   the archive's id. A layer rule whose declaration fails leaves the plan on
-   the record, so ending the import again declares it. Before its first write,
-   ending as it is marks the plan (`endingAsIs`), and from then on the import
-   is only ended again, never resumed: a resume would take what the ending
-   wrote for somebody's work.
+   runs after the documents because an example points into one. Any other value
+   in item metadata that names an entry or a document of the archive is
+   rewritten too (see References in metadata), `nativeImportId` excepted. Then
+   what names a later document and other apps' project settings are pointed at
+   what the import made, and the layer rules of other apps and of this one are
+   declared again.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
-   An entry or document whose metadata is at core's key cap (500 keys, counted
-   at every level) has no room for the import's marks. It is created unmarked
-   with a warning, and the project's import record (`config.igt.import.unmarked`,
-   removed with the record when the import finishes) names it by archive id
-   instead: a resume reuses such an entry, skips such a document it finished,
-   and deletes and redoes one it did not.
 6. References in metadata are rewritten throughout (below).
+
+The project carries an import record (`config.igt.import`, `{kind, source,
+startedAt}`) from the moment it exists until the whole import has run. An import
+that stops leaves it there, and a project with the record does not open: it is
+deleted and imported again, never carried on.
 
 ### References in metadata
 
@@ -522,13 +491,8 @@ vocabulary items (step 4), where an entry id counts too.
   (a token naming an annotation, a document naming a document imported after
   it). What exists when an entity is written is rewritten then. What names
   something later in the same document is patched once the document's last
-  entity exists, before it is marked done, so an interrupted import redoes it
-  with the rest. What names a later document is patched once every document is
-  in, from what the server holds, so that it also settles a document an earlier
-  run finished and changes nothing when run again.
-- A document's own import stamps (`importSource`, `importDone`) are never
-  rewritten, since `importSource` is the archive id of that very document on
-  purpose.
+  entity exists. What names a later document is patched once every document is
+  in, from what the server holds.
 
 ## Non-goals
 

@@ -1,16 +1,11 @@
 // "Import archive" — recreate a project from a Plaid IGT JSON export
 // (docs/native-format.md). Flow: pick file → read + validate client-side →
 // review (project name, archive contents) → run (shared project setup, then
-// the native import engine) → done.
-//
-// Resume mirrors the FLEx import page: the created project id and setup
-// completion live in refs for this page session, so Retry re-runs against the
-// same project; the engine skips documents already marked done, redoes
-// half-imported ones, and dedupes vocab items by their stamped archive id.
+// the native import engine) → done. A run that stops leaves a project that is
+// only deleted (useProjectImportRun).
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import {
   FileDropZone,
@@ -25,7 +20,6 @@ import { useClientApart } from '@/hooks/useClientApart';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
-import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 import { countOf } from '@ui/lib/plural.js';
 
@@ -33,7 +27,6 @@ import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { NATIVE_IMPORT_KIND } from '@/domain/importFinish';
-import { importEnding } from '@/domain/igtConfig';
 
 export const ImportNativeProject = () => {
   useDocumentTitle('Import archive');
@@ -44,23 +37,19 @@ export const ImportNativeProject = () => {
   const [archive, setArchive] = useState(null);
   const [projectName, setProjectName] = useState('');
 
-  // Survive retries within this page session (see header comment).
-  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
-  // "Use the project as it is" began and did not finish: it is only ended again.
-  const ending = importEnding(resumeProject?.config);
   const {
     stage,
     setStage,
     progress,
     runError,
-    retryable,
     stopped,
     results,
     projectIdRef,
-    setupDoneRef,
+    unfinished,
+    clearUnfinished,
     stop,
     start,
-  } = useProjectImportRun({ client, kind: NATIVE_IMPORT_KIND, resumeId });
+  } = useProjectImportRun({ client, kind: NATIVE_IMPORT_KIND });
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -119,23 +108,12 @@ export const ImportNativeProject = () => {
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <ImportHeader
-          title="Import a Plaid IGT archive"
-          resume={
-            resumeId && {
-              name: resumeName,
-              again: ending
-                ? 'Ending it as it is did not finish.'
-                : 'Choose the same file: what is already there is unchanged.',
-              onFinishAsIs: finishAsIs,
-            }
-          }
-        >
+        <ImportHeader title="Import a Plaid IGT archive">
           Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time
           alignment, media, and provenance.
         </ImportHeader>
 
-        {stage === 'pick' && !ending && (
+        {stage === 'pick' && (
           <FileDropZone
             onFiles={(files) => handleFile(files?.[0])}
             title="Drop an exported .zip archive here, or click to choose"
@@ -175,28 +153,25 @@ export const ImportNativeProject = () => {
 
             <ProjectNameField
               id="native-project-name"
-              value={resumeId ? (resumeName ?? '') : projectName}
+              value={projectName}
               onChange={setProjectName}
-              disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
-              resuming={!!resumeId}
+              disabled={stage !== 'review' || !!unfinished}
             />
 
             <ImportRunPanel
               stage={stage}
               runError={runError}
-              retryable={retryable}
               stopped={stopped}
+              unfinished={unfinished}
+              client={client}
+              onDeleted={clearUnfinished}
               progress={progress}
               onStop={stop}
             />
 
             {stage === 'done' && results && (
               <Notice tone="success" className="p-4">
-                <p className="font-medium">
-                  Imported {countOf(results.imported, 'document')}
-                  {results.skipped ? ` (${results.skipped} already done)` : ''}
-                  {results.redone ? ` (${results.redone} redone)` : ''}
-                </p>
+                <p className="font-medium">Imported {countOf(results.imported, 'document')}</p>
                 {results.warnings.length > 0 && (
                   <ul className="mt-2 list-disc pl-5">
                     {results.warnings.slice(0, 8).map((w, i) => (
@@ -211,15 +186,9 @@ export const ImportNativeProject = () => {
             )}
 
             <div className="flex justify-end gap-2">
-              {stage === 'review' && (retryable || !runError) && (
+              {stage === 'review' && !unfinished && (
                 <Button onClick={startImport} disabled={!projectName.trim()}>
-                  {runError ? (
-                    <>
-                      <RefreshCw className="h-4 w-4" /> Retry import
-                    </>
-                  ) : (
-                    'Create project and import'
-                  )}
+                  Create project and import
                 </Button>
               )}
               {stage === 'done' && (

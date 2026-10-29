@@ -667,7 +667,7 @@ It offers the remedies: **Add to tagset**, **Fix in Bulk Edit**, or open each oc
 A field under an **Open** tagset is listed too, with the values that closing it would refuse.
 It also finds zero morphs written some other way than ∅ (see <<_typing_special_characters>>).
 
-A closed tagset is out of force on a field when values a person typed were already outside its list as the tagset reached the field, for instance during an import that stopped part way.
+A closed tagset is out of force on a field when values a person typed were already outside its list as the tagset reached the field.
 Validation then names the tagset and the field above the list.
 The tagset can still be changed, and each save names the values still in the way.
 Once those values are changed, **Put in force** applies the list.
@@ -892,14 +892,9 @@ ELAN files can also be imported into a project you already have, with **New docu
 Each tier is written into a field the project already has, or into a new field of its own.
 A file imported before says so on its row, and you choose whether to keep that document, replace it, or add a copy beside it.
 
-An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
-Opening such a project takes you back to the import: choose the same file or files and it carries on, keeping what is already there.
-If what arrived is enough, **Use the project as it is** puts the project back in your hands.
-Its closed tagsets apply from then on, as they do when an import finishes.
-After a Plaid IGT archive, its lexicon, settings and layer rules are also completed as at the end of a whole import, and a reference to something that did not arrive is dropped and counted.
-If that fails part way, the archive's import can then only be ended as it is again, not carried on.
-When a Plaid IGT archive's import carries on, a half-made document someone has edited since it stopped is left as it is, unfinished, and named in the results.
-Only a maintainer of the project's vocabulary can carry on an import that still has to change that vocabulary's settings.
+An import that stops before it finishes, whether you stop it, it fails, or the tab is closed, leaves a project that does not open.
+Wherever it would open, it reads **This import did not finish. Delete it and import again.**, with **Delete** for a project maintainer.
+Nothing deletes it on its own, since the import may still be running in another tab.
 
 == Exporting
 

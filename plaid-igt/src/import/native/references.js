@@ -28,7 +28,7 @@
 // something later in the same document is patched once the document's last
 // entity exists (`documentReferences`), and what names a later document is
 // patched once every document is in (`relinkDocumentReferences`), from what
-// the server holds, so that a resumed import settles the same way.
+// the server holds.
 
 import { bulkInChunks, withMintedIds } from '../../domain/bulk.js';
 
@@ -83,45 +83,6 @@ export function rewriteReferences(value, lookup, except = null) {
   return value;
 }
 
-/**
- * `value` without the strings that `gone` says name something the import
- * never made, and how many there were. Such a string is taken out where it
- * sits: an array loses the element, an object the key, and a string value
- * on its own comes back undefined. A reference to what an import stopped
- * before making is dropped rather than left naming the archive's id, which on
- * the same server is another project's entity. Keys are never tested, and
- * `except` names top-level keys to leave alone, as in `rewriteReferences`.
- * `value` itself when nothing was dropped.
- */
-export function dropReferences(value, gone, except = null) {
-  let count = 0;
-  const DROP = Symbol('drop');
-  const walk = (v, top) => {
-    if (typeof v === 'string') {
-      if (!gone(v)) return v;
-      count += 1;
-      return DROP;
-    }
-    if (Array.isArray(v)) {
-      const out = v.map((x) => walk(x, false));
-      return out.some((r, i) => r !== v[i]) ? out.filter((r) => r !== DROP) : v;
-    }
-    if (isPlainObject(v)) {
-      let changed = false;
-      const out = {};
-      for (const [k, x] of Object.entries(v)) {
-        const r = top && except?.has(k) ? x : walk(x, false);
-        if (r !== x) changed = true;
-        if (r !== DROP) out[k] = r;
-      }
-      return changed ? out : v;
-    }
-    return v;
-  };
-  const out = walk(value, true);
-  return { value: out === DROP ? undefined : out, count };
-}
-
 /** Whether any string anywhere in `value` (never a key) passes `test`. */
 function holdsString(value, test) {
   if (typeof value === 'string') return test(value);
@@ -132,17 +93,13 @@ function holdsString(value, test) {
 
 /**
  * The top-level keys whose values `after` changed from `before`, as metadata
- * ops, or null when there are none. Each changed key is set whole, and a key
- * `after` no longer has is deleted.
+ * ops, or null when there are none. Each changed key is set whole.
  */
 function metadataPatch(before, after) {
   if (before === after || !isPlainObject(after)) return null;
   const ops = [];
   for (const [k, v] of Object.entries(after)) {
     if (v !== before?.[k]) ops.push({ op: 'set', path: [k], value: v });
-  }
-  for (const k of Object.keys(before || {})) {
-    if (!(k in after)) ops.push({ op: 'delete', path: [k] });
   }
   return ops.length ? ops : null;
 }
@@ -296,63 +253,34 @@ export function documentReferences({ client, lookup, ahead, check = () => {} }) 
 }
 
 /**
- * Whether a document file names another document of the archive (`archived`,
- * every archive document id) in its own metadata or in what it holds: what
- * `relinkDocumentReferences` has to read once every document is in.
+ * Once every document is in: patch what still names a document by its archive
+ * id, which is a document made after the one naming it. `docIdMap` holds every
+ * archive document the project now has. Works from what the server holds.
+ * Only a document whose file names another document is read.
  */
-export function namesAnotherDocument(docData, archived) {
-  // The document's own metadata, which may name the document itself: that
-  // is rewritten when it is marked done, and settled here too.
-  if (holdsString(docData?.metadata, (s) => archived.has(s))) return true;
-  const another = (s) => archived.has(s) && s !== docData?.id;
-  return [...entityMetadata(docData)].some((m) => holdsString(m, another));
-}
-
-/**
- * Once every document is in, or when an import that stopped is ended as it
- * is: patch what still names a document by its archive id, which is a
- * document made after the one naming it. `archived` is every archive document
- * id, `naming` the ones whose file names another (`namesAnotherDocument`),
- * and `docIdMap` every archive document the project now holds. A reference to
- * an archive document the project does not hold (an import that stopped
- * before making it) is dropped (null). Works from what the server holds
- * rather than from what this run wrote, so it also settles a document an
- * earlier run finished, and does nothing the second time. Returns how many
- * references it dropped.
- */
-export async function relinkDocumentReferences({
-  client,
-  archived,
-  naming,
-  docIdMap,
-  stampKeys,
-  check = () => {},
-}) {
+export async function relinkDocumentReferences({ client, documents, docIdMap, check = () => {} }) {
+  const archived = new Set(documents.map((d) => d.id).filter((id) => id != null));
   const lookup = (id) => docIdMap.get(id);
-  const gone = (s) => archived.has(s) && !docIdMap.has(s);
-  let dropped = 0;
-  // Rewritten through the map, then what names a document never made dropped.
-  const settle = (metadata, except = null) => {
-    const r = dropReferences(rewriteReferences(metadata, lookup, except), gone, except);
-    dropped += r.count;
-    return r.value;
-  };
-  for (const archiveId of naming) {
-    const docId = docIdMap.get(archiveId);
+  for (const docData of documents) {
+    const docId = docIdMap.get(docData.id);
     if (!docId) continue;
     check();
-    // The document's own metadata. The import's stamps are left alone, since
-    // one of them is the archive id of this very document, on purpose.
-    const current = (await client.documents.get(docId))?.metadata || {};
-    const patch = metadataPatch(current, settle(current, stampKeys));
-    if (patch) await client.documents.patchMetadata(docId, patch);
-    // What is in it.
+    // The document's own metadata.
+    if (holdsString(docData.metadata, (s) => archived.has(s))) {
+      const current = (await client.documents.get(docId))?.metadata || {};
+      const patch = metadataPatch(current, rewriteReferences(current, lookup));
+      if (patch) await client.documents.patchMetadata(docId, patch);
+    }
+    // What is in it. A reference to the document itself was known when it
+    // was written.
+    const namesAnother = (s) => archived.has(s) && s !== docData.id;
+    if (![...entityMetadata(docData)].some((m) => holdsString(m, namesAnother))) continue;
     const raw = await client.documents.get(docId, true);
     const patches = Object.fromEntries(
       REFERENCE_KINDS.filter((k) => k !== 'document').map((k) => [k, []]),
     );
     const consider = (kind, entity) => {
-      const patch = metadataPatch(entity?.metadata, settle(entity?.metadata));
+      const patch = metadataPatch(entity?.metadata, rewriteReferences(entity?.metadata, lookup));
       if (patch) patches[kind].push({ id: entity.id, metadata: patch });
     };
     for (const tl of raw?.textLayers || []) {
@@ -372,5 +300,4 @@ export async function relinkDocumentReferences({
     }
     await sendPatches(client, patches, check);
   }
-  return dropped;
 }

@@ -3,13 +3,6 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { ElanTierReview, SchemaMismatch } from './ElanTierReview.jsx';
 import { ROLES } from '@/import/elan/schema';
 
-// A resume locks the tier mapping, since it redoes the unfinished documents
-// against the answers the first run was given. Two pairs of tier names that
-// read alike are the exception: Import waits until every pair is decided, and
-// an import whose record has no answer for one (a record written before the
-// answers were kept, or a pair that only appears once an .eaf is taken out of
-// the batch) had nothing left to click, Import greyed out for good.
-
 const NODE = {
   key: 'Phrase:u',
   baseName: 'Phrase',
@@ -47,37 +40,13 @@ afterEach(async () => {
   view = null;
 });
 
-describe('ElanTierReview with the mapping locked', () => {
-  it('lets a pair nobody has answered be decided, and keeps the roles locked', async () => {
-    view = await renderComponent(
-      <ElanTierReview batch={batchWith()} editable mappingEditable={false} />,
-    );
-    expect(decideBox(view.container).disabled).toBe(false);
-    expect(roleBox(view.container).disabled).toBe(true);
-  });
-
-  it('locks the pair again once the record has answered it', async () => {
-    view = await renderComponent(
-      <ElanTierReview
-        batch={batchWith({ nearMissChoices: { phrase: 'Phrase' }, undecidedNearMisses: [] })}
-        editable
-        mappingEditable={false}
-      />,
-    );
-    // Answered, so it reads as the decision rather than as a question.
-    expect(decideBox(view.container)).toBeUndefined();
-    const answered = buttons(view.container).find((b) => b.textContent.includes('Same tier'));
-    expect(answered.disabled).toBe(true);
-  });
-
+describe('ElanTierReview while a run goes', () => {
   it('decides nothing while the run is going', async () => {
-    view = await renderComponent(
-      <ElanTierReview batch={batchWith()} editable={false} mappingEditable={false} />,
-    );
+    view = await renderComponent(<ElanTierReview batch={batchWith()} editable={false} />);
     expect(decideBox(view.container).disabled).toBe(true);
   });
 
-  it('leaves everything editable for an import that is not a resume', async () => {
+  it('leaves everything editable otherwise', async () => {
     view = await renderComponent(<ElanTierReview batch={batchWith()} editable />);
     expect(decideBox(view.container).disabled).toBe(false);
     expect(roleBox(view.container).disabled).toBe(false);

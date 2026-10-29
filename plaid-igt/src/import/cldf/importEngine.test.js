@@ -440,63 +440,6 @@ describe('runCldfImport', () => {
     expect(fields.definition).toEqual({ inline: false, role: 'definition' });
   });
 
-  it('places the senses a cancelled run left flat', async () => {
-    const client = stubClient({
-      existingItems: [
-        { id: 'old-e1', form: 'perro', metadata: { cldfEntry: 'e1' } },
-        { id: 'old-s1', form: 'perro', metadata: { cldfEntry: 'e1/s1', gloss: 'dog' } },
-        { id: 'old-s2', form: 'perro', metadata: { cldfEntry: 'e1/s2', gloss: 'hound' } },
-      ],
-    });
-    await importLexicon({
-      client,
-      vocabId: 'v1',
-      lexicon: [
-        {
-          id: 'e1',
-          form: 'perro',
-          metadata: { gloss: 'dog' },
-          senses: [
-            { id: 's1', description: 'dog' },
-            { id: 's2', description: 'hound' },
-          ],
-        },
-      ],
-    });
-    expect(callsOf(client, 'vocabItems.bulkCreate')).toHaveLength(0);
-    expect(itemPatches(client)).toEqual([
-      { id: 'old-s1', metadata: place('old-e1', 1) },
-      { id: 'old-s2', metadata: place('old-e1', 2) },
-    ]);
-  });
-
-  // A run that died between making the entry and its senses: the resume
-  // makes the senses it finds missing and places them, rather than skipping
-  // the whole entry for being there.
-  it('makes the senses of an entry an earlier run created and left childless', async () => {
-    const client = stubClient({
-      existingItems: [{ id: 'old-e1', form: 'perro', metadata: { cldfEntry: 'e1' } }],
-    });
-    await importLexicon({
-      client,
-      vocabId: 'v1',
-      lexicon: [
-        {
-          id: 'e1',
-          form: 'perro',
-          metadata: { gloss: 'dog' },
-          senses: [
-            { id: 's1', description: 'dog' },
-            { id: 's2', description: 'hound' },
-          ],
-        },
-      ],
-    });
-    const created = callsOf(client, 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
-    expect(created.map((it) => it.metadata.cldfEntry)).toEqual(['e1/s1', 'e1/s2']);
-    expect(itemPatches(client)).toHaveLength(2);
-  });
-
   it('leaves a one-sense entry as one item, its meaning its own', async () => {
     const client = stubClient();
     await importLexicon({
@@ -517,56 +460,7 @@ describe('runCldfImport', () => {
     expect(itemPatches(client)).toHaveLength(0);
   });
 
-  it('reuses a lexicon item already stamped with the same entry id', async () => {
-    const client = stubClient({
-      existingItems: [{ id: 'old', form: 'perro', metadata: { cldfEntry: 'e1' } }],
-    });
-    await runCldfImport({ client, projectId: 'p1', build: fixtureBuild() });
-    expect(callsOf(client, 'vocabItems.bulkCreate')).toHaveLength(0);
-  });
-
-  it('marks a document done only after every write succeeded', async () => {
-    const client = stubClient();
-    await runCldfImport({ client, projectId: 'p1', build: fixtureBuild() });
-    const kinds = client.calls.map((c) => c.kind);
-    expect(kinds.at(-1)).toBe('documents.setMetadata');
-    expect(callsOf(client, 'documents.setMetadata')[0].args.body.importDone).toBe(true);
-  });
-
-  it('skips a document already marked done and redoes a half-imported one', async () => {
-    // Matched by the stamp an earlier run left, the dataset's own id for the
-    // document, never by name.
-    const source = fixtureBuild().documents[0].id;
-    const done = {
-      id: 'd-done',
-      name: 'Test & Doc',
-      metadata: { importSource: `d-done:${source}`, importDone: true },
-    };
-    const skipClient = stubClient({ existingDocs: [done] });
-    const skipped = await runCldfImport({
-      client: skipClient,
-      projectId: 'p1',
-      build: fixtureBuild(),
-    });
-    expect(skipped).toMatchObject({ imported: 0, skipped: 1 });
-    expect(callsOf(skipClient, 'documents.create')).toHaveLength(0);
-
-    const partial = {
-      id: 'd-partial',
-      name: 'Test & Doc',
-      metadata: { importSource: `d-partial:${source}` },
-    };
-    const redoClient = stubClient({ existingDocs: [partial] });
-    const redone = await runCldfImport({
-      client: redoClient,
-      projectId: 'p1',
-      build: fixtureBuild(),
-    });
-    expect(redone).toMatchObject({ imported: 1, redone: 1 });
-    expect(callsOf(redoClient, 'documents.delete')[0].args.docId).toBe('d-partial');
-  });
-
-  it('stops promptly when asked, without marking the document done', async () => {
+  it('stops promptly when asked', async () => {
     const client = stubClient();
     await expect(
       runCldfImport({
@@ -576,7 +470,7 @@ describe('runCldfImport', () => {
         shouldStop: () => true,
       }),
     ).rejects.toThrow(/cancelled/i);
-    expect(callsOf(client, 'documents.setMetadata')).toHaveLength(0);
+    expect(callsOf(client, 'documents.create')).toHaveLength(0);
   });
 
   it('reports the document index on every step, so the counter can advance', async () => {
@@ -609,7 +503,7 @@ describe('runCldfImport', () => {
     expect(res.warnings).toEqual(expect.arrayContaining(['something to say', 'per-document note']));
   });
 
-  it('leaves a document unfinished when its media upload fails, so a retry redoes it', async () => {
+  it('names a media upload that failed and goes on', async () => {
     const client = stubClient();
     client.documents.uploadMedia = () => Promise.reject(new Error('nope'));
     const build = fixtureBuild();
@@ -617,7 +511,7 @@ describe('runCldfImport', () => {
     build.documents[0].mediaName = 'a.wav';
     const res = await runCldfImport({ client, projectId: 'p1', build });
     expect(res.warnings.join(' ')).toMatch(/media upload failed/);
-    expect(callsOf(client, 'documents.setMetadata')).toHaveLength(0);
+    expect(res.imported).toBe(1);
   });
 
   const adpcmFixture = (name) =>
@@ -659,6 +553,6 @@ describe('runCldfImport', () => {
         w.endsWith('a.wav cannot be played in a browser (G.721 ADPCM WAV). Not uploaded.'),
       ),
     ).toBe(true);
-    expect(callsOf(client, 'documents.setMetadata')).toHaveLength(1);
+    expect(res.imported).toBe(1);
   });
 });

@@ -5,14 +5,11 @@
 // deriveSetupData and runs the normal setup), and this engine runs AFTER setup
 // against the resolved project.
 //
-// Resumability follows the same scheme: a document is marked done
-// (metadata.cldfImported) only once every write for it succeeded, so on resume
-// finished documents are skipped and half-imported ones are deleted and redone.
-// Lexicon items are deduped by the CLDF entry id stamped at creation, which
-// doubles as provenance back to the source dataset.
+// Lexicon items are stamped with their CLDF entry id at creation, as
+// provenance back to the source dataset.
 
 import { documentProgress } from '../progress.js';
-import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import { ImportCancelled } from '../stamps.js';
 import { ENTRY_ROLES, isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
@@ -22,7 +19,7 @@ import {
   setupDataFor,
   writeBuiltDocument,
 } from '../project.js';
-import { createEntriesOnce, itemsBySourceKey, mergeFieldSchema, placeSenses } from '../lexicon.js';
+import { createEntriesOnce, mergeFieldSchema, placeSenses } from '../lexicon.js';
 import { sameName } from '@ui/lib/nameKey.js';
 
 // The entry keys the importer itself fills from CLDF's own columns, and the
@@ -89,7 +86,6 @@ export function resolveTargets(project, build) {
 
 /**
  * Import the lexicon as vocabulary items. Returns Map<cldfEntryId, itemId>.
- * Resume-safe: items already stamped with a matching entry id are reused.
  *
  * A CLDF entry with more than one sense becomes a headword with its senses
  * under it, as the FLEx import does; with one sense, the sense IS the entry.
@@ -99,12 +95,9 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     if (shouldStop?.()) throw new ImportCancelled();
   };
   const existing = await client.vocabLayers.get(vocabId, true);
-  const byEntry = itemsBySourceKey(existing.items, ITEM_SOURCE_KEY);
+  const byEntry = new Map();
 
   // What to create, headword before its senses, and where each sense belongs.
-  // The placement is planned for EVERY sense, not only the ones created here:
-  // a run that was cancelled part way leaves its items behind unplaced, and a
-  // resume that only placed its own creations would leave them flat forever.
   const pending = [];
   const places = [];
   const senseKey = (entry, sense) => `${entry.id}/${sense.id}`;
@@ -115,10 +108,6 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
         places.push({ key: senseKey(entry, sense), parentKey: entry.id, senseOrder: i + 1 });
       }
     }
-    // The entry and each of its senses are asked about one by one
-    // (createEntriesOnce): a run that stopped after making the entry left its
-    // senses unmade, and a resume that skipped the whole entry for being there
-    // would never make them.
     const metadata = { ...entry.metadata };
     if (split) {
       // The senses hold these now, one meaning each.
@@ -174,8 +163,7 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     onProgress: (done, total) => onProgress?.({ phase: 'lexicon', done, total }),
   });
 
-  // The tree, once every item has an id. A sense that already has a parent is
-  // left as it is: it was placed by an earlier run, or arranged by hand.
+  // The tree, once every item has an id.
   await placeSenses({
     client,
     existing,
@@ -250,7 +238,7 @@ async function importDocument({
     projectId,
     targets,
     name: doc.name,
-    metadata: (id) => importStamp(doc.metadata, doc.id, id),
+    metadata: doc.metadata,
     body: doc.body,
     tokenEdges: doc.tokenEdges,
     sentences: doc.sentences,
@@ -268,7 +256,6 @@ async function importDocument({
     name: doc.name,
     media: doc.mediaBytes ? new File([doc.mediaBytes], doc.mediaName || 'media') : null,
     prepare: true,
-    stamp: { metadata: doc.metadata, sourceId: doc.id },
     onProgress,
     progress,
     check,
@@ -300,7 +287,7 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
   if (build.lexicon.length) {
     // Each vocabulary the dataset names, into the project vocabulary of that
     // name; with one lexicon and one vocabulary, whatever that vocabulary is
-    // called (a resume may have renamed it).
+    // called.
     const vocabs = project.vocabs || [];
     const names = lexiconNames(build.lexicon);
     for (const name of names) {
@@ -324,10 +311,7 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
     }
   }
 
-  // Resume bookkeeping: what an earlier run made, by CLDF document id.
-  const prior = await priorImports(client, projectId);
-
-  const results = { imported: 0, skipped: 0, redone: 0 };
+  const results = { imported: 0 };
   for (let i = 0; i < build.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = build.documents[i];
@@ -338,7 +322,6 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
       total: build.documents.length,
       step: 'Starting',
     });
-    if (!(await settlePrior(client, prior, doc.id, results))) continue;
     await importDocument({
       client,
       projectId,

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, byText, texts } from '@ui/test/renderComponent.jsx';
-import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels.jsx';
+import { ImportRunPanel, ProjectNameField } from './ImportPanels.jsx';
 
 // The four project-import wizards read four different files and share this.
 // Each used to draw its own, and they drifted: one clamped the progress bar
@@ -61,7 +61,7 @@ describe('ImportRunPanel', () => {
     );
     expect(byText(failed.container, 'p', 'Failed to import')).not.toBeNull();
     expect(texts(failed.container, 'p')).toContain('The server said 500');
-    expect(texts(failed.container, 'p')).toContain('Retry continues where it left off.');
+    expect(failed.container.textContent).not.toContain('Retry');
     await failed.unmount();
 
     const stopped = await renderComponent(
@@ -106,48 +106,6 @@ describe('ProjectNameField', () => {
     const label = byText(container, 'label', 'Project name');
     expect(label.getAttribute('for')).toBe('x-project-name');
     expect(container.querySelector('#x-project-name').value).toBe('Qusar');
-    await unmount();
-  });
-
-  it('says the project is one being continued only on a resume', async () => {
-    const plain = await renderComponent(
-      <ProjectNameField id="a" value="" onChange={() => {}} resuming={false} />,
-    );
-    expect(byText(plain.container, 'p', 'Continuing an import into this project')).toBeNull();
-    await plain.unmount();
-
-    const resuming = await renderComponent(
-      <ProjectNameField id="a" value="" onChange={() => {}} resuming />,
-    );
-    expect(
-      byText(resuming.container, 'p', 'Continuing an import into this project'),
-    ).not.toBeNull();
-    await resuming.unmount();
-  });
-});
-
-describe('ResumeBanner', () => {
-  it('names the project and offers to finish as it is', async () => {
-    const onFinishAsIs = vi.fn();
-    const { container, step, unmount } = await renderComponent(
-      <ResumeBanner
-        name="Qusar"
-        again="Choose the same file: what is already there is unchanged."
-        onFinishAsIs={onFinishAsIs}
-      />,
-    );
-    expect(container.textContent).toContain('Qusar');
-    expect(container.textContent).toContain('Choose the same file');
-    await step(() => byText(container, 'button', 'Use the project as it is').click());
-    expect(onFinishAsIs).toHaveBeenCalled();
-    await unmount();
-  });
-
-  it('falls back to naming it as this project when the record has no name', async () => {
-    const { container, unmount } = await renderComponent(
-      <ResumeBanner name={null} again="Choose the same file." onFinishAsIs={() => {}} />,
-    );
-    expect(container.textContent).toContain('this project');
     await unmount();
   });
 });

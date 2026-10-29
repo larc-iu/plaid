@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { importStamp, priorImports, settlePrior } from './resume.js';
+import { importStamp, priorImports, settlePrior } from './stamps.js';
 
 // H12-IO-3: a file whose name is decomposed (macOS writes `é` as `e` and a
 // combining accent) was never found again. The server stores the stamp and
@@ -27,21 +27,21 @@ const clientWith = (docs) => {
 describe('a source named in the other Unicode spelling', () => {
   it('is stamped composed and found by either spelling', async () => {
     expect(importStamp({}, NFD, 'd1').importSource).toBe(`d1:${NFC}`);
-    const begun = stored(importStamp({}, NFD, 'd1'));
+    const made = stored(importStamp({}, NFD, 'd1'));
     const prior = await priorImports(
-      clientWith([{ id: 'd1', name: 'Kaf\u00e9 ni\u00f1o', metadata: begun }]),
+      clientWith([{ id: 'd1', name: 'Kaf\u00e9 ni\u00f1o', metadata: made }]),
       'p',
     );
     expect(prior.find(NFD)?.id).toBe('d1');
     expect(prior.find(NFC)?.id).toBe('d1');
   });
 
-  it('has its half-made document redone on a resume, not left beside a second', async () => {
-    const begun = stored(importStamp({}, NFD, 'd1'));
-    const client = clientWith([{ id: 'd1', name: 'Kaf\u00e9 ni\u00f1o', metadata: begun }]);
+  it('has its document replaced when asked, not left beside a second', async () => {
+    const made = stored(importStamp({}, NFD, 'd1'));
+    const client = clientWith([{ id: 'd1', name: 'Kaf\u00e9 ni\u00f1o', metadata: made }]);
     const prior = await priorImports(client, 'p');
     const results = { skipped: 0, redone: 0 };
-    expect(await settlePrior(client, prior, NFD, results)).toBe(true);
+    expect(await settlePrior(client, prior, NFD, results, { replace: true })).toBe(true);
     expect(client.deleted).toEqual(['d1']);
     expect(results.redone).toBe(1);
   });

@@ -79,8 +79,7 @@ export default {
     // Project setup marks the project initialized, and the import record under `import` stays
     // until the run reports finishing.
     projectConfig: ['initialized', 'import'],
-    // src/import/resume.js: the CLDF contribution id, and the done marker written last.
-    documentMetadata: ['importSource', 'importDone'],
+    documentMetadata: [],
     tokenMetadata: [],
     // src/import/cldf/importEngine.js: the CLDF entry id (or entry/sense id) on every item.
     itemMetadata: ['cldfEntry'],

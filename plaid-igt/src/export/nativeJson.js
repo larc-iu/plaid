@@ -55,7 +55,7 @@ import {
   withoutPlaidKeys,
 } from '../domain/otherLayers.js';
 import { discoverExportLayers } from './exportLayers.js';
-import { IMPORT_STAMP_KEYS } from '../import/resume.js';
+import { IMPORT_STAMP_KEYS } from '../import/stamps.js';
 import { NATIVE_ITEM_KEY } from '../import/lexicon.js';
 
 export const NATIVE_FORMAT_VERSION = 1;
@@ -386,12 +386,10 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
         })
       : null;
   // `nativeImportId` is bookkeeping this app stamps on an entry it created from
-  // an archive: it dedupes a resumed import and points back at the source.
-  // It is not the project's data, and carrying it out again made the archive
-  // non-idempotent, since importing and re-exporting added a key to all 598
-  // entries that had not been there the first time. Dedup does not need it in
-  // the file: an archive entry is matched by its `id` above, which is the
-  // entry's own, and the importer stamps a fresh one on whatever it creates.
+  // an archive, pointing back at the source. It is not the project's data, and
+  // carrying it out again made the archive non-idempotent, since importing and
+  // re-exporting added a key to all 598 entries that had not been there the
+  // first time. The importer stamps a fresh one on whatever it creates.
   const items = (vocab?.items || []).map((it) =>
     withMetadata({ id: it.id, form: it.form }, withoutImportKeys(it.metadata)),
   );

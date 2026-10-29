@@ -98,11 +98,12 @@ export default {
     // Project setup marks the project initialized, and the import record under `import` stays
     // until the run reports finishing.
     projectConfig: ['initialized', 'import'],
-    // src/import/resume.js: the .eaf file name and the done marker written last. `Media file`
+    // src/import/stamps.js: the .eaf file name, the mark "Add ELAN documents" finds a file
+    // an earlier import brought in by. `Media file`
     // is the recording's file name as the .eaf's MEDIA_DESCRIPTOR gives it
     // (buildDocuments.js), written on every document whose .eaf names a recording unless the
     // person clears that option, and read back by the export as the recording's name.
-    documentMetadata: ['importSource', 'importDone', 'Media file'],
+    documentMetadata: ['importSource', 'Media file'],
     tokenMetadata: [],
     itemMetadata: [],
   },
