@@ -681,9 +681,12 @@ export class UmrDocument extends DocumentModel {
     return null;
   }
 
-  // Every variable in use, so a new one is unique per document.
-  takenVariables() {
-    const taken = new Set();
+  // Every variable in use, so a new one is unique per document: the nodes'
+  // and the ones a graph kept as text defines, which a relation held for it
+  // waits for. `mending` is a sentence whose own kept graph is being written
+  // as nodes under its own names (keptVariables).
+  takenVariables(mending = null) {
+    const taken = keptVariables(this.graph, mending);
     this.graph.nodesById.forEach((n) => {
       if (n.var) taken.add(n.var);
     });
@@ -1188,8 +1191,9 @@ export class UmrDocument extends DocumentModel {
   // Why `variable` cannot name a new node of sentence `sentenceIndex`, or null
   // when it can: the canvas's rename and text mode's new nodes ask the same.
   // The name carries the number the sentence goes by (`number`), the file's
-  // own in a document numbered by its file.
-  _newVariableProblem(variable, sentenceIndex) {
+  // own in a document numbered by its file. A name in use is one a node or a
+  // graph kept as text has, the kept graph of sentence `mending` aside.
+  _newVariableProblem(variable, sentenceIndex, mending = null) {
     if (!VARIABLE.test(variable)) {
       return `${variable} is not a variable: s, the sentence number, letters, a number.`;
     }
@@ -1203,7 +1207,7 @@ export class UmrDocument extends DocumentModel {
     // (toUmrSentences), so a node called that is a second definition of it.
     if (DOC_GRAPH_VARIABLE.test(variable))
       return `${variable} names the sentence's document graph.`;
-    if (this.takenVariables().has(variable)) return `${variable} is already in use.`;
+    if (this.takenVariables(mending).has(variable)) return `${variable} is already in use.`;
     return null;
   }
 
@@ -2472,7 +2476,11 @@ export class UmrDocument extends DocumentModel {
       for (const m of sentence.rawGraph.matchAll(KEPT_VARIABLE)) keptNames.add(m[1]);
     }
     [...plan.create.map((c) => c.var), ...plan.rename.map((r) => r.to)].forEach((v) => {
-      const why = this._newVariableProblem(v, keptNames.has(v) ? null : sentenceIndex);
+      const why = this._newVariableProblem(
+        v,
+        keptNames.has(v) ? null : sentenceIndex,
+        sentenceIndex,
+      );
       if (why) errors.push({ message: why });
     });
     // A relation is judged where it is written, as the canvas judges it: one

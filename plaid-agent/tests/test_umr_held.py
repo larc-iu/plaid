@@ -114,3 +114,27 @@ def test_a_rename_takes_the_held_relations_of_a_joined_sentences_other_record_al
     _apply(client, ws)
     assert _record_patches(client) == [[{'op': 'set', 'path': ['umr', 'held'], 'value': [
         {'source': 's2t', 'rel': ':same-entity', 'target': 's1g', 'group': 'coref'}]}]]
+
+
+def test_a_name_a_graph_kept_as_text_defines_is_taken_for_a_new_node():
+    """R4-3: a kept graph's names stay taken, as the app's takenVariables
+    holds them, so a node another sentence's plan creates does not take one
+    (here a name carrying sentence 1's number, as after IGT removed a
+    sentence before it), and the relation held for it does not land there.
+    The kept sentence's own mend still writes its names, whatever sentence
+    number they carry, as Text mode mends it."""
+    doc = _kept()
+    for tk in doc['text_layers'][0]['token_layers']:
+        for t in tk['tokens']:
+            if t['id'] == 'mr-2':
+                t['metadata']['umr']['rawGraph'] = '(s2r / run-01\n    :ARG0 (s1k / thing'
+    client = umr_client(documents={'umr1': doc})
+    ws = umr_ws(client)
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': (
+        '(s1b / bark-01 :ARG0 (s1d / dog :refer-number singular) :aspect performance'
+        ' :ARG1 (s1k / thing))')})
+    assert 's1k is already in use' in out, out
+    assert not ws.ops
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 2,
+                                         'text': '(s2r / run-01 :ARG0 (s1k / thing))'})
+    assert 'Planned' in out, out

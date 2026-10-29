@@ -256,6 +256,13 @@ class Sentence:
     triples: List[Triple] = dc_field(default_factory=list)
     roots: List[Node] = dc_field(default_factory=list)
 
+    @property
+    def kept_text(self) -> bool:
+        """Whether its graph is one an import kept as text (the file's graph
+        did not parse): the record's ``rawGraph``, while it has no nodes. It
+        is a graph all the same, which a draft leaves."""
+        return not self.nodes and isinstance(self.raw_graph, str)
+
     def node(self, var: str) -> Optional[Node]:
         for n in self.nodes:
             if n.var == var:
@@ -350,10 +357,29 @@ class UmrDocument:
 
     @property
     def taken_variables(self) -> set:
-        """Every variable the document already uses. Variables are unique per
-        DOCUMENT, because the document graph cites an earlier sentence's nodes
-        by name."""
-        return {n.var for n in self.nodes_by_id.values() if n.var}
+        """Every variable the document already uses: its nodes' and the ones
+        its graphs kept as text define (:meth:`kept_variables`). Variables are
+        unique per DOCUMENT, because the document graph cites an earlier
+        sentence's nodes by name, and a relation another sentence holds for a
+        kept graph waits for its names."""
+        return {n.var for n in self.nodes_by_id.values() if n.var} | self.kept_variables()
+
+    def kept_variables(self, mending: Optional[int] = None) -> set:
+        """The variables the graphs kept as text still define: a sentence's
+        own, while it has no nodes, and that of every record waiting in a
+        sentence joined to the one before it (``keptVariables`` in
+        sentenceGraph.js). ``mending`` is the position of a sentence whose own
+        kept graph is being written as nodes, under its own names, so they are
+        not counted."""
+        out = set()
+        for r in self.records:
+            raw = r.record.get('rawGraph')
+            if not isinstance(raw, str):
+                continue
+            if r.own and (r.sentence == mending or self.sentences[r.sentence - 1].nodes):
+                continue
+            out |= {m.group(1) for m in KEPT_VARIABLE.finditer(raw)}
+        return out
 
     def by_number(self, number: int) -> Optional[Sentence]:
         """The sentence the app shows as ``number`` (``Sentence.number``)."""
@@ -485,6 +511,10 @@ def _tokens_of(layer) -> List[dict]:
 
 
 #: A variable's sentence number, then a letter and whatever follows.
+#: A variable a graph kept as text defines: the name before a slash after an
+#: opening bracket (``KEPT_VARIABLE`` in sentenceGraph.js).
+KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
+
 _NUMBERED = re.compile(r'^s([0-9]+)([^\W\d_].*)$')
 
 

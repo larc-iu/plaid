@@ -538,7 +538,8 @@ def _begin_draft(client, request_data: Dict[str, Any], response_helper) -> Draft
     sentence a person built or confirmed is kept whatever ``overwrite`` says,
     and so is one that another sentence's block writes an edge or triple on
     (the machine-writer contract), as igt's analyzers redraft machine output
-    only. With ``overwrite`` off the rest of the sentences with a graph are
+    only. A graph an import kept as text (:attr:`Sentence.kept_text`) is kept
+    too, counted with the person's, and its names stay taken. With ``overwrite`` off the rest of the sentences with a graph are
     skipped: the ones an overwrite would redraft. A sentence number the
     document does not have is a ValueError."""
     document_id = request_data['document_id']
@@ -557,8 +558,9 @@ def _begin_draft(client, request_data: Dict[str, Any], response_helper) -> Draft
         if not in_scope:
             raise Refusal(f'The document has no sentence {wanted}.')
     with_graph = [s for s in in_scope if s.words and s.nodes]
-    targets = [s for s in in_scope
-               if s.words and (not s.nodes or (overwrite and s.redraftable))]
+    kept_text = [s for s in in_scope if s.words and s.kept_text]
+    targets = [s for s in in_scope if s.words and not s.kept_text
+               and (not s.nodes or (overwrite and s.redraftable))]
     taken = document.taken_variables
     for s in targets:
         for node in s.nodes:
@@ -568,7 +570,7 @@ def _begin_draft(client, request_data: Dict[str, Any], response_helper) -> Draft
         layers=layers, document=document, progress=progress,
         targets=targets,
         skipped=0 if overwrite else len([s for s in with_graph if s.redraftable]),
-        kept=len([s for s in with_graph if s.person_made]),
+        kept=len([s for s in with_graph if s.person_made]) + len(kept_text),
         linked=len([s for s in with_graph if not s.redraftable and not s.person_made]),
         taken=taken, requester=requester_of(client, request_data))
 

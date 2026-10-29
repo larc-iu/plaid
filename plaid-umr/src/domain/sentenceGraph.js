@@ -1107,14 +1107,16 @@ export const KEPT_VARIABLE = /\(\s*([^\s/()"]+)\s*\//g;
  * The variables the graphs kept as text still define: a sentence's own, while
  * it has no nodes, and that of every record waiting in a sentence joined to
  * the one before it, which a split gives its sentence back. A renumbered
- * node must not take one of them.
+ * node must not take one of them, nor a new one. `mending` is the position of
+ * a sentence whose own kept graph is being written as nodes under its own
+ * names, so they are not counted.
  */
-export function keptVariables(graph) {
+export function keptVariables(graph, mending = null) {
   const names = new Set();
   const bySentence = graph.sentences || [];
   (graph.records || []).forEach(({ sentence, own, record }) => {
     if (typeof record.rawGraph !== 'string') return;
-    if (own && bySentence[sentence - 1]?.nodes.length) return;
+    if (own && (sentence === mending || bySentence[sentence - 1]?.nodes.length)) return;
     for (const m of record.rawGraph.matchAll(KEPT_VARIABLE)) names.add(m[1]);
   });
   return names;

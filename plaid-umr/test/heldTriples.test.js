@@ -142,3 +142,27 @@ test('when IGT adds a sentence before them, held relations follow the renumbered
   assert.ok(held.some((h) => h.source === 's39i2' || h.target === 's39i2'));
   assert.ok(!held.some((h) => h.source === 's38i2' || h.target === 's38i2'));
 });
+
+test("a kept graph's names are taken for a new node or a rename, and its own mend still writes them", async () => {
+  // R4-3: a relation another sentence holds for the kept graph waits for its
+  // names, so no other node may take one.
+  const { doc } = load();
+  const raw = doc._raw;
+  insertSentenceAtStart(raw);
+  const moved = new UmrDocument({ raw, client: doc._client });
+  moved._reload = async () => {};
+  moved.onError = (msg) => {
+    throw new Error(msg);
+  };
+  // What was sentence 37 is 38 now, kept as text under its old names.
+  assert.equal(moved.sentence(38).nodes.length, 0);
+  // A new node's name is chosen outside these (createNode), and a rename to
+  // one is refused.
+  assert.ok(moved.takenVariables().has('s37i2'));
+  const node = moved.sentence(37).nodes[0];
+  assert.equal(moved.variableProblem(node.id, 's37i2'), 's37i2 is already in use.');
+  // Mending the kept graph in Text mode keeps its own names.
+  const mended = moved.penmanOf(38).replace('"Río_Verde_Paraguay)', '"Río_Verde_Paraguay")');
+  assert.ok((await moved.applyPenman(38, mended)) > 0);
+  assert.ok(moved.sentence(38).nodes.some((n) => n.var === 's37i2'));
+});

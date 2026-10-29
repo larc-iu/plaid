@@ -168,15 +168,13 @@ class Workspace(BaseWorkspace):
         if kind == 'create_node':
             problems += [variable_form_problem(op.get('var')), concept_problem(op.get('concept'))]
             if not op.get('constant') and doc is not None:
-                problems.append(new_variable_problem(op.get('var'), doc.number_of(op.get('sentence')),
-                                                     self._taken_variables(doc, replacing)))
+                problems.append(self._new_variable_problem(op, doc, replacing))
         if kind == 'rename_node':
             # A new name for a stored node, held to what the app asks of one
             # (Text mode asks a rename `_newVariableProblem` too).
             problems.append(variable_form_problem(op.get('var')))
             if doc is not None:
-                problems.append(new_variable_problem(op.get('var'), doc.number_of(op.get('sentence')),
-                                                     self._taken_variables(doc, replacing)))
+                problems.append(self._new_variable_problem(op, doc, replacing))
         if kind == 'set_concept':
             problems += [concept_problem(op.get('concept')),
                          self._concept_under_problem(op, doc, replacing)]
@@ -248,18 +246,33 @@ class Workspace(BaseWorkspace):
                 return why
         return None
 
-    def _taken_variables(self, doc: UmrDoc, replacing: Optional[int] = None) -> set:
+    def _new_variable_problem(self, op: Dict[str, Any], doc: UmrDoc,
+                              replacing: Optional[int] = None) -> Optional[str]:
+        """Why the name ``op`` gives a node of its sentence cannot be, as Text
+        mode asks it: a name the sentence's own graph kept as text defines is
+        its own whatever sentence number it carries, since that graph is
+        mended under its own names."""
+        sentence = op.get('sentence')
+        own = doc.kept_variables() - doc.kept_variables(sentence)
+        return new_variable_problem(op.get('var'),
+                                    None if op.get('var') in own else doc.number_of(sentence),
+                                    self._taken_variables(doc, replacing, sentence))
+
+    def _taken_variables(self, doc: UmrDoc, replacing: Optional[int] = None,
+                         mending: Optional[int] = None) -> set:
         """Every variable the document holds once this plan is applied, as far
         as a new name is concerned: what is stored, less what the plan deletes
         (the batch deletes first), plus what the plan already creates or
-        renames a node to. The op ``replacing`` names is not part of the plan
-        any more."""
+        renames a node to. The names a graph kept as text defines are held
+        too, but for the kept graph of sentence ``mending``, the one the op
+        writes on, which is mended under its own names. The op ``replacing``
+        names is not part of the plan any more."""
         taken = {n.var for n in doc.nodes_by_id.values() if n.var}
         ops = [o for i, o in enumerate(self.ops)
                if i != replacing and o.get('document_id') == doc.id]
         taken -= {o.get('var') for o in ops if o.get('kind') == 'delete_node'}
         taken |= {o.get('var') for o in ops if o.get('kind') in ('create_node', 'rename_node')}
-        return taken
+        return taken | doc.kept_variables(mending)
 
     def refuse_unknown_relation(self, op: Dict[str, Any]) -> None:
         """A relation UMR does not have, as the app refuses it on every editor

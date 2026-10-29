@@ -30,7 +30,6 @@ for, most of them only because a sibling before them came or went. With
 changes is a row of its own.
 """
 
-import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman
@@ -171,31 +170,13 @@ def _rename_in(doc: UmrDoc, sentence: Sentence, parsed: Graph, written) -> Tuple
     return node, to
 
 
-# A variable a graph kept as text defines: the name before a slash after an
-# opening bracket (``KEPT_VARIABLE`` in sentenceGraph.js).
-_KEPT_VARIABLE = re.compile(r'\(\s*([^\s/()"]+)\s*/')
-
-
-def _kept_variables(doc: UmrDoc) -> set:
-    """The variables the graphs kept as text still define: a sentence's own,
-    while it has no nodes, and that of every record waiting in a sentence
-    joined to the one before it (``keptVariables``)."""
-    out = set()
-    for r in doc.records:
-        raw = r.record.get('rawGraph')
-        if not isinstance(raw, str) or (r.own and doc.sentences[r.sentence - 1].nodes):
-            continue
-        out |= {m.group(1) for m in _KEPT_VARIABLE.finditer(raw)}
-    return out
-
-
 def _held_after(doc: UmrDoc, ids: set, renames: Dict[str, str]) -> Callable[[list], Optional[list]]:
     """What a record's held list becomes once the nodes ``ids`` are renamed
     (``renames``, old name to new) or deleted (the others), or None when it
     stays. A relation naming a deleted node goes, one naming a renamed node
     follows it, and a name another node still has or a kept graph defines is
     left. plaid-umr's ``UmrDocument._heldAfter``."""
-    names, still = set(), _kept_variables(doc)
+    names, still = set(), doc.kept_variables()
     for n in doc.nodes_by_id.values():
         if n.var:
             (names if n.id in ids else still).add(n.var)

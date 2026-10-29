@@ -331,6 +331,38 @@ def test_the_scope_of_one_sentence_drafts_only_that_sentence():
         ['s2b', 's2d', 's2n']
 
 
+def _kept_text_document():
+    """Sentence 1's graph kept as text by an import (its file's graph did not
+    parse), under a name that carries sentence 2's number, as after IGT added
+    a sentence before it. Sentence 2 has no graph."""
+    doc = _document(body='The dog barks\nIt runs\n',
+                    sentences=[(0, 14), (14, 22)],
+                    words=WORDS + [(14, 16), (17, 21)])
+    [node_layer] = [tl for tl in doc['text_layers'][0]['token_layers'] if tl['id'] == 'nodeL']
+    node_layer['tokens'].append({'id': 'r1', 'begin': 0, 'end': 14, 'metadata': {'umr': {
+        'snt': 1, 'rawGraph': '(s2d / dog\n    :ARG0 (s1t / thing', 'rawAlignment': 's2d: 2-2'}}})
+    return doc
+
+
+@pytest.mark.parametrize('overwrite', [False, True])
+def test_a_graph_kept_as_text_is_kept_and_its_names_stay_taken(overwrite):
+    """R4-3: a sentence whose graph an import kept as text has a graph. A run
+    leaves it, with Overwrite or without, and counts it kept. A draft of
+    another sentence does not take a name the kept graph defines, which a
+    relation another sentence holds for it by name waits for."""
+    service = _service(documents=[_kept_text_document()])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': overwrite})
+
+    assert len(service.model.calls) == 1
+    assert 'Sentence 2: It runs' in service.model.prompts[0]
+    [result] = helper.results
+    assert (result['drafted'], result['kept'], result['skipped']) == (1, 1, 0)
+    names = [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')]
+    assert len(names) == 3 and 's2d' not in names
+    # Nothing is written on sentence 1.
+    assert all(a['end'] > 14 for a in _anchors(service.client))
+
+
 def test_a_project_that_cannot_be_read_fails_the_run_without_asking_the_model():
     # R1-DEBT-CORE-16, the same read as the skeleton's: a failed read of the
     # project is not a project with no language.
