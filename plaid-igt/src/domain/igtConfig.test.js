@@ -284,6 +284,30 @@ describe('the import record', () => {
     });
   });
 
+  // REV-FX-R57-3 S5: a record write that fails leaves no vocabulary marked
+  // and off the record, where nothing would ever take the mark off.
+  it('names a vocabulary on the record before it marks it, and marks nothing when that fails', async () => {
+    const order = [];
+    const client = {
+      projects: { setConfig: async () => order.push('record') },
+      vocabLayers: { setConfig: async () => order.push('mark') },
+    };
+    await recordImportVocab(client, 'p1', { kind: 'CLDF', vocabsMade: [] }, 'v1');
+    expect(order).toEqual(['record', 'mark']);
+    const failing = {
+      projects: {
+        setConfig: async () => {
+          throw new Error('offline');
+        },
+      },
+      vocabLayers: { setConfig: async () => order.push('mark again') },
+    };
+    await expect(
+      recordImportVocab(failing, 'p1', { kind: 'CLDF', vocabsMade: [] }, 'v2'),
+    ).rejects.toThrow('offline');
+    expect(order).not.toContain('mark again');
+  });
+
   it('takes the mark off every vocabulary the import made before the record goes', async () => {
     const calls = [];
     const client = {

@@ -377,9 +377,11 @@ export const markImportStarted = async (client, projectId, kind, source) => {
  * into no other project. Answers the new record. Throws when a write fails.
  */
 export const recordImportVocab = async (client, projectId, record, vocabId) => {
-  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, IMPORT_KEY, { projectId });
+  // The record first: a vocabulary it names is taken by Delete or unmarked
+  // at the end, marked or not, and one marked off the record would stay shut.
   const next = { ...record, vocabsMade: [...(record.vocabsMade || []), vocabId] };
   await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, next);
+  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, IMPORT_KEY, { projectId });
   return next;
 };
 
