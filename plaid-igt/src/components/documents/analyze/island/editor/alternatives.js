@@ -1,7 +1,7 @@
 import { render, html, nothing } from 'lit-html';
 import { collationKey } from '@ui/domain/collation.js';
 import { TAGSET_SOURCE } from '@/domain/glossGuess';
-import { isValueAllowed, replacePartAtCaret } from '@/domain/tagsets';
+import { isValueAllowed, partAtCaret, replacePartAtCaret } from '@/domain/tagsets';
 import { anchoredPos, cellByKey } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 
@@ -31,14 +31,23 @@ export const alternatives = {
   // The row a list starts on: the one holding what the cell holds (on a pair
   // list the current pair, its gloss with its link or with none), so Enter
   // there leaves the cell as it was. Else a pair list starts where the
-  // chip's does (pairPicker.js), and a value list on its first row.
+  // chip's does (pairPicker.js). A value list on an empty cell starts on its
+  // first row, and on a filled cell with no such row on none.
   _altsStartRow(el, items) {
     const pair = !!items[0]?.pair;
-    const own = items.findIndex((it) =>
-      pair ? it.current && it.value === el.value : el.value !== '' && it.value === el.value,
-    );
-    if (own >= 0) return own;
-    return pair ? this._pairDefaultRow(items) : 0;
+    if (pair) {
+      const own = items.findIndex((it) => it.current && it.value === el.value);
+      return own >= 0 ? own : this._pairDefaultRow(items);
+    }
+    if (el.value === '') return 0;
+    // A filled cell starts on the row holding its value (in part mode, the
+    // part under the caret), or on no row, so Enter leaves it as it is
+    // (REV-FX-R55-2-1).
+    const delims = el.dataset.tagsetDelims || '';
+    const held = delims
+      ? (partAtCaret(el.value, el.selectionStart, delims)?.text ?? '').trim()
+      : el.value;
+    return items.findIndex((it) => it.value === held);
   },
 
   _closeAlts() {

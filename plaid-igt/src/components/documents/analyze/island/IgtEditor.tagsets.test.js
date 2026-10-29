@@ -780,3 +780,78 @@ describe('Escape on a governed cell', () => {
     expect(cell.value).toBe('N');
   });
 });
+
+// Alt+Down to look and Enter to leave never changes a filled cell the list
+// has no row for (REV-FX-R55-2-1): the list starts on the row holding the
+// value, in part mode the part under the caret, or on no row.
+describe('Alt+Down then Enter on a value list', () => {
+  const NFD = 'bẹ';
+  const NFC = 'bẹ';
+  const altDownEnter = async (tagset, g0, g1) => {
+    const doc = mount(tagset);
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan');
+    await twoSharingAForm(doc, g0, g1);
+    spy.mockClear();
+    const cell = glossCell();
+    focus(cell);
+    cell.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    const active = document.querySelector(
+      '.igt-alts__item.is-active .igt-alts__value',
+    )?.textContent;
+    const first = altsValues()[0];
+    key(cell, 'Enter');
+    await flush();
+    await flush();
+    return { written: spy.mock.calls.map((c) => c[2]), value: glossCell().value, active, first };
+  };
+
+  for (const [name, tagset, g0, g1] of [
+    ['a lexical gloss under mixed', { ...LEIPZIG, mode: 'mixed', delimiters: '' }, 'dog', 'PL'],
+    ['a lexical gloss under mixed with delimiters', { ...LEIPZIG, mode: 'mixed' }, 'dog', 'PL'],
+    ['an off-list value under closed', { ...LEIPZIG, delimiters: '' }, 'pl', 'PL'],
+    ['a value in another case under closed', { ...LEIPZIG, delimiters: '' }, 'nom', 'PL'],
+    [
+      'a value in another normalization',
+      { mode: 'closed', delimiters: '', values: [{ value: NFC }, { value: 'AA' }] },
+      NFD,
+      'AA',
+    ],
+    ['a composite whose last part is under the caret', LEIPZIG, 'NOM.1SG', 'PL.PL'],
+    [
+      'a composite with an unlisted part under the caret',
+      { ...LEIPZIG, mode: 'suggest' },
+      '1SG.ABL',
+      'PL',
+    ],
+  ]) {
+    it(`leaves ${name} as it is`, async () => {
+      const { written, value } = await altDownEnter(tagset, g0, g1);
+      expect(value).toBe(g0);
+      expect(written.filter((v) => v !== g0)).toEqual([]);
+    });
+  }
+
+  it('starts on the row holding the value, and Enter keeps it', async () => {
+    const { written, value, active } = await altDownEnter(
+      { ...LEIPZIG, delimiters: '' },
+      'PL',
+      'NOM',
+    );
+    expect(active).toBe('PL');
+    expect(value).toBe('PL');
+    expect(written.filter((v) => v !== 'PL')).toEqual([]);
+  });
+
+  it('takes the first row on an empty cell', async () => {
+    const { written, first } = await altDownEnter({ ...LEIPZIG, delimiters: '' }, '', 'NOM');
+    expect(first).toBeTruthy();
+    expect(written).toContain(first);
+  });
+});

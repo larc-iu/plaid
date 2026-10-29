@@ -672,3 +672,156 @@ test.describe('after review', () => {
     });
   });
 });
+
+// Alt+Down then Enter on a plain value list (a Gloss with a tagset and no
+// Lexicon field) over a value that is no row of it leaves the value as it is
+// (REV-FX-R55-2-1). A document of its own, and the Gloss layer's config put
+// back afterwards.
+test.describe('a value list over a value it has no row for', () => {
+  const NONCE = `v${Date.now().toString(36)}`;
+  const FORM = `kot${NONCE}`;
+  const BODY = Array(6).fill(FORM).join(' ');
+
+  let client;
+  let projectId;
+  let documentId;
+  let gloss;
+  let ids = {};
+  let saved0 = {};
+
+  test.beforeAll(async () => {
+    client = new PlaidClient(CORE, readToken().token);
+    ({ projectId } = await getFixture());
+    const full = await client.projects.get(projectId);
+    const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+    const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
+    const WORD = layer(ROLES.WORD);
+    const MORPH = layer(ROLES.MORPHEME);
+    gloss = MORPH.spanLayers.find((s) => s.name === 'Gloss');
+    saved0 = { tagsets: full.config?.igt?.tagsets, gloss: gloss.config?.igt };
+    documentId = (await client.documents.create(projectId, `rev55b ${NONCE}`)).id;
+    await client.texts.create(textLayer.id, documentId, BODY);
+    const raw = await client.documents.get(documentId, true);
+    const TEXT = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE).text.id;
+    const words = [...BODY.matchAll(/\S+/g)].map((m) => ({
+      begin: m.index,
+      end: m.index + m[0].length,
+    }));
+    await client.tokens.bulkCreate([
+      { tokenLayerId: layer(ROLES.SENTENCE).id, text: TEXT, begin: 0, end: cpLength(BODY) },
+    ]);
+    await client.tokens.bulkCreate(words.map((w) => ({ tokenLayerId: WORD.id, text: TEXT, ...w })));
+    await client.tokens.bulkCreate(
+      words.map((w) => ({ tokenLayerId: MORPH.id, text: TEXT, ...w, precedence: 1 })),
+    );
+    const seeded = await client.documents.get(documentId, true);
+    const ml = seeded.textLayers
+      .find((l) => roleOf(l) === ROLES.BASELINE)
+      .tokenLayers.find((l) => l.id === MORPH.id);
+    ids.m = words.map((x) => ml.tokens.find((t) => t.begin === x.begin).id);
+    // No Lexicon field on Gloss: its list is the plain value list.
+    await client.spanLayers.deleteConfig(gloss.id, 'igt', 'lexiconField').catch(() => {});
+  });
+
+  test.afterAll(async () => {
+    if (documentId) await client.documents.delete(documentId).catch(() => {});
+    if (saved0.gloss?.lexiconField)
+      await client.spanLayers.setConfig(gloss.id, 'igt', 'lexiconField', saved0.gloss.lexiconField);
+    if (saved0.gloss?.tagset)
+      await client.spanLayers.setConfig(gloss.id, 'igt', 'tagset', saved0.gloss.tagset);
+    else await client.spanLayers.deleteConfig(gloss.id, 'igt', 'tagset').catch(() => {});
+    if (saved0.tagsets)
+      await client.projects.setConfig(projectId, 'igt', 'tagsets', saved0.tagsets);
+    else await client.projects.deleteConfig(projectId, 'igt', 'tagsets').catch(() => {});
+  });
+
+  const values = async () => {
+    const raw = await client.documents.get(documentId, true);
+    const sl = raw.textLayers
+      .flatMap((t) => t.tokenLayers)
+      .flatMap((l) => l.spanLayers || [])
+      .find((s) => s.id === gloss.id);
+    return ids.m.map((m) => sl.spans.find((s) => s.tokens[0] === m)?.value ?? null);
+  };
+  const setValues = async (vals) => {
+    const raw = await client.documents.get(documentId, true);
+    const sl = raw.textLayers
+      .flatMap((t) => t.tokenLayers)
+      .flatMap((l) => l.spanLayers || [])
+      .find((s) => s.id === gloss.id);
+    for (const s of sl.spans) await client.spans.delete(s.id);
+    for (let i = 0; i < vals.length; i++)
+      if (vals[i]) await client.spans.create(gloss.id, [ids.m[i]], vals[i], {});
+  };
+  const cellOf = (page, i) => page.locator(`.igt-field[data-cell-key="ma:${ids.m[i]}:Gloss"]`);
+
+  const CASES = [
+    {
+      tag: 'V1 mixed, no delimiters, stem gloss dog',
+      mode: 'mixed',
+      delimiters: '',
+      vals: ['dog', 'PL', 'PL'],
+    },
+    {
+      tag: 'V2 mixed, delimiters, stem gloss dog',
+      mode: 'mixed',
+      delimiters: '.',
+      vals: ['dog', 'PL', 'PL'],
+    },
+    {
+      tag: 'V3 closed, delimiters, NOM.1SG',
+      mode: 'closed',
+      delimiters: '.',
+      vals: ['NOM.1SG', 'PL.PL', 'PL'],
+    },
+    {
+      tag: 'V4 closed, no delimiters, NFD value',
+      mode: 'closed',
+      delimiters: '',
+      vals: ['bẹ', 'AA', 'AA'],
+      list: ['bẹ', 'AA'],
+    },
+  ];
+
+  for (const c of CASES) {
+    test(c.tag, async ({ page }) => {
+      await client.projects.setConfig(projectId, 'igt', 'tagsets', {
+        T: {
+          mode: c.mode,
+          delimiters: c.delimiters,
+          values: (c.list || ['PL', '1SG', 'NOM']).map((value) => ({ value })),
+        },
+      });
+      await client.spanLayers.setConfig(gloss.id, 'igt', 'tagset', 'T');
+      await setValues(c.vals);
+      await seedAuth(page);
+      await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+      await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+      await page.waitForLoadState('networkidle');
+      const cell = cellOf(page, 0);
+      await cell.click();
+      await page.keyboard.press('Escape'); // close a list the click may have opened, keep the value
+      await cell.click();
+      await page.keyboard.press('Alt+ArrowDown');
+      const active = page.locator('.igt-alts__item.is-active');
+      console.log(
+        c.tag,
+        'active',
+        (await active.count())
+          ? (await active.first().textContent()).replace(/\s+/g, ' ').trim()
+          : '(none)',
+      );
+      await page.keyboard.press('Enter');
+      console.log(c.tag, 'cell after one Enter', await cell.inputValue().catch(() => '?'));
+      if (c.delimiters) await page.keyboard.press('Enter'); // the commit a part pick leaves for the next Enter
+      await expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
+      await page.waitForTimeout(800);
+      const v = await values();
+      console.log(
+        `RESULT ${c.tag}: stored ${JSON.stringify(v[0])} (was ${JSON.stringify(c.vals[0])})`,
+      );
+      // Core stores text composed, so a decomposed value comes back composed.
+      expect.soft(v[0]).toBe(c.vals[0].normalize('NFC'));
+    });
+  }
+});
