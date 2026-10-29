@@ -316,6 +316,7 @@ The **Type** list in a morpheme's link popover sets its type, and **—** clears
 On an unlinked morpheme it sets the morpheme's own type.
 On a morpheme linked to an entry with a type, it shows the entry's type, and a change applies to every use of the entry. Only the vocabulary's maintainers can change it.
 Linked to an entry with no type, the morpheme goes by its own, and the list shows and sets that, not the entry's.
+While **+ Create** is open, the list reads **Type (new entry)** and sets the type of the entry being created. Closing the create form with **Esc** brings back the list of the linked entry or the morpheme.
 In a project with no lexicon, the **set type** button under a morpheme opens the list.
 
 === Provenance
@@ -895,6 +896,9 @@ An import that stops before it finishes, whether you cancel it, it fails, or the
 Opening such a project takes you back to the import: choose the same file or files and it carries on, keeping what is already there.
 If what arrived is enough, **Use the project as it is** puts the project back in your hands.
 Its closed tagsets apply from then on, as they do when an import finishes.
+After a Plaid IGT archive, its lexicon, settings and layer rules are also completed as at the end of a whole import, and a reference to something that did not arrive is dropped and counted.
+If that fails part way, the archive's import can then only be ended as it is again, not carried on.
+When a Plaid IGT archive's import carries on, a half-made document someone has edited since it stopped is left as it is, unfinished, and named in the results.
 Only a maintainer of the project's vocabulary can carry on an import that still has to change that vocabulary's settings.
 
 == Exporting
