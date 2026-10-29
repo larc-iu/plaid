@@ -5,7 +5,7 @@ import { notifyError } from '@/utils/feedback';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
-import { vocabImporting } from '@/domain/igtConfig';
+import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -24,7 +24,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
       setHasError(false);
 
       // Get all available vocabularies
-      const allVocabs = await client.vocabLayers.list();
+      const allVocabs = await withLiveMarks(client, await client.vocabLayers.list());
 
       const linkedVocabIds = (project.vocabs || []).map((v) => v.id);
 

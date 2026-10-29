@@ -11,7 +11,7 @@ import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { vocabImporting } from '@/domain/igtConfig';
+import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');
@@ -27,7 +27,7 @@ export const VocabularyList = () => {
     try {
       setLoading(true);
       if (!client) throw new Error('Not authenticated');
-      const vocabList = await client.vocabLayers.list();
+      const vocabList = await withLiveMarks(client, await client.vocabLayers.list());
       setVocabularies(vocabList);
       setError('');
     } catch (err) {

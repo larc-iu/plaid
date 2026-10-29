@@ -1,6 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { vocabImporting } from '@igt/domain/igtConfig.js';
+import { vocabImporting, withLiveMarks } from '@igt/domain/igtConfig.js';
 
 // Every vocabulary this user can read, loaded once. A dictionary is reached by
 // its slug, which lives in the vocabulary's own config, so the list is what
@@ -35,7 +35,7 @@ export const CatalogProvider = ({ children }) => {
     if (!client) return;
     setLoading(true);
     try {
-      setAllVocabularies(await client.vocabLayers.list());
+      setAllVocabularies(await withLiveMarks(client, await client.vocabLayers.list()));
       setError('');
     } catch (err) {
       if (err.status === 401) {

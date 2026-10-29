@@ -419,6 +419,44 @@ export const unmarkVocab = async (client, vocabId) => {
 export const vocabImporting = (config) => readIgt(config, IMPORT_KEY) != null;
 
 /**
+ * `vocabs` as every reader of the mark reads them (igt's vocabulary page and
+ * lists, project settings, setup, the FLEx picker, plaid-dict's catalog): a
+ * mark whose project no longer exists (404) reads as no mark, so a vocabulary
+ * a Delete kept and could not unmark is an ordinary one. One read per
+ * project a mark names, and no write. A project the reader cannot see (403)
+ * or could not reach still counts as there.
+ */
+export const withLiveMarks = async (client, vocabs) => {
+  const named = new Set(
+    (vocabs || [])
+      .filter((v) => vocabImporting(v?.config))
+      .map((v) => v.config[IGT_NAMESPACE][IMPORT_KEY]?.projectId)
+      .filter(Boolean),
+  );
+  const gone = new Set();
+  // The status read in place, not through plaid-ui's statusOf: this module's
+  // imports are part of the built-in rules' versions (builtinVersion.test.js).
+  await Promise.all(
+    [...named].map(async (id) => {
+      try {
+        await client.projects.get(id);
+      } catch (err) {
+        if (err?.status === 404 || /\bHTTP 404\b/.test(String(err?.message))) gone.add(id);
+      }
+    }),
+  );
+  if (!gone.size) return vocabs;
+  return vocabs.map((v) => {
+    const projectId = vocabImporting(v?.config)
+      ? v.config[IGT_NAMESPACE][IMPORT_KEY]?.projectId
+      : null;
+    if (!gone.has(projectId)) return v;
+    const { [IMPORT_KEY]: _, ...igt } = v.config[IGT_NAMESPACE];
+    return { ...v, config: { ...v.config, [IGT_NAMESPACE]: igt } };
+  });
+};
+
+/**
  * Record that it finished: the mark comes off every vocabulary the record
  * names, then the record goes. Says whether it all went, since a project that
  * keeps its record does not open.

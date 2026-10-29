@@ -22,6 +22,7 @@ import {
   recordImportVocab,
   recordImportEntries,
   vocabImporting,
+  withLiveMarks,
   markImportFinished,
   readImportState,
   IGNORED_TOKEN_MODES,
@@ -306,6 +307,34 @@ describe('the import record', () => {
       recordImportVocab(failing, 'p1', { kind: 'CLDF', vocabsMade: [] }, 'v2'),
     ).rejects.toThrow('offline');
     expect(order).not.toContain('mark again');
+  });
+
+  // REV-FX-R57-3-1: a mark whose project is gone reads as no mark, a reader
+  // rule with no write. A project the reader cannot see (403) still counts.
+  it('reads a mark whose project is gone as no mark, and writes nothing', async () => {
+    const asked = [];
+    const client = {
+      projects: {
+        get: async (id) => {
+          asked.push(id);
+          if (id === 'gone') throw Object.assign(new Error('Not found'), { status: 404 });
+          if (id === 'hidden') throw Object.assign(new Error('Forbidden'), { status: 403 });
+          return { id };
+        },
+      },
+    };
+    const mark = (projectId) => ({ igt: { import: { projectId }, fields: {} } });
+    const vocabs = [
+      { id: 'a', config: mark('gone') },
+      { id: 'b', config: mark('gone') },
+      { id: 'c', config: mark('hidden') },
+      { id: 'd', config: mark('live') },
+      { id: 'e', config: {} },
+    ];
+    const read = await withLiveMarks(client, vocabs);
+    expect(read.map((v) => vocabImporting(v.config))).toEqual([false, false, true, true, false]);
+    expect(read[0].config.igt).toEqual({ fields: {} });
+    expect(asked.sort()).toEqual(['gone', 'hidden', 'live']);
   });
 
   it('takes the mark off every vocabulary the import made before the record goes', async () => {

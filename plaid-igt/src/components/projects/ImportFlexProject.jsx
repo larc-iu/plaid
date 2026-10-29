@@ -49,7 +49,7 @@ import { readTextFile } from '@ui/lib/textFile.js';
 import { sameName } from '@ui/lib/nameKey.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { readyRecordings } from '@/utils/readyRecordings';
-import { vocabImporting } from '@/domain/igtConfig';
+import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`).
@@ -213,6 +213,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       if (!flextext) {
         client.vocabLayers
           .list()
+          .then((all) => withLiveMarks(client, all || []))
           .then((all) =>
             setExistingVocabs(
               // One an unfinished import made takes no entries (R58).

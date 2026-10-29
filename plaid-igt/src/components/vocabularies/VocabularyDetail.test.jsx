@@ -142,10 +142,10 @@ describe('a vocabulary an unfinished import made', () => {
 });
 
 // REV-FX-R57-3-1: a mark left on a vocabulary whose project is gone (a
-// Delete whose unmark failed) never keeps it shut: the page opens, and a
-// maintainer's visit takes the mark off.
+// Delete whose unmark failed) never keeps it shut: it reads as no mark, and
+// opening the page writes nothing (beta ruling R3).
 describe('a vocabulary marked for a project that is gone', () => {
-  it('opens as an ordinary vocabulary, and loses the mark', async () => {
+  it('opens as an ordinary vocabulary, and writes nothing', async () => {
     const unmarked = [];
     auth.client = {
       vocabLayers: {
@@ -169,7 +169,7 @@ describe('a vocabulary marked for a project that is gone', () => {
     await view.step(() => new Promise((r) => setTimeout(r, 0)));
     expect(view.container.textContent).not.toContain('belongs to an import that did not finish');
     expect(heading(view.container)).toBe('Left lexicon');
-    expect(unmarked).toEqual([['A', 'igt', 'import']]);
+    expect(unmarked).toEqual([]);
     await view.unmount();
   });
 });

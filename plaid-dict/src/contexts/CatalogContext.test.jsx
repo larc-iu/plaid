@@ -89,3 +89,38 @@ describe('the catalog and an unfinished import’s vocabulary', () => {
     await view.unmount();
   });
 });
+
+// A mark whose project is gone reads as no mark (REV-FX-R57-3-1): the
+// vocabulary is an ordinary dictionary again, and nothing is written.
+describe('a vocabulary marked for a project that is gone', () => {
+  it('is a dictionary again', async () => {
+    const left = { id: 'left', config: { igt: { import: { projectId: 'gone' } } } };
+    const half = { id: 'half', config: { igt: { import: { projectId: 'live' } } } };
+    const client = {
+      vocabLayers: { list: async () => [left, half] },
+      query: async () => ({ results: [] }),
+      projects: {
+        list: async () => [],
+        get: async (id) => {
+          if (id === 'gone') throw Object.assign(new Error('Not found'), { status: 404 });
+          return { id };
+        },
+      },
+    };
+    auth.current = { client, logout: () => {} };
+    let seen = null;
+    const Probe = () => {
+      seen = useCatalog();
+      return null;
+    };
+    const view = await renderComponent(
+      <CatalogProvider>
+        <Probe />
+      </CatalogProvider>,
+    );
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(seen.vocabularies.map((v) => v.id)).toEqual(['left']);
+    expect(seen.allVocabularies.map((v) => v.id)).toEqual(['left', 'half']);
+    await view.unmount();
+  });
+});

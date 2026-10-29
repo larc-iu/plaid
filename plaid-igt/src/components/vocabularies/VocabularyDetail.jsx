@@ -24,8 +24,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@ui/components/ui/select';
-import { readVocabFields, IGT_NAMESPACE, unmarkVocab, vocabImporting } from '@/domain/igtConfig';
-import { statusOf } from '@ui/lib/errors.js';
+import { readVocabFields, IGT_NAMESPACE, vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -143,8 +142,8 @@ export const VocabularyDetail = () => {
     mintRef.current = null;
   }, [editedName]);
   // A mark naming a project that is gone (a Delete that could not take it
-  // off) never keeps the vocabulary shut: it opens as an ordinary one, and a
-  // maintainer's visit takes the mark off (REV-FX-R57-3-1).
+  // off) reads as no mark (`withLiveMarks`), so the vocabulary opens as an
+  // ordinary one. A read only: opening writes nothing (REV-FX-R57-3-1, R3).
   const [staleMark, setStaleMark] = useState(false);
   const markedFor = vocabImporting(vocabulary?.config)
     ? (vocabulary.config[IGT_NAMESPACE].import?.projectId ?? null)
@@ -153,10 +152,8 @@ export const VocabularyDetail = () => {
     setStaleMark(false);
     if (!markedFor) return undefined;
     let alive = true;
-    client.projects.get(markedFor).catch(async (err) => {
-      if (!alive || statusOf(err) !== 404) return;
-      setStaleMark(true);
-      if (canManageVocabulary(vocabulary, user)) await unmarkVocab(client, vocabulary.id);
+    withLiveMarks(client, [vocabulary]).then(([read]) => {
+      if (alive) setStaleMark(!vocabImporting(read.config));
     });
     return () => {
       alive = false;

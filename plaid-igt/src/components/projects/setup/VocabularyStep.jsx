@@ -1,7 +1,7 @@
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
-import { vocabImporting } from '@/domain/igtConfig';
+import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 
 export const VocabularyStep = ({ data, onDataChange, client }) => {
   const { user } = useAuth();
@@ -10,7 +10,7 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
     try {
       if (!client) throw new Error('Not authenticated');
 
-      const vocabList = await client.vocabLayers.list();
+      const vocabList = await withLiveMarks(client, (await client.vocabLayers.list()) || []);
 
       // Transform API vocabs into our format
       const initialVocabs = (vocabList || []).map((vocab) => ({
