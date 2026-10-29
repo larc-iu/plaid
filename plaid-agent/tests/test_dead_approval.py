@@ -97,6 +97,33 @@ def test_a_dead_approval_keeps_how_it_was_asked_to_be_recorded():
     assert item['status'] == 'partial' and item['as_human'] is True
 
 
+def test_a_run_another_process_took_for_dead_settles_applied_once_it_writes_everything():
+    """A second process under the same service id cannot see the first one's
+    run and settles its plan partly applied. The run then writes the whole
+    plan and answers Applied: the card says applied too (REV-FX-R53-2)."""
+    client = FakeClient()
+    _seed_plan(client, request_id=None)
+    _set_meta(client, pending=None)
+    svc1, svc2 = _service(), _service()
+    real = svc1.execute_plan
+    seen = {}
+
+    def execute(*a, **k):
+        out = real(*a, **k)
+        svc2.process_request(_req(client, 'hold'), Helper(request_id='h-other'))
+        seen['mid'] = _settled_item(client)[2].get('status')
+        return out
+    svc1.execute_plan = execute
+    helper = Helper(request_id='a1')
+    svc1.process_request(_req(client, 'approve', plan_id=PLAN1), helper)
+    assert seen['mid'] == 'partial', 'the other process settled the run it took for dead'
+    assert helper.done[0]['kind'] == 'applied' and not helper.done[0].get('partial')
+    conv, meta, item = _settled_item(client)
+    assert item['status'] == 'applied'
+    assert 'outcome' not in item and 'written' not in item
+    assert conv['messages'][-1]['content'].startswith('(note) The plan was approved and applied')
+
+
 def test_a_record_holding_the_old_apply_again_keys_reads_and_applies():
     """A plan stored by the code before R53 may carry ``writing``,
     ``expansion``, ``held_from`` and ``interrupted``. Nothing reads them now:

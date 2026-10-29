@@ -865,13 +865,21 @@ def plan_settling(plan_id: str, status: Optional[str] = None, note: Optional[str
     """The change an approval writes on the plan ``plan_id``: ``status``
     (with ``note`` for the model and ``fields`` on the card, `settle_plan`),
     or with no status, nothing (the request's marker is cleared beside it).
-    A plan already settled (see `WROTE` for the one exception), or one that
-    is gone, leaves the record as it is."""
+    A plan already settled (see `WROTE` and `DIED_OUTCOME` for the
+    exceptions), or one that is gone, leaves the record as it is."""
     def change(stored: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         index, item = find_plan(stored, plan_id)
         if item is None or status is None:
             return stored
         was = item.get('status')
+        # Another process took this run for dead and settled the plan on a
+        # guess (`DIED_OUTCOME`): the run's own outcome replaces the guess.
+        if status in WROTE and was == 'partial' and item.get('outcome') == DIED_OUTCOME:
+            guess = ('written', 'outcome', 'contributed')
+            plain = {k: v for k, v in item.items() if k not in guess}
+            return settle_plan({**stored, 'display': [plain if i == index else d
+                                                      for i, d in enumerate(stored['display'])]},
+                               index, status, note, **fields)
         # A plan settled meanwhile keeps that outcome, unless this run
         # wrote (applied, partial) and the outcome there says it did not
         # (discarded in another tab while the run held the documents).
