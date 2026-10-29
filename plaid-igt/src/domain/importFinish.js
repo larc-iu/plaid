@@ -1,7 +1,12 @@
 // The end of an import, however it ends: run to the end, resumed to the end,
 // or ended by "Use the project as it is". Relative imports only: the
 // fidelity drivers run this from plain node.
-import { markImportFinished, readImportState, readInitialized } from './igtConfig.js';
+import {
+  markImportEnding,
+  markImportFinished,
+  readImportState,
+  readInitialized,
+} from './igtConfig.js';
 import { declareIgtRules } from './igtConstraints.js';
 import { notInForceText } from '../components/projects/settings/refusedValues.js';
 import { finishArchiveImport } from '../import/native/importEngine.js';
@@ -40,8 +45,11 @@ export const finishImport = async (client, projectId) => {
     if (record?.kind === NATIVE_IMPORT_KIND && record.finish) {
       // Left on the record when it fails, so ending the import again redoes
       // it: a project left naming the archive's ids is worse than one that
-      // still opens on its import.
+      // still opens on its import. Once it has begun, the import is only
+      // ended again, never resumed (`markImportEnding`).
       try {
+        // Before anything is written: from here on the import only ends.
+        if (!record.finish.endingAsIs) await markImportEnding(client, projectId, record);
         const { rulesFailed } = await finishArchiveImport({
           client,
           projectId,

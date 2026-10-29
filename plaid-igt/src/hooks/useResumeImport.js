@@ -55,6 +55,12 @@ export function useResumeImport(client) {
     if (warnings.length) notifyWarning(warnings.join(' '), NOT_IN_FORCE_TITLE);
     if (!cleared) {
       notifyError('The import record could not be cleared.', 'Failed to finish the import');
+      // What the record says now: an archive import that began ending is
+      // only ended again.
+      client.projects
+        .get(resumeId)
+        .then((p) => setResumeProject(p ?? null))
+        .catch(() => {});
       return;
     }
     navigate(`/projects/${resumeId}`, { replace: true });

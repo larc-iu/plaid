@@ -33,6 +33,7 @@ import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { NATIVE_IMPORT_KIND } from '@/domain/importFinish';
+import { importEnding } from '@/domain/igtConfig';
 
 export const ImportNativeProject = () => {
   useDocumentTitle('Import archive');
@@ -44,7 +45,9 @@ export const ImportNativeProject = () => {
   const [projectName, setProjectName] = useState('');
 
   // Survive retries within this page session (see header comment).
-  const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
+  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
+  // "Use the project as it is" began and did not finish: it is only ended again.
+  const ending = importEnding(resumeProject?.config);
   const {
     stage,
     setStage,
@@ -121,7 +124,9 @@ export const ImportNativeProject = () => {
           resume={
             resumeId && {
               name: resumeName,
-              again: 'Choose the same file: what is already there is unchanged.',
+              again: ending
+                ? 'Ending it as it is did not finish.'
+                : 'Choose the same file: what is already there is unchanged.',
               onFinishAsIs: finishAsIs,
             }
           }
@@ -130,7 +135,7 @@ export const ImportNativeProject = () => {
           alignment, media, and provenance.
         </ImportHeader>
 
-        {stage === 'pick' && (
+        {stage === 'pick' && !ending && (
           <FileDropZone
             onFiles={(files) => handleFile(files?.[0])}
             title="Drop an exported .zip archive here, or click to choose"

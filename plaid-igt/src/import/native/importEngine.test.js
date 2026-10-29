@@ -1859,6 +1859,41 @@ describe('an import that stopped, then resumed or ended as it is', () => {
     expect(result.warnings.join(' ')).not.toMatch(/parent|variantOf/);
   });
 
+  it.each([
+    ['in the lexicon relink', 'vocabItems.bulkUpdate'],
+    ['once everything is relinked', 'projects.deleteConfig'],
+  ])(
+    'after "Use the project as it is" fails %s, ends again and is never resumed (REV-FX-R4-IMP-2-1, -2)',
+    async (_when, failing) => {
+      const store = makeStore();
+      await stopInSecond(store);
+      const once = await finishImport(
+        stubClient({ store, failAt: (name) => name === failing }),
+        'newp',
+      );
+      expect(once.cleared).toBe(false);
+      expect(store.config.igt.import.finish.endingAsIs).toBe(true);
+
+      // A resume would take what the ending wrote for a person's work.
+      const resume = stubClient({ store });
+      await expect(
+        runNativeImport({ client: resume, projectId: 'newp', archive: stoppedArchive() }),
+      ).rejects.toBeInstanceOf(NotYoursToFinish);
+      expect(
+        resume.calls.filter(([n]) => !n.endsWith('.get') && n !== 'projects.listDocuments'),
+      ).toEqual([]);
+
+      // Ending again lands where a clean ending does.
+      const again = await finishImport(stubClient({ store }), 'newp');
+      expect(again.cleared).toBe(true);
+      expect(store.config.igt.import).toBeUndefined();
+      const [one] = [...store.docs.values()];
+      expect(byGloss(store, 'run').metadata.examples).toEqual([
+        { document: one.id, token: expect.stringMatching(/^tok-/) },
+      ]);
+    },
+  );
+
   it('remakes a half-made document nobody wrote to after the stop (R4-2)', async () => {
     const store = makeStore();
     const [, half] = await stopInSecond(store);

@@ -408,6 +408,22 @@ export const recordImportUnmarked = (client, projectId, record, unmarked) =>
   client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, { ...record, unmarked });
 
 /**
+ * Record that an archive import is being ended as it is ("Use the project as
+ * it is"), before that writes anything: from then on the import is only ended
+ * again, never resumed, since a resume would take what the ending wrote for a
+ * person's work. `record` is the import record as read. Throws when the
+ * write fails.
+ */
+export const markImportEnding = (client, projectId, record) =>
+  client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
+    ...record,
+    finish: { ...record.finish, endingAsIs: true },
+  });
+
+/** Whether the import `config` records is being ended as it is. */
+export const importEnding = (config) => readImportState(config)?.finish?.endingAsIs === true;
+
+/**
  * Where an unfinished import of `kind` is picked up again (the routes are in
  * App.jsx). Null for a kind this app has no wizard for.
  */

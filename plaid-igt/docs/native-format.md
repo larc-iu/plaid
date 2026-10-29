@@ -489,7 +489,10 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    examples name, and the operation each run was filed under). A reference to
    something the import never made is dropped and counted, never left naming
    the archive's id. A layer rule whose declaration fails leaves the plan on
-   the record, so ending the import again declares it.
+   the record, so ending the import again declares it. Before its first write,
+   ending as it is marks the plan (`endingAsIs`), and from then on the import
+   is only ended again, never resumed: a resume would take what the ending
+   wrote for somebody's work.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
    An entry or document whose metadata is at core's key cap (500 keys, counted
    at every level) has no room for the import's marks. It is created unmarked

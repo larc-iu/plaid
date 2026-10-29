@@ -41,6 +41,7 @@ import { documentProgress } from '../progress.js';
 import {
   IMPORT_STAMP_KEYS,
   ImportCancelled,
+  NotYoursToFinish,
   importStamp,
   priorImports,
   writeVocabConfig,
@@ -1099,6 +1100,13 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const targets = resolveNativeTargets(project, archive.manifest);
   const warnings = [];
   const unmarked = importLedger({ client, projectId, project });
+  // "Use the project as it is" began and did not finish: a resume would take
+  // what it wrote for a person's work, so the import is only ended again.
+  if (unmarked.finish()?.endingAsIs) {
+    throw new NotYoursToFinish(
+      'Ending this import as it is did not finish. Use the project as it is again.',
+    );
+  }
   // What the finish step needs that the project will not hold, on the import
   // record from the start, so "Use the project as it is" can run it.
   const plan = finishPlan(archive, unmarked.finish());
