@@ -1575,7 +1575,13 @@
                                          :body {:error (ex-message e)
                                                 :violations vs
                                                 :violation-count (:violation-count (ex-data e))}}}))
-                       (throw e))))]
+                       ;; a refusal of the partitions' check (a 409): the
+                       ;; batch's answer, as a lone request's would be
+                       (let [code (:code (ex-data e))]
+                         (if (and (int? code) (<= 400 code 499))
+                           (throw (ex-info "batch-failed"
+                                           {:plaid.batch/failure {:status code :body {:error (ex-message e)}}}))
+                           (throw e))))))]
       (if (seq bumped)
         (let [header (get-in response [:headers "X-Document-Versions"])
               named (keys (some-> header (psc/read-json)))

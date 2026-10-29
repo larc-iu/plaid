@@ -537,9 +537,9 @@
   the whole body, bare, made in one `layer/apply-constraints` operation per
   document, so the save's `reshape` names it. A batch that makes the
   partition itself after the save (a first save that sends its sentences
-  with the edit) leaves nothing to make. Then a token the transaction made on
-  a layer whose parent layer still holds no token is refused (409), as the
-  token routes refuse it. Returns the documents the operations bumped.
+  with the edit) leaves nothing to make. Then a token the transaction made
+  that no token of its parent layer contains is refused (409), as the token
+  routes refuse it. Returns the documents the operations bumped.
   `batch-id` gives the batch the operations join, the save's, so History
   shows the save and the token as one step."
   [tx user batch-id]
@@ -583,13 +583,26 @@
              _ (when (and result (not (:success result)))
                  (throw (ex-info (str "Making a partition token for text " eid " failed: " (:error result))
                                  {:code 500})))
-             held (into held (map :id) make)
-             made-here (keep (fn [{:keys [table pre deleted? layer] :as info}]
-                               (when (and (= "tokens" table) (nil? pre) (not deleted?) (= doc (:doc info))
-                                          (parent-of layer) (not (held (parent-of layer))))
-                                 layer))
-                             (vals @psaw/*pending*))]
-         (when-let [l (first made-here)]
+             ;; the tokens the transaction made on layers with a parent,
+             ;; judged against the parent layers as they now stand
+             made (keep (fn [{:keys [table pre deleted? layer id] :as info}]
+                          (when (and (= "tokens" table) (nil? pre) (not deleted?)
+                                     (= doc (:doc info)) (parent-of layer))
+                            [(str id) layer]))
+                        (vals @psaw/*pending*))
+             made-ids (into #{} (map first) made)
+             layers (into #{} (mapcat (fn [[_ l]] [l (parent-of l)])) made)
+             outside (when (seq made)
+                       (->> (psc/q tx {:select [:*] :from [:tokens]
+                                       :where [:and [:= :text_id eid] [:in :token_layer_id layers]]})
+                            (mapv token/row->token)
+                            ((fn [ts]
+                               ;; a parent layer holding no token holds no child
+                               (let [held (into #{} (map :token/layer) ts)]
+                                 (concat (outside-parents parent-of ts)
+                                         (filter #(when-let [p (parent-of (:token/layer %))] (not (held p))) ts)))))
+                            (filter #(made-ids (str (:token/id %))))))]
+         (when-let [l (:token/layer (first outside))]
            (throw (ex-info (str "The change would leave a token of layer \"" (named l)
                                 "\" outside every token of layer \"" (named (parent-of l))
                                 "\", which the layer does not allow.")

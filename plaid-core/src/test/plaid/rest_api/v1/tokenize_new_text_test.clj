@@ -266,3 +266,26 @@
     (is (= [[0 6]] (sentences-of sentences)))
     (is (= [[0 6]] (map (juxt :begin :end) made)))
     (is (every? #(empty? (:metadata %)) made))))
+
+(deftest a-batch-that-leaves-a-new-word-outside-the-parent-it-made-is-refused
+  ;; REV-FX-R3-2-2: words under a layer that is no partition, the parent made
+  ;; in the same batch over the first new word only: the second would sit in
+  ;; no parent, so nothing of the batch is stored
+  (let [proj (create-test-project admin-request "TokProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        phrases (-> (create-token-layer-opts admin-request tl "Phrases" {:overlap-mode "non-overlapping"}) :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"
+                                                                     :parent-token-layer-id phrases})
+                  :body :id)
+        text (-> (create-text admin-request tl doc "") :body :id)
+        res (api-call admin-request {:method :post :path "/api/v1/batch"
+                                     :body [{:path (str "/api/v1/texts/" text) :method "patch"
+                                             :body {:edits [(ins 0 "aa bb")] :tokenize-layer words}}
+                                            {:path "/api/v1/tokens" :method "post"
+                                             :body {:token-layer-id phrases :text text :begin 0 :end 2}}]})]
+    (is (= 409 (:status res)) (pr-str (:body res)))
+    (is (re-find #"Phrases" (str (-> res :body :error))))
+    (is (= [] (words-of words)))
+    (is (= [] (words-of phrases)))
+    (is (= "" (:body (psc/q1 db {:select [:body] :from [:texts] :where [:= :id text]}))))))
