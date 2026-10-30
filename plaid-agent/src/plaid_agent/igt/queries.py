@@ -897,6 +897,24 @@ def _with_value(c: Corpus, var: str, spec: Dict[str, Any], morpheme: bool) -> Li
     return [['or', own, inner]]
 
 
+#: The most hits of one form whose ids analyses_of holds its reads to.
+PIN_MAX = 20000
+
+
+def _pinned(c: Corpus, where: List[Any], var: str, bare: List[Any]) -> List[Any]:
+    """``where`` as the clauses ``bare`` held to the ids of the ``var`` it
+    finds, found in one read, or [] when it finds none. The form's regex
+    runs over text no index serves, so every read that carried it scanned
+    the project again: about a dozen scans a form, minutes for a sentence
+    on a large project. A form with more hits than :data:`PIN_MAX` keeps
+    ``where`` as it is."""
+    res = c.run({'find': [var], 'where': where, 'limit': PIN_MAX})
+    if res.get('truncated'):
+        return where
+    ids = [row[0] for row in res.get('results') or []]
+    return bare + [['in', f'{var}.id', ids]] if ids else []
+
+
 def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[str] = None) -> str:
     """Precedent tallies for a form, from grouped queries: per field, per
     morpheme slot, links, and a few rendered examples. The occurrences
@@ -926,8 +944,8 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
         return out
 
     # the word
-    word = [c.word('?w', value=spec)]
-    n = c.word_count(word, '?w')
+    word = _pinned(c, [c.word('?w', value=spec)], '?w', [c.word('?w')])
+    n = c.word_count(word, '?w') if word else 0
     found.append(n)
     if not n:
         lines.append(f'Word "{form}": no occurrences.')
@@ -981,8 +999,9 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
             lines.extend(_value_refs(ws, word + _with_value(c, '?w', vspec, False), '?w', value, False))
     # the morpheme
     if c.M:
-        morph = c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w')
-        n = c.count(morph, ['?m'])
+        morph = _pinned(c, c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w'), '?m',
+                        c.in_word('?m', '?w'))
+        n = c.count(morph, ['?m']) if morph else 0
         found.append(n)
         if not n:
             lines.append(f'Morpheme "{form}": no occurrences.')

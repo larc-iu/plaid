@@ -2,6 +2,8 @@
 set_analysis over several words, and set_morpheme for one morpheme's form
 or type without rewriting its chain."""
 
+import json
+
 import pytest
 from plaid_client.testing import as_fragment
 
@@ -25,6 +27,33 @@ def test_analyses_of_takes_several_forms():
     assert call_tool(w, 'analyses_of', {'form': 'gam'}) == blocks[0]
     assert 'Give a form' in call_tool(w, 'analyses_of', {})
     assert 'At most' in call_tool(w, 'analyses_of', {'forms': [f'f{i}' for i in range(41)]})
+
+
+def test_analyses_of_reads_each_form_from_the_text_twice():
+    """The form's regex runs over text no index serves, so each read that
+    carries it scans the project. On a 78,000-word project eight forms took
+    over eight minutes at a dozen such reads a form. Its words and its
+    morphemes are found once each, and every tally is held to their ids."""
+    client = FakeClient()
+    asked = []
+    real = client.query
+
+    def query(body):
+        asked.append(json.dumps(body.get('where')))
+        return real(body)
+    client.query = query
+    out = call_tool(fake_ws(client), 'analyses_of', {'forms': ['gam', 'di', 'zzz']})
+    assert 'Morpheme "gam": 2 occurrences' in out and 'Morpheme "di": 1 occurrence' in out
+    assert sum('"regex"' in w for w in asked) == 6
+
+
+def test_analyses_of_reads_a_form_with_too_many_hits_from_its_pattern(monkeypatch):
+    """Past PIN_MAX hits the reads keep the pattern, and say the same."""
+    from plaid_agent.igt import queries
+    w = ws()
+    pinned = call_tool(w, 'analyses_of', {'forms': ['gam', 'di']})
+    monkeypatch.setattr(queries, 'PIN_MAX', 1)
+    assert call_tool(ws(), 'analyses_of', {'forms': ['gam', 'di']}) == pinned
 
 
 def test_set_analysis_takes_several_words_and_stages_them_together():
