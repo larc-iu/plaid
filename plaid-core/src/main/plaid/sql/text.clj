@@ -224,7 +224,7 @@
   "Work out what a body save writes, from what `db` holds now: the new body,
   the tokens to delete, the new extents of the others, and the tokens that
   survive. Reads only the text row, its tokens and their layers' rows, and
-  writes nothing, so `update-body` can run it before it takes the write lock.
+  writes nothing.
   Nil when the text does not exist. Throws what the save should answer when
   the ops or the new body are refused, and a 409 when `base` is given and
   is not the stored body's digest.
@@ -398,47 +398,13 @@
                                         {:code 409 :id eid :layer layer}))))
                     survivors)})))
 
-(defn- last-op-ts
-  "The time of the newest operation on the server, or \"\" when there is none.
-  Every operation's `ts` is stamped under the write lock and is strictly
-  greater than every earlier one, so an operation that commits after this
-  read has a greater `ts`."
-  [db]
-  (or (:ts (psc/q1 db {:select [[[:max :ts] :ts]] :from [:operations]})) ""))
-
-(defn- written-since?
-  "True when an operation other than `op-id` that could have changed what a
-  save of document `doc-id` in project `project-id` read has committed since
-  `ts`: one naming the document, one naming the project and no document (a
-  layer write), or one naming neither. Every write to a text or a token
-  records an operation naming its document, and every write to a token layer
-  one naming its project and no document (the writers are listed in the
-  V-LOCK report of the 2026-09-28 UMR round, and
-  `text-save-outside-lock-test` pins it), so false means the save's inputs
-  are as they were at `ts`. A write to another document of the project
-  changes nothing the save read. The operations naming no project are
-  vocabulary, user and API token writes, which reach no text or token today.
-  They are counted anyway, so a writer that one day leaves its project out
-  makes a save work itself out again rather than write stale rows. Three
-  seeks, on `idx_operations_document_ts` and `idx_operations_project_ts`."
-  [tx project-id doc-id ts op-id]
-  (let [newer? (fn [scope]
-                 (some? (psc/q1 tx {:select [:id]
-                                    :from [:operations]
-                                    :where [:and scope [:> :ts ts] [:<> :id op-id]]
-                                    :limit 1})))]
-    (or (newer? [:= :document_id doc-id])
-        (newer? [:and [:= :project_id project-id] [:= :document_id nil]])
-        (newer? [:= :project_id nil]))))
-
 (declare ^:private save!*)
 
 (defn- save!
   "The write of `update-body` and `edit-body`: `change` as `save-plan` takes
-  it, worked out ahead of the write lock and again under it when a write
-  that could change what it read has committed meanwhile (see
-  `update-body`). The answer carries the operation's id and ts as `:op`, so
-  the route can read what it wrote (see `reshape`)."
+  it, worked out under the write lock (see `update-body`). The answer
+  carries the operation's id and ts as `:op`, so the route can read what it
+  wrote (see `reshape`)."
   [db eid change base tokenize-layer user-id description]
   (if (and (map? change) (sequential? (:edits change)) (empty? (:edits change)))
     ;; An empty edits list changes nothing, so it writes nothing: no
@@ -460,15 +426,6 @@
         valid? (or (string? change)
                    (sequential? change)
                    (and (map? change) (sequential? (:edits change))))
-        ;; Read the newest operation first: whatever commits after it, while
-        ;; the plan below reads, has a later ts and makes the save recompute.
-        ahead (when (and pre project valid? (not (instance? java.sql.Connection db)))
-                (let [ts (last-op-ts db)]
-                  ;; A save the plan refuses is refused again under the lock,
-                  ;; where the error becomes the answer.
-                  (when-let [plan (try (save-plan db eid change base tokenize-layer)
-                                       (catch Exception _ nil))]
-                    {:ts ts :plan plan})))
         op (volatile! nil)
         result
         (submit-operation!
@@ -487,9 +444,7 @@
            (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
          (vreset! op (assoc (select-keys psaw/*op* [:id :ts]) :document (:document_id pre)))
          (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors heads]}
-               (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
-                     (:plan ahead))
-                   (save-plan tx eid change base tokenize-layer)
+               (or (save-plan tx eid change base tokenize-layer)
                    (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
                multi-delete! token/multi-delete!
                compensate-partition-layers! token/compensate-partition-layers!]
@@ -625,14 +580,10 @@
   gets the words of \"Tokenize new text\" on that layer, made after the old
   tokens are placed (see `plaid.algos.text/new-words`).
 
-  The diff and the token arithmetic (`save-plan`) run BEFORE the write lock,
-  on what the database holds then, which at 50,000 words takes seconds.
-  Inside `BEGIN IMMEDIATE` the save checks that no operation has committed
-  since that could change what it read (`written-since?`): one on its
-  document, on its project's layers, or naming no project. If none has, it writes what it
-  worked out. If one has, it works the save out again under the lock, as
-  every save did before. Inside an atomic batch the lock is already held,
-  so the save works it out there once.
+  The diff and the token arithmetic (`save-plan`) run once, inside the
+  operation's `BEGIN IMMEDIATE`, on what the database holds under the write
+  lock. A keyed write (every client write) and an atomic batch hold the lock
+  for the whole route already (`plaid.rest-api.v1.idempotency/keyed-write`).
 
   Writes, all inside the transaction:
     1. Tokens whose extent falls entirely inside a deletion range are

@@ -211,7 +211,7 @@
  plaid.sql.span-layer-cascade-test 438,
  plaid.sql.sqlite-busy-test 422,
  plaid.sql.text-long-save-test 2294,
- plaid.sql.text-save-outside-lock-test 5307,
+ plaid.sql.text-save-lock-test 3300,
  plaid.sql.token-split-others-test 437,
  plaid.sql.user-constraint-test 1053,
  plaid.sql.uuid-coercion-test 10,
