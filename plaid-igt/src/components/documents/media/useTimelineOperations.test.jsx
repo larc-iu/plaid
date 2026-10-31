@@ -458,6 +458,20 @@ describe('useTimelineOperations: resizing a segment', () => {
     await h.unmount();
   });
 
+  it('a press and release with no move writes nothing', async () => {
+    // A stray click on a grip would rewrite the times and confirm a machine
+    // segment.
+    const doc = resizable();
+    const h = await mount(makeOps({ doc }));
+    await h.step(() => h.api.handleResizeStart(grab(20), segment, 'right'));
+    await h.step(() => release());
+
+    expect(doc.updateAlignmentBounds).not.toHaveBeenCalled();
+    expect(h.api.isResizing).toBe(false);
+    expect(h.api.tempTokenBounds).toBeNull();
+    await h.unmount();
+  });
+
   it('a second release writes nothing', async () => {
     const doc = resizable();
     const h = await mount(makeOps({ doc }));

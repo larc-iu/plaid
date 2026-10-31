@@ -381,13 +381,19 @@ export const useTimelineOperations = (mediaOps) => {
     // Taken out of the ref before the write, so a second release during it is
     // a no-op rather than a second write of the same bounds.
     resizeRef.current = { token: null, handle: null, bounds: null, offset: 0 };
+    // A click on the grip with no move writes nothing.
+    const same = (a, b) => Math.abs(a - (b || 0)) < 0.0005;
+    const moved =
+      !same(bounds.start, token.metadata?.timeBegin) || !same(bounds.end, token.metadata?.timeEnd);
 
     try {
       // The domain method does the optimistic patch + reload-on-error.
-      await doc.updateAlignmentBounds(token.id, {
-        timeBegin: bounds.start,
-        timeEnd: bounds.end,
-      });
+      if (moved) {
+        await doc.updateAlignmentBounds(token.id, {
+          timeBegin: bounds.start,
+          timeEnd: bounds.end,
+        });
+      }
 
       // Clear selection state
       handleAlignmentCreated();

@@ -1895,6 +1895,27 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     });
   });
 
+  it('updateAlignmentBounds with the stored times writes nothing and confirms nothing', async () => {
+    // A click on an edge grip with no drag sends the times the segment has.
+    const machine = { prov: 'inferred', provSource: 'service:asr' };
+    const raw = buildRawDoc({
+      alignmentTokens: [
+        {
+          id: 'a-1',
+          text: 'text-1',
+          begin: 0,
+          end: 3,
+          metadata: { timeBegin: 1, timeEnd: 2, ...machine },
+        },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    const ok = await doc.updateAlignmentBounds('a-1', { timeBegin: 1.0001, timeEnd: 2 });
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('tokens.patchMetadata');
+    expect(doc.alignmentTokens[0].metadata).toEqual({ timeBegin: 1, timeEnd: 2, ...machine });
+  });
+
   it('updateAlignmentBounds refuses a range that runs into the same voice, and allows cross-talk', async () => {
     const raw = buildRawDoc({
       body: 'the cat sat',

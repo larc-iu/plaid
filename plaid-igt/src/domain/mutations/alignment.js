@@ -879,6 +879,11 @@ export const alignmentMutations = {
       this.refuse('Segment not found');
       return false;
     }
+    // The times it has: no write, so no edit stamp confirms a machine segment.
+    const same = (a, b) => Math.abs(a - (b || 0)) < 0.0005;
+    if (same(timeBegin, token.metadata?.timeBegin) && same(timeEnd, token.metadata?.timeEnd)) {
+      return true;
+    }
     if (timeEnd < timeBegin) {
       this.refuse('Invalid time range: end must be at or after start');
       return false;
