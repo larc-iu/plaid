@@ -111,8 +111,10 @@ def _apply_span_meta(ctx: Context, op) -> int:
     deleted and ``umr_set`` are written, each by its own path, so the rest of
     the namespace stays. Two ops on one node in a plan (its attributes and its
     root mark, which can arrive from a graph diff and an attribute scope) each
-    touch only their own key and cannot undo each other."""
-    ops = metadata_ops(ctx.restamp())
+    touch only their own key and cannot undo each other. An attribute set a
+    reorder only renumbers (``renumber``) carries no stamp, so an untouched
+    machine attribute stays unverified, as the app writes it."""
+    ops = [] if op.get('renumber') else metadata_ops(ctx.restamp())
     ops += [{'op': 'delete', 'path': [UMR, k]} for k in op.get('umr_unset') or ()]
     ops += [{'op': 'set', 'path': [UMR, k], 'value': v} for k, v in (op.get('umr_set') or {}).items()]
     ctx.b.update('spans', op['span_id'], metadata=ops)
@@ -573,7 +575,7 @@ KIND = ok.registry([
            compact_label=_kind_label('change', ('concept', 'concepts'))),
     OpKind('set_attrs', _ATTRS, replaces=_replaced_attrs, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),
-           compact_each=('span_id', 'var', 'attrs', 'attr_line', 'umr_set', 'ref', 'label'),
+           compact_each=('span_id', 'var', 'attrs', 'attr_line', 'umr_set', 'renumber', 'ref', 'label'),
            compact_label=_kind_label('set attributes on', ('node', 'nodes'))),
     # A variable typed over in a graph text and read as a rename: the new name
     # written on the node itself, as Text mode writes it, so the node keeps its

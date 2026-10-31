@@ -396,6 +396,32 @@ def test_a_moved_edge_carries_the_approvals_stamp_and_a_renumbered_one_none(clie
     assert rid == 'mr-1' and ops == [{'op': 'set', 'path': ['umr', 'order'], 'value': 1}]
 
 
+def test_an_attribute_renumbered_by_a_reorder_carries_no_stamp(client, ws):
+    """As the app's applyPenman writes an attribute set whose values and
+    order among the kept children are unchanged (``renumber``): its place
+    moved only because a relation came before it, so it is no one's edit and
+    an untouched machine attribute stays unverified. A moved one is stamped
+    (the reorder test above)."""
+    text = SENTENCE_1_PENMAN.replace('bark-01', 'bark-01\n    :ARG1 (s1x / cat)')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text, 'reorder': True})
+    attrs = next(op for op in ws.ops if op['kind'] == 'set_attrs')
+    assert attrs['renumber'] is True
+    applied(client, ws)
+    [ops] = [ops for sid, ops in client.patches('spans') if sid == 'mc-b']
+    assert ops == [{'op': 'set', 'path': ['umr', 'attrs'],
+                    'value': [{'rel': ':aspect', 'value': 'performance', 'order': 2}]}]
+    # An attribute that moves past a kept relation is the person's, and stamped.
+    client = umr_client()
+    ws = umr_ws(client)
+    text = ('(s1b / bark-01\n    :aspect performance\n    :ARG0 (s1d / dog\n'
+            '        :refer-number singular))')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text, 'reorder': True})
+    assert not next(op for op in ws.ops if op['kind'] == 'set_attrs').get('renumber')
+    applied(client, ws)
+    [ops] = [ops for sid, ops in client.patches('spans') if sid == 'mc-b']
+    assert apply_metadata_ops({}, ops)['provSource'] == 'test'
+
+
 def test_an_order_the_text_writes_but_does_not_apply_is_said(ws):
     """Without reorder the text's child order is not applied, so a model that
     rewrote a graph because the user asked for another order would have been

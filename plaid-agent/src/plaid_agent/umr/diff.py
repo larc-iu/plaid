@@ -470,14 +470,23 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
             if ((old.metadata or {}).get('umr') or {}).get('entry'):
                 change['umr_unset'] = ['entry', 'entryVocab']
             updates.append(change)
+        moved = _moved(old, old_edges, attrs, edges) if reorder else None
         if changed_attrs:
-            updates.append({
+            change = {
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                 'span_id': old.id, 'var': var, 'attrs': attrs, 'attr_line': attr_line(attrs),
                 'umr_set': {'attrs': attrs},
-                'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
+                'label': f'{var}: {attrs_change(old.attrs, attrs)}'}
+            # The same values in the same order among the kept children, at
+            # new places only because a child before them came or went: a
+            # renumber, which carries no stamp, as the app's applyPenman has
+            # it. Without reorder the places are kept, so only a reorder
+            # renumbers.
+            if reorder and _attr_key(old.attrs) == _attr_key(attrs) and not any(
+                    moved(f'attr {a.get("rel")} {a.get("value")}') for a in old.attrs):
+                change['renumber'] = True
+            updates.append(change)
 
-        moved = _moved(old, old_edges, attrs, edges) if reorder else None
         for edge, key in old_edges:
             wanted = next_by_key.get(key)
             if wanted is None:
