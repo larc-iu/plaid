@@ -867,6 +867,27 @@ describe('morpheme structural ops', () => {
     expect(doc.error).toMatch(/last morpheme/i);
   });
 
+  it('deleteMorpheme of a morpheme storing no precedence leaves its siblings numbered', async () => {
+    // One storing no precedence reads last, so nothing after it moves up.
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'a' } },
+        { id: 'm-2', begin: 0, end: 3, precedence: 2, metadata: { form: 'b' } },
+        { id: 'm-3', begin: 0, end: 3, precedence: null, metadata: { form: 'c' } },
+      ],
+      body: 'abc',
+    });
+    const doc = makeDoc({ raw });
+    expect(await doc.deleteMorpheme('m-3')).toBe(true);
+    const stored = doc.layerInfo.morphemeTokenLayer.tokens.map((m) => [m.id, m.precedence]);
+    expect(stored).toEqual([
+      ['m-1', 1],
+      ['m-2', 2],
+    ]);
+    expect(kinds(doc.client)).not.toContain('tokens.update');
+  });
+
   it('deleteMorpheme removes a non-last morpheme and renumbers', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }],

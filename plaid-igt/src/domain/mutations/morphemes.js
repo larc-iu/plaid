@@ -524,7 +524,11 @@ export const morphemeMutations = {
     }
     const label = 'Failed to delete morpheme';
     if (!this._canWrite(label)) return false;
-    const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
+    // A sibling storing a precedence past the target's moves down one. One
+    // storing none reads last, so deleting it moves nothing.
+    const tp = target.precedence;
+    const shiftsDown = (m) => tp != null && m.precedence != null && m.precedence > tp;
+    const subsequents = siblings.filter(shiftsDown);
     // The "=" rule over the word the delete leaves (R47).
     // A "=" before the morpheme goes with it, and one after the first
     // morpheme stands before nothing once it is gone.
@@ -540,12 +544,8 @@ export const morphemeMutations = {
       // their relations and its links (HUNT-model M5).
       removeTokensLocally(next, textId, [morphemeId], vocabs);
       layer.tokens.forEach((m) => {
-        if (
-          m.begin === target.begin &&
-          m.end === target.end &&
-          (m.precedence ?? 0) > (target.precedence ?? 0)
-        ) {
-          m.precedence = (m.precedence ?? 0) - 1;
+        if (m.begin === target.begin && m.end === target.end && shiftsDown(m)) {
+          m.precedence -= 1;
         }
       });
       applyChanges(layer, others);
@@ -555,7 +555,7 @@ export const morphemeMutations = {
       this._client.batched(async (b) => {
         b.tokens.delete(settledId(morphemeId));
         subsequents.forEach((m) => {
-          b.tokens.update(settledId(m.id), undefined, undefined, (m.precedence ?? 0) - 1);
+          b.tokens.update(settledId(m.id), undefined, undefined, m.precedence - 1);
         });
         sendChanges(b, others);
       }),
