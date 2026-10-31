@@ -205,3 +205,29 @@ def test_the_media_is_not_downloaded_with_no_document_held(tmp_path):
     client = FakeClient([{'id': 'd1', 'version': 4}])
     with pytest.raises(RuntimeError, match='older than plaid-client'):
         AlignmentProcessor().download_media_file(client, 'd1', str(tmp_path))
+
+
+# --- a request acts only in its channel's project (CR-SHARED-1) -----------------
+
+def test_a_document_of_another_project_than_the_requests_is_refused_before_it_is_held():
+    # The service's own account may reach projects the requester cannot, so
+    # a document the body names in another project is not held, read or
+    # written.
+    from plaid_client.service import Refusal, held_run
+    from plaid_client.testing import Helper
+    client = FakeClient([{'id': 'd1', 'version': 4, 'project': 'B'}])
+    with pytest.raises(Refusal, match='not in this project'):
+        with held_run(client, Helper(project_id='A'), 'd1'):
+            client.spans.update('s1', 'NOUN')
+    assert 'lock' not in client.kinds and client.stamps == []
+
+
+def test_a_document_of_the_requests_project_is_held():
+    from plaid_client.service import held_run
+    from plaid_client.testing import Helper
+    client = FakeClient([{'id': 'd1', 'version': 4, 'project': 'A'}])
+    helper = Helper(project_id='A')
+    with held_run(client, helper, 'd1') as run:
+        client.spans.update('s1', 'NOUN')
+        run.result = {'status': 'success'}
+    assert helper.results == [{'status': 'success'}]

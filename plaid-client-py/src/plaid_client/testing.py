@@ -132,7 +132,10 @@ class Helper:
     request_id = 'r1'
     requester_id = 'asker@x.com'
 
-    def __init__(self, stop_when=None):
+    def __init__(self, stop_when=None, project_id=None):
+        #: the project of the channel the request came through, which
+        #: ``locked_for_writes`` holds the document to (None: not checked)
+        self.project_id = project_id
         #: every terminal report, as ('completed', payload) / ('error', text)
         self.reports = []
         #: every progress update, as (percent, message)

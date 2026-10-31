@@ -183,12 +183,20 @@ def locked_for_writes(client, document_id, read_version=None, response_helper=No
     run writes nothing before its next checkpoint, so nothing is left half
     done.
 
+    A request acts only in the project of the channel it came through
+    (``response_helper.project_id``), whatever document its body names: a
+    document of another project is refused before it is held or read, since
+    the service's own account may reach projects the requester cannot.
+
     Yields the :class:`~plaid_client.document_lock.DocumentLock`. Strict mode
     is put back as it was on the way out.
     """
     should_renew = None
     if response_helper is not None:
         should_renew = lambda: not response_helper.stopping  # noqa: E731
+        project_id = getattr(response_helper, 'project_id', None)
+        if project_id and (client.documents.get(document_id) or {}).get('project') != project_id:
+            raise Refusal('This document is not in this project.')
     try:
         with client.documents.locked(document_id, should_renew=should_renew) as lock:
             current = (client.documents.get(document_id) or {}).get('version')

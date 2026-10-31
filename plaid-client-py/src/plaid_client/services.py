@@ -506,6 +506,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
         # token reaches (``delegated_projects``: the request's own project
         # first, then the others the requester named and can read). Every
         # service is told who asked (``requester_id``), delegating or not.
+        # ``project_id`` is the project of this channel, the one core checked
+        # the requester may write: it replaces any the body names, so a
+        # service acts in no other project, and the document lock refuses a
+        # document of another one (``locked_for_writes``).
         delegated = event_data.get('delegated_token')
         delegated_projects = event_data.get('delegated_projects')
         requester = event_data.get('requester_id')
@@ -513,10 +517,12 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             req_data = {**req_data,
                         **({'delegated_token': delegated} if delegated else {}),
                         **({'delegated_projects': delegated_projects} if delegated_projects is not None else {}),
-                        **({'requester_id': requester} if requester else {})}
+                        **({'requester_id': requester} if requester else {}),
+                        'project_id': project_id}
         cancel_flag = threading.Event()
         with cancels_lock:
             cancels[req_id] = cancel_flag
+        channel_project_id = project_id
 
         class ResponseHelper:
             """Helper passed to the request handler for replying.
@@ -524,11 +530,14 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             Attributes:
                 request_id: The request being served.
                 requester_id: The user who submitted it.
+                project_id: The project of the channel it came through,
+                    the only one the request may act in.
                 cancelled: True once the requester asked for the request to
                     stop. A long-running handler polls this between steps.
             """
             request_id = req_id
             requester_id = requester
+            project_id = channel_project_id
 
             _scope = CancelScope(cancel_flag.is_set)
 

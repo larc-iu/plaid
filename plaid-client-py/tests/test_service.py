@@ -684,8 +684,9 @@ def test_served_request_sees_requester_and_cancel():
         on_event('service_request', {'request_id': 'r1', 'requester_id': 'u@x.com',
                                      'delegated_token': 'tok', 'data': {'q': 1}})
         (data, helper), = seen
-        assert data == {'q': 1, 'delegated_token': 'tok', 'requester_id': 'u@x.com'}
+        assert data == {'q': 1, 'delegated_token': 'tok', 'requester_id': 'u@x.com', 'project_id': 'p1'}
         assert helper.request_id == 'r1' and helper.requester_id == 'u@x.com'
+        assert helper.project_id == 'p1'
         assert helper.cancelled is False
         on_event('service_cancel', {'request_id': 'other'})
         assert helper.cancelled is False
@@ -694,6 +695,20 @@ def test_served_request_sees_requester_and_cancel():
         helper.complete({'done': True})
         assert reported == [('POST', '/api/v1/projects/p1/service-requests/r1/events',
                              {'status': 'completed', 'data': {'done': True}})]
+    finally:
+        reg.stop()
+
+
+def test_a_request_acts_in_the_project_of_its_channel_whatever_its_body_names():
+    # CR-SHARED-1: core checks the requester may write the channel's project
+    # and passes the body on as it is, so a project the body names is not one
+    # the requester was checked for.
+    seen = []
+    on_event, _reported, reg = _serve_with_capture(lambda data, helper: seen.append((data, helper)))
+    try:
+        on_event('service_request', {'request_id': 'r1', 'data': {'project_id': 'other', 'document_id': 'd'}})
+        (data, helper), = seen
+        assert data['project_id'] == 'p1' and helper.project_id == 'p1'
     finally:
         reg.stop()
 
@@ -742,7 +757,7 @@ def test_served_request_sees_the_projects_its_token_reaches():
                                      'delegated_token': 'tok',
                                      'delegated_projects': ['p1', 'p2'], 'data': {'q': 1}})
         assert seen == [{'q': 1, 'delegated_token': 'tok', 'delegated_projects': ['p1', 'p2'],
-                         'requester_id': 'u@x.com'}]
+                         'requester_id': 'u@x.com', 'project_id': 'p1'}]
     finally:
         reg.stop()
 

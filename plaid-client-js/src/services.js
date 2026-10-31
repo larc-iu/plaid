@@ -240,6 +240,7 @@ const PERMANENT_STATUSES = new Set([400, 401, 403, 404, 405, 422]);
  * @typedef {CancelScope & {
  *   requestId: string,
  *   requesterId: string | null,
+ *   projectId: string,
  *   progress(percent: number, message: string, extra?: Record<string, any>): void,
  *   complete(data: any): void,
  *   stopped(data?: any): void,
@@ -371,15 +372,18 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
     // service (extras `delegation: true`) also gets a short-lived token for the
     // requesting user (`delegatedToken`) and the projects that token reaches
     // (`delegatedProjects`, the request's own first), as the Python client
-    // hands them over.
+    // hands them over. `projectId` is the project of this channel, the one
+    // core checked the requester may write: it replaces any the body names,
+    // so a service acts in no other project.
     const requesterId = payload.requesterId || null;
     const extra = {
       ...(requesterId ? { requesterId } : {}),
       ...(payload.delegatedToken ? { delegatedToken: payload.delegatedToken } : {}),
       ...(payload.delegatedProjects ? { delegatedProjects: payload.delegatedProjects } : {}),
+      projectId,
     };
     const data =
-      Object.keys(extra).length && payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+      payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
         ? { ...payload.data, ...extra }
         : payload.data;
 
@@ -387,6 +391,8 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
     const responseHelper = {
       requestId,
       requesterId,
+      // The project of the channel the request came through, the only one it may act in.
+      projectId,
       // True once the requester asked for the request to stop.
       get cancelled() {
         return scope.cancelled;

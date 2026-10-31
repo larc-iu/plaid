@@ -120,8 +120,9 @@ test('a served request sees who asked and whether a stop was requested', async (
   try {
     onEvent('service_request', { requestId: 'r1', requesterId: 'u@x.com', data: { q: 1 } });
     const [{ data, helper }] = seen;
-    assert.deepEqual(data, { q: 1, requesterId: 'u@x.com' });
+    assert.deepEqual(data, { q: 1, requesterId: 'u@x.com', projectId: 'p1' });
     assert.equal(helper.requestId, 'r1');
+    assert.equal(helper.projectId, 'p1');
     assert.equal(helper.requesterId, 'u@x.com');
     assert.equal(helper.cancelled, false);
     await helper.progress(10, 'Writing…', { text: 'Hel' });
@@ -213,8 +214,26 @@ test('a delegating service is handed the token and the projects it reaches, as i
       data: { q: 1 },
     });
     assert.deepEqual(seen, [
-      { q: 1, requesterId: 'u@x.com', delegatedToken: 'tok', delegatedProjects: ['p1', 'p2'] },
+      { q: 1, requesterId: 'u@x.com', delegatedToken: 'tok', delegatedProjects: ['p1', 'p2'], projectId: 'p1' },
     ]);
+  } finally {
+    registration.stop();
+  }
+});
+
+test('a served request acts in the project of its channel, whatever its body names', async () => {
+  // CR-SHARED-1: core checks the requester may write the channel's project and
+  // passes the body on as it is.
+  let onEvent;
+  const client = {
+    messages: { listen: (projectId, cb) => ((onEvent = cb), { readyState: 1, close() {} }) },
+    _request: () => Promise.resolve(),
+  };
+  const seen = [];
+  const registration = serve(client, 'p1', { serviceId: 's1', serviceName: 'S' }, (data) => seen.push(data));
+  try {
+    onEvent('service_request', { requestId: 'r1', data: { projectId: 'other', documentId: 'd' } });
+    assert.deepEqual(seen, [{ projectId: 'p1', documentId: 'd' }]);
   } finally {
     registration.stop();
   }
