@@ -1740,8 +1740,13 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     _refuse_removing_survivor(ws, it, 'be deleted')
     links = _links_to(ws, it['id'])
     view = ws.view_of_item(it['id'])
+    # Each morpheme it is linked to keeps the type the entry goes by, its
+    # own else its headword's (ruling Q1).
+    kept = morph_type_of(view.tree, it['id']) if view is not None else None
+    on = ws.linked_morphemes(it['id']) if kept else []
+    keep = {'keep_type': kept, 'keep_on': on} if on else {}
     with ws.staging():
-        ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
+        ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links], **keep,
                    **_senses_read(ws, it['id']), **_refs_read(ws, it['id']),
                    'name': _name(view, it),
                    'label': f'Delete entry {_name(view, it)} '

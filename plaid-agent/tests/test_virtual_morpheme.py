@@ -125,7 +125,8 @@ def test_reads_and_counts_are_unchanged():
 
 def test_a_link_writes_no_morph_type_on_the_morpheme():
     """A morpheme linked to an entry goes by the entry's type and stores no
-    copy of it, so a link writes nothing on the morpheme, as the editor's."""
+    copy of it, so a link writes no type on the morpheme, as the editor's,
+    and takes off the one a stored morpheme holds (REV-FX-VOCAB-1)."""
     w = fake_ws(FakeClient())
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-erg'})  # derived
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m2'], 'entry_id': 'vi-erg'})  # stored, enclitic
@@ -134,7 +135,7 @@ def test_a_link_writes_no_morph_type_on_the_morpheme():
     _counts, c = _applied(w)
     _mid, meta = _made_morpheme(c)
     assert meta == STAMP
-    assert not c.patches('tokens')
+    assert c.patches('tokens') == [('m-4b', [{'op': 'delete', 'path': ['morphType']}])]
 
 
 def test_a_link_to_a_morpheme_of_a_planned_analysis_writes_no_type():

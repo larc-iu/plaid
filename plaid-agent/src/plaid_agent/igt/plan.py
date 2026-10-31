@@ -33,13 +33,13 @@ wire's key recasing):
                    existing: [{id, span_ids: [..]}], morphemes: [{form, morph_type, fields: [{layer_id, value}]}]}
   set_orthography {word_id, key, value}
   respell         {text_id, begin, end, value}
-  link            {token_id, item_id|null, new_entry_key|null, existing_link_id|null, entry_form}
+  link            {token_id, item_id|null, new_entry_key|null, existing_link_id|null, entry_form, untype?, untype_record?, entry_typed?}   (untype: the link takes off the type the morpheme stores, R2, tools.link_untypes, untype_record: and the "=" rule's record, entry_typed: of a link to a planned morpheme)
                   or, for a morpheme of an analysis a set_analysis in the same plan writes, token_id null and
                   {analysis_word_id, morpheme_index (from 1), morpheme_form, reuses_morpheme_id|null}: written
                   when the plan is applied, once that analysis has minted its morphemes (see `planned_morpheme`).
                   reuses_morpheme_id is the stored first morpheme an analysis keeps as its first, at index 1.
                   entry_form is the entry's headword as the plan read it, for a refusal naming an entry gone
-  unlink          {link_id}
+  unlink          {link_id, keep_type?}   (keep_type: the type the morpheme's entry gave it, written on it, Q1)
   create_entry    {vocab_id, form, metadata, key}
   set_entry_field {item_id, field, value}
   set_entry_metadata {item_id, patch}   (reserved keys on an entry: the sense tree, promoted examples, and the
@@ -47,7 +47,7 @@ wire's key recasing):
   set_doc_metadata {document_id, field, value}
   create_document {name, text, metadata}   (needs the project: text layer, token layers, ignored config)
   merge_entries   {keep_id, remove_id, links: [{link_id, token_id}]}
-  delete_entry    {item_id, links: [link_id]}
+  delete_entry    {item_id, links: [link_id], keep_type?, keep_on?: [morpheme id]}   (as unlink's keep_type)
   rename_entry    {item_id, form, morph_type?}   (morph_type where an untyped entry's new form's markers named one)
   rename_document {document_id, name}
   set_morpheme_form {morpheme_id, form, restamp?}   (a respelling carried into a morpheme's own form, with no restamp, as in
@@ -183,7 +183,7 @@ class Context:
         self.counts = counts
         self.notes = notes
         self.b = b
-        self.pending_links: List[tuple] = []   # ([token_id, ...], new_entry_key, document)
+        self.pending_links: List[tuple] = []   # ([token_id, ...], new_entry_key, document, [(untype id, record)])
         # Each analysed word's new chain: the id of each of its morphemes, the
         # reused first one's or the one the plan creates. A link to a morpheme
         # the plan creates is written from it.
@@ -202,6 +202,14 @@ class Context:
         # each is finished (TrackingBatcher.finish) only once those stand.
         self.later: Dict[str, List[Dict[str, Any]]] = {}
         self.dead_tokens: set = set()          # tokens the plan certainly deletes
+        # Morphemes the plan links, rewrites in an analysis or types itself,
+        # which keep no type from a link that goes (`_keep_type`).
+        self.typed_later: set = set()
+        # The morphemes the plan's analyses write a type on, which a link
+        # of the plan to one takes off again (`_link_planned_morpheme`).
+        # By id, (the type is the one the "=" rule gave, the rule's record
+        # is written).
+        self.analysis_typed: Dict[str, tuple] = {}
         self.text_edits: List[Dict[str, Any]] = []
         self.restores: List[Dict[str, Any]] = []
         self.new_docs: List[Dict[str, Any]] = []
@@ -319,6 +327,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
             ctx.drop('spans', sid)
         first = morphemes[0]
         slots = [m0['id']]
+        _note_typed(ctx, m0['id'], first)
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
             mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'),
                                EQUALS_TYPE_KEY: f.get('type_from_equals'), EQUALS_BEFORE_KEY: None,
@@ -347,6 +356,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         b.add(lambda batch, j=j, meta=meta, i=made: batch.tokens.create(
             layer, text_id, begin, end, precedence=j + 1, metadata=meta, id=i))
         slots.append(made)
+        _note_typed(ctx, made, m)
         # Its glosses name it, in the same batch: the analysis is one change,
         # written whole or not at all.
         for fv in m.get('fields') or []:
@@ -368,23 +378,27 @@ def _apply_respell(ctx: Context, op) -> int:
     return 1
 
 
-def _link_new_entry(ctx: Context, tokens: List[str], key: str) -> None:
+def _link_new_entry(ctx: Context, tokens: List[str], key: str, untype: List[tuple] = ()) -> None:
     ctx.b.add(lambda batch, e=ctx.entry_ids[key], t=tokens: batch.vocab_links.create(
         e, t, ctx.stamp(), id=ctx.b.new_id()))
+    _untype(ctx, untype)
 
 
-def _link(ctx: Context, op, tokens: List[str]) -> int:
+def _link(ctx: Context, op, tokens: List[str], untype: List[tuple] = ()) -> int:
+    """The link ``op`` makes over ``tokens``, and the stored type taken off
+    each morpheme of ``untype`` in its batch (:func:`_untype`)."""
     if op.get('existing_link_id'):
         ctx.drop('vocab_links', op['existing_link_id'])
     if op.get('item_id'):
         ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp(),
                                                                           id=ctx.b.new_id()))
+        _untype(ctx, untype)
     elif op.get('new_entry_key') in ctx.entry_ids:
         # The entry is an earlier change of the plan, named by its id.
-        _link_new_entry(ctx, tokens, op['new_entry_key'])
+        _link_new_entry(ctx, tokens, op['new_entry_key'], untype)
     elif op.get('new_entry_key'):
         # A later one: written in the second pass, once it is queued.
-        ctx.pending_links.append((tokens, op['new_entry_key'], ctx.b.document))
+        ctx.pending_links.append((tokens, op['new_entry_key'], ctx.b.document, list(untype)))
         ctx.defer(op)
     return 1
 
@@ -401,6 +415,11 @@ def _link_planned_morpheme(ctx: Context, op) -> None:
     ctx.drop('vocab_links', op.get('existing_link_id'))
     ctx.b.add(lambda batch, e=entry, m=slots[k - 1]: batch.vocab_links.create(
         e, [m], ctx.stamp(), id=ctx.b.new_id()))
+    # A type its analysis gave it is the entry's to give now (R2).
+    # An untyped entry leaves it the type the "=" rule gave (R47).
+    typed = ctx.analysis_typed.get(slots[k - 1])
+    if typed is not None and (op.get('entry_typed') or not typed[0]):
+        _untype(ctx, [(slots[k - 1], typed[1])])
 
 
 def _apply_link(ctx: Context, op) -> int:
@@ -415,10 +434,30 @@ def _apply_link(ctx: Context, op) -> int:
             ctx.planned_links.append(op)
             ctx.defer(op)
         return 1
-    # A linked morpheme goes by its entry's type and stores no copy of it, so
-    # the link writes nothing on the morpheme. One an unsegmented word needs
-    # is made bare, as the editor's _planLinkMany makes it.
-    return _link(ctx, op, [_token(ctx, op, op['token_id'])])
+    # A linked morpheme goes by its entry's type and stores no copy of it
+    # (R2), so the link takes off a type the morpheme stores (one an unlink
+    # wrote, Q1). One an unsegmented word needs is made bare, as the
+    # editor's _planLinkMany makes it.
+    token = _token(ctx, op, op['token_id'])
+    return _link(ctx, op, [token], untype=[(token, bool(op.get('untype_record')))] if op.get('untype') else [])
+
+
+def _note_typed(ctx: Context, morpheme_id: str, m: Dict[str, Any]) -> None:
+    """Record a type an analysis writes on a morpheme, and whether it is
+    the "=" rule's, for a link of the plan to it (`_link_planned_morpheme`)."""
+    if m.get('morph_type'):
+        ctx.analysis_typed[morpheme_id] = (m.get('type_from_equals') == m['morph_type'],
+                                           bool(m.get('type_from_equals')))
+
+
+def _untype(ctx: Context, morphemes) -> None:
+    """Take a stored type off the morphemes a link of the plan names, each
+    ``(id, record)``, and the "=" rule's record with it where it has one, in
+    the link's batch, as the app's links do (REV-FX-VOCAB-1, -4)."""
+    for m, record in morphemes:
+        ops = [{'op': 'delete', 'path': ['morphType']}] + (
+            [{'op': 'delete', 'path': [EQUALS_TYPE_KEY]}] if record else [])
+        ctx.b.add(lambda batch, m=m, ops=ops: batch.tokens.patch_metadata(m, ops))
 
 
 def _apply_link_phrase(ctx: Context, op) -> int:
@@ -434,7 +473,21 @@ def _apply_unlink(ctx: Context, op) -> int:
     if on and all(t in ctx.dead_tokens for t in on):
         return 1
     ctx.drop('vocab_links', op['link_id'])
+    if op.get('keep_type'):
+        _keep_type(ctx, op['token_id_hint'], op['keep_type'])
     return 1
+
+
+def _keep_type(ctx: Context, morpheme_id: str, morph_type: str) -> None:
+    """Write onto a morpheme whose link goes the type its entry gave it, in
+    the batch that takes the link, as the app's unlink and entry delete do
+    (ruling Q1): a linked morpheme stores none (R2), and without it a suffix
+    lost its "-" in every export. Not on a morpheme the plan deletes, links
+    again, rewrites in an analysis or gives a type of its own."""
+    if morpheme_id in ctx.dead_tokens or morpheme_id in ctx.typed_later:
+        return
+    ctx.b.add(lambda batch, m=morpheme_id, t=morph_type: batch.tokens.patch_metadata(
+        m, [{'op': 'set', 'path': ['morphType'], 'value': t}]))
 
 
 def _apply_set_morph_type(ctx: Context, op) -> int:
@@ -1792,6 +1845,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         # an unlink of that link is written (R1-6).
         ctx.dead_tokens = ok.removed_tokens(KIND, ops, only_certain=True) - {
             t for op in ops if KIND[op['kind']].extra.get('merge') for t in op.get('other_ids') or []}
+        ctx.typed_later = analysed_morphemes(ops) | {
+            op.get('token_id') if op['kind'] == 'link' else op.get('morpheme_id')
+            for op in ops if op['kind'] in ('link', 'set_morph_type')} - {None}
 
         for op in ops:
             spec = KIND[op['kind']]
@@ -1810,9 +1866,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
 
         # Second pass: what names a change the plan makes after it (a link to
         # an entry or a morpheme created later on), by the id it is made under.
-        for tokens, key, document in ctx.pending_links:
+        for tokens, key, document, untype in ctx.pending_links:
             with b.writing_for(document):
-                _link_new_entry(ctx, tokens, key)
+                _link_new_entry(ctx, tokens, key, untype)
         for op in ctx.planned_links:
             with b.writing_for(op):
                 _link_planned_morpheme(ctx, op)
@@ -1916,6 +1972,8 @@ def _write_lexicon(ctx: Context, ops) -> None:
         with b.writing_for(op):
             for r in repairs.pop(op['item_id'], ()):
                 _write_entry_metadata(ctx, r)
+            for mid in op.get('keep_on') or []:
+                _keep_type(ctx, mid, op['keep_type'])
             b.add(lambda batch, i=op['item_id'], n=n: batch.vocab_items.delete(i, expected_link_count=n))
     # A repair whose delete or merge the plan no longer holds.
     for r in [r for rs in repairs.values() for r in rs]:

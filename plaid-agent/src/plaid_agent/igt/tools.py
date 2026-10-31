@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, is_machine, needs_review, CONTRIBUTED_STATE
 from plaid_client.workflows.igt.config import orthography_key
-from plaid_client.workflows.igt.interlinear import choose_type, clitic_types
+from plaid_client.workflows.igt.interlinear import EQUALS_TYPE_KEY, choose_type, clitic_types
 
 from ..core import history, keep, opkind
 from ..core.keep import is_keep
@@ -32,6 +32,7 @@ from .project import (IgtDoc, Sentence, Word, Morpheme, Link, MARKERS, parse_ref
                       join_morphemes, plain_ref, planned_word_count, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
+from .vocab import morph_type_of
 
 
 # --- write tools (plan only) ---------------------------------------------------
@@ -565,6 +566,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     kind, target = _entry_named(ws, entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     shown = ws.entry_shown(target['id'], form) if kind == 'existing' else form
+    entry_typed = _entry_goes_by(ws, kind, target) is not None
     staged: List[Dict[str, Any]] = []
     inside: List[str] = []
     # Links back to the entry a thing is already linked to: whatever the plan
@@ -578,7 +580,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     for ref in _refs(refs):
         place = _planned_place(ws, doc, ref)
         if place is not None:
-            op = _planned_link_op(ws, doc, ref, place, kind, target, form, shown)
+            op = {**_planned_link_op(ws, doc, ref, place, kind, target, form, shown), 'entry_typed': entry_typed}
             if op.get('existing_link_id') and kind == 'existing' and place.kept.link.item_id == target['id']:
                 back.append((ref, ws.op_target(op)))
             else:
@@ -599,7 +601,11 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             unlike.append(f'{ref} {qv(what)}')
         if isinstance(obj, Word) and obj.mwes:
             inside.append(f'{ref} stays inside ' + ', '.join(f'"{l.form}"' for l in obj.mwes))
-        staged.append({'kind': 'link', 'token_id': obj.id,
+        untype = {}
+        if isinstance(obj, Morpheme) and link_untypes(obj, entry_typed):
+            untype = {'untype': True, **({'untype_record': True}
+                                         if (obj.metadata or {}).get(EQUALS_TYPE_KEY) is not None else {})}
+        staged.append({'kind': 'link', 'token_id': obj.id, **untype,
                        'item_id': target['id'] if kind == 'existing' else None,
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None, 'entry_form': form,
@@ -703,6 +709,26 @@ def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
 def _linked(ws: Workspace, link: Link) -> str:
     """The entry a stored link names, as a card row shows it."""
     return ws.entry_shown(link.item_id, link.form)
+
+
+def _entry_goes_by(ws: Workspace, kind: str, target) -> Optional[str]:
+    """The morph type the entry a link names goes by: a stored one's own,
+    else its headword's, and one the plan creates its own, as the app reads
+    an entry its batch makes (entryTypeOf in mutations/vocab.js)."""
+    if kind == 'existing':
+        view = ws.view_of_item(target['id'])
+        return morph_type_of(view.tree, target['id']) if view is not None else None
+    own = (ws.new_entries[target].get('metadata') or {}).get('morphType')
+    return own if isinstance(own, str) and own else None
+
+
+def link_untypes(m: Morpheme, entry_typed: bool) -> bool:
+    """Whether a link takes the type morpheme ``m`` stores off it (R2, and
+    the "=" rule, R47 to R49): it goes by a typed entry's type alone, and an
+    untyped entry leaves it the type the "=" before it gave, and no other."""
+    if m.morph_type is None:
+        return False
+    return entry_typed or (m.metadata or {}).get(EQUALS_TYPE_KEY) != m.morph_type
 
 
 def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: str, target, form: str,
@@ -819,7 +845,9 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
                                 + ', '.join(_mwe_desc(l, s) for l in obj.mwes) + ' (unlink_phrase removes that)')
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
-        staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
+        # The morpheme keeps the type its entry gave it (ruling Q1).
+        keep = {'keep_type': obj.entry_type} if isinstance(obj, Morpheme) and obj.entry_type else {}
+        staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id, **keep,
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what)}', f'unlink {qv(_linked(ws, obj.link))}')})
     if only_mwe and not staged and not planned:
         raise ToolError('; '.join(only_mwe), kind='not-found')

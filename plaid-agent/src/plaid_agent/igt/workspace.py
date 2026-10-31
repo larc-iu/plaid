@@ -932,6 +932,13 @@ class Workspace(BaseWorkspace):
         t = own if isinstance(own, str) and own else (morph_type_of(tree, parent) if parent else None)
         return gloss_reading_of(t, op.get('form') or None)
 
+    def linked_morphemes(self, item_id: str) -> List[str]:
+        """The morphemes linked to entry ``item_id`` in the documents this
+        turn has loaded, which hold every link to it once its links were
+        read (``q_entry_links``)."""
+        return [m.id for d in self._docs.values() for s in d.sentences for w in s.words
+                for m in w.morphemes if m.link is not None and m.link.item_id == item_id]
+
     def cell_reading(self, f, token_id: Optional[str], doc_id: Optional[str]) -> Optional[dict]:
         """How the grid reads a value of morpheme field ``f`` in the cell of
         morpheme ``token_id`` (``morphemeGlossReading``): by the type it goes
