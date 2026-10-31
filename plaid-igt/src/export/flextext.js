@@ -249,7 +249,7 @@ function morphXml(indent, m, options, lex, typedBefore) {
     );
     // Narrows the match when entries share a lexeme form. FLEx reads a missing
     // hn as 0 and falls back to the unfiltered set, so omitting it is safe.
-    // The number among the entries whose cf is this one (see lexiconResolver).
+    // The number FieldWorks gives the entry (see lexiconResolver).
     const hn = entry.homograph;
     if (hn) {
       lines.push(...item(`${indent}  `, 'hn', analysisLang(options), String(hn)));
@@ -453,14 +453,15 @@ const lexiconResolver = (vocabularies) => {
   for (const vocab of Object.values(vocabularies || {})) {
     const view = lexiconViewOf(vocab.items);
     views.set(vocab.id, view);
-    // hn is a matching key, not the app's number: FieldWorks picks the
-    // entries whose cf is the morph's (`ka` and `-ka` never mix) and then the
-    // one whose homograph number is hn. So entries are numbered among those
-    // with the same decorated lexeme form, the cf they go out with, as
-    // FieldWorks numbers each morph-type class on its own.
-    const cfOf = (r) =>
-      decorateWithAffixMarkers(view.morphTypeOf(r.id), r.metadata?.lexemeForm ?? r.form ?? '');
-    for (const [id, n] of buildHomographNumbers(vocab.items || [], undefined, cfOf)) {
+    // hn is a matching key, not the app's number. FieldWorks numbers
+    // homographs by citation form (the item's form; the lexeme form when there
+    // is none) within a morph-type class, and its flextext import picks the
+    // entries whose cf is the morph's and then the one whose number is hn. So
+    // entries are numbered the way FieldWorks numbers them: by the decorated
+    // citation form (`ka` and `-ka` apart, kataba and kitab apart even when
+    // both have the lexeme form ktb).
+    const keyOf = (r) => decorateWithAffixMarkers(view.morphTypeOf(r.id), r.form ?? '');
+    for (const [id, n] of buildHomographNumbers(vocab.items || [], undefined, keyOf)) {
       homographs.set(id, n);
     }
   }
