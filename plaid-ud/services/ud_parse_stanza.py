@@ -915,6 +915,10 @@ def parse_document(pipeline_provider, client, document_id, *, stamp, language='e
             stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws]
                                    for _, _, ws in group])
             sentences_data.extend(stanza_doc.to_dict())
+        # And once after the last group, so a stop pressed while it parsed
+        # (the whole parse, for a document of one group) lands before the
+        # writes too.
+        progress.report(ParseProgress.PARSE, 1.0, f"Parsed {total} sentences…")
 
         # The syntactic-word tokens of the RE-PARSED sentences go (which
         # cascades their UD spans/relations); skipped sentences keep

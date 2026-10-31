@@ -752,6 +752,20 @@ def test_a_stop_between_groups_of_a_long_document_leaves_it_untouched():
     assert len(service.pipeline_provider.inputs) == 1, 'it stopped after the first group'
 
 
+def test_a_stop_during_the_last_group_of_a_reparse_leaves_the_document_untouched():
+    """CR-SHARED-10. The report before each group was the only checkpoint, so
+    a stop pressed while the last group parsed (a document of one group: the
+    whole parse) was not seen before the writes, and the run wrote its parse
+    and reported success."""
+    doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)])
+    service = _service(documents=[doc], provider=_PipelineProvider([ROWS]))
+    helper = servicetest.Helper(stop_when=lambda pct, msg: msg == 'Parsing sentence 1 of 1…')
+    servicetest.run(service, REQUEST, helper)
+
+    assert helper.reports == [('completed', {'stopped': True})]
+    assert service.client.writes == []
+
+
 def test_a_stop_that_lands_in_the_writes_is_ignored_and_the_run_finishes():
     """Luke's ruling: a stop with nothing left to prevent is silently ignored.
     The whole write phase and the final report sit in one critical block, so a
