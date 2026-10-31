@@ -234,10 +234,12 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
                 if not all(ends.values()) or not (h['source'] in fresh or h['target'] in fresh):
                     keep.append(h)
                     continue
+                # `held`: stored as the import stores a triple, unstamped,
+                # since it is the file's relation and not the approver's.
                 op = {'kind': 'create_triple', 'document_id': doc.id,
                       'document_graph_layer_id': project.document_graph_layer_id,
                       'source_var': h['source'], 'target_var': h['target'], 'rel': h['rel'],
-                      'group': h.get('group'), 'ref': f's{sentence.number}.{h["source"]}',
+                      'group': h.get('group'), 'held': True, 'ref': f's{sentence.number}.{h["source"]}',
                       'label': f'({h["source"]} {h["rel"]} {h["target"]})'}
                 for side in ('source', 'target'):
                     if h[side] not in fresh:

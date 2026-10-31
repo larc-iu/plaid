@@ -185,14 +185,19 @@ def _apply_create_triple(ctx: Context, op) -> int:
     """A triple between two constants is listed in the record of the sentence
     whose block writes it, in the batch that makes it, as the editor does: the
     record's whole list as the plan read it, with every triple this plan has
-    added to it so far, or a new record over the sentence when it has none."""
+    added to it so far, or a new record over the sentence when it has none.
+
+    A relation a graph kept as text held by name, made real by a mend
+    (``held``), is stored as the import stores a triple, with no stamp: it
+    is the file's, not the approver's (the app's ``_heldResolved``)."""
     meta: Dict[str, Any] = {'group': op['group']}
+    stamp = {} if op.get('held') else ctx.stamp()
     triple = ctx.b.new_id()
 
     def queue(batch, o=op):
         batch.relations.create(
             o['document_graph_layer_id'], ctx.end_of(o, 'source'),
-            ctx.end_of(o, 'target'), o['rel'], {**ctx.stamp(), UMR: meta}, id=triple)
+            ctx.end_of(o, 'target'), o['rel'], {**stamp, UMR: meta}, id=triple)
         if 'record_triples' not in o:
             return
         key = (o['document_id'], o.get('sentence_id'))

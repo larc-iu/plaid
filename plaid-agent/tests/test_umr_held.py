@@ -76,7 +76,9 @@ def test_mending_the_kept_graph_makes_the_held_relations_real_and_clears_the_kep
     s2t = next(i for i, args in made.items() if args[3]['umr']['var'] == 's2t')
     triples = [p['args'] for p in client.payloads('relations.create') if p['args'][0] == DOC_LAYER]
     assert [t[:4] for t in triples] == [(DOC_LAYER, s2t, 'mc-d', ':same-entity')]
-    assert triples[0][4]['umr'] == {'group': 'coref'}
+    # Stored as the import stores a triple, with no writer's stamp: the
+    # relation is the file's, not the approver's (the app's _heldResolved).
+    assert triples[0][4] == {'umr': {'group': 'coref'}}
     [ops] = _record_patches(client)
     assert sorted(o['path'][1] for o in ops) == ['held', 'rawAlignment', 'rawGraph']
     assert all(o['op'] == 'delete' for o in ops)
