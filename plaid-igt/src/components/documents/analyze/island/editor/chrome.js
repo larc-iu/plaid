@@ -124,7 +124,13 @@ export const chrome = {
     // stays GLOBAL; cross-page movement is handled by the pager and the search
     // click-through (_consumeFocusRequest pages first).
     const pageCount = Math.max(1, Math.ceil(sentences.length / this.constructor.PAGE_SIZE));
-    this._page = Math.min(Math.max(0, this._page), pageCount - 1);
+    const clamped = Math.min(Math.max(0, this._page), pageCount - 1);
+    // A page past the end (a link, or deletes that took pages away) shows the
+    // last, and the URL is told so in place: it never names a page not shown.
+    if (clamped !== this._page) {
+      this._page = clamped;
+      this.onPageChange?.(clamped, { replace: true });
+    }
     const pageStart = this._page * this.constructor.PAGE_SIZE;
     const pageSentences = sentences.slice(pageStart, pageStart + this.constructor.PAGE_SIZE);
 

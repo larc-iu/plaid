@@ -168,6 +168,13 @@ describe('the page of sentences', () => {
     expect(label()).toBe('1–2 of 5');
   });
 
+  it('puts the page it shows in the URL when the one named is past the end', async () => {
+    doc = makeDoc(sentences(5));
+    view = await renderComponent(page({ goToTab: vi.fn(), url: '/doc?page=9' }));
+    expect(label()).toBe('5–5 of 5');
+    expect(seen.search).toBe('?page=3');
+  });
+
   it('opens on the page the URL names', async () => {
     doc = makeDoc(sentences(5));
     view = await renderComponent(page({ goToTab: vi.fn(), url: '/doc?page=3' }));
