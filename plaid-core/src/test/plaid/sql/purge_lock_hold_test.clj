@@ -60,9 +60,13 @@
 
 (deftest saves-keep-landing-while-a-purge-runs
   (let [db-path (temp-db-path)
-        gone 300]
+        gone 1000]
     (try
-      (build-history! db-path gone 100000)
+      ;; 30,000 audit rows: the first 50-row chunk on these statistics takes
+      ;; about 0.2 s on a loaded machine (with 100,000 it took 1.1 s on a CI
+      ;; runner, past the timeout below), while one chunk of all 1000 rows,
+      ;; a purge sized by row count, took 2.7 s there and fails.
+      (build-history! db-path gone 30000)
       ;; A save that waits out busy_timeout is a 503. One second here, five
       ;; on a running server.
       (let [ds (psd/build-datasource db-path {:busy-timeout-ms 1000 :max-pool-size 4})
