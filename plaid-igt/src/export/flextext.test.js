@@ -239,9 +239,10 @@ describe('buildFlextextDocument', () => {
     expect(morph.querySelector('item[type="cf"]').textContent).toBe('-perr');
   });
 
-  // hn is the number the app shows (buildHomographNumbers), as LIFT's order:
-  // an entry made in Plaid beside imported ones gets its number too, and a
-  // stored number on an entry spelled like no other is no homograph.
+  // hn numbers the entries that go out with the same cf (flextextHnCrossClass
+  // has the morph types): an entry made in Plaid beside imported ones gets its
+  // number too, and a stored number on an entry spelled like no other is no
+  // homograph.
   it('sends the homograph number the app shows', () => {
     const hnOf = (items, linked) => {
       const doc = makeFixtureDoc();

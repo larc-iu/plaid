@@ -29,6 +29,7 @@
 
 import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
 import {
+  buildHomographNumbers,
   buildItemNumbers,
   buildSenseTree,
   itemLabel,
@@ -614,6 +615,7 @@ export function buildCldfDataset({
       // it: the entry's form and its number.
       const byId = new Map((vocab.items || []).map((it) => [it.id, it]));
       const numbers = buildItemNumbers(vocab.items || []);
+      const homographs = buildHomographNumbers(vocab.items || []);
       const refLabel = (id) => itemLabel(byId.get(id), numbers);
       // Every headword is an entry; its senses (and theirs, flattened, since
       // CLDF has no deeper level) are its senses. A headword's own gloss is
@@ -628,13 +630,10 @@ export function buildCldfDataset({
           Language_ID: objId,
           Headword: item.form ?? '',
           Part_Of_Speech: valueOf(meta, posKey) ?? '',
-          // Which of the entries spelled alike this one is. LIFT, the TSV and
-          // the archive all carry it, and row order alone does not survive a
-          // round trip through a tool that reorders.
-          Homograph:
-            Number.isInteger(Number(meta.homograph)) && Number(meta.homograph) > 0
-              ? String(Number(meta.homograph))
-              : '',
+          // Which of the entries spelled alike this one is, the number igt
+          // shows (as LIFT's order and the LaTeX book). Row order alone does
+          // not survive a round trip through a tool that reorders.
+          Homograph: String(homographs.get(item.id) ?? ''),
           Vocabulary: vocab.name ?? '',
           Plaid_ID: item.id ?? '',
         };

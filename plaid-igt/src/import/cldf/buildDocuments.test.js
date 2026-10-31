@@ -807,6 +807,8 @@ describe('round trip through the exporter', () => {
       config: { igt: { fields: { gloss: { inline: true, role: 'gloss' }, pos: { role: 'pos' } } } },
       items: [
         { id: 'one', form: 'banco', metadata: { gloss: 'bench', pos: 'noun', homograph: 1 } },
+        // A second banco, so the first has a homograph number to write.
+        { id: 'two', form: 'banco', metadata: { gloss: 'bank', homograph: 2 } },
       ],
     };
     const { files } = buildCldfDataset({

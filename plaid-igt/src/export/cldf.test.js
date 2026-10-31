@@ -553,6 +553,29 @@ describe('buildCldfDataset — dictionary', () => {
     expect(warnings.join(' ')).not.toMatch(/no gloss/);
   });
 
+  // The number igt shows, as LIFT's order and the LaTeX book write it.
+  it('writes the homograph number the app shows', () => {
+    const { files } = build({
+      vocabularies: [
+        {
+          ...vocab,
+          items: [
+            { id: 'a2', form: 'kat', metadata: { homograph: 2, gloss: 'imported second' } },
+            { id: 'a1', form: 'kat', metadata: { homograph: 1, gloss: 'imported first' } },
+            { id: 'a3', form: 'kat', metadata: { gloss: 'made in Plaid' } },
+            { id: 'b', form: 'run', metadata: { homograph: 2, gloss: 'alone' } },
+          ],
+        },
+      ],
+    });
+    expect(table(files, 'entries.csv').map((e) => [e.Plaid_ID, e.Homograph])).toEqual([
+      ['a2', '2'],
+      ['a1', '1'],
+      ['a3', '3'],
+      ['b', ''],
+    ]);
+  });
+
   it('carries non-core lexicon fields as custom entry columns', () => {
     const { files } = build({ vocabularies: [vocab] });
     expect(table(files, 'entries.csv')[1].Entry_morphType).toBe('stem');
