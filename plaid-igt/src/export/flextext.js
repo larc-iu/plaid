@@ -63,15 +63,12 @@ const analysisLang = (options) => options?.langs?.analysis || 'en';
 
 // A field's own writing system, most trustworthy first: the preset's override,
 // then what the FIELD ITSELF records (config.igt.lang, which an importer that
-// knew writes), then the tag its name declares ("Translation (nl)"), then the
-// one analysis tag.
+// knew writes), then the one analysis tag. Never the field's name
+// (resolveFieldLang in fieldNames.js).
 //
-// The name is a guess and the recorded language is not, which matters for the
-// field a FLEx import names WITHOUT a suffix: that one is the primary analysis
-// writing system, and before it was recorded there was nothing to read but the
-// analysis tag. Without any of this every translation and gloss went out under
-// one lang, and FLEx keeps one form per writing system, so two of three
-// translations were silently dropped on import.
+// Without this every translation and gloss went out under one lang, and FLEx
+// keeps one form per writing system, so two of three translations were
+// silently dropped on import.
 const fieldLang = (options, scope, field) =>
   resolveFieldLang(
     {

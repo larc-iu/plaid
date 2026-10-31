@@ -134,9 +134,8 @@ const DOCUMENT_WRITERS = {
     buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context),
   ),
   // Drop tier names that no longer exist in the project configuration.
-  plaintext: countedXml((igtDoc, { preset, layers }) =>
+  plaintext: (igtDoc, { preset, layers }) =>
     serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers)),
-  ),
 };
 
 /**

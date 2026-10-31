@@ -55,8 +55,7 @@ import { pickEn } from './fwdataParser.js';
 //
 // Sentence-scope values (free and literal translations, notes) hang off the
 // SEGMENT rather than an analysis and have no approval to read, so they are
-// never stamped. Neither is the lone default morpheme given to a word FLEx
-// never analyzed: there is no analysis behind it to be unapproved.
+// never stamped.
 //
 // The source names the FLEx agent that proposed it where FLEx says which
 // ("flex-import:M3Parser"), which is the app-specific id shape the provenance
