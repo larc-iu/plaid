@@ -163,6 +163,11 @@ REPAIR_OF = 'repair_of'
 #: be left under an entry that is gone, so the plan is refused then
 #: (`check_entries`).
 SENSES_READ = 'senses_read'
+#: The key on a delete of an entry holding the ids of the entries whose
+#: reference fields named it as the server had them when the plan was made,
+#: left out when there were none. One that names it since would name an entry
+#: that is gone, so the plan is refused then (`check_entries`).
+REFS_READ = 'refs_read'
 
 
 class Context:
@@ -1336,16 +1341,16 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
                 form = (now.get(item_id) or {}).get('form')
                 reasons.append(f'the lexicon entry "{form}" got a sense since the plan was made' if form
                                else f'{_entry_named(op)} got a sense since the plan was made')
-        # A delete clears the references to the entry that it read (its
-        # repairs, :data:`REPAIR_OF`): one set since, another entry's variantOf
-        # pointed at it, would name an entry that is gone. A merge's own write
+        # A delete clears the references to the entry that it read
+        # (:data:`REFS_READ`): one set since, another entry's variantOf pointed
+        # at it, would name an entry that is gone. A merge's own write
         # repoints them.
         fields = {v['id']: item_ref_fields(v.get('fields')) for v in project.vocabs if v.get('id')}
         for op in removing:
             if op.get('kind') != 'delete_entry':
                 continue
             item_id = op.get('item_id')
-            read = {o.get('item_id') for o in ops if o.get(REPAIR_OF) == item_id}
+            read = set(op.get(REFS_READ) or ())
             if any(it.get('id') not in read and any(item_id in ref_ids(it, f) for f in fields.get(vid, ()))
                    for vid in vocab_ids for it in lexicon(vid)):
                 form = (now.get(item_id) or {}).get('form')

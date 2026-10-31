@@ -19,7 +19,7 @@ from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, change_of, labelled
 from ..core.replace import replacer as _replacer
 from ..core.provenance import unmark
-from .plan import KIND, REPAIR_OF, SENSES_READ, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
+from .plan import KIND, REFS_READ, REPAIR_OF, SENSES_READ, SCOPES, analysed_morphemes, move_phrase, removed_entries, settle_merges
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
@@ -27,7 +27,7 @@ from .tools import (parse_analysis, analysis_op, stage_equals, no_scope_reaches,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
-from .vocab import (example_refs, morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids,
+from .vocab import (example_refs, item_ref_fields, morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids,
                     stored_entry_form)
 
 
@@ -1649,6 +1649,16 @@ def _senses_read(ws: Workspace, item_id: str) -> Dict[str, Any]:
     return {SENSES_READ: senses} if senses else {}
 
 
+def _refs_read(ws: Workspace, item_id: str) -> Dict[str, Any]:
+    """The entries whose reference fields name entry ``item_id`` as the server
+    has them, which a delete of it repairs (``plan.REFS_READ``), carried when
+    there are any. Read off the server's lexicons, not the plan's view: an
+    entry the plan deletes or whose reference it clears still names it there."""
+    refs = [it['id'] for v in ws.project.vocabs for it in ws.lexicon(v)
+            if any(item_id in ref_ids(it, f) for f in item_ref_fields(v.get('fields')))]
+    return {REFS_READ: refs} if refs else {}
+
+
 def _repairs_of(removed: str, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """``ops``, the repairs a delete or a merge of entry ``removed`` carries,
     marked as its own: approval writes them in the batch that removes the
@@ -1732,7 +1742,7 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     view = ws.view_of_item(it['id'])
     with ws.staging():
         ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
-                   **_senses_read(ws, it['id']),
+                   **_senses_read(ws, it['id']), **_refs_read(ws, it['id']),
                    'name': _name(view, it),
                    'label': f'Delete entry {_name(view, it)} '
                             f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
