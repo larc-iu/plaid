@@ -211,3 +211,39 @@ def test_a_mend_after_a_rename_in_the_same_plan_makes_the_relation_on_the_rename
             if o['path'] == ['umr', 'held']:
                 final['held'] = o.get('value') if o['op'] == 'set' else None
     assert final == {'held': None}
+
+
+def test_mending_a_kept_graph_anchors_its_new_nodes_on_the_words_the_file_aligned():
+    """The app's applyPenman (keptPieces, cab995804): a node the mend makes
+    stands on the words the kept alignment block gives its variable, with its
+    hold, and records them. The assistant made every node unaligned over the
+    whole sentence and deleted the block in the same batch, so the file's
+    alignment for the sentence was gone. A variable the block aligns to
+    nothing (0-0) or does not name is made unaligned, as before."""
+    doc = _kept()
+    for tk in doc['text_layers'][0]['token_layers']:
+        for t in tk['tokens']:
+            if t['id'] == 'mr-2':
+                t['metadata']['umr']['rawAlignment'] = 's2r: 2-2\ns2t: 0-0'
+    client = umr_client(documents={'umr1': doc})
+    ws = umr_ws(client)
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 2, 'text': (
+        '(s2r / run-01 :ARG0 (s2t / thing) :manner (s2a / away))')})
+    assert 'Planned' in out, out
+    _apply(client, ws)
+    tokens = {t['id']: t for batch in client.payloads('tokens.bulk_create') for t in batch}
+    made = {args[3]['umr']['var']: (args[1], args[3]['umr']) for args in
+            (p['args'] for p in client.payloads('spans.create'))}
+    # s2r on "ran" (20-23) and its hold to the sentence's end, recording the word.
+    anchors, meta = made['s2r']
+    assert [(tokens[a]['begin'], tokens[a]['end'], tokens[a].get('metadata')) for a in anchors] == [
+        (20, 23, None), (20, 31, {'umr': {'hold': True}})]
+    assert meta['words'] == ['mw-6'] and 'sentence' not in meta
+    # s2t (0-0) and s2a (not in the block) over the whole sentence, recording it.
+    for var in ('s2t', 's2a'):
+        anchors, meta = made[var]
+        assert [(tokens[a]['begin'], tokens[a]['end']) for a in anchors] == [(17, 31)]
+        assert meta['sentence'] == 'ms-2' and 'words' not in meta
+    # The block is cleared only now that the nodes carry it.
+    [ops] = _record_patches(client)
+    assert {'op': 'delete', 'path': ['umr', 'rawAlignment']} in ops

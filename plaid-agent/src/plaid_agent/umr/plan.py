@@ -153,7 +153,13 @@ def _apply_create_node(ctx: Context, op) -> int:
     the sentence's start until ``c6313696``: core deletes a zero-width token
     a deletion spans, so an edit in another app that joined two sentences took
     the node with it. A constant belongs to no sentence and keeps its point at
-    the text's start, which is what the editor gives one."""
+    the text's start, which is what the editor gives one.
+
+    A node of a graph kept as text that the file's alignment block aligned
+    to words (``pieces``, diff.py ``_kept_pieces``) stands on those words and
+    its hold, from where they begin to the sentence's end (``holdFor`` in
+    plaid-umr's sentenceGraph.js), and records the words (``words``), as the
+    app's applyPenman makes it."""
     begin = op.get('begin') or 0
     end = op.get('end') or begin
     meta: Dict[str, Any] = {'var': op['var'], 'attrs': list(op.get('attrs') or [])}
@@ -161,22 +167,30 @@ def _apply_create_node(ctx: Context, op) -> int:
         meta['constant'] = True
     if op.get('root'):
         meta['root'] = True
-    # A node aligned to no word records its sentence, as the editor does: the
-    # record is what says so, and the anchor stands over the whole sentence,
-    # so an edit to the text around it resizes the anchor rather than taking
-    # the node with it.
-    if op.get('sentence_id') and not op.get('constant'):
-        meta['sentence'] = op['sentence_id']
+    pieces = [{'begin': p['begin'], 'end': p['end']} for p in op.get('pieces') or ()]
+    if pieces:
+        meta['words'] = list(op.get('words') or [])
+        pieces.append({'begin': min(p['begin'] for p in pieces), 'end': end,
+                       'metadata': {UMR: {'hold': True}}})
+    else:
+        pieces = [{'begin': begin, 'end': end}]
+        # A node aligned to no word records its sentence, as the editor
+        # does: the record is what says so, and the anchor stands over the
+        # whole sentence, so an edit to the text around it resizes the
+        # anchor rather than taking the node with it.
+        if op.get('sentence_id') and not op.get('constant'):
+            meta['sentence'] = op['sentence_id']
 
-    anchor, span = ctx.b.new_id(), ctx.b.new_id()
+    anchors = [ctx.b.new_id() for _ in pieces]
+    span = ctx.b.new_id()
 
-    def queue(batch, o=op, a=begin, z=end, m=meta):
-        batch.tokens.bulk_create([{'token_layer_id': o['node_layer_id'], 'text': o['text_id'],
-                                   'begin': a, 'end': z, 'id': anchor}])
-        batch.spans.create(o['concept_layer_id'], [anchor], o.get('concept') or '',
+    def queue(batch, o=op, m=meta):
+        batch.tokens.bulk_create([{'token_layer_id': o['node_layer_id'], 'text': o['text_id'], **p, 'id': a}
+                                  for p, a in zip(pieces, anchors)])
+        batch.spans.create(o['concept_layer_id'], anchors, o.get('concept') or '',
                            {**ctx.stamp(), UMR: m}, id=span)
 
-    ctx.b.add(queue, weight=2, count=2)
+    ctx.b.add(queue, weight=1 + len(anchors), count=2)
     ctx.span_at[(op['document_id'], op['var'])] = span
     return 1
 
@@ -586,7 +600,7 @@ KIND = ok.registry([
            required=('var', 'node_layer_id', 'concept_layer_id', 'text_id'),
            apply=_apply_create_node,
            target=lambda op: ('new-node', op.get('document_id'), op.get('var')),
-           compact_each=('var', 'concept', 'attrs', 'begin', 'end', 'root', 'ref', 'label'),
+           compact_each=('var', 'concept', 'attrs', 'begin', 'end', 'pieces', 'words', 'root', 'ref', 'label'),
            compact_label=_kind_label('add', ('node', 'nodes'), drop='add '),
            # A node of a sentence stands over the whole of it, wherever an
            # edit before it has moved it since (core.fingerprint).

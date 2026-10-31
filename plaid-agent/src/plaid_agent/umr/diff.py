@@ -30,9 +30,10 @@ for, most of them only because a sibling before them came or went. With
 changes is a row of its own.
 """
 
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman
+from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman, words_under
 from plaid_client.workflows.umr.graph import CYCLE_ROLES, next_order
 
 from .plan import attr_line
@@ -130,6 +131,52 @@ def _moved(old, old_edges, attrs: List[dict], edges: List[dict]) -> Callable[[st
         return (kept_old.index(word) if word in kept_old else -1) != \
             (kept_next.index(word) if word in kept_next else -1)
     return moved
+
+
+_RANGE = re.compile(r'^([0-9]+)-([0-9]+)$')
+
+
+def read_alignment(block: str) -> Dict[str, List[Tuple[int, int]]]:
+    """An alignment block (each line a variable, a colon and the word ranges
+    it covers, 1-based and inclusive) as the ranges of each variable. A range
+    that aligns to nothing (``0-0``, UMR 1.0's ``-1--1``) or cannot be read is
+    left out. plaid-umr's ``readAlignment`` (format/umrFile.js), held to it by
+    ``test_umr_alignment_mirror.py``."""
+    out: Dict[str, List[Tuple[int, int]]] = {}
+    for line in str(block or '').split('\n'):
+        trimmed = line.strip()
+        if not trimmed or trimmed.startswith('#') or ':' not in trimmed:
+            continue
+        variable, _, ranges = trimmed.partition(':')
+        spans: List[Tuple[int, int]] = []
+        for piece in ranges.split(','):
+            found = _RANGE.match(piece.strip())
+            if found and piece.strip() != '0-0':
+                spans.append((int(found.group(1)), int(found.group(2))))
+        out[variable.strip()] = spans
+    return out
+
+
+def _kept_pieces(sentence: Sentence) -> Callable[[str], Tuple[List[dict], List[str]]]:
+    """For a sentence whose graph the import kept as text, the words its
+    kept alignment block gives a variable, as anchor pieces, and the ids of
+    those words, which an aligned node records (``umr.words``). None for a
+    variable it aligns to nothing or does not name, or once the sentence has
+    nodes, since the block is written no longer then. plaid-umr's
+    ``keptPieces`` in ``UmrDocument.applyPenman``: mending the graph is the
+    first time anything can be anchored to the block, and the mend clears it,
+    so its words would be lost with it."""
+    block = sentence.raw_alignment if not sentence.nodes else None
+    ranges = read_alignment(block) if isinstance(block, str) else {}
+    words = sentence.words
+
+    def pieces(var: str) -> Tuple[List[dict], List[str]]:
+        out = []
+        for a, b in ranges.get(var, ()):
+            if 1 <= a <= b <= len(words):
+                out.append({'begin': words[a - 1].begin, 'end': words[b - 1].end})
+        return out, words_under([(p['begin'], p['end']) for p in out], words)
+    return pieces
 
 
 class GraphDiff:
@@ -362,11 +409,12 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     orders: List[Dict[str, Any]] = []
     order_kept: List[str] = []
 
+    kept_pieces = _kept_pieces(sentence)
     for var, node in parsed.nodes.items():
         attrs, edges = _children(node)
         old = old_by_var.get(var)
         if old is None:
-            creates.append({
+            create = {
                 'kind': 'create_node', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                 'var': var, 'concept': node.concept, 'attrs': attrs,
                 'node_layer_id': project.node_layer_id, 'concept_layer_id': project.concept_layer_id,
@@ -374,7 +422,13 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 # Aligned to no word, so the anchor stands over the whole
                 # sentence (the app's rule since c6313696).
                 'begin': sentence.begin, 'end': sentence.end,
-                'label': f'add ({var} / {node.concept})'})
+                'label': f'add ({var} / {node.concept})'}
+            # Unless the kept graph this mends aligned it to words: then it
+            # stands on them (``pieces``) and records them (``words``).
+            pieces, words = kept_pieces(var)
+            if pieces:
+                create['pieces'], create['words'] = pieces, words
+            creates.append(create)
             for e in edges:
                 edges_add.append({
                     'kind': 'create_edge', 'document_id': did, 'ref': f's{sentence.number}.{var}',
