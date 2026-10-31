@@ -108,39 +108,33 @@ const crossTalkProblem = (info, { timeBegin, timeEnd, speaker }, existing = null
     { was: existing, format: seconds },
   );
 
-// The stretch of baseline text a segment at [timeBegin, timeEnd) may take
-// without breaking the rule that time order follows text order: from the end
-// of the last segment that finishes before it to the start of the first one
-// that begins after it. Offsets are code points.
-export const alignableRange = (tokens, bodyLength, timeBegin, timeEnd) => {
+// The time-order rule, the one copy: text order follows the order segments
+// start in. A segment starting at `timeBegin` lies after the text of every
+// segment that starts earlier and before the text of every one that starts
+// later (one starting at the same time may sit either side). This is that
+// stretch: `leftBoundary` where the earlier ones' text ends, `rightBoundary`
+// where the later ones' text begins, or 0 and `bodyLength` when there are none.
+// Code points. `excludeId` leaves out the segment being changed.
+export const alignableRange = (tokens, bodyLength, timeBegin, excludeId = null) => {
   let leftBoundary = 0;
   let rightBoundary = bodyLength;
   for (const token of tokens || []) {
+    if (token.id === excludeId) continue;
     const tokenTimeBegin = token.metadata?.timeBegin || 0;
-    const tokenTimeEnd = token.metadata?.timeEnd || 0;
-    if (tokenTimeEnd <= timeBegin && token.end > leftBoundary) leftBoundary = token.end;
-    if (tokenTimeBegin >= timeEnd && token.begin < rightBoundary) rightBoundary = token.begin;
+    if (tokenTimeBegin < timeBegin && token.end > leftBoundary) leftBoundary = token.end;
+    if (tokenTimeBegin > timeBegin && token.begin < rightBoundary) rightBoundary = token.begin;
   }
   return { leftBoundary, rightBoundary };
 };
 
-// A token at text position `posBegin` with the given `timeBegin` inverts
-// temporal order if it would sit earlier in time than its left positional
-// neighbor, or later in time than its right one (temporal order must track
-// text order). Returns 'previous' | 'next' | null.
+// Whether a segment at text position `posBegin` starting at `timeBegin` breaks
+// the time-order rule (`alignableRange`): 'previous' when a segment that starts
+// earlier has its text after it, 'next' when one that starts later has its
+// text before it, else null.
 const findTemporalInversion = (tokens, posBegin, timeBegin, excludeId = null) => {
-  let left = null,
-    right = null;
-  for (const t of tokens || []) {
-    if (t.id === excludeId) continue;
-    if (t.begin < posBegin) {
-      if (!left || t.begin > left.begin) left = t;
-    } else if (t.begin > posBegin) {
-      if (!right || t.begin < right.begin) right = t;
-    }
-  }
-  if (left && timeBegin < (left.metadata?.timeBegin ?? -Infinity)) return 'previous';
-  if (right && timeBegin > (right.metadata?.timeBegin ?? Infinity)) return 'next';
+  const { leftBoundary, rightBoundary } = alignableRange(tokens, Infinity, timeBegin, excludeId);
+  if (posBegin < leftBoundary) return 'previous';
+  if (posBegin >= rightBoundary) return 'next';
   return null;
 };
 
@@ -169,40 +163,16 @@ const pushMadeWords = (infoNext, textId, answer) => {
 const planCreate = (info, trimmed, timeBegin) => {
   const existingText = bodyOf(info);
   const alignmentTokens = info.alignmentTokenLayer.tokens || [];
-  const sortedTokens = [...alignmentTokens].sort(
-    (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0),
-  );
+  const bodyLength = cpLength(existingText);
 
-  // Find the temporal neighbors of [timeBegin, timeEnd) so we can choose an
-  // insertion offset that preserves temporal ordering on the text axis.
-  let insertAfterToken = null;
-  let insertBeforeToken = null;
-  for (let i = 0; i < sortedTokens.length; i++) {
-    const tokenTime = sortedTokens[i].metadata?.timeBegin || 0;
-    if (tokenTime <= timeBegin) {
-      insertAfterToken = sortedTokens[i];
-    } else if (tokenTime > timeBegin && !insertBeforeToken) {
-      insertBeforeToken = sortedTokens[i];
-      break;
-    }
-  }
-
-  let insertPosition;
-  let temporalInversion = false;
-  if (!insertAfterToken && !insertBeforeToken) {
-    insertPosition = cpLength(existingText);
-  } else if (!insertAfterToken && insertBeforeToken) {
-    insertPosition = 0;
-  } else if (insertAfterToken && !insertBeforeToken) {
-    insertPosition = insertAfterToken.end;
-  } else if (insertBeforeToken.begin < insertAfterToken.end) {
-    // Temporal/positional ordering conflict. Fall back to inserting
-    // before the conflicting later-in-time token.
-    insertPosition = insertBeforeToken.begin;
-    temporalInversion = true;
-  } else {
-    insertPosition = insertAfterToken.end;
-  }
+  // The new text goes right after the segments that start before it (at the
+  // front when there are none), or at the end of the body when no segment
+  // starts before or after it. Nowhere, when an earlier segment's text lies
+  // after a later one's.
+  const { leftBoundary, rightBoundary } = alignableRange(alignmentTokens, bodyLength, timeBegin);
+  const unbounded = leftBoundary === 0 && rightBoundary === bodyLength;
+  const insertPosition = unbounded ? bodyLength : leftBoundary;
+  const temporalInversion = leftBoundary > rightBoundary;
 
   // A space on each side the new text would touch other text, and none
   // where whitespace is there already (a line break included), as the ASR
@@ -677,7 +647,8 @@ export const alignmentMutations = {
   // Make a segment over text already in the baseline: no character changes,
   // one token is created over `[begin, end)` (code points into the body). The
   // range has to lie in the stretch a segment at this time may take (between
-  // the segment before it in time and the one after, see `alignableRange`)
+  // the segments that start before it and those that start after, see
+  // `alignableRange`)
   // and may not overlap another segment.
   async alignBaseline({ begin, end, timeBegin, timeEnd, speaker }) {
     if (timeEnd < timeBegin) {
@@ -712,12 +683,7 @@ export const alignmentMutations = {
     }
 
     const alignmentTokens = alignmentTokenLayer.tokens || [];
-    const { leftBoundary, rightBoundary } = alignableRange(
-      alignmentTokens,
-      bodyLength,
-      timeBegin,
-      timeEnd,
-    );
+    const { leftBoundary, rightBoundary } = alignableRange(alignmentTokens, bodyLength, timeBegin);
     if (begin < leftBoundary || end > rightBoundary) {
       this.refuse(
         'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.',

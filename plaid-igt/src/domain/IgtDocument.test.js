@@ -2132,8 +2132,9 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     // "the dog" lies after a segment that is later in time than [0, 1).
     expect(await doc.alignBaseline({ begin: 12, end: 19, timeBegin: 0, timeEnd: 1 })).toBe(false);
     expect(doc.error).toMatch(/out of time order/);
-    // "cat saw" overlaps the existing segment.
-    expect(await doc.alignBaseline({ begin: 4, end: 11, timeBegin: 1, timeEnd: 4 })).toBe(false);
+    // "cat saw" overlaps the existing segment (one starting with it may sit
+    // either side of it).
+    expect(await doc.alignBaseline({ begin: 4, end: 11, timeBegin: 2, timeEnd: 4 })).toBe(false);
     expect(doc.error).toMatch(/overlaps/);
     // A caret, a blank, and a range past the end are not selections.
     expect(await doc.alignBaseline({ begin: 4, end: 4, timeBegin: 0, timeEnd: 1 })).toBe(false);

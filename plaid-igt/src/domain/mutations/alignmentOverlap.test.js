@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildRawDoc, resetIds, makeIgtDoc } from '../test-helpers.js';
 import { overlapProblem } from '../alignmentTimes.js';
+import { alignableRange } from './alignment.js';
 
 function makeDoc(raw) {
   return makeIgtDoc({
@@ -159,5 +160,53 @@ describe('overlapProblem', () => {
     expect(overlapProblem(tokens, seg('x', 1, 6, 'A'))).toMatch(
       /^Overlaps the segment from 0 to 2\./,
     );
+  });
+});
+
+// Text order follows the order segments START in, on every path: the stretch
+// a new segment may take over existing text, where new text goes, and a time
+// edit. Ben from 4 to 6.5 s over "kai pele", with "hello world" before it
+// untimed: a segment Ana starts at 6.2 s, while Ben still talks, starts after
+// Ben, so its text has to come after his.
+describe('time order under cross-talk', () => {
+  const benOverLaterText = () =>
+    buildRawDoc({
+      body: 'hello world kai pele',
+      alignmentTokens: [
+        {
+          id: 'a-1',
+          text: 'text-1',
+          begin: 12,
+          end: 20,
+          metadata: { timeBegin: 4, timeEnd: 6.5, speaker: 'Ben' },
+        },
+      ],
+    });
+
+  it('offers only the text after a segment that started earlier and is still running', () => {
+    const doc = makeDoc(benOverLaterText());
+    expect(alignableRange(doc.alignmentTokens, 20, 6.2)).toEqual({
+      leftBoundary: 20,
+      rightBoundary: 20,
+    });
+    // One that starts before Ben may take the text before him.
+    expect(alignableRange(doc.alignmentTokens, 20, 3)).toEqual({
+      leftBoundary: 0,
+      rightBoundary: 12,
+    });
+  });
+
+  it('alignBaseline refuses text before a segment that started earlier', async () => {
+    const doc = makeDoc(benOverLaterText());
+    const ok = await doc.alignBaseline({
+      begin: 0,
+      end: 11,
+      timeBegin: 6.2,
+      timeEnd: 9,
+      speaker: 'Ana',
+    });
+    expect(ok).toBe(false);
+    expect(kinds(doc)).toEqual([]);
+    expect(doc.alignmentTokens.map((t) => t.id)).toEqual(['a-1']);
   });
 });

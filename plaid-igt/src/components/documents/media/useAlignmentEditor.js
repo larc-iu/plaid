@@ -16,15 +16,10 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   useDocumentModel(doc);
 
   // The stretch of baseline text a segment at `selection` may take: whatever
-  // lies between the segment before it in time and the one after. Code points.
+  // lies between the segments that start before it and those that start after.
+  // Code points.
   const getAvailableTextBoundaries = useCallback(
-    () =>
-      alignableRange(
-        doc.alignmentTokens || [],
-        cpLength(doc.body || ''),
-        selection.start,
-        selection.end,
-      ),
+    () => alignableRange(doc.alignmentTokens || [], cpLength(doc.body || ''), selection.start),
     [doc, selection],
   );
 
