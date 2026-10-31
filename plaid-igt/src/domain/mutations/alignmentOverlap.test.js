@@ -4,7 +4,7 @@
 // speaker box, a row edit that changes the speaker with the text) and a new
 // segment have to refuse it too, or the next open reports the document broken.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildRawDoc, resetIds, makeIgtDoc } from '../test-helpers.js';
+import { buildRawDoc, resetIds, makeIgtDoc, makeFakeClient } from '../test-helpers.js';
 import { overlapProblem } from '../alignmentTimes.js';
 import { alignableRange } from './alignment.js';
 
@@ -208,5 +208,58 @@ describe('time order under cross-talk', () => {
     expect(ok).toBe(false);
     expect(kinds(doc)).toEqual([]);
     expect(doc.alignmentTokens.map((t) => t.id)).toEqual(['a-1']);
+  });
+});
+
+// A new segment that starts at the same time as an existing one goes right
+// after that segment's text, whatever segments start earlier or later.
+describe('a new segment tied with an existing one', () => {
+  const seg = (id, begin, end, timeBegin, timeEnd, speaker) => ({
+    id,
+    text: 'text-1',
+    begin,
+    end,
+    metadata: { timeBegin, timeEnd, ...(speaker ? { speaker } : {}) },
+  });
+  const placed = async (body, alignmentTokens, timeBegin) => {
+    const build = () => {
+      const raw = buildRawDoc({ body, alignmentTokens, words: [], morphemes: [] });
+      raw.textLayers[0].text.digest = `d:${body}`;
+      return raw;
+    };
+    const doc = makeIgtDoc({ raw: build(), client: makeFakeClient({ reloadDoc: build() }) });
+    expect(
+      await doc.createAlignment({
+        text: 'NEW',
+        timeBegin,
+        timeEnd: timeBegin + 0.5,
+        speaker: 'Ana',
+      }),
+    ).toBe(true);
+    return doc.body;
+  };
+
+  it('goes after the segment it ties with when only later segments exist', async () => {
+    expect(
+      await placed(
+        'intro text bbb ddd',
+        [seg('B', 11, 14, 4, 5, 'Ben'), seg('D', 15, 18, 8, 9)],
+        4,
+      ),
+    ).toBe('intro text bbb NEW ddd');
+  });
+
+  it('goes after the segment it ties with when an earlier segment exists', async () => {
+    expect(
+      await placed(
+        'aaa bbb ddd',
+        [seg('A', 0, 3, 1, 2), seg('B', 4, 7, 4, 5, 'Ben'), seg('D', 8, 11, 8, 9)],
+        4,
+      ),
+    ).toBe('aaa bbb NEW ddd');
+  });
+
+  it('goes after the segment it ties with when no other segment exists', async () => {
+    expect(await placed('bbb', [seg('B', 0, 3, 4, 5, 'Ben')], 4)).toBe('bbb NEW');
   });
 });
