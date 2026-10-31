@@ -79,7 +79,7 @@ from plaid_client.roles import ROLES, find_by_role
 from plaid_client.service import Refusal
 from plaid_client.workflows.igt import (
     derive, ANALYZE_REQUEST_FIELDS,
-    project_entry_types, morph_type, gloss_of,
+    project_entry_types, entry_types_of, morph_type, gloss_of,
 )
 from plaid_client.workflows.igt.analyze import (AnalysisProgress, begin_analysis, finish_analysis,
                                                 read_analysis_request)
@@ -745,15 +745,15 @@ class CwompService(BaseService):
             self.confirmed[key] = (time.monotonic(), confirmed)
         return confirmed
 
-    def live_items(self, project) -> set:
-        """The ids of every vocab item the project's vocabularies hold now. A
-        link to an item deleted or merged away since the confirmed morphemes
-        were read would refuse its whole batch."""
-        ids = set()
-        for v in project.get('vocabs') or []:
-            for it in self.client.vocab_layers.get(v['id'], include_items=True).get('items') or []:
-                ids.add(it['id'])
-        return ids
+    def live_vocab(self, project) -> Tuple[set, Dict[str, str]]:
+        """The ids of every vocab item the project's vocabularies hold now,
+        and the type each entry goes by (``entry_types_of``). A link to an
+        item deleted or merged away since the confirmed morphemes were read
+        would refuse its whole batch, and the morpheme a link writes stores a
+        type by its entry's type as it is now."""
+        vocabs = [self.client.vocab_layers.get(v['id'], include_items=True)
+                  for v in project.get('vocabs') or []]
+        return {it['id'] for vl in vocabs for it in vl.get('items') or []}, entry_types_of(vocabs)
 
     def process_request(self, request_data: dict, response_helper) -> None:
         request = read_analysis_request(self.client, request_data, response_helper)
@@ -800,7 +800,8 @@ class CwompService(BaseService):
                 model.set_lexicon(set(model.lexicon) | own.entries)
             confirmed = project_confirmed.merged(own)
             project = self.client.projects.get(project_id)
-            confirmed.keep_items(self.live_items(project))
+            live, entry_types = self.live_vocab(project)
+            confirmed.keep_items(live)
             # A link the model doubts is one more thing to undo: propose none.
             threshold = read_confidence_threshold(project.get('config'))
 
@@ -844,7 +845,8 @@ class CwompService(BaseService):
 
             stamp_detail = self.stamp_detail(request.requester, **model.describe())
             finish_analysis(self.client, response_helper, run, plans, service_id=self.service_id,
-                            label='CWoMP analysis', stamp_detail=stamp_detail, replaced=replaced)
+                            label='CWoMP analysis', stamp_detail=stamp_detail, replaced=replaced,
+                            entry_types=entry_types)
 
 
 def main():

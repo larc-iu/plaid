@@ -25,7 +25,11 @@ the gloss and the link as ``provProb``, and on the morpheme too unless
 likely than any one of them), and ``links``, one vocab item id
 per segment or None: the morpheme is linked to that item, stamped like the
 morpheme (``provDetail.vocabItem`` records the pick). A proposer links only
-to items that exist, and only when it knows which one is meant. An analysis
+to items that exist, and only when it knows which one is meant. A linked
+morpheme goes by its entry's type, so it stores none, nor the "=" rule's
+record, when its entry goes by one, as igt's link takes them off (vocab.js
+``_typedMorphemes``, R2). Under an entry that goes by none it keeps the type
+the analysis gives (the "=" rule's, R47 to R49). An analysis
 may also carry ``gloss_details``, one dict or None per segment, merged into
 the gloss span's ``provDetail`` (``valueProbs``, the alternatives a model
 weighed, which igt lists under Alt+Down). Callers are expected to
@@ -70,16 +74,20 @@ def chunk_plans(plans, budget=BATCH_OP_BUDGET):
 
 
 def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail,
-                   on_progress=None):
+                   on_progress=None, entry_types=None):
     """Write every plan; returns the number of words written. ``source`` is the
     producer id (``service_source(...)``), ``detail`` the provDetail base
-    (model, language, ...) each stamp extends.
+    (model, language, ...) each stamp extends. ``entry_types`` is the type
+    each entry goes by (:func:`~.derive.project_entry_types`), required when
+    a plan links a morpheme.
 
     ``on_progress(done, total)`` is called with the count of chunks written: a
     document of several thousand words is a dozen batches and a minute or more
     of writing, which used to pass without a word to the requester."""
     if not plans:
         return 0
+    if entry_types is None and any(any(p['analysis'].get('links') or []) for p in plans):
+        raise ValueError('write_analyses links morphemes: pass entry_types')
     text_id = plans[0]['word']['text_id']
     written = 0
     chunks = chunk_plans(plans)
@@ -124,16 +132,20 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                     from_equals = a['types'][j] if a.get('types_from_equals') else None
                     typed_before = (j > 0 and a.get('types_from_equals')
                                     and a['joiners'][j - 1] == '=')
+                    morph_type = a['types'][j]
+                    if links[j] and entry_types.get(links[j]):
+                        # It goes by its entry's type, and stores no copy.
+                        morph_type = from_equals = None
                     if j == 0 and keep:
                         mid = keep
                         b.tokens.patch_metadata(mid, metadata_ops({
-                            **meta, 'morphType': a['types'][0], EQUALS_TYPE_KEY: from_equals,
+                            **meta, 'morphType': morph_type, EQUALS_TYPE_KEY: from_equals,
                             EQUALS_BEFORE_KEY: None,
                             PROV_CONFIRMED_KEY: None,
                             PROV_PROB_KEY: form_prob if is_probability(form_prob) else None}))
                     else:
-                        if a['types'][j]:
-                            meta['morphType'] = a['types'][j]
+                        if morph_type:
+                            meta['morphType'] = morph_type
                         if from_equals:
                             meta[EQUALS_TYPE_KEY] = from_equals
                         if typed_before:

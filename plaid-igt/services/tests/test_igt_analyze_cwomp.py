@@ -216,7 +216,7 @@ def _service(picked, config=None):
     confirmed.entries = {('ev', 'house'), ('gel', 'come')}
     confirmed.links = {('gel', 'come'): cwomp.Counter({'item-gel': 3})}
     service.confirmed_for = lambda *a: confirmed
-    service.live_items = lambda project: {'item-gel'}
+    service.live_vocab = lambda project: ({'item-gel'}, {})
     service.client = servicetest.FakeClient([_document()], project={'id': 'p', 'config': config or {}})
     return service, model
 
@@ -248,6 +248,23 @@ def test_every_morpheme_and_gloss_carries_its_probability_and_a_clitic_its_side(
     links = [c['args'] for kind, c in service.client.calls if kind == 'vocab_links.create']
     assert [(item, meta['provProb']) for item, _, meta in links] == [('item-gel', 0.9)] * 2
     assert [(v, m['provProb']) for v, m in glosses] == [('come', 0.9), ('PROG', 0.4)] * 2
+
+
+def test_a_clitic_linked_to_a_typed_entry_stores_no_type_of_its_own():
+    """A linked morpheme goes by its entry's type (R2): over an entry that goes
+    by one, the clitic type CWoMP read off the form is a hidden copy the app's
+    link takes off. Over an untyped entry it stays. The types are read when
+    the run writes, not from the cached lexicon."""
+    enclitic = cwomp.encode_form('yor', 'enclitic')
+    for entry_types, stored in (({'item-yor': 'suffix'}, None), ({}, 'enclitic')):
+        service, _ = _service([('gel', 'come', 0.9), (enclitic, 'PROG', 0.9)])
+        service.confirmed_for('p', 'Gloss', None, print).links[(enclitic, 'PROG')] = cwomp.Counter({'item-yor': 2})
+        service.live_vocab = lambda project, t=entry_types: ({'item-gel', 'item-yor'}, t)
+        servicetest.run(service, REQUEST)
+        morphs = [c['kwargs']['metadata'] for kind, c in service.client.calls if kind == 'tokens.create']
+        assert [m.get('morphType') for m in morphs] == [None, stored] * 2, entry_types
+        links = [c['args'][0] for kind, c in service.client.calls if kind == 'vocab_links.create']
+        assert links == ['item-gel', 'item-yor'] * 2
 
 
 def test_a_link_the_model_doubts_is_not_proposed():

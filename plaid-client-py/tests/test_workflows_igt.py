@@ -423,7 +423,7 @@ def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
                          'probs': [0.8, 0.3], 'form_probs': [0.9, 0.3], 'links': ['item-ab', None],
                          'gloss_details': [{'valueProbs': {'A': 0.8, 'B': 0.1}}, None]}}
     client = testing.FakeClient([])
-    write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {'model': 'm'})
+    write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {'model': 'm'}, entry_types={})
     log = [c for b in _batch_log(client) for c in b]
     made = [c[3]['id'] for c in log if c[:2] == ('tokens', 'create')]
     [link] = [c for c in log if c[:2] == ('vocab_links', 'create')]
@@ -440,6 +440,68 @@ def test_write_analyses_links_a_morpheme_to_the_proposed_item_stamped_like_it():
     assert spans[1]['provDetail'] == {'model': 'm', 'value': 'C'}
     from plaid_client.workflows.igt.write import _ops_for
     assert _ops_for(plan) == 5
+
+def _linked_clitic_metas(entry_types, analysis=None, keep=False):
+    """The metadata write_analyses gives each slot of "A(ab)=C(c)", its "c"
+    linked to item-c: each new morpheme's, and with ``keep`` the kept first
+    one's after its patch."""
+    from plaid_client.metadata_ops import apply_metadata_ops
+    m0 = ({'id': 'm0', 'metadata': {'form': 'abc'}} if keep
+          else virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3}))
+    analysis = analysis or {**analysis_for('abc', ParsedWord('A(ab)=C(c)')), 'links': [None, 'item-c']}
+    plan = {'word': {'text_id': 't1', 'surface': 'abc', 'morphs': [m0], 'morph_spans': {m0['id']: []},
+                     'morph_links': {}, 'token': {'id': 'w1', 'begin': 0, 'end': 3}},
+            'analysis': analysis}
+    client = testing.FakeClient([])
+    write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {}, entry_types=entry_types)
+    log = _batch_log(client)[0]
+    patched = [apply_metadata_ops(m0['metadata'], c[2][1]) for c in log if c[:2] == ('tokens', 'patch_metadata')]
+    return patched + [c[3]['metadata'] for c in log if c[:2] == ('tokens', 'create')]
+
+
+def test_a_clitic_linked_to_an_untyped_entry_keeps_the_type_the_equals_rule_gave():
+    """The app's link rule (plaid-igt vocab.js _typedMorphemes, 9c2fd1c0c):
+    a morpheme linked to an untyped entry keeps the "=" rule's type and its
+    record (R47 to R49), so the export keeps the "="."""
+    metas = _linked_clitic_metas({})
+    assert [m.get('morphType') for m in metas] == [None, 'enclitic']
+    assert [m.get('morphTypeFromEquals') for m in metas] == [None, 'enclitic']
+
+
+def test_a_clitic_linked_to_a_typed_entry_stores_no_type():
+    """A linked morpheme goes by its entry's type (R2): over a typed entry the
+    "=" rule's type and record would be a hidden copy, which the app's link
+    takes off. The "=" typed before it stays."""
+    metas = _linked_clitic_metas({'item-c': 'suffix'})
+    assert [m.get('morphType') for m in metas] == [None, None]
+    assert [m.get('morphTypeFromEquals') for m in metas] == [None, None]
+    assert metas[1]['equalsBefore'] is True
+
+
+def test_a_morpheme_linked_to_a_typed_entry_stores_no_type_of_its_own():
+    """A proposer's own type (CWoMP's clitics) on a morpheme it links to a
+    typed entry is a hidden copy the app's link takes off, on a new morpheme
+    and on the kept first one alike. Under an untyped entry, and unlinked,
+    the morpheme keeps the type it was given."""
+    analysis = {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': ['proclitic', 'enclitic'],
+                'joiners': ['='], 'surface_mismatch': False, 'degraded': False,
+                'links': ['item-ab', 'item-c']}
+    for keep in (False, True):
+        metas = _linked_clitic_metas({'item-ab': 'root', 'item-c': 'suffix'}, analysis, keep=keep)
+        assert len(metas) == 2 and [m.get('morphType') for m in metas] == [None, None], keep
+        metas = _linked_clitic_metas({}, analysis, keep=keep)
+        assert [m.get('morphType') for m in metas] == ['proclitic', 'enclitic'], keep
+    metas = _linked_clitic_metas({'item-c': 'suffix'}, {**analysis, 'links': [None, 'item-c']})
+    assert [m.get('morphType') for m in metas] == ['proclitic', None]
+
+
+def test_write_analyses_with_links_needs_the_entry_types():
+    """Which type a linked morpheme stores depends on its entry's, so a
+    caller that links names them."""
+    import pytest
+    with pytest.raises(ValueError):
+        _linked_clitic_metas(None)
+
 
 # --- re-analysis replaces the whole analysis (H26-SERVICES-1, -2, -3) -------------------
 

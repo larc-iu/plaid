@@ -164,10 +164,11 @@ def begin_analysis(client, response_helper, request: AnalysisRequest, *,
 
 def finish_analysis(client, response_helper, run: AnalysisRun, plans: Sequence[dict], *,
                     service_id: str, label: str, stamp_detail: Dict[str, Any], replaced: int,
-                    **extra) -> None:
+                    entry_types: Optional[Dict[str, str]] = None, **extra) -> None:
     """Write ``plans`` as one operation labelled ``"<label> (<n> words)"``
     with who asked, stamped as ``service_id``'s with ``stamp_detail``, and
-    leave the result on the run. ``extra`` goes to :func:`analysis_result`
+    leave the result on the run. ``entry_types`` is as :func:`write_analyses`
+    takes it, required when a plan links. ``extra`` goes to :func:`analysis_result`
     (``failed``, ``not_asked``, a service's own counts). The writes cannot be
     stopped once begun: a stop halfway would leave words half analyzed."""
     progress = AnalysisProgress(response_helper)
@@ -182,7 +183,7 @@ def finish_analysis(client, response_helper, run: AnalysisRun, plans: Sequence[d
                                f'Writing analyses ({done}/{total} batches)…')
 
             written = write_analyses(client, plans, run.gloss_layer_id, request.morph_layer_id,
-                                     source, stamp_detail, on_progress=wrote)
+                                     source, stamp_detail, on_progress=wrote, entry_types=entry_types)
     run.held.result = analysis_result(request.document_id, len(run.sentences), len(run.targets), run.skipped,
                                       written=written, replaced=replaced,
                                       translation_missing=run.translation_missing, **extra)
