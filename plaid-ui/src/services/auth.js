@@ -257,13 +257,13 @@ export const authService = {
   // credentials, so sending them to the login form to retype them would be a
   // pointless place to lose someone.
   async redeemInvite(code, { email, password, displayName }) {
-    const { client: authed } = await PlaidClient.redeemInvite(
+    const { client: authed, projectId } = await PlaidClient.redeemInvite(
       BASE_URL,
       code,
       { email, password, displayName },
       { onAuthError },
     );
-    return establishSession(track(authed));
+    return { ...(await establishSession(track(authed))), projectId };
   },
 
   logout(reason = null) {

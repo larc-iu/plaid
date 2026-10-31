@@ -38,8 +38,10 @@ const deadMessageFor = (preview) => {
  *
  * `loginPath` and `homePath` are the app's, for the same reason
  * `createProtectedRoute` takes its `loginPath`: a routing table is an app's own.
+ * `projectPath(id)` is where the app opens a project, for an invite that
+ * joined one.
  */
-export const RedeemInvite = ({ loginPath, homePath }) => {
+export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
   const { code } = useParams();
   const navigate = useNavigate();
   const { redeemInvite, user } = useAuth();
@@ -107,7 +109,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
         isReset ? 'Your password has been changed.' : 'Your account is ready.',
         'Welcome',
       );
-      navigate(homePath);
+      navigate(result.projectId && projectPath ? projectPath(result.projectId) : homePath);
       return;
     }
     // 409 is the one failure worth rewording: the server says "already exists",

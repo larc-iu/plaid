@@ -687,7 +687,8 @@ class PlaidClient {
    *   the UI; defaults to the local part of the email (signup only)
    * @param {string} credentials.password - Desired password (min 8 characters)
    * @param {object} [options]
-   * @returns {Promise<{client: PlaidClient, userId: string, kind: string}>}
+   * @returns {Promise<{client: PlaidClient, userId: string, kind: string, projectId?: string}>}
+   *   `projectId` names the project a signup invite joined.
    */
   static async redeemInvite(
     baseUrl,
@@ -715,6 +716,7 @@ class PlaidClient {
       ),
       userId: data.userId,
       kind: data.kind,
+      projectId: data.projectId,
     };
   }
 

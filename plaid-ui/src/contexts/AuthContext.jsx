@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await authService.redeemInvite(code, credentials);
       setUser(result.user);
-      return { success: true };
+      return { success: true, projectId: result.projectId };
     } catch (error) {
       return {
         success: false,

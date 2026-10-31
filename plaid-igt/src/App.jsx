@@ -75,7 +75,13 @@ function App() {
                 the server as part of a URL. */}
               <Route
                 path="/invite/:code"
-                element={<RedeemInvite loginPath="/login" homePath="/projects" />}
+                element={
+                  <RedeemInvite
+                    loginPath="/login"
+                    homePath="/projects"
+                    projectPath={(id) => `/projects/${id}`}
+                  />
+                }
               />
 
               {/* Protected routes, all inside ONE shell.

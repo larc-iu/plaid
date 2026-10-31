@@ -103,6 +103,15 @@ describe('authService', () => {
     expect(session()).toEqual(afterLogin);
   });
 
+  it('says which project a redeemed invite joined', async () => {
+    redeemInvite.mockResolvedValue({ client: clientFor('ada@example.com'), projectId: 'p1' });
+    const result = await authService.redeemInvite('CODE', {
+      email: 'ada@example.com',
+      password: 'pw',
+    });
+    expect(result.projectId).toBe('p1');
+  });
+
   it('reads back a stored session, and nothing without a token', () => {
     expect(authService.getCurrentUser()).toBe(null);
     expect(authService.isAuthenticated()).toBe(false);

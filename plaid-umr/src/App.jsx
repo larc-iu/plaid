@@ -96,7 +96,13 @@ function App() {
               reaches the server as part of a URL. */}
           <Route
             path="/invite/:code"
-            element={<RedeemInvite loginPath="/login" homePath="/projects" />}
+            element={
+              <RedeemInvite
+                loginPath="/login"
+                homePath="/projects"
+                projectPath={(id) => `/projects/${id}/documents`}
+              />
+            }
           />
 
           <Route

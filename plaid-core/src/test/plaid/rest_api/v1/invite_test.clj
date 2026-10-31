@@ -133,6 +133,8 @@
           (assert-ok r)
           (is (string? (-> r :body :token)))
           (is (= "newbie@example.com" (-> r :body :user-id)))
+          (testing "and names the project it joined, for the page to open"
+            (is (= pid (-> r :body :project-id))))
           (testing "the returned token is usable immediately"
             (let [me (api-call (token-req-fn (-> r :body :token))
                                {:method :get :path "/api/v1/users/newbie@example.com"})]
@@ -435,6 +437,7 @@
         (let [r (redeem! {:code code :password "brand-new-password"})]
           (assert-ok r)
           (is (= "password-reset" (-> r :body :kind)))
+          (is (nil? (-> r :body :project-id)))
           (is (string? (-> r :body :token)))
           (is (= 200 (:status (login! target "brand-new-password"))))))
 

@@ -161,6 +161,35 @@ describe('RedeemInvite', () => {
     expect(notifySuccess).toHaveBeenCalledWith('Your account is ready.', 'Welcome');
   });
 
+  it('opens the project the invite joined', async () => {
+    auth.redeemInvite.mockResolvedValue({ success: true, projectId: 'p1' });
+    const { container, step } = await renderComponent(
+      <MemoryRouter initialEntries={['/invite/CODE']}>
+        <Routes>
+          <Route
+            path="/invite/:code"
+            element={
+              <RedeemInvite
+                loginPath="/login"
+                homePath="/projects"
+                projectPath={(id) => `/projects/${id}/documents`}
+              />
+            }
+          />
+          <Route path="/projects" element={<p>the project list</p>} />
+          <Route path="/projects/:projectId/documents" element={<p>the project p1</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await step(async () => {
+      fill(container, 'invite-email', 'ada@example.com');
+      fill(container, 'invite-password', 'longenough');
+      fill(container, 'invite-confirm', 'longenough');
+      submit(container);
+    });
+    expect(container.textContent).toBe('the project p1');
+  });
+
   it('warns a signed-in reader what accepting will do to their session', async () => {
     auth.user = { displayName: 'Ada' };
     const { container } = await mount();

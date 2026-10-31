@@ -524,7 +524,9 @@
                                                :set {:uses (:uses post)}
                                                :where [:= :id (:id row)]})
                              (audit-invite-row! tx (:id row) :update row post))
-                           {:user-id user-id :invite-id (:id row) :reset? reset?})))))
+                           (cond-> {:user-id user-id :invite-id (:id row) :reset? reset?}
+                             (and (not reset?) (:project_id row))
+                             (assoc :project-id (:project_id row))))))))
 
 (defn redeem!
   "Spend an invite.
@@ -534,7 +536,8 @@
   password reset, `email` and `display-name` are ignored and `password` is set
   on the invite's target.
 
-  Returns `{:success true :extra {:user-id .. :invite-id .. :reset? ..}}`.
+  Returns `{:success true :extra {:user-id .. :invite-id .. :reset? ..}}`,
+  plus `:project-id` for a signup that joined a project.
   The REST layer signs a JWT from that so the redeemer lands logged in,
   rather than being handed straight back to a login form with credentials
   they typed fifteen seconds ago."

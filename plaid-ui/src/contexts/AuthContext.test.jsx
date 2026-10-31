@@ -98,4 +98,14 @@ describe('AuthProvider', () => {
     });
     expect(result).toMatchObject({ success: false, error: 'This invitation link is not valid.' });
   });
+
+  it('hands on the project a redeemed invite joined', async () => {
+    authService.redeemInvite.mockResolvedValue({ user: { id: 'a@b.com' }, projectId: 'p1' });
+    const { step } = await mount();
+    let result;
+    await step(async () => {
+      result = await seen.redeemInvite('CODE', { email: 'a@b.com', password: 'pw' });
+    });
+    expect(result).toEqual({ success: true, projectId: 'p1' });
+  });
 });

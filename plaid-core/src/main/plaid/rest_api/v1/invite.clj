@@ -101,7 +101,8 @@
                           "The email becomes the account's ID and is what they log in with. "
                           "For a password reset link, supply <body>password</body> only and "
                           "<body>email</body> is ignored. "
-                          "Returns a session token so the caller is immediately logged in. "
+                          "Returns a session token so the caller is immediately logged in, "
+                          "and <body>project-id</body> when the invite joined a project. "
                           "409 if an account already exists for that email, 410 if the invite "
                           "is spent, expired, revoked, or inactive (its creator can no longer "
                           "grant what it grants), with that <body>status</body> in the body.")
@@ -121,9 +122,10 @@
                          (if success
                            (let [user-id (:user-id extra)]
                              {:status 200
-                              :body {:token (pra/issue-session-token! db secret-key user-id)
-                                     :user-id user-id
-                                     :kind (if (:reset? extra) "password-reset" "signup")}})
+                              :body (cond-> {:token (pra/issue-session-token! db secret-key user-id)
+                                             :user-id user-id
+                                             :kind (if (:reset? extra) "password-reset" "signup")}
+                                      (:project-id extra) (assoc :project-id (:project-id extra)))})
                            (do
                              ;; Only a bad CODE counts against the limiter. A
                              ;; taken email or a short password is the

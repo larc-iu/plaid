@@ -3908,7 +3908,8 @@ class PlaidClient(_Operations):
             retry_delays: Forwarded to the new client (see :class:`PlaidClient`).
 
         Returns:
-            ``(client, result)`` where ``result`` carries ``user_id`` and ``kind``.
+            ``(client, result)`` where ``result`` carries ``user_id`` and ``kind``,
+            and ``project_id`` when a signup invite joined a project.
         """
         body = {'code': code, 'password': password}
         if email is not None:
