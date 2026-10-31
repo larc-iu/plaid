@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DocumentFileExport } from '@ui/components/shared/DocumentFileExport.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
@@ -7,8 +8,14 @@ import { ConlluPreview } from './ConlluPreview.jsx';
 export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
   // DocumentEditorShell, which guarantees both are loaded before this renders.
-  const { doc, project } = useDocumentEditor();
+  const { doc, project, reload } = useDocumentEditor();
   useDocumentTitle('Export', doc?.name, project?.name);
+  // The file is written from this page's copy, so it is read again first: an
+  // edit saved from another tab is in the server's document and not in it.
+  useEffect(() => {
+    reload?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const conlluContent = doc.toConllu();
   // What the notation cannot carry, said where the file is taken rather than
