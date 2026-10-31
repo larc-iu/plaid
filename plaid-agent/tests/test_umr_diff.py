@@ -373,6 +373,29 @@ def test_reorder_applies_the_texts_order_when_asked(ws):
     assert order['order'] == 1 and 'moves to position 2' in order['label']
 
 
+def test_a_moved_edge_carries_the_approvals_stamp_and_a_renumbered_one_none(client, ws):
+    """As the app's applyPenman stamps an edge whose place among the kept
+    children changed (``movedChild``) and leaves a pure renumber unstamped, so
+    an untouched machine edge stays unverified. The move was written as
+    umr.order alone, and a Draft with Overwrite could redraft it."""
+    text = ('(s1b / bark-01\n    :aspect performance\n    :ARG0 (s1d / dog\n'
+            '        :refer-number singular))')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text, 'reorder': True})
+    applied(client, ws)
+    [(rid, ops)] = client.patches('relations')
+    meta = apply_metadata_ops({}, ops)
+    assert rid == 'mr-1' and meta['umr'] == {'order': 1}
+    assert meta['provSource'] == 'test' and meta['provConfirmed'] is True
+    # An attribute put before both keeps them in their order: a renumber.
+    client = umr_client()
+    ws = umr_ws(client)
+    text = SENTENCE_1_PENMAN.replace('bark-01', 'bark-01\n    :polarity -')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text, 'reorder': True})
+    applied(client, ws)
+    [(rid, ops)] = client.patches('relations')
+    assert rid == 'mr-1' and ops == [{'op': 'set', 'path': ['umr', 'order'], 'value': 1}]
+
+
 def test_an_order_the_text_writes_but_does_not_apply_is_said(ws):
     """Without reorder the text's child order is not applied, so a model that
     rewrote a graph because the user asked for another order would have been

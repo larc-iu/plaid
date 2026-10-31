@@ -110,6 +110,28 @@ def _order_differs(old, node, old_edge_order: Dict[str, int]) -> bool:
     return [k for k in written if k in both] != [k for _o, k in stored if k in both]
 
 
+def _moved(old, old_edges, attrs: List[dict], edges: List[dict]) -> Callable[[str], bool]:
+    """Whether a child kept on both sides changed its place among the
+    children kept on both sides, by its word (``edge <role> <target>`` or
+    ``attr <rel> <value>``). A place that changed only because a child before
+    it came or went is a renumber, which is no one's edit, and one that changed
+    because the kept children now stand in another order is a move, and the
+    person's. plaid-umr's ``movedChild`` in ``UmrDocument.planPenman``."""
+    def seq(children):
+        return [word for _o, word in sorted(children, key=lambda c: c[0])]
+    old_seq = seq([(e.order or 0, f'edge {key}') for e, key in old_edges]
+                  + [(a.get('order') or 0, f'attr {a.get("rel")} {a.get("value")}') for a in old.attrs])
+    next_seq = seq([(e['order'], f'edge {e["role"]} {e["target"]}') for e in edges]
+                   + [(a['order'], f'attr {a["rel"]} {a["value"]}') for a in attrs])
+    kept_old = [w for w in old_seq if w in set(next_seq)]
+    kept_next = [w for w in next_seq if w in set(old_seq)]
+
+    def moved(word: str) -> bool:
+        return (kept_old.index(word) if word in kept_old else -1) != \
+            (kept_next.index(word) if word in kept_next else -1)
+    return moved
+
+
 class GraphDiff:
     """The ops a PENMAN text stands for, and what they add up to.
     ``order_kept`` names the nodes whose children the text writes in another
@@ -370,6 +392,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 'umr_set': {'attrs': attrs},
                 'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
 
+        moved = _moved(old, old_edges, attrs, edges) if reorder else None
         for edge, key in old_edges:
             wanted = next_by_key.get(key)
             if wanted is None:
@@ -381,9 +404,12 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                     'relation_id': edge.id, 'source': edge.source, 'target': edge.target,
                     'label': f'remove {var} {key}'})
             elif reorder and wanted['order'] != edge.order:
+                # A move carries the approval's stamp, as the canvas's move
+                # does, and a renumber none (``moved``).
                 orders.append({
                     'kind': 'set_edge_order', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                     'relation_id': edge.id, 'order': wanted['order'],
+                    'moved': moved(f'edge {key}'),
                     'label': f'{var}: {key} moves to position {wanted["order"] + 1}'})
         old_keys = {key for _e, key in old_edges}
         for e in edges:

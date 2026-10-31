@@ -119,8 +119,14 @@ def _apply_span_meta(ctx: Context, op) -> int:
 
 
 def _apply_set_edge_order(ctx: Context, op) -> int:
-    ctx.b.update('relations', op['relation_id'],
-                 metadata=[{'op': 'set', 'path': [UMR, 'order'], 'value': op['order']}])
+    """An edge's new place among its node's children. A move (``moved``)
+    carries the approval's stamp, as a move on the canvas does. A renumber,
+    a place that changed only because a child before it came or went, carries
+    none, so an untouched machine edge stays unverified."""
+    ops = [{'op': 'set', 'path': [UMR, 'order'], 'value': op['order']}]
+    if op.get('moved'):
+        ops += metadata_ops(ctx.restamp())
+    ctx.b.update('relations', op['relation_id'], metadata=ops)
     return 1
 
 
@@ -536,7 +542,7 @@ KIND = ok.registry([
            required=('relation_id',),
            apply=_apply_set_edge_order, target=lambda op: ('order', op.get('relation_id')),
            token_keys=('relation_id',),
-           compact_each=('relation_id', 'order', 'ref', 'label'),
+           compact_each=('relation_id', 'order', 'moved', 'ref', 'label'),
            compact_label=_kind_label('reorder', ('relation', 'relations'))),
     OpKind('create_node', _NODE, replaces=None,
            required=('var', 'node_layer_id', 'concept_layer_id', 'text_id'),
