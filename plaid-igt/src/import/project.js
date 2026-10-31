@@ -105,9 +105,7 @@ export function setupDataFor({
 }
 
 // What a project is missing when setup did not finish, said the same way by
-// every importer. The sentence names the state rather than the next step,
-// because the next step differs: the wizard's own Retry, a resume from the
-// project page, or setting the project up by hand.
+// every importer. The sentence names the state rather than the next step.
 const INCOMPLETE = 'Project setup incomplete';
 
 /**
