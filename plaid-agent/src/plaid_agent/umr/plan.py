@@ -14,6 +14,7 @@ several, and a write in a later one names the same id.
 
 import re
 from collections import Counter
+from dataclasses import replace as dc_replace
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -346,8 +347,45 @@ def _resolve_attrs_scope(res: Resolution, op):
         yield {'kind': 'set_attrs', 'document_id': did, 'ref': node_ref(s, node),
                'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
                'attrs': placed, 'attr_line': attr_line(placed), 'umr_set': {'attrs': placed},
-               'label': f'{node.var}: {shown}',
+               'label': f'{node.var}: {shown}', SCOPE_CHANGE: [rel, value],
                rules.AS_FOUND: f'{node.concept} {rel} {" ".join(holds(node, rel))} → {value}', **flag}
+
+
+#: On a ``set_attrs`` a rule resolved to, the one attribute the rule changes,
+#: ``[rel, value]`` (an empty value removes it), so a later rule over the same
+#: node can make its change over the list the earlier one leaves
+#: (:func:`later_rule_over_earlier`).
+SCOPE_CHANGE = 'scope_change'
+
+
+def later_rule_over_earlier(res: Resolution, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``ops`` as approval resolved them, where two rules set attributes on
+    one node: the later one's change made over the list the earlier one
+    leaves, and written once, by the later one, as igt's ``later_rule_wins``
+    has it. Each rule read the stored node and wrote its whole attribute list,
+    so the last list written dropped the earlier rule's attribute
+    (``:refer-person 3rd`` then ``:polarity -`` on every dog wrote only
+    ``:polarity``), though the card showed both."""
+    out: List[Dict[str, Any]] = []
+    at: Dict[str, int] = {}
+    gone: set = set()
+    for op in ops:
+        change = op.get(SCOPE_CHANGE)
+        if op.get('kind') != 'set_attrs' or change is None:
+            out.append(op)
+            continue
+        i = at.get(op['span_id'])
+        if i is not None:
+            was = out[i]
+            node = res.document(op['document_id']).nodes_by_id[op['span_id']]
+            placed = with_attribute(dc_replace(node, attrs=was['attrs']), *change)
+            flag = max(int(was.get(work.FLAG) or 0), int(op.get(work.FLAG) or 0))
+            op = {**op, 'attrs': placed, 'attr_line': attr_line(placed), 'umr_set': {'attrs': placed},
+                  **({work.FLAG: flag} if flag else {})}
+            gone.add(i)
+        at[op['span_id']] = len(out)
+        out.append(op)
+    return [op for i, op in enumerate(out) if i not in gone]
 
 
 def matched(found: List[Dict[str, Any]]) -> List[list]:
@@ -704,7 +742,9 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
         # digest is pinned to its document whole.
         if rules.is_rule(op):
             rules.check_matched(op, matched(found), name_of)
-    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep, check=check), notes
+    res = Resolution(client, project, load_document)
+    return ok.resolve_ops(KIND, res, ops, keep, check=check,
+                          final=lambda out: later_rule_over_earlier(res, out)), notes
 
 
 def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,

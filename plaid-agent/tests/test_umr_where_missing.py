@@ -126,3 +126,37 @@ def test_a_graph_rewrite_row_names_the_value_it_replaces():
         .replace(':refer-number singular', ':refer-number singular\n        :polarity -'))
     labels = sorted(op['label'] for op in ws.ops)
     assert labels == ['s1b: :aspect performance becomes state', 's1d: adds :polarity -'], labels
+
+
+def test_two_rules_on_one_concept_with_different_attributes_both_land():
+    """Each rule read the stored node and wrote its whole attribute list, so
+    the later list dropped the earlier rule's attribute, and approval said "1
+    change(s) were superseded" though the card showed both rows. The later
+    rule now makes its change over the list the earlier one leaves, and the
+    node is written once."""
+    from plaid_client import apply_metadata_ops
+    from plaid_agent.umr.plan import execute_plan
+    client = umr_client()
+    ws = umr_ws(client)
+    assert run(ws, 'set_attribute_for_concept', concept='dog', rel=':refer-person',
+               value='3rd').startswith('Planned')
+    assert run(ws, 'set_attribute_for_concept', concept='dog', rel=':polarity', value='-').startswith('Planned')
+    out = execute_plan(client, ws.plan_payload()['ops'], source='test', label='Assistant: test',
+                       project=ws.project, stamp_mode='verified', contributor=None)
+    assert not out.get('notes'), out
+    [(sid, ops)] = client.patches('spans')
+    attrs = apply_metadata_ops({}, ops)['umr']['attrs']
+    assert sid == 'mc-d' and attrs == [{'rel': ':refer-number', 'value': 'singular', 'order': 0},
+                                       {'rel': ':refer-person', 'value': '3rd', 'order': 1},
+                                       {'rel': ':polarity', 'value': '-', 'order': 2}]
+    # A later rule over the same attribute is the one written.
+    client = umr_client()
+    ws = umr_ws(client)
+    run(ws, 'set_attribute_for_concept', concept='dog', rel=':polarity', value='-')
+    run(ws, 'set_attribute_for_concept', concept='dog', rel=':refer-number', value='plural', overwrite=True)
+    run(ws, 'set_attribute_for_concept', concept='dog', rel=':polarity', value='+')
+    [resolved] = [op for op in resolve_scopes(client, ws.project, ws.plan_payload()['ops'])[0]
+                  if op['var'] == 's1d']
+    assert sorted(resolved['attrs'], key=lambda a: a['order']) == [
+        {'rel': ':refer-number', 'value': 'plural', 'order': 0},
+        {'rel': ':polarity', 'value': '+', 'order': 1}]
