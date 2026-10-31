@@ -71,6 +71,8 @@ export class IgtEditor {
       onNavigateTab = null,
       onOpenAutoAnalyze = null,
       onAskAssistant = null,
+      page = 0,
+      onPageChange = null,
     } = {},
   ) {
     // Event handlers handed to lit templates, bound so `this` survives.
@@ -108,6 +110,11 @@ export class IgtEditor {
     this.onNavigateTab = onNavigateTab;
     this.onOpenAutoAnalyze = onOpenAutoAnalyze;
     this.onAskAssistant = onAskAssistant;
+    // The page of sentences turned to, which the page around keeps in its URL
+    // (`?page=`), so a reload, Back and a shared link open the same page.
+    // Told `(page, { replace })`, replace for a turn the reader did not make
+    // with the pager (a citation landing on another page).
+    this.onPageChange = onPageChange;
     // And whether the window has room for the panel that Ask opens. Read once
     // here so the first paint is right, and kept current by a resize listener
     // below, which is the only thing that repaints this island for the window.
@@ -153,7 +160,7 @@ export class IgtEditor {
     this._helpOpen = false;
     // Sentence pagination: big documents (hundreds of sentences) make the full
     // grid multi-second to build, so only one page of sentences is in the DOM.
-    this._page = 0;
+    this._page = page;
     // Pluggable gloss-guess source (see domain/glossGuess.js): assign a
     // different (sentences, fields) => { id, guessFor } factory to swap the
     // algorithm (e.g. a service-backed one). The default asks the linked
@@ -338,7 +345,7 @@ export class IgtEditor {
       analyzeFocus.clear(); // stale target — drop it
       return;
     }
-    this._setPage(Math.floor(idx / this.constructor.PAGE_SIZE));
+    this._setPage(Math.floor(idx / this.constructor.PAGE_SIZE), false, { replace: true });
     requestAnimationFrame(() => {
       const el = this.container.querySelector(
         `.igt-sentence[data-sentence-id="${req.sentenceId}"]`,
@@ -404,6 +411,11 @@ export class IgtEditor {
     if (before?.running === next?.running && before?.label === next?.label) return;
     this._autoAnalyzeStatus = next;
     this._render(true);
+  }
+
+  // The page the URL names, after Back or a link: shown, and not told back.
+  setPage(page) {
+    this._setPage(page, false, { tell: false });
   }
 
   setReadOnly(ro) {

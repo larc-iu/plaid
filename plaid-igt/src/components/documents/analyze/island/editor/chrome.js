@@ -149,11 +149,15 @@ export const chrome = {
   // was typed into it commits: the render removes the cell, and a browser
   // need not fire blur on a removed element. The pager's own buttons blur on
   // mousedown, a citation or a search hit landing on another page does not.
-  _setPage(page, scrollToTop = false) {
+  //
+  // `tell: false` is a turn the page around asked for (its URL changed), which
+  // it need not be told about.
+  _setPage(page, scrollToTop = false, { replace = false, tell = true } = {}) {
     if (page === this._page) return;
     const el = document.activeElement;
     if (el && el !== document.body && this.container.contains(el)) el.blur();
     this._page = page;
+    if (tell) this.onPageChange?.(page, { replace });
     this._render(true);
     if (scrollToTop) {
       try {

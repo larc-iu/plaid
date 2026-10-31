@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
@@ -16,6 +17,12 @@ import { onSentenceFocus } from '../hooks/focusHandoff.js';
 // Time-travel: DocumentDetail reloads the shared doc when `asOf` changes, so the
 // doc identity changes and the mount effect below re-mounts the island onto the
 // new historical snapshot automatically. readOnly is synced without remounting.
+const PAGE_PARAM = 'page';
+const pageFromParam = (raw) => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n - 1 : 0;
+};
+
 export const AnalyzeIsland = () => {
   const { doc, readOnly, comments, canWrite, canManage, assistantOnline, goToTab } =
     useDocumentCtx();
@@ -34,6 +41,19 @@ export const AnalyzeIsland = () => {
   const ask = useAskAssistant();
   const askRef = useRef(ask);
   askRef.current = ask;
+
+  // The page of sentences lives in the URL as `?page=`, 1-based with page 1
+  // unwritten, as every paged list does. Turning a page is a push, so Back
+  // undoes it.
+  const [params, setParams] = useSearchParams();
+  const urlPage = pageFromParam(params.get(PAGE_PARAM));
+  const urlPageRef = useRef(urlPage);
+  urlPageRef.current = urlPage;
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+  useEffect(() => {
+    editorRef.current?.setPage(urlPage);
+  }, [urlPage]);
 
   // A citation in the panel into this document, while the grid is up.
   useEffect(() => onSentenceFocus((req) => editorRef.current?.focusSentence(req)), []);
@@ -88,6 +108,17 @@ export const AnalyzeIsland = () => {
       onAskAssistant: (subject) => {
         if (subject) askRef.current(subject);
       },
+      page: urlPageRef.current,
+      onPageChange: (next, { replace }) =>
+        setParamsRef.current(
+          (prev) => {
+            const out = new URLSearchParams(prev);
+            if (next <= 0) out.delete(PAGE_PARAM);
+            else out.set(PAGE_PARAM, String(next + 1));
+            return out;
+          },
+          { replace },
+        ),
     });
     return () => {
       if (editorRef.current) {

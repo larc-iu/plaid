@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { AuthContext } from '@ui/contexts/useAuth.js';
 import { SubjectContext } from '@ui/components/assistant/subject.js';
@@ -27,7 +28,23 @@ vi.mock('./AutoAnalyzeDialog.jsx', () => ({
 let doc;
 let view;
 
-const page = ({ goToTab, ask = vi.fn() } = {}) => (
+const page = ({ goToTab, ask = vi.fn(), url = '/doc' } = {}) => (
+  <MemoryRouter initialEntries={[url]}>
+    <Routes>
+      <Route path="/doc" element={island({ goToTab, ask })} />
+    </Routes>
+    <Where />
+  </MemoryRouter>
+);
+
+const seen = { search: null, navigate: null };
+const Where = () => {
+  seen.search = useLocation().search;
+  seen.navigate = useNavigate();
+  return null;
+};
+
+const island = ({ goToTab, ask }) => (
   <AuthContext.Provider value={{ user: null }}>
     <SubjectContext.Provider value={{ ask }}>
       <DocumentProvider
@@ -112,5 +129,48 @@ describe('AnalyzeIsland', () => {
     view = null;
     askSentenceFocus(req);
     expect(focus).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A reload went back to page 1 of 27, and a link could not name a page.
+describe('the page of sentences', () => {
+  // n one-word sentences, "ab ab ab ...".
+  const sentences = (n) =>
+    buildRawDoc({
+      body: Array.from({ length: n }, () => 'ab').join(' '),
+      words: Array.from({ length: n }, (_, i) => ({ id: `w-${i}`, begin: 3 * i, end: 3 * i + 2 })),
+      sentences: Array.from({ length: n }, (_, i) => ({
+        id: `s-${i}`,
+        begin: 3 * i,
+        end: 3 * i + 2,
+      })),
+    });
+  const PAGE_SIZE = IgtEditor.PAGE_SIZE;
+  const label = () => view.container.querySelector('.igt-pager__label')?.textContent;
+  const pagerButton = (name) =>
+    view.container.querySelector(`.igt-pager button[aria-label="${name}"]`);
+  beforeEach(() => {
+    IgtEditor.PAGE_SIZE = 2;
+  });
+  afterEach(() => {
+    IgtEditor.PAGE_SIZE = PAGE_SIZE;
+  });
+
+  it('is written to the URL as it turns, and Back turns it back', async () => {
+    doc = makeDoc(sentences(5));
+    view = await renderComponent(page({ goToTab: vi.fn() }));
+    expect(label()).toBe('1–2 of 5');
+    await view.step(() => click(pagerButton('Next page')));
+    expect(label()).toBe('3–4 of 5');
+    expect(seen.search).toBe('?page=2');
+    await view.step(() => seen.navigate(-1));
+    expect(seen.search).toBe('');
+    expect(label()).toBe('1–2 of 5');
+  });
+
+  it('opens on the page the URL names', async () => {
+    doc = makeDoc(sentences(5));
+    view = await renderComponent(page({ goToTab: vi.fn(), url: '/doc?page=3' }));
+    expect(label()).toBe('5–5 of 5');
   });
 });
