@@ -511,6 +511,25 @@ describe('delete and merge', () => {
     ]);
   });
 
+  // Q1: a delete must not strip a morph type. A sense with none of its own
+  // goes by its headword's, so freed by the headword's delete it takes that
+  // type, or it and the morphemes linked to it would go by none.
+  it("gives a freed sense its deleted headword's type when it has none of its own", () => {
+    const list = [
+      item('top', 'ler', { morphType: 'suffix' }),
+      item('h', 'ler', { parent: 'top', senseOrder: 1 }),
+      item('s1', 'ler', { parent: 'h', senseOrder: 1, gloss: 'PL' }),
+      item('s2', 'ler', { parent: 'h', senseOrder: 2, morphType: 'enclitic' }),
+      item('s3', 'ler', { parent: 's1', senseOrder: 1 }),
+    ];
+    const byId = Object.fromEntries(
+      planDeleteRefs(list, fields, ['h']).map((p) => [p.id, p.metadata]),
+    );
+    expect(byId.s1).toEqual({ gloss: 'PL', morphType: 'suffix' });
+    expect(byId.s2).toEqual({ morphType: 'enclitic' });
+    expect(byId.s3).toBeUndefined();
+  });
+
   it('repoints references and senses at the survivor of a merge', () => {
     const list = [...items(), item('kat4', 'kat', { gloss: 'tomcat' })];
     const patches = planMergeRefs(list, fields, 'kat4', ['kat']);

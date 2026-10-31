@@ -738,11 +738,14 @@ export const validateVocabRefs = (items, fields) => {
 
 /**
  * Patches for the items that refer to entries about to be deleted: their
- * senses become entries of their own, and references to them are dropped.
+ * senses become entries of their own, and references to them are dropped. A
+ * freed sense with no morph type of its own went by its headword's, and keeps
+ * it (ruling Q1: a delete does not strip a morph type).
  */
 export const planDeleteRefs = (items, fields, deletedIds) => {
   const gone = new Set(deletedIds);
   const refFields = itemRefFields(fields);
+  const tree = buildSenseTree(items);
   const patches = [];
   for (const it of items || []) {
     if (gone.has(it.id)) continue;
@@ -751,6 +754,8 @@ export const planDeleteRefs = (items, fields, deletedIds) => {
     const p = parentOf(it);
     if (p && gone.has(p)) {
       meta = withParent(meta, null, null);
+      const inherited = morphTypeOf(tree, it.id);
+      if (inherited && inherited !== meta.morphType) meta = { ...meta, morphType: inherited };
       changed = true;
     }
     for (const f of refFields) {

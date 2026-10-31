@@ -399,6 +399,21 @@ def test_a_duplicate_example_is_ignored_and_a_bad_index_says_the_range():
 
 # ---- delete and merge carry the references ---------------------------------
 
+def test_deleting_a_typed_headword_keeps_its_type_on_the_senses_it_frees():
+    """Ruling Q1: a delete does not strip a morph type. A sense with none of
+    its own went by its headword's, so freed it takes that type, as the app's
+    delete does (planDeleteRefs)."""
+    items = [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]
+    items[0]['metadata']['morphType'] = 'suffix'       # kwatha, the headword
+    items[3]['metadata']['morphType'] = 'enclitic'     # ferment, typed itself
+    w = dict_ws(items=items)
+    call_tool(w, 'delete_entry', {'entry_form': 'kwatha'})
+    by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
+    assert by_id['d-boil'] == {'parent': None, 'senseOrder': None, 'morphType': 'suffix'}
+    assert by_id['d-ferment'] == {'parent': None, 'senseOrder': None}
+    assert 'd-simmer' not in by_id
+
+
 def test_deleting_an_entry_frees_its_senses_and_clears_what_named_it():
     w = dict_ws()
     out = call_tool(w, 'delete_entry', {'entry_form': 'kwatha'})

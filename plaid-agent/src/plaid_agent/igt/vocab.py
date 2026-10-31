@@ -353,10 +353,13 @@ def references_to(items: List[dict], fields: List[dict], item_id: str) -> List[d
 
 def plan_delete_refs(items: List[dict], fields: List[dict], deleted_ids) -> List[dict]:
     """Patches for the items that refer to entries about to be deleted: their
-    senses become entries of their own, and references to them are dropped.
-    Mirrors planDeleteRefs, which is what the app's own delete does."""
+    senses become entries of their own, and references to them are dropped. A
+    freed sense with no morph type of its own went by its headword's, and keeps
+    it (ruling Q1: a delete does not strip a morph type). Mirrors
+    planDeleteRefs, which is what the app's own delete does."""
     gone = set(deleted_ids or [])
     ref_fields = item_ref_fields(fields)
+    tree = build_sense_tree(items)
     patches = []
     for it in items or []:
         if it['id'] in gone:
@@ -366,6 +369,9 @@ def plan_delete_refs(items: List[dict], fields: List[dict], deleted_ids) -> List
         p = parent_of(it)
         if p and p in gone:
             meta = with_parent(meta, None, None)
+            inherited = morph_type_of(tree, it['id'])
+            if inherited and inherited != meta.get('morphType'):
+                meta = {**meta, 'morphType': inherited}
             changed = True
         for f in ref_fields:
             ids = ref_ids(it, f)
