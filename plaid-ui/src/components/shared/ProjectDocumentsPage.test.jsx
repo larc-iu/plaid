@@ -215,3 +215,23 @@ describe('a project the app has no layers in', () => {
     await view.unmount();
   });
 });
+
+// Core answers a project it cannot place 403 to a non-admin (a member learns
+// nothing from the status) and 404 to an admin, and a link to a deleted
+// project meets one of them. Retry would get the same answer.
+describe('a link to a project the reader cannot open', () => {
+  it.each([403, 404])('says the project is not found, with no Retry, on %i', async (status) => {
+    const refused = Object.assign(new Error('refused'), { status });
+    auth.getClient.mockReturnValue({
+      projects: {
+        get: vi.fn(async () => Promise.reject(refused)),
+        listDocuments: vi.fn(async () => Promise.reject(refused)),
+      },
+    });
+    const view = await renderComponent(page());
+    await view.step(settle);
+    expect(view.container.textContent).toContain('Project not found.');
+    expect(view.container.textContent).not.toContain('Retry');
+    await view.unmount();
+  });
+});

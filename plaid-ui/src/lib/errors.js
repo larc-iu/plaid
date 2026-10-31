@@ -16,6 +16,13 @@ export const statusOf = (error) => {
   return m ? Number(m[1]) : null;
 };
 
+// What the server answers a read of a project the reader cannot open: 400 for
+// an id that is no id at all, and for one that is not there (a deleted project
+// too) 404 to an admin and 403 to anyone else, who must not learn from the
+// status whether it exists. Asking again gets the same answer.
+const PROJECT_NOT_FOUND = new Set([400, 403, 404]);
+export const projectNotFound = (error) => !!error && PROJECT_NOT_FOUND.has(statusOf(error));
+
 export const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
 // True for the "you cannot see or do this" class, so a screen a low-privilege

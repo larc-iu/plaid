@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { canEditProject, canManageProject } from '../../domain/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useProject } from '../../hooks/useProject.js';
-import { humanizeError } from '../../lib/errors.js';
+import { humanizeError, projectNotFound } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { Button } from '../ui/button';
 import { ProjectDocumentsList } from './ProjectDocumentsList.jsx';
@@ -62,7 +62,7 @@ export const ProjectDocumentsPage = ({
     error: loadError,
     reload,
   } = useProject({ withDocuments: true, logoutOnAuthError: true });
-  const error = loadError ? 'Failed to load the documents' : '';
+  const error = loadError && !projectNotFound(loadError) ? 'Failed to load the documents' : '';
   useDocumentTitle(project?.name);
   const [settingUp, setSettingUp] = useState(false);
   const { user, getClient } = useAuth();
@@ -99,7 +99,7 @@ export const ProjectDocumentsPage = ({
 
   if (!project) {
     return (
-      <LoadError onRetry={error ? reload : undefined}>{error || 'Project not found'}</LoadError>
+      <LoadError onRetry={error ? reload : undefined}>{error || 'Project not found.'}</LoadError>
     );
   }
 

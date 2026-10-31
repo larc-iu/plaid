@@ -1,7 +1,7 @@
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useProject } from '../../hooks/useProject.js';
-import { statusOf } from '../../lib/errors.js';
+import { projectNotFound } from '../../lib/errors.js';
 import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
 
@@ -26,10 +26,6 @@ import { Loading } from './Loading.jsx';
  * read once for all of them, and a project the reader left never stands under
  * the next one's tabs. A read refused as signed out signs the reader out.
  */
-// What the server answers for a project id that names nothing: 400 for one
-// that is no id at all, 404 for one that is not there.
-const NOT_FOUND = new Set([400, 404]);
-
 export const ProjectTabPage = ({ title, tabs: Tabs, withDocuments = false, children }) => {
   const { getClient } = useAuth();
   const client = getClient();
@@ -43,8 +39,7 @@ export const ProjectTabPage = ({ title, tabs: Tabs, withDocuments = false, child
   let body = null;
   if (loading) body = <Loading />;
   else if (project) body = children({ project, projectId, client, documents, reload });
-  else if (error && NOT_FOUND.has(statusOf(error)))
-    body = <LoadError>Project not found.</LoadError>;
+  else if (projectNotFound(error)) body = <LoadError>Project not found.</LoadError>;
   else if (error) {
     body = <LoadError onRetry={() => reload()}>Failed to load the project</LoadError>;
   }

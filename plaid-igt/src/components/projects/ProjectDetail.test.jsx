@@ -422,6 +422,27 @@ describe('a path that names no project', () => {
     expect(view.container.textContent).not.toContain('Retry');
     await view.unmount();
   });
+
+  it('says the same for a deleted project, which a non-admin is answered 403', async () => {
+    const refused = Object.assign(new Error('Forbidden'), { status: 403 });
+    auth.client = {
+      projects: {
+        get: async () => Promise.reject(refused),
+        listDocuments: async () => Promise.reject(refused),
+      },
+    };
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/p-gone']}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<ProjectDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await view.step(async () => {});
+    expect(view.container.textContent).toContain('Project not found.');
+    expect(view.container.textContent).not.toContain('Retry');
+    await view.unmount();
+  });
 });
 
 // R57: an import that did not finish leaves a project that does not open. Its
