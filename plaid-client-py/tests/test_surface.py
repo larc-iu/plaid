@@ -191,9 +191,10 @@ PY_ONLY = {
 #
 # The lists above hold the names. Below, each shared method's parameters: as many plain
 # (positional) parameters, and the same option keys, a JS destructured `{ ... }` or the
-# keys the method reads off its `options` object against the Python keywords past the
-# positional ones. Spelling as above. Each difference that is on purpose is listed with
-# its reason.
+# keys read off its `options` object (by the method or by what it hands the object to,
+# js_surface.mjs follows it) against the Python keywords past the positional ones. The
+# client's constructor is compared as `constructor`. Spelling as above. Each difference
+# that is on purpose is listed with its reason.
 
 #: Methods whose parameters are not compared.
 PARAMS_EXEMPT = {
@@ -203,22 +204,16 @@ PARAMS_EXEMPT = {
                         'is a context manager (and should_renew, asked before each renewal)',
 }
 
-#: A parameter in one client alone, keyed (method, parameter) in that client's spelling.
+#: A parameter or option key in one client alone, keyed (method, parameter) in that client's
+#: spelling.
 JS_ONLY_PARAMS = {
     **dict.fromkeys([('messages.requestService', 'signal'), ('messages.attachServiceRequest', 'signal')],
                     'an AbortSignal, Python cancels with a CancelScope'),
+    **dict.fromkeys([('constructor', 'onAuthError'), ('login', 'onAuthError'), ('redeemInvite', 'onAuthError')],
+                    'a browser app sends the person back to login on a 401, Python raises PlaidAPIError'),
 }
 PY_ONLY_PARAMS = {
     ('documents.get_media', 'to_path'): 'writes the file to disk, which a browser does not',
-}
-
-#: The keys of an `options` object a JS method hands on whole, so they are not in its own
-#: source. Keyed by the method (``bundle.method``, or the method alone for every bundle).
-JS_PASSED_ON = {
-    **dict.fromkeys(['setConfig', 'deleteConfig', 'setConstraints', 'deleteConstraints'], ['expected']),
-    'messages.requestService': ['requestId', 'onAccepted', 'projectIds', 'noOperation'],
-    **dict.fromkeys(['health', 'info', 'lookupInvite'], ['timeout']),
-    **dict.fromkeys(['login', 'redeemInvite'], ['timeout', 'batchTimeout', 'retryDelaysMs']),
 }
 
 #: A JS parameter or option key whose Python twin is spelled otherwise, beyond the casing.
@@ -229,10 +224,6 @@ PARAM_RENAMED = {
 
 def _py_param(js_name):
     return PARAM_RENAMED.get(js_name) or re.sub(r'(?<=[a-z0-9])([A-Z])', r'_\1', js_name).lower()
-
-
-def _passed_on(js_key):
-    return JS_PASSED_ON.get(js_key) or JS_PASSED_ON.get(js_key.split('.')[-1])
 
 
 def param_differences(js, py):
@@ -254,10 +245,10 @@ def param_differences(js, py):
             if p not in sig['bags']:
                 positional.append(p)
                 continue
-            bag = sig['bags'][p] or _passed_on(js_key)
-            if not bag:
-                out.append(f'{js_key}: its {p} object is handed on, list the keys it takes in JS_PASSED_ON')
-            keys |= {_py_param(k) for k in bag or []}
+            bag = [k for k in sig['bags'][p] if (js_key, k) not in JS_ONLY_PARAMS]
+            if not sig['bags'][p]:
+                out.append(f'{js_key}: no key of its {p} object is read, by it or by what it hands it to')
+            keys |= {_py_param(k) for k in bag}
         keys |= {_py_param(k) for k in sig['options'] if (js_key, k) not in JS_ONLY_PARAMS}
         names = [n for n in py['params'][py_key] if (py_key, n) not in PY_ONLY_PARAMS]
         py_positional = [n for n in names if n not in keys]
@@ -330,7 +321,8 @@ def _py_surface():
                     and not isinstance(getattr(plaid_client, n), types.ModuleType)],
         'methods': public(PlaidClient),
         'bundles': {k: public(v) for k, v in bundles.items()},
-        'params': {**{n: names(getattr(client, n)) for n in public(PlaidClient)},
+        'params': {'constructor': names(PlaidClient),
+                   **{n: names(getattr(client, n)) for n in public(PlaidClient)},
                    **{f'{k}.{m}': names(getattr(v, m)) for k, v in bundles.items() for m in public(v)}},
     }
 
@@ -360,7 +352,7 @@ def test_the_two_clients_methods_take_the_same_parameters(js_surface):
     assert problems == [], (
         'The two clients\' parameters differ:\n  ' + '\n  '.join(problems) + '\nGive the other client '
         'the same parameter (memory plaid_client_parity.md). A difference that is on purpose goes in '
-        'PARAMS_EXEMPT, JS_ONLY_PARAMS, PY_ONLY_PARAMS, JS_PASSED_ON or PARAM_RENAMED in '
+        'PARAMS_EXEMPT, JS_ONLY_PARAMS, PY_ONLY_PARAMS or PARAM_RENAMED in '
         'plaid-client-py/tests/test_surface.py with its reason.')
 
 
@@ -368,16 +360,14 @@ def test_every_parameter_exemption_is_still_needed(js_surface):
     py = _py_surface()
     js_params = js_surface['params']
     assert sorted(k for k in PARAMS_EXEMPT if k not in js_params) == []
-    assert sorted(k for k in JS_ONLY_PARAMS
-                  if k[1] not in js_params.get(k[0], {}).get('positional', [])
-                  + js_params.get(k[0], {}).get('options', [])) == []
+    def js_names(key):
+        sig = js_params.get(key, {'positional': [], 'options': [], 'bags': {}})
+        return sig['positional'] + sig['options'] + [k for b in sig['bags'].values() for k in b]
+
+    assert sorted(k for k in JS_ONLY_PARAMS if k[1] not in js_names(k[0])) == []
     assert sorted(k for k in PY_ONLY_PARAMS if k[1] not in py['params'].get(k[0], [])) == []
-    handed_on = {k for k, sig in js_params.items() for keys in sig['bags'].values() if not keys}
-    assert sorted(k for k in JS_PASSED_ON
-                  if k not in handed_on and not any(h.split('.')[-1] == k for h in handed_on)) == []
     used = {k for sig in js_params.values()
             for k in sig['options'] + sig['positional'] + [x for b in sig['bags'].values() for x in b]}
-    used |= {k for keys in JS_PASSED_ON.values() for k in keys}
     assert sorted(set(PARAM_RENAMED) - used) == []
 
 
@@ -386,7 +376,7 @@ def test_a_parameter_in_one_client_alone_is_named():
         'spanLayers.create': {'positional': ['tokenLayerId', 'name', 'auditMessage'], 'options': ['id'],
                               'bags': {}},
         'spanLayers.setConfig': {'positional': ['id', 'namespace', 'configKey', 'configValue', 'auditMessage',
-                                                'options'], 'options': [], 'bags': {'options': []}},
+                                                'options'], 'options': [], 'bags': {'options': ['expected']}},
         'spanLayers.checkConstraints': {'positional': ['layerId', 'constraints', 'options'], 'options': [],
                                         'bags': {'options': ['limit', 'newKey']}},
         'spanLayers.repairConstraints': {'positional': ['layerId', 'constraints', 'auditMessage', 'options'],
@@ -408,8 +398,8 @@ def test_a_parameter_in_one_client_alone_is_named():
         'spanLayers.checkConstraints: option new_key is in plaid-client-js only',
         'spanLayers.create: plaid-client-js takes 3 positional (tokenLayerId, name, auditMessage), '
         'plaid-client-py 4 (token_layer_id, name, audit_message, metadata)',
-        'spanLayers.repairConstraints: its options object is handed on, list the keys it takes in '
-        'JS_PASSED_ON',
+        'spanLayers.repairConstraints: no key of its options object is read, by it or by what it '
+        'hands it to',
         'spanLayers.repairConstraints: plaid-client-js takes 3 positional (layerId, constraints, '
         'auditMessage), plaid-client-py 4 (layer_id, constraints, audit_message, document)',
     ]
