@@ -49,7 +49,7 @@ import { vocabPopover } from './editor/vocabPopover.js';
 import { pairPicker } from './editor/pairPicker.js';
 import { conflicts } from './editor/conflicts.js';
 import { respell } from './editor/respell.js';
-import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.js';
+import { cellEntityIds, cellKeyParts, readCell, recutOf, shapeOf } from './editor/cellReader.js';
 import { keys } from '@/lib/keymap.js';
 import { onOnlineChange } from '@ui/lib/retrying.js';
 import { saveStateOf } from '@ui/lib/saveState.js';
@@ -701,9 +701,7 @@ export class IgtEditor {
     // Lost to another user's edit (conflicts.js): theirs shows, ours is noted.
     const conflict = !this.readOnly && !!this._cells.conflictOf(key);
     const unsent = !this.readOnly && !!this._cells.unsentOf(key);
-    // The kind is the first segment of the key and is always one of a fixed
-    // few literals; everything after it may hold a colon (see cellTier).
-    const tier = cellTier(key.split(':', 1)[0], fieldName);
+    const tier = cellTier(cellKeyParts(key).kind, fieldName);
     // What is wrong with what is already in the cell. A closed field refuses
     // to commit these (see _commitField); an open one only flags a stray
     // delimiter. Either way the cell says so rather than looking fine.
