@@ -40,6 +40,8 @@ import re
 import unicodedata
 from typing import FrozenSet, Iterable, List, Optional, Sequence
 
+from ...constraints import _JS_SPACE
+
 #: The zero morph as IGT writes it (``Alt+0`` types U+2205). The digit 0 is a
 #: real form, a numeral, and only looks like one.
 ZERO_MORPH = '∅'
@@ -167,6 +169,51 @@ def is_lexical_part(part, known: Optional[Iterable[str]] = None) -> bool:
     return lexical_flags([[part if isinstance(part, str) else '']], known)[0][0]
 
 
+#: One part of a gloss as :func:`lexical_flags_of` cuts a value (``GLOSS_PART_RE``).
+GLOSS_PART = re.compile(r'[^.:;\\\-=~<>\s]+')
+
+
+def lexical_flags_of(value, parts: Sequence[Sequence], bound: bool = False,
+                     beside: Sequence[str] = ()) -> List[bool]:
+    """Which of ``parts`` of ``value`` read as lexical (``lexicalFlagsOf``):
+    ``parts`` is the value cut as a tagset cuts it, each ``(text, begin,
+    end)`` with code-point offsets into ``value``. A part is lexical when it
+    is lexical by the case rule and it overlaps a gloss part read as lexical
+    in its unit. ``bound`` reads the value as a gloss that never names its
+    word (an affix's, a clitic's, a zero morph's), with no fall-back, and
+    ``beside`` is the other glosses in the unit of the value's stems, which
+    count toward the fall-back."""
+    s = value if isinstance(value, str) else ''
+    cut = list(GLOSS_PART.finditer(s))
+    morphemes: List[List[str]] = []
+    at = []
+    current: List[str] = []
+    end = None
+    for m in cut:
+        if end is not None and MORPHEME_CUT.search(s[end:m.start()]):
+            morphemes.append(current)
+            current = []
+        at.append((len(morphemes), len(current)))
+        current.append(m.group(0))
+        end = m.end()
+    if current:
+        morphemes.append(current)
+    if bound:
+        flags = lenient_flags(morphemes)
+    else:
+        unit = lexical_flags(morphemes + [m for g in beside for m in gloss_morphemes(g)])
+        flags = unit[:len(morphemes)]
+    out = []
+    for text, begin, stop in parts:
+        text = (text if isinstance(text, str) else '').strip(_JS_SPACE)
+        if not text or not _is_case_lexical(text, GLOSS_ABBREVIATIONS):
+            out.append(False)
+            continue
+        out.append(any(m.start() < stop and begin < m.end() and flags[at[k][0]][at[k][1]]
+                       for k, m in enumerate(cut)))
+    return out
+
+
 def gloss_morphemes(value) -> List[List[str]]:
     """A gloss value cut into morphemes, each a list of its parts, empty parts
     left out (``glossMorphemes``)."""
@@ -180,4 +227,4 @@ def gloss_morphemes(value) -> List[List[str]]:
 
 __all__ = ['ZERO_MORPH', 'is_zero_morph', 'is_clitic', 'is_bound_type', 'GLOSS_ABBREVIATIONS',
            'PERSON_NUMBER', 'MORPHEME_CUT', 'PART_CUT', 'lexical_flags', 'lenient_flags',
-           'line_flags', 'can_name_word', 'is_lexical_part', 'gloss_morphemes']
+           'line_flags', 'can_name_word', 'is_lexical_part', 'gloss_morphemes', 'lexical_flags_of']

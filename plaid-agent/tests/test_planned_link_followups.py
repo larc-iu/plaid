@@ -241,7 +241,7 @@ def test_approval_never_writes_two_own_links_on_one_token():
 
 def _analyse_ali(w, **first):
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
-                                  'morphemes': [{'form': 'Ali', 'fields': {'Morph Gloss': 'A'}, **first},
+                                  'morphemes': [{'form': 'Ali', 'fields': {'Morph Gloss': 'a'}, **first},
                                                 {'form': 'd'}, {'form': 'i'}]})
 
 
@@ -255,23 +255,23 @@ def test_set_field_on_a_morpheme_of_a_planned_analysis_changes_that_analysis():
     w = fake_ws(FakeClient())
     _analyse_ali(w)
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1', 's1.w1.m3'],
-                                     'field': 'Morph Gloss', 'value': 'NEW'})
+                                     'field': 'Morph Gloss', 'value': 'new'})
     assert out.startswith('Planned 2 changes'), out
     [analysis] = w.ops
-    assert [_gloss_of(m) for m in analysis['morphemes']] == ['NEW', None, 'NEW']
-    assert 'Morph Gloss NEW-_-NEW' in analysis['label'], analysis['label']
+    assert [_gloss_of(m) for m in analysis['morphemes']] == ['new', None, 'new']
+    assert 'Morph Gloss new-_-new' in analysis['label'], analysis['label']
     c = FakeClient()
     execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     assert c.payloads('spans.bulk_update') == []
-    assert [p['args'][2] for p in c.payloads('spans.create')] == ['NEW', 'NEW']
+    assert [p['args'][2] for p in c.payloads('spans.create')] == ['new', 'new']
 
 
 def test_set_field_on_a_word_nobody_analysed_reads_the_planned_chain():
     w = fake_ws(FakeClient())
     call_tool(w, 'set_analysis', dict(AKUNA))
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m2'], 'field': 'Morph Gloss', 'value': 'ABS'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m2'], 'field': 'Morph Gloss', 'value': 'PL'})
     [analysis] = w.ops
-    assert [_gloss_of(m) for m in analysis['morphemes']] == ['see', 'ABS']
+    assert [_gloss_of(m) for m in analysis['morphemes']] == ['see', 'PL']
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3.m2'], 'field': 'Morph Gloss', 'value': ''})
     assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['see', None], out
 
@@ -315,7 +315,7 @@ def test_set_morpheme_past_the_end_of_the_planned_analysis_is_refused():
 
 
 @pytest.mark.parametrize('tool, args', [
-    ('set_field', {'refs': ['s1.w1.m1'], 'field': 'Morph Gloss', 'value': 'NEW'}),
+    ('set_field', {'refs': ['s1.w1.m1'], 'field': 'Morph Gloss', 'value': 'new'}),
     ('set_morpheme', {'ref': 's1.w1.m1', 'type': 'root'}),
     ('set_morpheme', {'ref': 's1.w1.m1', 'form': 'Alo'}),
 ])
@@ -343,21 +343,21 @@ def test_a_morpheme_change_by_id_on_a_planned_analysis_is_refused_at_staging():
         w.add_op({'kind': 'set_morph_type', 'morpheme_id': 'm-1a', 'morph_type': 'root', 'label': 'x'})
     with pytest.raises(Exception, match='analysis planned'):
         w.add_op({'kind': 'set_span', 'layer_id': 'sl-mgloss', 'token_id': 'm-1a', 'span_id': 'sp-m1a',
-                  'value': 'X', 'label': 'x'})
+                  'value': 'x', 'label': 'x'})
     assert len(w.ops) == 1
 
 
 def test_set_field_for_form_reads_the_planned_chain():
     w = fake_ws(FakeClient())
     _analyse_ali(w)
-    out = call_tool(w, 'set_field_for_form', {'form': 'd', 'field': 'Morph Gloss', 'value': 'DAT'})
+    out = call_tool(w, 'set_field_for_form', {'form': 'd', 'field': 'Morph Gloss', 'value': 'PL'})
     # Staged as a row of its own.
     assert [op['kind'] for op in w.ops] == ['set_analysis', 'bulk_scope'], out
-    assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', 'DAT', None]
+    assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['a', 'PL', None]
     # The stored "Ali" of s1.w1 is on its way out, and the planned one
     # already has a value, so only_empty leaves it.
-    call_tool(w, 'set_field_for_form', {'form': 'Ali', 'field': 'Morph Gloss', 'value': 'ALI'})
-    assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['A', 'DAT', None]
+    call_tool(w, 'set_field_for_form', {'form': 'Ali', 'field': 'Morph Gloss', 'value': 'ali'})
+    assert [_gloss_of(m) for m in w.ops[0]['morphemes']] == ['a', 'PL', None]
 
 
 def test_a_replacement_over_stored_morphemes_leaves_the_ones_a_planned_analysis_rewrites():
@@ -418,7 +418,7 @@ def test_the_model_is_told_an_analysis_took_the_changes_planned_on_its_morphemes
     the model has to know the gloss is no longer planned, and how to plan it
     again."""
     w = fake_ws(FakeClient())
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'DAT'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'PL'})
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': 'root'})
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
     assert '2 changes planned on the morphemes of a word this analysis replaces were taken out' in out, out

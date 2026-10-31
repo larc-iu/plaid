@@ -22,7 +22,7 @@ def _ws():
 def test_a_condition_on_a_morpheme_field_of_the_word_holds_the_replacement():
     _client, w = _ws()
     # Ali is glossed Ali on m-1a, in the word whose other morpheme is ERG.
-    out = for_model(call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+    out = for_model(call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PL',
                                                       'whole': True, 'where': {'Morph Gloss': 'erg'}}))
     assert out.startswith('Planned 1 value in 1 document, as one row on the card'), out
     [op] = w.ops
@@ -30,7 +30,7 @@ def test_a_condition_on_a_morpheme_field_of_the_word_holds_the_replacement():
     assert op['head'].endswith(', where Morph Gloss is "erg" (ignoring case)')
     # A word with no enclitic: the same replacement finds nothing.
     _client, w = _ws()
-    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PL',
                                             'whole': True, 'where': {'type': 'enclitic'}})
     assert out.startswith('Nothing to change'), out
     assert w.ops == []
@@ -72,7 +72,7 @@ def test_the_same_rule_with_another_condition_is_another_rule():
 
 def test_a_bad_condition_is_refused_with_the_keys_it_takes():
     _client, w = _ws()
-    out = for_model(call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+    out = for_model(call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PL',
                                                       'where': {'pos': 'n'}}))
     assert 'No condition key "pos"' in out and '"form", "morpheme", "type"' in out and w.ops == []
     out = for_model(call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': 'fish',
@@ -113,7 +113,7 @@ def test_a_condition_holds_a_replacement_in_stored_morpheme_forms():
 def test_nothing_found_for_the_condition_alone_says_so_and_how_many_without_it():
     """H16-IGT-TOOLS-5: the condition, not the pattern, left nothing."""
     _client, w = _ws()
-    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PL',
                                             'whole': True, 'where': {'type': 'enclitic'}})
     assert out == ('Nothing to change: 1 Morph Gloss values match without the condition, none, where type is '
                    '"enclitic" (ignoring case). A condition matches a whole value, ignoring case, never as a '
@@ -123,7 +123,7 @@ def test_nothing_found_for_the_condition_alone_says_so_and_how_many_without_it()
     assert out.startswith('Nothing to change: 2 occurrences of "gam" without a value match without the '
                           'condition'), out
     # A pattern that matches nothing is still said to.
-    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'QQQ', 'replacement': 'PN',
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'QQQ', 'replacement': 'PL',
                                             'where': {'type': 'enclitic'}})
     assert out == 'Nothing to change: no Morph Gloss values matched.', out
     assert w.ops == []
@@ -131,7 +131,7 @@ def test_nothing_found_for_the_condition_alone_says_so_and_how_many_without_it()
 
 def test_an_empty_condition_is_refused_pointing_to_worklist():
     _client, w = _ws()
-    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PN',
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'Ali', 'replacement': 'PL',
                                             'where': {'Gloss': ' '}})
     assert out.startswith('Error: where: Gloss is empty, which matches nothing.') and 'worklist' in out, out
 

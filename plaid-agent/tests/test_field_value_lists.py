@@ -84,3 +84,64 @@ def test_an_entry_type_is_one_the_app_knows(live_client):
         assert (entry(c, s, 'vi-ali').get('metadata') or {}).get('morphType') == 'suffix'
     finally:
         s.delete()
+
+
+# --- mixed tagsets (Luke 2026-10-31) ------------------------------------------
+# A mixed tagset takes a listed value or a lexical gloss (a part with a
+# lowercase letter), and the app's Details page, entry editor and cells refuse
+# anything else (plaid-igt validateValue). The assistant refuses the same.
+
+def _mixed_project():
+    p = base_project()
+    igt = p['config']['igt']
+    igt['documentMetadata'] = [{'name': 'Date'}, {'name': 'Genre', 'tagset': 'Genres'}]
+    igt['tagsets']['Genres'] = {'delimiters': '', 'mode': 'mixed', 'values': [{'value': 'NARR'}]}
+    vcfg = p['vocabs'][0]['config']['igt']
+    vcfg['fields']['pos'] = {'inline': True, 'role': 'pos', 'tagset': 'POS'}
+    vcfg['fields']['gloss'] = {'inline': True, 'role': 'gloss', 'tagset': 'Leipzig'}
+    vcfg['tagsets'] = {'POS': {'delimiters': '', 'mode': 'mixed', 'values': [{'value': 'N'}, {'value': 'V'}]},
+                       'Leipzig': {'delimiters': '.:', 'mode': 'mixed',
+                                   'values': [{'value': 'SBJ'}, {'value': '3'}, {'value': 'PFV'}]}}
+    return p
+
+
+def test_document_metadata_off_a_mixed_tagset_is_refused(live_client):
+    c = live_client
+    s, ws = seeded(c, _mixed_project(), [_doc('d0', 'Doc A', [('gam', '', [('gam', '')])])],
+                   name='field lists: mixed metadata')
+    try:
+        out = call_tool(ws, 'set_document_metadata', {'document': 'Doc A', 'field': 'Genre', 'value': 'POEM'})
+        assert '"POEM" is not allowed in Genre' in out and 'NARR' in out, out
+        out = call_tool(ws, 'create_document', {'name': 'Doc B', 'text': 'aa', 'metadata': {'Genre': 'POEM'}})
+        assert '"POEM" is not allowed in Genre' in out, out
+        assert ws.ops == []
+        # A lexical value and a listed one are taken.
+        call_tool(ws, 'set_document_metadata', {'document': 'Doc A', 'field': 'Genre', 'value': 'poem'})
+        call_tool(ws, 'create_document', {'name': 'Doc B', 'text': 'aa', 'metadata': {'Genre': 'NARR'}})
+        assert len(ws.ops) == 2, ws.ops
+    finally:
+        s.delete()
+
+
+def test_entry_field_off_a_mixed_lexicon_tagset_is_refused_as_the_entry_editor_reads_it(live_client):
+    c = live_client
+    s, ws = seeded(c, _mixed_project(), [_doc('d0', 'Doc A', [('gam', '', [('gam', '')])])],
+                   name='field lists: mixed entry field')
+    try:
+        out = call_tool(ws, 'set_entry_field', {'entry_form': 'Ali', 'field': 'pos', 'value': 'ADJ'})
+        assert '"ADJ" is not allowed in pos' in out, out
+        out = call_tool(ws, 'create_entry', {'form': 'kuna', 'fields': {'pos': 'ADV'}})
+        assert '"ADV" is not allowed in pos' in out, out
+        # A suffix's gloss is read with no fall-back: a lowercase abbreviation
+        # beside a tag is a tag, and this one is not listed. A stem's is a word.
+        out = call_tool(ws, 'set_entry_field', {'entry_form': '-di', 'field': 'gloss', 'value': 'SBJ:3.pfv'})
+        assert '"SBJ:3.pfv" is not allowed in gloss' in out and '"pfv"' in out, out
+        out = call_tool(ws, 'create_entry', {'form': 'ra', 'fields': {'morphType': 'suffix', 'gloss': 'SBJ:3.pfv'}})
+        assert '"SBJ:3.pfv" is not allowed in gloss' in out, out
+        assert ws.ops == []
+        call_tool(ws, 'set_entry_field', {'entry_form': 'Ali', 'field': 'pos', 'value': 'adj'})
+        call_tool(ws, 'set_entry_field', {'entry_form': 'Ali', 'field': 'gloss', 'value': 'SBJ:3.pfv'})
+        call_tool(ws, 'set_entry_field', {'entry_form': '-di', 'field': 'gloss', 'value': 'SBJ:3.PFV'})
+        assert len(ws.ops) == 3, ws.ops
+    finally:
+        s.delete()

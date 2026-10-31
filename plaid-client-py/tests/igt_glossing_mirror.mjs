@@ -102,5 +102,26 @@ process.stdout.write(
     goesBy: cases.goesBy.map(([metadata, entryType]) =>
       morphemes.morphemeMorphType(metadata, entryType),
     ),
+    // Each value checked under each tagset and reading: the parts
+    // validateValue refuses. Then the readings of a morpheme's gloss.
+    checks: cases.checks.map(([value, tagset, reading]) =>
+      tagsets
+        .validateValue(
+          value,
+          tagsets.readingTagset(tagset, reading ?? undefined),
+        )
+        .map((v) => v.part),
+    ),
+    readingsOf: cases.namers.map(
+      ([t, f]) => tagsets.glossReadingOf(t, f) ?? null,
+    ),
+    lineReadings: cases.lines.map((line) =>
+      line.map((_, i) =>
+        tagsets.morphemeGlossReading(
+          line.map(([gloss, morphType, form]) => ({ morphType, form, gloss })),
+          i,
+        ),
+      ),
+    ),
   }),
 );

@@ -17,7 +17,7 @@ import subprocess
 
 import pytest
 
-from plaid_client.workflows.igt import glossing
+from plaid_client.workflows.igt import glossing, tagsets
 from plaid_client.workflows.igt.senses import morpheme_morph_type
 
 from mirror_node import IGT_MODULES, node_or_skip
@@ -79,6 +79,19 @@ GOES_BY = [
     [{'morphType': 'suffix'}, ''], [{'morphType': 3}, None], [{'morphType': 'stem'}, 3],
 ]
 
+#: Tagsets a value is checked under (``validateValue``): mixed and closed with
+#: a Leipzig list and delimiters, mixed with none, and one that only suggests.
+CHECK_TAGSETS = [
+    {'delimiters': '.:-=', 'mode': 'mixed', 'values': [{'value': v} for v in ['PL', '1SG', 'PST', 'ERG', 'PFV']]},
+    {'delimiters': '.:-=', 'mode': 'closed', 'values': [{'value': v} for v in ['PL', '1SG', 'PST', 'dog']]},
+    {'delimiters': '', 'mode': 'mixed', 'values': [{'value': 'ADJ'}, {'value': 'n'}]},
+    {'delimiters': '.', 'mode': 'suggest', 'values': []},
+]
+CHECK_READINGS = [None, {'bound': True}, {'bound': False, 'beside': ['go']},
+                  {'bound': False, 'beside': ['PL', 'sbj:3.pfv']}]
+CHECK_VALUES = VALUES + ['POEM', 'ADJ', 'adj', 'poem', 'dog..PL', 'dog.', ' PL ', 'PL. 1SG', 'n', 'N']
+CHECKS = [[v, t, r] for t in CHECK_TAGSETS for r in CHECK_READINGS for v in CHECK_VALUES]
+
 
 @pytest.fixture(scope='module')
 def js(tmp_path_factory):
@@ -87,7 +100,7 @@ def js(tmp_path_factory):
     cases.write_text(json.dumps({
         'values': VALUES, 'scanned': [v for v in VALUES if not any(c.isspace() for c in v)],
         'units': UNITS, 'parts': PARTS, 'morphTypes': MORPH_TYPES, 'forms': FORMS,
-        'namers': NAMERS, 'lines': LINES, 'goesBy': GOES_BY,
+        'namers': NAMERS, 'lines': LINES, 'goesBy': GOES_BY, 'checks': CHECKS,
     }), encoding='utf-8')
     out = subprocess.run([exe, SCRIPT, str(cases)], capture_output=True, text=True, timeout=60,
                          check=True).stdout
@@ -170,3 +183,16 @@ def test_the_probes_read_as_the_rule_says():
     assert _skeleton_line(LINES[0]) == [[[True, False]], [[True]]]
     assert _skeleton_line(LINES[1]) == [[[True, False]], [[False, False, False]]]
     assert _skeleton_line(LINES[2]) == [[[False, False, False]]]
+
+
+def test_a_value_is_refused_by_a_tagset_as_the_app_refuses_it(js):
+    """The parts the app's cells, Details page and entry editor refuse, under
+    each mode and reading (validateValue), are the ones refused_parts names."""
+    assert [tagsets.refused_parts(v, t, r) for v, t, r in CHECKS] == js['checks']
+
+
+def test_a_gloss_is_read_by_its_morpheme_as_the_app_reads_it(js):
+    assert [tagsets.gloss_reading_of(t, f) for t, f in NAMERS] == js['readingsOf']
+    assert [[tagsets.morpheme_gloss_reading(
+        [{'morph_type': t, 'form': f, 'gloss': g} for g, t, f in line], i) for i in range(len(line))]
+        for line in LINES] == js['lineReadings']

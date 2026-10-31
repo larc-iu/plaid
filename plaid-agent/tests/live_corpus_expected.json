@@ -306,8 +306,8 @@
   "answer": "Nothing to change: no Gloss values matched.",
   "ops": []
  },
- "proj replace_in_field {\"field\": \"Morph Gloss\", \"pattern\": \"ERG\", \"replacement\": \"OBL\", \"whole\": true}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches the whole value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
+ "proj replace_in_field {\"field\": \"Morph Gloss\", \"pattern\": \"ERG\", \"replacement\": \"PL\", \"whole\": true}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nMatches the whole value, case-sensitive.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"PL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"PL\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {
@@ -316,7 +316,7 @@
      "field": "Morph Gloss",
      "pattern": "ERG",
      "regex": false,
-     "replacement": "OBL",
+     "replacement": "PL",
      "whole": true
     },
     "card": {
@@ -326,7 +326,7 @@
       "field": "Morph Gloss",
       "pattern": "ERG",
       "regex": false,
-      "replacement": "OBL",
+      "replacement": "PL",
       "whole": true
      },
      "documents": [
@@ -346,8 +346,8 @@
      "mode": "the whole value, case-sensitive",
      "sample": [
       {
-       "change": "Morph Gloss \"ERG\" → \"OBL\"",
-       "label": "Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"",
+       "change": "Morph Gloss \"ERG\" → \"PL\"",
+       "label": "Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"PL\"",
        "replaces_work": 1,
        "where": {
         "begin": 0,
@@ -370,7 +370,7 @@
        "count": 1,
        "from": "ERG",
        "notes": [],
-       "to": "OBL"
+       "to": "PL"
       }
      ],
      "transitions_more": [
@@ -382,7 +382,7 @@
       "values"
      ]
     },
-    "change": "Morph Gloss \"ERG\" → \"OBL\"",
+    "change": "Morph Gloss \"ERG\" → \"PL\"",
     "count": 1,
     "counts": {
      "set_span": 1
@@ -390,9 +390,9 @@
     "documents": [
      "d1"
     ],
-    "head": "Morph Gloss: replace \"ERG\" with \"OBL\" (the whole value, case-sensitive)",
+    "head": "Morph Gloss: replace \"ERG\" with \"PL\" (the whole value, case-sensitive)",
     "kind": "bulk_scope",
-    "label": "Morph Gloss: replace \"ERG\" with \"OBL\" (the whole value, case-sensitive), 1 value in 1 document, 1 of them replaces accepted work",
+    "label": "Morph Gloss: replace \"ERG\" with \"PL\" (the whole value, case-sensitive), 1 value in 1 document, 1 of them replaces accepted work",
     "matched": [
      [
       "d1",
@@ -1166,8 +1166,8 @@
    }
   ]
  },
- "proj set_field_for_form {\"field\": \"Morph Gloss\", \"form\": \"di\", \"only_empty\": false, \"value\": \"OBL\"}": {
-  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"OBL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
+ "proj set_field_for_form {\"field\": \"Morph Gloss\", \"form\": \"di\", \"only_empty\": false, \"value\": \"PL\"}": {
+  "answer": "Planned 1 value in 1 document, as one row on the card (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 of them replace work a person made or accepted, and the card says so.\nEvery distinct change it makes, the card lists the same:\n  \"ERG\" → \"PL\" 1 value\nIn 1 document: \"Text 1\" 1.\nFor example:\n  Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"PL\"\nStored as a rule, found again when the user approves. To leave one value out, set_field it to what it holds now.",
   "ops": [
    {
     "args": {
@@ -1175,7 +1175,7 @@
      "field": "Morph Gloss",
      "form": "di",
      "only_empty": false,
-     "value": "OBL"
+     "value": "PL"
     },
     "card": {
      "args": {
@@ -1183,7 +1183,7 @@
       "field": "Morph Gloss",
       "form": "di",
       "only_empty": false,
-      "value": "OBL"
+      "value": "PL"
      },
      "documents": [
       [
@@ -1201,8 +1201,8 @@
      },
      "sample": [
       {
-       "change": "Morph Gloss \"ERG\" → \"OBL\"",
-       "label": "Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"OBL\"",
+       "change": "Morph Gloss \"ERG\" → \"PL\"",
+       "label": "Text 1 s1.w1.m2 \"di\": Morph Gloss \"ERG\" → \"PL\"",
        "replaces_work": 1,
        "where": {
         "begin": 0,
@@ -1225,7 +1225,7 @@
        "count": 1,
        "from": "ERG",
        "notes": [],
-       "to": "OBL"
+       "to": "PL"
       }
      ],
      "transitions_more": [
@@ -1237,7 +1237,7 @@
       "values"
      ]
     },
-    "change": "Morph Gloss = \"OBL\" on \"di\"",
+    "change": "Morph Gloss = \"PL\" on \"di\"",
     "count": 1,
     "counts": {
      "set_span": 1
@@ -1245,9 +1245,9 @@
     "documents": [
      "d1"
     ],
-    "head": "Morph Gloss: \"OBL\" on every \"di\"",
+    "head": "Morph Gloss: \"PL\" on every \"di\"",
     "kind": "bulk_scope",
-    "label": "Morph Gloss: \"OBL\" on every \"di\", 1 value in 1 document, 1 of them replaces accepted work",
+    "label": "Morph Gloss: \"PL\" on every \"di\", 1 value in 1 document, 1 of them replaces accepted work",
     "matched": [
      [
       "d1",

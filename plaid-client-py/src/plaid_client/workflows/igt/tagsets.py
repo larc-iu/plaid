@@ -33,6 +33,7 @@ from typing import Dict, Iterator, List, Optional
 
 from ...constraints import _JS_SPACE
 from .config import read_igt, read_scope, read_vocab_fields
+from .glossing import can_name_word, is_bound_type, lexical_flags_of
 
 SUGGEST, CLOSED, MIXED = 'suggest', 'closed', 'mixed'
 MODES = (SUGGEST, CLOSED, MIXED)
@@ -218,3 +219,90 @@ def value_lines(tagset, max_values: Optional[int] = None) -> List[str]:
     if len(shown) < len(vals):
         out.append(f'... and {len(vals) - len(shown)} more')
     return out
+
+
+# --- checking a value (plaid-igt validateValue) ------------------------------
+
+def tagset_enforces(tagset) -> bool:
+    """Whether the tagset refuses a value, or only suggests (``tagsetEnforces``):
+    closed and mixed refuse, suggest never does."""
+    return bool(tagset) and tagset.get('mode') != SUGGEST
+
+
+def scan_value(value, delimiters) -> List[tuple]:
+    """``value`` cut on any of ``delimiters`` (``scanValue``): ``(text, begin,
+    end)`` per segment, offsets in code points, an empty segment kept."""
+    s = value if isinstance(value, str) else ''
+    delims = set(_str(delimiters))
+    if not delims:
+        return [(s, 0, len(s))]
+    out, begin = [], 0
+    for i, ch in enumerate(s):
+        if ch in delims:
+            out.append((s[begin:i], begin, i))
+            begin = i + 1
+    out.append((s[begin:], begin, len(s)))
+    return out
+
+
+def gloss_reading_of(morph_type, form=None) -> Optional[dict]:
+    """How a gloss known by its morpheme's type and form alone is read
+    (``glossReadingOf``): ``{'bound': True, 'beside': []}`` for an affix's, a clitic's or a
+    zero morph's, else None, a stem's or a word's gloss read alone. ``form``
+    None means the morpheme states none. A lexicon entry's fields are read so
+    (``entryTagsetFor``), by the type the entry goes by and its form."""
+    if is_bound_type(morph_type) or (isinstance(form, str) and not can_name_word(morph_type, form)):
+        return {'bound': True, 'beside': []}
+    return None
+
+
+def morpheme_gloss_reading(morphemes, i: int) -> dict:
+    """How the grid reads the gloss of morpheme ``i`` of a word
+    (``morphemeGlossReading``): ``morphemes`` in order, each ``{morph_type,
+    form, gloss}`` with the type it goes by and its value in the same field.
+    A gloss that cannot name its word is read bound, and a stem's is
+    read with the glosses of the word's other morphemes that could
+    (``beside``)."""
+    def names(m):
+        return can_name_word(m.get('morph_type'), m.get('form'))
+    me = morphemes[i] if 0 <= i < len(morphemes) else None
+    if me is None or not names(me):
+        return {'bound': True, 'beside': []}
+    return {'bound': False,
+            'beside': [g for j, m in enumerate(morphemes) if j != i and names(m)
+                       for g in [_str(m.get('gloss'))] if trim(g)]}
+
+
+def refused_parts(value, tagset, reading: Optional[dict] = None) -> List[str]:
+    """The parts of ``value`` a tagset refuses, as the app's cells, Details
+    page and entry editor refuse them (``validateValue``): an empty part in
+    any mode, and under closed or mixed a part the list does not hold, which
+    mixed lets through when it reads as lexical (:func:`lexical_flags_of`,
+    by ``reading``: :func:`gloss_reading_of` or :func:`morpheme_gloss_reading`).
+    A blank value is never refused. Whether to refuse a write over them is
+    :func:`tagset_enforces`."""
+    if not tagset:
+        return []
+    s = value if isinstance(value, str) else ''
+    if trim(s) == '':
+        return []
+    parts = scan_value(s, tagset.get('delimiters'))
+    reading = reading or {}
+    lexical = lexical_flags_of(s, parts, bound=bool(reading.get('bound')), beside=reading.get('beside') or ())
+    listed = {v['value'] for v in tagset.get('values') or []}
+    mode = tagset.get('mode')
+    out = []
+    for (text, _b, _e), lex in zip(parts, lexical):
+        part = trim(text)
+        if not part:
+            out.append(text)
+        elif mode != SUGGEST and part not in listed and not (mode == MIXED and lex):
+            out.append(part)
+    return out
+
+
+def value_allowed(value, tagset, reading: Optional[dict] = None) -> bool:
+    """Whether a value may be written to a field ``tagset`` governs, as the
+    app's write paths decide it: a tagset that only suggests takes anything,
+    and an enforcing one takes a value with no refused part."""
+    return not tagset_enforces(tagset) or not refused_parts(value, tagset, reading)

@@ -21,7 +21,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.provenance import PROVENANCE_KEYS, project_role
 from plaid_client.workflows.igt.config import is_orthography_key, orthography_name
-from plaid_client.workflows.igt.tagsets import CLOSED
+from plaid_client.workflows.igt.tagsets import (CLOSED, MIXED, gloss_reading_of, mode_rule, morpheme_gloss_reading,
+                                               refused_parts, tagset_enforces)
 
 from ..core import docload, opkind
 from ..core.bidi import plain_quote, qname, qv
@@ -62,6 +63,11 @@ DOC_FIELD = 'document metadata'
 ENTRY_FIELD = 'entry field'
 # The entry metadata key holding an entry's type.
 MORPH_TYPE_KEY = 'morphType'
+
+
+#: How the app reads an affix's gloss (``glossReadingOf``): with no fall-back,
+#: the strictest reading a mixed tagset has.
+BOUND_READING = {'bound': True, 'beside': []}
 
 
 def tagset_rules(tagset: Optional[dict]) -> List[dict]:
@@ -837,6 +843,115 @@ class Workspace(BaseWorkspace):
             return name, tagset_rules(((v or {}).get('tagsets') or {}).get(name))
         f = self.project.field_by_layer(key) if key else None
         return (f.name, f.value_sets) if f else ('', [])
+
+    def refuse_off_list(self, op: Dict[str, Any]) -> None:
+        """The stored rules and closed lists (:meth:`value_rules`), then each
+        value as the app's cells, Details page and entry editor check it
+        against the field's tagset (``validateValue``), which a mixed tagset
+        holds too: a part neither listed nor a lexical gloss is refused."""
+        super().refuse_off_list(op)
+        for name, tagset, value, reading in self.tagset_values(op):
+            if not tagset_enforces(tagset):
+                continue
+            bad = refused_parts(value, tagset)
+            # How the field reads the gloss (an affix's, a stem's beside the
+            # word's other stems) only ever refuses more, and an affix's
+            # reading the most, so the reading, which may load a document, is
+            # looked up only when that one would refuse a part.
+            if (not bad and tagset.get('mode') == MIXED and reading is not None
+                    and refused_parts(value, tagset, BOUND_READING)):
+                bad = refused_parts(value, tagset, reading())
+            if bad:
+                shown = ', '.join(qv(p) for p in dict.fromkeys(bad))
+                listed = [t['value'] for t in tagset.get('values') or []]
+                raise ToolError(f'{qv(value)} is not allowed in {name}, which the tagset {qv(tagset.get("name") or "")} '
+                                f'governs, and the app refuses it: {shown} {"is" if len(bad) == 1 else "are"} not '
+                                f'allowed there. {mode_rule(tagset)} Listed: '
+                                + (', '.join(listed[:60]) + (f' and {len(listed) - 60} more' if len(listed) > 60 else '')
+                                   if listed else 'nothing'), kind='invalid-argument')
+
+    def tagset_values(self, op: Dict[str, Any]) -> List[tuple]:
+        """``(field name, tagset, value, reading)`` for each value ``op``
+        writes into a field a tagset governs, ``reading`` None or a function
+        giving how the app reads that value (``readingTagset``): a morpheme
+        field's by its morpheme and word, an entry field's by the entry's type
+        and form (``entryTagsetFor``). A document metadata field's and a word
+        field's are read alone."""
+        kind = op.get('kind')
+        out = []
+        if kind == 'set_span':
+            f = self.project.field_by_layer(op.get('layer_id'))
+            if f is not None and f.tagset:
+                reading = ((lambda: self.cell_reading(f, op.get('token_id'), op.get('doc')))
+                           if f.scope == 'Morpheme' else None)
+                out.append((f.name, f.tagset, op.get('value'), reading))
+        elif kind == 'set_analysis':
+            chain = op.get('morphemes') or []
+            for j, m in enumerate(chain):
+                for fv in m.get('fields') or []:
+                    f = self.project.field_by_layer(fv.get('layer_id'))
+                    if f is None or not f.tagset:
+                        continue
+                    word = [{'morph_type': x.get('morph_type'), 'form': x.get('form'),
+                             'gloss': next((g.get('value') for g in x.get('fields') or []
+                                            if g.get('layer_id') == f.layer_id), '')} for x in chain]
+                    out.append((f.name, f.tagset, fv.get('value'),
+                                lambda word=word, j=j: morpheme_gloss_reading(word, j)))
+        elif kind in ('set_doc_metadata', 'create_document'):
+            given = ({op.get('field'): op.get('value')} if kind == 'set_doc_metadata'
+                     else (op.get('metadata') or {}))
+            for k, v in given.items():
+                t = self.project.metadata_tagsets.get(k)
+                if t:
+                    out.append((k, t, v, None))
+        elif kind in ('set_entry_field', 'create_entry'):
+            if kind == 'set_entry_field':
+                vocab = self.vocab_of_item(op.get('item_id'))
+                given = {op.get('field'): op.get('value')}
+            else:
+                vocab = next((x for x in self.project.vocabs if x['id'] == op.get('vocab_id')), None)
+                given = op.get('metadata') or {}
+            tagsets = (vocab or {}).get('tagsets') or {}
+            for k, v in given.items():
+                t = tagsets.get(k) if k != MORPH_TYPE_KEY else None
+                if t:
+                    out.append((k, t, v, lambda vocab=vocab: self.entry_reading(vocab, op)))
+        return out
+
+    def entry_reading(self, vocab: dict, op: Dict[str, Any]) -> Optional[dict]:
+        """How the entry editor reads a field of the entry ``op`` sets or
+        creates: by the type the entry goes by (its own, else its
+        headword's) and its form (``entryTagsetFor``)."""
+        tree = self.view(vocab).tree
+        if op.get('kind') == 'set_entry_field':
+            item = tree.by_id.get(op.get('item_id')) or {}
+            return gloss_reading_of(morph_type_of(tree, op.get('item_id')), item.get('form') or None)
+        meta = op.get('metadata') or {}
+        own = meta.get(MORPH_TYPE_KEY)
+        parent = meta.get(PARENT_KEY)
+        t = own if isinstance(own, str) and own else (morph_type_of(tree, parent) if parent else None)
+        return gloss_reading_of(t, op.get('form') or None)
+
+    def cell_reading(self, f, token_id: Optional[str], doc_id: Optional[str]) -> Optional[dict]:
+        """How the grid reads a value of morpheme field ``f`` in the cell of
+        morpheme ``token_id`` (``morphemeGlossReading``): by the type it goes
+        by and its form, beside the word's other morphemes' values in that
+        field as the plan leaves them. None when its document is not at hand."""
+        docs = list(self._docs.values())
+        if doc_id and doc_id not in self._docs:
+            docs.append(self.doc(doc_id))
+        for d in docs:
+            for s in d.sentences:
+                for w in s.words:
+                    k = next((i for i, m in enumerate(w.morphemes) if m.id == token_id), None)
+                    if k is None:
+                        continue
+                    word = [{'morph_type': m.goes_by, 'form': m.form,
+                             'gloss': self.planned_value(f.layer_id, m.id, m.fields[f.name].value
+                                                         if f.name in m.fields else '')}
+                            for m in w.morphemes]
+                    return morpheme_gloss_reading(word, k)
+        return None
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)

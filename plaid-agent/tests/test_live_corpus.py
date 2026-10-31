@@ -177,7 +177,7 @@ def same_ops(proj, tool, args):
 
 
 def test_bulk_tools_plan(proj):
-    same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
+    same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'PL', 'whole': True})
     same_ops(proj, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     same_ops(proj, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'})
     same_ops(proj, 'respell_all', {'lexicon': True, 'pattern': 'a', 'replacement': 'ä'})
@@ -186,7 +186,7 @@ def test_bulk_tools_plan(proj):
     same_ops(proj, 'copy_to_orthography', {'orthography': 'IPA', 'overwrite': True})
     same_ops(proj, 'set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'fish'})
     same_ops(proj, 'set_field_for_form', {'form': 'ali', 'field': 'Gloss', 'value': 'Ali2', 'only_empty': False})
-    same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
+    same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'PL', 'only_empty': False})
     # akuna has no morpheme token: the rule reaches its derived morpheme.
     b = same_ops(proj, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
     # What approval resolves the rule to (writing it would change the

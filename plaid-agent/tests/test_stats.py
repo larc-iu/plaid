@@ -116,8 +116,8 @@ def test_sequence_search():
 
 def test_bulk_plans():
     w = ws()
-    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
-    assert out.startswith('Planned 1 value in 1 document') and values(w) == {'sp-m1b': 'OBL'}
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'PL', 'whole': True})
+    assert out.startswith('Planned 1 value in 1 document') and values(w) == {'sp-m1b': 'PL'}
     out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     assert values(w)['sp-t1'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
@@ -340,9 +340,9 @@ def test_set_field_for_form_fills_gaps_by_default():
     # One rule standing for both (core.rules).
     assert 'Planned 2 values in 1 document' in out and spans_made(applied(w)) == [['m-2'], ['m-4a']]
     # existing values are left alone unless only_empty=false
-    assert 'Nothing to change' in call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL'})
-    call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
-    assert values(w)['sp-m1b'] == 'OBL'
+    assert 'Nothing to change' in call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'PL'})
+    call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'PL', 'only_empty': False})
+    assert values(w)['sp-m1b'] == 'PL'
     # word fields match word surfaces
     call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Gloss', 'value': 'saw'})
     assert ['w-3'] in spans_made(applied(w))

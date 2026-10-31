@@ -27,13 +27,13 @@ def test_a_word_change_links_to_its_sentence_and_word():
 
 
 def test_morpheme_sentence_and_document_changes():
-    ws = _plan(('set_field', {'document': 'Text 1', 'refs': 's1.w1.m2', 'field': 'Morph Gloss', 'value': 'DAT'}),
+    ws = _plan(('set_field', {'document': 'Text 1', 'refs': 's1.w1.m2', 'field': 'Morph Gloss', 'value': 'PL'}),
                ('set_field', {'document': 'Text 1', 'refs': 's2', 'field': 'Translation', 'value': 'Fish.'}),
                ('set_document_metadata', {'document': 'Text 1', 'field': 'Date', 'value': '2021'}),
                ('respell', {'document': 'Text 1', 'ref': 's1.w3', 'new_text': 'akun'}))
     m, s, doc, re_ = describe_changes(ws, ws.ops)
     assert m['where']['morpheme'] == 2 and m['where']['word'] == 1 and m['where']['surface'] == 'di'
-    assert m['change'] == 'Morph Gloss "ERG" → "DAT"'
+    assert m['change'] == 'Morph Gloss "ERG" → "PL"'
     assert s['where']['word'] is None and s['where']['sentence'] == 2 and s['where']['surface'] == 'Gam-ar.'
     assert s['change'] == 'Translation = "Fish."'
     assert doc['where'] == {'kind': 'document', 'document_id': 'd1', 'document_name': 'Text 1'}

@@ -101,7 +101,7 @@ def test_set_field_plans_create_update_clear_and_respects_scope():
     # sentence + morpheme scopes work
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s2'], 'field': 'Translation', 'value': 'Nets.'})
     assert w.ops[-1]['token_id'] == 's-2'
-    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'OBL'})
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'PL'})
     assert w.ops[-1]['token_id'] == 'm-1b' and w.ops[-1]['span_id'] == 'sp-m1b'
 
 
@@ -927,10 +927,10 @@ def test_a_value_copied_back_from_a_read_is_written_without_its_mark():
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'say~'})
     assert w.ops[-1]['value'] == 'say'
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [
-        {'form': 'aku', 'fields': {'Morph Gloss': 'say^'}}, {'form': 'na~', 'fields': {'Morph Gloss': 'PST~'}}]})
+        {'form': 'aku', 'fields': {'Morph Gloss': 'say^'}}, {'form': 'na~', 'fields': {'Morph Gloss': 'PL~'}}]})
     op = w.ops[-1]
     assert [m['form'] for m in op['morphemes']] == ['aku', 'na']
-    assert [fv['value'] for m in op['morphemes'] for fv in m['fields']] == ['say', 'PST']
+    assert [fv['value'] for m in op['morphemes'] for fv in m['fields']] == ['say', 'PL']
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_form': 'gam^',
                                       'entry_gloss': 'fish'})
     assert 'Planned' in out, out
@@ -947,13 +947,13 @@ def test_a_value_off_a_layers_stored_list_is_refused_while_planning():
     from fixtures import MGLOSS
     c = FakeClient(documents={'d1': _machine_doc()})
     w = fake_ws(c)
-    w.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'PST', 'ERG'],
+    w.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'PL', 'ERG'],
                                                     'delimiters': '.'}]
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
                                      'value': 'Ali.XX'})
     assert '"Ali.XX" is not on the list Morph Gloss is held to' in out and w.ops == []
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
-                                     'value': 'Ali.PST'})
+                                     'value': 'Ali.PL'})
     assert out.startswith('Planned') and len(w.ops) == 1
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [
         {'form': 'x', 'fields': {'Morph Gloss': 'ZZ'}}]})
