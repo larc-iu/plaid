@@ -65,7 +65,7 @@ from plaid_client import BaseService, TASKS
 
 from .agent import ModelConfig, Toolkit
 from .conversation import ConversationStore, build_meta, pending_kept
-from .ops import ANOTHER_PROJECT, OPS, STALE_PAGE
+from .ops import OPS, STALE_PAGE
 from .plan import documents_to_lock
 from .web import WebConfig
 from .version import agent_sources, agent_version
@@ -277,19 +277,14 @@ class BaseAssistantService(ServiceCli, RecordOps, Approving, PageWrites, Turn, B
     def process_request(self, request_data: dict, response_helper) -> None:
         client = request_data.get('requester_client')
         # The turn works in the project the request was posted to, which core
-        # puts first among the projects the requester's token reaches. A
-        # request whose data names another project is refused, so a turn never
-        # runs in a project this assistant was not started on.
+        # puts first among the projects the requester's token reaches. The
+        # service framework writes that project over any the body names.
         scope = request_data.get('delegated_projects') or ()
         project_id = scope[0] if scope else None
         user_id = request_data.get('requester_id')
         conv_id = request_data.get('conversation_id')
         if client is None or not project_id or not user_id:
             response_helper.error('Missing project_id or requester credentials')
-            return
-        named = request_data.get('project_id')
-        if named and named != project_id:
-            response_helper.error(ANOTHER_PROJECT)
             return
         if not conv_id:
             response_helper.error('Missing conversation_id')
