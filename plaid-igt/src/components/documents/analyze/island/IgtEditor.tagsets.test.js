@@ -128,6 +128,21 @@ describe('a tagset-governed cell', () => {
     expect(altsList()).not.toBeNull();
   });
 
+  it('keeps the list a mouse click opened: the click is in the cell, not outside the list', () => {
+    mount();
+    const cell = glossCell();
+    const mouse = (type) =>
+      cell.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+    mouse('mousedown');
+    focus(cell);
+    mouse('mouseup');
+    mouse('click');
+    expect(altsList()).not.toBeNull();
+    // A click anywhere else still closes it.
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(altsList()).toBeNull();
+  });
+
   it('offers every tagset value even with no precedent in the document', () => {
     mount();
     focus(glossCell());

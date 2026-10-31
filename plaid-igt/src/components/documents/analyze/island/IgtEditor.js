@@ -200,11 +200,14 @@ export class IgtEditor {
     // The label element the menu hangs off, so it can be re-anchored on scroll.
     this._rowMenuAnchor = null;
     // Any click outside an opener/popover/menu (those stopPropagation) closes it.
-    this._onDocClick = () => {
+    // A click into the cell the alternatives list belongs to is not outside
+    // it: a governed cell opens its list on the focus that click's mousedown
+    // gave, and the click itself then closed it again.
+    this._onDocClick = (e) => {
       this._closePopover();
       this._closeCopyMenu();
       this._closeRowMenu();
-      this._closeAlts();
+      if (!this._alts || e?.target?.dataset?.cellKey !== this._alts.cellKey) this._closeAlts();
       this._clearMweSelection();
     };
     // The alternatives list (Alt+↓ on a cell): { cellKey, active, filter,
