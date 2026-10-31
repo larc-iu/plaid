@@ -189,12 +189,12 @@ PY_ONLY = {
 
 # --- their parameters (beta code review CR-CORE-2) -------------------------------------
 #
-# The lists above hold the names. Below, each shared method's parameters: as many plain
-# (positional) parameters, and the same option keys, a JS destructured `{ ... }` or the
-# keys read off its `options` object (by the method or by what it hands the object to,
-# js_surface.mjs follows it) against the Python keywords past the positional ones. The
-# client's constructor is compared as `constructor`. Spelling as above. Each difference
-# that is on purpose is listed with its reason.
+# The lists above hold the names. Below, each shared method's parameters: the same plain
+# (positional) parameters, by name and in order, and the same option keys, a JS
+# destructured `{ ... }` or the keys read off its `options` object (by the method or by
+# what it hands the object to, js_surface.mjs follows it) against the Python keywords past
+# the positional ones. The client's constructor is compared as `constructor`. Spelling as
+# above. Each difference that is on purpose is listed with its reason.
 
 #: Methods whose parameters are not compared.
 PARAMS_EXEMPT = {
@@ -209,11 +209,26 @@ PARAMS_EXEMPT = {
 JS_ONLY_PARAMS = {
     **dict.fromkeys([('messages.requestService', 'signal'), ('messages.attachServiceRequest', 'signal')],
                     'an AbortSignal, Python cancels with a CancelScope'),
-    **dict.fromkeys([('constructor', 'onAuthError'), ('login', 'onAuthError'), ('redeemInvite', 'onAuthError')],
+    **dict.fromkeys([('constructor', 'onAuthError'), ('login', 'onAuthError'),
+                     ('redeemInvite', 'onAuthError')],
                     'a browser app sends the person back to login on a 401, Python raises PlaidAPIError'),
 }
 PY_ONLY_PARAMS = {
     ('documents.get_media', 'to_path'): 'writes the file to disk, which a browser does not',
+}
+
+#: A JS positional parameter whose Python twin is named otherwise, keyed (method, parameter).
+#: JS spells the record's id `id` (a JS caller never names a positional parameter), Python
+#: names it by its kind, which a keyword caller writes.
+POSITIONAL_RENAMED = {
+    **dict.fromkeys([('comments.delete', 'id'), ('comments.get', 'id'), ('comments.update', 'id')],
+                    'comment_id'),
+    **dict.fromkeys([('documents.audit', 'id'), ('documents.auditPage', 'id')], 'document_id'),
+    **dict.fromkeys([('guidelines.delete', 'id'), ('guidelines.get', 'id'), ('guidelines.update', 'id')],
+                    'guideline_id'),
+    ('invites.revoke', 'id'): 'invite_id',
+    **dict.fromkeys([('projects.audit', 'id'), ('projects.auditPage', 'id')], 'project_id'),
+    **dict.fromkeys([('users.audit', 'id'), ('users.auditPage', 'id')], 'user_id'),
 }
 
 #: A JS parameter or option key whose Python twin is spelled otherwise, beyond the casing.
@@ -256,6 +271,11 @@ def param_differences(js, py):
             out.append(f'{js_key}: plaid-client-js takes {len(positional)} positional '
                        f'({", ".join(positional)}), plaid-client-py {len(py_positional)} '
                        f'({", ".join(py_positional)})')
+        else:
+            for i, (j, p) in enumerate(zip(positional, py_positional)):
+                if POSITIONAL_RENAMED.get((js_key, j), _py_param(j)) != p:
+                    out.append(f'{js_key}: positional parameter {i + 1} is {j} in plaid-client-js, {p} in '
+                               f'plaid-client-py')
         for k in sorted(keys - set(names)):
             out.append(f'{js_key}: option {k} is in plaid-client-js only')
     return out
@@ -369,6 +389,9 @@ def test_every_parameter_exemption_is_still_needed(js_surface):
     used = {k for sig in js_params.values()
             for k in sig['options'] + sig['positional'] + [x for b in sig['bags'].values() for x in b]}
     assert sorted(set(PARAM_RENAMED) - used) == []
+    assert sorted(k for k, p in POSITIONAL_RENAMED.items()
+                  if k[1] not in js_params.get(k[0], {}).get('positional', [])
+                  or p not in py['params'].get('.'.join(_py_name(x) for x in k[0].split('.')), [])) == []
 
 
 def test_a_parameter_in_one_client_alone_is_named():
@@ -383,6 +406,9 @@ def test_a_parameter_in_one_client_alone_is_named():
                                          'options': [], 'bags': {'options': []}},
         'documents.list': {'positional': [], 'options': ['limit', 'cursor'], 'bags': {}},
         'projects.get': {'positional': ['id', 'asOf'], 'options': [], 'bags': {}},
+        'vocabLayers.restoreItem': {'positional': ['id', 'asOf', 'itemId', 'auditMessage'],
+                                    'options': ['dryRun'], 'bags': {}},
+        'comments.get': {'positional': ['id'], 'options': [], 'bags': {}},
     }}
     py = {'params': {
         'span_layers.create': ['token_layer_id', 'name', 'audit_message', 'id', 'metadata'],
@@ -391,6 +417,8 @@ def test_a_parameter_in_one_client_alone_is_named():
         'span_layers.repair_constraints': ['layer_id', 'constraints', 'audit_message', 'document'],
         'documents.list': ['limit'],
         'projects.get': ['id'],
+        'vocab_layers.restore_item': ['id', 'item_id', 'as_of', 'dry_run', 'audit_message'],
+        'comments.get': ['comment_id'],
     }}
     assert param_differences(js, py) == [
         'documents.list: option cursor is in plaid-client-js only',
@@ -402,6 +430,10 @@ def test_a_parameter_in_one_client_alone_is_named():
         'hands it to',
         'spanLayers.repairConstraints: plaid-client-js takes 3 positional (layerId, constraints, '
         'auditMessage), plaid-client-py 4 (layer_id, constraints, audit_message, document)',
+        'vocabLayers.restoreItem: positional parameter 2 is asOf in plaid-client-js, item_id in '
+        'plaid-client-py',
+        'vocabLayers.restoreItem: positional parameter 3 is itemId in plaid-client-js, as_of in '
+        'plaid-client-py',
     ]
 
 
