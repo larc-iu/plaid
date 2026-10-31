@@ -291,8 +291,15 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
     plan already changed (a node of another sentence renamed or deleted) is
     read as that apply leaves it, and a node it renamed answers to its new
     name: each apply read the stored list, and the second whole list written
-    undid the first's change."""
+    undid the first's change. A node an earlier op of the plan makes (another
+    kept graph mended, a constant added) is an end a held relation can stand
+    on, named by its variable as this apply's own new nodes are, as the app's
+    second apply finds the node its first made."""
     fresh = {op['var'] for op in ops if op['kind'] == 'create_node'}
+    # This apply's new nodes, and the plan's earlier ones: the executor knows
+    # each by its variable.
+    by_var = fresh | {op['var'] for op in planned
+                      if op.get('kind') == 'create_node' and op.get('document_id') == doc.id}
     elsewhere: Dict[str, str] = {}
     for n in doc.nodes_by_id.values():
         if n.sentence != sentence.index and n.id not in gone_ids and n.var:
@@ -328,7 +335,9 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
         elif fresh:
             keep = []
             for h in held:
-                ends = {side: (h[side] if h[side] in fresh else id_of(h[side])) for side in ('source', 'target')}
+                ends = {side: h[side] if h[side] in fresh else
+                        id_of(h[side]) or (h[side] if h[side] in by_var else None)
+                        for side in ('source', 'target')}
                 if not all(ends.values()) or not (h['source'] in fresh or h['target'] in fresh):
                     keep.append(h)
                     continue
@@ -340,7 +349,7 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
                       'group': h.get('group'), 'held': True, 'ref': f's{sentence.number}.{h["source"]}',
                       'label': f'({h["source"]} {h["rel"]} {h["target"]})'}
                 for side in ('source', 'target'):
-                    if h[side] not in fresh:
+                    if ends[side] != h[side]:
                         op[f'{side}_span_id'] = ends[side]
                 triples.append(op)
             if len(keep) != len(had) or followed is not None:

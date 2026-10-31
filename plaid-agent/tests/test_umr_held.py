@@ -247,3 +247,42 @@ def test_mending_a_kept_graph_anchors_its_new_nodes_on_the_words_the_file_aligne
     # The block is cleared only now that the nodes carry it.
     [ops] = _record_patches(client)
     assert {'op': 'delete', 'path': ['umr', 'rawAlignment']} in ops
+
+
+def _two_kept():
+    """`_three`, with sentence 3's graph kept as text too, so sentence 2's
+    record holds (s2t :same-entity s3c) between two kept graphs."""
+    doc = _three()
+    for tk in doc['text_layers'][0]['token_layers']:
+        if tk['id'] != 'm-node':
+            continue
+        tk['tokens'] = [t for t in tk['tokens'] if t['id'] not in ('mn-5', 'mn-6')]
+        for t in tk['tokens']:
+            if t['id'] == 'mr-3':
+                t['metadata'] = {'umr': {'snt': 3, 'rawGraph': '(s3s / sit-01\n    :ARG0 (s3c / cat',
+                                         'rawAlignment': 's3s: 0-0'}}
+        sl = tk['span_layers'][0]
+        sl['spans'] = [sp for sp in sl['spans'] if sp['id'] not in ('mc-s', 'mc-c')]
+        for rl in sl['relation_layers']:
+            rl['relations'] = [r for r in rl['relations'] if r['id'] != 'mr-9']
+    return doc
+
+
+def test_two_kept_graphs_mended_in_one_plan_make_the_relation_between_them_real():
+    """As the app's second apply finds the node its first made: the second
+    mend read only stored nodes and renames, so the relation between the two
+    kept graphs stayed held, never made real, in either order."""
+    for first, second in ((3, 2), (2, 3)):
+        client = umr_client(documents={'umr1': _two_kept()})
+        ws = umr_ws(client)
+        texts = {2: '(s2r / run-01 :ARG0 (s2t / thing))', 3: '(s3s / sit-01 :ARG0 (s3c / cat))'}
+        for n in (first, second):
+            out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': n, 'text': texts[n]})
+            assert 'Planned' in out, out
+        _apply(client, ws)
+        made = {p['kwargs']['id']: p['args'][3]['umr']['var'] for p in client.payloads('spans.create')}
+        triples = [p['args'] for p in client.payloads('relations.create') if p['args'][0] == DOC_LAYER]
+        ends = sorted((made.get(t[1], t[1]), made.get(t[2], t[2])) for t in triples)
+        assert ends == [('s2t', 'mc-d'), ('s2t', 's3c')], (first, ends)
+        held = [o for ops in _record_patches(client) for o in ops if o['path'] == ['umr', 'held']]
+        assert held[-1]['op'] == 'delete', (first, held)
