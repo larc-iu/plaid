@@ -287,7 +287,11 @@ describe('runExport', () => {
     const vocab = {
       ...VOCAB,
       items: [
-        { id: 'i0', form: 'perro', metadata: { gloss: 'puppy', homograph: 1 } },
+        {
+          id: 'i0',
+          form: 'perro',
+          metadata: { gloss: 'puppy', lexemeForm: 'perr', morphType: 'suffix', homograph: 1 },
+        },
         {
           id: 'i1',
           form: 'perro',

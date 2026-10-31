@@ -275,7 +275,11 @@ describe('buildFlextextDocument', () => {
       v1: {
         id: 'v1',
         items: [
-          { id: 'h0', form: 'perro', metadata: { homograph: 1 } },
+          {
+            id: 'h0',
+            form: 'perro',
+            metadata: { lexemeForm: 'perr', morphType: 'suffix', homograph: 1 },
+          },
           {
             id: 'h1',
             form: 'perro',

@@ -249,7 +249,7 @@ function morphXml(indent, m, options, lex, typedBefore) {
     );
     // Narrows the match when entries share a lexeme form. FLEx reads a missing
     // hn as 0 and falls back to the unfiltered set, so omitting it is safe.
-    // The number the app shows (buildHomographNumbers), as LIFT writes it.
+    // The number among the entries whose cf is this one (see lexiconResolver).
     const hn = entry.homograph;
     if (hn) {
       lines.push(...item(`${indent}  `, 'hn', analysisLang(options), String(hn)));
@@ -451,8 +451,18 @@ const lexiconResolver = (vocabularies) => {
   const views = new Map();
   const homographs = new Map();
   for (const vocab of Object.values(vocabularies || {})) {
-    views.set(vocab.id, lexiconViewOf(vocab.items));
-    for (const [id, n] of buildHomographNumbers(vocab.items || [])) homographs.set(id, n);
+    const view = lexiconViewOf(vocab.items);
+    views.set(vocab.id, view);
+    // hn is a matching key, not the app's number: FieldWorks picks the
+    // entries whose cf is the morph's (`ka` and `-ka` never mix) and then the
+    // one whose homograph number is hn. So entries are numbered among those
+    // with the same decorated lexeme form, the cf they go out with, as
+    // FieldWorks numbers each morph-type class on its own.
+    const cfOf = (r) =>
+      decorateWithAffixMarkers(view.morphTypeOf(r.id), r.metadata?.lexemeForm ?? r.form ?? '');
+    for (const [id, n] of buildHomographNumbers(vocab.items || [], undefined, cfOf)) {
+      homographs.set(id, n);
+    }
   }
   return (vocabItem) => {
     const view = views.get(vocabItem?.vocabId);

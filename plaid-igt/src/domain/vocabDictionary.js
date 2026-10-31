@@ -367,15 +367,17 @@ export const buildSenseTree = (items) => {
  * Each headword's homograph number, its place among the headwords spelled the
  * same (1, 2, ...), for headwords that share their form only. What the app
  * shows as the first segment of an entry's number, and what an export that
- * writes a homograph number writes (LIFT `order`, flextext `hn`). A stored
+ * writes the app's number writes (LIFT `order`, CLDF's Homograph). A stored
  * `homograph` only orders the group. `tree` may be passed to save building
- * it twice.
+ * it twice. `keyOf(headword)` is what makes two headwords homographs, the
+ * form by default: flextext's `hn` passes the decorated form, since
+ * FieldWorks matches a morph by its cf first and its number within that.
  *
  * @returns {Map<string, number>} headword id -> its homograph number
  */
-export const buildHomographNumbers = (items, tree = buildSenseTree(items)) => {
+export const buildHomographNumbers = (items, tree = buildSenseTree(items), keyOf = formKey) => {
   const out = new Map();
-  for (const group of homographGroups(items, tree).values()) {
+  for (const group of homographGroups(items, tree, keyOf).values()) {
     if (group.length > 1) group.forEach((r, i) => out.set(r.id, i + 1));
   }
   return out;
@@ -434,12 +436,14 @@ export const homographOf = (item) => {
   return Number.isFinite(v) && v > 0 ? v : null;
 };
 
-// form -> the entries spelled that way, in homograph order then creation
-// order. `tree` may be passed to save building it twice.
-const homographGroups = (items, tree = buildSenseTree(items)) => {
+const formKey = (r) => r.form ?? '';
+
+// form (or `keyOf`) -> the entries spelled that way, in homograph order then
+// creation order. `tree` may be passed to save building it twice.
+const homographGroups = (items, tree = buildSenseTree(items), keyOf = formKey) => {
   const position = new Map((items || []).map((it, i) => [it.id, i]));
   const byForm = new Map();
-  for (const r of tree.roots) byForm.set(r.form ?? '', [...(byForm.get(r.form ?? '') || []), r]);
+  for (const r of tree.roots) byForm.set(keyOf(r), [...(byForm.get(keyOf(r)) || []), r]);
   const byNumber = (a, b) => {
     const ha = homographOf(a);
     const hb = homographOf(b);

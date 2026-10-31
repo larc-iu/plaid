@@ -350,7 +350,7 @@ export default {
     },
     'item.homographNumber': {
       carried: 'changed',
-      how: 'The number written is the one the app shows: every headword spelled like another gets its place in that group (lift <entry order>, flextext <morph><item type="hn">), a stored number only ordering the group, and a headword spelled like no other gets none. A FLEx project that left same-form entries unnumbered (FieldWorks groups by form and morph type) comes back numbered.',
+      how: 'lift <entry order> is the number the app shows: every headword spelled like another gets its place in that group, a stored number only ordering the group, and a headword spelled like no other gets none. A FLEx project that left same-form entries unnumbered (FieldWorks groups by form and morph type) comes back numbered. flextext <morph><item type="hn"> is numbered the way FieldWorks matches it, among the entries with the same cf (decorated lexeme form).',
     },
     'item.exampleCorpus': {
       carried: 'changed',
