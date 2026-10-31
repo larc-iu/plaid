@@ -29,6 +29,7 @@ import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 import { EQUALS_BEFORE_KEY, EQUALS_TYPE_KEY } from './equalsRule.js';
+import { entryMorphTypesOf } from '../vocabLookup.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // Entities per chunk. A chunk is one atomic batch, and the writes inside it go
@@ -390,13 +391,20 @@ export const analysisCopyMutations = {
         const found = findVocabHome(this._vocabularies, vocabItemId);
         if (found) into.links.push({ id: pendingId(), tokenId, ...found, metadata: stamp });
       };
-      // R2: a morpheme the copy links goes by its entry's type and stores
+      // R2: a morpheme the copy links to an entry that goes by a type stores
       // none, so its slot is written without one (nor the "=" rule's record
-      // of one).
-      const asWritten = (slot) =>
-        slot.vocabItemId && findVocabHome(this._vocabularies, slot.vocabItemId)
-          ? { ...slot, morphType: null }
-          : slot;
+      // of one). Linked to an untyped entry it keeps the "=" rule's type, as
+      // a link does (mutations/vocab.js), and no other.
+      const asWritten = (slot) => {
+        if (!slot.vocabItemId || slot.morphType == null) return slot;
+        const home = findVocabHome(this._vocabularies, slot.vocabItemId);
+        if (!home) return slot;
+        const entryType = entryMorphTypesOf(this._vocabularies[home.vocabId]?.items || []).get(
+          slot.vocabItemId,
+        );
+        const fromEquals = slot.equals?.[EQUALS_TYPE_KEY] === slot.morphType;
+        return entryType || !fromEquals ? { ...slot, morphType: null } : slot;
+      };
       const spansOn = (tokenId, fields, layersByName, into) => {
         for (const [name, value] of Object.entries(fields || {})) {
           const layer = layersByName.get(name);

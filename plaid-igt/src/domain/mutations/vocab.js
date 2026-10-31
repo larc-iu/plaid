@@ -19,6 +19,8 @@ import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { findSpanLayer, planSpan, showSpan } from './spans.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { entryMorphTypesOf } from '../vocabLookup.js';
+import { EQUALS_TYPE_KEY } from './equalsRule.js';
 
 // Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
 // rather than a bulk endpoint, and a link replacement emits 2 ops apiece
@@ -70,35 +72,56 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
 };
 
 // R2: a linked morpheme stores no type of its own and goes by its entry's.
-// A link takes a stored type off the morpheme it links, in the link's batch
-// (an Unlink stores the entry's type, Q1, so one is there after Unlink then
-// Link).
-const UNTYPE_OPS = [{ op: 'delete', path: ['morphType'] }];
+// A link takes a stored type off the morpheme it links, in the link's batch,
+// when the entry goes by a type (the stored one would be a hidden copy, as an
+// Unlink leaves, Q1), or when the stored type is not the "=" rule's (R47). A
+// type the "=" rule gave a morpheme linked to an untyped entry stays, with
+// its record (morphTypeFromEquals), since nothing else would type it.
+const isType = (t) => typeof t === 'string' && t !== '';
+
+// The type `item` of `vocab` goes by: its own, else its headword's. An entry
+// not yet in the list (one the same batch makes) goes by its own.
+const entryTypeOf = (vocab, item) =>
+  entryMorphTypesOf(vocab?.items || []).get(item?.id) ?? item?.metadata?.morphType ?? null;
 
 export const vocabMutations = {
-  // The stored morphemes among `tokenIds` that hold a type of their own.
-  _typedMorphemes(tokenIds) {
+  // The stored morphemes among `tokenIds` whose type a link to an entry
+  // going by `entryType` takes off: `{id, record}`, `record` when the "="
+  // rule's record goes with it.
+  _typedMorphemes(tokenIds, entryType) {
     const want = new Set(tokenIds);
     return (this.layerInfo.morphemeTokenLayer?.tokens || [])
-      .filter((t) => want.has(t.id) && t.metadata?.morphType != null)
-      .map((t) => t.id);
+      .filter((t) => {
+        const md = t.metadata || {};
+        if (!want.has(t.id) || md.morphType == null) return false;
+        return isType(entryType) || md[EQUALS_TYPE_KEY] !== md.morphType;
+      })
+      .map((t) => ({ id: t.id, record: t.metadata[EQUALS_TYPE_KEY] != null }));
   },
 
-  _showUntyped(info, ids) {
-    if (!ids?.length) return;
-    const gone = new Set(ids);
+  _showUntyped(info, untype) {
+    if (!untype?.length) return;
+    const gone = new Set(untype.map((u) => u.id));
     for (const t of info.morphemeTokenLayer?.tokens || []) {
       if (!gone.has(t.id)) continue;
-      const { morphType: _, ...rest } = t.metadata || {};
+      const { morphType: _, [EQUALS_TYPE_KEY]: __, ...rest } = t.metadata || {};
       t.metadata = rest;
     }
   },
 
   // Queue the type deletes on batch `b`, one bulk op. Last in a batch, so
   // the result places the other ops read stay where they were.
-  _queueUntyped(b, ids) {
-    if (!ids?.length) return;
-    b.tokens.bulkUpdate(ids.map((id) => ({ id: settledId(id), metadata: UNTYPE_OPS })));
+  _queueUntyped(b, untype) {
+    if (!untype?.length) return;
+    b.tokens.bulkUpdate(
+      untype.map(({ id, record }) => ({
+        id: settledId(id),
+        metadata: [
+          { op: 'delete', path: ['morphType'] },
+          ...(record ? [{ op: 'delete', path: [EQUALS_TYPE_KEY] }] : []),
+        ],
+      })),
+    );
   },
 
   // Apply auto-link proposals (the built-in rule or any proposal provider).
@@ -164,7 +187,12 @@ export const vocabMutations = {
               metadata,
             })),
           );
-          this._queueUntyped(b, this._typedMorphemes(creates.map((c) => c.tokenId)));
+          this._queueUntyped(
+            b,
+            creates.flatMap((c) =>
+              this._typedMorphemes([c.tokenId], entryTypeOf(this._vocabularies[c.vocabId], c.item)),
+            ),
+          );
         });
       }
       // Replacements: the stale links go in one bulk delete and the new ones in
@@ -181,7 +209,12 @@ export const vocabMutations = {
               metadata,
             })),
           );
-          this._queueUntyped(b, this._typedMorphemes(chunk.map((r) => r.tokenId)));
+          this._queueUntyped(
+            b,
+            chunk.flatMap((r) =>
+              this._typedMorphemes([r.tokenId], entryTypeOf(this._vocabularies[r.vocabId], r.item)),
+            ),
+          );
         });
       }
       await this._reloadInSend();
@@ -281,7 +314,7 @@ export const vocabMutations = {
       item: { id: vocabItem.id, layer: vocab.id, form: vocabItem.form },
       linkId: pendingId(),
       stamp: stamp || this.createStamp,
-      untype: this._typedMorphemes([tokenId]),
+      untype: this._typedMorphemes([tokenId], entryTypeOf(vocab, vocabItem)),
     };
   },
 
@@ -538,7 +571,7 @@ export const vocabMutations = {
       vocabId: targetVocab.id,
       item: vocabItem,
       stamp: this.createStamp || undefined,
-      untype: this._typedMorphemes(targets),
+      untype: this._typedMorphemes(targets, entryTypeOf(targetVocab, vocabItem)),
     };
   },
 
@@ -979,7 +1012,7 @@ export const vocabMutations = {
     const linkId = pendingId();
     // "Create and link every ‹roa› in this text": the others that read the
     // same and have no link, in the same operation as the create.
-    const untype = this._typedMorphemes([targetTokenId]);
+    const untype = this._typedMorphemes([targetTokenId], metadata?.morphType);
     const others = this._planLinkMany(
       alsoLink.filter((id) => id !== tokenId),
       { id: vocabId },

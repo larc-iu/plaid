@@ -1625,6 +1625,93 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     }
   });
 
+  // REV-FX-VOCAB-4: the type the "=" rule gives a clitic (R47) stays when
+  // the clitic is linked to an untyped entry, with its record, since nothing
+  // else types it. Linked to a typed entry it goes, record and all.
+  const cliticDoc = (entryMeta) =>
+    makeDoc({
+      raw: buildRawDoc({
+        words: [{ id: 'w-1', begin: 0, end: 4 }],
+        morphemes: [{ id: 'm-1', begin: 0, end: 4, precedence: 1, metadata: { form: 'kari' } }],
+        body: 'kari',
+      }),
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          items: [{ id: 'vi-ri', form: 'ri', metadata: entryMeta }],
+          vocabLinks: [],
+        },
+      },
+    });
+  const riOf = (doc) => doc.sentences[0].tokens[0].morphemes[1];
+
+  it('a "=" clitic linked to an untyped entry keeps the type the rule gave it', async () => {
+    const doc = cliticDoc({});
+    await doc.splitMorpheme('m-1', 'ka', 'ri', '=');
+    expect(riOf(doc).metadata.morphType).toBe('enclitic');
+    expect(await doc.linkVocab(riOf(doc).id, 'vi-ri')).toBe(true);
+    const ri = riOf(doc);
+    expect(ri.vocabItem?.id).toBe('vi-ri');
+    expect([ri.morphType, ri.metadata.morphType, ri.metadata.morphTypeFromEquals]).toEqual([
+      'enclitic',
+      'enclitic',
+      'enclitic',
+    ]);
+  });
+
+  it('a "=" clitic linked to a typed entry goes by the entry, its own type and record gone', async () => {
+    const doc = cliticDoc({ morphType: 'suffix' });
+    await doc.splitMorpheme('m-1', 'ka', 'ri', '=');
+    expect(await doc.linkVocab(riOf(doc).id, 'vi-ri')).toBe(true);
+    const ri = riOf(doc);
+    expect(ri.morphType).toBe('suffix');
+    expect(ri.metadata.morphType).toBeUndefined();
+    expect(ri.metadata.morphTypeFromEquals).toBeUndefined();
+    const [write] = untypeWrites(doc);
+    expect(write.args[0][0].metadata).toEqual([
+      { op: 'delete', path: ['morphType'] },
+      { op: 'delete', path: ['morphTypeFromEquals'] },
+    ]);
+  });
+
+  it('an analysis copy keeps the "=" rule\'s type on a clitic it links to an untyped entry', async () => {
+    for (const copy of ['applyAnalysisToWords', 'bulkReplaceAnalyses']) {
+      resetIds();
+      const doc = makeDoc({
+        raw: buildRawDoc({
+          words: [
+            { id: 'w-1', begin: 0, end: 4 },
+            { id: 'w-2', begin: 5, end: 9 },
+          ],
+          morphemes: [],
+          body: 'kari kari',
+        }),
+        project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+        vocabularies: {
+          v1: {
+            id: 'v1',
+            name: 'Lexicon',
+            items: [{ id: 'vi-ri', form: 'ri', metadata: {} }],
+            vocabLinks: [],
+          },
+        },
+      });
+      const w = (i) => doc.sentences[0].tokens[i];
+      await doc.splitMorpheme(w(0).morphemes[0].id, 'ka', 'ri', '=');
+      await doc.linkVocab(w(0).morphemes[1].id, 'vi-ri');
+      const analysis = extractAnalysis(w(0));
+      if (copy === 'applyAnalysisToWords') await doc.applyAnalysisToWords(['w-2'], analysis);
+      else await doc.bulkReplaceAnalyses([{ wordTokenId: 'w-2', analysis }]);
+      const ri = w(1).morphemes[1];
+      expect(
+        [ri.vocabItem?.id, ri.metadata.morphType, ri.metadata.morphTypeFromEquals],
+        copy,
+      ).toEqual(['vi-ri', 'enclitic', 'enclitic']);
+    }
+  });
+
   it('bulkLinkVocab takes a stored type off the morphemes it links', async () => {
     const doc = makeDoc({
       raw: typedMorpheme(),
