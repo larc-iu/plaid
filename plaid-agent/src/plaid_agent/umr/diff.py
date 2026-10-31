@@ -216,18 +216,44 @@ def _held_after(doc: UmrDoc, ids: set, renames: Dict[str, str]) -> Callable[[lis
     return after
 
 
+def _planned_held(doc: UmrDoc, planned) -> Dict[str, list]:
+    """Each record's held list as the plan's earlier changes leave it (the
+    last ``set_record`` on it that writes or clears the list), by record id.
+    A record the plan has not touched is read as stored."""
+    out: Dict[str, list] = {}
+    for op in planned:
+        if op.get('kind') != 'set_record' or op.get('document_id') != doc.id:
+            continue
+        if 'held' in (op.get('umr_set') or {}):
+            out[op['record_id']] = list(op['umr_set']['held'])
+        elif 'held' in (op.get('umr_unset') or ()):
+            out[op['record_id']] = []
+    return out
+
+
 def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: List[Dict[str, Any]],
-                   id_by_var: Dict[str, str], gone_ids: set, renamed, renamed_to: str) -> List[Dict[str, Any]]:
+                   id_by_var: Dict[str, str], gone_ids: set, renamed, renamed_to: str,
+                   planned=()) -> List[Dict[str, Any]]:
     """What the apply does to the relations held by name (plaid-umr's
     ``UmrDocument._heldResolved``): a triple for each held relation the apply
     gives a new node to stand on, and a ``set_record`` per record whose list
     changes. ``id_by_var`` is the sentence's names after the apply, without
-    its new nodes, which the executor knows by variable."""
+    its new nodes, which the executor knows by variable.
+
+    ``planned`` are the plan's ops so far. A held list another apply in this
+    plan already changed (a node of another sentence renamed or deleted) is
+    read as that apply leaves it, and a node it renamed answers to its new
+    name: each apply read the stored list, and the second whole list written
+    undid the first's change."""
     fresh = {op['var'] for op in ops if op['kind'] == 'create_node'}
     elsewhere: Dict[str, str] = {}
     for n in doc.nodes_by_id.values():
         if n.sentence != sentence.index and n.id not in gone_ids and n.var:
             elsewhere.setdefault(n.var, n.id)
+    for op in planned:
+        if op.get('kind') == 'rename_node' and op.get('document_id') == doc.id:
+            elsewhere[op['var']] = op['span_id']
+    planned_held = _planned_held(doc, planned)
 
     def id_of(name):
         constant = doc.constant(name)
@@ -241,7 +267,10 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
     # graph.records.
     for r in doc.records:
         s = doc.sentences[r.sentence - 1]
-        had = list(r.record['held']) if isinstance(r.record.get('held'), list) else []
+        if r.id in planned_held:
+            had = planned_held[r.id]
+        else:
+            had = list(r.record['held']) if isinstance(r.record.get('held'), list) else []
         followed = after(had)
         held = had if followed is None else followed
         umr_set: Dict[str, Any] = {}
@@ -288,11 +317,13 @@ def _held_resolved(doc: UmrDoc, sentence: Sentence, project: UmrProject, ops: Li
 
 
 def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
-                reorder: bool = False) -> GraphDiff:
+                reorder: bool = False, planned=()) -> GraphDiff:
     """The plan ops that would make ``sentence``'s graph the one ``text``
     writes. ``errors`` is non-empty when the text does not parse, and the ops
     are then empty. ``reorder`` applies the order the text writes each node's
-    children in; without it, children already there keep their places."""
+    children in; without it, children already there keep their places.
+    ``planned`` are the ops the plan already holds, for the relations held by
+    name (:func:`_held_resolved`)."""
     parsed: Graph = parse_penman(text)
     if parsed.errors:
         return GraphDiff([], [f'line {e.line}, column {e.col}: {e.message}' for e in parsed.errors])
@@ -503,7 +534,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     # that must come off before another node wears one; then the rest.
     ops = deletes + edges_delete + root_ops + updates + creates + edges_add + orders
     id_by_var = {name_of(n): n.id for n in sentence.nodes if n.id not in gone_ids}
-    ops += _held_resolved(doc, sentence, project, ops, id_by_var, gone_ids, renamed, renamed_to)
+    ops += _held_resolved(doc, sentence, project, ops, id_by_var, gone_ids, renamed, renamed_to, planned)
     for op in ops:
         op.setdefault('sentence', sentence.index)
         op.setdefault('sentence_id', sentence.id)

@@ -123,7 +123,8 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
     _no_graph_planned(ws, doc, s)
     if not (text or '').strip():
         raise ToolError('Give text: the sentence graph in PENMAN, starting at its root node.', kind='invalid-argument')
-    diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true')
+    diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true',
+                       planned=ws.ops)
     if diff.errors:
         if 'after the topmost closing bracket' in diff.errors[0]:
             # Copied whole from a read of a sentence holding several graphs.

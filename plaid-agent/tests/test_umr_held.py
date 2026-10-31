@@ -140,3 +140,74 @@ def test_a_name_a_graph_kept_as_text_defines_is_taken_for_a_new_node():
     out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 2,
                                          'text': '(s2r / run-01 :ARG0 (s1k / thing))'})
     assert 'Planned' in out, out
+
+
+def _three():
+    """`_kept`, with a third sentence "A cat sat ." (31-43) holding (s3s /
+    sit-01 :ARG0 (s3c / cat)), and sentence 2's held list naming a node of
+    sentence 1 and one of sentence 3."""
+    doc = _kept()
+    tl = doc['text_layers'][0]
+    tl['text']['body'] += 'A cat sat .\n'
+    for tk in tl['token_layers']:
+        role = (tk.get('config') or {}).get('plaid', {}).get('role')
+        if role == 'sentence':
+            tk['tokens'].append({'id': 'ms-3', 'begin': 31, 'end': 43})
+        elif role == 'word':
+            tk['tokens'] += [{'id': 'mw-9', 'begin': 31, 'end': 32}, {'id': 'mw-10', 'begin': 33, 'end': 36},
+                             {'id': 'mw-11', 'begin': 37, 'end': 40}, {'id': 'mw-12', 'begin': 41, 'end': 42}]
+        elif tk['id'] == 'm-node':
+            tk['tokens'] += [{'id': 'mn-5', 'begin': 37, 'end': 40}, {'id': 'mn-6', 'begin': 33, 'end': 36},
+                             {'id': 'mr-3', 'begin': 31, 'end': 43, 'metadata': {'umr': {'snt': 3}}}]
+            for t in tk['tokens']:
+                if t['id'] == 'mr-2':
+                    t['metadata']['umr']['held'] = [
+                        {'source': 's2t', 'rel': ':same-entity', 'target': 's1d', 'group': 'coref'},
+                        {'source': 's2t', 'rel': ':same-entity', 'target': 's3c', 'group': 'coref'}]
+            sl = tk['span_layers'][0]
+            sl['spans'] += [
+                {'id': 'mc-s', 'value': 'sit-01', 'tokens': ['mn-5'],
+                 'metadata': {'umr': {'var': 's3s', 'root': True, 'attrs': []}}},
+                {'id': 'mc-c', 'value': 'cat', 'tokens': ['mn-6'],
+                 'metadata': {'umr': {'var': 's3c', 'attrs': []}}}]
+            for rl in sl['relation_layers']:
+                if rl['id'] == 'm-rel':
+                    rl['relations'].append({'id': 'mr-9', 'source': 'mc-s', 'target': 'mc-c',
+                                            'value': ':ARG0', 'metadata': {'umr': {'order': 0}}})
+    return doc
+
+
+def test_two_applies_that_each_change_one_held_list_keep_both_changes():
+    """Each apply read the held list as stored and wrote it whole, so the
+    second undid the first: the list kept naming s1d, which named no node
+    once the rename landed. The second now reads the list as the first
+    leaves it."""
+    client = umr_client(documents={'umr1': _three()})
+    ws = umr_ws(client)
+    a = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': (
+        '(s1b / bark-01 :ARG0 (s1g / dog :refer-number singular) :aspect performance)')})
+    b = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 3, 'text': '(s3s / sit-01)'})
+    assert 'Planned' in a and 'Planned' in b, (a, b)
+    _apply(client, ws)
+    held = [o['value'] for ops in _record_patches(client) for o in ops if o['path'] == ['umr', 'held']]
+    assert held[-1] == [{'source': 's2t', 'rel': ':same-entity', 'target': 's1g', 'group': 'coref'}], held
+
+
+def test_a_mend_after_a_rename_in_the_same_plan_makes_the_relation_on_the_renamed_node():
+    client = umr_client(documents={'umr1': _kept()})
+    ws = umr_ws(client)
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': (
+        '(s1b / bark-01 :ARG0 (s1g / dog :refer-number singular) :aspect performance)')})
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 2,
+                                         'text': '(s2r / run-01 :ARG0 (s2t / thing))'})
+    assert 'Planned' in out, out
+    _apply(client, ws)
+    triples = [p['args'] for p in client.payloads('relations.create') if p['args'][0] == DOC_LAYER]
+    assert [t[2:4] for t in triples] == [('mc-d', ':same-entity')]
+    # The held list is gone, whichever apply wrote it last.
+    final = {}
+    for ops in _record_patches(client):
+        for o in ops:
+            if o['path'] == ['umr', 'held']:
+                final['held'] = o.get('value') if o['op'] == 'set' else None
+    assert final == {'held': None}
