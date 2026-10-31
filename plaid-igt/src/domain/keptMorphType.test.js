@@ -8,7 +8,9 @@ const set = (value) => [{ op: 'set', path: ['morphType'], value }];
 
 describe('planKeptTypes', () => {
   const client = (rows) => ({
-    query: vi.fn(async () => ({ results: rows })),
+    query: vi.fn(async (q) => ({
+      results: q.return.group[0] === '?d' ? [['doc-1', rows.length]] : rows,
+    })),
     tokenLayers: { get: vi.fn(async (id) => ({ id, project: id.replace('ml', 'p') })) },
     projects: {
       get: vi.fn(async (id) => ({ id, writers: id === 'p3' ? [] : ['u'] })),
@@ -49,5 +51,38 @@ describe('planKeptTypes', () => {
     const c = client([]);
     expect(await planKeptTypes(c, user, { itemIds: ['cat'] }, (id) => types.get(id))).toEqual([]);
     expect(c.query).not.toHaveBeenCalled();
+  });
+
+  // REV-FX-VOCAB-3: a query answers at most 100,000 rows, so the links are
+  // read a few documents at a time, and a read that still comes back cut
+  // short refuses rather than leave morphemes untyped.
+  it('reads the links in document chunks under the row limit', async () => {
+    const asked = [];
+    const c = client([]);
+    c.query = vi.fn(async (q) => {
+      if (q.return.group[0] === '?d') {
+        return {
+          results: [
+            ['d1', 60000],
+            ['d2', 60000],
+            ['d3', 10],
+          ],
+        };
+      }
+      const docs = q.where.find((w) => w[0] === 'token')[2].doc;
+      asked.push(docs);
+      return { results: docs.map((d) => ['suf', `m-${d}`, 'ml1', 'morpheme', 1]) };
+    });
+    const plan = await planKeptTypes(c, user, { itemIds: ['suf'] }, (id) => types.get(id));
+    expect(asked).toEqual([['d1'], ['d2', 'd3']]);
+    expect(plan[0].rows.map((r) => r.id)).toEqual(['m-d1', 'm-d2', 'm-d3']);
+  });
+
+  it('refuses when a read comes back cut short', async () => {
+    const c = client([]);
+    c.query = vi.fn(async () => ({ results: [], truncated: true }));
+    await expect(
+      planKeptTypes(c, user, { itemIds: ['suf'] }, (id) => types.get(id)),
+    ).rejects.toThrow();
   });
 });

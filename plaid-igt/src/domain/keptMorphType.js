@@ -50,23 +50,50 @@ export async function planKeptTypes(client, user, { itemIds, vocabId, projectId 
     if (!typed.length) return [];
     where = [['link', '?l', { item: typed }]];
   }
-  const res = await client.query({
-    where: [
-      ...where,
-      ['link-token', '?l', '?t'],
-      ['token', '?t', { layer: '?tl' }],
-      ['token-layer', '?tl', {}],
-    ],
-    return: {
-      group: ['?l.item', '?t', '?tl', '?tl.config.plaid.role'],
-      aggregates: [['count']],
-    },
-    limit: QUERY_LIMIT,
-    ...(projectId ? { scope: { projectIds: [projectId] } } : {}),
+  const scope = projectId ? { scope: { projectIds: [projectId] } } : {};
+  const read = async (q) => {
+    const res = await client.query({ ...q, limit: QUERY_LIMIT, ...scope });
+    if (res?.truncated) throw new Error('Too many linked morphemes to read at once.');
+    return res?.results || [];
+  };
+  // A query answers at most QUERY_LIMIT rows, so the links are read a few
+  // documents at a time: first how many each document holds, then the rows
+  // of documents packed up to the limit.
+  const perDoc = await read({
+    where: [...where, ['link-token', '?l', '?t'], ['token', '?t', { doc: { var: '?d' } }]],
+    return: { group: ['?d'], aggregates: [['count']] },
   });
-  const found = (res?.results || []).filter(
-    ([item, , , role]) => role === ROLES.MORPHEME && typeOf(String(item)),
-  );
+  const chunks = [];
+  let chunk = [];
+  let size = 0;
+  for (const [doc, n] of perDoc) {
+    if (chunk.length && size + n > QUERY_LIMIT) {
+      chunks.push(chunk);
+      chunk = [];
+      size = 0;
+    }
+    chunk.push(String(doc));
+    size += n;
+  }
+  if (chunk.length) chunks.push(chunk);
+  const rows = [];
+  for (const docs of chunks) {
+    rows.push(
+      ...(await read({
+        where: [
+          ...where,
+          ['link-token', '?l', '?t'],
+          ['token', '?t', { layer: '?tl', doc: docs }],
+          ['token-layer', '?tl', {}],
+        ],
+        return: {
+          group: ['?l.item', '?t', '?tl', '?tl.config.plaid.role'],
+          aggregates: [['count']],
+        },
+      })),
+    );
+  }
+  const found = rows.filter(([item, , , role]) => role === ROLES.MORPHEME && typeOf(String(item)));
   if (!found.length) return [];
   // Which project each morpheme layer is in, and whether this person may
   // write there.

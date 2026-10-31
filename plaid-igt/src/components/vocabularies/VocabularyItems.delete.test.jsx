@@ -325,6 +325,8 @@ describe('deleting a typed entry', () => {
     };
     // Its links: two morphemes in p1 (writable), one in p2 (read only), a word.
     client.query = async (q) => {
+      // How many links each document holds, read first (keptMorphType).
+      if (q.return?.group?.[0] === '?d') return { results: [['doc-1', 1]] };
       if (!q.where.some((c) => c[0] === 'link-token')) return { results: [[4]] };
       expect(q.where[0]).toEqual(['link', '?l', { item: ['suf'] }]);
       return {
@@ -390,9 +392,11 @@ describe('deleting a typed entry while a linked document is held', () => {
       items: [{ id: 'suf', form: 's', metadata: { morphType: 'suffix' } }],
     });
     client.query = async (q) =>
-      q.where.some((c) => c[0] === 'link-token')
-        ? { results: [['suf', 'm-1', 'ml1', 'morpheme', 1]] }
-        : { results: [[1]] };
+      q.return?.group?.[0] === '?d'
+        ? { results: [['doc-1', 1]] }
+        : q.where.some((c) => c[0] === 'link-token')
+          ? { results: [['suf', 'm-1', 'ml1', 'morpheme', 1]] }
+          : { results: [[1]] };
     client.tokenLayers = { get: async (id) => ({ id, project: 'p1' }) };
     client.projects.get = async (id) => ({ id, writers: ['u'] });
     client.batched = async () => {

@@ -255,9 +255,11 @@ describe('the Entries tab at a past state', () => {
       { id: 'b', form: 'kai2', metadata: { gloss: 'food', morphType: 'suffix' } },
     ]);
     client.query = vi.fn(async (q) =>
-      q.where.some((c) => c[0] === 'link-token')
-        ? { results: [['b', 'm-1', 'ml', 'morpheme', 1]] }
-        : { results: [[1]] },
+      q.return?.group?.[0] === '?d'
+        ? { results: [['doc-1', 1]] }
+        : q.where.some((c) => c[0] === 'link-token')
+          ? { results: [['b', 'm-1', 'ml', 'morpheme', 1]] }
+          : { results: [[1]] },
     );
     client.tokenLayers = { get: async () => ({ project: 'p1' }) };
     client.projects.get = async () => ({ id: 'p1', writers: ['u'] });

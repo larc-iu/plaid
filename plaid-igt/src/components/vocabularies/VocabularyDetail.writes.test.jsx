@@ -576,14 +576,16 @@ describe('deleting the vocabulary', () => {
         : {}),
     });
     client.query = async (q) =>
-      q.where.some((c) => c[0] === 'link-token')
-        ? {
-            results: [
-              ['e-s', 'm-1', 'ml', 'morpheme', 1],
-              ['e-cat', 'm-2', 'ml', 'morpheme', 1],
-            ],
-          }
-        : { results: [] };
+      q.return?.group?.[0] === '?d'
+        ? { results: [['doc-1', 1]] }
+        : q.where.some((c) => c[0] === 'link-token')
+          ? {
+              results: [
+                ['e-s', 'm-1', 'ml', 'morpheme', 1],
+                ['e-cat', 'm-2', 'ml', 'morpheme', 1],
+              ],
+            }
+          : { results: [] };
     client.tokenLayers = { get: async () => ({ project: 'p1' }) };
     client.projects.get = async () => ({ id: 'p1', writers: ['u'] });
     client.batched = async (fn) => {

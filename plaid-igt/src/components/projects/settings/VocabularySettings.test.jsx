@@ -374,16 +374,18 @@ describe('Project settings, Vocabularies, an unlink keeps the morph types', () =
       writers: ['me@x.org'],
     }));
     client.query = vi.fn(async (q) =>
-      q.where.some((c) => c[0] === 'link-token')
-        ? {
-            results: [
-              ['e-s', 'm-1', 'ml', 'morpheme', 1],
-              ['e-s1', 'm-2', 'ml', 'morpheme', 1],
-              ['e-s', 'w-1', 'wl', 'word', 1],
-              ['e-cat', 'm-3', 'ml', 'morpheme', 1],
-            ],
-          }
-        : { results: [[4]] },
+      q.return?.group?.[0] === '?d'
+        ? { results: [['doc-1', 1]] }
+        : q.where.some((c) => c[0] === 'link-token')
+          ? {
+              results: [
+                ['e-s', 'm-1', 'ml', 'morpheme', 1],
+                ['e-s1', 'm-2', 'ml', 'morpheme', 1],
+                ['e-s', 'w-1', 'wl', 'word', 1],
+                ['e-cat', 'm-3', 'ml', 'morpheme', 1],
+              ],
+            }
+          : { results: [[4]] },
     );
     const view = await mount(client);
     await view.step(() => rowOf(view.container, 'Mine').click());
@@ -414,9 +416,11 @@ describe('Project settings, Vocabularies, an unlink while a linked document is h
       writers: ['me@x.org'],
     }));
     client.query = vi.fn(async (q) =>
-      q.where.some((c) => c[0] === 'link-token')
-        ? { results: [['e-s', 'm-1', 'ml', 'morpheme', 1]] }
-        : { results: [[1]] },
+      q.return?.group?.[0] === '?d'
+        ? { results: [['doc-1', 1]] }
+        : q.where.some((c) => c[0] === 'link-token')
+          ? { results: [['e-s', 'm-1', 'ml', 'morpheme', 1]] }
+          : { results: [[1]] },
     );
     const said = 'Document 01a04095-38c4-74d1-8450-a7d6a0267af7 is locked by svc@x.org';
     client.batched = vi.fn(async () => {
