@@ -44,7 +44,9 @@ Beyond the paper: CWoMP's code reads `=` as `-` and drops it, so clitics lose
 their side. Here a clitic's form carries a mark the code does not split on
 (U+207C) in training and in the lexicon, so a proclitic, an enclitic and an
 affix of the same form are different entries, and the boundary comes back as
-`=` with the clitic's type.
+`=`. The word is then typed from its `=` by the grid's rule, with the rule's
+record (R47), as if a person had typed it: a later link to an untyped entry
+keeps the clitic's type, and a later edit reads the same one.
 
 CWoMP's code is not part of Plaid (its repository has no license yet). Clone
 it at the pinned commit, make its environment, and run this file with that
@@ -79,7 +81,7 @@ from plaid_client.roles import ROLES, find_by_role
 from plaid_client.service import Refusal
 from plaid_client.workflows.igt import (
     derive, ANALYZE_REQUEST_FIELDS,
-    project_entry_types, entry_types_of, morph_type, gloss_of,
+    project_entry_types, entry_types_of, morph_type, gloss_of, clitic_types,
 )
 from plaid_client.workflows.igt.analyze import (AnalysisProgress, begin_analysis, finish_analysis,
                                                 read_analysis_request)
@@ -831,10 +833,16 @@ class CwompService(BaseService):
                 if not picked:
                     skipped['unaligned'] = skipped.get('unaligned', 0) + 1
                     continue
-                forms, types = zip(*(decode_form(d['form']) for d in picked))
+                # The "=" a clitic's form is spelled with is the boundary,
+                # and the "=" rule types the word from it (R47), with its
+                # record, as a person typing it gets: a later link to an
+                # untyped entry keeps the type, and a later edit reads the
+                # same one.
+                forms, sides = zip(*(decode_form(d['form']) for d in picked))
+                joiners = joiners_for(list(sides))
                 plans.append({'word': w, 'sentence_id': s['id'], 'analysis': {
                     'segments': list(forms), 'glosses': [decode_piece(d['gloss']) for d in picked],
-                    'types': list(types), 'joiners': joiners_for(list(types)),
+                    'types': clitic_types(joiners, forms), 'types_from_equals': True, 'joiners': joiners,
                     'probs': [d['prob'] for d in picked],
                     'form_probs': [d['form_prob'] for d in picked],
                     'links': [link_for(d) for d in picked],

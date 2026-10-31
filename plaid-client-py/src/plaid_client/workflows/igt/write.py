@@ -29,7 +29,9 @@ to items that exist, and only when it knows which one is meant. A linked
 morpheme goes by its entry's type, so it stores none, nor the "=" rule's
 record, when its entry goes by one, as igt's link takes them off (vocab.js
 ``_typedMorphemes``, R2). Under an entry that goes by none it keeps the type
-the analysis gives (the "=" rule's, R47 to R49). An analysis
+the analysis gives, which the analyze services all give as the "=" rule's
+with its record (``types_from_equals``, R47 to R49), so the app's own link
+would keep it too. An analysis
 may also carry ``gloss_details``, one dict or None per segment, merged into
 the gloss span's ``provDetail`` (``valueProbs``, the alternatives a model
 weighed, which igt lists under Alt+Down). Callers are expected to

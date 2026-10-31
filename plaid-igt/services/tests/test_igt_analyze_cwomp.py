@@ -267,6 +267,56 @@ def test_a_clitic_linked_to_a_typed_entry_stores_no_type_of_its_own():
         assert links == ['item-gel', 'item-yor'] * 2
 
 
+def _written_chains(service):
+    """Each word's new morphemes' metadata, in the order written."""
+    morphs = [c['kwargs']['metadata'] for kind, c in service.client.calls if kind == 'tokens.create']
+    return [morphs[:len(morphs) // 2], morphs[len(morphs) // 2:]]
+
+
+def test_a_clitic_carries_the_equals_rules_record_linked_or_not():
+    """CWoMP's clitic types are read off "="-spelled lexicon forms, so they
+    are written as the "=" rule's, with its record and the "=" before the
+    morpheme after it, as a person typing "=" leaves them. Without the record
+    a person's later link to an untyped entry took the type off, and the
+    "=" with it (REV-FX-CLEANUP-1)."""
+    enclitic = cwomp.encode_form('yor', 'enclitic')
+    for linked in (False, True):
+        service, _ = _service([('gel', 'come', 0.9), (enclitic, 'PROG', 0.9)])
+        if linked:
+            service.confirmed_for('p', 'Gloss', None, print).links[(enclitic, 'PROG')] = cwomp.Counter({'item-yor': 2})
+            service.live_vocab = lambda project: ({'item-gel', 'item-yor'}, {})
+        servicetest.run(service, REQUEST)
+        for gel, yor in _written_chains(service):
+            assert 'morphType' not in gel and 'equalsBefore' not in gel, linked
+            assert (yor['morphType'], yor['morphTypeFromEquals'], yor['equalsBefore']) == \
+                ('enclitic', 'enclitic', True), linked
+
+
+def test_a_later_edit_reads_the_same_types_the_service_wrote():
+    """The "=" rule reads a chain by position (R47): a two-piece word's "="
+    types its last piece, a "=" after the first piece of a longer word types
+    that piece, whichever side CWoMP read. Its sides are
+    written as the rule reads them, so reading the word again (rereadEquals,
+    on any later edit) changes nothing."""
+    from plaid_client.workflows.igt.interlinear import reread_equals
+    pro = cwomp.encode_form('ka', 'proclitic')
+    enc = cwomp.encode_form('yor', 'enclitic')
+    for picked, types in (([(pro, 'DET'), ('gel', 'come')], [None, 'enclitic']),
+                          ([(pro, 'DET'), ('gel', 'come'), ('ler', 'PL')], ['proclitic', None, None]),
+                          ([('gel', 'come'), (enc, 'PROG'), ('ler', 'PL')], ['proclitic', None, None]),
+                          ([('gel', 'come'), ('ler', 'PL'), (enc, 'PROG')], [None, None, 'enclitic'])):
+        service, _ = _service([(f, g, 0.9) for f, g in picked])
+        servicetest.run(service, REQUEST)
+        for chain in _written_chains(service):
+            assert [m.get('morphType') for m in chain] == types, picked
+            pieces = [{'morph_type': m.get('morphType'), 'type_from_equals': m.get('morphTypeFromEquals'),
+                       'equals_before': m.get('equalsBefore'), 'entry_type': None} for m in chain]
+            assert reread_equals(pieces) == [None] * len(chain), picked
+            # The "=" CWoMP read stays where it was.
+            joints = ['=' if m.get('equalsBefore') else '-' for m in chain[1:]]
+            assert joints == cwomp.joiners_for([cwomp.decode_form(f)[1] for f, _ in picked]), picked
+
+
 def test_a_link_the_model_doubts_is_not_proposed():
     service, _ = _service([('gel', 'come', 0.45)], config={'plaid': {'confidence': {'threshold': 0.5}}})
     servicetest.run(service, REQUEST)
