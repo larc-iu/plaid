@@ -390,6 +390,13 @@ export const analysisCopyMutations = {
         const found = findVocabHome(this._vocabularies, vocabItemId);
         if (found) into.links.push({ id: pendingId(), tokenId, ...found, metadata: stamp });
       };
+      // R2: a morpheme the copy links goes by its entry's type and stores
+      // none, so its slot is written without one (nor the "=" rule's record
+      // of one).
+      const asWritten = (slot) =>
+        slot.vocabItemId && findVocabHome(this._vocabularies, slot.vocabItemId)
+          ? { ...slot, morphType: null }
+          : slot;
       const spansOn = (tokenId, fields, layersByName, into) => {
         for (const [name, value] of Object.entries(fields || {})) {
           const layer = layersByName.get(name);
@@ -404,7 +411,7 @@ export const analysisCopyMutations = {
         }
       };
       const slots = analysis.morphemes || [];
-      const s0 = carries[i] ? slots[0] || null : null;
+      const s0 = carries[i] && slots[0] ? asWritten(slots[0]) : null;
       // First slot reuses the default morpheme. Only stamp the token when the
       // copy actually changes its segmentation-tier data (form/morphType):
       // links/spans carry their own provenance.
@@ -426,25 +433,28 @@ export const analysisCopyMutations = {
       // slot 1 in the same batch.
       word.renumber = slots.length > 1 && !word.create && stored(m0Id) !== 1;
       // Remaining slots: new morphemes, with their own links and fields.
-      slots.slice(1).forEach((slot, j) => {
-        const m = {
-          id: pendingId(),
-          begin: token.begin,
-          end: token.end,
-          precedence: j + 2,
-          metadata: {
-            ...(slot.form != null ? { form: slot.form } : {}),
-            ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
-            ...equalsWritten(slot),
-            ...stampForm(slot.form),
-          },
-          links: [],
-          spans: [],
-        };
-        linkTo(m.id, slot.vocabItemId, m);
-        spansOn(m.id, slot.fields, morphLayersByName, m);
-        word.extra.push(m);
-      });
+      slots
+        .slice(1)
+        .map(asWritten)
+        .forEach((slot, j) => {
+          const m = {
+            id: pendingId(),
+            begin: token.begin,
+            end: token.end,
+            precedence: j + 2,
+            metadata: {
+              ...(slot.form != null ? { form: slot.form } : {}),
+              ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
+              ...equalsWritten(slot),
+              ...stampForm(slot.form),
+            },
+            links: [],
+            spans: [],
+          };
+          linkTo(m.id, slot.vocabItemId, m);
+          spansOn(m.id, slot.fields, morphLayersByName, m);
+          word.extra.push(m);
+        });
       // Word-level link + fields.
       linkTo(token.id, analysis.word?.vocabItemId, word);
       spansOn(token.id, analysis.word?.fields, wordLayersByName, word);

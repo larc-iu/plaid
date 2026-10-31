@@ -69,7 +69,38 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
   return { vocab: null, item: null };
 };
 
+// R2: a linked morpheme stores no type of its own and goes by its entry's.
+// A link takes a stored type off the morpheme it links, in the link's batch
+// (an Unlink stores the entry's type, Q1, so one is there after Unlink then
+// Link).
+const UNTYPE_OPS = [{ op: 'delete', path: ['morphType'] }];
+
 export const vocabMutations = {
+  // The stored morphemes among `tokenIds` that hold a type of their own.
+  _typedMorphemes(tokenIds) {
+    const want = new Set(tokenIds);
+    return (this.layerInfo.morphemeTokenLayer?.tokens || [])
+      .filter((t) => want.has(t.id) && t.metadata?.morphType != null)
+      .map((t) => t.id);
+  },
+
+  _showUntyped(info, ids) {
+    if (!ids?.length) return;
+    const gone = new Set(ids);
+    for (const t of info.morphemeTokenLayer?.tokens || []) {
+      if (!gone.has(t.id)) continue;
+      const { morphType: _, ...rest } = t.metadata || {};
+      t.metadata = rest;
+    }
+  },
+
+  // Queue the type deletes on batch `b`, one bulk op. Last in a batch, so
+  // the result places the other ops read stay where they were.
+  _queueUntyped(b, ids) {
+    if (!ids?.length) return;
+    b.tokens.bulkUpdate(ids.map((id) => ({ id: settledId(id), metadata: UNTYPE_OPS })));
+  },
+
   // Apply auto-link proposals (the built-in rule or any proposal provider).
   // `proposals` is [{ tokenId, vocabItemId }]. Provenance write contract: a
   // token with no link gets one; a token whose only link is machine-unverified
@@ -133,6 +164,7 @@ export const vocabMutations = {
               metadata,
             })),
           );
+          this._queueUntyped(b, this._typedMorphemes(creates.map((c) => c.tokenId)));
         });
       }
       // Replacements: the stale links go in one bulk delete and the new ones in
@@ -149,6 +181,7 @@ export const vocabMutations = {
               metadata,
             })),
           );
+          this._queueUntyped(b, this._typedMorphemes(chunk.map((r) => r.tokenId)));
         });
       }
       await this._reloadInSend();
@@ -236,7 +269,7 @@ export const vocabMutations = {
   // that makes other changes in the same batch can use it: the plan (the
   // prior link and a pending id for the new one), the patch, and the send.
   // A linked morpheme goes by its entry's type and stores none (derive.js),
-  // so the link writes nothing on the morpheme.
+  // so the link takes off a type the morpheme stores (`untype`).
   _planRelink(tokenId, creates, vocab, vocabItem, stamp = null) {
     const { link: prior, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     return {
@@ -248,10 +281,12 @@ export const vocabMutations = {
       item: { id: vocabItem.id, layer: vocab.id, form: vocabItem.form },
       linkId: pendingId(),
       stamp: stamp || this.createStamp,
+      untype: this._typedMorphemes([tokenId]),
     };
   },
 
   _showRelink(info, vocabs, plan) {
+    this._showUntyped(info, plan.untype);
     if (plan.prior && vocabs[plan.priorVocabId]) {
       vocabs[plan.priorVocabId].vocabLinks = (vocabs[plan.priorVocabId].vocabLinks || []).filter(
         (l) => l.id !== plan.prior.id,
@@ -281,6 +316,7 @@ export const vocabMutations = {
       { id: plan.linkId },
     );
     const at = b.ref().$ref;
+    this._queueUntyped(b, plan.untype);
     return (results, ids) => ids.set(plan.linkId, createdId(results[at]));
   },
 
@@ -502,11 +538,13 @@ export const vocabMutations = {
       vocabId: targetVocab.id,
       item: vocabItem,
       stamp: this.createStamp || undefined,
+      untype: this._typedMorphemes(targets),
     };
   },
 
   _showLinkMany(info, vocabs, plan) {
     this._showMorphemes(info, plan.creates);
+    this._showUntyped(info, plan.untype);
     const itemSnapshot = { id: plan.item.id, layer: plan.vocabId, form: plan.item.form };
     const tv = vocabs[plan.vocabId];
     if (tv) {
@@ -539,6 +577,7 @@ export const vocabMutations = {
       })),
     );
     const at = b.ref().$ref;
+    this._queueUntyped(b, plan.untype);
     return (results, ids) => {
       const newIds = createdIds(results[at]);
       plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
@@ -940,6 +979,7 @@ export const vocabMutations = {
     const linkId = pendingId();
     // "Create and link every ‹roa› in this text": the others that read the
     // same and have no link, in the same operation as the create.
+    const untype = this._typedMorphemes([targetTokenId]);
     const others = this._planLinkMany(
       alsoLink.filter((id) => id !== tokenId),
       { id: vocabId },
@@ -967,6 +1007,7 @@ export const vocabMutations = {
         });
       }
       this._showLinkMany(info, vocabs, others);
+      this._showUntyped(info, untype);
     });
 
     // One batch: the morphemes unanalyzed words need, the entry, and every
@@ -991,6 +1032,7 @@ export const vocabMutations = {
           });
           linkAt = b.ref().$ref;
           readOthers = this._queueLinkMany(b, others, itemRef, morphemes.tokenRef);
+          this._queueUntyped(b, untype);
         });
         morphemes.read(results, ids);
         ids.set(newItem.id, createdId(results[itemAt]));

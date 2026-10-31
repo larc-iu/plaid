@@ -1507,8 +1507,12 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(m.metadata.morphType).toBeUndefined();
   });
 
-  it("linkVocab leaves a morpheme's own type as it is, and the entry's is read over it", async () => {
-    const raw = buildRawDoc({
+  // R2 (REV-FX-VOCAB-1): a linked morpheme stores no type, so every link
+  // takes off a type the morpheme stores, in the link's batch. Otherwise an
+  // Unlink (which stores the entry's type, Q1) then a Link left the old type
+  // over an untyped entry.
+  const typedMorpheme = () =>
+    buildRawDoc({
       morphemes: [
         {
           id: 'm-1',
@@ -1520,60 +1524,115 @@ describe('vocab links (read path must reflect optimistic write)', () => {
         },
       ],
     });
+  const untypeWrites = (doc) =>
+    tokenWrites(doc).filter((c) =>
+      JSON.stringify(c.args).includes('{"op":"delete","path":["morphType"]}'),
+    );
+
+  it("linkVocab takes off the morpheme's own type in the link's batch, and the entry's is read", async () => {
     const doc = makeDoc({
-      raw,
+      raw: typedMorpheme(),
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: typedVocab(),
     });
     expect(await doc.linkVocab('m-1', 'vi-1')).toBe(true);
-    expect(tokenWrites(doc)).toHaveLength(0);
+    const [write] = untypeWrites(doc);
+    expect(write.args[0]).toEqual([
+      { id: 'm-1', metadata: [{ op: 'delete', path: ['morphType'] }] },
+    ]);
+    expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
     const m = doc.sentences[0].tokens[0].morphemes[0];
     expect(m.morphType).toBe('stem');
-    expect(m.metadata.morphType).toBe('suffix');
+    expect(m.metadata.morphType).toBeUndefined();
   });
 
-  // Ruling Q1: the morpheme an Unlink leaves keeps the type its entry gave
-  // it, written in the unlink's batch, so its affix marker survives.
-  it('unlinkVocab writes the entry type onto the morpheme it leaves, in one batch', async () => {
+  it('an Unlink then a Link to an untyped entry leaves the morpheme untyped, as a direct relink does', async () => {
     const vocabs = {
       v1: {
         id: 'v1',
         name: 'Lexicon',
         items: [
           { id: 'vi-s', form: 's', metadata: { morphType: 'suffix' } },
-          { id: 'vi-s1', form: 's', metadata: { parent: 'vi-s', senseOrder: 1 } },
+          { id: 'vi-dog', form: 'dog', metadata: {} },
         ],
-        vocabLinks: [{ id: 'lk-1', tokens: ['m-1'], vocabItem: { id: 'vi-s1', form: 's' } }],
+        vocabLinks: [{ id: 'lk-1', tokens: ['m-1'], vocabItem: { id: 'vi-s', form: 's' } }],
       },
     };
     const doc = makeDoc({
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: vocabs,
     });
-    expect(await doc.unlinkVocab('m-1')).toBe(true);
+    await doc.unlinkVocab('m-1');
+    expect(doc.sentences[0].tokens[0].morphemes[0].metadata.morphType).toBe('suffix');
+    await doc.linkVocab('m-1', 'vi-dog');
     const m = doc.sentences[0].tokens[0].morphemes[0];
-    expect(m.vocabItem).toBeFalsy();
-    expect(m.morphType).toBe('suffix');
-    expect(m.metadata.morphType).toBe('suffix');
-    const [write] = tokenWrites(doc);
-    expect(write.args).toEqual(['m-1', [{ op: 'set', path: ['morphType'], value: 'suffix' }]]);
-    expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
+    expect(m.vocabItem?.id).toBe('vi-dog');
+    expect(m.morphType ?? null).toBeNull();
+    expect(m.metadata.morphType).toBeUndefined();
   });
 
-  it('unlinkVocab writes no type when the entry has none, or on a word', async () => {
-    const vocabs = typedVocab();
-    vocabs.v1.items.push({ id: 'vi-2', form: 'DOG', metadata: {} });
-    vocabs.v1.vocabLinks = [
-      { id: 'lk-1', tokens: ['m-1'], vocabItem: { id: 'vi-2', form: 'DOG' } },
-      { id: 'lk-2', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT' } },
-    ];
+  it('linkVocabMany, createAndLinkVocabItem and setMorphemePair take a stored type off too', async () => {
+    const open = () =>
+      makeDoc({
+        raw: typedMorpheme(),
+        project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+        vocabularies: typedVocab(),
+      });
+    const many = open();
+    expect(await many.linkVocabMany(['m-1'], 'vi-1')).toBe(true);
+    const made = open();
+    expect(await made.createAndLinkVocabItem('m-1', 'v1', 'kai', {})).toBe(true);
+    const pair = open();
+    expect(await pair.setMorphemePair('m-1', { itemId: 'vi-1' })).toBe(true);
+    for (const doc of [many, made, pair]) {
+      expect(untypeWrites(doc)).toHaveLength(1);
+      expect(doc.sentences[0].tokens[0].morphemes[0].metadata.morphType).toBeUndefined();
+    }
+  });
+
+  it('a copied analysis stores no type on a morpheme it links, and keeps one on a morpheme it does not', async () => {
+    for (const copy of ['applyAnalysisToWords', 'bulkReplaceAnalyses']) {
+      resetIds();
+      const doc = makeDoc({
+        raw: buildRawDoc({
+          words: [
+            { id: 'w-1', begin: 0, end: 3 },
+            { id: 'w-2', begin: 4, end: 7 },
+          ],
+          morphemes: [],
+          body: 'nix nix',
+        }),
+        project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+        vocabularies: typedVocab(),
+      });
+      const analysis = {
+        word: { vocabItemId: null, fields: {} },
+        morphemes: [
+          { form: 'ni', morphType: 'suffix', vocabItemId: 'vi-1', fields: {} },
+          { form: 'x', morphType: 'prefix', vocabItemId: null, fields: {} },
+        ],
+      };
+      if (copy === 'applyAnalysisToWords') await doc.applyAnalysisToWords(['w-2'], analysis);
+      else await doc.bulkReplaceAnalyses([{ wordTokenId: 'w-2', analysis }]);
+      const ms = doc.sentences[0].tokens[1].morphemes;
+      expect(
+        ms.map((m) => [m.metadata.morphType ?? null, m.morphType]),
+        copy,
+      ).toEqual([
+        [null, 'stem'],
+        ['prefix', 'prefix'],
+      ]);
+    }
+  });
+
+  it('bulkLinkVocab takes a stored type off the morphemes it links', async () => {
     const doc = makeDoc({
+      raw: typedMorpheme(),
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
-      vocabularies: vocabs,
+      vocabularies: typedVocab(),
     });
-    expect(await doc.unlinkVocab('m-1')).toBe(true);
-    expect(await doc.unlinkVocab('w-2')).toBe(true);
-    expect(tokenWrites(doc)).toHaveLength(0);
+    expect(await doc.bulkLinkVocab([{ tokenId: 'm-1', vocabItemId: 'vi-1' }], 'auto')).toBe(1);
+    expect(untypeWrites(doc)).toHaveLength(1);
   });
 
   it('linkVocabMany writes no type on the morphemes it links', async () => {
