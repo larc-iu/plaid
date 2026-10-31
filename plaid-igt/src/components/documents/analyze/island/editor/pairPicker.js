@@ -165,7 +165,7 @@ export const pairPicker = {
     if (row.current) tags.push('current');
     // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
     if (row.model) {
-      tags.push(row.prob != null ? `model ${Math.floor(row.prob * 100 + 1e-9)}%` : 'model');
+      tags.push(row.prob != null ? `machine ${Math.floor(row.prob * 100 + 1e-9)}%` : 'machine');
     }
     if (row.count) tags.push(`×${row.count}`);
     if (row.current && row.item && this.doc.reviewableState(row.linkState)) {

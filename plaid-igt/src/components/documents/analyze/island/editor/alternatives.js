@@ -301,7 +301,7 @@ export const alternatives = {
       if (it.entry) parts.push(it.entryTrusted ? 'link' : 'unconfirmed link');
       // Rounded down, as every confidence is (plaid-ui domain/confidence.js).
       if (it.model)
-        parts.push(it.prob != null ? `model ${Math.floor(it.prob * 100 + 1e-9)}%` : 'model');
+        parts.push(it.prob != null ? `machine ${Math.floor(it.prob * 100 + 1e-9)}%` : 'machine');
       return parts.join(' · ');
     };
     return html`<div

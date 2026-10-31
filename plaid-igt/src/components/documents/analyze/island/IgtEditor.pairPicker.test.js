@@ -171,6 +171,20 @@ afterEach(() => {
   host = null;
 });
 
+describe("a row's tags", () => {
+  it('call a non-person source machine, with its confidence', async () => {
+    mount();
+    await settle(4);
+    openAlts(cell('ma:m-2:Gloss'));
+    const tags = [...document.querySelectorAll('.igt-alts__item .igt-pair__tags')].map(
+      (t) => t.textContent,
+    );
+    expect(tags.some((t) => t.includes('machine 60%'))).toBe(true);
+    expect(tags.some((t) => t.includes('machine 30%'))).toBe(true);
+    expect(tags.join(' ')).not.toMatch(/model/);
+  });
+});
+
 describe('the two doors', () => {
   it('list the same rows, the current pair first', async () => {
     mount();

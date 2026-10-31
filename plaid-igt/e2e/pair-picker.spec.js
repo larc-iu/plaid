@@ -127,7 +127,7 @@ test('a pick from Alt+Down sets the link and the gloss, and both are there after
   await expect(rows.nth(0).locator('.igt-pair__value')).toHaveText('feline');
   await expect(rows.nth(0)).toContainText('current');
   await expect(rows.nth(1).locator('.igt-pair__value')).toHaveText('jazzman');
-  await expect(rows.nth(1)).toContainText('model 30%');
+  await expect(rows.nth(1)).toContainText('machine 30%');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(cell).toHaveValue('jazzman');

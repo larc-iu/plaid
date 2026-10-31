@@ -174,6 +174,23 @@ describe('a value picked from the list', () => {
   });
 });
 
+// One word for every source that is not a person, igt's own guesses and real
+// services alike (Luke 2026-10-31).
+describe("the list's tag on a machine's values", () => {
+  it('says machine, with its confidence', async () => {
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
+    await settle(6);
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    key(c, 'ArrowDown', { altKey: true });
+    const tags = [...document.querySelectorAll('.igt-alts__tag')].map((t) => t.textContent);
+    expect(tags.some((t) => t.includes('machine 80%'))).toBe(true);
+    expect(tags.some((t) => t.includes('machine 20%'))).toBe(true);
+    expect(tags.join(' ')).not.toMatch(/model/);
+  });
+});
+
 describe('a machine value below the project threshold', () => {
   it('gets the heavier mark and its confidence in the tooltip', async () => {
     const { doc } = mount({ threshold: 0.9 });
