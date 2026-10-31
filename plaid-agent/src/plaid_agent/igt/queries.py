@@ -705,24 +705,33 @@ q_corpus_numbers.empty = _empty_numbers
 
 def concordance_where(c: Corpus, pattern: str, where_l: str, field, regex: bool, case_sensitive: bool = False):
     """(clauses, the hit's morpheme variable or None) for a concordance's
-    occurrences: ``?w`` is the word, ``?m`` the morpheme hit when it is one."""
+    occurrences: ``?w`` is the word, ``?m`` the morpheme hit when it is one.
+    The clauses are held to the ids of what the pattern matches, found in
+    one read (:func:`_pinned`): the pattern runs over text no index serves,
+    and the hits and the tallies make about ten reads. [] when nothing
+    matches."""
     spec = rx(pattern, regex=regex, whole=not regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
-        return [c.word('?w', value=spec)], None
+        return _pinned(c, [c.word('?w', value=spec)], '?w', [c.word('?w')]), None
     if where_l == 'morpheme':
-        return c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w'), '?m'
+        return _pinned(c, c.morph_form_clauses('?m', spec) + c.in_word('?m', '?w'), '?m',
+                       c.in_word('?m', '?w')), '?m'
     if field.scope == 'Word':
-        return [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?w'], c.word('?w')], None
-    return [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m']] + c.in_word('?m', '?w'), '?m'
+        rest, mvar = [['covers', '?s', '?w'], c.word('?w')], None
+    else:
+        rest, mvar = [['covers', '?s', '?m']] + c.in_word('?m', '?w'), '?m'
+    return _pinned(c, [c.span('?s', field.layer_id, value=spec)] + rest, '?s',
+                   [c.span('?s', field.layer_id)] + rest), mvar
 
 
-def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
-                       case_sensitive: bool = False):
-    """[(doc, sentence, word, hit morpheme|None)] for the shown occurrences,
-    ordered by document and position, the total number of occurrences, and
-    whether the per-call document budget stopped the hits short of the limit."""
+def q_concordance_hits(ws: Workspace, where: List[Any], mvar: Optional[str], where_l: str, limit: int):
+    """[(doc, sentence, word, hit morpheme|None)] for the shown occurrences
+    of ``where`` (:func:`concordance_where`), ordered by document and
+    position, the total number of occurrences, and whether the per-call
+    document budget stopped the hits short of the limit."""
     c = ws.corpus
-    where, mvar = concordance_where(c, pattern, where_l, field, regex, case_sensitive)
+    if not where:
+        return [], 0, False
     if mvar is None:
         total = c.word_count(where, '?w') if where_l == 'baseline' else c.count(where, ['?w'])
         rows = c.entities(where, ['?w'], limit * 2 if where_l == 'baseline' else limit, [['?w.doc'], ['?w.begin']],
@@ -1711,10 +1720,12 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
         unit = [c.word('?u', value=spec)] + target_condition(c, cond, '?u', 'Word')
     else:
         unit = c.morph_form_clauses('?u', spec) + target_condition(c, cond, '?u', 'Morpheme')
+    # Its two reads held to the units found in one (the form's regex scans).
+    unit = _pinned(c, unit, '?u', [c.word('?u') if f.scope == 'Word' else c.morph('?u')])
     with_span = c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
-                         [['?u.doc'], ['?u.begin']])
+                         [['?u.doc'], ['?u.begin']]) if unit else []
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
-                         [['?u.doc'], ['?u.begin']])
+                         [['?u.doc'], ['?u.begin']]) if unit else []
     rows = [(u, s) for u, s in with_span] + [(u, None) for (u,) in without]
     # A word of that form nobody has segmented: its morpheme is the derived
     # one the editor shows, stored nowhere and so holding no value, which the
@@ -1785,7 +1796,9 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     entries: Dict[str, str] = {}
     if c.M and words:
         # Even an unanalyzed word carries its default morpheme, which the executor reuses.
-        base = [c.word('?w', value=rx(form, whole=True))] + c.in_word('?m', '?w')
+        # Held to the words already found: the form's regex runs over text
+        # no index serves, so each read carrying it scanned the project again.
+        base = [c.word('?w'), ['in', '?w.id', [w['id'] for w in words]]] + c.in_word('?m', '?w')
         for m, w in c.entities(base, ['?m', '?w'], ROW_LIMIT, [['?w.doc'], ['?w.begin'], ['?m.precedence']]):
             if isinstance(m, dict) and isinstance(w, dict):
                 chains[w['id']].append(m)

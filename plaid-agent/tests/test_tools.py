@@ -774,10 +774,14 @@ def test_read_document_reads_the_sentences_named_in_one_call():
 
 
 def _two_documents(name='Elicited: LLEC Wordlist'):
-    """The fixture's Text 1 and a copy of it as d2, named with a ": " in it."""
-    import copy
+    """The fixture's Text 1 and a copy of it as d2, named with a ": " in it.
+    The copy's sentences, words, morphemes, spans and links have ids of their
+    own, as stored ones do: a read held to a list of ids (``_pinned``) would
+    otherwise name both copies' tokens by one id."""
+    import json
+    import re
     c = FakeClient()
-    d2 = copy.deepcopy(c._documents['d1'])
+    d2 = json.loads(re.sub(r'"((?:m|w|s|sp|l)-[^"]*)"', r'"\1-d2"', json.dumps(c._documents['d1'])))
     d2['id'], d2['name'] = 'd2', name
     c._documents['d2'] = d2
     return c

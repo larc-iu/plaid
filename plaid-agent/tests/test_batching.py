@@ -56,6 +56,67 @@ def test_analyses_of_reads_a_form_with_too_many_hits_from_its_pattern(monkeypatc
     assert call_tool(ws(), 'analyses_of', {'forms': ['gam', 'di']}) == pinned
 
 
+CONCORDANCES = [{'pattern': 'gam', 'where': 'morpheme', 'limit': 1},
+                {'pattern': 'gam.*', 'regex': True, 'where': 'baseline', 'limit': 1},
+                {'pattern': 'ERG', 'where': 'Morph Gloss'},
+                {'pattern': 'a.*', 'regex': True, 'where': 'Gloss'}]
+
+
+def test_concordance_reads_its_pattern_from_the_text_once():
+    """As analyses_of: the hits and the tallies over every occurrence made
+    about ten reads, each carrying the pattern, 14 to 21 s a call on
+    Kalamang (H17-ASSIST-6). The occurrences are found once and every read
+    is held to their ids."""
+    for args in CONCORDANCES:
+        client = FakeClient()
+        asked = []
+        real = client.query
+
+        def query(body, asked=asked, real=real):
+            asked.append(json.dumps(body.get('where')))
+            return real(body)
+        client.query = query
+        out = call_tool(fake_ws(client), 'concordance', args)
+        assert 'occurrence' in out and 'No occurrences' not in out, out
+        assert sum('"regex"' in w for w in asked) == 1, (args, asked)
+
+
+def test_concordance_reads_a_pattern_with_too_many_hits_from_it(monkeypatch):
+    """Past PIN_MAX hits the reads keep the pattern, and say the same."""
+    from plaid_agent.igt import queries
+    pinned = [call_tool(ws(), 'concordance', args) for args in CONCORDANCES]
+    monkeypatch.setattr(queries, 'PIN_MAX', 1)
+    assert [call_tool(ws(), 'concordance', args) for args in CONCORDANCES] == pinned
+
+
+def _pattern_reads(tool, args):
+    client = FakeClient()
+    asked = []
+    real = client.query
+
+    def query(body):
+        asked.append(json.dumps(body.get('where')))
+        return real(body)
+    client.query = query
+    w = fake_ws(client)
+    out = call_tool(w, tool, args)
+    return sum('"regex"' in q for q in asked), out, w
+
+
+def test_the_for_form_tools_read_the_form_from_the_text_once():
+    """set_analysis_for_form read the form's words, then their morphemes,
+    spans and links each with the form's regex again, four scans; its later
+    reads take the words it found. set_field_for_form reads its units once
+    for the values they hold and the ones they lack."""
+    n, out, w = _pattern_reads('set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'ga'}, {'form': 'm'}]})
+    assert n == 1 and len(w.ops) == 1, (n, out)
+    n, out, w = _pattern_reads('set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'fish'})
+    assert n == 1 and w.ops, (n, out)
+    # A morpheme field also reads the words nobody has segmented, by their form.
+    n, out, w = _pattern_reads('set_field_for_form', {'form': 'gam', 'field': 'Morph Gloss', 'value': 'fish'})
+    assert n == 2 and w.ops, (n, out)
+
+
 def test_set_analysis_takes_several_words_and_stages_them_together():
     w = ws()
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'analyses': [

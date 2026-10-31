@@ -346,14 +346,14 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
                             kind='invalid-argument')
     from .queries import concordance_where, q_concordance_hits, q_concordance_tally, q_empty_hint, where_label
     with ws.corpus.within(document):
-        hits, total, cut = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
+        hit_where, mvar = concordance_where(ws.corpus, pattern, where_l, field, bool(regex), bool(case_sensitive))
+        hits, total, cut = q_concordance_hits(ws, hit_where, mvar, where_l, limit)
         why = [] if total else q_empty_hint(ws, pattern, where_l, field, bool(regex), bool(case_sensitive),
                                             not regex)
         # Past the hits shown, the tallies are the engine's over every
         # occurrence, not a count of the ones shown (survey item 10).
         whole = None
         if total > len(hits):
-            hit_where, mvar = concordance_where(ws.corpus, pattern, where_l, field, bool(regex), bool(case_sensitive))
             whole = q_concordance_tally(ws, hit_where, '?w', mvar)
     ws.note_read(len(hits), 'match', of=total)
     if not total:
