@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { composeTextEdits, gapsToOps } from 'plaid-client';
+import { boxEdit } from '../textEdit';
 
 function EditorView({ client, project, document, onBack }) {
   const [loading, setLoading] = useState(true);
@@ -19,6 +21,11 @@ function EditorView({ client, project, document, onBack }) {
   
   // UI state
   const [editingToken, setEditingToken] = useState(null);
+
+  // The body as stored with its digest, and the edits typed since, sent as
+  // edits rather than a whole body so tokens and spans stay where they are.
+  const stored = useRef({ body: '', digest: null });
+  const typed = useRef([]);
 
   useEffect(() => {
     loadDocumentData();
@@ -74,6 +81,10 @@ function EditorView({ client, project, document, onBack }) {
       // Load document text
       const documentText = foundTextLayer.text;
       setText(documentText ? documentText.body : '');
+      stored.current = documentText
+        ? { body: documentText.body, digest: documentText.digest }
+        : { body: '', digest: null };
+      typed.current = [];
       
       // Load tokens (already filtered to this document)
       const documentTokens = foundTokenLayer.tokens || [];
@@ -95,8 +106,10 @@ function EditorView({ client, project, document, onBack }) {
     }
   };
 
-  const updateText = (newText) => {
-    // Update UI immediately
+  const updateText = (newText, caret) => {
+    // Update UI immediately, and log the edit this change made
+    const edit = boxEdit(text, newText, caret);
+    if (edit) typed.current.push(edit);
     setText(newText);
     
     // Debounce the API calls
@@ -105,10 +118,16 @@ function EditorView({ client, project, document, onBack }) {
       try {
         setSaving(true);
         
-        // Update the text content
+        // Send the net change of the edits typed since the last save
         if (textLayer && textLayer.text) {
-          const textObj = textLayer.text;
-          await client.texts.update(textObj.id, newText);
+          const edits = gapsToOps(composeTextEdits(stored.current.body, typed.current));
+          typed.current = [];
+          if (edits.length) {
+            const answer = await client.texts.edit(textLayer.text.id, edits, undefined, {
+              base: stored.current.digest,
+            });
+            stored.current = { body: answer.body, digest: answer.digest };
+          }
         } else if (textLayer) {
           await client.texts.create(textLayer.id, document.id, newText);
         }
@@ -119,6 +138,8 @@ function EditorView({ client, project, document, onBack }) {
         }
         
       } catch (err) {
+        // Changed elsewhere meanwhile, or not saved: show the text as stored
+        await loadDocumentData();
         setError(`Failed to update text: ${err.message}`);
       } finally {
         setSaving(false);
@@ -367,7 +388,7 @@ function EditorView({ client, project, document, onBack }) {
           <h2 className="text-xl font-semibold mb-4">Text Content</h2>
           <textarea
             value={text}
-            onChange={(e) => updateText(e.target.value)}
+            onChange={(e) => updateText(e.target.value, e.target.selectionEnd)}
             className="w-full h-64 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
             placeholder="Enter your text here..."
           />
