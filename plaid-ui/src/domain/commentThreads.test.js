@@ -79,6 +79,15 @@ describe('plainText', () => {
       'bold and em with code, a link and a quote',
     );
   });
+
+  it('keeps a ">" that is not a quote marker', () => {
+    expect(
+      plainText(
+        '> Imported from an archive. Originally posted by Ama <ama@example.org> on 2026-10-29.',
+      ),
+    ).toBe('Imported from an archive. Originally posted by Ama <ama@example.org> on 2026-10-29.');
+    expect(plainText('a > b\n>> nested')).toBe('a > b nested');
+  });
 });
 
 describe('threadList', () => {

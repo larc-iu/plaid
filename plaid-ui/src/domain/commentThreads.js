@@ -13,7 +13,8 @@ import { describeAnchor, anchorCaption } from './commentAnchors.js';
 export function plainText(markdown) {
   return String(markdown ?? '')
     .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/[`*_~>#]+/g, '')
+    .replace(/^[ \t]*(?:>[ \t]?)+/gm, '')
+    .replace(/[`*_~#]+/g, '')
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
