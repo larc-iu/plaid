@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
-import { TokenComponent } from './DocumentTokenize.jsx';
+import { TooltipProvider } from '@ui/components/ui/tooltip';
+import { SentenceComponent, TokenComponent } from './DocumentTokenize.jsx';
 
 // Alt+click on a word here opens the same word on the Analyze tab. It used to
 // ask for the tab by dispatching a window event that the tab hook listens for,
@@ -97,5 +98,41 @@ describe('Escape on the splitter', () => {
     expect(view.container.querySelector('.splitter-box')).toBeNull();
     expect(view.container.querySelector('.token')).not.toBeNull();
     await view.unmount();
+  });
+});
+
+describe("a sentence's merge-with-previous button", () => {
+  it('has a name a screen reader can say', async () => {
+    // Lazy shows the row once it scrolls into view.
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb) {
+          this.cb = cb;
+        }
+        observe() {
+          this.cb([{ isIntersecting: true }]);
+        }
+        disconnect() {}
+      },
+    );
+    const view = await renderComponent(
+      <DocumentProvider value={{ doc: { id: 'd1' }, goToTab: () => {} }}>
+        <TooltipProvider>
+          <SentenceComponent
+            sentence={sentence}
+            ops={{ mergeSentence: () => {}, splitSentence: () => {} }}
+            index={1}
+            drag={null}
+            setDrag={() => {}}
+            dragRef={{ current: null }}
+          />
+        </TooltipProvider>
+      </DocumentProvider>,
+    );
+    const button = view.container.querySelector('.merge-button button');
+    expect(button.getAttribute('aria-label')).toBe('Merge with above');
+    await view.unmount();
+    vi.unstubAllGlobals();
   });
 });

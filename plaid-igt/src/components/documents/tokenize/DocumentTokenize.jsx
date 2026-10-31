@@ -487,7 +487,7 @@ function LossWords({ loss, under = null }) {
 
 // The row takes the document's direction, so an Arabic sentence reads from
 // the right with its number and merge button at its start.
-function SentenceComponent({
+export function SentenceComponent({
   sentence,
   ops,
   index,
@@ -526,6 +526,7 @@ function SentenceComponent({
                 <button
                   type="button"
                   onClick={handleMerge}
+                  aria-label="Merge with above"
                   className="merge-icon inline-flex items-center justify-center rounded-sm h-5 w-5 text-muted-foreground"
                 >
                   <ChevronUp className="h-3 w-3" />
