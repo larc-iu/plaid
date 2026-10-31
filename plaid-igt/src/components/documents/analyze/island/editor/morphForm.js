@@ -3,6 +3,7 @@ import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
 import { activeComposeTable, composePendingOn } from '@/lib/composeInput';
 import { morphFormOf } from './shared.js';
+import { cellKeyParts } from './cellReader.js';
 import { keys } from '@/lib/keymap.js';
 
 // The morpheme form field: split, merge, and delete from the keyboard, paste
@@ -232,8 +233,8 @@ export const morphForm = {
   // rendered + focused new morpheme cell, then honor a buffered commit key.
   // The morpheme id behind a form cell (`data-cell-key="mf:<id>"`).
   _morphIdOf(el) {
-    const key = el?.dataset?.cellKey ?? '';
-    return key.startsWith('mf:') ? key.slice(3) : null;
+    const { kind, row } = cellKeyParts(el?.dataset?.cellKey);
+    return kind === 'mf' ? row : null;
   },
 
   // `split` describes the cell the buffer belongs in: `left` and `right` are

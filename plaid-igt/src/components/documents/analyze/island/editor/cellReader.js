@@ -14,16 +14,21 @@ import { morphFormOf } from './shared.js';
 // and morphemes, so an unanalyzed word's morpheme is there by the same
 // derivation.
 
-// The row a cell key names.
-const rowOfKey = (key) => {
-  const rest = (key ?? '').slice(key.indexOf(':') + 1);
-  return /^(virtual:[^:]+|[^:]+)/.exec(rest)?.[1] ?? '';
+// A cell key's kind, the row it names as written in the key, and the field
+// ('' for `mf:`). The one parser of a cell key: nothing else splits one.
+export const cellKeyParts = (key) => {
+  const k = key ?? '';
+  const at = k.indexOf(':');
+  if (at < 0) return { kind: k, row: '', field: '' };
+  const kind = k.slice(0, at);
+  const rest = k.slice(at + 1);
+  const row = /^(virtual:[^:]+|[^:]+)/.exec(rest)?.[1] ?? '';
+  const field = rest.slice(row.length + 1);
+  return { kind, row, field };
 };
 
 const partsOf = (key) => {
-  const kind = key.slice(0, key.indexOf(':'));
-  const row = rowOfKey(key);
-  const field = key.slice(kind.length + 1 + row.length + 1);
+  const { kind, row, field } = cellKeyParts(key);
   return { kind, row: settledId(row), field };
 };
 

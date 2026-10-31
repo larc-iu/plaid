@@ -5,6 +5,7 @@ import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
 import { joinMweForm, mweMorphType } from '@/domain/mwe';
 import { notifyInfo } from '@/utils/feedback';
 import { EMPTY_SET, numHtml, provClass } from './shared.js';
+import { cellKeyParts } from './cellReader.js';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { tokenizeFocus } from '../../../hooks/focusHandoff.js';
@@ -313,7 +314,7 @@ export const mwe = {
   _rememberForTokenize(el) {
     const sentenceId = el?.closest?.('.igt-sentence')?.dataset?.sentenceId;
     if (!sentenceId) return;
-    const [kind, targetId] = (el.dataset?.cellKey || '').split(':');
+    const { kind, row: targetId } = cellKeyParts(el.dataset?.cellKey);
     const wordId =
       el.dataset?.word ??
       el.closest?.('[data-word-col]')?.dataset?.wordCol ??
