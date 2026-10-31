@@ -7,10 +7,20 @@
 
 import { ROLES } from '@larc-iu/plaid-client';
 import { canEditProject } from '@ui/domain/permissions.js';
+import { statusOf } from '@ui/lib/errors.js';
 import { CHUNK } from './bulk.js';
 
 /** The metadata ops that store `type` on a morpheme. */
-export const keptTypeOps = (type) => [{ op: 'set', path: ['morphType'], value: type }];
+const keptTypeOps = (type) => [{ op: 'set', path: ['morphType'], value: type }];
+
+/**
+ * What to say when a delete that writes kept types is refused because a
+ * document they are in is locked (423: a service run, or someone's write,
+ * holds it). The whole delete waits: a held document is not skipped, or its
+ * morphemes would lose their type. Null for any other refusal.
+ */
+export const busyLinkedDocument = (error) =>
+  statusOf(error) === 423 ? 'A document linked to it is in use. Try again when it is free.' : null;
 
 // The hard cap of a query's rows (plaid-core).
 const QUERY_LIMIT = 100000;

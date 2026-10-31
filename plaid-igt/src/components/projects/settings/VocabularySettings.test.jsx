@@ -399,3 +399,41 @@ describe('Project settings, Vocabularies, an unlink keeps the morph types', () =
     await view.unmount();
   });
 });
+
+// REV-FX-VOCAB-2: an unlink whose kept types reach a held document is refused
+// whole (423), and says so plainly, not with the server's ids.
+describe('Project settings, Vocabularies, an unlink while a linked document is held', () => {
+  it('says a linked document is in use', async () => {
+    const client = makeClient({ linked: ['v1'] });
+    client.vocabLayers.get = vi.fn(async () => ({
+      items: [{ id: 'e-s', form: 's', metadata: { morphType: 'suffix' } }],
+    }));
+    client.projects.get = vi.fn(async (id) => ({
+      id,
+      vocabs: [{ id: 'v1' }],
+      writers: ['me@x.org'],
+    }));
+    client.query = vi.fn(async (q) =>
+      q.where.some((c) => c[0] === 'link-token')
+        ? { results: [['e-s', 'm-1', 'ml', 'morpheme', 1]] }
+        : { results: [[1]] },
+    );
+    const said = 'Document 01a04095-38c4-74d1-8450-a7d6a0267af7 is locked by svc@x.org';
+    client.batched = vi.fn(async () => {
+      throw Object.assign(new Error(`HTTP 423 ${said}`), {
+        status: 423,
+        responseData: { error: said },
+      });
+    });
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
+    await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(notifyError).toHaveBeenCalledWith(
+      'A document linked to it is in use. Try again when it is free.',
+      'Vocabularies not updated',
+    );
+    expect(boxOf(view.container, 'Mine').checked).toBe(true);
+    await view.unmount();
+  });
+});

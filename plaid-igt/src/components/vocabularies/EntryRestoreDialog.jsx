@@ -28,7 +28,7 @@ import {
 } from '@/utils/feedback';
 import { entryRestoreLines, entryRestoreMessage, latestVocabState } from '@/domain/vocabRestore';
 import { planDeleteRefs, lexiconView } from '@/domain/vocabDictionary';
-import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
+import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { CHUNK } from '@/domain/bulk';
 
@@ -161,7 +161,7 @@ export const EntryRestoreDialog = ({
       {
         loading: 'Undoing the restore…',
         success: inserted ? `“${label}” deleted again.` : `“${label}” is back as it was.`,
-        error: (err) => humanizeError(err, 'The undo was not applied.'),
+        error: (err) => busyLinkedDocument(err) ?? humanizeError(err, 'The undo was not applied.'),
       },
     ).catch(() => {});
   };

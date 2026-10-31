@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { notifyError } from '@/utils/feedback';
 import { statusOf } from '@ui/lib/errors.js';
 import { planDeleteRefs, morphTypeOf } from '@/domain/vocabDictionary';
-import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
+import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -163,9 +163,11 @@ export function useEntryDelete({
       },
       'Failed to delete the entry',
       {
-        answered: () => serverCount != null,
-        refused: async () => {
+        answered: (err) => serverCount != null || !!busyLinkedDocument(err),
+        refused: async (err) => {
           unseedUnlessTyped();
+          const busy = busyLinkedDocument(err);
+          if (busy) notifyError(busy, 'Entry not deleted');
           if (serverCount == null) return;
           const now = await countLinks(deletedId);
           const visible = now ?? expectedLinkCount;

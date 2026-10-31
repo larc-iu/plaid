@@ -7,7 +7,7 @@ import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
-import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
+import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -101,7 +101,7 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
 
   // A failed send says why, and its row is already back as it was.
   const handleError = (error) => {
-    notifyError(refusal(error), 'Vocabularies not updated');
+    notifyError(busyLinkedDocument(error) ?? refusal(error), 'Vocabularies not updated');
   };
 
   if (hasError) {

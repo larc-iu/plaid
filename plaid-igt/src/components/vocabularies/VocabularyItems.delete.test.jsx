@@ -375,3 +375,54 @@ describe('deleting a typed entry', () => {
     auth.user = { id: 'u', isAdmin: true };
   });
 });
+
+// REV-FX-VOCAB-2: the kept types go in the delete's batch, so a document a
+// service run holds refuses the whole delete (423). It is said plainly, once.
+describe('deleting a typed entry while a linked document is held', () => {
+  it('says a linked document is in use, and deletes nothing', async () => {
+    const feedback = await import('@/utils/feedback');
+    feedback.notifyError.mockClear();
+    const { client, calls } = stub();
+    client.vocabLayers.get = async () => ({
+      id: 'v1',
+      name: 'Lexicon',
+      config: {},
+      items: [{ id: 'suf', form: 's', metadata: { morphType: 'suffix' } }],
+    });
+    client.query = async (q) =>
+      q.where.some((c) => c[0] === 'link-token')
+        ? { results: [['suf', 'm-1', 'ml1', 'morpheme', 1]] }
+        : { results: [[1]] };
+    client.tokenLayers = { get: async (id) => ({ id, project: 'p1' }) };
+    client.projects.get = async (id) => ({ id, writers: ['u'] });
+    client.batched = async () => {
+      const said = 'Document 01a04095-38c4-74d1-8450-a7d6a0267af7 is locked by svc@x.org';
+      throw Object.assign(new Error(`HTTP 423 ${said}`), {
+        status: 423,
+        responseData: { error: said },
+      });
+    };
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=suf']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await view.step(async () => {});
+    await view.step(() => byText('button', 'Delete').click());
+    for (let i = 0; i < 4; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    await view.step(() => byText('button', 'Delete entry').click());
+    for (let i = 0; i < 6; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(calls.deleted).toEqual([]);
+    expect(feedback.notifyError.mock.calls).toEqual([
+      ['A document linked to it is in use. Try again when it is free.', 'Entry not deleted'],
+    ]);
+    await view.unmount();
+  });
+});

@@ -32,7 +32,7 @@ import {
   unmarkVocab,
 } from '@/domain/igtConfig';
 import { entryMorphTypesOf } from '@/domain/vocabLookup';
-import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
+import { planKeptTypes, queueKeptTypes, busyLinkedDocument } from '@/domain/keptMorphType';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -913,7 +913,7 @@ export const VocabularyDetail = () => {
       notifySuccess('Vocabulary deleted');
     } catch (err) {
       console.error('Error deleting vocabulary:', err);
-      notifyError(err, 'Failed to delete the vocabulary');
+      notifyError(busyLinkedDocument(err) ?? err, 'Failed to delete the vocabulary');
     }
   };
 
