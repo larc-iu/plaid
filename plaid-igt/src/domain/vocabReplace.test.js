@@ -212,3 +212,24 @@ describe('planVocabReplace, a reserved value', () => {
     ).toEqual([null]);
   });
 });
+
+describe('planVocabReplace on a headword-only field', () => {
+  const fields = [{ name: 'etymology', type: 'text', scope: 'entry' }];
+  const tree = () => [
+    { id: 'h', form: 'kai', metadata: {} },
+    { id: 's1', form: 'kai', metadata: { parent: 'h', senseOrder: 1, gloss: 'eat' } },
+    { id: 's2', form: 'kai', metadata: { parent: 'h', senseOrder: 2, etymology: 'old' } },
+  ];
+
+  it('fills a blank on the headword alone, where the form offers the field', () => {
+    const { apply } = buildReplacer('', MATCH_EMPTY, 'Proto *kai');
+    const rows = planVocabReplace(tree(), { field: 'etymology', fields, apply });
+    expect(replaceWrites(rows, { field: 'etymology' }).map((w) => w.id)).toEqual(['h']);
+  });
+
+  it('still rewrites a value a sense holds', () => {
+    const { apply } = buildReplacer('old', 'contains', 'new');
+    const rows = planVocabReplace(tree(), { field: 'etymology', fields, apply });
+    expect(rows.map((r) => r.id)).toEqual(['s2']);
+  });
+});

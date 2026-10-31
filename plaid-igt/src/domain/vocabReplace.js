@@ -4,6 +4,7 @@
 
 import { entryForm } from '@larc-iu/plaid-client';
 import { entryTagsetFor, isValueAllowed, tagsetEnforces } from './tagsets.js';
+import { fieldsForItem } from './vocabDictionary.js';
 
 /**
  * One row per entry whose value in `field` the replacer rewrites.
@@ -23,11 +24,16 @@ import { entryTagsetFor, isValueAllowed, tagsetEnforces } from './tagsets.js';
  * A new form is the one an entry stores (entryForm): without its affix or
  * clitic markers, and a row whose markers name a type other than the entry's
  * carries it as `morphType`.
+ *
+ * `fields` is the vocabulary's field list. An entry whose form does not offer
+ * `field` (fieldsForItem: a headword-only field on a sense that holds no value
+ * in it) is no row, so "is empty" fills headwords and leaves their senses.
  */
 export function planVocabReplace(
   items,
   {
     field,
+    fields = [],
     apply,
     tagset = null,
     morphTypeOf = (id, it) => it?.metadata?.morphType,
@@ -36,7 +42,10 @@ export function planVocabReplace(
 ) {
   const enforcing = tagsetEnforces(tagset);
   const rows = [];
+  const declared = (fields || []).filter((f) => f.name === field);
+  const offered = (it) => fieldsForItem(declared, it).length === declared.length;
   for (const it of items || []) {
+    if (!offered(it)) continue;
     const old = field === 'form' ? (it.form ?? '') : String(it.metadata?.[field] ?? '');
     const next = apply(old);
     if (next == null) continue;

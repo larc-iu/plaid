@@ -128,10 +128,15 @@ export const ReplaceDialog = ({
   );
   const rows = useMemo(
     () =>
-      planVocabReplace(items, { field: target.name, apply, tagset, morphTypeOf, reserved }).sort(
-        (a, b) => a.form.localeCompare(b.form),
-      ),
-    [items, target, apply, tagset, morphTypeOf, reserved],
+      planVocabReplace(items, {
+        field: target.name,
+        fields,
+        apply,
+        tagset,
+        morphTypeOf,
+        reserved,
+      }).sort((a, b) => a.form.localeCompare(b.form)),
+    [items, target, fields, apply, tagset, morphTypeOf, reserved],
   );
   // A new plan is a new selection: everything writable, nothing flagged.
   useEffect(() => {
