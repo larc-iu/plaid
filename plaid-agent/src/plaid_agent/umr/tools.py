@@ -519,11 +519,16 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     why = _reversed_triple_problem(ws, doc, source, target, rel, group)
     if why:
         raise ToolError(why, kind='invalid-argument')
-    existing = source['node']
-    if existing is not None and target['node'] is not None:
-        for t in existing.doc_out:
-            if t.target == target['node'].id and t.rel == rel:
-                return (f'Nothing to change: ({source["var"]} {rel} {target["var"]}) is already '
+    # Already there, in this direction, or in either for a coreference, as
+    # the app's createTriple has it.
+    s_node, t_node = source['node'], target['node']
+    if s_node is not None and t_node is not None:
+        there = [(s_node, t_node, source, target)]
+        if group == 'coref':
+            there.append((t_node, s_node, target, source))
+        for a_node, b_node, a_end, b_end in there:
+            if any(t.target == b_node.id and t.rel == rel for t in a_node.doc_out):
+                return (f'Nothing to change: ({a_end["var"]} {rel} {b_end["var"]}) is already '
                         f'in the document graph.')
 
     staged: List[Dict[str, Any]] = []

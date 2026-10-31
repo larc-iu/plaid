@@ -194,6 +194,14 @@ def test_a_triple_that_is_already_there_plans_nothing(ws):
     out = run(ws, 'add_triple', document='Story', a='s2t', rel=':same-entity', b='s1d')
     assert 'Nothing to change' in out
     assert ws.ops == []
+    # A coreference is there in either direction, as the app's createTriple
+    # has it: planned the other way round, it was stored twice and exported
+    # twice.
+    out = run(ws, 'add_triple', document='Story', a='s1d', rel=':same-entity', b='s2t')
+    assert 'Nothing to change' in out and '(s2t :same-entity s1d)' in out, out
+    assert ws.ops == []
+    # Not so for a relation with a direction.
+    assert run(ws, 'add_triple', document='Story', a='s2r', rel=':before', b='s1b').startswith('Planned')
 
 
 def test_an_end_that_is_neither_a_node_nor_a_constant_is_refused(ws):
