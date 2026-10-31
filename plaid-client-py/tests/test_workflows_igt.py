@@ -569,6 +569,28 @@ def test_an_unanalyzed_words_stored_morpheme_is_patched_in_place_with_what_else_
     assert glosses == [(['m0'], 'dog'), ([made[3]['id']], 'PL')]
 
 
+def test_a_kept_morpheme_is_numbered_as_igt_numbers_the_pieces_beside_it():
+    """CR-SHARED-4. A kept morpheme that stores no precedence reads after
+    every one that does (R4-1-2), so slots made at 2..n read before it and
+    the chain was stored out of order (kitap-lar read as lar, kitap). As
+    igt's nullSlots does, it is numbered past the highest stored precedence
+    and the new slots after it, and one that stores a precedence keeps it
+    with the new slots after it."""
+    from plaid_client.workflows.igt.derive import precedence
+    for stored, kept_at, made_at in ((None, 1, [2, 3]), (1, None, [2, 3]), (4, None, [5, 6])):
+        m0 = {'id': 'm0', 'precedence': stored, 'metadata': {}}
+        client = _rewrite(_word('dogs', [m0]), 'dog(d)-X(o)-PL(gs)')
+        log = [c for b in _batch_log(client) for c in b]
+        numbered = [(c[2][0], c[3]['precedence']) for c in log if c[:2] == ('tokens', 'update')]
+        assert numbered == ([('m0', kept_at)] if kept_at else [])
+        made = [c[3] for c in log if c[:2] == ('tokens', 'create')]
+        assert [m['precedence'] for m in made] == made_at
+        chain = sorted([{'id': 'm0', 'precedence': kept_at or stored, 'form': 'd'}]
+                       + [{'id': m['id'], 'precedence': m['precedence'], 'form': m['metadata']['form']}
+                          for m in made], key=precedence)
+        assert [m['form'] for m in chain] == ['d', 'o', 'gs']
+
+
 def test_a_kept_morpheme_takes_no_form_prob_outside_zero_to_one():
     """REV-R1-2. The patch of a kept morpheme wrote the raw form_prob after
     stamp_inferred had left it out, so a value every other path drops was

@@ -94,6 +94,17 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                 if not keep:
                     for m in stored:
                         b.tokens.delete(m['id'])  # cascades its spans + links
+                # The kept morpheme is slot 1, and the new slots go after it,
+                # numbered as igt's nullSlots numbers pieces beside it: past
+                # its stored precedence, or, when it stores none (which reads
+                # after every stored one, R4-1-2), it is numbered 1 first.
+                base = 1
+                if keep:
+                    kept_at = stored[0].get('precedence')
+                    if kept_at is None:
+                        b.tokens.update(keep, precedence=1)
+                        kept_at = 1
+                    base = kept_at
                 probs = a.get('probs') or [None] * len(a['segments'])
                 links = a.get('links') or [None] * len(a['segments'])
                 form_probs = a.get('form_probs') or probs
@@ -129,7 +140,7 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                             meta[EQUALS_BEFORE_KEY] = True
                         mid = uuid7()
                         b.tokens.create(morph_layer_id, text_id, w['token']['begin'], w['token']['end'],
-                                        precedence=j + 1, metadata=meta, id=mid)
+                                        precedence=base + j, metadata=meta, id=mid)
                     if links[j]:
                         b.vocab_links.create(links[j], [mid], stamp_inferred(
                             source, prob=prob, detail={**detail, 'vocabItem': links[j]}), id=uuid7())
