@@ -84,11 +84,15 @@ export const useAssistantAvailable = (client, projectId, app) => {
           setAvailable(ok);
           if (!ok) again();
         })
-        .catch(() => {
+        .catch((e) => {
           // Discovery failed rather than came back empty. Keep whatever the
           // cache said; a network blip should not hide a working assistant.
           if (!alive) return;
           if (!serviceCache.has(projectId)) setAvailable(false);
+          // A project that is gone or closed to the reader (the panel holds
+          // the last one it was about, a deleted one too) answers the same
+          // every time.
+          if (e?.status === 404 || e?.status === 403) return;
           again();
         });
     probe();
