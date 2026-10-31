@@ -263,10 +263,8 @@
           ;; ignored-tokens rule calls letter-like is a letter to the
           ;; punctuation rule (see ta/ignored-rule). Edits are taken as
           ;; their net change (see ta/plain-edit-gaps), a whole body as its
-          ;; character diff, each edit of it moved to where it disturbs the
-          ;; fewest tokens when it could stand in several places for the same
-          ;; result (see ta/plain-body-gaps), and both are read by the same
-          ;; rule (R42). Ops sent as the body are applied as sent.
+          ;; character diff (see ta/plain-body-gaps), and both are read by
+          ;; the same rule (R42). Ops sent as the body are applied as sent.
           layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
                        (psc/q db {:select [:id :name :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
@@ -281,15 +279,14 @@
             (or edits (string? new-body-or-ops))
             (let [gaps (if edits
                          (ta/plain-edit-gaps old-body edits)
-                         (ta/plain-body-gaps old-body new-body-or-ops tokens roles))]
+                         (ta/plain-body-gaps old-body new-body-or-ops))]
               [gaps (ta/apply-plain-gaps old-body tokens gaps roles)])
             :else [(when tokenize (ta/compose-edits (vec new-body-or-ops) old-body))
                    (ta/apply-text-edits (vec new-body-or-ops) text-map tokens)])
           sent-body (:text/body new-text)
-          ;; The steps above only move edits between equivalent places, so
-          ;; a diffed body comes out as sent, and edits as they make the body
-          ;; applied in turn. Should one of them ever get that wrong, the
-          ;; save fails rather than store a body nobody typed.
+          ;; A diffed body comes out as sent, and edits as they make the body
+          ;; applied in turn. Should the rule ever get that wrong, the save
+          ;; fails rather than store a body nobody typed.
           _ (when (or (and (string? new-body-or-ops) (not= sent-body new-body-or-ops))
                       (and edits (not= sent-body (ta/edit-ops-body edits old-body))))
               (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))

@@ -24,8 +24,6 @@
         plaid.algos.text.plain/apply-plain-gaps
         plaid.algos.text.plain/layer-roles
         plaid.algos.text.plain/layer-of
-        plaid.algos.text.read/slide-to-tokens
-        plaid.algos.text.read/normalize-deletes
         plaid.algos.text.read/plain-body-gaps
         plaid.algos.text.read/plain-edit-gaps
         plaid.algos.text.ops/delete-op

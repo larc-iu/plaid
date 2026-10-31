@@ -2,7 +2,7 @@
   "Edit operations on a text's body: the op shapes, the checks a sent op
   passes, ops applied as sent (`apply-text-edits`), the net change of the
   ops an editor sends (`compose-edits`) and the ops of a list of gaps, and
-  the conversion between running-coordinate ops and old-body edits."
+  running-coordinate ops as old-body edits (`ops->edits`)."
   (:require [plaid.algos.text.chars :refer [leading-marks]]
             [plaid.algos.text.index :refer [lower-bound]]
             [plaid.util.codepoint :as cp]
@@ -83,35 +83,6 @@
                            :replace {:kind :replace :start old-pos :end (+ old-pos length)
                                      :value value}))))
       out)))
-
-(defn edits->ops
-  "Old-coordinate edits, in their original (position-monotone) order ->
-  sequential running-coordinate ops. An edit at old position p is shifted by
-  the inserts before it and by the deletes that START strictly before p (a
-  delete starting AT p removes text after p and doesn't move p). Linear:
-  the deletes are summed as the edits pass them, and only those starting at
-  the current position wait."
-  [edits]
-  (loop [edits edits del-before 0 waiting [] ins 0 out []]
-    (if-let [e (first edits)]
-      (let [p (or (:start e) (:at e))
-            passed (filter #(< (first %) p) waiting)
-            del-before (+ del-before (reduce + 0 (map second passed)))
-            waiting (if (seq passed) (filterv #(>= (first %) p) waiting) waiting)
-            running (+ p (- del-before) ins)]
-        (case (:kind e)
-          :delete (let [n (- (:end e) (:start e))]
-                    (recur (rest edits) del-before (conj waiting [(:start e) n]) ins
-                           (conj out (delete-op running n))))
-          :insert (recur (rest edits) del-before waiting (+ ins (cp/cp-count (:value e)))
-                         (conj out (insert-op running (:value e))))
-          :replace (let [n (- (:end e) (:start e))]
-                     (recur (rest edits) del-before (conj waiting [(:start e) n])
-                            (+ ins (cp/cp-count (:value e)))
-                            (conj out (replace-op running n (:value e)))))))
-      out)))
-
-(declare apply-text-edits)
 
 (defn edit-ops-body
   "The text `ops` (running coordinates, applied in turn) make of `old`, or

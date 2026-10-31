@@ -829,10 +829,13 @@
 (deftest text-typed-at-a-sentences-start-belongs-to-that-sentence
   ;; Luke (2026-10-15): text typed after the space between two sentences
   ;; belongs to the sentence that follows, edits and a whole-body save
-  ;; alike, and each sentence keeps its id and what is on it
-  (doseq [[label change] [["edits" (fn [_] {:edits [(ins 13 "Then ")]})]
-                          ["edits typed a key at a time" (fn [_] {:edits (mapv #(ins (+ 13 %) (str (nth "Then " %))) (range 5))})]
-                          ["a whole-body save" (fn [_] {:body "The dog ran. Then The cat sat."})]]]
+  ;; alike, and each sentence keeps its id and what is on it. The
+  ;; whole-body save's diff types `n The` after `The` (Q3), so the old word
+  ;; reads `Then` and the typed `The` is in no word.
+  (doseq [[label change the] [["edits" (fn [_] {:edits [(ins 13 "Then ")]}) [18 21 "The"]]
+                              ["edits typed a key at a time" (fn [_] {:edits (mapv #(ins (+ 13 %) (str (nth "Then " %))) (range 5))})
+                               [18 21 "The"]]
+                              ["a whole-body save" (fn [_] {:body "The dog ran. Then The cat sat."}) [13 17 "Then"]]]]
     (testing label
       (let [old "The dog ran. The cat sat."
             {:keys [text sentences words glosses]} (setup old :sents [[0 13] [13 25]])
@@ -845,7 +848,7 @@
         (assert-ok res)
         (is (= "The dog ran. Then The cat sat." (-> (get-text admin-request text) :body :text/body)))
         (is (= [[0 13 "The dog ran. "] [13 30 "Then The cat sat."]] (map extent sent-ids)))
-        (is (= [[0 3 "The"] [4 7 "dog"] [8 12 "ran."] [18 21 "The"] [22 25 "cat"] [26 30 "sat."]] (map extent words)))
+        (is (= [[0 3 "The"] [4 7 "dog"] [8 12 "ran."] the [22 25 "cat"] [26 30 "sat."]] (map extent words)))
         (is (= ["T1" "T2"] (map #(-> (get-span admin-request %) :body :span/value) ts)))
         (is (every? #(= 200 (:status (get-span admin-request %))) glosses))))))
 

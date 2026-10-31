@@ -126,7 +126,9 @@
   (is (= ["the c at" "the" "c at"] (save "|the| |cat|" "the c at")))
   (is (= ["thecat" "the" "cat"] (save "|the| |cat|" "thecat")))
   (is (= ["the dog" "the" nil] (save "|the| |cat|" "the dog")))
-  (is (= ["the cow" "the" nil "cow"] (save "|the| |cat| |cow|" "the cow")))
+  ;; the diff deletes `at c`, where `cat ` gives the same body, so both
+  ;; words are cut: a whole-body save is not moved to spare the tokens (Q3)
+  (is (= ["the cow" "the" "c" "ow"] (save "|the| |cat| |cow|" "the cow")))
   (is (= ["the bat sat in" "the" "bat" "sat" "in"] (save "|the| |cat| |sat| |on|" "the bat sat in")))
   (is (= ["talu new lei x" "talu new lei" "x"] (save "|talu lei| |x|" "talu new lei x"))))
 
@@ -278,10 +280,12 @@
       (is (= ["Hi. " "X Y Z The end."] (raw "|Hi.|    /|The| |end.|" [(ins 4 "X") (ins 6 "Y") (ins 8 "Z")])))
       (testing "but not one before a line break"
         (is (= ["Hi. X\n " "Y The end."] (raw "|Hi.| \n /|The| |end.|" [(ins 4 "X") (ins 7 "Y ")])))))
-    (testing "REV-TEXT-3: a whole-body save with several sentence starts typed reads each past the whitespace"
-      (is (= ["The dog ran. " "Then The cat sat. " "So A cow mooed."]
+    (testing "a whole-body save with several sentence starts typed reads each where the diff puts it (Q3)"
+      ;; `So ` typed after the space and ` So` typed before it give the same
+      ;; body, and the diff's ` So` ends the sentence before
+      (is (= ["The dog ran. " "Then The cat sat. So " "A cow mooed."]
              (raw "|The| |dog| |ran.| /|The| |cat| |sat.| /|A| |cow| |mooed.|" "The dog ran. Then The cat sat. So A cow mooed.")))
-      (is (= ["A. " "x B. " "y C. " "z D."] (raw "|A.| /|B.| /|C.| /|D.|" "A. x B. y C. z D."))))
+      (is (= ["A. " "x B. " "y C. z " "D."] (raw "|A.| /|B.| /|C.| /|D.|" "A. x B. y C. z D."))))
     (testing "REV2-TEXT-3: two sentences of only whitespace each take the text typed at their start, alone or together"
       (is (= ["Hi. " "X " " " "The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 4 "X")])))
       (is (= ["Hi. " " " "Y " "The end."] (raw "|Hi.| / / /|The| |end.|" [(ins 5 "Y")])))

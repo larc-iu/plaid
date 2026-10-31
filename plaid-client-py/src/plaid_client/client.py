@@ -903,8 +903,8 @@ class TextsResource(_MetadataMethods, _Resource):
                versioned: bool | None = None, tokenize_layer: str | None = None) -> Any:
         """Update a text's ``body``.
 
-        A diff is computed and token indices are updated so that tokens
-        remain intact. Alternatively, ``body`` can be a list of edit
+        The change is read as the character diff of the two bodies, by the
+        rules edits follow. Alternatively, ``body`` can be a list of edit
         directives, applied exactly as sent.
 
         Args:

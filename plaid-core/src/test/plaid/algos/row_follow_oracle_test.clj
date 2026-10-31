@@ -71,7 +71,7 @@
         opts (cond-> opts sos (assoc :split-on-space true))]
     (let [used (if (= path :edits)
                  (ta/plain-edit-gaps o ops)
-                 (ta/plain-body-gaps o (ta/edit-ops-body ops o) tokens opts))]
+                 (ta/plain-body-gaps o (ta/edit-ops-body ops o)))]
       {:gaps used :r (ta/apply-plain-gaps o tokens used opts)})))
 
 (defn violations

@@ -532,7 +532,7 @@
   them (see `plain-body-gaps`)."
   [old new tokens layout split?]
   (let [roles (select-keys (roles layout split?) [:partitioning :deciders :split-on-space :children :dealt :exclusive :head-layers])
-        gaps (ta/plain-body-gaps old new tokens roles)]
+        gaps (ta/plain-body-gaps old new)]
     [gaps (ta/apply-plain-gaps old tokens gaps roles)]))
 
 (defn save

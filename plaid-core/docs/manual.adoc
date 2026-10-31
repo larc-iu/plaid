@@ -995,7 +995,7 @@ A row, a token of a layer that forbids overlap other than the words and the laye
 * A row keeps every letter it held that the save leaves. A space typed inside a word that splits it (`splitOnSpace`) moves no row.
 * Rows that did not overlap before a save do not overlap after it.
 
-A whole `body` save takes its change as the character difference between the two bodies, read by the same rules. Where the difference can stand at more than one place for the same new body, it stands where it changes the fewest tokens, and among those, as text typed at a sentence's start after whitespace. The reading can still differ from what was typed (`Then` typed before `The` can read as `The` typed over), so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
+A whole `body` save takes its change as the character difference between the two bodies, read by the same rules. Where the difference can stand at more than one place for the same new body, the server does not choose the place that spares the tokens: deleting `cat` from `the cat cow` reads as `at c` deleted, which cuts both words. The reading can differ from what was typed, so an editor sends `edits`. Edits sent as the body (a list of ops) are applied as sent: text inserted where two tokens meet is in neither, and a partition's gap is closed by the token before it.
 
 The answer carries the new `digest` and a `reshape`, which lists the tokens whose extent changed and the ids of everything the change deleted.
 An editor can update its own copy of the document from it instead of reading the document again.

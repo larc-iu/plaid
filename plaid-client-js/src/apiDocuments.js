@@ -484,8 +484,8 @@ export function textsApi(client) {
         }),
       }),
     /**
-     * Update a text's body. A diff is computed and token indices are updated
-     * so that tokens remain intact. Alternatively, `body` can be a list of
+     * Update a text's body. The change is read as the character diff of the
+     * two bodies, by the rules edits follow. Alternatively, `body` can be a list of
      * edit directives (code-point indices, applied in order):
      *   {type: 'delete', index, value: count}
      *   {type: 'insert', index, value: string}

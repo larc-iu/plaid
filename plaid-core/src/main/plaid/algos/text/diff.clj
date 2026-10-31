@@ -394,8 +394,10 @@
   `a` and deleted the tokens of `a`. Trimming is by code point, so it never
   cuts a surrogate pair. It can end between a letter and a combining mark on
   it, as any diff by code point can, and a token boundary there is one the
-  offsets already allow. Which of several equal places an edit takes is
-  `slide-to-tokens`' business, since only the tokens can tell.
+  offsets already allow. Where an edit could stand in several places for
+  the same new body, it stands where this puts it: past the shared start,
+  taken as far as it goes, or where editscript puts it inside what lies
+  between. A whole-body save takes it there (see `plain-body-gaps`).
 
   What lies between goes to editscript whole when it is at most `hunk-limit`
   code points, and is split by lines, then words, when it is longer (see

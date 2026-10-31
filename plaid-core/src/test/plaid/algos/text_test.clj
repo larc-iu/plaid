@@ -10,10 +10,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
-            [plaid.algos.text.index :as text-index]
             [plaid.algos.text.diff :as text-diff]
-            [plaid.algos.text.ops :as text-ops]
-            [plaid.algos.text.read :as text-read]
             [plaid.algos.text-helpers :as th]
             [plaid.test-helpers :as h]
             [plaid.util.codepoint :as cp]))
@@ -196,54 +193,8 @@
     (is (= [[:a 0 1] [:c 1 2]]
            (mapv (juxt :token/id :token/begin :token/end) result-tokens)))))
 
-;; ---------------------------------------------------------------------------
-;; normalize-deletes: a kept run that repeats the edge of a neighbouring delete
-;; is folded into ONE contiguous delete when that cuts fewer tokens.
-
 (defn- apply-all [ops body tokens]
   (ta/apply-text-edits ops {:text/body body} tokens))
-
-(deftest normalize-deletes-merges-across-a-repeated-edge
-  (let [old "Todos los derechos. ¿Qué? ? dog's"
-        new "Todos los derechos. ? dog's"
-        ;; word tokens: Todos los derechos. ¿Qué? ? dog's
-        tokens [(tok :todos 0 5) (tok :los 6 9) (tok :derechos 10 19)
-                (tok :que 20 25) (tok :q 26 27) (tok :dogs 28 33)]
-        raw (ta/diff old new)
-        norm (ta/normalize-deletes raw old tokens)]
-    (testing "both op lists rebuild the same body"
-      (is (= new (get-in (apply-all raw old tokens) [:text :text/body])))
-      (is (= new (get-in (apply-all norm old tokens) [:text :text/body]))))
-    (testing "the normalized form deletes the whole ¿Qué? token and keeps the real ?"
-      (let [{:keys [tokens deleted]} (apply-all norm old tokens)]
-        (is (= [:que] deleted))
-        (is (= [{:token/id :q :token/begin 20 :token/end 21}]
-               (filter #(= :q (:token/id %)) tokens)))
-        (is (not-any? #(= :que (:token/id %)) tokens))))))
-
-(deftest normalize-deletes-leaves-unambiguous-edits-alone
-  (let [old "aa bb cc"
-        tokens [(tok :a 0 2) (tok :b 3 5) (tok :c 6 8)]]
-    (testing "a plain middle deletion is untouched"
-      (let [ops (ta/diff old "aa cc")]
-        (is (= ops (ta/normalize-deletes ops old tokens)))))
-    (testing "an append is untouched"
-      (let [ops (ta/diff old "aa bb cc dd")]
-        (is (= ops (ta/normalize-deletes ops old tokens)))))
-    (testing "explicit ops with no delete pairs pass through"
-      (let [ops [(ta/insert-op 2 "X") (ta/delete-op 4 1)]]
-        (is (= ops (ta/normalize-deletes ops old tokens)))))))
-
-(deftest normalize-deletes-never-worsens-token-cuts
-  (let [old "xa xa xa"
-        new "xa xa"
-        tokens [(tok :t1 0 2) (tok :t2 3 5) (tok :t3 6 8)]
-        raw (ta/diff old new)
-        norm (ta/normalize-deletes raw old tokens)
-        cut (fn [ops] (let [{:keys [tokens]} (apply-all ops old tokens)]
-                        (count (filter #(< 0 (- (:token/end %) (:token/begin %)) 2) tokens))))]
-    (is (= new (get-in (apply-all norm old tokens) [:text :text/body])))
-    (is (<= (cut norm) (cut raw)))))
 
 ;; ---------------------------------------------------------------------------
 ;; :replace — a delete+insert that keeps a token covering the whole range.
@@ -491,76 +442,6 @@
           (is (empty? (window-errors old new before tokens))
               (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new))))))))
 
-;; The window check above spares every token inside the stretch the two bodies
-;; could share, and that stretch is exactly where a greedy trim puts a word
-;; edit wrong: deleting `cat` from `the cat cow` shares `the c` at the start,
-;; so a delete placed after it leaves `cat`'s tokens on `c` and `cow`'s on
-;; `ow`. These say where each word's token must end up.
-
-(deftest a-word-edit-beside-a-word-that-repeats-its-letters
-  ;; old, new, and the new extent of each old word token by its index (nil
-  ;; for a deleted one).
-  (doseq [[old new expected]
-          [["the cat cow" "the cow" [[0 3] nil [4 7]]]
-           ["mat a at" "mat at" [[0 3] nil [4 6]]]
-           ["x ab abc" "x abc" [[0 1] nil [2 5]]]
-           ["a big bad dog" "a bad dog" [[0 1] nil [2 5] [6 9]]]
-           ["the cow" "the cat cow" [[0 3] [8 11]]]
-           ["cat dog" "cat cat dog" [[0 3] [8 11]]]
-           ["a b" "a ab b" [[0 1] [5 6]]]]]
-    (let [before (word-tokens (str/split old #" "))
-          {:keys [text tokens]} (body-edit old new before)
-          got (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
-      (is (= new (:text/body text)))
-      (is (= expected (mapv got (range (count before))))
-          (str (pr-str old) " -> " (pr-str new))))))
-
-(defn- word-edit-errors
-  "After a whole-body edit that deletes or inserts one word, every surviving
-  word token must sit exactly on one word of the new body, no two on the same
-  word, and each still read as the word it was made for. A delete leaves one
-  token fewer, an insert leaves every token."
-  [kind old-words new-words new-body before after]
-  (let [extents (set (map (juxt :token/begin :token/end) (word-tokens new-words)))
-        surface (fn [{:token/keys [begin end]}] (cp/cp-subs new-body begin end))
-        old-surface (into {} (map (fn [t] [(:token/id t) (nth old-words (:token/id t))])) before)
-        spots (map (juxt :token/begin :token/end) after)]
-    (cond-> []
-      (not= (count spots) (count (distinct spots)))
-      (conj [:two-tokens-on-one-word spots])
-
-      (not-every? extents spots)
-      (conj [:token-off-a-word (remove extents spots)])
-
-      (not-every? #(= (old-surface (:token/id %)) (surface %)) after)
-      (conj [:token-reads-another-word
-             (keep #(when (not= (old-surface (:token/id %)) (surface %))
-                      [(old-surface (:token/id %)) (surface %)])
-                   after)])
-
-      (not= (count after) (case kind :delete (dec (count old-words)) :insert (count old-words)))
-      (conj [:token-count (count after)]))))
-
-(deftest a-word-deleted-or-inserted-leaves-every-other-word-token-on-its-word
-  (let [vocab ["the" "cat" "cow" "a" "at" "ab" "abc" "tat" "ta" "big" "bad" "𐌰𐌱" "𐌰" "é"]]
-    (doseq [seed (range 1 7)]
-      (let [rng (java.util.Random. seed)
-            pick #(nth % (.nextInt rng (count %)))]
-        (dotimes [case-n 150]
-          (let [words (vec (repeatedly (+ 3 (.nextInt rng 5)) #(pick vocab)))
-                kind (pick [:delete :insert])
-                k (.nextInt rng (count words))
-                words' (case kind
-                         :delete (into (subvec words 0 k) (subvec words (inc k)))
-                         :insert (into (conj (subvec words 0 k) (pick vocab)) (subvec words k)))
-                old (str/join " " words)
-                new (str/join " " words')
-                before (word-tokens words)
-                {:keys [text tokens]} (body-edit old new before)]
-            (is (= new (:text/body text)))
-            (is (empty? (word-edit-errors kind words words' new before tokens))
-                (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))))))))
-
 ;; ---------------------------------------------------------------------------
 ;; A word respelled in a whole-body save is read by the plain rule over the
 ;; diff (R42): it keeps its token, on the new word, when the diff keeps a
@@ -724,8 +605,9 @@
 (deftest a-word-deleted-at-the-edge-of-a-token-over-several-words-takes-its-space-along
   ;; UMR anchors a node aligned to words next to each other on one token over
   ;; them. Deleting the word at either edge could take the space before it
-  ;; or the one after it for the same text, both cut the node, and the tie
-  ;; stayed where the diff put it, which left the node on `tatu ` or ` tatu`.
+  ;; or the one after it for the same text, and either cuts the node. The
+  ;; diff takes one, and the node, left beginning or ending on a space it
+  ;; did not have there, is moved off it, never left on `tatu ` or ` tatu`.
   (let [on (fn [layer t] (assoc t :token/layer layer))
         spaced? (fn [body {:token/keys [begin end]}]
                   (let [x (cp/cp-subs body begin end)] (not= x (str/trim x))))]
@@ -807,42 +689,6 @@
         (is (= new (:text/body text)))
         (is (= (at :s2 (at :s1)) (at :n)) (str (pr-str old) " -> " (pr-str new)))))))
 
-(deftest a-word-deleted-between-words-without-spaces-leaves-the-next-one-whole
-  ;; Without spaces, deleting a word whose first letter is also the next
-  ;; one's could stand where it cuts the next word and takes its first
-  ;; morpheme whole, which disturbs as many tokens as deleting the word
-  ;; itself does (that one changes the letter before the next word and its
-  ;; morpheme). The place that cuts fewer wins.
-  (let [on (fn [layer t] (assoc t :token/layer layer))
-        w (fn [id b e] (on :w (tok id b e)))
-        m (fn [id b e] (on :m (tok id b e)))]
-    (doseq [[old new tokens want]
-            [["tatuthe\n" "the\n"
-              [(on :s (tok :s 0 8)) (w :tatu 0 4) (w :the 4 7) (m :t 4 5) (m :he 5 7)]
-              {:the "the" :t "t" :he "he"}]
-             ["aab\n" "ab\n"
-              [(on :s (tok :s 0 4)) (w :a 0 1) (w :ab 1 3) (m :a1 1 2) (m :b 2 3)]
-              {:ab "ab" :a1 "a" :b "b"}]
-             ["caféathekakiab\n" "caféab\n"
-              [(on :s (tok :s 0 15)) (w :café 0 4) (w :a 4 5) (w :the 5 8) (w :kaki 8 12) (w :ab 12 14)
-               (m :a1 12 13) (m :b 13 14)]
-              {:café "café" :ab "ab" :a1 "a" :b "b"}]]]
-      (let [{:keys [text tokens]} (body-edit old new tokens #{:s})
-            body (:text/body text)
-            read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
-        (is (= new body))
-        (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new)))))))
-
-(deftest two-edits-sliding-towards-each-other-do-not-meet
-  ;; Each delete cuts a token where it stands and could slide into the run of
-  ;; `a` between them, and both would have taken the same letter.
-  (let [old "xaaaaay"
-        tokens [(tok :t 1 3) (tok :u 4 6)]
-        ops (ta/slide-to-tokens [(ta/delete-op 1 1) (ta/delete-op 4 1)] old tokens #{} nil nil)
-        edits (text-ops/ops->edits ops)]
-    (is (every? (fn [[a b]] (< (:end a) (:start b))) (partition 2 1 edits)) (pr-str ops))
-    (is (= "xaaay" (:text/body (:text (apply-all ops old tokens)))))))
-
 (defn- every-50th-typed-over
   "`n` words, the same words with one edit per 50, and a token per word."
   [n]
@@ -850,21 +696,6 @@
     {:old (str/join " " words)
      :new (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words))
      :tokens (word-tokens words)}))
-
-(deftest many-edits-over-a-long-text-slide-quickly
-  ;; One edit per 50 words over 50,000 word tokens, against the same over
-  ;; 5,000. Scanning every token for every edit took about 4.5 s here,
-  ;; holding the write lock, and grows a hundredfold from the small case.
-  (let [slide (fn [n]
-                (let [{:keys [old new tokens]} (every-50th-typed-over n)
-                      ops (ta/diff old new)
-                      [slid ms] (h/timed #(ta/slide-to-tokens ops old tokens #{} nil nil) {:warm 1 :runs 3})]
-                  {:old old :new new :ops ops :slid slid :ms ms}))
-        small (slide 5000)
-        {:keys [old new ops slid ms]} (slide 50000)]
-    (is (= 1000 (count ops)))
-    (is (= new (:text/body (:text (apply-all slid old [])))))
-    (h/within-factor-of 30 (:ms small) ms {:floor-ms 5 :label "1,000 edits slid over 50,000 tokens"})))
 
 ;; ---------------------------------------------------------------------------
 ;; A combining mark typed at a word's end joins the word (ruled 2026-09-27).
@@ -928,52 +759,6 @@
       (is (= #{[:cafe 0 5]} (extents tokens))))))
 
 ;; ---------------------------------------------------------------------------
-;; The slide knows which layers are partitions (ruled 2026-09-27). A letter
-;; inserted where two sentences of a partition meet goes into the sentence
-;; that ends there, so a place there is not free for that layer.
-
-(deftest the-slide-counts-an-insert-at-a-partition-boundary-as-growing-the-sentence-it-joins
-  (let [old "tat! a. tat big"
-        new "tot! aa. tat big"
-        tokens (map #(assoc % :token/layer :w)
-                    [(tok :tat 0 3) (tok :x 3 4) (tok :a 5 6) (tok :p 6 7) (tok :tat2 8 11) (tok :big 12 15)])
-        sentences [(assoc (tok :s1 0 5) :token/layer :s) (assoc (tok :s2 5 15) :token/layer :s)]
-        all (concat tokens sentences)
-        ops (ta/diff old new)]
-    (testing "editscript puts the doubled `a` before the word, in the same save as another edit"
-      (is (= 5 (:index (peek ops)))))
-    (testing "told that the sentences are a partition, the second sentence takes it whole"
-      ;; typed after the space, at 5 it joins the second sentence (Luke,
-      ;; 2026-10-15), as it does after the `a`
-      (is (#{5 6} (:index (peek (ta/slide-to-tokens ops old all #{:s} nil nil)))))
-      (let [{:keys [text tokens]} (body-edit old new all #{:s})
-            at (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
-        (is (= new (:text/body text)))
-        ;; the second sentence still starts at the word, so the partition
-        ;; gives the first nothing of it
-        (is (= [5 16] (at :s2)))))
-    (testing "a word typed at the start of a sentence stays out of the word after it"
-      (let [s [(assoc (tok :s1 0 3) :token/layer :s) (assoc (tok :s2 3 6) :token/layer :s)
-               (assoc (tok :x 0 1) :token/layer :w) (assoc (tok :abc 3 6) :token/layer :w)]
-            {:keys [tokens]} (body-edit "x.\nabc" "x.\nat abc" s #{:s})]
-        (is (= [6 9] ((juxt :token/begin :token/end) (first (filter #(= :abc (:token/id %)) tokens)))))))))
-
-(deftest a-word-typed-before-a-word-that-starts-with-its-letter-leaves-the-marker-on-the-word
-  ;; `a ` typed before `abc` and ` a` typed after `tot` give the same text.
-  ;; The first leaves the zero-width token at `abc`'s start in front of the
-  ;; new `a`, so the second is taken, though the letter after the marker is
-  ;; the same in both.
-  (let [tokens [(assoc (tok :tot 0 3) :token/layer :w) (assoc (tok :abc 4 7) :token/layer :w)
-                (assoc (tok :z 4 4) :token/layer :z)]
-        {:keys [tokens]} (body-edit "tot abc" "tot a abc" tokens)]
-    (is (= #{[:tot 0 3] [:abc 6 9] [:z 6 6]} (extents tokens))))
-  (testing "at the start of the text, a word typed in front stays out of the word after it"
-    (let [tokens [(assoc (tok :s 0 3) :token/layer :s) (assoc (tok :tot 0 3) :token/layer :w)
-                  (assoc (tok :z 0 0) :token/layer :z)]
-          {:keys [tokens]} (body-edit "tot" "tat tot" tokens #{:s})]
-      (is (= [4 7] ((juxt :token/begin :token/end) (first (filter #(= :tot (:token/id %)) tokens))))))))
-
-;; ---------------------------------------------------------------------------
 ;; apply-text-edits applies ops that stand in order in one pass. It must give
 ;; what applying them one at a time gives, 400s included.
 
@@ -994,8 +779,9 @@
         ops (case (.nextInt r 3)
               0 (loop [p 0 out []]
                   (if (or (>= p n) (< (.nextDouble r) 0.2))
-                    (text-ops/edits->ops (cond-> out
-                                           (< (.nextDouble r) 0.3) (conj {:kind :insert :at n :value (rstr (inc (.nextInt r 3)))})))
+                    (ta/gap-ops (map (fn [e] {:start (or (:start e) (:at e)) :end (or (:end e) (:at e)) :value (or (:value e) "")})
+                                     (cond-> out
+                                       (< (.nextDouble r) 0.3) (conj {:kind :insert :at n :value (rstr (inc (.nextInt r 3)))}))))
                     (let [s (+ p (.nextInt r (inc (min 4 (- n p)))))
                           len (.nextInt r (inc (min 4 (- n s))))
                           v (rstr (.nextInt r 4))
@@ -1019,10 +805,7 @@
                                    {:type :bogus :index idx}))
                           d (case (:type op) :insert (cp/cp-count v) "delete" (- l) :replace (- (cp/cp-count v) l) 0)]
                       (recur (+ len d) (dec i) (conj out op)))))
-              2 (let [new (rstr (.nextInt r 40))]
-                  (-> (ta/diff body new)
-                      (ta/slide-to-tokens body tokens #{} nil nil)
-                      (ta/normalize-deletes body tokens))))]
+              2 (ta/diff body (rstr (.nextInt r 40))))]
     [body tokens ops]))
 
 (defn- apply-text-edits-in-turn
@@ -1231,81 +1014,6 @@
                         [b e] extents]
                     (assoc (tok [layer b] b e) :token/layer layer)))]]]
     (is (= new (:text/body (:text (body-edit old new tokens #{:s} #{:w :m})))) (pr-str old))))
-
-;; ---------------------------------------------------------------------------
-;; normalize-deletes counts the tokens cut near each pair of deletes, where it
-;; counted every token. This is the version that counted every token, to pin
-;; that the two choose alike.
-
-(defn- normalize-deletes-counting-every-token [ops old tokens]
-  (let [edits (text-ops/ops->edits ops)
-        near (text-index/tokens-near tokens (count edits))
-        cut-count (fn [ranges]
-                    (count (filter (fn [{:token/keys [begin end]}]
-                                     (and (< begin end)
-                                          (some (fn [[s e]]
-                                                  (and (< s end) (> e begin)
-                                                       (not (and (<= s begin) (<= end e)))))
-                                                ranges)))
-                                   tokens)))
-        ranges-of (fn [edits] (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits))
-        cp-sub (fn [s e] (cp/cp-subs old s e))
-        step (fn [edits]
-               (let [v (vec edits)]
-                 (loop [i 0]
-                   (when (< (inc i) (count v))
-                     (let [a (v i) b (v (inc i))]
-                       (if (and (= (:kind a) :delete) (= (:kind b) :delete) (< (:end a) (:start b)))
-                         (let [m (- (:start b) (:end a))
-                               k (cp-sub (:end a) (:start b))
-                               candidates (cond-> []
-                                            (and (<= m (- (:end b) (:start b)))
-                                                 (= k (cp-sub (- (:end b) m) (:end b))))
-                                            (conj {:kind :delete :start (:start a) :end (- (:end b) m)})
-                                            (and (<= m (- (:end a) (:start a)))
-                                                 (= k (cp-sub (:start a) (+ (:start a) m))))
-                                            (conj {:kind :delete :start (+ (:start a) m) :end (:end b)}))
-                               before (cut-count (ranges-of v))
-                               best (->> candidates
-                                         (map (fn [c] [(cut-count (ranges-of (assoc v i c (inc i) nil))) c]))
-                                         (filter (fn [[n _]] (< n before)))
-                                         (sort-by first)
-                                         first)]
-                           (if best
-                             (into (subvec v 0 i) (into [(second best)] (subvec v (+ i 2))))
-                             (recur (inc i))))
-                         (recur (inc i))))))))]
-    (loop [edits edits merged? false]
-      (if-let [next (step edits)]
-        (recur (vec (remove nil? next)) true)
-        (let [joined (#'text-read/join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
-          (if (or merged? (not= joined edits)) (text-ops/edits->ops joined) ops))))))
-
-(deftest normalize-deletes-counting-near-tokens-chooses-as-counting-all
-  ;; Short words from few letters, so a kept run often repeats the edge of a
-  ;; delete beside it, with words, morphemes, zero-width markers and tokens
-  ;; over several words, and more than 16 edits often enough that the
-  ;; tokens are looked up by position.
-  (let [r (java.util.Random. 17)
-        words ["a" "t" "at" "ta" "tat" "att" "aa" "é" "𐍂a"]
-        seps [" " " " "" "\n"]
-        diverged (atom [])]
-    (dotimes [case-n 3000]
-      (let [n (+ 2 (.nextInt r 30))
-            ws (vec (repeatedly n #(nth words (.nextInt r (count words)))))
-            body-of (fn [ws] (apply str (interleave ws (repeatedly #(nth seps (.nextInt r (count seps)))))))
-            old (body-of ws)
-            len (cp/cp-count old)
-            tokens (vec (for [i (range (.nextInt r 40))]
-                          (let [b (.nextInt r (inc len))
-                                e (if (< (.nextDouble r) 0.15) b (min len (+ b (.nextInt r 6))))]
-                            (tok i b e))))
-            new (body-of (vec (keep #(case (.nextInt r 4) 0 nil 1 (str % (nth words (.nextInt r (count words)))) %) ws)))
-            ops (ta/slide-to-tokens (ta/diff old new) old tokens #{} nil nil)]
-        (when (not= (normalize-deletes-counting-every-token ops old tokens)
-                    (ta/normalize-deletes ops old tokens))
-          (swap! diverged conj [case-n old new]))))
-    (is (= [] (take 5 @diverged)))))
 
 (deftest the-text-ops-make-is-the-text-applying-them-makes
   ;; `ops-body` gives the text ops make through a gap buffer rather than

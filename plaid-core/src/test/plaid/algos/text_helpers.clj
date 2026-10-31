@@ -10,7 +10,7 @@
   ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
   ([old new tokens partitioning word-layers opts]
    (let [roles (assoc opts :partitioning partitioning :deciders word-layers)]
-     (ta/apply-plain-gaps old tokens (ta/plain-body-gaps old new tokens roles) roles))))
+     (ta/apply-plain-gaps old tokens (ta/plain-body-gaps old new) roles))))
 
 (defn plain-edits
   "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
