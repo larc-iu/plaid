@@ -531,6 +531,14 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
             if any(t.target == b_node.id and t.rel == rel for t in a_node.doc_out):
                 return (f'Nothing to change: ({a_end["var"]} {rel} {b_end["var"]}) is already '
                         f'in the document graph.')
+    # And the other way round in this plan: the same direction staged again
+    # replaces the first, the other would be a second triple for the pair.
+    if group == 'coref':
+        for op in ws.ops:
+            if (op.get('kind') == 'create_triple' and op.get('document_id') == doc.id and op.get('rel') == rel
+                    and op.get('source_var') == target['var'] and op.get('target_var') == source['var']):
+                return (f'Nothing to change: ({target["var"]} {rel} {source["var"]}) is already '
+                        f'planned.')
 
     staged: List[Dict[str, Any]] = []
     for end in (source, target):

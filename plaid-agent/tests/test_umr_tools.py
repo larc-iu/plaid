@@ -204,6 +204,15 @@ def test_a_triple_that_is_already_there_plans_nothing(ws):
     assert run(ws, 'add_triple', document='Story', a='s2r', rel=':before', b='s1b').startswith('Planned')
 
 
+def test_a_coreference_planned_both_ways_in_one_plan_is_planned_once(ws):
+    # The app refuses the second one-by-one. Planned both ways, the plan
+    # stored two triples for one pair, and the export wrote it twice.
+    assert run(ws, 'add_triple', document='Story', a='s2r', rel=':same-entity', b='s1d').startswith('Planned')
+    out = run(ws, 'add_triple', document='Story', a='s1d', rel=':same-entity', b='s2r')
+    assert 'Nothing to change' in out and '(s2r :same-entity s1d) is already planned' in out, out
+    assert len([op for op in ws.ops if op['kind'] == 'create_triple']) == 1
+
+
 def test_an_end_that_is_neither_a_node_nor_a_constant_is_refused(ws):
     out = run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='nope')
     assert 'No node "nope"' in out
