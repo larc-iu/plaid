@@ -47,8 +47,15 @@ const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
 
 // `tagset`, when given, governs the morpheme-scope Gloss field (msl-0).
 // `contributor` mounts the editor as ANN in a project that reviews her work.
-function mount({ tagset = null, contributor = false, morphemes = undefined, threshold } = {}) {
+function mount({
+  tagset = null,
+  contributor = false,
+  morphemes = undefined,
+  threshold,
+  prepare,
+} = {}) {
   const raw = buildRawDoc(morphemes === undefined ? {} : { morphemes });
+  prepare?.(raw);
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const igt = tagset ? { tagsets: { Leipzig: tagset } } : {};
@@ -176,6 +183,59 @@ describe('a machine value below the project threshold', () => {
     expect(c.classList.contains('igt-field--machine')).toBe(true);
     expect(c.classList.contains('igt-field--doubtful')).toBe(true);
     expect(c.title).toContain('machine-made, unverified, 80% confident.');
+  });
+
+  // Every cell that shows provenance takes the mark, not the gloss alone: a
+  // word's field, a sentence's translation, and a morpheme's form (a model's
+  // segmentation, stamped on the morpheme token).
+  const machineEverywhere = (raw) => {
+    const [sentL, wordL, morphL] = raw.textLayers[0].tokenLayers;
+    sentL.spanLayers[0].spans.push({
+      id: 'sp-s',
+      tokens: ['s-1'],
+      value: 'the cat',
+      metadata: MACHINE,
+    });
+    wordL.spanLayers[0].spans.push({
+      id: 'sp-w',
+      tokens: ['w-1'],
+      value: 'DET',
+      metadata: MACHINE,
+    });
+    const m = morphL.tokens.find((t) => t.id === 'm-1');
+    m.metadata = {
+      ...m.metadata,
+      form: 'the',
+      prov: 'inferred',
+      provSource: 'service:x',
+      provProb: 0.8,
+    };
+  };
+  const doubtfulCells = () =>
+    ['sa:s-1:Translation', 'wa:w-1:POS', 'mf:m-1'].map((k) => [
+      k,
+      cell(k).classList.contains('igt-field--machine'),
+      cell(k).classList.contains('igt-field--doubtful'),
+    ]);
+
+  it('marks a word field, a translation and a morpheme form as it marks a gloss', async () => {
+    mount({ threshold: 0.9, prepare: machineEverywhere });
+    await settle(6);
+    expect(doubtfulCells()).toEqual([
+      ['sa:s-1:Translation', true, true],
+      ['wa:w-1:POS', true, true],
+      ['mf:m-1', true, true],
+    ]);
+  });
+
+  it('leaves them the plain machine mark at or above it', async () => {
+    mount({ prepare: machineEverywhere });
+    await settle(6);
+    expect(doubtfulCells()).toEqual([
+      ['sa:s-1:Translation', true, false],
+      ['wa:w-1:POS', true, false],
+      ['mf:m-1', true, false],
+    ]);
   });
 
   it('keeps the plain machine mark at or above it', async () => {
