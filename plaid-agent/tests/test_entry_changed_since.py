@@ -141,3 +141,22 @@ def test_an_entry_whose_senses_are_as_read_is_removed(live_client, tool):
         assert s.ids['vi-ali'] not in ids
     finally:
         s.delete()
+
+
+def test_an_entry_that_gained_a_reference_since_the_plan_is_not_deleted(live_client):
+    """A delete clears the references to the entry it read. One a person sets since, another entry's
+    variantOf pointed at it, would be left naming an entry that no longer exists (REV-FX-R1-2-1)."""
+    c = live_client
+    p = base_project()
+    p['vocabs'][0]['config']['igt']['fields']['variantOf'] = {'type': 'item', 'many': True}
+    s, _ws = seeded(c, p, _docs(), name='entry changed since: delete reference')
+    try:
+        ws = workspace(c, s)
+        call_tool(ws, 'delete_entry', {'entry_id': s.ids['vi-gam']})
+        c.vocab_items.patch_metadata(s.ids['vi-ali'], [{'op': 'set', 'path': ['variantOf'],
+                                                        'value': [s.ids['vi-gam']]}])
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert h.errors and 'got a reference since the plan was made' in ' '.join(h.errors), (h.errors, h.done)
+        assert entry(c, s, 'vi-gam')
+    finally:
+        s.delete()

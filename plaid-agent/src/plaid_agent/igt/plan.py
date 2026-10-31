@@ -112,7 +112,7 @@ from ..core.plan import (run_plan, CLEAR_PROV, Minter, PlanError, PlanOutOfDate,
                          summarize_plan)
 from .project import VIRTUAL_PREFIX, is_virtual, virtual_morpheme_id
 from .tagsets import verify_settings
-from .vocab import parent_of
+from .vocab import item_ref_fields, parent_of, ref_ids
 from ..core.tools import ValueRefusal
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -1336,6 +1336,21 @@ def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
                 form = (now.get(item_id) or {}).get('form')
                 reasons.append(f'the lexicon entry "{form}" got a sense since the plan was made' if form
                                else f'{_entry_named(op)} got a sense since the plan was made')
+        # A delete clears the references to the entry that it read (its
+        # repairs, :data:`REPAIR_OF`): one set since, another entry's variantOf
+        # pointed at it, would name an entry that is gone. A merge's own write
+        # repoints them.
+        fields = {v['id']: item_ref_fields(v.get('fields')) for v in project.vocabs if v.get('id')}
+        for op in removing:
+            if op.get('kind') != 'delete_entry':
+                continue
+            item_id = op.get('item_id')
+            read = {o.get('item_id') for o in ops if o.get(REPAIR_OF) == item_id}
+            if any(it.get('id') not in read and any(item_id in ref_ids(it, f) for f in fields.get(vid, ()))
+                   for vid in vocab_ids for it in lexicon(vid)):
+                form = (now.get(item_id) or {}).get('form')
+                reasons.append(f'the lexicon entry "{form}" got a reference since the plan was made' if form
+                               else f'{_entry_named(op)} got a reference since the plan was made')
     changed = set()
     for op in ops:
         item_id = pinned_entry(op)
