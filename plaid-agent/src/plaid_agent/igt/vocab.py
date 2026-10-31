@@ -150,11 +150,7 @@ def with_parent(metadata: Optional[dict], parent_id: Optional[str], order) -> di
 
 def example_refs(item: Optional[dict]) -> List[dict]:
     """Promoted example references on an item, {document, token} only.
-
-    Called by nothing here. It is part of the 1:1 port of the app's
-    vocabDictionary.js (`exampleRefs`), which the mirror test holds function
-    for function, so it stays whether or not a tool has a use for it yet.
-    """
+    Mirrors vocabDictionary.js's ``exampleRefs``."""
     v = ((item or {}).get('metadata') or {}).get(EXAMPLES_KEY)
     return [e for e in v if isinstance(e, dict) and _is_id(e.get('document')) and _is_id(e.get('token'))] \
         if isinstance(v, list) else []
@@ -387,8 +383,9 @@ def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, los
     survivor, the losers' senses become the survivor's (each loser's in its own
     sense order, appended after the survivor's), and a survivor that hangs
     anywhere under a loser is lifted to where the topmost such loser stood.
-    Losers get no patch (they are deleted). Mirrors planMergeRefs, which is
-    what Bulk Edit's merge does.
+    The losers' promoted examples are added to the survivor's, each once
+    (ruling Q2). Losers get no patch (they are deleted). Mirrors
+    planMergeRefs, which is what Bulk Edit's merge does.
 
     The lift looks at the survivor's whole ancestor chain, not only its parent:
     a headword merged into a sense two levels down makes the sense between
@@ -422,6 +419,7 @@ def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, los
                 continue
             order_of[c['id']] = order
             order += 1
+    carried = [ref for it in items or [] if it['id'] in losers for ref in example_refs(it)]
     patches = []
     for it in items or []:
         if it['id'] in losers:
@@ -432,6 +430,14 @@ def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, los
             if survivor_parent is not _unchanged:
                 meta = with_parent(meta, survivor_parent or None,
                                    next_sense_order(tree, survivor_parent) if survivor_parent else None)
+                changed = True
+            have = {(e['document'], e['token']) for e in example_refs(it)}
+            for ref in carried:
+                key = (ref['document'], ref['token'])
+                if key in have:
+                    continue
+                have.add(key)
+                meta = with_example_added(meta, ref)
                 changed = True
         elif it['id'] in order_of:
             meta = with_parent(meta, survivor_id, order_of[it['id']])

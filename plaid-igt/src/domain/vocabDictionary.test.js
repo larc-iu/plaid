@@ -567,6 +567,22 @@ describe('delete and merge', () => {
     );
     expect([byId.c1.senseOrder, byId.c2.senseOrder, byId.c3.senseOrder]).toEqual([1, 2, 3]);
   });
+
+  // Ruling Q2: the losers' promoted examples are added to the survivor's,
+  // each once. Imported text examples stay with the loser.
+  it("adds the losers' promoted examples to the survivor's, each once", () => {
+    const ex = (token) => ({ document: 'd', token });
+    const list = [
+      item('s', 's', { examples: [{ text: 'old' }, ex('t1')] }),
+      item('l1', 'l', { examples: [ex('t2'), ex('t1'), { text: 'lost' }] }),
+      item('l2', 'l', { examples: [ex('t3'), ex('t2')] }),
+    ];
+    const byId = Object.fromEntries(
+      planMergeRefs(list, fields, 's', ['l1', 'l2']).map((p) => [p.id, p.metadata]),
+    );
+    expect(byId.s.examples).toEqual([{ text: 'old' }, ex('t1'), ex('t2'), ex('t3')]);
+    expect(planMergeRefs([item('s', 's'), item('l', 'l')], fields, 's', ['l'])).toEqual([]);
+  });
 });
 
 describe('morphTypeOf', () => {

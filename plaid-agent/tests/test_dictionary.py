@@ -426,6 +426,21 @@ def test_merging_repoints_references_at_the_survivor():
     assert by_id['d-nyumba'] == {'seeAlso': ['d-phika']}  # deduped onto the survivor
 
 
+def test_merging_carries_the_removed_entrys_examples_onto_the_survivor():
+    """Ruling Q2: the examples promoted onto the entry merged away are added to
+    the survivor's, each once, in the merge's own change, as the app's merge
+    does (planMergeRefs)."""
+    items = [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]
+    ex = lambda t: {'document': 'd1', 'token': t}
+    items[0]['metadata']['examples'] = [ex('t1'), ex('t2')]   # kwatha, merged away
+    items[4]['metadata']['examples'] = [ex('t2')]             # phika, the survivor
+    w = dict_ws(items=items)
+    call_tool(w, 'merge_entries', {'keep_form': 'phika', 'remove_form': 'kwatha'})
+    by_id = {o['item_id']: o for o in ops_of(w, 'set_entry_metadata')}
+    assert by_id['d-phika']['patch'] == {'variantOf': None, 'examples': [ex('t2'), ex('t1')]}
+    assert 'takes 1 example from the merged entry' in by_id['d-phika']['label']
+
+
 # ---- the quality report ----------------------------------------------------
 
 def test_check_lexicon_counts_entries_not_senses():

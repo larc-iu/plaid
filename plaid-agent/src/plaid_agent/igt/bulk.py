@@ -27,7 +27,8 @@ from .tools import (parse_analysis, analysis_op, stage_equals, no_scope_reaches,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
-from .vocab import morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids, stored_entry_form
+from .vocab import (example_refs, morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids,
+                    stored_entry_form)
 
 
 def _bulk_note(ws: Workspace, ops: List[Dict[str, Any]], what: str) -> str:
@@ -1666,6 +1667,9 @@ def _repair_says(before: dict, after: dict, view) -> str:
         if before.get(f['name']) != after.get(f['name']):
             kept = ref_ids({'metadata': after}, f)
             bits.append(f'{f["name"]} ' + (', '.join(view.label(x) for x in kept) if kept else 'cleared'))
+    gained = len(example_refs({'metadata': after})) - len(example_refs({'metadata': before}))
+    if gained > 0:
+        bits.append(f'takes {gained} example{"s" if gained != 1 else ""} from the merged entry')
     return '; '.join(bits) or 'reference updated'
 
 
@@ -1685,7 +1689,8 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
                     remove_gloss: Optional[str] = None) -> str:
     """PLAN: fold one lexicon entry into another: every link to the removed
     entry is moved to the kept one, then the removed entry is deleted. The
-    kept entry's fields are untouched."""
+    kept entry's fields are untouched, and it takes the removed entry's
+    promoted examples."""
     keep = _existing(ws, keep_form, lexicon, keep_id, keep_gloss, 'be merged into')
     remove = _existing(ws, remove_form, lexicon, remove_id, remove_gloss, 'be merged away')
     if keep['id'] == remove['id']:

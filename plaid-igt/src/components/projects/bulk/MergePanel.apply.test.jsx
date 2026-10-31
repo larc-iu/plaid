@@ -36,6 +36,7 @@ const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
     items: ITEMS,
     reads: 0,
     sent: [],
+    ops: [],
     vocabLayers: {
       get: async (id, withItems) => {
         if (withItems) client.reads += 1;
@@ -63,6 +64,7 @@ const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
         },
       });
       client.sent.push(...ops.map(([kind]) => kind));
+      client.ops.push(...ops);
       if (refuse) throw refuse;
       return ops.map(([kind]) => ({ status: 200, body: kind === 'merge' ? merged : {} }));
     },
@@ -128,6 +130,33 @@ describe('Merge', () => {
     await previewDogs(view);
     await apply(view);
     expect(client.sent).toEqual(['merge']);
+    await view.unmount();
+  });
+
+  // Ruling Q2 (CR-IGT-5): the panel shows each ticked entry's examples from
+  // documents, and the survivor takes the others' in the merge's batch, each
+  // once.
+  it("lists each entry's examples and carries the merged one's onto the survivor", async () => {
+    const client = makeClient({ merged: { moved: 1, duplicates: 0, removed: ['d2'] } });
+    const ex = (token) => ({ document: 'doc1', token });
+    client.items = [
+      { id: 'd1', form: 'dog', metadata: { examples: [ex('t1')] } },
+      { id: 'd2', form: 'dog', metadata: { examples: [ex('t1'), ex('t2')] } },
+      { id: 'c1', form: 'cat' },
+    ];
+    const view = await mount(client);
+    await previewDogs(view);
+    const panels = all(document.body, 'span').filter((s) => s.textContent === 'Examples');
+    expect(panels).toHaveLength(2);
+    await apply(view);
+    const [, updates] = client.ops.find(([kind]) => kind === 'bulkUpdate');
+    expect(updates).toEqual([
+      {
+        id: 'd1',
+        metadata: [{ op: 'set', path: ['examples'], value: [ex('t1'), ex('t2')] }],
+      },
+    ]);
+    expect(client.sent).toEqual(['bulkUpdate', 'merge']);
     await view.unmount();
   });
 

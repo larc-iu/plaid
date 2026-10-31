@@ -14,6 +14,7 @@ import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
 import { FormLabel } from '@/components/vocabularies/FormLabel';
+import { ExamplesPanel } from '@/components/vocabularies/DictionaryPanels';
 import {
   normalizeVocabFields,
   humanizeFieldName,
@@ -42,16 +43,17 @@ const isBookkeepingKey = (k) => PROVENANCE_KEYS.includes(k);
 
 // The whole of one lexicon entry (minus its attestations): every configured
 // field in schema order, then any other content the entry carries (custom
-// keys, a FLEx homograph number, example sentences). Shown under a ticked row
-// so what survives and what is lost in a merge is plain to see. `nameOf`
-// names another entry of the vocabulary, for the fields that refer to one.
-const EntryDetail = ({ item, fields, nameOf }) => {
+// keys, a FLEx homograph number), then its examples as the entry screen shows
+// them, promoted and imported alike. Shown under a ticked row so what survives
+// and what is lost in a merge is plain to see: the survivor takes the others'
+// promoted examples (planMergeRefs). `nameOf` names another entry of the
+// vocabulary, for the fields that refer to one.
+const EntryDetail = ({ item, fields, nameOf, client }) => {
   const meta = item.metadata || {};
   const known = new Set(fields.map((f) => f.name));
   const extras = Object.keys(editableMetadata(meta)).filter(
     (k) => !known.has(k) && !isBookkeepingKey(k),
   );
-  const examples = Array.isArray(meta.examples) ? meta.examples.filter((ex) => ex?.text) : [];
   const homograph = Number(meta.homograph) || 0;
   const show = (v) =>
     v == null || String(v).trim() === '' ? (
@@ -60,47 +62,33 @@ const EntryDetail = ({ item, fields, nameOf }) => {
       String(v)
     );
   return (
-    <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0.5 text-sm">
-      {fields.map((f) => (
-        <Fragment key={f.name}>
-          <dt className="text-xs text-muted-foreground">{humanizeFieldName(f.name)}</dt>
-          <dd>
-            {f.type === FIELD_TYPES.ITEM
-              ? show(refIds(item, f).map(nameOf).filter(Boolean).join(', '))
-              : show(meta[f.name])}
-          </dd>
-        </Fragment>
-      ))}
-      {extras.map((k) => (
-        <Fragment key={k}>
-          <dt className="text-xs text-muted-foreground">{humanizeFieldName(k)}</dt>
-          <dd>{show(typeof meta[k] === 'object' ? JSON.stringify(meta[k]) : meta[k])}</dd>
-        </Fragment>
-      ))}
-      {homograph > 0 && (
-        <>
-          <dt className="text-xs text-muted-foreground">FLEx homograph</dt>
-          <dd>{homograph}</dd>
-        </>
-      )}
-      {examples.length > 0 && (
-        <>
-          <dt className="text-xs text-muted-foreground">Examples</dt>
-          <dd>
-            <ul className="flex flex-col gap-0.5">
-              {examples.map((ex, i) => (
-                <li key={i}>
-                  {ex.text}
-                  {ex.translation && (
-                    <span className="block text-xs text-muted-foreground">{ex.translation}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </dd>
-        </>
-      )}
-    </dl>
+    <div className="flex flex-col gap-2">
+      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0.5 text-sm">
+        {fields.map((f) => (
+          <Fragment key={f.name}>
+            <dt className="text-xs text-muted-foreground">{humanizeFieldName(f.name)}</dt>
+            <dd>
+              {f.type === FIELD_TYPES.ITEM
+                ? show(refIds(item, f).map(nameOf).filter(Boolean).join(', '))
+                : show(meta[f.name])}
+            </dd>
+          </Fragment>
+        ))}
+        {extras.map((k) => (
+          <Fragment key={k}>
+            <dt className="text-xs text-muted-foreground">{humanizeFieldName(k)}</dt>
+            <dd>{show(typeof meta[k] === 'object' ? JSON.stringify(meta[k]) : meta[k])}</dd>
+          </Fragment>
+        ))}
+        {homograph > 0 && (
+          <>
+            <dt className="text-xs text-muted-foreground">FLEx homograph</dt>
+            <dd>{homograph}</dd>
+          </>
+        )}
+      </dl>
+      <ExamplesPanel item={item} client={client} linkedTokenIds={null} canManage={false} />
+    </div>
   );
 };
 
@@ -322,8 +310,8 @@ export const MergePanel = ({ project, client }) => {
         </div>
         <p className="text-xs text-muted-foreground">
           Tick the entries to merge and choose which one survives. Every word and morpheme linked to
-          the others is re-linked to the survivor. The survivor’s fields are kept and the other
-          entries are deleted.
+          the others is re-linked to the survivor. The survivor’s fields are kept, it takes the
+          others’ examples from documents, and the other entries are deleted.
         </p>
         {items && !canMerge && (
           <Notice tone="warning">
@@ -377,7 +365,7 @@ export const MergePanel = ({ project, client }) => {
                   </span>
                   {on && (
                     <div className="col-start-3 pb-1 pt-1">
-                      <EntryDetail item={it} fields={fields} nameOf={nameOf} />
+                      <EntryDetail item={it} fields={fields} nameOf={nameOf} client={client} />
                     </div>
                   )}
                 </div>

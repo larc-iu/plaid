@@ -769,9 +769,10 @@ export const planDeleteRefs = (items, fields, deletedIds) => {
 /**
  * Patches for a merge: every reference to a losing entry now names the
  * survivor, the losers' senses become the survivor's (each loser's in its own
- * sense order, appended after the survivor's), and a survivor that hangs
- * anywhere under a loser is lifted to where the topmost such loser stood.
- * Losers themselves get no patch (they are deleted).
+ * sense order, appended after the survivor's), a survivor that hangs
+ * anywhere under a loser is lifted to where the topmost such loser stood, and
+ * the losers' promoted examples are added to the survivor's, each once
+ * (ruling Q2). Losers themselves get no patch (they are deleted).
  *
  * The lift looks at the survivor's whole ancestor chain, not only its parent.
  * With a headword merged into a sense two levels down, the sense between them
@@ -808,6 +809,7 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
       orderOf.set(c.id, order++);
     }
   }
+  const carried = (items || []).filter((it) => losers.has(it.id)).flatMap(exampleRefs);
   const patches = [];
   for (const it of items || []) {
     if (losers.has(it.id)) continue;
@@ -820,6 +822,14 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
           survivorParent,
           survivorParent ? nextSenseOrder(tree, survivorParent) : null,
         );
+        changed = true;
+      }
+      const have = new Set(exampleRefs(it).map((e) => exampleKey(e.document, e.token)));
+      for (const ref of carried) {
+        const key = exampleKey(ref.document, ref.token);
+        if (have.has(key)) continue;
+        have.add(key);
+        meta = withExampleAdded(meta, ref);
         changed = true;
       }
     } else if (orderOf.has(it.id)) {
