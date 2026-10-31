@@ -154,6 +154,8 @@ export const morphForm = {
         const pos = el.selectionStart ?? el.value.length;
         const left = el.value.slice(0, pos);
         const right = el.value.slice(pos);
+        // Nothing before the caret: a split would leave an empty morpheme.
+        if (left === '') return;
         const orig = el.value;
         el.value = left;
         el.dataset.suppressCommit = '1';

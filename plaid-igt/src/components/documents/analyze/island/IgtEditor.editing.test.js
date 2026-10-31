@@ -480,6 +480,28 @@ describe('splitting a morpheme form', () => {
     expect(host.contains(document.activeElement)).toBe(false);
   });
 
+  it('does nothing with the caret at the start, or in the empty cell a split left', async () => {
+    // "ава=" then "-" "-" made three empty morphemes, each needing a Backspace.
+    const { doc } = mount();
+    const f = cell('mf:m-1');
+    focus(f);
+    f.setSelectionRange(0, 0);
+    expect(key(f, '-').defaultPrevented).toBe(true);
+    await settle(6);
+    expect(formCells()).toEqual(['the']);
+    f.setSelectionRange(3, 3);
+    key(f, '=');
+    await settle(6);
+    expect(formsOf(doc)).toEqual(['the', '']);
+    const empty = document.activeElement;
+    expect(empty.dataset.prec).toBe('2');
+    key(empty, '-');
+    key(empty, '=');
+    await settle(6);
+    expect(formsOf(doc)).toEqual(['the', '']);
+    expect(formCells()).toEqual(['the', '']);
+  });
+
   it('a Backspace typed mid-flight takes back the boundary just typed, not the letter before it', async () => {
     const { doc } = mount();
     const f = cell('mf:m-1');
