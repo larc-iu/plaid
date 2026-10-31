@@ -96,7 +96,12 @@ def _apply_delete_relation(ctx: Context, op) -> int:
 
 
 def _apply_set_concept(ctx: Context, op) -> int:
-    ctx.b.update('spans', op['span_id'], value=op['concept'], metadata=metadata_ops(ctx.restamp()))
+    """The new concept, restamped. A node picked from a vocabulary entry
+    forgets it (``umr_unset``, the app's ``entryRecord(null)``), since the
+    concept is no longer the entry's."""
+    ops = metadata_ops(ctx.restamp())
+    ops += [{'op': 'delete', 'path': [UMR, k]} for k in op.get('umr_unset') or ()]
+    ctx.b.update('spans', op['span_id'], value=op['concept'], metadata=ops)
     return 1
 
 
@@ -501,7 +506,7 @@ KIND = ok.registry([
     OpKind('set_concept', _CONCEPT, replaces=_replaces_set_concept,
            required=('span_id',), apply=_apply_set_concept,
            target=lambda op: ('concept', op.get('span_id')), token_keys=('span_id',),
-           compact_each=('span_id', 'var', 'concept', 'ref', 'label'),
+           compact_each=('span_id', 'var', 'concept', 'umr_unset', 'ref', 'label'),
            compact_label=_kind_label('change', ('concept', 'concepts'))),
     OpKind('set_attrs', _ATTRS, replaces=_replaced_attrs, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),

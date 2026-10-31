@@ -351,10 +351,16 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 order_kept.append(var)
 
         if old.concept != node.concept:
-            updates.append({
+            change = {
                 'kind': 'set_concept', 'document_id': did, 'ref': f's{sentence.number}.{var}',
                 'span_id': old.id, 'var': var, 'concept': node.concept,
-                'label': f'{var}: {old.concept or "(no concept)"} becomes {node.concept}'})
+                'label': f'{var}: {old.concept or "(no concept)"} becomes {node.concept}'}
+            # A concept typed over is no longer the one its vocabulary entry
+            # gave, so the node forgets the entry, as the app's applyPenman
+            # does: the entry check would otherwise say the entry changed.
+            if ((old.metadata or {}).get('umr') or {}).get('entry'):
+                change['umr_unset'] = ['entry', 'entryVocab']
+            updates.append(change)
         if changed_attrs:
             updates.append({
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.number}.{var}',

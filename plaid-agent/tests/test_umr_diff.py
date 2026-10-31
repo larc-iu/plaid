@@ -9,7 +9,7 @@ writes the executor makes against the fake client.
 import pytest
 from plaid_client import apply_metadata_ops
 
-from umr_fixtures import SENTENCE_1_PENMAN, umr_client, umr_ws
+from umr_fixtures import SENTENCE_1_PENMAN, document_raw, umr_client, umr_ws
 
 from plaid_agent.umr.diff import plan_penman
 from plaid_agent.umr.plan import execute_plan
@@ -175,6 +175,40 @@ def test_a_concept_change_is_one_span_update_carrying_the_approval_stamp(client,
     [(_, ops)] = client.patches('spans')
     stamp = apply_metadata_ops({}, ops)
     assert stamp['provConfirmed'] is True and stamp['provSource'] == 'test'
+
+
+def _with_entry():
+    """The fixture with s1d (dog) picked from a vocabulary entry."""
+    doc = document_raw()
+    for tk in doc['text_layers'][0]['token_layers']:
+        for sl in tk.get('span_layers') or []:
+            for sp in sl.get('spans') or []:
+                if sp['id'] == 'mc-d':
+                    sp['metadata']['umr'].update({'entry': 'entry-dog', 'entryVocab': 'vocab-1'})
+    return doc
+
+
+def test_a_concept_typed_over_forgets_the_entry_it_was_picked_from():
+    """As the app's applyPenman does (entryRecord(null)): kept, the entry
+    check called the node's own concept a change of the entry, and its menu
+    offered to put the entry's concept back over the approved one."""
+    client = umr_client(documents={'umr1': _with_entry()})
+    ws = umr_ws(client)
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
+                                   'text': SENTENCE_1_PENMAN.replace('/ dog', '/ cat')})
+    applied(client, ws)
+    assert client.updates('spans') == [('mc-d', 'cat')]
+    meta = landed(client, ws, 'mc-d')
+    assert 'entry' not in meta['umr'] and 'entryVocab' not in meta['umr']
+    assert meta['umr']['var'] == 's1d' and meta['provSource'] == 'test'
+    # A node that names no entry is sent no delete for one.
+    client = umr_client()
+    ws = umr_ws(client)
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
+                                   'text': SENTENCE_1_PENMAN.replace('/ dog', '/ cat')})
+    applied(client, ws)
+    [(_, ops)] = client.patches('spans')
+    assert not [o for o in ops if o['op'] == 'delete' and o['path'][0] == 'umr']
 
 
 def test_an_attribute_change_sets_the_attributes_alone(client, ws):
