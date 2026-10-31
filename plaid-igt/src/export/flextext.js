@@ -50,6 +50,7 @@ import {
 import { morphFormOf } from '../domain/igtExport.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { lexiconViewOf } from '../domain/vocabLookup.js';
+import { buildHomographNumbers } from '../domain/vocabDictionary.js';
 import { resolveFieldLang } from '../domain/fieldNames.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { provState } from '@larc-iu/plaid-client';
@@ -248,8 +249,9 @@ function morphXml(indent, m, options, lex, typedBefore) {
     );
     // Narrows the match when entries share a lexeme form. FLEx reads a missing
     // hn as 0 and falls back to the unfiltered set, so omitting it is safe.
-    const hn = Number(rootMeta.homograph);
-    if (Number.isInteger(hn) && hn > 0) {
+    // The number the app shows (buildHomographNumbers), as LIFT writes it.
+    const hn = entry.homograph;
+    if (hn) {
       lines.push(...item(`${indent}  `, 'hn', analysisLang(options), String(hn)));
     }
   }
@@ -447,15 +449,19 @@ const mediaLocationOf = (docData) => {
  */
 const lexiconResolver = (vocabularies) => {
   const views = new Map();
+  const homographs = new Map();
   for (const vocab of Object.values(vocabularies || {})) {
     views.set(vocab.id, lexiconViewOf(vocab.items));
+    for (const [id, n] of buildHomographNumbers(vocab.items || [])) homographs.set(id, n);
   }
   return (vocabItem) => {
     const view = views.get(vocabItem?.vocabId);
     if (!view || !view.byId.has(vocabItem.id)) return null;
+    const rootId = view.tree.rootOf.get(vocabItem.id);
     return {
-      root: view.byId.get(view.tree.rootOf.get(vocabItem.id)) ?? vocabItem,
+      root: view.byId.get(rootId) ?? vocabItem,
       morphType: view.morphTypeOf(vocabItem.id),
+      homograph: homographs.get(rootId) ?? null,
     };
   };
 };

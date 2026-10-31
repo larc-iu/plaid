@@ -230,15 +230,33 @@ describe('buildFlextextDocument', () => {
     return doc;
   };
 
-  it('sends the decorated lexeme form as cf, plus the homograph number', () => {
+  it('sends the decorated lexeme form as cf', () => {
     const doc = linkMorpheme(makeFixtureDoc(), {
       lexemeForm: 'perr',
       morphType: 'suffix',
-      homograph: 2,
     });
     const morph = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS)).querySelector('morph');
     expect(morph.querySelector('item[type="cf"]').textContent).toBe('-perr');
-    expect(morph.querySelector('item[type="hn"]').textContent).toBe('2');
+  });
+
+  // hn is the number the app shows (buildHomographNumbers), as LIFT's order:
+  // an entry made in Plaid beside imported ones gets its number too, and a
+  // stored number on an entry spelled like no other is no homograph.
+  it('sends the homograph number the app shows', () => {
+    const hnOf = (items, linked) => {
+      const doc = makeFixtureDoc();
+      doc.vocabularies = { v1: { id: 'v1', items } };
+      for (const list of [doc.sortedSentences[0].tokens[0], doc.sortedSentences[0].pieces[0]]) {
+        list.morphemes[0].vocabItem = { ...items.find((i) => i.id === linked), vocabId: 'v1' };
+      }
+      const morph = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS)).querySelector('morph');
+      return morph.querySelector('item[type="hn"]')?.textContent ?? null;
+    };
+    const imported = { id: 'h1', form: 'perro', metadata: { homograph: 1 } };
+    const made = { id: 'h2', form: 'perro', metadata: {} };
+    expect(hnOf([imported, made], 'h2')).toBe('2');
+    expect(hnOf([imported, made], 'h1')).toBe('1');
+    expect(hnOf([{ id: 'h3', form: 'gato', metadata: { homograph: 2 } }], 'h3')).toBeNull();
   });
 
   it('falls back to the item form when the entry cites what it lexemes', () => {
@@ -257,6 +275,7 @@ describe('buildFlextextDocument', () => {
       v1: {
         id: 'v1',
         items: [
+          { id: 'h0', form: 'perro', metadata: { homograph: 1 } },
           {
             id: 'h1',
             form: 'perro',

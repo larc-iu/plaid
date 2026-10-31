@@ -196,11 +196,36 @@ describe('buildLiftLexicon', () => {
     expect(dom.querySelector('citation text').textContent).toBe('ktabar');
   });
 
-  it('writes the homograph number as the entry order', () => {
+  // The number igt shows beside the form (buildItemNumbers), one rule for
+  // every entry spelled like another, imported or made in Plaid, as the
+  // LaTeX book writes it. A stored number only orders the group.
+  it('writes the homograph number the app shows as the entry order', () => {
     const dom = parse(
-      build([{ id: 'v1', items: [item('i1', 'a', { homograph: 2, gloss: 'g' })] }]).lift,
+      build([
+        {
+          id: 'v1',
+          items: [
+            item('i1', 'a', { homograph: 2, gloss: 'imported second' }),
+            item('i2', 'a', { homograph: 1, gloss: 'imported first' }),
+            item('i3', 'a', { gloss: 'made in Plaid' }),
+            item('i4', 'b', { homograph: 2, gloss: 'alone' }),
+          ],
+        },
+      ]).lift,
     );
-    expect(dom.querySelector('entry').getAttribute('order')).toBe('2');
+    const order = Object.fromEntries(
+      [...dom.querySelectorAll('entry')].map((e) => [
+        e.querySelector('sense gloss text, sense definition text')?.textContent ??
+          e.getAttribute('id'),
+        e.getAttribute('order'),
+      ]),
+    );
+    expect(order).toEqual({
+      'imported first': '1',
+      'imported second': '2',
+      'made in Plaid': '3',
+      alone: null,
+    });
   });
 
   it('only emits morph types FLEx knows', () => {

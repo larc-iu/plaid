@@ -15,7 +15,9 @@
 //   item.form               → <citation> when a lexemeForm differs, else <lexical-unit>
 //   metadata.lexemeForm     → <lexical-unit>
 //   metadata.morphType      → <trait name="morph-type">        (entry)
-//   metadata.homograph      → entry @order (the homograph number)
+//   the number the app shows → entry @order, for a headword spelled like
+//                             another (buildHomographNumbers; a stored
+//                             metadata.homograph only orders the group)
 //   metadata.flexEntry      → entry @guid, so re-importing into the FLEx project
 //                             the data came from MERGES instead of duplicating
 //   metadata.flexSense      → sense @id
@@ -37,7 +39,12 @@
 // such guids, so each of its items is an entry of its own.
 
 import { xmlEscape } from './xml.js';
-import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictionary.js';
+import {
+  allExamples,
+  buildHomographNumbers,
+  buildSenseTree,
+  exampleKey,
+} from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import {
   ENTRY_ROLES,
@@ -406,12 +413,12 @@ function entryXml(indent, group, ctx) {
   // form aside only when the two differed, so put both back where they came from.
   const headword = lexemeForm ?? citation;
   const entryId = entryIdOf(group);
-  const homograph = Number(meta.homograph);
+  const homograph = ctx.homographs.get(first.id);
 
   const attrs = [
     `id="${xmlEscape(entryId)}"`,
     ...(guid ? [`guid="${xmlEscape(guid)}"`] : []),
-    ...(Number.isInteger(homograph) && homograph > 0 ? [`order="${homograph}"`] : []),
+    ...(homograph ? [`order="${homograph}"`] : []),
   ];
 
   const inner = [
@@ -654,6 +661,10 @@ export function buildLiftLexicon({
     refFields,
     entryRefFields,
     liftIds: assignLiftIds(groups),
+    // The number the app shows, for every entry spelled like another.
+    homographs: new Map(
+      vocabularies.flatMap((vocab) => [...buildHomographNumbers(vocab.items || [])]),
+    ),
     relationTypes: new Set(),
     posValues: new Set(),
     customNames: new Set(),

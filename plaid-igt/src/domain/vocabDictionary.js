@@ -364,6 +364,24 @@ export const buildSenseTree = (items) => {
 };
 
 /**
+ * Each headword's homograph number, its place among the headwords spelled the
+ * same (1, 2, ...), for headwords that share their form only. What the app
+ * shows as the first segment of an entry's number, and what an export that
+ * writes a homograph number writes (LIFT `order`, flextext `hn`). A stored
+ * `homograph` only orders the group. `tree` may be passed to save building
+ * it twice.
+ *
+ * @returns {Map<string, number>} headword id -> its homograph number
+ */
+export const buildHomographNumbers = (items, tree = buildSenseTree(items)) => {
+  const out = new Map();
+  for (const group of homographGroups(items, tree).values()) {
+    if (group.length > 1) group.forEach((r, i) => out.set(r.id, i + 1));
+  }
+  return out;
+};
+
+/**
  * One dotted number per item, the name it goes by everywhere. The first
  * segment is the HEADWORD's: its place among the
  * entries spelled the same ("a 1", "a 2"), or "1" when it is alone but has
@@ -377,13 +395,14 @@ export const buildSenseTree = (items) => {
  * @returns {Map<string, string>} item id -> its number, '' for a lone entry
  */
 export const buildItemNumbers = (items, tree = buildSenseTree(items)) => {
-  const segOf = new Map();
+  const segOf = new Map([...buildHomographNumbers(items, tree)].map(([id, n]) => [id, String(n)]));
   for (const group of homographGroups(items, tree).values()) {
-    if (group.length > 1) group.forEach((r, i) => segOf.set(r.id, String(i + 1)));
     // A lone headword with senses is "1" too, so one segment always means a
     // headword and two always mean a sense: "adidi 1" over "adidi 1.1",
     // never a bare "adidi" beside an "adidi 1" that could be either.
-    else if (tree.childrenOf.get(group[0].id)?.length) segOf.set(group[0].id, '1');
+    if (group.length === 1 && tree.childrenOf.get(group[0].id)?.length) {
+      segOf.set(group[0].id, '1');
+    }
   }
   const out = new Map();
   for (const it of items || []) {

@@ -349,9 +349,8 @@ export default {
       where: 'lift two <entry> elements with the same <lexical-unit>, in server order',
     },
     'item.homographNumber': {
-      carried: true,
-      where:
-        'lift <entry order>, and flextext <morph><item type="hn"> on every morph linked to the entry',
+      carried: 'changed',
+      how: 'The number written is the one the app shows: every headword spelled like another gets its place in that group (lift <entry order>, flextext <morph><item type="hn">), a stored number only ordering the group, and a headword spelled like no other gets none. A FLEx project that left same-form entries unnumbered (FieldWorks groups by form and morph type) comes back numbered.',
     },
     'item.exampleCorpus': {
       carried: 'changed',
