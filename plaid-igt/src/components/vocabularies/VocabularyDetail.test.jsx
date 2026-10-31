@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { refusal } from '../../../../plaid-client-js/src/testing.js';
 
 // One route component serves every vocabulary id, so walking from A to B keeps
 // this screen mounted and starts a second load without ending the first.
@@ -160,7 +161,7 @@ describe('a vocabulary marked for a project that is gone', () => {
       projects: {
         list: async () => [],
         get: async () => {
-          throw Object.assign(new Error('Project not found'), { status: 404 });
+          throw refusal(404, { error: 'Project not found' });
         },
       },
     };
@@ -171,5 +172,85 @@ describe('a vocabulary marked for a project that is gone', () => {
     expect(heading(view.container)).toBe('Left lexicon');
     expect(unmarked).toEqual([]);
     await view.unmount();
+  });
+});
+
+// CR-IGT-1: core tells a non-admin a deleted project is a project they
+// cannot read (403), never that it is gone. The page stays shut, and the
+// vocabulary's maintainer may take the mark off: a write on the press only,
+// shown at once, put back if refused (ruling Q4).
+describe('a vocabulary marked for a project its maintainer cannot read', () => {
+  const setup = ({ maintainers = ['u'], unmark = async () => {} } = {}) => {
+    const unmarked = [];
+    auth.user = { id: 'u', isAdmin: false };
+    auth.client = {
+      vocabLayers: {
+        get: async () => ({
+          id: 'A',
+          name: 'Left lexicon',
+          config: { igt: { import: { projectId: 'GONE' } } },
+          maintainers,
+        }),
+        deleteConfig: async (...a) => {
+          unmarked.push(a);
+          return unmark();
+        },
+      },
+      projects: {
+        list: async () => [],
+        get: async () => {
+          throw refusal(403, { error: 'User u lacks sufficient privileges to read project GONE' });
+        },
+      },
+    };
+    return unmarked;
+  };
+  const settle = (view) => view.step(() => new Promise((r) => setTimeout(r, 0)));
+  const detach = (view) =>
+    [...view.container.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Detach from import',
+    );
+
+  it('stays shut, writes nothing on open, and opens on Detach from import', async () => {
+    const unmarked = setup();
+    const view = await renderComponent(app);
+    await settle(view);
+    await settle(view);
+    expect(view.container.textContent).toContain('belongs to an import that did not finish');
+    expect(view.container.textContent).toContain('Its project cannot be opened.');
+    expect(unmarked).toEqual([]);
+    await view.step(() => detach(view).click());
+    await settle(view);
+    expect(unmarked).toEqual([['A', 'igt', 'import']]);
+    expect(heading(view.container)).toBe('Left lexicon');
+    await view.unmount();
+    auth.user = { id: 'u', isAdmin: true };
+  });
+
+  it('puts the mark back when the write is refused', async () => {
+    setup({
+      unmark: async () => {
+        throw refusal(403, { error: 'Forbidden' });
+      },
+    });
+    const view = await renderComponent(app);
+    await settle(view);
+    await settle(view);
+    await view.step(() => detach(view).click());
+    await settle(view);
+    expect(view.container.textContent).toContain('belongs to an import that did not finish');
+    await view.unmount();
+    auth.user = { id: 'u', isAdmin: true };
+  });
+
+  it('offers nothing to someone who does not maintain the vocabulary', async () => {
+    setup({ maintainers: ['someone-else'] });
+    const view = await renderComponent(app);
+    await settle(view);
+    await settle(view);
+    expect(view.container.textContent).toContain('belongs to an import that did not finish');
+    expect(detach(view)).toBeUndefined();
+    await view.unmount();
+    auth.user = { id: 'u', isAdmin: true };
   });
 });

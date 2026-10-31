@@ -419,12 +419,33 @@ export const unmarkVocab = async (client, vocabId) => {
 export const vocabImporting = (config) => readIgt(config, IMPORT_KEY) != null;
 
 /**
+ * What a reader can learn of the project an import mark names: 'gone' when
+ * core answers 404 (it says so to an admin only), 'unreadable' on a 403 (a
+ * deleted project, or one this person cannot see), else 'live' (read, or not
+ * reached). The status is read in place, not through plaid-ui's statusOf:
+ * this module's imports are part of the built-in rules' versions
+ * (builtinVersion.test.js).
+ */
+export const markProjectState = async (client, projectId) => {
+  try {
+    await client.projects.get(projectId);
+    return 'live';
+  } catch (err) {
+    const status = err?.status ?? Number(/\bHTTP (40[34])\b/.exec(String(err?.message))?.[1]);
+    if (status === 404) return 'gone';
+    if (status === 403) return 'unreadable';
+    return 'live';
+  }
+};
+
+/**
  * `vocabs` as every reader of the mark reads them (igt's vocabulary page and
  * lists, project settings, setup, the FLEx picker, plaid-dict's catalog): a
- * mark whose project no longer exists (404) reads as no mark, so a vocabulary
- * a Delete kept and could not unmark is an ordinary one. One read per
- * project a mark names, and no write. A project the reader cannot see (403)
- * or could not reach still counts as there.
+ * mark whose project is 'gone' (markProjectState) reads as no mark, so a
+ * vocabulary a Delete kept and could not unmark is an ordinary one. One read
+ * per project a mark names, and no write. For anyone but an admin a deleted
+ * project reads 'unreadable' and the mark counts, and the vocabulary page
+ * offers its maintainer to take it off.
  */
 export const withLiveMarks = async (client, vocabs) => {
   const named = new Set(
@@ -434,15 +455,9 @@ export const withLiveMarks = async (client, vocabs) => {
       .filter(Boolean),
   );
   const gone = new Set();
-  // The status read in place, not through plaid-ui's statusOf: this module's
-  // imports are part of the built-in rules' versions (builtinVersion.test.js).
   await Promise.all(
     [...named].map(async (id) => {
-      try {
-        await client.projects.get(id);
-      } catch (err) {
-        if (err?.status === 404 || /\bHTTP 404\b/.test(String(err?.message))) gone.add(id);
-      }
+      if ((await markProjectState(client, id)) === 'gone') gone.add(id);
     }),
   );
   if (!gone.size) return vocabs;

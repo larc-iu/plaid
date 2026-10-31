@@ -24,7 +24,13 @@ import {
   SelectContent,
   SelectItem,
 } from '@ui/components/ui/select';
-import { readVocabFields, IGT_NAMESPACE, vocabImporting, withLiveMarks } from '@/domain/igtConfig';
+import {
+  readVocabFields,
+  IGT_NAMESPACE,
+  vocabImporting,
+  markProjectState,
+  unmarkVocab,
+} from '@/domain/igtConfig';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -144,23 +150,36 @@ export const VocabularyDetail = () => {
   // A mark naming a project that is gone (a Delete that could not take it
   // off) reads as no mark (`withLiveMarks`), so the vocabulary opens as an
   // ordinary one. A read only: opening writes nothing (REV-FX-R57-3-1, R3).
-  const [staleMark, setStaleMark] = useState(false);
+  // Core says 'gone' to an admin only: anyone else reads a deleted project as
+  // 'unreadable', and the vocabulary's maintainer may take the mark off by
+  // hand (CR-IGT-1, ruling Q4).
+  const [markState, setMarkState] = useState(null);
+  const staleMark = markState === 'gone';
   const markedFor = vocabImporting(vocabulary?.config)
     ? (vocabulary.config[IGT_NAMESPACE].import?.projectId ?? null)
     : null;
   useEffect(() => {
-    setStaleMark(false);
+    setMarkState(null);
     if (!markedFor) return undefined;
     let alive = true;
-    withLiveMarks(client, [vocabulary]).then(([read]) => {
-      if (alive) setStaleMark(!vocabImporting(read.config));
+    markProjectState(client, markedFor).then((state) => {
+      if (alive) setMarkState(state);
     });
     return () => {
       alive = false;
     };
-    // The mark and the vocabulary it is on are what this waits on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, markedFor, vocabulary?.id]);
+  }, [client, markedFor]);
+  // Optimistic: the page opens at once, and the mark comes back if the
+  // write is refused.
+  const detachFromImport = async () => {
+    const before = vocabulary;
+    const { import: _, ...igt } = before.config[IGT_NAMESPACE];
+    setVocabulary({ ...before, config: { ...before.config, [IGT_NAMESPACE]: igt } });
+    if (!(await unmarkVocab(client, before.id))) {
+      setVocabulary((v) => (v?.id === before.id ? before : v));
+      notifyError('Could not detach the vocabulary from the import.');
+    }
+  };
   // Normalized field inventory: [{name, inline, immutable}], morphType always present.
   const [fields, setFields] = useState([]);
   const [newFieldName, setNewFieldName] = useState('');
@@ -1136,13 +1155,20 @@ export const VocabularyDetail = () => {
   // import is deleted (or, never, finished). Its project offers the Delete.
   if (!isNewVocabulary && vocabImporting(vocabulary?.config) && !staleMark) {
     const projectId = markedFor;
+    const unreadable = markState === 'unreadable';
     return (
       <Notice role="status" icon={null}>
         <p>This vocabulary belongs to an import that did not finish.</p>
-        {projectId && (
+        {projectId && !unreadable && (
           <Link className="underline" to={`/projects/${projectId}`}>
             Open its project
           </Link>
+        )}
+        {unreadable && <p>Its project cannot be opened.</p>}
+        {unreadable && canManageVocabulary(vocabulary, user) && (
+          <Button size="sm" className="mt-2" onClick={detachFromImport}>
+            Detach from import
+          </Button>
         )}
       </Notice>
     );

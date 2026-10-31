@@ -23,6 +23,7 @@ import {
   recordImportEntries,
   vocabImporting,
   withLiveMarks,
+  markProjectState,
   markImportFinished,
   readImportState,
   IGNORED_TOKEN_MODES,
@@ -32,6 +33,7 @@ import {
   storedIgnoredTokens,
 } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
+import { refusal } from '../../../plaid-client-js/src/testing.js';
 import { buildRawDoc } from './test-helpers.js';
 
 describe('igtConfig substrate finders (by shared role)', () => {
@@ -309,17 +311,33 @@ describe('the import record', () => {
     expect(order).not.toContain('mark again');
   });
 
-  // REV-FX-R57-3-1: a mark whose project is gone reads as no mark, a reader
-  // rule with no write. A project the reader cannot see (403) still counts.
-  it('reads a mark whose project is gone as no mark, and writes nothing', async () => {
+  // REV-FX-R57-3-1, CR-IGT-1: what core answers for a deleted project. An
+  // admin hears 404 (the project is gone) and the mark reads as no mark. A
+  // non-admin hears the gate's 403, as for any project not theirs, and the
+  // mark still counts: the vocabulary page offers its maintainer to take it
+  // off. A read only, no write.
+  const deletedProject = (admin) => ({
+    projects: {
+      get: async (id) => {
+        if (id === 'gone' && admin) throw refusal(404, { error: 'Project not found' });
+        if (id === 'gone' || id === 'hidden')
+          throw refusal(403, {
+            error: `User u@x lacks sufficient privileges to read project ${id}`,
+          });
+        if (id === 'down') throw new TypeError('Failed to fetch');
+        return { id };
+      },
+    },
+  });
+
+  it('reads a mark whose project is gone as no mark for an admin, and writes nothing', async () => {
     const asked = [];
+    const admin = deletedProject(true);
     const client = {
       projects: {
         get: async (id) => {
           asked.push(id);
-          if (id === 'gone') throw Object.assign(new Error('Not found'), { status: 404 });
-          if (id === 'hidden') throw Object.assign(new Error('Forbidden'), { status: 403 });
-          return { id };
+          return admin.projects.get(id);
         },
       },
     };
@@ -335,6 +353,18 @@ describe('the import record', () => {
     expect(read.map((v) => vocabImporting(v.config))).toEqual([false, false, true, true, false]);
     expect(read[0].config.igt).toEqual({ fields: {} });
     expect(asked.sort()).toEqual(['gone', 'hidden', 'live']);
+  });
+
+  it('keeps the mark for anyone else, who reads the deleted project as unreadable', async () => {
+    const client = deletedProject(false);
+    const [read] = await withLiveMarks(client, [
+      { id: 'v', config: { igt: { import: { projectId: 'gone' } } } },
+    ]);
+    expect(vocabImporting(read.config)).toBe(true);
+    expect(await markProjectState(client, 'gone')).toBe('unreadable');
+    expect(await markProjectState(deletedProject(true), 'gone')).toBe('gone');
+    expect(await markProjectState(client, 'live')).toBe('live');
+    expect(await markProjectState(client, 'down')).toBe('live');
   });
 
   it('takes the mark off every vocabulary the import made before the record goes', async () => {
