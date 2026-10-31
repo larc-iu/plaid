@@ -6,6 +6,8 @@ import { useAuth } from '@/contexts/AuthContext.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { TYPE } from '@ui/lib/typeScale.js';
 import { vocabImporting, withLiveMarks } from '@/domain/igtConfig';
+import { entryMorphTypesOf } from '@/domain/vocabLookup';
+import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -64,7 +66,18 @@ export const VocabularySettings = ({ project, projectId, client, onProjectUpdate
     if (change.enabled && !linked) {
       await client.projects.linkVocab(projectId, change.id);
     } else if (!change.enabled && linked) {
-      await client.projects.unlinkVocab(projectId, change.id);
+      // The unlink takes the project's links into the vocabulary, and each
+      // morpheme they leave keeps the type its entry gave it, in the same
+      // batch (Q1).
+      const { items = [] } = (await client.vocabLayers.get(change.id, true)) || {};
+      const types = entryMorphTypesOf(items);
+      const kept = await planKeptTypes(client, user, { vocabId: change.id, projectId }, (id) =>
+        types.get(id),
+      );
+      await client.batched((b) => {
+        queueKeptTypes(b, kept);
+        b.projects.unlinkVocab(projectId, change.id);
+      });
     } else return;
     // The link has landed, so a read that fails is not a failed send.
     await Promise.resolve(onProjectUpdate?.()).catch((err) =>

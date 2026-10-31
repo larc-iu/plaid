@@ -1532,6 +1532,50 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(m.metadata.morphType).toBe('suffix');
   });
 
+  // Ruling Q1: the morpheme an Unlink leaves keeps the type its entry gave
+  // it, written in the unlink's batch, so its affix marker survives.
+  it('unlinkVocab writes the entry type onto the morpheme it leaves, in one batch', async () => {
+    const vocabs = {
+      v1: {
+        id: 'v1',
+        name: 'Lexicon',
+        items: [
+          { id: 'vi-s', form: 's', metadata: { morphType: 'suffix' } },
+          { id: 'vi-s1', form: 's', metadata: { parent: 'vi-s', senseOrder: 1 } },
+        ],
+        vocabLinks: [{ id: 'lk-1', tokens: ['m-1'], vocabItem: { id: 'vi-s1', form: 's' } }],
+      },
+    };
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: vocabs,
+    });
+    expect(await doc.unlinkVocab('m-1')).toBe(true);
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.vocabItem).toBeFalsy();
+    expect(m.morphType).toBe('suffix');
+    expect(m.metadata.morphType).toBe('suffix');
+    const [write] = tokenWrites(doc);
+    expect(write.args).toEqual(['m-1', [{ op: 'set', path: ['morphType'], value: 'suffix' }]]);
+    expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
+  });
+
+  it('unlinkVocab writes no type when the entry has none, or on a word', async () => {
+    const vocabs = typedVocab();
+    vocabs.v1.items.push({ id: 'vi-2', form: 'DOG', metadata: {} });
+    vocabs.v1.vocabLinks = [
+      { id: 'lk-1', tokens: ['m-1'], vocabItem: { id: 'vi-2', form: 'DOG' } },
+      { id: 'lk-2', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT' } },
+    ];
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: vocabs,
+    });
+    expect(await doc.unlinkVocab('m-1')).toBe(true);
+    expect(await doc.unlinkVocab('w-2')).toBe(true);
+    expect(tokenWrites(doc)).toHaveLength(0);
+  });
+
   it('linkVocabMany writes no type on the morphemes it links', async () => {
     const raw = buildRawDoc({
       morphemes: [

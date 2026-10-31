@@ -24,20 +24,38 @@ const refused = () => {
   return e;
 };
 
-const makeClient = ({ linked = [], link } = {}) => ({
-  vocabLayers: {
-    list: vi.fn(async () => [
-      { id: 'v1', name: 'Mine', maintainers: ['me@x.org'] },
-      { id: 'v2', name: 'Theirs', maintainers: ['other@x.org'] },
-    ]),
-  },
-  projects: {
-    get: vi.fn(async () => ({ id: 'p1', vocabs: linked.map((id) => ({ id })) })),
-    linkVocab: vi.fn(link ?? (async () => {})),
-    unlinkVocab: vi.fn(async () => {}),
-  },
-  query: vi.fn(async () => ({ results: [] })),
-});
+// A batch as the client sends one: every op it queues, sent together. The
+// unlink goes in one, with the types its morphemes keep.
+const batching = (client) => {
+  client.tokens = client.tokens ?? { bulkUpdate: vi.fn(async () => {}) };
+  client.vocabLayers.get = client.vocabLayers.get ?? vi.fn(async () => ({ items: [] }));
+  client.tokenLayers = client.tokenLayers ?? { get: vi.fn(async () => ({ project: 'p1' })) };
+  client.batched = vi.fn(async (fn) => {
+    const sent = [];
+    await fn({
+      projects: { unlinkVocab: (...a) => sent.push(client.projects.unlinkVocab(...a)) },
+      tokens: { bulkUpdate: (...a) => sent.push(client.tokens.bulkUpdate(...a)) },
+    });
+    return Promise.all(sent);
+  });
+  return client;
+};
+
+const makeClient = ({ linked = [], link } = {}) =>
+  batching({
+    vocabLayers: {
+      list: vi.fn(async () => [
+        { id: 'v1', name: 'Mine', maintainers: ['me@x.org'] },
+        { id: 'v2', name: 'Theirs', maintainers: ['other@x.org'] },
+      ]),
+    },
+    projects: {
+      get: vi.fn(async () => ({ id: 'p1', vocabs: linked.map((id) => ({ id })) })),
+      linkVocab: vi.fn(link ?? (async () => {})),
+      unlinkVocab: vi.fn(async () => {}),
+    },
+    query: vi.fn(async () => ({ results: [] })),
+  });
 
 const rowOf = (root, name) => byText(root, 'tbody tr', name);
 const boxOf = (root, name) => rowOf(root, name).querySelector('input[type=checkbox]');
@@ -119,21 +137,22 @@ describe('Project settings, Vocabularies, before the server answers', () => {
     });
     return { promise, settle };
   };
-  const twoOfMine = (linkVocab) => ({
-    vocabLayers: {
-      list: vi.fn(async () => [
-        { id: 'v1', name: 'Alpha', maintainers: ['me@x.org'] },
-        { id: 'v3', name: 'Gamma', maintainers: ['me@x.org'] },
-        { id: 'v4', name: 'Delta', maintainers: ['me@x.org'] },
-      ]),
-    },
-    projects: {
-      get: vi.fn(async () => ({ id: 'p1', vocabs: [{ id: 'v4' }] })),
-      linkVocab: vi.fn(linkVocab),
-      unlinkVocab: vi.fn(async () => {}),
-    },
-    query: vi.fn(async () => ({ results: [] })),
-  });
+  const twoOfMine = (linkVocab) =>
+    batching({
+      vocabLayers: {
+        list: vi.fn(async () => [
+          { id: 'v1', name: 'Alpha', maintainers: ['me@x.org'] },
+          { id: 'v3', name: 'Gamma', maintainers: ['me@x.org'] },
+          { id: 'v4', name: 'Delta', maintainers: ['me@x.org'] },
+        ]),
+      },
+      projects: {
+        get: vi.fn(async () => ({ id: 'p1', vocabs: [{ id: 'v4' }] })),
+        linkVocab: vi.fn(linkVocab),
+        unlinkVocab: vi.fn(async () => {}),
+      },
+      query: vi.fn(async () => ({ results: [] })),
+    });
 
   it('ticks a row at once and sends the link', async () => {
     const answer = held();
@@ -333,5 +352,50 @@ describe("Project settings, Vocabularies, the page's project", () => {
     await again.step(() => rowOf(again.container, 'Mine').click());
     expect(update).not.toHaveBeenCalled();
     await again.unmount();
+  });
+});
+
+// Ruling Q1: a morpheme goes by its entry's type and stores none while
+// linked, so when the unlink takes the project's links into the vocabulary,
+// each morpheme they leave keeps its entry's type, in the unlink's batch.
+describe('Project settings, Vocabularies, an unlink keeps the morph types', () => {
+  it('writes the entry type onto each morpheme the unlink leaves, in the same batch', async () => {
+    const client = makeClient({ linked: ['v1'] });
+    client.vocabLayers.get = vi.fn(async () => ({
+      items: [
+        { id: 'e-s', form: 's', metadata: { morphType: 'suffix' } },
+        { id: 'e-s1', form: 's', metadata: { parent: 'e-s', senseOrder: 1 } },
+        { id: 'e-cat', form: 'cat', metadata: {} },
+      ],
+    }));
+    client.projects.get = vi.fn(async (id) => ({
+      id,
+      vocabs: [{ id: 'v1' }],
+      writers: ['me@x.org'],
+    }));
+    client.query = vi.fn(async (q) =>
+      q.where.some((c) => c[0] === 'link-token')
+        ? {
+            results: [
+              ['e-s', 'm-1', 'ml', 'morpheme', 1],
+              ['e-s1', 'm-2', 'ml', 'morpheme', 1],
+              ['e-s', 'w-1', 'wl', 'word', 1],
+              ['e-cat', 'm-3', 'ml', 'morpheme', 1],
+            ],
+          }
+        : { results: [[4]] },
+    );
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Mine').click());
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
+    expect(client.batched).toHaveBeenCalledTimes(1);
+    expect(client.tokens.bulkUpdate).toHaveBeenCalledWith([
+      { id: 'm-1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+      { id: 'm-2', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+    ]);
+    expect(client.projects.unlinkVocab).toHaveBeenCalledWith('p1', 'v1');
+    const q = client.query.mock.calls.map((c) => c[0]).find((x) => x.limit);
+    expect(q.scope).toEqual({ projectIds: ['p1'] });
+    await view.unmount();
   });
 });

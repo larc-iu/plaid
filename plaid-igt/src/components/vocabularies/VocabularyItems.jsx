@@ -713,6 +713,7 @@ export const VocabularyItems = ({
   } = useEntryDelete({
     entries,
     client,
+    user,
     vocabularyId,
     fields,
     tree,
@@ -1101,6 +1102,7 @@ export const VocabularyItems = ({
           open={restoring}
           onOpenChange={setRestoring}
           client={client}
+          user={user}
           vocabularyId={vocabularyId}
           asOf={pastTime}
           past={selectedItem}

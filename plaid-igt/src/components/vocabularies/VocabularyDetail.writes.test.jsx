@@ -556,3 +556,65 @@ describe('a vocabulary name typed and not saved', () => {
     await view.unmount();
   });
 });
+
+// Ruling Q1: deleting a vocabulary deletes every link into it, and each
+// morpheme they leave keeps the type its entry gave it, in the delete's batch.
+describe('deleting the vocabulary', () => {
+  it('writes the entry types onto the morphemes its links leave, in the same batch', async () => {
+    const { client } = stub();
+    const sent = [];
+    const get = client.vocabLayers.get;
+    client.vocabLayers.get = async (id, withItems) => ({
+      ...(await get(id)),
+      ...(withItems
+        ? {
+            items: [
+              { id: 'e-s', form: 's', metadata: { morphType: 'suffix' } },
+              { id: 'e-cat', form: 'cat', metadata: {} },
+            ],
+          }
+        : {}),
+    });
+    client.query = async (q) =>
+      q.where.some((c) => c[0] === 'link-token')
+        ? {
+            results: [
+              ['e-s', 'm-1', 'ml', 'morpheme', 1],
+              ['e-cat', 'm-2', 'ml', 'morpheme', 1],
+            ],
+          }
+        : { results: [] };
+    client.tokenLayers = { get: async () => ({ project: 'p1' }) };
+    client.projects.get = async () => ({ id: 'p1', writers: ['u'] });
+    client.batched = async (fn) => {
+      const ops = [];
+      await fn({
+        tokens: { bulkUpdate: (rows) => ops.push(['tokens.bulkUpdate', rows]) },
+        vocabLayers: { delete: (id) => ops.push(['vocabLayers.delete', id]) },
+      });
+      sent.push(ops);
+    };
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    await view.step(() => button('Delete vocabulary').click());
+    await view.step(() =>
+      setValue(document.getElementById('vocabulary-delete-confirm'), 'Ayvale lexicon'),
+    );
+    const confirm = all(document.body, '[role="dialog"] button').find(
+      (b) => b.textContent.trim() === 'Delete vocabulary',
+    );
+    await view.step(async () => {
+      confirm.click();
+      await settle(5);
+    });
+    expect(sent).toEqual([
+      [
+        [
+          'tokens.bulkUpdate',
+          [{ id: 'm-1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] }],
+        ],
+        ['vocabLayers.delete', 'A'],
+      ],
+    ]);
+    await view.unmount();
+  });
+});

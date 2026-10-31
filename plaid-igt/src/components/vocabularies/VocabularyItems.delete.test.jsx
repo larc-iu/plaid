@@ -292,3 +292,86 @@ describe('deleting an entry whose links change', () => {
     await view.unmount();
   });
 });
+
+// Ruling Q1: a linked morpheme goes by its entry's type and stores none (R2).
+// Deleting the entry takes its links, so the same batch writes the entry's
+// type onto each morpheme it leaves, where this person can write.
+describe('deleting a typed entry', () => {
+  it('writes its type onto the morphemes its links leave, in the delete batch', async () => {
+    const { client, calls } = stub();
+    const typed = [
+      { id: 'suf', form: 's', metadata: { morphType: 'suffix', gloss: 'PL' } },
+      { id: 'suf1', form: 's', metadata: { parent: 'suf', senseOrder: 1 } },
+    ];
+    client.vocabLayers.get = async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: typed });
+    const batches = [];
+    const inner = client.batched;
+    client.batched = async (fn) => {
+      const ops = [];
+      await inner(async (b) => {
+        await fn({
+          ...b,
+          tokens: { bulkUpdate: (rows) => ops.push(['tokens.bulkUpdate', rows]) },
+          vocabItems: {
+            ...b.vocabItems,
+            delete: (...a) => {
+              ops.push(['vocabItems.delete', a[0]]);
+              return b.vocabItems.delete(...a);
+            },
+          },
+        });
+      });
+      batches.push(ops);
+    };
+    // Its links: two morphemes in p1 (writable), one in p2 (read only), a word.
+    client.query = async (q) => {
+      if (!q.where.some((c) => c[0] === 'link-token')) return { results: [[4]] };
+      expect(q.where[0]).toEqual(['link', '?l', { item: ['suf'] }]);
+      return {
+        results: [
+          ['suf', 'm-1', 'ml1', 'morpheme', 1],
+          ['suf', 'm-2', 'ml1', 'morpheme', 1],
+          ['suf', 'm-9', 'ml2', 'morpheme', 1],
+          ['suf', 'w-1', 'wl1', 'word', 1],
+        ],
+      };
+    };
+    client.tokenLayers = { get: async (id) => ({ id, project: id === 'ml2' ? 'p2' : 'p1' }) };
+    client.projects.get = async (id) => ({
+      id,
+      writers: id === 'p1' ? ['u'] : [],
+      readers: id === 'p2' ? ['u'] : [],
+    });
+    auth.user = { id: 'u', isAdmin: false };
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=suf']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1', maintainers: ['u'] }}
+          client={client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await view.step(async () => {});
+    await view.step(() => byText('button', 'Delete').click());
+    for (let i = 0; i < 4; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    await view.step(() => byText('button', 'Delete entry').click());
+    for (let i = 0; i < 6; i++) await view.step(() => new Promise((r) => setTimeout(r, 0)));
+    expect(calls.deleted).toEqual(['suf']);
+    const batch = batches.find((ops) => ops.some(([k]) => k === 'vocabItems.delete'));
+    expect(batch.filter(([k]) => k === 'tokens.bulkUpdate')).toEqual([
+      [
+        'tokens.bulkUpdate',
+        [
+          { id: 'm-1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+          { id: 'm-2', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+        ],
+      ],
+    ]);
+    await view.unmount();
+    auth.user = { id: 'u', isAdmin: true };
+  });
+});

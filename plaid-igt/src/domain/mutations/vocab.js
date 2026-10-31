@@ -545,20 +545,41 @@ export const vocabMutations = {
     };
   },
 
-  // Remove the single-token vocab link for `tokenId`, if any.
+  // Remove the single-token vocab link for `tokenId`, if any. A morpheme
+  // goes by its entry's type and stores none while linked (R2), so the same
+  // batch writes that type onto the morpheme the link leaves, and its affix
+  // marker stays (ruling Q1).
   async unlinkVocab(tokenId) {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!priorLink || !priorVocabId) return false;
     const label = 'Failed to unlink the entry';
     if (!this._canWrite(label)) return false;
+    const morpheme = (this.layerInfo.morphemeTokenLayer?.tokens || []).find(
+      (t) => t.id === tokenId,
+    );
+    const keep = morpheme ? this._morphemeEntryType(morpheme) : null;
     this._applyRawPatch((next, info, vocabs) => {
       if (vocabs[priorVocabId]) {
         vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
           (l) => l.id !== priorLink.id,
         );
       }
+      if (keep) {
+        const m = (info.morphemeTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+        if (m) m.metadata = { ...(m.metadata || {}), morphType: keep };
+      }
     });
-    return this._queueWrite(label, () => this._client.vocabLinks.delete(settledId(priorLink.id)));
+    if (!keep) {
+      return this._queueWrite(label, () => this._client.vocabLinks.delete(settledId(priorLink.id)));
+    }
+    return this._queueWrite(label, () =>
+      this._client.batched((b) => {
+        b.vocabLinks.delete(settledId(priorLink.id));
+        b.tokens.patchMetadata(settledId(tokenId), [
+          { op: 'set', path: ['morphType'], value: keep },
+        ]);
+      }),
+    );
   },
 
   // Create a brand-new vocab item in `vocabId` and link it to `tokenId`,

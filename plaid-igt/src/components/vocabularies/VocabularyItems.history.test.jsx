@@ -247,6 +247,48 @@ describe('the Entries tab at a past state', () => {
     await view.unmount();
   });
 
+  // Ruling Q1: the delete takes the entry's links, and each morpheme they
+  // leave keeps the type the entry gave it, in the delete's batch.
+  it("writes the entry's type onto the morphemes its Undo unlinks, in the delete's batch", async () => {
+    const client = makeClient([
+      ...NOW_ITEMS,
+      { id: 'b', form: 'kai2', metadata: { gloss: 'food', morphType: 'suffix' } },
+    ]);
+    client.query = vi.fn(async (q) =>
+      q.where.some((c) => c[0] === 'link-token')
+        ? { results: [['b', 'm-1', 'ml', 'morpheme', 1]] }
+        : { results: [[1]] },
+    );
+    client.tokenLayers = { get: async () => ({ project: 'p1' }) };
+    client.projects.get = async () => ({ id: 'p1', writers: ['u'] });
+    client.tokens = {
+      bulkUpdate: vi.fn(async (rows) => {
+        client.calls.push(['tokens.bulkUpdate', rows]);
+      }),
+    };
+    const view = await mount(client, '/vocabularies/v1?item=b');
+    await view.step(() => button('Restore').click());
+    await settle(view);
+    const confirm = all(document.body, '[role="dialog"] button').find(
+      (b) => b.textContent.trim() === 'Restore',
+    );
+    await view.step(() => confirm.click());
+    await settle(view);
+    const [, , action] = feedback.notifyWithAction.mock.calls[0];
+    await view.step(() => action.onClick());
+    await settle(view);
+    const at = client.calls.findIndex((c) => c[0] === 'batch');
+    expect(client.calls.slice(at)).toEqual([
+      ['batch'],
+      [
+        'tokens.bulkUpdate',
+        [{ id: 'm-1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] }],
+      ],
+      ['delete', 'b', undefined],
+    ]);
+    await view.unmount();
+  });
+
   it('fills the form from the entry as the restore left it, not as it read before', async () => {
     const client = makeClient();
     let restored = false;

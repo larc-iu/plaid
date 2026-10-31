@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { notifyError } from '@/utils/feedback';
 import { statusOf } from '@ui/lib/errors.js';
-import { planDeleteRefs } from '@/domain/vocabDictionary';
+import { planDeleteRefs, morphTypeOf } from '@/domain/vocabDictionary';
+import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -12,6 +13,7 @@ import { countOf } from '@ui/lib/plural.js';
 export function useEntryDelete({
   entries,
   client,
+  user,
   vocabularyId,
   fields,
   tree,
@@ -120,6 +122,7 @@ export function useEntryDelete({
     const patches = deleteRefPatches;
     const before = metadataNow(items);
     const deletedItem = selectedItem;
+    const deletedType = morphTypeOf(tree, deletedId);
     const deletedFrom = vocabularyId;
     // The count the server found, when it refused the delete for its count.
     let serverCount = null;
@@ -131,10 +134,18 @@ export function useEntryDelete({
       `Delete entry "${selectedItem.form}"`,
       async () => {
         try {
-          // The repoints and the delete are one batch, so a delete refused
-          // for its count leaves the senses and references where they were.
+          // The morphemes its links leave keep the type it gave them (Q1).
+          const kept = await planKeptTypes(
+            client,
+            user,
+            { itemIds: [settledId(deletedId)] },
+            () => deletedType,
+          );
+          // The repoints, the types and the delete are one batch, so a delete
+          // refused for its count leaves everything where it was.
           await client.batched(async (b) => {
             if (patches.length) await bulkRepoint(patches, before, b);
+            queueKeptTypes(b, kept);
             await b.vocabItems.delete(settledId(deletedId), undefined, { expectedLinkCount });
           });
           refusedDeleteRef.current.delete(deletedId);

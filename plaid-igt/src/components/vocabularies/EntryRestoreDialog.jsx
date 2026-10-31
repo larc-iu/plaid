@@ -27,7 +27,8 @@ import {
   humanizeError,
 } from '@/utils/feedback';
 import { entryRestoreLines, entryRestoreMessage, latestVocabState } from '@/domain/vocabRestore';
-import { planDeleteRefs } from '@/domain/vocabDictionary';
+import { planDeleteRefs, lexiconView } from '@/domain/vocabDictionary';
+import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { CHUNK } from '@/domain/bulk';
 
@@ -35,6 +36,7 @@ export const EntryRestoreDialog = ({
   open,
   onOpenChange,
   client,
+  user,
   vocabularyId,
   asOf,
   past,
@@ -99,7 +101,8 @@ export const EntryRestoreDialog = ({
   // Deleting the entry the restore brought back, as the Entries screen deletes
   // one: what refers to it now (a sense added under it, a reference field
   // pointed at it since the restore) is cleared in the same operation, read
-  // from the vocabulary as it is when the undo runs.
+  // from the vocabulary as it is when the undo runs, and the morphemes its
+  // links leave keep the type it gave them (Q1).
   const deleteAgain = (links) =>
     client.withOperation(`Delete entry “${label}”`, async () => {
       const { items = [] } = (await client.vocabLayers.get(vocabularyId, true)) || {};
@@ -107,10 +110,17 @@ export const EntryRestoreDialog = ({
         planDeleteRefs(items, fields, [itemId]),
         new Map(items.map((it) => [it.id, it.metadata])),
       );
+      const kept = await planKeptTypes(
+        client,
+        user,
+        { itemIds: [itemId] },
+        lexiconView(items).morphTypeOf,
+      );
       await client.batched(async (b) => {
         for (let i = 0; i < updates.length; i += CHUNK) {
           b.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
         }
+        queueKeptTypes(b, kept);
         b.vocabItems.delete(itemId, undefined, { expectedLinkCount: links ?? undefined });
       });
     });

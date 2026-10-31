@@ -31,6 +31,8 @@ import {
   markProjectState,
   unmarkVocab,
 } from '@/domain/igtConfig';
+import { entryMorphTypesOf } from '@/domain/vocabLookup';
+import { planKeptTypes, queueKeptTypes } from '@/domain/keptMorphType';
 import {
   normalizeVocabFields,
   newVocabField,
@@ -895,7 +897,17 @@ export const VocabularyDetail = () => {
     }
 
     try {
-      await client.vocabLayers.delete(vocabularyId);
+      // Its links go with it, and each morpheme they leave keeps the type
+      // its entry gave it, in the same batch (Q1).
+      const { items = [] } = (await client.vocabLayers.get(vocabularyId, true)) || {};
+      const types = entryMorphTypesOf(items);
+      const kept = await planKeptTypes(client, user, { vocabId: vocabularyId }, (id) =>
+        types.get(id),
+      );
+      await client.batched((b) => {
+        queueKeptTypes(b, kept);
+        b.vocabLayers.delete(vocabularyId);
+      });
       closeDeleteModal();
       navigate('/vocabularies');
       notifySuccess('Vocabulary deleted');
