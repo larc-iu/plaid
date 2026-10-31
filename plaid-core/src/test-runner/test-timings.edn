@@ -157,6 +157,7 @@
  plaid.sql.document-copy-test 1937,
  plaid.sql.document-names-test 739,
  plaid.sql.empty-metadata-label-test 488,
+ plaid.sql.every-writer-names-its-project-test 1900,
  plaid.sql.get-with-layer-data-perf-test 420,
  plaid.sql.idempotency-keys-migration-test 118,
  plaid.sql.lock-write-order-test 2129,
