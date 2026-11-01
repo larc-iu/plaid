@@ -78,3 +78,26 @@ def test_set_analysis_for_form_carries_a_gloss_the_word_holds_off_the_list():
     out = call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
         {'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'OBL'}}]})
     assert out.startswith('Planned'), out
+
+
+def test_set_analysis_for_form_reads_what_the_word_holds_from_its_corpus_read(monkeypatch):
+    """REV-LAST-3: on a large corpus set_analysis_for_form loads no document,
+    and what each word holds comes from the spans its query finds
+    (Workspace.word_held). The test above reaches the word's loaded document,
+    so here every document is out of sight while the check reads."""
+    from fixtures import FakeClient, fake_ws
+    from plaid_agent.igt.workspace import Workspace
+    real = Workspace.held_values
+
+    def corpus_only(self, word_id, f):
+        saved, self._docs = self._docs, {}
+        try:
+            return real(self, word_id, f)
+        finally:
+            self._docs = saved
+    monkeypatch.setattr(Workspace, 'held_values', corpus_only)
+    w = fake_ws(FakeClient(documents={'d1': _held_off_list()}))
+    out = call_tool(w, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [
+        {'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'OBL'}}]})
+    assert out.startswith('Planned'), out
+    assert w.word_held.get(('w-1', 'sl-mgloss')) == {'Ali', 'OBL'}
