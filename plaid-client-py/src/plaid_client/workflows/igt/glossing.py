@@ -68,7 +68,7 @@ def can_name_word(morph_type, form) -> bool:
     """Whether a morpheme could name its word (``canNameWord``): not an affix
     or a clitic, not the zero morph and not a form emptied by hand."""
     return (not is_bound_type(morph_type) and not is_zero_morph(form)
-            and isinstance(form, str) and bool(form.strip()))
+            and isinstance(form, str) and bool(form.strip(_JS_SPACE)))
 
 
 #: The abbreviations a gloss part may stand for, upper case: the Leipzig
@@ -87,11 +87,16 @@ GLOSS_ABBREVIATIONS: FrozenSet[str] = frozenset('''
 #: ``1pl``, ``2DU``.
 PERSON_NUMBER = re.compile(r'^([1-4])(SG|PL|DU|TRI|PAUC|NSG)$', re.IGNORECASE | re.ASCII)
 
+#: Whitespace as the app's regular expressions read it (JavaScript's ``\s``),
+#: for a character class: Python's ``\s`` also takes U+0085 and U+001C to
+#: U+001F and leaves out U+FEFF.
+_SPACE = re.escape(_JS_SPACE)
+
 #: What a gloss is cut into morphemes on (``dog-PL``, ``3SG=go``, ``go out``),
 #: and what one morpheme's gloss is cut into parts on, the Leipzig separators
 #: for one form that means several things (``bark.PRS``, ``sbj:3.pfv``,
 #: ``hit;PST``, ``sing\\PST``).
-MORPHEME_CUT = re.compile(r'[\-=~<>\s]+')
+MORPHEME_CUT = re.compile('[-=~<>' + _SPACE + ']+')
 PART_CUT = re.compile(r'[.:;\\]+')
 
 
@@ -157,7 +162,7 @@ def line_flags(glosses: Sequence[str], names: Optional[Sequence[bool]] = None,
     True for all. Those glosses are one unit, read with the fall-back
     (``lexical_flags``), and the rest are read with none (``lenient_flags``)."""
     names = [True] * len(glosses) if names is None else list(names)
-    cut = [gloss_morphemes(str(g if g is not None else '').strip()) for g in glosses]
+    cut = [gloss_morphemes(str(g if g is not None else '').strip(_JS_SPACE)) for g in glosses]
     unit = lexical_flags([m for c, n in zip(cut, names) if n for m in c], known)
     rest = lenient_flags([m for c, n in zip(cut, names) if not n for m in c], known)
     unit_at, rest_at = iter(unit), iter(rest)
@@ -170,7 +175,7 @@ def is_lexical_part(part, known: Optional[Iterable[str]] = None) -> bool:
 
 
 #: One part of a gloss as :func:`lexical_flags_of` cuts a value (``GLOSS_PART_RE``).
-GLOSS_PART = re.compile(r'[^.:;\\\-=~<>\s]+')
+GLOSS_PART = re.compile('[^.:;\\\\\\-=~<>' + _SPACE + ']+')
 
 
 def lexical_flags_of(value, parts: Sequence[Sequence], bound: bool = False,

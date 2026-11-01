@@ -17,6 +17,7 @@ import subprocess
 
 import pytest
 
+from plaid_client.constraints import _JS_SPACE
 from plaid_client.workflows.igt import glossing, tagsets
 from plaid_client.workflows.igt.senses import morpheme_morph_type
 
@@ -36,6 +37,9 @@ VALUES = [
     '1-see-PL', 'go=3SG', 'go~go.PL', 'b<in>ili.PST', 'NOM_x', "don't.PST", '42.pfv.go',
     '?.pfv.go', 'go..pfv', 'İSTANBUL.LOC', 'sbj:3sg.pfv', 'x.y.z', 'ǅ.PL', 'pos.3', 'ipfv.PL',
     'go-a.3SG', 'q.PL-go',
+    # Whitespace the app's regular expressions and Python's read apart:
+    # U+0085 and U+001C are not JavaScript whitespace, U+FEFF is.
+    'go\u0085PL', '\u00851pl', 'dog\u001cPL', '\ufeffNOM', 'go\ufeff.PL', 'go\ufeffpfv.PL',
 ]
 UNITS = [
     [['go'], ['sbj', '3', 'pfv']],
@@ -98,7 +102,7 @@ def js(tmp_path_factory):
     exe = node_or_skip(TAGSETS_JS, IGT_MODULES)
     cases = tmp_path_factory.mktemp('mirror') / 'cases.json'
     cases.write_text(json.dumps({
-        'values': VALUES, 'scanned': [v for v in VALUES if not any(c.isspace() for c in v)],
+        'values': VALUES, 'scanned': [v for v in VALUES if not any(c in _JS_SPACE for c in v)],
         'units': UNITS, 'parts': PARTS, 'morphTypes': MORPH_TYPES, 'forms': FORMS,
         'namers': NAMERS, 'lines': LINES, 'goesBy': GOES_BY, 'checks': CHECKS,
     }), encoding='utf-8')
@@ -124,7 +128,7 @@ def test_every_part_of_a_gloss_is_read_as_the_app_reads_it(js):
 def test_a_tagset_check_reads_a_value_as_the_skeleton_does(js):
     """The app scans a cell by the tagset's delimiters and groups the parts by
     what separates them. Over every separator, that is the skeleton's cut."""
-    spaceless = [v for v in VALUES if not any(c.isspace() for c in v)]
+    spaceless = [v for v in VALUES if not any(c in _JS_SPACE for c in v)]
     assert [[f for m in glossing.lexical_flags(glossing.gloss_morphemes(v)) for f in m]
             for v in spaceless] == js['scanned']
 

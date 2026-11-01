@@ -81,7 +81,7 @@ def t_tagsets(ws, action: str, tagset: Optional[str] = None, field: Optional[str
 
 
 def _need(value, name: str) -> str:
-    v = (value or '').strip() if isinstance(value, str) else ''
+    v = trim(value or '') if isinstance(value, str) else ''
     if not v:
         raise ToolError(f'This action needs {name}.', kind='invalid-argument')
     return v
@@ -170,7 +170,7 @@ def _attested(ws, f: dict) -> List[Tuple[str, int]]:
     if f['kind'] == SPAN:
         c = ws.corpus
         return [(r[0], r[-1]) for r in c.group([c.span('?s', f['key'])], ['?s.value'])
-                if isinstance(r[0], str) and r[0].strip()]
+                if isinstance(r[0], str) and trim(r[0])]
     counts: Dict[str, int] = {}
     if f['kind'] == METADATA:
         values = [(d.get('metadata') or {}).get(f['key']) for d in ws.documents()]
@@ -178,7 +178,7 @@ def _attested(ws, f: dict) -> List[Tuple[str, int]]:
         values = [(it.get('metadata') or {}).get(f['key']) for it in ws.lexicon(f['vocab'])]
     for v in values:
         for one in (v if isinstance(v, list) else [v]):
-            if isinstance(one, str) and one.strip():
+            if isinstance(one, str) and trim(one):
                 counts[one] = counts.get(one, 0) + 1
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
@@ -206,7 +206,7 @@ def _with_empty_part(attested, t: dict) -> List[Tuple[str, int]]:
     """[(value, count)] of the values holding an empty part (a delimiter with
     nothing on one side, as in "V..N"), which a closed list refuses whatever
     it lists, most frequent first."""
-    rows = [(v, n) for v, n in attested if isinstance(v, str) and v.strip() and t['delimiters']
+    rows = [(v, n) for v, n in attested if isinstance(v, str) and trim(v) and t['delimiters']
             and '' in value_parts(v, t['delimiters'])]
     return sorted(rows, key=lambda r: (-r[1], r[0]))
 
@@ -374,7 +374,7 @@ def _stored_n(n: int) -> str:
 
 
 def _field(ws, owner: str, fields: List[dict], name: str) -> dict:
-    key = name.strip()
+    key = trim(name)
     if owner == PROJECT:
         meta = [f for f in fields if f['kind'] == METADATA and f['key'].casefold() == key.casefold()]
         try:
@@ -422,11 +422,11 @@ def _values(raw, name: str) -> List[dict]:
     for v in raw:
         if isinstance(v, str):
             v = {'value': v}
-        if not isinstance(v, dict) or not isinstance(v.get('value'), str) or not v['value'].strip():
+        if not isinstance(v, dict) or not isinstance(v.get('value'), str) or not trim(v['value']):
             raise ToolError(f'Each value in {name} is a string or {{"value", "description"}}.', kind='invalid-argument')
         # Only what the app writes for a value it is given: a stored value's
         # other keys stay as stored, and approval reads back exactly this.
-        rec = {'value': v['value'].strip()}
+        rec = {'value': trim(v['value'])}
         if isinstance(v.get('description'), str):
             rec['description'] = v['description']
         out.append(rec)
@@ -576,7 +576,7 @@ def _edit(ws, name: str, lexicon: Optional[str], changes: Dict[str, Any]) -> str
     target = key or name
     rename = changes.get('rename_to')
     if rename is not None:
-        rename = str(rename).strip()
+        rename = trim(str(rename))
         if not rename:
             raise ToolError('rename_to is a name.', kind='invalid-argument')
         clash = _find(tagsets, rename)
@@ -637,7 +637,7 @@ def _assign(ws, field: str, tagset: str, lexicon: Optional[str]) -> str:
     _require_maintainer(ws, vocab)
     fields = _fields(ws, owner)
     f = _field(ws, owner, fields, field)
-    name = tagset.strip() or None
+    name = trim(tagset) or None
     if name is not None:
         tagsets = planned_tagsets(ws, owner)
         found = _find(tagsets, name)

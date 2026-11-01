@@ -462,3 +462,11 @@ def test_an_empty_part_is_named_as_igt_names_it(monkeypatch):
     lines = out.splitlines()
     assert 'Morph Gloss: 5 values, 1 distinct value with an empty part.' in lines, out
     assert '  An empty part, which a closed list refuses: "PL..ERG" (3)' in lines, out
+
+
+def test_a_tagset_value_is_trimmed_as_the_app_trims_it():
+    """The app trims a value with JavaScript's trim, which keeps U+0085 and
+    takes U+FEFF; Python's str.strip does the reverse, so a value the app
+    stores as "NOM\\u0085" was planned as "NOM" (REV-FX-AGENT-IGT-4)."""
+    from plaid_agent.igt.tagsets import _values
+    assert [v['value'] for v in _values(['NOM\u0085', ' ﻿PL '], 'values')] == ['NOM\u0085', 'PL']
