@@ -577,6 +577,10 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     # as set_analysis says it: a link to the wrong entry went unseen (bench
     # q38-2).
     unlike: List[str] = []
+    # Stored morphemes this links, or links back: a type the plan gives one
+    # (set_morpheme, allowed while its link was planned to go) comes out, as
+    # a linked morpheme stores none (R2) and the link takes a stored one off.
+    linking: List[tuple] = []
     for ref in _refs(refs):
         place = _planned_place(ws, doc, ref)
         if place is not None:
@@ -593,6 +597,8 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
         if _planned_phrase_over(ws, obj.id):
             raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
                             'link inside one, so discard_plan first if you meant to replace it', kind='conflict')
+        if isinstance(obj, Morpheme):
+            linking.append((ref, obj.id))
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:
             back.append((ref, ws.op_target({'kind': 'link', 'token_id': obj.id})))
             continue
@@ -611,10 +617,16 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                        'existing_link_id': obj.link.id if obj.link else None, 'entry_form': form,
                        **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(what)}',
                                   'link ' + (f'{qv(_linked(ws, obj.link))} → ' if obj.link else '') + qv(shown))})
+    typed = {mid: ref for ref, mid in linking}
+    types = [op for op in ws.ops if op.get('kind') == 'set_morph_type' and op.get('morpheme_id') in typed]
     with ws.staging():
         taken = _take_out(ws, [key for _, key in back])
         ws.add_ops(staged)
+        ws.take_back(types)
     note = ws.planned_note(len(staged))
+    if types:
+        note += (f' The type planned on {", ".join(typed[op["morpheme_id"]] for op in types)} was taken out of the '
+                 'plan: a linked morpheme goes by its entry\'s type.')
     if taken:
         note += (f' {", ".join(ref for ref, key in back if key in taken)} already linked to "{form}": the '
                  'planned change to that link was taken out of the plan.')

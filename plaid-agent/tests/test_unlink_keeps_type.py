@@ -244,6 +244,47 @@ def test_a_morpheme_the_plan_unlinks_takes_a_type_of_its_own(live_client):
         s.delete()
 
 
+# REV-LAST-1: unlink, set_morpheme with a type (allowed while the unlink is
+# planned), then a link of the same morpheme, which takes the unlink back (the
+# same entry) or replaces it (another). The type stayed and was written after
+# the link, so the morpheme ended linked AND storing a type (R2).
+
+def _linked_form(c, s):
+    d = c.documents.get(s.ids['d1'], include_body=True)
+    for tl in d['text_layers']:
+        for tk in tl['token_layers']:
+            for v in tk.get('vocabs') or []:
+                for l in v.get('vocab_links') or []:
+                    if s.ids['m-1b'] in [t if isinstance(t, str) else t.get('id') for t in l.get('tokens') or []]:
+                        return (l.get('vocab_item') or {}).get('form')
+    return None
+
+
+def _unlink_type_link(c, name, entry):
+    s, ws = _setup(c, name)
+    try:
+        call_tool(ws, 'unlink_entry', {'document': 'Text 1', 'refs': ['s1.w1.m2']})
+        assert call_tool(ws, 'set_morpheme', {'document': 'Text 1', 'ref': 's1.w1.m2',
+                                              'type': 'enclitic'}).startswith('Planned')
+        out = call_tool(ws, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w1.m2'], **entry})
+        assert 'The type planned on s1.w1.m2 was taken out of the plan' in out, out
+        assert not any(op['kind'] == 'set_morph_type' for op in ws.ops), ws.ops
+        if ws.ops:
+            _p, h, _ = approve(c, s.project_id, ws)
+            assert not h.errors, h.errors
+        return _linked_form(c, s), _morpheme(c, s)
+    finally:
+        s.delete()
+
+
+def test_a_link_back_to_the_same_entry_takes_back_the_type_planned_after_its_unlink(live_client):
+    assert _unlink_type_link(live_client, 'revlast relink same', {'entry_form': '-di'}) == ('-di', None)
+
+
+def test_a_link_to_another_entry_takes_back_the_type_planned_after_the_unlink(live_client):
+    assert _unlink_type_link(live_client, 'revlast relink other', {'entry_form': 'Ali'}) == ('Ali', None)
+
+
 def test_a_refusal_after_a_delete_that_landed_says_which_landed(live_client):
     """REV-LAST-2: a delete with hundreds of links fills a batch, which is sent
     as its block ends, so a later delete core refuses (linked in a project the
