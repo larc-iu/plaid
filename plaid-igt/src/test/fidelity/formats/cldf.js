@@ -346,7 +346,10 @@ export default {
       how: 'Rewritten. Every sense item made for a headword with two or more sense rows gets senseOrder 1, 2, 3 and on in row order, and no other item gets one.',
     },
     'item.homonyms': carried,
-    'item.homographNumber': carried,
+    'item.homographNumber': {
+      carried: 'changed',
+      how: 'The Homograph column is the number the app shows: every headword spelled like another gets its place in that group, a stored number only ordering the group, and a headword spelled like no other gets none. The import stores the column as the number, so the order of a group comes back and its numbers are 1, 2, 3 and on.',
+    },
     'item.exampleCorpus': {
       carried: false,
       kind: 'inherent',

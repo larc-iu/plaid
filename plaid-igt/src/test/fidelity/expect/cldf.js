@@ -21,6 +21,7 @@ import {
   EQUALS_TYPE_KEY,
 } from '../../../domain/mutations/equalsRule.js';
 import { entryRolesByKey } from '../../../domain/lexiconField.js';
+import { buildHomographNumbers } from '../../../domain/vocabDictionary.js';
 import { escapeJsRegex } from '../../../../../plaid-ui/src/lib/jsRegex.js';
 import {
   baselineOf,
@@ -321,6 +322,24 @@ export default {
   },
 
   steps: [
+    {
+      keys: ['item.homographNumber'],
+      // The Homograph column is the number igt shows (P1-10): every headword
+      // spelled like another gets its place in that group, a stored number
+      // only ordering it, and the import stores the column as the number.
+      // Read off the source tree, before the senses are flattened.
+      apply(expected) {
+        for (const v of vocabs(expected)) {
+          const numbers = buildHomographNumbers(
+            v.items.map((it) => ({ id: it.key, form: it.form, metadata: it.metadata || {} })),
+          );
+          for (const it of v.items) {
+            if (numbers.has(it.key)) (it.metadata ??= {}).homograph = numbers.get(it.key);
+            else if (it.metadata) delete it.metadata.homograph;
+          }
+        }
+      },
+    },
     {
       keys: ['item.itemRefValue', 'item.itemRefManyValue'],
       // A reference becomes the label of the entry it pointed at, numbered as
