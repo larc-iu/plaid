@@ -158,3 +158,70 @@ def test_a_link_to_a_planned_morpheme_keeps_the_equals_rules_type_under_an_untyp
         patches = w.client.patches('tokens')
         assert [ops for _id, ops in patches] == ([UNTYPE + [{'op': 'delete', 'path': ['morphTypeFromEquals']}]]
                                                  if untyped else []), (entry, patches)
+
+
+# REV-FX-AGENT-IGT-1: the kept types of a delete were one write per morpheme,
+# and the batcher cut a change past 1,000 writes, so a delete core refused
+# (an entry linked in a project the assistant cannot open) left the first
+# 1,000 morphemes linked AND storing a type. They are bulk updates now, in the
+# delete's own batch: the delete lands whole or not at all.
+
+def _many_links_doc(did, n, linked=True):
+    import fixtures as F
+    body, words, morphs, links = '', [], [], []
+    for i in range(n):
+        o = len(body)
+        body += 'di '
+        words.append({'id': f'{did}w{i}', 'begin': o, 'end': o + 2})
+        morphs.append({'id': f'{did}m{i}', 'begin': o, 'end': o + 2, 'precedence': 1, 'metadata': {'form': 'di'}})
+        if linked:
+            links.append({'id': f'{did}l{i}', 'vocab_item': {'id': 'vi-erg', 'form': '-di'}, 'tokens': [f'{did}m{i}']})
+    return {'id': did, 'name': f'Doc {did}', 'text_layers': [{
+        'id': F.TEXT_LAYER, 'name': 'Text', 'text': {'id': f'text-{did}', 'body': body},
+        'token_layers': [
+            {'id': F.SENT_LAYER, 'tokens': [{'id': f'{did}s', 'begin': 0, 'end': len(body) - 1}]},
+            {'id': F.WORD_LAYER, 'tokens': words},
+            {'id': F.MORPH_LAYER, 'tokens': morphs,
+             'vocabs': [{'id': F.VOCAB, 'name': 'Lexicon', 'vocab_links': links}]},
+        ]}]}
+
+
+def _typed_morphemes(c, s, did):
+    import fixtures as F
+    d = c.documents.get(s.ids[did], include_body=True)
+    return [t['id'] for tl in d['text_layers'] for tk in tl['token_layers'] if tk['id'] == s.ids[F.MORPH_LAYER]
+            for t in tk.get('tokens') or [] if (t.get('metadata') or {}).get('morphType')]
+
+
+def test_a_refused_delete_of_an_entry_with_many_links_writes_no_type(live_client):
+    import fixtures as F
+    import pytest
+    from live import seed
+    from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
+    from plaid_agent.igt.workspace import Workspace
+    c = live_client
+    a = seed(c, F.project_raw(), {'da': _many_links_doc('da', 1200)}, {F.VOCAB: F.lexicon_raw()},
+             name='q1 many links A')
+    b = seed(c, F.project_raw(), {'db': _many_links_doc('db', 1, linked=False)}, {F.VOCAB: F.lexicon_raw()},
+             name='q1 many links B')
+    try:
+        # The lexicon of A is linked into B too, and a morpheme of B links -di.
+        c.projects.link_vocab(b.project_id, a.ids[F.VOCAB])
+        c.vocab_links.create(a.ids['vi-erg'], [b.ids['dbm0']])
+        ws = Workspace(c, load_project(c, a.project_id))
+        call_tool(ws, 'delete_entry', {'entry_id': a.ids['vi-erg']})
+        with pytest.raises(Exception, match='cannot open'):
+            execute_plan(c, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
+        assert c.vocab_items.get(a.ids['vi-erg'])
+        assert _typed_morphemes(c, a, 'da') == []
+    finally:
+        b.delete()
+    # Without B, the same delete lands, every morpheme typed.
+    try:
+        ws = Workspace(c, load_project(c, a.project_id))
+        call_tool(ws, 'delete_entry', {'entry_id': a.ids['vi-erg']})
+        execute_plan(c, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
+        assert len(_typed_morphemes(c, a, 'da')) == 1200
+    finally:
+        a.delete()

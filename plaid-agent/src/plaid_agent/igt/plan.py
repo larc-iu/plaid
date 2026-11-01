@@ -478,16 +478,26 @@ def _apply_unlink(ctx: Context, op) -> int:
     return 1
 
 
-def _keep_type(ctx: Context, morpheme_id: str, morph_type: str) -> None:
+def _keep_type(ctx: Context, morpheme_id: str, morph_type: str, bulk: bool = False) -> None:
     """Write onto a morpheme whose link goes the type its entry gave it, in
     the batch that takes the link, as the app's unlink and entry delete do
     (ruling Q1): a linked morpheme stores none (R2), and without it a suffix
     lost its "-" in every export. Not on a morpheme the plan deletes, links
-    again, rewrites in an analysis or gives a type of its own."""
+    again, rewrites in an analysis or gives a type of its own.
+
+    A delete's (``bulk``) are queued as bulk updates, as the app's
+    queueKeptTypes, so its thousands of them are a few sub-ops of the
+    delete's own batch: one write each took a big delete past the batch
+    cap, and its first thousand types landed while core refused the delete,
+    on morphemes still linked (REV-FX-AGENT-IGT-1). An unlink's one is a
+    write beside its link's delete."""
     if morpheme_id in ctx.dead_tokens or morpheme_id in ctx.typed_later:
         return
-    ctx.b.add(lambda batch, m=morpheme_id, t=morph_type: batch.tokens.patch_metadata(
-        m, [{'op': 'set', 'path': ['morphType'], 'value': t}]))
+    ops = [{'op': 'set', 'path': ['morphType'], 'value': morph_type}]
+    if bulk:
+        ctx.b.update('tokens', morpheme_id, metadata=ops)
+    else:
+        ctx.b.add(lambda batch, m=morpheme_id: batch.tokens.patch_metadata(m, ops))
 
 
 def _apply_set_morph_type(ctx: Context, op) -> int:
@@ -1968,18 +1978,23 @@ def _write_lexicon(ctx: Context, ops) -> None:
             for r in repairs.pop(op['remove_id'], ()):
                 _write_entry_metadata(ctx, r)
             b.add(lambda batch, k=op['keep_id'], r=op['remove_id']: batch.vocab_items.merge(k, [r]))
-    for op, n in deletes:
-        with b.writing_for(op):
-            for r in repairs.pop(op['item_id'], ()):
-                _write_entry_metadata(ctx, r)
-            for mid in op.get('keep_on') or []:
-                _keep_type(ctx, mid, op['keep_type'])
-            b.add(lambda batch, i=op['item_id'], n=n: batch.vocab_items.delete(i, expected_link_count=n))
-    # A repair whose delete or merge the plan no longer holds.
-    for r in [r for rs in repairs.values() for r in rs]:
-        with b.writing_for(r):
-            _write_entry_metadata(ctx, r)
     try:
+        # A delete's change can fill a batch, which is then sent as its
+        # block ends, so the refusal is read the same wherever it comes.
+        for op, n in deletes:
+            with b.writing_for(op):
+                for r in repairs.pop(op['item_id'], ()):
+                    _write_entry_metadata(ctx, r)
+                for mid in op.get('keep_on') or []:
+                    _keep_type(ctx, mid, op['keep_type'], bulk=True)
+                # Before the delete, which moves the versions of the
+                # documents its links are in.
+                b.drain()
+                b.add(lambda batch, i=op['item_id'], n=n: batch.vocab_items.delete(i, expected_link_count=n))
+        # A repair whose delete or merge the plan no longer holds.
+        for r in [r for rs in repairs.values() for r in rs]:
+            with b.writing_for(r):
+                _write_entry_metadata(ctx, r)
         b.flush()
     except PlaidAPIError as e:
         # Every link it has in this project is one the plan read, so the

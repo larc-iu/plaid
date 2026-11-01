@@ -325,6 +325,12 @@ class Batcher:
         if sum(len(v) for v in self._bulk.values()) >= self.budget:
             self._drain()
 
+    def drain(self) -> None:
+        """Turn the updates queued so far into bulk sub-ops now, so they come
+        before what is queued next in the batch (a write that changes the
+        version they are stamped with)."""
+        self._drain()
+
     def _drain(self) -> None:
         """Turn the queued updates into bulk sub-ops of the open batch."""
         pending, self._bulk = self._bulk, {}
