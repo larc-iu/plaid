@@ -363,3 +363,16 @@ def test_a_type_on_a_morpheme_the_plan_links_to_an_untyped_entry_is_refused(live
 def test_a_type_on_a_morpheme_the_plan_links_to_a_typed_entry_is_refused(live_client):
     assert _link_then_type(live_client, 'w2r link -di then type', '-di', 'enclitic') is None
 
+
+def test_a_link_to_an_entry_the_plan_deletes_is_refused():
+    """VERIFY-LAST-1: a link back to the morpheme's entry the plan deletes was
+    a silent no-op ("already linked"), and took back the person's type."""
+    from fixtures import FakeClient, fake_ws
+    w = fake_ws(FakeClient())
+    call_tool(w, 'delete_entry', {'entry_form': '-di'})
+    assert call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m2', 'type': 'enclitic'}).startswith('Planned')
+    out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1.m2'], 'entry_form': '-di'})
+    assert 'is deleted in this plan, so nothing can be linked to it' in out, out
+    assert [op['kind'] for op in w.ops] == ['delete_entry', 'set_morph_type'], w.ops
+    out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_form': '-di'})
+    assert 'is deleted in this plan' in out, out

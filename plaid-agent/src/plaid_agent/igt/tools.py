@@ -566,6 +566,12 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     kind, target = _entry_named(ws, entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     shown = ws.entry_shown(target['id'], form) if kind == 'existing' else form
+    if kind == 'existing' and any(o.get('kind') == 'delete_entry' and o.get('item_id') == target['id']
+                                  for o in ws.ops):
+        # Its links go with it, so a link to it would be a silent no-op, or
+        # a link deleted again (VERIFY-LAST-1).
+        raise ToolError(f'{qv(shown)} is deleted in this plan, so nothing can be linked to it. Link another '
+                        'entry, or take the delete out of the plan first.', kind='conflict')
     entry_typed = _entry_goes_by(ws, kind, target) is not None
     staged: List[Dict[str, Any]] = []
     inside: List[str] = []
