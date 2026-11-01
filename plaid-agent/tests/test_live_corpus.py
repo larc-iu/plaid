@@ -198,7 +198,9 @@ def test_bulk_tools_plan(proj):
     same_ops(proj, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}], 'skip_analyzed': True})
     same_ops(proj, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]})
     b = same_ops(proj, 'merge_entries', {'keep_form': 'Ali', 'remove_form': '-di'})
-    assert b.ops[-1]['links'] and b.ops[-1]['links'][0]['token_ids'] == [proj.ids['m-1b']]
+    # The merge's own op: the untyped survivor's type repair follows it (Merge types, Luke 2026-11-01).
+    [merge] = [op for op in b.ops if op['kind'] == 'merge_entries']
+    assert merge['links'] and merge['links'][0]['token_ids'] == [proj.ids['m-1b']]
     same_ops(proj, 'delete_entry', {'entry_form': 'Ali'})
     # The stale check knows the documents of query-built ops.
     assert [d['id'] for d in b.plan_payload()['documents']] == [proj.ids['d1']]

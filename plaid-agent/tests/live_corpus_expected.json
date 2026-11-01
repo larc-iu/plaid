@@ -284,7 +284,7 @@
  "proj lexicon_entry {\"entry_form\": \"Ali\"}": "Headword \"Ali\" (id vi-ali, entry_form \"Ali\")\n  gloss: Ali\n  pos: N\nLinked from 1 word and 0 morphemes.\nExamples:\n  \"Text 1\" s1.w1 Ali-di | seg=Ali-di types=?,suffix | Morph Gloss=Ali-ERG | Gloss=Ali | IPA=alidi | link=Ali | mlinks=m2:-di || Ali-di gam akuna.",
  "proj lexicon_entry {\"entry_form\": \"gam\", \"entry_gloss\": \"fish\"}": "Headword \"gam\" (1 of 2 spelled that way) (id vi-gam, entry_form \"gam#1\")\n  gloss: fish\nLinked from 0 words and 0 morphemes.",
  "proj merge_entries {\"keep_form\": \"Ali\", \"remove_form\": \"-di\"}": {
-  "answer": "Planned 1 change (nothing is written until the user approves; the plan now holds 1 change). Describe the plan to the user in your reply. 1 link(s) will move.",
+  "answer": "Planned 2 changes (nothing is written until the user approves; the plan now holds 2 changes). Describe the plan to the user in your reply. 1 link(s) will move. 1 entry repointed at the survivor.",
   "ops": [
    {
     "keep_id": "vi-ali",
@@ -299,6 +299,17 @@
      }
     ],
     "remove_id": "vi-erg"
+   },
+   {
+    "change_at": 13,
+    "entry_read": "dc72301921a8f34c",
+    "item_id": "vi-ali",
+    "kind": "set_entry_metadata",
+    "label": "entry \"Ali\": takes the type suffix from the merged entry",
+    "patch": {
+     "morphType": "suffix"
+    },
+    "repair_of": "vi-erg"
    }
   ]
  },
