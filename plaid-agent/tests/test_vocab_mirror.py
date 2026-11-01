@@ -218,6 +218,8 @@ SURFACE_EXEMPT = {
     'lexiconView': "one memo over the tree for the app's screens and exports",
     'itemLabel': 'form plus number as text; the port has LexView.label, spelled the way a tool takes it back',
     'exampleKey': 'keys a rendering cache',
+    'buildHomographNumbers': "the homograph number an export writes (LIFT order, CLDF's Homograph, flextext's hn); "
+                             'the agent writes no export, and build_item_numbers numbers the entries it names',
     'statusTagsetName': "the tagset editor's guard on the published value; the tagsets tool keeps its own",
     'dropsPublishedStatus': 'the same guard',
     # vocabFields.js is mostly the entry FORM: labels, controls, grouping and
