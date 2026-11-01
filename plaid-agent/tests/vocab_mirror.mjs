@@ -27,7 +27,7 @@ const DOMAIN = resolve(dirname(fileURLToPath(import.meta.url)), '../../plaid-igt
 const dictMod = await import(`${DOMAIN}/vocabDictionary.js`);
 const fieldsMod = await import(`${DOMAIN}/vocabFields.js`);
 const {
-  buildSenseTree, buildItemNumbers, planDeleteRefs, planMergeRefs, planSenseDrop,
+  buildSenseTree, buildItemNumbers, planDeleteRefs, planMergeRefs, mergeMorphType, planSenseDrop,
   nextSenseOrder, descendantsOf, referencesTo, validateVocabRefs,
   homographGroup, planHomographOrder, homographOf, arrangeAsTree, morphTypeOf,
   exampleRefs, withParentSet,
@@ -84,6 +84,7 @@ const out = cases.map((c) => {
       .map((x) => [x.item.id, x.field ? x.field.name : null]),
     planDeleteRefs: planDeleteRefs(c.items, c.fields, c.deleted),
     planMergeRefs: planMergeRefs(c.items, c.fields, c.survivor, c.losers),
+    mergeMorphType: mergeMorphType(c.items, c.survivor, c.losers),
     validateVocabRefs: validateVocabRefs(c.items, c.fields).patches,
     validateVocabRefsFindings: validateVocabRefs(c.items, c.fields).findings,
     // laying a filtered list out as a tree, context rows and all

@@ -21,7 +21,8 @@ import {
   editableMetadata,
   FIELD_TYPES,
 } from '@/domain/vocabFields';
-import { itemLabel, planMergeRefs, refIds } from '@/domain/vocabDictionary';
+import { itemLabel, mergeMorphType, planMergeRefs, refIds } from '@/domain/vocabDictionary';
+import { morphTypeLabel } from '@/domain/affixMarkers';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
@@ -154,6 +155,11 @@ export const MergePanel = ({ project, client }) => {
   };
 
   const losers = [...chosen].filter((id) => id !== survivor);
+  // What type the survivor ends with (Luke 2026-11-01): an untyped survivor
+  // takes the one type its losers go by, else the losers' morphemes go by
+  // the survivor's.
+  const typing =
+    items && survivor && losers.length ? mergeMorphType(items, survivor, losers) : null;
 
   const results = usePreviewFocus([...chosen, survivor].join(' '));
   const preview = async () => {
@@ -434,6 +440,17 @@ export const MergePanel = ({ project, client }) => {
             </strong>
             : {countOf(plan.links, 'link')} in {countOf(plan.docs, 'document')} will follow.
           </span>
+          {typing?.take && (
+            <span className="block text-sm">
+              “<FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />”
+              takes the type {morphTypeLabel(typing.take)}.
+            </span>
+          )}
+          {typing?.differs && (
+            <span className="block text-sm">
+              The merged entries’ morphemes will go by the survivor’s type.
+            </span>
+          )}
         </ApplyBar>
       )}
     </div>

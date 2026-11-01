@@ -112,8 +112,11 @@ def test_merging_or_deleting_members_removes_a_collapsed_expression():
 def test_entry_tools_move_and_delete_the_whole_expression_once():
     w = ws()
     call_tool(w, 'merge_entries', {'keep_id': 'vi-gam', 'remove_id': PHRASE_ITEM})
-    assert w.ops[-1]['links'] == [{'link_id': MWE_LINK, 'token_ids': ['w-2', 'w-3']}]
-    assert 'move 1 link' in w.ops[-1]['label']
+    # The merge's own op (the untyped survivor also takes the phrase's type,
+    # in a repair after it: Luke 2026-11-01).
+    [merge] = [op for op in w.ops if op['kind'] == 'merge_entries']
+    assert merge['links'] == [{'link_id': MWE_LINK, 'token_ids': ['w-2', 'w-3']}]
+    assert 'move 1 link' in merge['label']
     # Deleting the entry that same merge removes is refused: both ops end in
     # one delete of it, and doing it twice fails the batch they share.
     assert 'merged away by this same plan' in call_tool(w, 'delete_entry', {'entry_id': PHRASE_ITEM})

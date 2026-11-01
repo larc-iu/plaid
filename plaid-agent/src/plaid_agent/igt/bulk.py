@@ -27,7 +27,7 @@ from .tools import (parse_analysis, analysis_op, stage_equals, no_scope_reaches,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, _matcher, op_target
-from .vocab import (example_refs, item_ref_fields, morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids,
+from .vocab import (example_refs, item_ref_fields, merge_morph_type, morph_type_of, parent_of, plan_delete_refs, plan_merge_refs, ref_ids,
                     stored_entry_form)
 
 
@@ -1680,6 +1680,8 @@ def _repair_says(before: dict, after: dict, view) -> str:
     gained = len(example_refs({'metadata': after})) - len(example_refs({'metadata': before}))
     if gained > 0:
         bits.append(f'takes {gained} example{"s" if gained != 1 else ""} from the merged entry')
+    if after.get('morphType') and after.get('morphType') != before.get('morphType'):
+        bits.append(f'takes the type {after["morphType"]} from the merged entry')
     return '; '.join(bits) or 'reference updated'
 
 
@@ -1711,6 +1713,11 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     _refuse_removing_survivor(ws, remove, 'be merged away')
     links = _links_to(ws, remove['id'])
     view = ws.view_of_item(remove['id'])
+    # An untyped survivor takes the type the removed entry goes by (its
+    # repair below), and where the two differ the removed entry's morphemes go
+    # by the survivor's (Luke 2026-11-01, as Bulk Edit's merge).
+    differs = bool(view) and merge_morph_type(view.items, keep['id'], [remove['id']])['differs']
+    differs_says = f'; its morphemes will go by the type of {_name(view, keep)}' if differs else ''
     # Named the way a tool takes them back, so two entries spelled alike
     # (the very pair a merge is for) read apart on the card.
     # The merge and the reference repairs it carries are one change or none:
@@ -1721,7 +1728,7 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
         ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
                    **_senses_read(ws, remove['id']),
                    'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
-                            f'{move_phrase(len(links))}, delete the former'})
+                            f'{move_phrase(len(links))}, delete the former{differs_says}'})
         refs = _repairs_of(remove['id'], _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']]))
         ws.add_ops(refs)
     # Less any link another change in the plan takes (plan.settle_merges),
@@ -1729,7 +1736,9 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     moving = next((len(op['links']) for op in settle_merges(ws.ops)[0] if op.get('kind') == 'merge_entries'
                    and (op['keep_id'], op['remove_id']) == (keep['id'], remove['id'])), len(links))
     note = ws.planned_note(1 + len(refs)) + f' {moving} link(s) will move.'
-    return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} repointed at the survivor.' if refs else '')
+    note += (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} repointed at the survivor.' if refs else '')
+    return note + (' The two go by different morph types: the removed entry\'s morphemes will go by the '
+                   'survivor\'s.' if differs else '')
 
 
 def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,

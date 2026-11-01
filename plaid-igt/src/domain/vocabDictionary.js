@@ -794,13 +794,61 @@ export const planDeleteRefs = (items, fields, deletedIds) => {
   return patches;
 };
 
+// The survivor's new parent in a merge: the parent of the topmost loser
+// above it, when there is one. `undefined` leaves it where it is.
+const survivorLift = (tree, survivorId, losers) => {
+  const chain = [];
+  const seen = new Set();
+  let up = tree.parentOf.get(survivorId) ?? null;
+  while (up && !seen.has(up)) {
+    seen.add(up);
+    chain.push(up);
+    up = tree.parentOf.get(up) ?? null;
+  }
+  const top = chain.map((id) => losers.has(id)).lastIndexOf(true);
+  return top >= 0 ? (tree.parentOf.get(chain[top]) ?? null) : undefined;
+};
+
+/**
+ * The morph type a merge leaves its survivor (Luke 2026-11-01). Each entry
+ * goes by its own type, else its headword's (morphTypeOf), and the survivor
+ * is read where the merge leaves it (lifted out from under a losing headword,
+ * it no longer goes by that one). `take` is the type an untyped survivor takes
+ * when every typed loser goes by the same one, so the morphemes the merge
+ * moves keep it. `differs` says a typed loser goes by a type other than the
+ * one the survivor ends with: the merge writes nothing for it, and the
+ * losers' morphemes go by the survivor's type.
+ */
+export const mergeMorphType = (items, survivorId, loserIds) => {
+  const losers = new Set(loserIds);
+  losers.delete(survivorId);
+  const tree = buildSenseTree(items);
+  const lift = survivorLift(tree, survivorId, losers);
+  const own = tree.byId.get(survivorId)?.metadata?.morphType;
+  const above = lift === undefined ? (tree.parentOf.get(survivorId) ?? null) : lift;
+  const survivor =
+    typeof own === 'string' && own !== '' ? own : above ? morphTypeOf(tree, above) : null;
+  const loserTypes = [
+    ...new Set(
+      (items || [])
+        .filter((it) => losers.has(it.id))
+        .map((it) => morphTypeOf(tree, it.id))
+        .filter((t) => t != null),
+    ),
+  ];
+  const take = !survivor && loserTypes.length === 1 ? loserTypes[0] : null;
+  const goesBy = survivor ?? take;
+  return { take, differs: loserTypes.some((t) => t !== goesBy) };
+};
+
 /**
  * Patches for a merge: every reference to a losing entry now names the
  * survivor, the losers' senses become the survivor's (each loser's in its own
  * sense order, appended after the survivor's), a survivor that hangs
  * anywhere under a loser is lifted to where the topmost such loser stood, and
  * the losers' promoted examples are added to the survivor's, each once
- * (ruling Q2). Losers themselves get no patch (they are deleted).
+ * (ruling Q2), and an untyped survivor takes the type its losers go by
+ * (mergeMorphType). Losers themselves get no patch (they are deleted).
  *
  * The lift looks at the survivor's whole ancestor chain, not only its parent.
  * With a headword merged into a sense two levels down, the sense between them
@@ -812,21 +860,8 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
   losers.delete(survivorId);
   const refFields = itemRefFields(fields);
   const tree = buildSenseTree(items);
-  // The survivor's new parent: the parent of the topmost loser above it, when
-  // there is one. `undefined` leaves it where it is.
-  let survivorParent;
-  {
-    const chain = [];
-    const seen = new Set();
-    let up = tree.parentOf.get(survivorId) ?? null;
-    while (up && !seen.has(up)) {
-      seen.add(up);
-      chain.push(up);
-      up = tree.parentOf.get(up) ?? null;
-    }
-    const top = chain.map((id) => losers.has(id)).lastIndexOf(true);
-    if (top >= 0) survivorParent = tree.parentOf.get(chain[top]) ?? null;
-  }
+  const survivorParent = survivorLift(tree, survivorId, losers);
+  const { take } = mergeMorphType(items, survivorId, loserIds);
   // Each loser's senses, in sense order, take the orders after the survivor's.
   const orderOf = new Map();
   let order = nextSenseOrder(tree, survivorId);
@@ -850,6 +885,10 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
           survivorParent,
           survivorParent ? nextSenseOrder(tree, survivorParent) : null,
         );
+        changed = true;
+      }
+      if (take) {
+        meta = { ...meta, morphType: take };
         changed = true;
       }
       const have = new Set(exampleRefs(it).map((e) => exampleKey(e.document, e.token)));

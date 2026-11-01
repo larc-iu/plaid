@@ -385,13 +385,61 @@ def plan_delete_refs(items: List[dict], fields: List[dict], deleted_ids) -> List
     return patches
 
 
+_UNCHANGED = object()
+
+
+def _survivor_lift(tree, survivor_id: str, losers: set):
+    """The survivor's new parent in a merge: the parent of the topmost loser
+    above it, when there is one. ``_UNCHANGED`` leaves it where it is."""
+    chain = []
+    seen = set()
+    up = tree.parent_of.get(survivor_id)
+    while up and up not in seen:
+        seen.add(up)
+        chain.append(up)
+        up = tree.parent_of.get(up)
+    top = max((i for i, x in enumerate(chain) if x in losers), default=-1)
+    return tree.parent_of.get(chain[top]) if top >= 0 else _UNCHANGED
+
+
+def merge_morph_type(items: List[dict], survivor_id: str, loser_ids) -> dict:
+    """The morph type a merge leaves its survivor (Luke 2026-11-01), as
+    ``{'take', 'differs'}``. Mirrors mergeMorphType: each entry goes by its
+    own type, else its headword's, and the survivor is read where the merge
+    leaves it. ``take`` is the type an untyped survivor takes when every typed
+    loser goes by the same one, ``differs`` that a typed loser goes by another
+    type than the survivor ends with (nothing is written for it, and the
+    losers' morphemes go by the survivor's type)."""
+    losers = set(loser_ids or [])
+    losers.discard(survivor_id)
+    tree = build_sense_tree(items)
+    lift = _survivor_lift(tree, survivor_id, losers)
+    it = tree.by_id.get(survivor_id)
+    own = ((it or {}).get('metadata') or {}).get('morphType')
+    above = tree.parent_of.get(survivor_id) if lift is _UNCHANGED else lift
+    if isinstance(own, str) and own != '':
+        survivor = own
+    else:
+        survivor = morph_type_of(tree, above) if above else None
+    loser_types = []
+    for x in items or []:
+        if x['id'] in losers:
+            t = morph_type_of(tree, x['id'])
+            if t is not None and t not in loser_types:
+                loser_types.append(t)
+    take = loser_types[0] if not survivor and len(loser_types) == 1 else None
+    goes_by = survivor if survivor is not None else take
+    return {'take': take, 'differs': any(t != goes_by for t in loser_types)}
+
+
 def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, loser_ids) -> List[dict]:
     """Patches for a merge: every reference to a losing entry now names the
     survivor, the losers' senses become the survivor's (each loser's in its own
     sense order, appended after the survivor's), and a survivor that hangs
     anywhere under a loser is lifted to where the topmost such loser stood.
     The losers' promoted examples are added to the survivor's, each once
-    (ruling Q2). Losers get no patch (they are deleted). Mirrors
+    (ruling Q2), and an untyped survivor takes the type its losers go by
+    (merge_morph_type). Losers get no patch (they are deleted). Mirrors
     planMergeRefs, which is what Bulk Edit's merge does.
 
     The lift looks at the survivor's whole ancestor chain, not only its parent:
@@ -401,20 +449,8 @@ def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, los
     losers.discard(survivor_id)
     ref_fields = item_ref_fields(fields)
     tree = build_sense_tree(items)
-    # The survivor's new parent: the parent of the topmost loser above it, when
-    # there is one. `_unchanged` leaves it where it is.
-    _unchanged = object()
-    survivor_parent = _unchanged
-    chain = []
-    seen = set()
-    up = tree.parent_of.get(survivor_id)
-    while up and up not in seen:
-        seen.add(up)
-        chain.append(up)
-        up = tree.parent_of.get(up)
-    top = max((i for i, x in enumerate(chain) if x in losers), default=-1)
-    if top >= 0:
-        survivor_parent = tree.parent_of.get(chain[top])
+    survivor_parent = _survivor_lift(tree, survivor_id, losers)
+    take = merge_morph_type(items, survivor_id, loser_ids)['take']
     # Each loser's senses, in sense order, take the orders after the survivor's.
     order_of = {}
     order = next_sense_order(tree, survivor_id)
@@ -434,9 +470,12 @@ def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, los
         meta = it.get('metadata') or {}
         changed = False
         if it['id'] == survivor_id:
-            if survivor_parent is not _unchanged:
+            if survivor_parent is not _UNCHANGED:
                 meta = with_parent(meta, survivor_parent or None,
                                    next_sense_order(tree, survivor_parent) if survivor_parent else None)
+                changed = True
+            if take:
+                meta = {**meta, 'morphType': take}
                 changed = True
             have = {(e['document'], e['token']) for e in example_refs(it)}
             for ref in carried:

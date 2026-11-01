@@ -160,6 +160,44 @@ describe('Merge', () => {
     await view.unmount();
   });
 
+  // Luke 2026-11-01: an untyped survivor takes the type its losers go by,
+  // in the merge's batch, so the morphemes it moves keep it.
+  it('gives an untyped survivor the type of the entry merged into it, and says so', async () => {
+    const client = makeClient({ merged: { moved: 1, duplicates: 0, removed: ['d2'] } });
+    client.items = [
+      { id: 'd1', form: 'dog', metadata: {} },
+      { id: 'd2', form: 'dog', metadata: { morphType: 'suffix' } },
+      { id: 'c1', form: 'cat' },
+    ];
+    const view = await mount(client);
+    await previewDogs(view);
+    expect(document.body.textContent).toContain('takes the type suffix.');
+    expect(document.body.textContent).not.toContain('will go by the survivor’s type');
+    await apply(view);
+    const [, updates] = client.ops.find(([kind]) => kind === 'bulkUpdate');
+    expect(updates).toEqual([
+      { id: 'd1', metadata: [{ op: 'set', path: ['morphType'], value: 'suffix' }] },
+    ]);
+    await view.unmount();
+  });
+
+  it('writes no type when the survivor goes by another, and says the morphemes go by it', async () => {
+    const client = makeClient({ merged: { moved: 1, duplicates: 0, removed: ['d2'] } });
+    client.items = [
+      { id: 'd1', form: 'dog', metadata: { morphType: 'stem' } },
+      { id: 'd2', form: 'dog', metadata: { morphType: 'suffix' } },
+      { id: 'c1', form: 'cat' },
+    ];
+    const view = await mount(client);
+    await previewDogs(view);
+    expect(document.body.textContent).toContain(
+      'The merged entries’ morphemes will go by the survivor’s type.',
+    );
+    await apply(view);
+    expect(client.sent).toEqual(['merge']);
+    await view.unmount();
+  });
+
   it('names entries spelled alike by their subscript number, and counts links', async () => {
     const client = makeClient({ merged: { moved: 1, duplicates: 0, removed: ['d2'] } });
     const view = await mount(client);

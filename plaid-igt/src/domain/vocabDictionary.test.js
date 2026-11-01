@@ -17,6 +17,7 @@ import {
   referencesTo,
   validateVocabRefs,
   planDeleteRefs,
+  mergeMorphType,
   planMergeRefs,
   morphTypeOf,
   fieldsForItem,
@@ -585,6 +586,52 @@ describe('delete and merge', () => {
       planMergeRefs(list, fields, 's', ['l']).map((p) => [p.id, p.metadata]),
     );
     expect([byId.c1.senseOrder, byId.c2.senseOrder, byId.c3.senseOrder]).toEqual([1, 2, 3]);
+  });
+
+  // Luke 2026-11-01 (REV-FX-AGENT-IGT-3): an untyped survivor takes the type
+  // its typed losers go by, so the morphemes the merge moves keep it. Losers
+  // that differ, or a typed survivor and a loser that differ, write nothing
+  // new, and the merge says the losers' morphemes go by the survivor's type.
+  it('gives an untyped survivor the type its losers go by', () => {
+    const list = [
+      item('s', 'di'),
+      item('l', 'di', { morphType: 'suffix' }),
+      item('ls', 'di', { parent: 'l', senseOrder: 1 }),
+    ];
+    const byId = Object.fromEntries(
+      planMergeRefs(list, fields, 's', ['l', 'ls']).map((p) => [p.id, p.metadata]),
+    );
+    expect(byId.s).toEqual({ morphType: 'suffix' });
+    expect(mergeMorphType(list, 's', ['l', 'ls'])).toEqual({ take: 'suffix', differs: false });
+  });
+
+  it('writes no type when the types differ, and says so', () => {
+    const twoTypes = [
+      item('s', 'di'),
+      item('a', 'di', { morphType: 'suffix' }),
+      item('b', 'di', { morphType: 'prefix' }),
+    ];
+    expect(planMergeRefs(twoTypes, fields, 's', ['a', 'b'])).toEqual([]);
+    expect(mergeMorphType(twoTypes, 's', ['a', 'b'])).toEqual({ take: null, differs: true });
+    const typedSurvivor = [item('s', 'di', { morphType: 'stem' }), twoTypes[1]];
+    expect(planMergeRefs(typedSurvivor, fields, 's', ['a'])).toEqual([]);
+    expect(mergeMorphType(typedSurvivor, 's', ['a'])).toEqual({ take: null, differs: true });
+    expect(
+      mergeMorphType([item('s', 'di', { morphType: 'suffix' }), twoTypes[1]], 's', ['a']),
+    ).toEqual({ take: null, differs: false });
+  });
+
+  // A sense survivor lifted out from under a typed losing headword goes by
+  // what it ends under, not by the headword the merge deletes.
+  it('reads the survivor as it stands after the lift', () => {
+    const list = [
+      item('l', 'di', { morphType: 'suffix' }),
+      item('s', 'di', { parent: 'l', senseOrder: 1 }),
+    ];
+    const byId = Object.fromEntries(
+      planMergeRefs(list, fields, 's', ['l']).map((p) => [p.id, p.metadata]),
+    );
+    expect(byId.s).toEqual({ morphType: 'suffix' });
   });
 
   // Ruling Q2: the losers' promoted examples are added to the survivor's,

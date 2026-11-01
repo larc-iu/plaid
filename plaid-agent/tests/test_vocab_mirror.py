@@ -41,7 +41,7 @@ import pytest
 from plaid_agent.igt import vocab as vocab_module
 from plaid_agent.igt.vocab import (
     build_sense_tree, build_item_numbers, plan_delete_refs,
-    plan_merge_refs, plan_sense_drop, next_sense_order, descendants_of, references_to,
+    plan_merge_refs, merge_morph_type, plan_sense_drop, next_sense_order, descendants_of, references_to,
     morph_type_of, example_refs, with_parent_set,
     validate_vocab_refs, homograph_group, plan_homograph_order, homograph_of,
     arrange_as_tree, normalize_vocab_fields)
@@ -156,6 +156,27 @@ def _raw_fields(r: random.Random):
     return r.choice([out, None, {}])
 
 
+def _merge_type_cases() -> list:
+    """Merges the random lexicons rarely reach (Luke 2026-11-01): an untyped
+    survivor and one typed loser, losers of two types, a typed survivor, a
+    loser typed through its headword, and a sense survivor lifted out from
+    under its typed losing headword."""
+    def it(i, **m):
+        return {'id': i, 'form': 'di', 'metadata': m}
+    base = _case(0)
+    shapes = [
+        ([it('s'), it('l', morphType='suffix')], 's', ['l']),
+        ([it('s'), it('a', morphType='suffix'), it('b', morphType='prefix')], 's', ['a', 'b']),
+        ([it('s', morphType='stem'), it('l', morphType='suffix')], 's', ['l']),
+        ([it('s', morphType='suffix'), it('l', morphType='suffix')], 's', ['l']),
+        ([it('s'), it('h', morphType='enclitic'), it('l', parent='h', senseOrder=1)], 's', ['l']),
+        ([it('l', morphType='suffix'), it('s', parent='l', senseOrder=1)], 's', ['l']),
+        ([it('h', morphType='prefix'), it('s', parent='h', senseOrder=1), it('l', morphType='suffix')],
+         's', ['l']),
+    ]
+    return [dict(base, items=items, survivor=sv, losers=ls) for items, sv, ls in shapes]
+
+
 def _python_side(c: dict) -> dict:
     t = build_sense_tree(c['items'])
     return {
@@ -180,6 +201,7 @@ def _python_side(c: dict) -> dict:
                          for x in references_to(c['items'], c['fields'], c['orderParent'])],
         'planDeleteRefs': plan_delete_refs(c['items'], c['fields'], c['deleted']),
         'planMergeRefs': plan_merge_refs(c['items'], c['fields'], c['survivor'], c['losers']),
+        'mergeMorphType': merge_morph_type(c['items'], c['survivor'], c['losers']),
         'validateVocabRefs': validate_vocab_refs(c['items'], c['fields'])[0],
         'validateVocabRefsFindings': validate_vocab_refs(c['items'], c['fields'])[1],
         'arrangeAsTree': [[it['id'], depth, context] for it, depth, context in arrange_as_tree(
@@ -194,7 +216,7 @@ def _python_side(c: dict) -> dict:
 @pytest.fixture(scope='module')
 def compared():
     node = _node()
-    cases = [_case(s) for s in range(CASES)]
+    cases = [_case(s) for s in range(CASES)] + _merge_type_cases()
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
         with open(path, 'w', encoding='utf-8') as fh:
@@ -323,7 +345,7 @@ def test_the_two_runners_cover_the_same_functions(compared):
     'numberOf', 'parentOf', 'depthOf', 'rootOf', 'roots', 'childrenOf',
     'itemNumbers', 'homographOf', 'homographGroup', 'planHomographOrder',
     'planSenseDrop', 'nextSenseOrder', 'descendantsOf', 'referencesTo',
-    'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'validateVocabRefsFindings',
+    'planDeleteRefs', 'planMergeRefs', 'mergeMorphType', 'validateVocabRefs', 'validateVocabRefsFindings',
     'arrangeAsTree', 'morphTypeOf', 'exampleRefs', 'withParentSet',
     'normalizeVocabFields',
 ])

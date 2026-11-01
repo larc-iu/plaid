@@ -456,6 +456,33 @@ def test_merging_carries_the_removed_entrys_examples_onto_the_survivor():
     assert 'takes 1 example from the merged entry' in by_id['d-phika']['label']
 
 
+def test_merging_a_typed_entry_into_an_untyped_one_gives_the_survivor_its_type():
+    """Luke 2026-11-01: an untyped survivor takes the type the removed entry
+    goes by, in the merge's change, so the morphemes it moves keep it, as the
+    app's merge does (planMergeRefs)."""
+    items = [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]
+    items[0]['metadata']['morphType'] = 'suffix'   # kwatha, merged away
+    w = dict_ws(items=items)
+    out = call_tool(w, 'merge_entries', {'keep_form': 'phika', 'remove_form': 'kwatha'})
+    by_id = {o['item_id']: o for o in ops_of(w, 'set_entry_metadata')}
+    assert by_id['d-phika']['patch'] == {'variantOf': None, 'morphType': 'suffix'}
+    assert 'takes the type suffix from the merged entry' in by_id['d-phika']['label']
+    assert 'different morph types' not in out
+
+
+def test_merging_entries_of_different_types_writes_no_type_and_says_so():
+    items = [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]
+    items[0]['metadata']['morphType'] = 'suffix'   # kwatha, merged away
+    items[4]['metadata']['morphType'] = 'stem'     # phika, the survivor
+    w = dict_ws(items=items)
+    out = call_tool(w, 'merge_entries', {'keep_form': 'phika', 'remove_form': 'kwatha'})
+    by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
+    assert 'morphType' not in by_id['d-phika']
+    [merge] = ops_of(w, 'merge_entries')
+    assert 'its morphemes will go by the type of "phika" (cook)' in merge['label']
+    assert "the removed entry's morphemes will go by the survivor's" in out
+
+
 # ---- the quality report ----------------------------------------------------
 
 def test_check_lexicon_counts_entries_not_senses():
