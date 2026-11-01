@@ -242,3 +242,38 @@ def test_a_morpheme_the_plan_unlinks_takes_a_type_of_its_own(live_client):
         assert _morpheme(c, s) == 'enclitic'
     finally:
         s.delete()
+
+
+def test_a_refusal_after_a_delete_that_landed_says_which_landed(live_client):
+    """REV-LAST-2: a delete with hundreds of links fills a batch, which is sent
+    as its block ends, so a later delete core refuses (linked in a project the
+    assistant cannot open) came back as "none was deleted" while the first
+    entry was gone. The refusal names the delete that landed."""
+    import fixtures as F
+    import pytest
+    from live import seed
+    from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
+    from plaid_agent.igt.workspace import Workspace
+    c = live_client
+    a = seed(c, F.project_raw(), {'da': _many_links_doc('da', 900)}, {F.VOCAB: F.lexicon_raw()},
+             name='revlast two deletes A')
+    b = seed(c, F.project_raw(), {'db': _many_links_doc('db', 1, linked=False)}, {F.VOCAB: F.lexicon_raw()},
+             name='revlast two deletes B')
+    try:
+        c.projects.link_vocab(b.project_id, a.ids[F.VOCAB])
+        c.vocab_links.create(a.ids['vi-gam'], [b.ids['dbm0']])
+        ws = Workspace(c, load_project(c, a.project_id))
+        call_tool(ws, 'delete_entry', {'entry_id': a.ids['vi-erg']})
+        call_tool(ws, 'delete_entry', {'entry_id': a.ids['vi-gam']})
+        with pytest.raises(Exception) as e:
+            execute_plan(c, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
+        msg = str(e.value)
+        assert 'none was deleted' not in msg, msg
+        assert msg.startswith('"-di" (ERG) was deleted, and "gam#1" (fish) is linked in projects'), msg
+        with pytest.raises(Exception):
+            c.vocab_items.get(a.ids['vi-erg'])
+        assert c.vocab_items.get(a.ids['vi-gam'])
+    finally:
+        b.delete()
+        a.delete()

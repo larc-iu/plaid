@@ -325,6 +325,11 @@ class Batcher:
         if sum(len(v) for v in self._bulk.values()) >= self.budget:
             self._drain()
 
+    @property
+    def queued(self) -> int:
+        """The sub-ops queued in the open batch, not yet sent."""
+        return self._pending
+
     def drain(self) -> None:
         """Turn the updates queued so far into bulk sub-ops now, so they come
         before what is queued next in the batch (a write that changes the

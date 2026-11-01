@@ -1981,6 +1981,10 @@ def _write_lexicon(ctx: Context, ops) -> None:
     try:
         # A delete's change can fill a batch, which is then sent as its
         # block ends, so the refusal is read the same wherever it comes.
+        # The deletes sent, whole, before one core refuses: a delete whose
+        # kept types fill a batch is sent as its block ends (REV-LAST-2).
+        landed: List[Dict[str, Any]] = []
+        waiting: List[Dict[str, Any]] = []
         for op, n in deletes:
             with b.writing_for(op):
                 for r in repairs.pop(op['item_id'], ()):
@@ -1991,6 +1995,9 @@ def _write_lexicon(ctx: Context, ops) -> None:
                 # documents its links are in.
                 b.drain()
                 b.add(lambda batch, i=op['item_id'], n=n: batch.vocab_items.delete(i, expected_link_count=n))
+            waiting.append(op)
+            if not b.queued:
+                landed, waiting = landed + waiting, []
         # A repair whose delete or merge the plan no longer holds.
         for r in [r for rs in repairs.values() for r in rs]:
             with b.writing_for(r):
@@ -2001,7 +2008,7 @@ def _write_lexicon(ctx: Context, ops) -> None:
         # server counting more means links in projects this one cannot
         # open, which the assistant can neither see nor take.
         if deletes and e.status == 409 and 'links' in (e.response_data or {}):
-            raise _linked_elsewhere([op for op, _n in deletes]) from e
+            raise _linked_elsewhere([op for op, _n in deletes if op not in landed], landed) from e
         raise
     for op in ctx.later.get(LEXICON, ()):
         b.finish(op)
@@ -2017,7 +2024,19 @@ def _document_of_text(ops) -> Optional[str]:
 WITHOUT_THE_DELETE = 'Ask the assistant to plan again without the delete.'
 
 
-def _linked_elsewhere(deletes: List[Dict[str, Any]]) -> PlanOutOfDate:
+def _linked_elsewhere(deletes: List[Dict[str, Any]], landed: List[Dict[str, Any]] = ()) -> PlanOutOfDate:
+    """The refusal of ``deletes``, one of which is linked where the
+    assistant cannot see, after ``landed``, the deletes sent before it."""
+    if landed:
+        def names(ops):
+            return ', '.join(op.get('name') or 'an entry' for op in ops)
+        done = f'{names(landed)} {"was" if len(landed) == 1 else "were"} deleted'
+        if len(deletes) == 1:
+            rest = f'{names(deletes)} is linked in projects this assistant cannot open, so it was not deleted'
+        else:
+            rest = (f'one of {names(deletes)} is linked in projects this assistant cannot open, so none of '
+                    'them was deleted')
+        return PlanOutOfDate([f'{done}, and {rest}'], then=WITHOUT_THE_DELETE)
     if len(deletes) == 1:
         name = deletes[0].get('name')
         what = f'The entry {name}' if name else 'The entry'
