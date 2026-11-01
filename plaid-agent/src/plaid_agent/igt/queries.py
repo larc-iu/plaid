@@ -1803,10 +1803,13 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
             if isinstance(m, dict) and isinstance(w, dict):
                 chains[w['id']].append(m)
                 ws.note_metadata(m['id'], m.get('metadata'))
+        word_of = {m['id']: w for w, ms in chains.items() for m in ms}
         for sp, m in c.entities(base + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']], ['?s', '?m'], ROW_LIMIT):
             if isinstance(sp, dict) and isinstance(m, dict):
                 spans[m['id']].append(sp['id'])
                 ws.note_metadata(sp['id'], sp.get('metadata'))
+                # What the word holds, which its new analysis may carry.
+                ws.word_held.setdefault((word_of.get(m['id']), sp.get('layer')), set()).add(sp.get('value'))
         if c.p.vocabs:
             for m, v in c.entities(base + [['vocab-link', '?m', '?v']], ['?m', '?v'], ROW_LIMIT):
                 if isinstance(m, dict) and isinstance(v, dict):

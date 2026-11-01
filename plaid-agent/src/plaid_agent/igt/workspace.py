@@ -242,6 +242,9 @@ class Workspace(BaseWorkspace):
         # any rule of the plan: a chained change's line reads from it to the
         # value the plan writes.
         self.stored_values: Dict[tuple, str] = {}
+        # (word id, layer id) -> the values its stored morphemes hold there,
+        # as a corpus-wide read found them (:meth:`held_values`).
+        self.word_held: Dict[tuple, set] = {}
         # Set by a rule's resolver that read only part of what it would
         # change (``[read, of]``), for the rule to say so (H12-RULES-2).
         self.partial_read: Optional[List[int]] = None
@@ -892,6 +895,11 @@ class Workspace(BaseWorkspace):
                     f = self.project.field_by_layer(fv.get('layer_id'))
                     if f is None or not f.tagset:
                         continue
+                    # A value the word's morphemes already hold is carried,
+                    # not changed: the app checks only a changed value, so a
+                    # gloss an import left off the list does not lock the word.
+                    if fv.get('value') in self.held_values(op.get('word_id'), f):
+                        continue
                     word = [{'morph_type': x.get('morph_type'), 'form': x.get('form'),
                              'gloss': next((g.get('value') for g in x.get('fields') or []
                                             if g.get('layer_id') == f.layer_id), '')} for x in chain]
@@ -917,6 +925,17 @@ class Workspace(BaseWorkspace):
                 if t:
                     out.append((k, t, v, lambda vocab=vocab: self.entry_reading(vocab, op)))
         return out
+
+    def held_values(self, word_id: Optional[str], f) -> set:
+        """The values word ``word_id``'s stored morphemes hold in field ``f``:
+        from its document when this turn has loaded it, else as a corpus-wide
+        read found them (:attr:`word_held`)."""
+        for d in self._docs.values():
+            for s in d.sentences:
+                for w in s.words:
+                    if w.id == word_id:
+                        return {m.fields[f.name].value for m in w.morphemes if f.name in m.fields}
+        return self.word_held.get((word_id, f.layer_id), set())
 
     def entry_reading(self, vocab: dict, op: Dict[str, Any]) -> Optional[dict]:
         """How the entry editor reads a field of the entry ``op`` sets or
