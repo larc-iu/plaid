@@ -1263,8 +1263,10 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     m = _need(resolve(doc, ref), Morpheme, ref)
     # The plan unlinks it: the type is its own then, and this one stands over
     # the one the unlink would keep from the entry (Q1).
-    unlinking = m.link is not None and any(o.get('kind') == 'unlink' and o.get('link_id') == m.link.id
-                                           for o in ws.ops)
+    # So does a planned delete of its entry, which takes the link (REV-LAST-5).
+    unlinking = m.link is not None and any(
+        (o.get('kind') == 'unlink' and o.get('link_id') == m.link.id)
+        or (o.get('kind') == 'delete_entry' and o.get('item_id') == m.link.item_id) for o in ws.ops)
     if type is not None and m.link is not None and not unlinking:
         # A linked morpheme's type is its entry's, as the editor's type row
         # edits the entry: a type planned on the morpheme would change nothing

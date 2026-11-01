@@ -285,6 +285,23 @@ def test_a_link_to_another_entry_takes_back_the_type_planned_after_the_unlink(li
     assert _unlink_type_link(live_client, 'revlast relink other', {'entry_form': 'Ali'}) == ('Ali', None)
 
 
+def test_a_morpheme_whose_entry_the_plan_deletes_takes_a_type_of_its_own(live_client):
+    """REV-LAST-5: as for a planned unlink (8ab125dac), a planned delete of
+    the morpheme's entry lets set_morpheme type it, and the person's type
+    stands over the one the delete keeps from the entry (Q1)."""
+    c = live_client
+    s, ws = _setup(c, 'revlast delete then type')
+    try:
+        call_tool(ws, 'delete_entry', {'entry_id': s.ids['vi-erg']})
+        out = call_tool(ws, 'set_morpheme', {'document': 'Text 1', 'ref': 's1.w1.m2', 'type': 'enclitic'})
+        assert out.startswith('Planned'), out
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert not h.errors, h.errors
+        assert _morpheme(c, s) == 'enclitic'
+    finally:
+        s.delete()
+
+
 def test_a_refusal_after_a_delete_that_landed_says_which_landed(live_client):
     """REV-LAST-2: a delete with hundreds of links fills a batch, which is sent
     as its block ends, so a later delete core refuses (linked in a project the
