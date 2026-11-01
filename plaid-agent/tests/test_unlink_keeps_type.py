@@ -335,3 +335,31 @@ def test_a_refusal_after_a_delete_that_landed_says_which_landed(live_client):
     finally:
         b.delete()
         a.delete()
+
+
+# W2-R (parent call 2026-11-01): link_entry first, then set_morpheme with a
+# type on the same morpheme, ended linked AND storing the type (R2).
+# set_morpheme reads a link the plan makes as a stored one.
+
+def _link_then_type(c, name, entry, morph_type):
+    s, ws = _setup(c, name)
+    try:
+        assert call_tool(ws, 'link_entry', {'document': 'Text 1', 'refs': ['s1.w1.m1'],
+                                            'entry_form': entry}).startswith('Planned')
+        out = call_tool(ws, 'set_morpheme', {'document': 'Text 1', 'ref': 's1.w1.m1', 'type': morph_type})
+        assert 'is linked to' in out and 'in this plan' in out, out
+        assert [op['kind'] for op in ws.ops] == ['link'], ws.ops
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert not h.errors, h.errors
+        return (c.tokens.get(s.ids['m-1a']).get('metadata') or {}).get('morphType')
+    finally:
+        s.delete()
+
+
+def test_a_type_on_a_morpheme_the_plan_links_to_an_untyped_entry_is_refused(live_client):
+    assert _link_then_type(live_client, 'w2r link Ali then type', 'Ali', 'root') is None
+
+
+def test_a_type_on_a_morpheme_the_plan_links_to_a_typed_entry_is_refused(live_client):
+    assert _link_then_type(live_client, 'w2r link -di then type', '-di', 'enclitic') is None
+

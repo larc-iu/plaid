@@ -1264,9 +1264,25 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     # The plan unlinks it: the type is its own then, and this one stands over
     # the one the unlink would keep from the entry (Q1).
     # So does a planned delete of its entry, which takes the link (REV-LAST-5).
-    unlinking = m.link is not None and any(
+    goes_at = max((i for i, o in enumerate(ws.ops) if m.link is not None and (
         (o.get('kind') == 'unlink' and o.get('link_id') == m.link.id)
-        or (o.get('kind') == 'delete_entry' and o.get('item_id') == m.link.item_id) for o in ws.ops)
+        or (o.get('kind') == 'delete_entry' and o.get('item_id') == m.link.item_id))), default=-1)
+    # A link the plan makes after any of those leaves it linked, as a stored
+    # one does (W2-R): the type would be a hidden copy (R2).
+    planned = max(((i, o) for i, o in enumerate(ws.ops) if o.get('kind') == 'link' and o.get('token_id') == m.id),
+                  key=lambda p: p[0], default=None)
+    linked_later = planned is not None and planned[0] > goes_at
+    unlinking = goes_at >= 0 and not linked_later
+    if type is not None and linked_later:
+        lo = planned[1]
+        kind = 'existing' if lo.get('item_id') else 'new'
+        t_ = _entry_goes_by(ws, kind, {'id': lo['item_id']} if kind == 'existing' else lo.get('new_entry_key'))
+        view = ws.view_of_item(lo['item_id']) if kind == 'existing' else None
+        entry = view.label(lo['item_id']) if view is not None else qv(lo.get('entry_form') or '')
+        goes = f'goes by its type {qv(t_)}' if t_ else 'has no type'
+        raise ToolError(f'{ref} is linked to {entry} in this plan, which {goes}, and a linked morpheme\'s type is '
+                        f'its entry\'s. Set it with set_entry_field (field "morphType") on {entry}, or take the '
+                        f'link out of the plan to give this morpheme a type of its own.', kind='conflict')
     if type is not None and m.link is not None and not unlinking:
         # A linked morpheme's type is its entry's, as the editor's type row
         # edits the entry: a type planned on the morpheme would change nothing
