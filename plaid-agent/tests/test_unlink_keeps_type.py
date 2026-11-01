@@ -225,3 +225,20 @@ def test_a_refused_delete_of_an_entry_with_many_links_writes_no_type(live_client
         assert len(_typed_morphemes(c, a, 'da')) == 1200
     finally:
         a.delete()
+
+
+def test_a_morpheme_the_plan_unlinks_takes_a_type_of_its_own(live_client):
+    """REV-FX-AGENT-IGT-5: set_morpheme on a morpheme whose unlink the plan
+    holds sent the model to unlink_entry, which it had already planned. Its
+    type is then its own, and stands over the entry's the unlink keeps."""
+    c = live_client
+    s, ws = _setup(c, 'q1 unlink then type')
+    try:
+        call_tool(ws, 'unlink_entry', {'document': 'Text 1', 'refs': ['s1.w1.m2']})
+        out = call_tool(ws, 'set_morpheme', {'document': 'Text 1', 'ref': 's1.w1.m2', 'type': 'enclitic'})
+        assert out.startswith('Planned'), out
+        _p, h, _ = approve(c, s.project_id, ws)
+        assert not h.errors, h.errors
+        assert _morpheme(c, s) == 'enclitic'
+    finally:
+        s.delete()

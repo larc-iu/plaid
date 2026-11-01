@@ -1249,7 +1249,11 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
                 n += edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), morph_type=t)
         return ws.planned_note(n)
     m = _need(resolve(doc, ref), Morpheme, ref)
-    if type is not None and m.link is not None:
+    # The plan unlinks it: the type is its own then, and this one stands over
+    # the one the unlink would keep from the entry (Q1).
+    unlinking = m.link is not None and any(o.get('kind') == 'unlink' and o.get('link_id') == m.link.id
+                                           for o in ws.ops)
+    if type is not None and m.link is not None and not unlinking:
         # A linked morpheme's type is its entry's, as the editor's type row
         # edits the entry: a type planned on the morpheme would change nothing
         # anyone sees.
@@ -1279,7 +1283,8 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
             # it, and clearing any other type keeps the "=", which then types
             # this morpheme unless its entry has a type.
             k = next(i for i, x in enumerate(w.morphemes) if x.id == m.id)
-            changes = choose_type([{'morph_type': x.morph_type, 'entry_type': x.entry_type,
+            changes = choose_type([{'morph_type': x.morph_type,
+                                    'entry_type': None if unlinking and x.id == m.id else x.entry_type,
                                     'type_from_equals': (x.metadata or {}).get('morphTypeFromEquals'),
                                     'equals_before': x.equals_before} for x in w.morphemes], k, None)
             taken = [w.morphemes[j].id for j, c in enumerate(changes) if 'equals_before' in c]
@@ -1290,7 +1295,7 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
                 op['label'] += f' (its "=" makes it {op["equals_type"]})'
         # The type the "=" rule gave, chosen as it stands, loses its record.
         ruled = t is not None and (m.metadata or {}).get('morphTypeFromEquals') == t
-        if t != (m.morph_type or None) or ruled:
+        if t != (m.morph_type or None) or ruled or unlinking:
             staged.append(op)
         elif (at := ws.replacing(op)) is not None:
             # Set back to what it holds: the type change planned for it goes.
