@@ -621,6 +621,23 @@ describe('delete and merge', () => {
     ).toEqual({ take: null, differs: false });
   });
 
+  // Parent call 2026-11-01: a merged multi-word expression's type is never
+  // taken. Its links are on words, and the survivor's own morpheme links must
+  // not start going by "phrase".
+  it('never gives the survivor a phrase type, and says nothing of one', () => {
+    for (const t of ['phrase', 'discontiguous phrase']) {
+      const list = [item('s', 'gam'), item('p', 'ali gam', { morphType: t })];
+      expect(planMergeRefs(list, fields, 's', ['p'])).toEqual([]);
+      expect(mergeMorphType(list, 's', ['p'])).toEqual({ take: null, differs: false });
+    }
+    const mixed = [
+      item('s', 'di'),
+      item('p', 'ali di', { morphType: 'phrase' }),
+      item('l', 'di', { morphType: 'suffix' }),
+    ];
+    expect(mergeMorphType(mixed, 's', ['p', 'l'])).toEqual({ take: 'suffix', differs: false });
+  });
+
   // A sense survivor lifted out from under a typed losing headword goes by
   // what it ends under, not by the headword the merge deletes.
   it('reads the survivor as it stands after the lift', () => {

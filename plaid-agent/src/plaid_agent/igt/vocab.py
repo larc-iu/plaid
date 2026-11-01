@@ -402,6 +402,11 @@ def _survivor_lift(tree, survivor_id: str, losers: set):
     return tree.parent_of.get(chain[top]) if top >= 0 else _UNCHANGED
 
 
+# A multi-word expression's types, which a merge never hands on (mirrors
+# PHRASE_TYPES in vocabDictionary.js).
+_PHRASE_TYPES = {'phrase', 'discontiguous phrase'}
+
+
 def merge_morph_type(items: List[dict], survivor_id: str, loser_ids) -> dict:
     """The morph type a merge leaves its survivor (Luke 2026-11-01), as
     ``{'take', 'differs'}``. Mirrors mergeMorphType: each entry goes by its
@@ -409,7 +414,8 @@ def merge_morph_type(items: List[dict], survivor_id: str, loser_ids) -> dict:
     leaves it. ``take`` is the type an untyped survivor takes when every typed
     loser goes by the same one, ``differs`` that a typed loser goes by another
     type than the survivor ends with (nothing is written for it, and the
-    losers' morphemes go by the survivor's type)."""
+    losers' morphemes go by the survivor's type). A loser of a phrase type
+    counts as untyped."""
     losers = set(loser_ids or [])
     losers.discard(survivor_id)
     tree = build_sense_tree(items)
@@ -425,7 +431,7 @@ def merge_morph_type(items: List[dict], survivor_id: str, loser_ids) -> dict:
     for x in items or []:
         if x['id'] in losers:
             t = morph_type_of(tree, x['id'])
-            if t is not None and t not in loser_types:
+            if t is not None and t not in _PHRASE_TYPES and t not in loser_types:
                 loser_types.append(t)
     take = loser_types[0] if not survivor and len(loser_types) == 1 else None
     goes_by = survivor if survivor is not None else take

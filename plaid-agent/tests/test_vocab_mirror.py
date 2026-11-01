@@ -173,6 +173,9 @@ def _merge_type_cases() -> list:
         ([it('l', morphType='suffix'), it('s', parent='l', senseOrder=1)], 's', ['l']),
         ([it('h', morphType='prefix'), it('s', parent='h', senseOrder=1), it('l', morphType='suffix')],
          's', ['l']),
+        ([it('s'), it('p', morphType='phrase')], 's', ['p']),
+        ([it('s'), it('p', morphType='discontiguous phrase'), it('l', morphType='suffix')], 's', ['p', 'l']),
+        ([it('s', morphType='stem'), it('p', morphType='phrase')], 's', ['p']),
     ]
     return [dict(base, items=items, survivor=sv, losers=ls) for items, sv, ls in shapes]
 

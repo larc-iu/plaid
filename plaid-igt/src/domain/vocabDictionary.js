@@ -809,8 +809,13 @@ const survivorLift = (tree, survivorId, losers) => {
   return top >= 0 ? (tree.parentOf.get(chain[top]) ?? null) : undefined;
 };
 
+// A multi-word expression's types, which a merge never hands on: its links
+// are on words, and the survivor's own morphemes must not go by one.
+const PHRASE_TYPES = new Set(['phrase', 'discontiguous phrase']);
+
 /**
- * The morph type a merge leaves its survivor (Luke 2026-11-01). Each entry
+ * The morph type a merge leaves its survivor (Luke 2026-11-01). A loser of a
+ * phrase type counts as untyped here (PHRASE_TYPES). Each entry
  * goes by its own type, else its headword's (morphTypeOf), and the survivor
  * is read where the merge leaves it (lifted out from under a losing headword,
  * it no longer goes by that one). `take` is the type an untyped survivor takes
@@ -833,7 +838,7 @@ export const mergeMorphType = (items, survivorId, loserIds) => {
       (items || [])
         .filter((it) => losers.has(it.id))
         .map((it) => morphTypeOf(tree, it.id))
-        .filter((t) => t != null),
+        .filter((t) => t != null && !PHRASE_TYPES.has(t)),
     ),
   ];
   const take = !survivor && loserTypes.length === 1 ? loserTypes[0] : null;
