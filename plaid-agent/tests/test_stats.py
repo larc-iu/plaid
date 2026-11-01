@@ -170,9 +170,14 @@ def test_lexicon_and_document_ops():
     w = ws()
     out = call_tool(w, 'merge_entries', {'keep_form': 'Ali', 'remove_id': 'vi-erg'})
     assert '1 link(s) will move' in out
-    assert w.ops[-1] == {'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg',
+    # The merge's own op. The untyped survivor takes the type the merged entry
+    # goes by in a repair after it (Merge types, Luke 2026-11-01).
+    [merge] = [op for op in w.ops if op['kind'] == 'merge_entries']
+    assert merge == {'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg',
                          'links': [{'link_id': 'l-2', 'token_ids': ['m-1b']}],
                          'label': 'Merge entry "-di" (ERG) into "Ali" (Ali): move 1 link, delete the former'}
+    [typed] = [op for op in w.ops if op['kind'] == 'set_entry_metadata']
+    assert typed['item_id'] == 'vi-ali' and typed['patch'] == {'morphType': 'suffix'}
     assert 'same entry' in call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-ali'})
     # Ali is what the merge above keeps, so deleting it in the same plan is
     # refused: the merge moves a link onto an entry the delete then takes away.
