@@ -229,6 +229,44 @@
               t))
           kept)))
 
+(defn- keep-to-words
+  "`placed` (the tokens `apply-plain-gaps` placed, `::gone` marking the
+  deleted) with each token under the words (`child?`, a layer in
+  `children`) cut to the new extent of every word (a token on a layer in
+  `word-layers`) that held it before, so whitespace a word was moved off at
+  an edge leaves the tokens under it too, though they began or ended on it
+  (REV-FX-R3 S3: a morpheme ` l-` stayed on the space its word `Qǃu l-` was
+  moved off when `Qǃu` was deleted). The words and the tokens under them
+  take the same letters from every gap, so the cut only ever takes
+  whitespace. A token no word held stays where it is."
+  [old-tokens placed children word-layers]
+  (let [children (set children)
+        word-layers (set word-layers)
+        was (into {} (map (juxt :token/id identity)) old-tokens)
+        now (into {} (map (juxt :token/id identity)) placed)
+        ;; per word layer, its old words by begin (they never overlap)
+        words (reduce (fn [m {:token/keys [layer begin] :as t}]
+                        (if (word-layers layer) (update m layer (fnil assoc (sorted-map)) begin t) m))
+                      {} old-tokens)
+        holders (fn [ob oe]
+                  (keep (fn [by-begin]
+                          (when-let [[_ w] (first (rsubseq by-begin <= ob))]
+                            (when (<= oe (:token/end w)) w)))
+                        (vals words)))]
+    (if (or (empty? children) (empty? words))
+      placed
+      (mapv (fn [{:token/keys [id layer begin end] :as t}]
+              (let [{ob :token/begin oe :token/end} (was id)]
+                (if (or (::gone t) (nil? ob) (not (children layer)))
+                  t
+                  (let [ws (keep #(let [w (now (:token/id %))] (when-not (::gone w) w)) (holders ob oe))
+                        b (reduce max begin (map :token/begin ws))
+                        e (reduce min end (map :token/end ws))]
+                    (cond (and (= b begin) (= e end)) t
+                          (< b e) (assoc t :token/begin b :token/end e)
+                          :else (assoc t ::gone true))))))
+            placed))))
+
 (defn- split-spaced-words
   "`{:placed :made}`: `placed` (the tokens `apply-plain-gaps` placed,
   `::gone` marking the deleted) with each word (`word?`) that the edit typed
@@ -514,6 +552,8 @@
   - A token left beginning or ending on whitespace it did not begin or end
     on is moved off it onto its letters (`ki` deleted from `thung ki` leaves
     the word on `thung`), and one left with only whitespace is deleted.
+  - A token under a word is then cut to that word (see `keep-to-words`),
+    so whitespace the word was moved off leaves it too.
 
   A zero-width token is moved as `apply-text-edits` moves it."
   ([^String old tokens gaps {:keys [split-on-space head-layers letter-like] :as roles}]
@@ -785,6 +825,7 @@
                                   (assoc t ::gone true)))
                               (assoc t ::gone true)))))
                       wide)
+         placed (keep-to-words wide placed (:children save) word-layers)
          {placed :placed made :made}
          (if split-on-space
            (let [typed (let [a (boolean-array (alength nw))]

@@ -1234,3 +1234,28 @@
                                       (rep 0 8 "X Y!"))]
       (is (= [[:w 0] [:w 1]] deleted))
       (is (= [0 4] (kept [:a 0]))))))
+
+(deftest a-token-under-a-word-keeps-to-it-where-the-word-is-moved-off-whitespace
+  ;; REV-FX-R3 S3: a word that held a space lost its letters before it and
+  ;; was moved off the space, where a morpheme that began on it stayed, so a
+  ;; script's save was refused (409, a morpheme outside every word)
+  (let [tokens [{:token/id :s :token/layer :s :token/begin 0 :token/end 5}
+                {:token/id :w :token/layer :w :token/begin 0 :token/end 5}
+                {:token/id :m1 :token/layer :m :token/begin 0 :token/end 2}
+                {:token/id :m2 :token/layer :m :token/begin 2 :token/end 5}
+                {:token/id :m3 :token/layer :m :token/begin 2 :token/end 3}]
+        extents (fn [r] (into {} (map (juxt :token/id (juxt :token/begin :token/end))) (:tokens r)))]
+    (doseq [opts [{:children #{:m}} {:children #{:m} :split-on-space true}]]
+      (testing (str "the first letters deleted " opts)
+        (let [r (th/plain-edits "ab cd" tokens [(del 0 2)] #{:s} #{:w} opts)]
+          (is (= [1 3] ((extents r) :w)))
+          (is (= [1 3] ((extents r) :m2)) "the morpheme leaves the space with its word")
+          (is (= #{:m1 :m3} (set (:deleted r))) "one holding only the space goes"))))
+    (testing "the last letters deleted"
+      (let [r (th/plain-edits "ab cd" [{:token/id :s :token/layer :s :token/begin 0 :token/end 5}
+                                       {:token/id :w :token/layer :w :token/begin 0 :token/end 5}
+                                       {:token/id :m1 :token/layer :m :token/begin 0 :token/end 3}
+                                       {:token/id :m2 :token/layer :m :token/begin 3 :token/end 5}]
+                              [(del 3 2)] #{:s} #{:w} {:children #{:m}})]
+        (is (= [0 2] ((extents r) :w)))
+        (is (= [0 2] ((extents r) :m1)))))))
