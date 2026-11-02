@@ -311,7 +311,8 @@ const typeInBaseline = (d, passage, start, end, value) => {
 // Each: what the editor asks first (or null), the mutation, what of the
 // deleted entities the question leaves out by design (a merge's joined field
 // values are combined, not lost), and whether the question counts a deleted
-// token with content of its own (a word's delete does, e9ef69e7a).
+// token with content of its own (a word's delete does, e9ef69e7a, and a word
+// merge's or split's of the morphemes they delete, 96d10bc7f).
 const SCENARIOS = {
   'delete a word': {
     ask: (d) => countAnnotationLossForWord(d.layerInfo, d.vocabularies, word(d, 'today')),
@@ -326,10 +327,12 @@ const SCENARIOS = {
       ]),
     run: (d) => d.mergeTokens([word(d, 'fish', 1).id, word(d, 'swam').id]),
     joined: (e) => e.layer.endsWith('/Gloss') && !e.v.startsWith('m.'),
+    tokens: true,
   },
   'split a word': {
     ask: (d) => countSplitWordLoss(d.layerInfo, d.vocabularies, word(d, 'quickly')),
     run: (d) => d.splitToken(word(d, 'quickly').id, 2),
+    tokens: true,
   },
   'split a sentence': {
     ask: (d) => d.sentenceSplitLoss([word(d, 'swam').begin]),
