@@ -1259,3 +1259,22 @@
                               [(del 3 2)] #{:s} #{:w} {:children #{:m}})]
         (is (= [0 2] ((extents r) :w)))
         (is (= [0 2] ((extents r) :m1)))))))
+
+(deftest a-token-under-a-word-that-goes-goes-too
+  ;; REV-BL-AGENT-1: a morpheme of only the space inside `ab cd` stayed when
+  ;; `ab` and `cd` were deleted and the word went with them, outside every
+  ;; word, so a script's save was refused (409)
+  (let [tokens [{:token/id :s :token/layer :s :token/begin 0 :token/end 8}
+                {:token/id :w :token/layer :w :token/begin 0 :token/end 5}
+                {:token/id :w2 :token/layer :w :token/begin 6 :token/end 8}
+                {:token/id :m1 :token/layer :m :token/begin 0 :token/end 2}
+                {:token/id :m2 :token/layer :m :token/begin 2 :token/end 3}
+                {:token/id :m3 :token/layer :m :token/begin 3 :token/end 5}
+                {:token/id :m4 :token/layer :m :token/begin 6 :token/end 8}]]
+    (doseq [opts [{:children #{:m}} {:children #{:m} :split-on-space true}]]
+      (testing (str "edits " opts)
+        (let [r (th/plain-edits "ab cd ef" tokens [(del 3 2) (del 0 2)] #{:s} #{:w} opts)]
+          (is (= #{:w :m1 :m2 :m3} (set (:deleted r))))))
+      (testing (str "a whole body " opts)
+        (let [r (th/plain-body "ab cd ef" "  ef" tokens #{:s} #{:w} opts)]
+          (is (= #{:w :m1 :m2 :m3} (set (:deleted r)))))))))

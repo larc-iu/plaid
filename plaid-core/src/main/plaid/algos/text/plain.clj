@@ -238,7 +238,9 @@
   (REV-FX-R3 S3: a morpheme ` l-` stayed on the space its word `Qǃu l-` was
   moved off when `Qǃu` was deleted). The words and the tokens under them
   take the same letters from every gap, so the cut only ever takes
-  whitespace. A token no word held stays where it is."
+  whitespace. One whose words all went goes too: its letters were theirs,
+  so only whitespace is left of it (REV-BL-AGENT-1). A token no word held
+  stays where it is."
   [old-tokens placed children word-layers]
   (let [children (set children)
         word-layers (set word-layers)
@@ -259,12 +261,15 @@
               (let [{ob :token/begin oe :token/end} (was id)]
                 (if (or (::gone t) (nil? ob) (not (children layer)))
                   t
-                  (let [ws (keep #(let [w (now (:token/id %))] (when-not (::gone w) w)) (holders ob oe))
+                  (let [held (holders ob oe)
+                        ws (keep #(let [w (now (:token/id %))] (when-not (::gone w) w)) held)
                         b (reduce max begin (map :token/begin ws))
                         e (reduce min end (map :token/end ws))]
-                    (cond (and (= b begin) (= e end)) t
-                          (< b e) (assoc t :token/begin b :token/end e)
-                          :else (assoc t ::gone true))))))
+                    (cond ;; its word went, so it is left only whitespace
+                      (and (seq held) (empty? ws)) (assoc t ::gone true)
+                      (and (= b begin) (= e end)) t
+                      (< b e) (assoc t :token/begin b :token/end e)
+                      :else (assoc t ::gone true))))))
             placed))))
 
 (defn- split-spaced-words

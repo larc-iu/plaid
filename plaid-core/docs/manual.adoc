@@ -962,7 +962,7 @@ A word all of whose letters it replaces is deleted with its annotations, even wh
 A word it replaces only part of keeps its other letters and takes the letters typed against them, and the rest of the new text belongs to no word.
 In `the cat sat`, `cat` replaced by `dog` deletes the word `cat`, and `dog` belongs to no word, while `at s` replaced by `ow r` leaves the words `cow` and `rat`.
 Tokens under a word, such as morphemes, and tokens beside the words on a layer that allows overlap, such as UMR nodes, are deleted the same way when none of their letters is left.
-A word left starting or ending on whitespace it did not start or end on moves onto its letters, and the tokens under it are cut to it, so a morpheme that began on that whitespace moves with the word.
+A word left starting or ending on whitespace it did not start or end on moves onto its letters, and the tokens under it are cut to it, so a morpheme that began on that whitespace moves with the word. A token under a word that is deleted is deleted with it, a morpheme of only whitespace too.
 A sentence or a row (see below) holds the text typed over part of it.
 One whose exact text is replaced, with nothing more, keeps its place and its annotations on the new text, and a row its times.
 One that a replacement covers along with more text is deleted with its annotations, as a deletion of it would be.
