@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { composeTextEdits, gapsToOps } from 'plaid-client';
+import { applyTextOps, composeTextEdits, gapsToOps } from 'plaid-client';
 import { boxEdit } from '../textEdit';
 
 function EditorView({ client, project, document, onBack }) {
@@ -26,6 +26,10 @@ function EditorView({ client, project, document, onBack }) {
   // edits rather than a whole body so tokens and spans stay where they are.
   const stored = useRef({ body: '', digest: null });
   const typed = useRef([]);
+  // The text's id once it exists, and the save on its way: one save at a
+  // time, each composing what was typed over the body the last one stored.
+  const textId = useRef(null);
+  const saving$ = useRef(Promise.resolve());
 
   useEffect(() => {
     loadDocumentData();
@@ -84,6 +88,7 @@ function EditorView({ client, project, document, onBack }) {
       stored.current = documentText
         ? { body: documentText.body, digest: documentText.digest }
         : { body: '', digest: null };
+      textId.current = documentText ? documentText.id : null;
       typed.current = [];
       
       // Load tokens (already filtered to this document)
@@ -112,39 +117,49 @@ function EditorView({ client, project, document, onBack }) {
     if (edit) typed.current.push(edit);
     setText(newText);
     
-    // Debounce the API calls
+    // Debounce the API calls. A save waits for the one before it, so it
+    // composes over the body and digest that one stored.
     clearTimeout(window.textUpdateTimeout);
-    window.textUpdateTimeout = setTimeout(async () => {
-      try {
-        setSaving(true);
-        
-        // Send the net change of the edits typed since the last save
-        if (textLayer && textLayer.text) {
-          const edits = gapsToOps(composeTextEdits(stored.current.body, typed.current));
-          typed.current = [];
-          if (edits.length) {
-            const answer = await client.texts.edit(textLayer.text.id, edits, undefined, {
-              base: stored.current.digest,
-            });
-            stored.current = { body: answer.body, digest: answer.digest };
-          }
-        } else if (textLayer) {
-          await client.texts.create(textLayer.id, document.id, newText);
-        }
-        
-        // Auto-tokenize: create tokens for new whitespace-separated words
-        if (tokenLayer) {
-          await autoTokenize(newText);
-        }
-        
-      } catch (err) {
-        // Changed elsewhere meanwhile, or not saved: show the text as stored
-        await loadDocumentData();
-        setError(`Failed to update text: ${err.message}`);
-      } finally {
-        setSaving(false);
-      }
+    window.textUpdateTimeout = setTimeout(() => {
+      saving$.current = saving$.current.then(saveText);
     }, 1000); // Wait 1 second after user stops typing
+  };
+
+  // Send the net change of the edits typed since the last save, or make the
+  // text when it does not exist yet.
+  const saveText = async () => {
+    try {
+      setSaving(true);
+      const edits = typed.current;
+      typed.current = [];
+      if (textId.current) {
+        const ops = gapsToOps(composeTextEdits(stored.current.body, edits));
+        if (ops.length) {
+          const answer = await client.texts.edit(textId.current, ops, undefined, {
+            base: stored.current.digest,
+          });
+          stored.current = { body: answer.body, digest: answer.digest };
+        }
+      } else if (textLayer && edits.length) {
+        const ops = gapsToOps(composeTextEdits(stored.current.body, edits));
+        const body = applyTextOps(stored.current.body, ops);
+        const created = await client.texts.create(textLayer.id, document.id, body);
+        const made = await client.texts.get(created.id);
+        textId.current = made.id;
+        stored.current = { body: made.body, digest: made.digest };
+      }
+
+      // Auto-tokenize: create tokens for new whitespace-separated words
+      if (tokenLayer) {
+        await autoTokenize(stored.current.body);
+      }
+    } catch (err) {
+      // Changed elsewhere meanwhile, or not saved: show the text as stored
+      await loadDocumentData();
+      setError(`Failed to update text: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadTokensOnly = async () => {
