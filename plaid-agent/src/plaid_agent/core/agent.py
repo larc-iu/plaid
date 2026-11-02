@@ -685,6 +685,29 @@ NOTHING_PLANNED_STEP = 'nothing_planned'
 NOTHING_PLANNED_LABEL = 'Told the assistant that nothing was planned'
 
 
+def named_args(ws: Any, args: Any) -> Any:
+    """``args`` as a step label says them: a document the model named by its
+    id named by its name, as the card names it ("in “01a0c39e-…”" read as
+    an id, H17-ASSIST polish). Anything else is as the model wrote it."""
+    if not isinstance(args, dict) or not hasattr(ws, 'documents'):
+        return args
+    keys = [k for k in ('document', 'documents') if args.get(k)]
+    if not keys:
+        return args
+    try:
+        names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
+    except Exception:
+        return args
+    out = dict(args)
+    for k in keys:
+        v = out[k]
+        if isinstance(v, str):
+            out[k] = names.get(v, v)
+        elif isinstance(v, list):
+            out[k] = [names.get(x, x) if isinstance(x, str) else x for x in v]
+    return out
+
+
 def _plan_snapshot(ws: Any) -> List[str]:
     """The plan as it stands, to tell whether a call changed it. In any order:
     a change staged again over itself may move to the end of the plan."""
@@ -1309,7 +1332,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                 # is never read as the call's doing.
                 planned_before = held_changes(ws)
                 before = _plan_snapshot(ws) if plan_call else None
-                line = kit.tracer.progress(name, args)
+                line = kit.tracer.progress(name, named_args(ws, args))
                 on_progress(min(85, 8 + rounds * 5), line)
                 ws.announced = line
                 # A value typed in a rare script can come out garbled, and is
@@ -1351,7 +1374,7 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
                         result, repeated = ALREADY_PLANNED, True
                         # Traced as what it is, not as the first call's
                         # change made again.
-                        told = again_label(made[key] or kit.tracer.describe(name, args))
+                        told = again_label(made[key] or kit.tracer.describe(name, named_args(ws, args)))
                     else:
                         # A plan call that went through and left the plan as
                         # it was planned nothing, and its step says so.
@@ -1364,8 +1387,8 @@ def _run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text,
             # A read held to documents is traced by the documents it resolved
             # to (core.scope), each once, not by how the call spelled them.
             scoped = getattr(ws, 'scoped_documents', None)
-            traced = ({**args, 'documents': list(scoped)}
-                      if scoped and isinstance(args, dict) and args.get('documents') is not None else args)
+            traced = named_args(ws, {**args, 'documents': list(scoped)}
+                                if scoped and isinstance(args, dict) and args.get('documents') is not None else args)
             ws.scoped_documents = None
             trace.append(trace_step(kit.tracer, c['id'], name, traced, failed=failed, error_kind=error_kind,
                                     planned=planned, saved=saved,

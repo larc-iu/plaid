@@ -191,12 +191,14 @@ def resolve_ilg(project: UmrProject) -> List[dict]:
 
 def gloss_headers(project: UmrProject) -> List[str]:
     """The gloss lines a sentence is written with, under the names a .umr file
-    gives them, for the prompt and the overview."""
+    gives them and with their language as a read prints it ("Word Gloss
+    (eng)"), for the prompt and the overview, so two lines of one header in
+    two languages are told apart."""
     out = []
     for line in resolve_ilg(project):
         spec = HEADERS.get(line.get('header'))
         if spec and line.get('source') != 'stored':
-            out.append(spec[0])
+            out.append(f'{spec[0]} ({line.get("lang") or "und"})' if spec[2] else spec[0])
     return out
 
 

@@ -491,6 +491,18 @@ def test_check_lexicon_counts_entries_not_senses():
     assert 'No homographs.' in out
 
 
+def test_the_homographs_section_is_capped():
+    """H17-ASSIST polish: on Lamkang the one section answered 12 KB. The
+    groups with a repeated gloss, the likely duplicates, come first."""
+    many = [{'id': f'h{i}-{j}', 'form': f'form{i}', 'metadata': {'gloss': f'g{i}' if i == 59 else f'g{i}-{j}'}}
+            for i in range(60) for j in range(2)]
+    out = call_tool(dict_ws(items=ITEMS + many), 'check_lexicon', {'section': 'homographs'})
+    groups = [line for line in out.splitlines() if line.startswith('  form')]
+    assert len(groups) == 30, out
+    assert groups[0].startswith('  form59'), out
+    assert '  … 30 more groups' in out, out
+
+
 def test_senses_of_an_attested_entry_are_reported_apart():
     """A sense nothing links to is normal when its headword IS linked: the
     corpus links whichever the analyst picked. It is reported apart from the

@@ -630,13 +630,14 @@ def _norm_value(v: str) -> str:
     return ''.join(ch for ch in v if ch.isalnum())
 
 
-def linked_form(u) -> str:
-    """The entry a word or morpheme is linked to, by form: its own link, else
-    the multi-word expression it belongs to, else ``?``."""
+def linked_form(u, name=lambda link: link.form) -> str:
+    """The entry a word or morpheme is linked to, as ``name`` gives a link
+    (see ``IgtWorkspace.link_name``): its own link, else the multi-word
+    expression it belongs to, else ``?``."""
     if u.link:
-        return u.link.form
+        return name(u.link)
     mwes = getattr(u, 'mwes', None)
-    return mwes[0].form if mwes else '?'
+    return name(mwes[0]) if mwes else '?'
 
 
 def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = None) -> str:

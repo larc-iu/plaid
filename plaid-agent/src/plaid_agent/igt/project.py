@@ -22,7 +22,7 @@ from ..core.project import declares, find_layer, join_with, value_set_rules, wor
 from ..core.bidi import plain_quote, visible
 from ..core.refs import clip, read_ref, same_form
 from ..core.provenance import CONTRIBUTED, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role, read_ignored_tokens
 from plaid_client.workflows.messages import setup_incomplete
@@ -947,8 +947,16 @@ def segmentation_mark(w: Word) -> str:
     return UNVERIFIED if UNVERIFIED in marks else CONTRIBUTED if CONTRIBUTED in marks else ''
 
 
+def link_form(link: 'Link') -> str:
+    """A link's entry by its bare form, for a read with no lexicon at hand."""
+    return link.form
+
+
 def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = None,
-                view: Optional[View] = None) -> str:
+                view: Optional[View] = None, name: Callable[['Link'], str] = link_form) -> str:
+    """A word's line. ``name`` gives the entry a link names, as a plan tool
+    takes it back ("me#2" where several entries are spelled "me", see
+    ``IgtWorkspace.link_name``)."""
     parts = [f'w{w.index} {w.surface}']
     seg = segmentation(w)
     if analyzed(w) and (view is None or view.segmentation):
@@ -969,18 +977,18 @@ def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = No
     if view is not None and not view.links:
         return ' | '.join(parts)
     if w.link:
-        parts.append(f'link={_mark(w.link.form, w.link.metadata)}')
+        parts.append(f'link={_mark(name(w.link), w.link.metadata)}')
     for l in w.mwes:
         si = sentence_index if sentence_index is not None else (l.members[0][0] if l.members else 0)
-        parts.append(f'mwe={_mark(l.form, l.metadata)} ({mwe_ref(l, si)})')
-    mlinks = [f'm{m.index}:{_mark(m.link.form, m.link.metadata)}' for m in w.morphemes if m.link]
+        parts.append(f'mwe={_mark(name(l), l.metadata)} ({mwe_ref(l, si)})')
+    mlinks = [f'm{m.index}:{_mark(name(m.link), m.link.metadata)}' for m in w.morphemes if m.link]
     if mlinks:
         parts.append('mlinks=' + ' '.join(mlinks))
     return ' | '.join(parts)
 
 
 def render_sentence(s: Sentence, project: IgtProject, view: Optional[View] = None,
-                    time: Optional[Tuple[float, float]] = None) -> str:
+                    time: Optional[Tuple[float, float]] = None, name: Callable[['Link'], str] = link_form) -> str:
     """A sentence, its fields and a line per word. A ``view`` that names
     only sentence fields leaves the word lines out. ``time``: where the
     sentence is in the recording (``IgtDoc.sentence_time``), shown after it."""
@@ -992,7 +1000,7 @@ def render_sentence(s: Sentence, project: IgtProject, view: Optional[View] = Non
             lines.append(f'  {f.name}: {_mark(sp.value, sp.metadata)}')
     if view is None or view.words:
         for w in s.words:
-            lines.append('  ' + render_word(w, project, s.index, view))
+            lines.append('  ' + render_word(w, project, s.index, view, name))
     return '\n'.join(lines)
 
 
@@ -1018,7 +1026,8 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
                     max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
                     budget: Optional[int] = None, indexes: Optional[List[int]] = None,
                     shown_out: Optional[List[int]] = None, legend: Optional[bool] = True,
-                    view: Optional[View] = None, recording: Optional[Tuple[bool, Optional[float]]] = None) -> str:
+                    view: Optional[View] = None, recording: Optional[Tuple[bool, Optional[float]]] = None,
+                    name: Callable[['Link'], str] = link_form) -> str:
     """Either a range (``start`` to ``end``) or the sentences numbered in
     ``indexes``, in that order. ``legend`` False points at the legend an
     earlier read printed instead of printing it again, and None, for a
@@ -1056,7 +1065,7 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     used = len(head) + sum(len(x) + 1 for x in format_lines) + 250  # the showing line and the trailing note
     for i in wanted:
         s = doc.sentences[i - 1]
-        text = render_sentence(s, project, view, doc.sentence_time(s) if doc.segments else None)
+        text = render_sentence(s, project, view, doc.sentence_time(s) if doc.segments else None, name)
         if budget is not None and rendered and used + len(text) + 1 > budget:
             break
         rendered.append(text)

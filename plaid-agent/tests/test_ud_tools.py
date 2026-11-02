@@ -1252,7 +1252,7 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     _engine_rows(ws, [('sp-l1', 'ir', 'ud1', 'uw-1'), ('sp-l3', 'mar', 'ud1', 'uw-3'), ('sp-x', 'Mar', 'other', 'uw-x')])
     out = run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare', case_sensitive=False)
     assert out.startswith('Planned 2 lemma change(s) in 2 document(s), as one row on the card.')
-    assert '"Viaje": lemma "mar" → "mare"' in out
+    assert '"Viaje" s1.w4: lemma "mar" → "mare"' in out, out
     op = ws.ops[0]
     assert op['kind'] == 'replace_scope' and op['count'] == 2 and op['documents'] == ['other', 'ud1']
     # Rows with no provenance are a person's values, counted as the change is
@@ -1276,6 +1276,21 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
     assert counts == {'field values': 2}
     assert ws.client.updates('spans') == [('sp-l3', 'mare'), ('sp-x', 'mare')]
+
+
+def test_a_replacements_examples_are_spread_over_the_documents_with_their_references():
+    """H17-ASSIST polish: the examples gave no reference and repeated one
+    document 7 times in 8 lines."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    other = {**document_raw(), 'id': 'other', 'name': 'Otro', 'version': 9}
+    client = FakeClient(project=project_raw(), documents={'ud1': document_raw(), 'other': other})
+    ws = Workspace(client, load_project(client, PID))
+    _engine_rows(ws, [(f'sp-{i}', 'mar', 'ud1', 'uw-3') for i in range(10)] + [('sp-x', 'mar', 'other', 'uw-3')])
+    out = run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare')
+    examples = out.split('For example:\n')[1].split('\n  … ')[0].splitlines()
+    assert len(examples) == 8, out
+    assert '  "Otro" s1.w4: lemma "mar" → "mare"' in examples, out
+    assert all(" s1.w4: " in e for e in examples), out
 
 
 def test_a_replacement_the_pattern_leaves_unchanged_plans_nothing(ws):

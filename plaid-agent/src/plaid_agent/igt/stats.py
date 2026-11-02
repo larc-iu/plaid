@@ -375,6 +375,9 @@ def _note_stale(stale: Counter, item: dict, form: str) -> Optional[tuple]:
     return None
 
 
+#: The homograph groups one check_lexicon section lists, the likely duplicates first.
+HOMOGRAPH_GROUPS_MAX = 30
+
 LEXICON_SECTIONS = ('unused', 'fields', 'homographs', 'near', 'glosses', 'spread', 'stale', 'single', 'refs')
 
 
@@ -487,11 +490,14 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
             dup = sum(1 for _, its in ranked if same_gloss(its))
             lines.append(f'{len(homographs)} homograph groups ({dup} with a repeated gloss, likely '
                          'duplicates; the rest are separate entries sharing a form):')
-            for k, its in ranked[:cap]:
+            # A group is a line of whole entries, so fewer of them than a
+            # section's names fit (12 KB on Lamkang at 200).
+            groups = min(cap, HOMOGRAPH_GROUPS_MAX)
+            for k, its in ranked[:groups]:
                 lines.append('  ' + ' | '.join(
                     f'{entry_line(it, view_of(it["id"]))} ({tree_uses(it["id"])} links)' for it in its))
-            if len(ranked) > cap:
-                lines.append(f'  … {len(ranked) - cap} more groups')
+            if len(ranked) > groups:
+                lines.append(f'  … {len(ranked) - groups} more groups')
         else:
             lines.append('No homographs.')
 
@@ -643,7 +649,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
         idx = set(matches)
         shown = ' '.join(f'[{w.surface}]' if w.index in idx else w.surface for w in s.words)
         out.append(f'{tag}s{s.index} {shown}' + ''.join(
-            f'\n    w{i} ' + render_word(s.words[i - 1], ws.project)[len(s.words[i - 1].ref) + 1:] for i in matches))
+            f'\n    w{i} ' + render_word(s.words[i - 1], ws.project, name=ws.link_name)[len(s.words[i - 1].ref) + 1:] for i in matches))
     from .queries import q_sequence
     with ws.corpus.within(document):
         found, total, shared = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)

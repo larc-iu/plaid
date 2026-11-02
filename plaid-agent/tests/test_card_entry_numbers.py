@@ -57,3 +57,31 @@ def test_a_phrase_link_carries_the_number():
     w = _ws()
     call_tool(w, 'link_phrase', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3'], 'entry_form': 'gam#2'})
     assert _labels(w)[0].endswith(': link phrase "gam₂"'), _labels(w)
+
+
+# --- reads name a linked entry as a tool takes it back (H17-ASSIST polish) ---
+
+def _read_ws():
+    c = FakeClient()
+    morph = c._documents['d1']['text_layers'][0]['token_layers'][2]
+    morph['vocabs'][0]['vocab_links'].append(
+        {'id': 'l-3', 'vocab_item': {'id': 'vi-gam2', 'form': 'gam'}, 'tokens': ['m-4a']})
+    return fake_ws(c)
+
+
+def test_a_read_names_a_linked_homograph_by_its_number():
+    w = _read_ws()
+    out = call_tool(w, 'read_document', {'document': 'Text 1'})
+    assert 'mlinks=m1:gam#2' in out, out
+
+
+def test_a_read_names_a_lone_headword_by_its_form():
+    w = _read_ws()
+    out = call_tool(w, 'read_document', {'document': 'Text 1'})
+    assert 'link=Ali |' in out and 'mlinks=m2:-di' in out, out
+
+
+def test_analyses_of_names_a_linked_homograph_by_its_number():
+    out = call_tool(_read_ws(), 'analyses_of', {'form': 'Gam-ar'})
+    assert 'Morpheme links: m1:gam#2 (1)' in out, out
+    assert 'mlinks=m1:gam#2' in out, out

@@ -41,4 +41,13 @@ def test_the_assistant_and_the_client_resolve_every_mapping_alike():
         assert resolve_ilg(project) == umr_layers.resolve_ilg(config)
     mapped = _project(ilg=[{'header': 'word-gloss', 'lang': 'en',
                             'source': f'layer:{GLOSS_LAYER}'}])
-    assert gloss_headers(mapped) == ['Word Gloss']
+    assert gloss_headers(mapped) == ['Word Gloss (en)']
+
+
+def test_the_gloss_lines_are_named_with_their_language():
+    # H17-ASSIST polish: "Morpheme Gloss, Morpheme Gloss, Sentence Gloss,
+    # Sentence Gloss", where read_document names "(eng)" and "(spa)".
+    project = _project(ilg=[{'header': 'word-gloss', 'lang': 'eng', 'source': f'layer:{GLOSS_LAYER}'},
+                            {'header': 'word-gloss', 'lang': 'spa', 'source': f'layer:{GLOSS_LAYER}'},
+                            {'header': 'pos', 'lang': None, 'source': f'layer:{GLOSS_LAYER}'}])
+    assert gloss_headers(project) == ['Word Gloss (eng)', 'Word Gloss (spa)', 'Part of Speech']

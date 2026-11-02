@@ -73,7 +73,7 @@ def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=No
             sp = s.fields.get(field.name) if field else None
             out.append(f'{tag}s{s.index} {field.name}={sp.value if sp else ""} | {s.text}')
         else:
-            out.append(f'{tag}{word_ref(s, w)} {render_word(w, c.p)[len(w.ref) + 1:]} || {s.text}')
+            out.append(f'{tag}{word_ref(s, w)} {render_word(w, c.p, name=c.ws.link_name)[len(w.ref) + 1:]} || {s.text}')
         if len(out) >= limit:
             break
     for doc_id, n in skipped_in.items():
@@ -938,7 +938,7 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
     item_form: Dict[str, str] = {}
     for v in p.vocabs:
         for it in ws.lexicon(v):
-            item_form[it['id']] = it.get('form') or ''
+            item_form[it['id']] = ws.entry_address(it['id'], it.get('form') or '')
     lines: List[str] = []
 
     def examples(where, find, order):
@@ -949,7 +949,7 @@ def q_analyses_of(ws: Workspace, form: str, found: List[int], value: Optional[st
                 continue
             doc, s, w, _ = c.locate(ent['document'], ent['id'])
             if w is not None:
-                out.append(f'    {c.tag(doc.id)}{word_ref(s, w)} {render_word(w, p)[len(w.ref) + 1:]}')
+                out.append(f'    {c.tag(doc.id)}{word_ref(s, w)} {render_word(w, p, name=ws.link_name)[len(w.ref) + 1:]}')
         return out
 
     # the word
@@ -1105,7 +1105,7 @@ def q_consistency(ws: Workspace, f):
     where = [unit, ['vocab-link', '?u', '?v'], ['not', c.span('?s', f.layer_id, value=FILLED), ['covers', '?s', '?u']]]
     n = c.count(where, ['?u'])
     from .reads import linked_form
-    linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {linked_form(u)}') if n else [])
+    linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {linked_form(u, c.ws.link_name)}') if n else [])
     return values, by_form, unlinked, linked_empty
 
 
@@ -1358,7 +1358,7 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
             doc, s, w, _ = c.locate(ent['document'], ent['id'])
             if w is None or any(e.endswith(f'|| {s.text}') and word_ref(s, w) in e for e in exs):
                 continue
-            exs.append(f'  {c.ws.doc_tag(doc)}{word_ref(s, w)} {render_word(w, c.p)[len(w.ref) + 1:]} || {s.text}')
+            exs.append(f'  {c.ws.doc_tag(doc)}{word_ref(s, w)} {render_word(w, c.p, name=c.ws.link_name)[len(w.ref) + 1:]} || {s.text}')
             if len(exs) >= examples:
                 break
     return word_links, morph_links, mwes, exs

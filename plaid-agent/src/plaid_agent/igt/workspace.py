@@ -384,7 +384,7 @@ class Workspace(BaseWorkspace):
         recording = (True, seconds) if has else None
         out = render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
                               ref_name=self.corpus.ref_name(doc.id), budget=budget, shown_out=shown_out,
-                              legend=legend, view=view, recording=recording)
+                              legend=legend, view=view, recording=recording, name=self.link_name)
         self.legend_shown = self.legend_shown or FORMAT_LEGEND in out
         return out
 
@@ -780,6 +780,25 @@ class Workspace(BaseWorkspace):
             return form
         head = view.head_of(item_id) if sense else (view.tree.by_id[item_id].get('form') or form)
         return head + num.translate(TO_SUBSCRIPT)
+
+    def entry_address(self, item_id: Optional[str], form: str) -> str:
+        """An entry as a read names it, spelled the way a plan tool takes it
+        back: ``form``, with "#" and the number the app shows where the form
+        alone does not say which entry it is ("me#2" beside "me#1", a sense
+        "kai#2.1"). An entry the plan's lexicon no longer holds is its form."""
+        if item_id:
+            for v in self.project.vocabs:
+                view = self.view(v)
+                if item_id in view.tree.by_id:
+                    if view.is_sense(item_id) or item_id in view.shared:
+                        return view.address(item_id)
+                    break
+        return form
+
+    def link_name(self, link) -> str:
+        """The entry a stored link names, as a read prints it (see
+        :meth:`entry_address`)."""
+        return self.entry_address(link.item_id, link.form)
 
     def vocab_of_item(self, item_id: str) -> Optional[dict]:
         """The lexicon an existing entry belongs to."""

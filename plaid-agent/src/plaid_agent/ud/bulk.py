@@ -188,8 +188,13 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     docs = sorted({ch['document_id'] for ch in found if ch['document_id']})
     _clear_of_reshapes(ws, docs)
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
-    sample = [f'{doc_label(ws, ch["document_id"], qname)}: {field} {qv(ch["old"])} → {qv(ch["new"])}'
-              for ch in found[:SAMPLE_LINES]]
+    # Spread down the documents as the card's sample is, each at its word.
+    sample = []
+    for ch in rules.sample(found, lambda ch: ch.get('document_id'),
+                           lambda ch: int(work.protected(ch.get('metadata')))):
+        ref = _ref_of(ws, field, ch)
+        sample.append(f'{doc_label(ws, ch["document_id"], qname)}{" " + ref if ref else ""}: '
+                      f'{field} {qv(ch["old"])} → {qv(ch["new"])}')
     where = f' in {doc_label(ws, document_id, qname)}' if document_id else f' in {len(docs)} document(s)'
     # What it replaces is found again only when it is approved, so the values
     # a person made or accepted are counted now, from what the query returned.
@@ -264,16 +269,24 @@ def _sample_row(ws: Workspace, field: str, ch: Dict[str, Any]) -> Dict[str, Any]
     :data:`SAMPLE_LINES` documents."""
     from .changes import describe_change
     [op] = replace_ops([ch], field)
-    did = ch.get('document_id')
-    if did:
-        doc = ws.doc(did)
-        for sentence in doc.sentences:
-            w = next((w for w in sentence.words
-                      if (w.relation_id == ch['id'] if field == 'deprel' else w.id == ch.get('token_id'))), None)
-            if w is not None:
-                op['ref'] = word_ref(sentence, w)
-                break
+    ref = _ref_of(ws, field, ch)
+    if ref:
+        op['ref'] = ref
     return describe_change(ws, op)
+
+
+def _ref_of(ws: Workspace, field: str, ch: Dict[str, Any]) -> Optional[str]:
+    """The reference (``s3.w2``) of the word a replacement's change is on,
+    read off its document, or None."""
+    did = ch.get('document_id')
+    if not did:
+        return None
+    for sentence in ws.doc(did).sentences:
+        w = next((w for w in sentence.words
+                  if (w.relation_id == ch['id'] if field == 'deprel' else w.id == ch.get('token_id'))), None)
+        if w is not None:
+            return word_ref(sentence, w)
+    return None
 
 
 def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],
