@@ -168,7 +168,7 @@ describe('createDocumentShell', () => {
     expect(shell).toEqual({ documentId: 'doc1', textId: 'text1', sentenceIds: ['t1'] });
   });
 
-  // An import stamps a document with the id it is made under (resume.js),
+  // An import stamps a document with the id it is made under (stamps.js),
   // so the id is minted before the create and the metadata is given it.
   it('creates the document under a minted id its metadata can name', async () => {
     const client = stubClient();

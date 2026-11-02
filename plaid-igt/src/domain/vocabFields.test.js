@@ -168,7 +168,7 @@ describe('editable and reserved metadata', () => {
     });
   });
   // R2-IO-2: the CLDF and native importers stamp an entry with its source id
-  // under these two keys and find it again by them on a resumed import.
+  // under these two keys, as provenance back to the source.
   it('reserves the import stamps the CLDF and native importers write', () => {
     expect(isReservedFieldName('cldfEntry')).toBe(true);
     expect(isReservedFieldName('NativeImportId')).toBe(true);

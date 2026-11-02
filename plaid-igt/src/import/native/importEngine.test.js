@@ -135,7 +135,7 @@ function stubClient({
   // What the server says of a token layer that a project read leaves out.
   tokenLayerShapes = {},
   // A server that outlives one run (makeStore): what a run writes is there for
-  // the next, as a resume finds it.
+  // the next.
   store = null,
   // Asked before each call. Returning true makes that call fail, as a lost
   // connection would.
@@ -262,8 +262,7 @@ function stubClient({
         mintedId(id, 'guidelines.create');
         return record('guidelines.create', [projectId, title, opts], { id: fresh('gl') });
       },
-      // A new project has none; a resume's project has what the first run
-      // wrote, which the tests below stand in for.
+      // A new project has none.
       list: async () => [],
     },
     vocabItems: {
@@ -1457,7 +1456,7 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
     };
     const { patches } = planVocabRelink(stale, itemIdMap, docMaps);
     expect(patches).toEqual([{ id: 'new-sense', metadata: [set('parent', 'new-head')] }]);
-    // Which leaves the item stamped by this run, so a resume knows it again.
+    // Which leaves the item stamped with its source id, as provenance.
     expect(applied(stale.items[1].metadata, 'old-sense', patches[0].metadata).nativeImportId).toBe(
       'old-sense',
     );

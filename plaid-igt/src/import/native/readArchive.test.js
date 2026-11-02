@@ -70,9 +70,9 @@ describe('readNativeArchive', () => {
     expect(() => readNativeArchive(bytes)).toThrow(/Two vocabularies are named "Lex"/);
   });
 
-  // A resume finds what an earlier run made by the archive's document id, so
+  // The import maps each archive document id to the document it makes, so
   // two documents sharing one, or one without any, would be taken for each
-  // other: a finished one imported twice, a half-made one deleted twice.
+  // other by the references that name them.
   it('refuses a document with no id, and two documents with one id', () => {
     const manifest = {
       ...MANIFEST,
@@ -95,7 +95,7 @@ describe('readNativeArchive', () => {
       'The document in documents/B.json has no id.',
     );
     expect(() => readNativeArchive(archive({ id: 'd1' }, { id: '' }))).toThrow(ArchiveError);
-    // A resume marks a document with its id as a string, so 7 and "7" are one.
+    // A reference names an id as a string, so 7 and "7" are one.
     expect(() => readNativeArchive(archive({ id: 7 }, { id: '7' }))).toThrow(
       'Two documents in the archive have the id "7".',
     );
