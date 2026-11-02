@@ -99,6 +99,20 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     readLog();
   };
 
+  // When the rail is one entry's, a change in it holds only the operations
+  // that wrote that entry, and ends where the last of them did: partway
+  // through an import that went on to make more entries. Picked whole, the
+  // vocabulary is read as of the end of the whole change. A single operation
+  // picked is read as of its own end.
+  const wholeChangeEnd = async (entry) => {
+    if (!scopeRef.current || !entries.some((e) => e.id === entry.id)) return entry.time;
+    const page = await client.vocabLayers.auditPage(vocabularyId, {
+      entryId: entry.id,
+      opsLimit: 1,
+    });
+    return page?.entries?.[0]?.endTime || entry.time;
+  };
+
   const select = async (entry) => {
     const mine = ++pickRef.current;
     setSelected(entry);
@@ -110,10 +124,12 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     }
     setLoadingPast(true);
     try {
-      const vocabulary = await client.vocabLayers.get(vocabularyId, true, entry.time);
+      const time = await wholeChangeEnd(entry);
+      if (mine !== pickRef.current) return;
+      const vocabulary = await client.vocabLayers.get(vocabularyId, true, time);
       if (mine !== pickRef.current) return;
       shownRef.current = entry;
-      setPast({ time: entry.time, vocabulary });
+      setPast({ time, vocabulary });
     } catch (err) {
       if (mine !== pickRef.current || expired(err)) return;
       console.error('Error reading the vocabulary at a past time:', err);

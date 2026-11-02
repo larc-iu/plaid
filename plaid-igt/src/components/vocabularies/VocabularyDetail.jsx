@@ -1238,7 +1238,7 @@ export const VocabularyDetail = () => {
               <Notice tone="warning" icon={Info}>
                 {history.loadingPast
                   ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
-                  : `Read-only. This is the vocabulary as of ${fullTimestamp(history.selected.time)}.`}
+                  : `Read-only. This is the vocabulary as of ${fullTimestamp(history.past?.time ?? history.selected.time)}.`}
               </Notice>
             )}
           </div>
