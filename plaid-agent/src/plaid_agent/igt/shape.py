@@ -22,7 +22,7 @@ from ..core.args import whole
 from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.plan import labelled
 from ..core.tools import ToolError
-from .plan import reshaped_subjects
+from .plan import reshaped_subjects, written_before_merge
 from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell)
@@ -95,14 +95,15 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
 def _as_planned(ws: Workspace, units: list) -> list:
     """The words or sentences as the plan leaves them before their merge:
     with the values and the links it writes on them, which approval writes
-    first (`plan._merge`), so the merge joins and keeps those. A value the
-    plan makes has no id yet, and a cleared one is none."""
+    first (`plan._merge`), so the merge joins and keeps those. Which ops
+    those are is `plan.written_before_merge`, the executor's reading too. A
+    value the plan makes has no id yet, and a cleared one is none."""
     out = []
     for u in units:
         fields = {sp.layer_id: sp for sp in u.fields.values()}
         held: Dict[str, Any] = {'fields': fields}
         for op in ws.ops:
-            if op.get('token_id') != u.id:
+            if written_before_merge(op) != u.id:
                 continue
             if op.get('kind') == 'set_span':
                 if op.get('value'):

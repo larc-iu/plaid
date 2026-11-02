@@ -295,9 +295,20 @@ def _anchors(op) -> List[tuple]:
     return out
 
 
+def written_before_merge(op) -> Optional[str]:
+    """The word or sentence a value or a link of the plan is written on, which
+    a merge of it then joins or keeps. THE one reading of it: the merge's card
+    line overlays these ops (``shape._as_planned``), staging one re-stages the
+    merge after it (``Workspace.add_op``) and the executor writes
+    them in a batch before the merge (``_merge``, through ``Context.valued``),
+    so the card names what approval writes. A rule's value never lands on a
+    merged word or sentence (``bulk._refuse_merged``), so only named ops count."""
+    return op.get('token_id') if op.get('kind') in ('set_span', 'link') else None
+
+
 def _apply_set_span(ctx: Context, op) -> int:
     span_id, value = op.get('span_id'), op.get('value') or ''
-    ctx.valued.add(op['token_id'])
+    ctx.valued.add(written_before_merge(op))
     if span_id and ('spans', span_id) in ctx.gone:
         # Deleted earlier in the plan (a discard of the word's unverified
         # analysis): the value planned after it is written as a new one.
@@ -443,7 +454,7 @@ def _apply_link(ctx: Context, op) -> int:
     # wrote, Q1). One an unsegmented word needs is made bare, as the
     # editor's _planLinkMany makes it.
     token = _token(ctx, op, op['token_id'])
-    ctx.valued.add(op['token_id'])
+    ctx.valued.add(written_before_merge(op))
     return _link(ctx, op, [token], untype=[(token, bool(op.get('untype_record')))] if op.get('untype') else [])
 
 

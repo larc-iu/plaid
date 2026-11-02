@@ -1097,8 +1097,9 @@ class Workspace(BaseWorkspace):
         # A value or a link on a word or sentence a planned merge takes: the
         # merge joins it, so it is staged again after it and its line says
         # what it joins. A merge refused then takes the value out with it.
+        from .plan import written_before_merge
         from .shape import merged_ids, restage_merges
-        token = op.get('token_id') if op.get('kind') in ('set_span', 'link') else None
+        token = written_before_merge(op)
         merged = bool(token) and any(token in merged_ids(o) for o in self.ops)
         with (self.staging() if merged else nullcontext()), self.superseding([op]):
             super().add_op(op)
