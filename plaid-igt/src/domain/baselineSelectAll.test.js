@@ -114,3 +114,21 @@ it('a split refused after the edit landed says the sentences were not split, not
   expect(errors).toEqual([['The text is saved. Its sentences were not split at line breaks.', '']]);
   expect(sentencesOf(doc._raw)).toEqual([[0, 5]]);
 });
+
+// R60, REV-R60-3: the mirror trims a gap over two or more words only back to a
+// word edge, as core does, so a paste of "c" over "cat sat" deletes both
+// words: the "c" is not left to cat (any word on it is a new one).
+it('a paste over two words that starts with a letter of the first deletes both', async () => {
+  const raw = buildRawDoc({ body: 'cat sat' });
+  const server = segmentServer(raw);
+  const doc = makeIgtDoc({ raw: structuredClone(server.stored), client: server.client });
+  const gaps = [{ start: 0, end: 7, value: 'c' }];
+  expect(await doc.editBaselineText({ base: 'cat sat', digest: server.digest, gaps })).toBe(true);
+  while (doc.isSaving) await new Promise((r) => setTimeout(r, 0));
+  expect(server.body).toBe('c');
+  const ids = server.stored.textLayers[0].tokenLayers
+    .find((l) => l.id === 'wordL')
+    .tokens.map((t) => t.id);
+  expect(ids).not.toContain('w-1');
+  expect(ids).not.toContain('w-2');
+});

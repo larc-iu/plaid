@@ -1296,3 +1296,15 @@
     (is (= ["the cats sat" "the" "cats" "sat"] (edit "|the| |cat| |sat|" [(rep 4 3 "cats")]))))
   (testing "a gap that starts inside a word keeps that start: the trim never passes the gap's own edge"
     (is (= ["cast" "cast"] (edit "|cat|" [(rep 2 1 "st")])))))
+
+(deftest a-paste-over-two-segments-with-no-words-keeps-the-letter-trim
+  ;; REV-R60-1: in a text whose word layer holds no token yet, the timed
+  ;; segments decide where typed text goes, but they are no words, so R60's
+  ;; trim to a word edge does not apply: `tat a` pasted over whole as `tzz`
+  ;; gives the `t` back to the first segment, which keeps it with its times,
+  ;; and the second goes, as igt's Baseline question counts it
+  (let [tokens [{:token/id [:s 0] :token/layer :s :token/begin 0 :token/end 5}
+                {:token/id [:a 0] :token/layer :a :token/begin 0 :token/end 3}
+                {:token/id [:a 1] :token/layer :a :token/begin 4 :token/end 5}]
+        r (th/plain-edits "tat a" tokens [(rep 0 5 "tzz")] #{:s} #{:w} {:exclusive #{:w :a}})]
+    (is (= [[:a 1]] (vec (sort (:deleted r)))))))

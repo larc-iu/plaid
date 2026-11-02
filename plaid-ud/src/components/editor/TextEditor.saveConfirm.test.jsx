@@ -117,6 +117,25 @@ describe('the Text Editor asking before a save deletes tokens', () => {
     await view.unmount();
   });
 
+  it('counts both tokens a paste over two goes with, though it starts with a letter of the first (R60)', async () => {
+    // "cat sat" selected and pasted over as "c": core does not leave the c to
+    // cat, so both tokens go, and the question has to say so
+    const doc = setup();
+    const view = await mount();
+    const box = view.container.querySelector('textarea');
+    await view.step(() => {
+      box.setSelectionRange(4, 11);
+      box.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+    });
+    await view.step(() => typeInto(box, 'the c'));
+    await act(async () => {
+      buttonIn(view.container, 'Save').click();
+    });
+    expect(doc.textDeleteLoss).toHaveBeenCalledWith([[4, 11, true]]);
+    expect(dialog().textContent).toContain('Deletes 2 tokens and 2 words');
+    await view.unmount();
+  });
+
   it('counts several tokens', async () => {
     const { view } = await typeAndSave('a');
     expect(dialog().textContent).toContain(

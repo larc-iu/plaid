@@ -9,12 +9,15 @@
 
 (defn word-extents
   "The `[begin end]` of each word of `tokens` under `roles` (see
-  `layer-roles`), the words being the tokens that decide where typed text
-  goes (`save-roles`' `:decides?`), for `plain-edit-gaps`."
+  `layer-roles`), for `plain-edit-gaps`: the tokens on a word layer
+  (`save-roles`' `:word?`). Where the word layer holds no token yet, the
+  segments or rows that decide in its place are no words, so there are none
+  and the trim stays letter by letter, as the apps' questions read it
+  (REV-R60-1)."
   [tokens roles]
   (let [wide (filterv #(< (:token/begin %) (:token/end %)) tokens)
-        {:keys [decides?]} (save-roles roles wide)]
-    (into [] (comp (filter decides?) (map (juxt :token/begin :token/end))) wide)))
+        {:keys [word?]} (save-roles roles wide)]
+    (into [] (comp (filter word?) (map (juxt :token/begin :token/end))) wide)))
 
 (defn- word-index
   "`words` (`[begin end]`) for the lookups of `trim-gap`: `{:bs :es :most}`,
