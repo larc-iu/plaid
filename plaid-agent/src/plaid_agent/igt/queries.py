@@ -826,8 +826,12 @@ def q_concordance_tally(ws: Workspace, where: List[Any], wvar: str, mvar: Option
             pair = [['token', {}, 'as', '?nb'], *gap, ['token', {}, 'as', wvar]] if first else \
                 [['token', {}, 'as', wvar], *gap, ['token', {}, 'as', '?nb']]
             further = 0
+            # The neighbour is in the hit's sentence when it begins (ends) in
+            # it: a compare, where a second `within` cost 4 of a read's 4.3 s
+            # on 48,000 words with a word in every sentence.
+            inside = ['>=', '?nb.begin', '?ns.begin'] if first else ['<=', '?nb.end', '?ns.end']
             for form, n in c.group(where + [['seq', {'layer': c.W}, *pair], c.sent('?ns'),
-                                            ['within', '?nb', '?ns'], ['within', wvar, '?ns']], ['?nb.value']):
+                                            ['within', wvar, '?ns'], inside], ['?nb.value']):
                 if form and not c.ignored(form):
                     near[form.casefold()] += n
                 elif form:

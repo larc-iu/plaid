@@ -44,3 +44,11 @@ def test_the_neighbour_is_the_nearest_word_past_punctuation():
     assert 'Word before: gam 3.\n  Word after: # 3.' in out, out
     out = for_model(call_tool(w, 'concordance', {'pattern': 'gam', 'where': 'baseline', 'limit': 1}))
     assert 'Word after: akuna 3' in out and ', 3' not in out and '. 3' not in out, out
+
+
+def test_a_word_after_another_sentence_has_no_word_before():
+    """The neighbour is held to the hit's sentence by where it begins (ends),
+    not by a second `within`: s2.w1's word before is s1's last word in the
+    text, and the tally says # for it."""
+    out = for_model(call_tool(_ws(), 'concordance', {'pattern': 'Gam-ar', 'where': 'baseline', 'limit': 1}))
+    assert 'Word before: # 3.\n  Word after: # 3.' in out, out
