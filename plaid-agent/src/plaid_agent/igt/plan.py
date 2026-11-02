@@ -211,6 +211,9 @@ class Context:
         # is written).
         self.analysis_typed: Dict[str, tuple] = {}
         self.text_edits: List[Dict[str, Any]] = []
+        # The tokens a value or a link of the plan is queued on. A merge of
+        # one of them is written in a batch after it (`_merge`).
+        self.valued: set = set()
         self.restores: List[Dict[str, Any]] = []
         self.new_docs: List[Dict[str, Any]] = []
         # Once per entity, whichever ops name it. The server accepts a
@@ -294,6 +297,7 @@ def _anchors(op) -> List[tuple]:
 
 def _apply_set_span(ctx: Context, op) -> int:
     span_id, value = op.get('span_id'), op.get('value') or ''
+    ctx.valued.add(op['token_id'])
     if span_id and ('spans', span_id) in ctx.gone:
         # Deleted earlier in the plan (a discard of the word's unverified
         # analysis): the value planned after it is written as a new one.
@@ -439,6 +443,7 @@ def _apply_link(ctx: Context, op) -> int:
     # wrote, Q1). One an unsegmented word needs is made bare, as the
     # editor's _planLinkMany makes it.
     token = _token(ctx, op, op['token_id'])
+    ctx.valued.add(op['token_id'])
     return _link(ctx, op, [token], untype=[(token, bool(op.get('untype_record')))] if op.get('untype') else [])
 
 
@@ -636,6 +641,12 @@ def _apply_split_word(ctx: Context, op) -> int:
 
 
 def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
+    # A value or a link the plan writes on one of the merged tokens is written
+    # first, in a batch of its own: core joins the values and keeps one link
+    # only for what a merge gathers, and refuses a span or a link written in
+    # the merge's own transaction as a second one on the token (R1 S3).
+    if ctx.valued & {op[key], *others}:
+        ctx.b.flush()
     if _stored(op.get('morpheme_ids')):
         ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(_stored(o['morpheme_ids'])))
     # A multi-word expression made only of the merged words would sit on one

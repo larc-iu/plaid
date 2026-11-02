@@ -16,7 +16,7 @@ text the way the editor does.
 import copy
 import functools
 import re
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.provenance import PROVENANCE_KEYS, project_role
@@ -1075,13 +1075,22 @@ class Workspace(BaseWorkspace):
         from .bulk import SEQ, next_seq, sequenced
         if sequenced(op) and SEQ not in op:
             op[SEQ] = next_seq(self.ops)
-        with self.superseding([op]):
+        # A value or a link on a word or sentence a planned merge takes: the
+        # merge joins it, so it is staged again after it and its line says
+        # what it joins. A merge refused then takes the value out with it.
+        from .shape import merged_ids, restage_merges
+        token = op.get('token_id') if op.get('kind') in ('set_span', 'link') else None
+        merged = bool(token) and any(token in merged_ids(o) for o in self.ops)
+        with (self.staging() if merged else nullcontext()), self.superseding([op]):
             super().add_op(op)
             # A new analysis of a word (or a discard of it) replaces the one a
             # link to one of its morphemes was made against.
             spec = KIND.get(op.get('kind'))
             if spec is not None and spec.shape == ANALYSIS:
                 self.unlink_orphans()
+            doc = next((d for d in self._docs.values() if d.find(token)), None) if merged else None
+            if doc is not None:
+                restage_merges(self, doc, [token])
 
     def pin_entry(self, op: Dict[str, Any]) -> None:
         """Note on a change to an entry's fields or structure the entry as

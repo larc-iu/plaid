@@ -12,6 +12,7 @@ token per field, one link per word) make it join the values and drop the
 extra links in the merge's own transaction, so the plan writes only the merge
 and the card says what it will combine."""
 
+import dataclasses
 from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
@@ -22,7 +23,7 @@ from ..core.loss import count_delete_loss, loss_note, other_layers_crossing
 from ..core.plan import labelled
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
-from .project import Sentence, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
+from .project import Link, Sentence, Span, Word, plain_ref, planned_word_count, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis,
                     refuse_shape_and_respell)
 from .workspace import Workspace, _need, _refs
@@ -67,12 +68,13 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
     for u in units:
         for sp in u.fields.values():
             layers.setdefault(sp.layer_id, []).append(sp)
-    own = {sp.id for sp in units[0].fields.values()} if units else set()
+    own = list(units[0].fields.values()) if units else []
     out = []
     for layer_id, spans in layers.items():
         if len(spans) < 2:
             continue
-        keep = next((sp for sp in spans if sp.id in own), None) or min(spans, key=lambda sp: sp.id)
+        keep = next((sp for sp in spans if any(sp is o for o in own)), None) \
+            or min(spans, key=lambda sp: sp.id or '')
         joined = keep.value
         f = project.field_by_layer(layer_id) if project is not None else None
         if keep.value is None or isinstance(keep.value, str):
@@ -86,7 +88,30 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
         refused = any(not value_set_allows(c, joined) for c in (f.value_sets if f else ()))
         out.append({'layer_id': layer_id, 'keep_id': keep.id,
                     'value': joined if joined != keep.value and not refused else None,
-                    'delete_ids': [sp.id for sp in spans if sp is not keep]})
+                    'delete_ids': [sp.id for sp in spans if sp is not keep and sp.id]})
+    return out
+
+
+def _as_planned(ws: Workspace, units: list) -> list:
+    """The words or sentences as the plan leaves them before their merge:
+    with the values and the links it writes on them, which approval writes
+    first (`plan._merge`), so the merge joins and keeps those. A value the
+    plan makes has no id yet, and a cleared one is none."""
+    out = []
+    for u in units:
+        fields = {sp.layer_id: sp for sp in u.fields.values()}
+        held: Dict[str, Any] = {'fields': fields}
+        for op in ws.ops:
+            if op.get('token_id') != u.id:
+                continue
+            if op.get('kind') == 'set_span':
+                if op.get('value'):
+                    fields[op['layer_id']] = Span(op.get('span_id'), op['value'], layer_id=op['layer_id'])
+                else:
+                    fields.pop(op['layer_id'], None)
+            elif op.get('kind') == 'link':
+                held['link'] = Link(None, op.get('item_id'), op.get('entry_form') or '', None)
+        out.append(dataclasses.replace(u, **held))
     return out
 
 
@@ -133,9 +158,9 @@ def _kept_link(words: List[Word], unlinked=frozenset()) -> Dict[str, Any]:
     links = [w.link for w in words if w.link and w.link.id not in unlinked]
     if len(links) < 2:
         return {'keep_id': links[0].id if links else None, 'delete_ids': []}
-    own = words[0].link if words[0].link in links else None
-    keep = own or min(links, key=lambda l: l.id)
-    return {'keep_id': keep.id, 'delete_ids': [l.id for l in links if l is not keep]}
+    own = words[0].link if any(words[0].link is l for l in links) else None
+    keep = own or min(links, key=lambda l: l.id or '')
+    return {'keep_id': keep.id, 'delete_ids': [l.id for l in links if l is not keep and l.id]}
 
 
 def _members_left(ws: Workspace, link, going=(), merging=()) -> int:
@@ -174,19 +199,31 @@ def _planned_unlinks(ws: Workspace) -> set:
     return {op.get('link_id') for op in ws.ops if op.get('kind') == 'unlink'}
 
 
-def restage_merges(ws: Workspace, doc, word_ids) -> None:
-    """Stage again, after everything planned so far, each word merge of
-    ``doc`` that takes one of ``word_ids``: an unlink just staged on one of
-    them changes which link the merge keeps, and the merge's card line says
-    which. The merge then runs after the unlink, as its line reads (R1-6)."""
-    for op in [o for o in ws.ops if o.get('kind') == 'merge_words' and o.get('document_id') == doc.id
-               and {o.get('word_id'), *(o.get('other_ids') or [])} & set(word_ids)]:
+def merged_ids(op) -> set:
+    """The words or sentences a planned merge takes, the survivor with them."""
+    if op.get('kind') == 'merge_words':
+        return {op.get('word_id'), *(op.get('other_ids') or [])}
+    if op.get('kind') == 'merge_sentences':
+        return {op.get('sentence_id'), op.get('other_id')}
+    return set()
+
+
+def restage_merges(ws: Workspace, doc, ids) -> None:
+    """Stage again, after everything planned so far, each word or sentence
+    merge of ``doc`` that takes one of ``ids``: an unlink just staged on one
+    of them changes which link the merge keeps (R1-6), and a value or a link
+    on one changes what it joins and keeps (R1 S3), which the merge's card
+    line says. The merge then runs after them, as its line reads."""
+    for op in [o for o in ws.ops if merged_ids(o) & set(ids)]:
+        ws.ops[:] = [o for o in ws.ops if o is not op]
+        ws._gone_at = -1
+        if op['kind'] == 'merge_sentences':
+            t_merge_sentences(ws, doc.id, f's{next(s.index for s in doc.sentences if s.id == op["other_id"])}')
+            continue
         refs = []
         for wid in [op['word_id'], *op['other_ids']]:
             s, w, _m = doc.find(wid)
             refs.append(word_ref(s, w))
-        ws.ops[:] = [o for o in ws.ops if o is not op]
-        ws._gone_at = -1
         t_merge_words(ws, doc.id, refs)
 
 
@@ -285,8 +322,9 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     _refuse_cut_in_merge(ws, next(iter(sents)), words, ' + '.join(refs))
     first, last = words[0], words[-1]
     merged = doc.body[first.begin:last.end]
-    spans = _joined_spans(words, ws.project)
-    links = _kept_link(words, _planned_unlinks(ws))
+    held = _as_planned(ws, words)
+    spans = _joined_spans(held, ws.project)
+    links = _kept_link(held, _planned_unlinks(ws))
     morphs = [m.id for w in words for m in w.morphemes]
     analysed = sum(1 for w in words if len(w.morphemes) > 1 or any(m.fields or m.link for m in w.morphemes))
     note = ''
@@ -296,7 +334,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     if comb:
         note += f' (values combined: {comb})'
     if links['delete_ids']:
-        kept = next(w.link.form for w in words if w.link and w.link.id == links['keep_id'])
+        kept = next(w.link.form for w in held if w.link and w.link.id == links['keep_id'])
         note += f' (keeps the link "{kept}", drops {len(links["delete_ids"])})'
     collapsed = _collapsed_mwes(ws, words)
     if collapsed:
@@ -405,7 +443,7 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     prev = doc.sentences[s.index - 2]
     _guard(ws, s, ref, merging=True)
     _guard(ws, prev, f's{prev.index}', merging=True)
-    spans = _joined_spans([prev, s], ws.project)
+    spans = _joined_spans(_as_planned(ws, [prev, s]), ws.project)
     comb = _combined_values(spans, ws.project)
     op = {'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
           **labelled(ws.doc_label(doc.id), f'merge s{s.index} {qv(s.text[:30])} into s{prev.index} {qv(prev.text[:30])}'
