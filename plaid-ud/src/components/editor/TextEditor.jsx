@@ -188,7 +188,8 @@ export const TextEditor = () => {
     // A save that deletes tokens, or a sentence with fields, asks first,
     // naming what goes with them on this editor's layers (R44, R45). One that
     // only adds text or cuts a token down asks nothing.
-    const removed = removedStretches(editLog.log.base, editLog.gaps());
+    const words = (doc.layerInfo.wordTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    const removed = removedStretches(editLog.log.base, editLog.gaps(), words);
     const loss = removed.length > 0 ? doc.textDeleteLoss(removed) : null;
     if (loss?.tokens > 0 || loss?.sentenceFields > 0) {
       const what = listed([

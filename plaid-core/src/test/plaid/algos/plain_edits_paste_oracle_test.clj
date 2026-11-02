@@ -98,7 +98,7 @@
                              sent (assoc :line (over (:token/begin sent) (:token/end sent))))]
               (doseq [[rname ops] readings]
                 (let [r (run body tokens ops layout false)
-                      ps (-> (problems body tokens (server-gaps body ops) r)
+                      ps (-> (problems body tokens (server-gaps body ops tokens layout) r)
                              (into (letters-left-problems body tokens ops r)))]
                   (when (seq ps)
                     (swap! fails conj {:config cname :changes changes :seed seed :reading rname :old body :problems (take 3 ps)}))))))))

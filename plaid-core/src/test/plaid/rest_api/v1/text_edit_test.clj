@@ -815,16 +815,21 @@
         (is (= (map extent words) (map extent morphemes)))))))
 
 (deftest several-words-typed-over-as-one-are-a-delete-and-an-insert
-  ;; `the area` typed over as `tlaak` is a delete and an insert (R42), less
-  ;; the `t` the two share at the start: `the` keeps its `t` and takes the
-  ;; letters typed against it, with its node, and `area`, with no letter
-  ;; left, goes with its node.
+  ;; `the area` typed over as `tlaak` is a delete and an insert (R42). The
+  ;; `t` the two share at the start is a letter inside `the`, and a gap over
+  ;; two or more words trims only back to a word edge (R60), so `the` does
+  ;; not keep it: both words go with their nodes, and `tlaak` is in no word.
+  ;; Before R60 `the` kept its `t` and took `tlaak` with its node.
   (let [{:keys [text words nodes]} (setup "see the area now" :nodes true)]
     (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 8 :value "tlaak"}]
                                 :base (digest/text-digest "see the area now")}))
-    (is (= [4 9 "tlaak"] (extent (words 1)) (extent (nodes 1))))
+    (is (= "see tlaak now" (-> (get-text admin-request text) :body :text/body)))
+    (is (nil? (extent (words 1))))
+    (is (nil? (extent (nodes 1))))
     (is (nil? (extent (words 2))))
-    (is (nil? (extent (nodes 2))))))
+    (is (nil? (extent (nodes 2))))
+    (is (= [0 3 "see"] (extent (words 0))))
+    (is (= [10 13 "now"] (extent (words 3))))))
 
 (deftest text-typed-at-a-sentences-start-belongs-to-that-sentence
   ;; Luke (2026-10-15): text typed after the space between two sentences

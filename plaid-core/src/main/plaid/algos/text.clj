@@ -26,6 +26,7 @@
         plaid.algos.text.plain/layer-of
         plaid.algos.text.read/plain-body-gaps
         plaid.algos.text.read/plain-edit-gaps
+        plaid.algos.text.read/word-extents
         plaid.algos.text.ops/delete-op
         plaid.algos.text.ops/insert-op
         plaid.algos.text.ops/replace-op

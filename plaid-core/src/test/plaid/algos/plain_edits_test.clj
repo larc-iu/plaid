@@ -1211,13 +1211,16 @@
      (into (sorted-map) (keep #(when-not (gone (:token/id %)) [(:token/id %) [(:token/begin %) (:token/end %)]])) (:tokens r))]))
 
 (deftest a-paste-over-whole-sentences-or-rows-deletes-them
-  (testing "both lines pasted over: they share only the final `.`, so the first sentence and row lie inside the stretch and go"
-    (is (= ["uno dos.\ntres cuatro." [[:a 0] [:s 0] [:w 0] [:w 1] [:w 2]]
-            {[:a 1] [0 21] [:s 1] [14 21] [:w 3] [14 21]}]
+  (testing "both lines pasted over: they share only the final `.`, a letter of the word `four.`, which a paste over several words does not leave to it (R60), so both sentences and rows lie inside the stretch and go"
+    (is (= ["uno dos.\ntres cuatro." [[:a 0] [:a 1] [:s 0] [:s 1] [:w 0] [:w 1] [:w 2] [:w 3]] {}]
            (edit-rows "one two.\nthree four." [[0 9] [9 20]] [[0 3] [4 8] [9 14] [15 20]] [[0 8] [9 20]]
                       (rep 0 20 "uno dos.\ntres cuatro.")))))
-  (testing "two sentences under one row, retyped whole: the first sentence goes, the row stays"
-    (is (= ["xy. zw." [[:s 0] [:w 0]] {[:a 0] [0 7] [:s 1] [4 7] [:w 1] [4 7]}]
+  (testing "the same where the `.` is in no word: the trim leaves it, and the second sentence and row keep it"
+    (is (= ["uno dos.\ntres cuatro." [[:a 0] [:s 0] [:w 0] [:w 1] [:w 2] [:w 3]] {[:a 1] [0 21] [:s 1] [20 21]}]
+           (edit-rows "one two.\nthree four." [[0 9] [9 20]] [[0 3] [4 7] [9 14] [15 19]] [[0 8] [9 20]]
+                      (rep 0 20 "uno dos.\ntres cuatro.")))))
+  (testing "two sentences under one row, retyped whole: the sentences go (the shared `.` is a letter of `cd.`, R60), the row typed over exactly stays"
+    (is (= ["xy. zw." [[:s 0] [:s 1] [:w 0] [:w 1]] {[:a 0] [0 7]}]
            (edit-rows "ab. cd." [[0 4] [4 7]] [[0 3] [4 7]] [[0 7]] (rep 0 7 "xy. zw.")))))
   (testing "a stretch over three lines: the middle sentence and row go"
     (is (= ["aa XX\nYY ZZ\nWW ff" [[:a 1] [:s 1] [:w 1] [:w 2] [:w 3] [:w 4]]
@@ -1278,3 +1281,18 @@
       (testing (str "a whole body " opts)
         (let [r (th/plain-body "ab cd ef" "  ef" tokens #{:s} #{:w} opts)]
           (is (= #{:w :m1 :m2 :m3} (set (:deleted r)))))))))
+
+(deftest a-paste-over-several-words-trims-only-back-to-a-word-edge
+  ;; R60 (Luke, 2026-11-02): a gap over two or more words gives back what it
+  ;; shares with the old text only to a word edge, so no word keeps letters of
+  ;; another's. One word typed over keeps Q2 (`cat` as `cats` types an `s`).
+  (testing "select all of `ab a` and paste `a`: both words go, the new `a` is in no word"
+    (is (= ["a" nil nil] (edit "|ab| |a|" [(rep 0 4 "a")]))))
+  (testing "`kai tat` pasted over as `tat`: the trim stops at tat's edge, so tat keeps its token"
+    (is (= ["the tat sat" "the" nil "tat" "sat"] (edit "|the| |kai| |tat| |sat|" [(rep 4 7 "tat")]))))
+  (testing "`cat sat` pasted over as `c`: cat does not keep the c"
+    (is (= ["c" nil nil] (edit "|cat| |sat|" [(rep 0 7 "c")]))))
+  (testing "one word typed over keeps Q2"
+    (is (= ["the cats sat" "the" "cats" "sat"] (edit "|the| |cat| |sat|" [(rep 4 3 "cats")]))))
+  (testing "a gap that starts inside a word keeps that start: the trim never passes the gap's own edge"
+    (is (= ["cast" "cast"] (edit "|cat|" [(rep 2 1 "st")])))))

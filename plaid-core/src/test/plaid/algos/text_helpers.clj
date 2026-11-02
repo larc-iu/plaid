@@ -19,4 +19,4 @@
   ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
   ([old tokens ops partitioning word-layers opts]
    (let [roles (assoc opts :partitioning partitioning :deciders word-layers)]
-     (ta/apply-plain-gaps old tokens (ta/plain-edit-gaps old ops) roles))))
+     (ta/apply-plain-gaps old tokens (ta/plain-edit-gaps old ops (ta/word-extents tokens roles)) roles))))

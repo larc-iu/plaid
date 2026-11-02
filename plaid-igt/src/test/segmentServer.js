@@ -42,6 +42,7 @@
 
 import { createHash } from 'node:crypto';
 import { composeTextEdits } from '@larc-iu/plaid-client';
+import { trimToWordEdges } from '@ui/lib/editLog.js';
 import {
   applyGapsLocally,
   applyTextEditsLocally,
@@ -156,6 +157,8 @@ function takeEdit(raw, textId, gaps, vocabs) {
     ) {
       back += 1;
     }
+    const words = (info.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    [front, back] = trimToWordEdges(start, end, front, back, words);
     return [start + front, end - back];
   });
   // A sentence goes too when the gap covers more than its exact text (R45):

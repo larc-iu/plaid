@@ -320,14 +320,32 @@ function assertEditLog(log, op) {
 export const editLogGaps = (log) => composeTextEdits(log.base, log.ops);
 
 /**
+ * `[front, back]`, what a gap over old [start, end) gives back at its front
+ * and end, as the core trims it (plaid-core `trim-gap`): no further than a
+ * word edge where the gap is over two or more of `words` (`[begin, end]` in
+ * code points), so no word keeps letters of another's (R60). A gap over one
+ * word or none keeps them as they are.
+ */
+export function trimToWordEdges(start, end, front, back, words = []) {
+  if (words.filter(([b, e]) => b < end && start < e).length < 2) return [front, back];
+  const inside = (x) => words.find(([b, e]) => b < x && x < e);
+  let x = start + front;
+  for (let w = inside(x); w && x > start; w = inside(x)) x = Math.max(start, w[0]);
+  let y = end - back;
+  for (let w = inside(y); w && y < end; w = inside(y)) y = Math.min(end, w[1]);
+  return [x - start, end - y];
+}
+
+/**
  * The stretches of `base` (code points, `[begin, end, typed]`) that `gaps`
  * take away: each gap's old text less what it gives back at its front and
- * end, and whether a letter (anything but whitespace) is typed in its place.
+ * end (see `trimToWordEdges`, `words` the text's words as `[begin, end]`),
+ * and whether a letter (anything but whitespace) is typed in its place.
  * A gap that only adds to its old text takes nothing: it is an insert. A word
  * that lies wholly inside one of these goes with a save of the gaps. For a
  * sentence or a row see `deletesSentenceOrRow`.
  */
-export function removedStretches(base, gaps) {
+export function removedStretches(base, gaps, words = []) {
   const cps = Array.from(base);
   return gaps.flatMap(({ start, end, value }) => {
     const old = cps.slice(start, end);
@@ -342,6 +360,7 @@ export function removedStretches(base, gaps) {
     ) {
       back += 1;
     }
+    [front, back] = trimToWordEdges(start, end, front, back, words);
     return front + back < old.length
       ? [
           [

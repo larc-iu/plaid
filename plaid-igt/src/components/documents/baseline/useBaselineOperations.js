@@ -187,7 +187,8 @@ export const useBaselineOperations = () => {
     // glued to a word or not, keeps every token (Luke, 2026-10-16), and one
     // that touches no word and deletes no sentence or segment with anything
     // on it changes none.
-    const removed = removedStretches(editLog.log.base, editLog.gaps());
+    const words = (doc.layerInfo?.primaryTokenLayer?.tokens || []).map((t) => [t.begin, t.end]);
+    const removed = removedStretches(editLog.log.base, editLog.gaps(), words);
     const loses = removed.length > 0 ? baselineLossSentence(doc, removed) : '';
     if (
       loses &&

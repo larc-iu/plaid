@@ -136,3 +136,21 @@ test('a sentence whose text is deleted, its line break left, goes with its field
   );
   assert.equal(kept.sentences, 0);
 });
+
+test('a paste over two tokens gives back their shared letters only to a token edge (R60)', () => {
+  const doc = open();
+  const words = doc.layerInfo.wordTokenLayer.tokens.map((t) => [t.begin, t.end]);
+  // "came and" pasted over as "c": the c is not left to came, so both go
+  const two = removedStretches(doc.body, [{ start: 4, end: 12, value: 'c' }], words);
+  assert.deepEqual(
+    two.map(([b, e]) => [b, e]),
+    [[4, 12]],
+  );
+  assert.equal(doc.textDeleteLoss(two).tokens, 2);
+  // one token typed over keeps what it shares: "came" as "cam" cuts it down
+  const one = removedStretches(doc.body, [{ start: 4, end: 8, value: 'cam' }], words);
+  assert.deepEqual(
+    one.map(([b, e]) => [b, e]),
+    [[7, 8]],
+  );
+});

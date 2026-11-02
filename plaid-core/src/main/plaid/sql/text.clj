@@ -278,7 +278,7 @@
           (cond
             (or edits (string? new-body-or-ops))
             (let [gaps (if edits
-                         (ta/plain-edit-gaps old-body edits)
+                         (ta/plain-edit-gaps old-body edits (ta/word-extents tokens roles))
                          (ta/plain-body-gaps old-body new-body-or-ops))]
               [gaps (ta/apply-plain-gaps old-body tokens gaps roles)])
             :else [(when tokenize (ta/compose-edits (vec new-body-or-ops) old-body))

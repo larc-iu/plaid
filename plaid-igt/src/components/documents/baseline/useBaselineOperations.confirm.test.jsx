@@ -97,6 +97,18 @@ describe('useBaselineOperations, the confirm before a save', () => {
     await h.unmount();
   });
 
+  it('counts both words a paste over two goes with, though it starts with a letter of the first (R60)', async () => {
+    // "cat sat" selected whole and pasted over as "c": core does not leave the
+    // c to cat, so cat and sat both go
+    const { doc, h } = await saveWith('cat sat', (h) => change(h, 0, 7, 'c', 1));
+    expect(asks()).toBe(true);
+    expect(document.body.querySelector('[role="alertdialog"]').textContent).toContain(
+      'Deletes 2 words',
+    );
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+
   it('asks for a replace', async () => {
     const { doc, h } = await saveWith('The dog ran.', (h) => change(h, 4, 7, 'The cat ran.', 7));
     expect(asks()).toBe(true);

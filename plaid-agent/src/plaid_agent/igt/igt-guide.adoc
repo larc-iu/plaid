@@ -132,6 +132,7 @@ A script written without spaces between words, such as Chinese, Japanese, or Tha
 You can edit the baseline later too, and the sentences, words, and annotations already there are kept.
 A word you change keeps its analysis as long as one of its letters is left.
 A word all of whose letters you replace, by selecting it and typing or by pasting over it, is deleted with its annotations, even when you type the same word again, and what you typed is new text.
+When you select two or more words and type or paste over them, letters you type again at either end are kept only as whole words: select _cat sat_ and paste _c_, and both words go.
 A word whose text you delete is deleted with its annotations too.
 A sentence whose exact text you replace keeps its translation and its other fields, and a segment its times.
 A paste or a retype that covers a whole sentence or segment and more text deletes it, with its translation or its times.

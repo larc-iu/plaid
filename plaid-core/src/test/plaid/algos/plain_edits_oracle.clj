@@ -523,9 +523,12 @@
 
 (defn server-gaps
   "The gaps an edit by `ops` is taken as: its net change, less what each
-  gap's new text shares with the old at its ends."
-  [old ops]
-  (ta/plain-edit-gaps old ops))
+  gap's new text shares with the old at its ends, back to a word edge where
+  a gap is over two or more of the words of `tokens` (R60), the layers as
+  `layout` has them."
+  ([old ops tokens] (server-gaps old ops tokens :apps))
+  ([old ops tokens layout]
+   (ta/plain-edit-gaps old ops (ta/word-extents tokens (roles layout false)))))
 
 (defn save-read
   "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has

@@ -54,7 +54,7 @@
           (when-let [gaps (and (some #(= :w (:token/layer %)) tokens) (select-type-over rng body tokens))]
             (let [ops (ta/gap-ops gaps)
                   r (run body tokens ops layout false)
-                  ps (-> (problems body tokens (server-gaps body ops) r)
+                  ps (-> (problems body tokens (server-gaps body ops tokens layout) r)
                          (into (letters-left-problems body tokens ops r))
                          (cond-> (not= (ta/edit-ops-body ops body) (:text/body (:text r))) (conj "body")))]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :old body :gaps gaps :problems (take 3 ps)}))))))
@@ -301,7 +301,7 @@
               gaps (gen-gaps rng body tokens opts)
               tokens (layout-tokens layout tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
-              server (server-gaps body (ta/gap-ops gaps))]
+              server (server-gaps body (ta/gap-ops gaps) tokens layout)]
           (doseq [[rname plain split sgaps] [[:composed
                                               (run body tokens (ta/gap-ops gaps) layout false)
                                               (run body tokens (ta/gap-ops gaps) layout true)
@@ -445,7 +445,7 @@
             sents (sort-by :token/begin (filter #(= :s (:token/layer %)) tokens))]
         (doseq [[rname ops] {:composed (ta/gap-ops gaps) :keys-left-to-right (keystrokes gaps false)}]
           (let [r (run body tokens ops)
-                server (server-gaps body ops)
+                server (server-gaps body ops tokens)
                 ps (vec (remove #(re-find #"^\[:as " %) (problems body tokens server r)))
                 nb (:text/body (:text r))
                 ss (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb))
@@ -511,7 +511,7 @@
                                                 [[:w 1] :w 0 4] [[:w 2] :w 5 12] [[:w 3] :w 13 14]]]
                       {:token/id id :token/layer layer :token/begin begin :token/end end}))
         ops (ta/gap-ops [{:start 0 :end 14 :value " Q"}])
-        server (server-gaps body ops)
+        server (server-gaps body ops tokens)
         r (run body tokens ops)
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
         without (fn [r id] (-> r

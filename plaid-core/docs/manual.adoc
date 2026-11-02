@@ -958,6 +958,7 @@ Punctuation and symbols are read from the Unicode 16 table the apps read.
 
 A replacement, or any change that deletes text and types new text in the same place, counts as a deletion followed by an insertion there.
 The text it shares with the old text at its start and at its end is no change.
+Where it replaces text over two or more words, that shared text is no change only back to a word edge, never inside a word, so no word keeps letters of another's: `ab a` replaced whole by `a` deletes both words, and the new `a` belongs to no word. One word typed over keeps what it shares: `cat` replaced by `cats` keeps the word, now `cats`.
 A word all of whose letters it replaces is deleted with its annotations, even when the new text spells the same word again.
 A word it replaces only part of keeps its other letters and takes the letters typed against them, and the rest of the new text belongs to no word.
 In `the cat sat`, `cat` replaced by `dog` deletes the word `cat`, and `dog` belongs to no word, while `at s` replaced by `ow r` leaves the words `cow` and `rat`.
@@ -966,7 +967,7 @@ A word left starting or ending on whitespace it did not start or end on moves on
 A sentence or a row (see below) holds the text typed over part of it.
 One whose exact text is replaced, with nothing more, keeps its place and its annotations on the new text, and a row its times.
 One that a replacement covers along with more text is deleted with its annotations, as a deletion of it would be.
-In `one two. three four.` pasted over as `uno dos. tres cuatro.`, the two share only the final `.`, so the first sentence lies inside the replacement and is deleted, and the second, which the replacement only cuts, takes the new text.
+In `one two. three four.` pasted over as `uno dos. tres cuatro.`, the two share only the final `.`, so the first sentence lies inside the replacement and is deleted, and the second, which the replacement only cuts, takes the new text, where the `.` is in no word.
 A save that leaves text in the body and no token on a `partitioning` layer makes one new token of that layer over the whole body, with no metadata, when the layer held a token before the save. A layer that never held one gets that token at the end of the request when a token stands on a layer under it then, such as the words "Tokenize new text" makes in a text whose sentences were never made. A batch that makes the partition itself after the save gets none. The partition then covers the text and the words are inside it. An app can then split it.
 A save that would leave a token outside every token of its parent layer is refused with a 409 naming the two layers, and nothing is stored. A token that was already outside every parent before the save does not count, and a parent layer that holds no token is judged at the end of the request.
 

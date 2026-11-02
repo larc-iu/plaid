@@ -19,7 +19,7 @@
               gaps (gen-gaps rng body tokens opts)
               tokens (layout-tokens layout tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
-              server (server-gaps body (ta/gap-ops gaps))
+              server (server-gaps body (ta/gap-ops gaps) tokens layout)
               readings {:composed (ta/gap-ops gaps)
                         :keys-left-to-right (keystrokes gaps false)
                         :keys-right-to-left (keystrokes gaps true)}]
