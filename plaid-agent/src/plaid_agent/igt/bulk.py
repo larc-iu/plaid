@@ -530,7 +530,7 @@ def _build_rule(ws: Workspace, tool: str, args: Dict[str, Any], unit: list, chan
     kept = [o for o in found if keep(o)]
     analysed = analysed_morphemes(ws.ops)
     left = sum(1 for o in found if ws.moot_under(o, analysed))
-    _refuse_merged_away(ws, found)
+    _refuse_merged(ws, found)
     op = {'kind': 'bulk_scope', 'tool': tool, 'args': args,
           'matched': rules.matched(KIND, found, lambda o: o.get('doc'), ws.replaces_work),
           'change': change, 'head': head, 'unit': unit}
@@ -705,27 +705,22 @@ def writes_stored(ws: Workspace, o: Dict[str, Any]) -> bool:
     return False
 
 
-def _merged_away(ws: Workspace) -> Dict[str, Dict[str, Any]]:
-    """The words and sentences a merge in the plan takes away, each with that
-    merge. Their values are not removed: the merge joins them into the
-    survivor's."""
-    out: Dict[str, Dict[str, Any]] = {}
-    for op in ws.ops:
-        if op.get('kind') == 'merge_words':
-            for w in op.get('other_ids') or []:
-                out[w] = op
-        elif op.get('kind') == 'merge_sentences' and op.get('other_id'):
-            out[op['other_id']] = op
-    return out
+def _merged(ws: Workspace) -> Dict[str, Dict[str, Any]]:
+    """The words and sentences a merge in the plan takes, the one it keeps
+    with them, each with that merge."""
+    from .shape import merged_ids
+    return {i: op for op in ws.ops for i in merged_ids(op) if i}
 
 
-def _refuse_merged_away(ws: Workspace, found: List[Dict[str, Any]]) -> None:
+def _refuse_merged(ws: Workspace, found: List[Dict[str, Any]]) -> None:
     """A rule may not change a value on a word or sentence a merge in the plan
-    takes away: the merge joins that value into the survivor's, so leaving
-    the change out would keep the old value there, and what is gone cannot be
-    written. Refused as a change named one by one is, in either order
-    (:func:`refuse_rule_on_merged`)."""
-    gone = _merged_away(ws)
+    takes, the one it keeps included, in either order
+    (:func:`refuse_rule_on_merged`). On what the merge takes away the change
+    could not be written, and on the one it keeps the merge would join a
+    value the card does not name, or be refused for two (REV-BL-APPS-1). A
+    value named one by one on the kept one is joined instead
+    (``shape.restage_merges``)."""
+    gone = _merged(ws)
     if not gone:
         return
     for o in found:
@@ -736,11 +731,12 @@ def _refuse_merged_away(ws: Workspace, found: List[Dict[str, Any]]) -> None:
 
 
 def refuse_rule_on_merged(ws: Workspace, merge: Dict[str, Any]) -> None:
-    """The refusal :func:`_refuse_merged_away` owes the other way round: a
-    merge staged after a rule that changes a value on what it takes away."""
+    """The refusal :func:`_refuse_merged` owes the other way round: a merge
+    staged after a rule that changes a value on what it takes."""
     if not any(rules.is_rule(op) for op in ws.ops):
         return
-    ids = set(merge.get('other_ids') or []) | ({merge['other_id']} if merge.get('other_id') else set())
+    from .shape import merged_ids
+    ids = merged_ids(merge)
     for op in ws.ops:
         if not rules.is_rule(op):
             continue

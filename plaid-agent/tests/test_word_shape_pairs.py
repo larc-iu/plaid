@@ -197,3 +197,25 @@ def test_a_value_planned_on_a_sentence_a_merge_keeps_is_joined_as_the_card_says(
         assert [x.fields['Translation'].value for x in doc.sentences] == ['T1 | T2'], doc.sentences
     finally:
         s.delete()
+
+
+@pytest.mark.parametrize('stored', ['B', ''])
+@pytest.mark.parametrize('rule_first', [True, False])
+def test_a_form_rule_on_the_word_a_merge_keeps_is_refused(live_client, rule_first, stored):
+    # REV-BL-APPS-1 and -2: a corpus-wide value (set_field_for_form) on the
+    # word a merge keeps was written in the merge's batch after it (422, "2
+    # values in Gloss", nothing written) or joined a value the merge line did
+    # not name. Refused in both orders, as on the word the merge takes away.
+    c = live_client
+    words = [('aa', 'A', [('aa', '')]), ('bb', stored, [('bb', '')]), ('cc', 'C', [('cc', '')]),
+             ('dd', 'D', [('dd', '')])]
+    s, ws = seeded(c, base_project(), [_doc('d0', 'Doc A', words)], name=f'shape pairs: rule on kept {rule_first}')
+    try:
+        steps = [('set_field_for_form', {'form': 'bb', 'field': 'Gloss', 'value': 'R', 'only_empty': False}),
+                 ('merge_words', {'document': 'Doc A', 'refs': ['s1.w2', 's1.w3']})]
+        first, second = steps if rule_first else steps[::-1]
+        assert 'Planned' in call_tool(ws, *first)
+        out = call_tool(ws, *second)
+        assert 'writes to something this plan deletes' in out and len(ws.ops) == 1, out
+    finally:
+        s.delete()

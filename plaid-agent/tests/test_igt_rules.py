@@ -233,6 +233,22 @@ def test_a_rule_and_a_merge_of_what_it_changes_refuse_each_other():
     assert 'writes to something this plan deletes' in out and len(w.ops) == 1, out
 
 
+def test_a_rule_and_a_merge_of_the_word_it_keeps_refuse_each_other():
+    # REV-BL-APPS-1: a rule's value on the word a merge keeps went in the
+    # merge's batch after it, refused for two values, or joined a value the
+    # merge line did not name. Refused in both orders, as on the word it
+    # takes away.
+    store = {'sp-x2': 'VASP'}
+    client, w = _ws(store)
+    _replace(w, 'VASP', 'ASP')
+    out = call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert 'writes to something this plan deletes' in out and len(w.ops) == 1, out
+    client, w = _ws(store)
+    call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    out = _replace(w, 'VASP', 'ASP')
+    assert 'writes to something this plan deletes' in out and len(w.ops) == 1, out
+
+
 def test_a_regular_expression_is_said_as_a_person_reads_it():
     store = {'sp-g1': 'RL', 'sp-x2': 'RL.3'}
     client, w = _ws(store)
