@@ -26,7 +26,7 @@ You work for the person chatting with you, on the project "Sample". You can read
 
 Project shape:
 - Language: en
-- Gloss lines under each sentence: Word Gloss
+- Gloss lines under each sentence: Word Gloss (en)
 - Morphemes: this project has none
 
 The project's guidelines:
@@ -317,7 +317,7 @@ Project "Sample" (Uniform Meaning Representation)
 Language: en
 
 A sentence carries one graph, written in PENMAN. A node is a variable, a concept and any number of attributes; a relation joins two nodes. A node is addressed by its sentence and its variable: s3.s3e is the node s3e of sentence 3.
-Gloss lines under each sentence: Word Gloss.
+Gloss lines under each sentence: Word Gloss (en).
 
 Documents (1):
   "Story"
