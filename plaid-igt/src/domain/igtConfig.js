@@ -419,20 +419,24 @@ export const unmarkVocab = async (client, vocabId) => {
  */
 export const vocabImporting = (config) => readIgt(config, IMPORT_KEY) != null;
 
+// A refusal's 403 or 404, read in place, not through plaid-ui's statusOf:
+// this module's imports are part of the built-in rules' versions
+// (builtinVersion.test.js).
+const readStatus = (err) =>
+  err?.status ?? Number(/\bHTTP (40[34])\b/.exec(String(err?.message))?.[1]);
+
 /**
  * What a reader can learn of the project an import mark names: 'gone' when
  * core answers 404 (it says so to an admin only), 'unreadable' on a 403 (a
  * deleted project, or one this person cannot see), else 'live' (read, or not
- * reached). The status is read in place, not through plaid-ui's statusOf:
- * this module's imports are part of the built-in rules' versions
- * (builtinVersion.test.js).
+ * reached). The status is read by readStatus.
  */
 export const markProjectState = async (client, projectId) => {
   try {
     await client.projects.get(projectId);
     return 'live';
   } catch (err) {
-    const status = err?.status ?? Number(/\bHTTP (40[34])\b/.exec(String(err?.message))?.[1]);
+    const status = readStatus(err);
     if (status === 404) return 'gone';
     if (status === 403) return 'unreadable';
     return 'live';
@@ -492,7 +496,14 @@ export const markImportFinished = async (client, projectId) => {
       });
     }
     for (const vocabId of record?.vocabsMade ?? []) {
-      const vocab = await client.vocabLayers.get(vocabId);
+      // A vocabulary gone since has no mark to take off, as Delete reads it.
+      let vocab;
+      try {
+        vocab = await client.vocabLayers.get(vocabId);
+      } catch (err) {
+        if (readStatus(err) === 404) continue;
+        throw err;
+      }
       if (vocabImporting(vocab?.config)) {
         await client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, IMPORT_KEY);
       }

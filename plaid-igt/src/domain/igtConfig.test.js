@@ -390,6 +390,35 @@ describe('the import record', () => {
     ]);
   });
 
+  // REV-BL-APPS-4: a vocabulary the record names that is gone since (404) has
+  // no mark to take off. Failing on it left a finished import with only a
+  // Try again that never worked.
+  it('clears the record when a vocabulary it names is gone', async () => {
+    let config = { igt: { import: { kind: 'CLDF', vocabsMade: ['v1', 'v2'] } } };
+    const unmarked = [];
+    const client = {
+      projects: {
+        get: async () => ({ config }),
+        setConfig: async (_id, ns, key, value) => {
+          config = { ...config, [ns]: { ...config[ns], [key]: value } };
+        },
+        deleteConfig: async () => {
+          config = { igt: {} };
+        },
+      },
+      vocabLayers: {
+        get: async (id) => {
+          if (id === 'v1') throw refusal(404, 'Not found');
+          return { config: { igt: { import: { projectId: 'p1' } } } };
+        },
+        deleteConfig: async (id) => unmarked.push(id),
+      },
+    };
+    expect(await markImportFinished(client, 'p1')).toBe(true);
+    expect(unmarked).toEqual(['v2']);
+    expect(readImportState(config)).toBe(null);
+  });
+
   it('fails the import when it cannot be written', async () => {
     const client = {
       projects: {
