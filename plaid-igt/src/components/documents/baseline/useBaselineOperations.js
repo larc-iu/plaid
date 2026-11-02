@@ -6,7 +6,7 @@ import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { deletesSentenceOrRow, removedStretches } from '@ui/lib/editLog.js';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { countDeleteLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
+import { countDeleteLoss, holdsPersonsWork, lossPhrase } from '@ui/domain/annotationLoss.js';
 import { countOf } from '@ui/lib/plural.js';
 import {
   SENTENCE_ROLES,
@@ -51,7 +51,8 @@ const listed = (parts) => {
 //   keeps it and what is on it (R42 Q1)
 // - each sentence's translations, and each segment's times
 // - the shared loss counter's count of what else hangs off every token that
-//   goes, and what is only cut down
+//   goes (a word's or morpheme's own content included), and what is only cut
+//   down
 // A token the ignored-tokens rule excludes reads as text here (punctuation
 // ud's Tokenize made, say), so neither it nor what another app nested in it
 // or put on it is counted: the question is the one the same text with no
@@ -88,7 +89,12 @@ export function baselineLossSentence(doc, ranges) {
   const loss = countDeleteLoss(
     tokenLayers,
     dying.map((t) => t.id),
-    { vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []) },
+    {
+      vocabLinks: Object.values(doc.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+      // A token's own content counts as one annotation, as for the Tokenize
+      // tab's word delete, but for the sentences and segments named apart.
+      content: (t, layerId) => !held.has(layerId) && holdsPersonsWork(t),
+    },
   );
   const gone = (tl) => (tl?.tokens || []).filter(goes);
   const sentences = gone(info?.sentenceTokenLayer).length;

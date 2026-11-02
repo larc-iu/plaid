@@ -197,6 +197,26 @@ describe('useBaselineOperations, the counts in the confirm', () => {
       expect(baselineLossSentence(doc, [[3, 5]])).toBe('');
     }
   });
+
+  // P4-1: a morpheme's own content (its form, a person's stamp) went with its
+  // word uncounted, where the Tokenize tab's word delete counts it.
+  it("counts a morpheme's own content as an annotation, and provenance alone not", () => {
+    const doc = withLayers('Ana kuti', [
+      { id: 'w1', begin: 0, end: 3 },
+      { id: 'w2', begin: 4, end: 8 },
+    ]);
+    doc.layerInfo.primaryTextLayer.tokenLayers.push({
+      id: 'm',
+      parentTokenLayer: 'w',
+      tokens: [
+        { id: 'm1', begin: 0, end: 3, metadata: { form: 'an' } },
+        { id: 'm2', begin: 4, end: 8, metadata: { prov: 'inferred', provSource: 'service:x' } },
+      ],
+      spanLayers: [],
+    });
+    expect(baselineLossSentence(doc, [[0, 4]])).toBe('Deletes 1 word and 1 annotation.');
+    expect(baselineLossSentence(doc, [[3, 8]])).toBe('Deletes 1 word.');
+  });
 });
 
 // R45: a stretch typed over that covers whole sentences or segments deletes

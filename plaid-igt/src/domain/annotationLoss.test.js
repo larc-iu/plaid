@@ -135,6 +135,29 @@ describe('countSplitWordLoss', () => {
     });
   });
 
+  // P4-1: a merge and a split delete the words' morphemes, and a morpheme's
+  // own content (a form, a person's stamp) went uncounted, as it was for a
+  // word delete before FX5-LOSS. The question said 9 where more went.
+  it("counts the morphemes' own content, as a word delete does", () => {
+    const { layerInfo, vocabularies } = make();
+    layerInfo.morphemeTokenLayer = layerInfo.primaryTextLayer.tokenLayers[1];
+    const w2 = layerInfo.primaryTokenLayer.tokens[1];
+    layerInfo.morphemeTokenLayer.tokens.push(
+      { id: 'm2', begin: 6, end: 9, metadata: { form: 'tok' } },
+      { id: 'm3', begin: 6, end: 9, metadata: { prov: 'inferred', provSource: 'service:tok' } },
+    );
+    // m2 holds a form, m3 only provenance.
+    expect(countSplitWordLoss(layerInfo, vocabularies, w2)).toMatchObject({
+      annotations: 1,
+      links: 0,
+    });
+    // The merge also takes sw2's s5, and r1 and r2 with it.
+    expect(countSubWordAnnotationLoss(layerInfo, vocabularies, [w2])).toMatchObject({
+      annotations: 4,
+      links: 0,
+    });
+  });
+
   it('is zero for a word with no morphemes, whatever else is under it', () => {
     const { layerInfo, vocabularies } = make();
     layerInfo.morphemeTokenLayer = layerInfo.primaryTextLayer.tokenLayers[1];

@@ -104,7 +104,9 @@ export const countReTokenizeCut = (layerInfo) => {
  * relations / vocab links, and a layer that keeps its tokens coextensive with
  * the words loses the merged words' tokens by its rule. Word-scope spans are
  * NOT lost (merge reparents word spans onto the survivor), so unlike
- * countAnnotationLossForWord this counts ONLY what lies under the words.
+ * countAnnotationLossForWord this counts ONLY what lies under the words, a
+ * token's own content (a morpheme's form, a person's stamp) included as for
+ * a word delete.
  * A split takes less: countSplitWordLoss.
  *
  * @param {object} layerInfo  getIgtLayerInfo result
@@ -124,6 +126,7 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
     countDeleteLoss(tokenLayersOf(layerInfo), [...stay], {
       under: stay,
       vocabLinks: linksOf(vocabularies),
+      content: holdsPersonsWork,
     }),
   );
 };
@@ -137,7 +140,8 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
  * a multi-word token (ud's syntactic words) go one to each half, each with
  * its annotations (plaid-core `split-straddlers!`). So unlike a merge (where
  * a layer that keeps its tokens coextensive with the words loses them)
- * nothing else is counted.
+ * nothing else is counted. A morpheme's own content counts as for a word
+ * delete.
  *
  * @returns {{annotations: number, links: number}}
  */
@@ -149,6 +153,9 @@ export const countSplitWordLoss = (layerInfo, vocabularies, word) => {
     .map((m) => m.id);
   if (!ids.length) return ZERO();
   return counted(
-    countDeleteLoss(tokenLayersOf(layerInfo), ids, { vocabLinks: linksOf(vocabularies) }),
+    countDeleteLoss(tokenLayersOf(layerInfo), ids, {
+      vocabLinks: linksOf(vocabularies),
+      content: holdsPersonsWork,
+    }),
   );
 };
