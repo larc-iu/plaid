@@ -125,3 +125,15 @@ def test_a_document_name_holding_a_colon_keeps_its_change_whole():
     words, sentences = describe_changes(ws, ws.ops)
     assert words['change'].startswith('delete the word token')
     assert sentences['change'].startswith('merge s2')
+
+
+def test_a_confirmation_of_a_sentence_is_placed_at_the_sentence():
+    """A sentence-wide confirm row sat on the sentence's first word, the
+    word its first id is on (FX-H-APPS "Left")."""
+    from test_tools import _machine_doc
+    ws = fake_ws(FakeClient(documents={'d1': _machine_doc()}))
+    call_tool(ws, 'confirm', {'document': 'd1', 'refs': ['s1']})
+    call_tool(ws, 'confirm', {'document': 'd1', 'refs': ['s2.w1']})
+    s, w = describe_changes(ws, ws.ops)
+    assert s['where']['sentence'] == 1 and s['where']['word'] is None, s
+    assert w['where']['sentence'] == 2 and w['where']['word'] == 1, w

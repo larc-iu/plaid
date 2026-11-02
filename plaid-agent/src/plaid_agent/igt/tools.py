@@ -1150,6 +1150,9 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             # is refused as the plan is built. A confirmation of a whole
             # document names nothing and carries no such flag.
             staged.append({'kind': 'confirm', **pieces, 'named': True,
+                           # A sentence named whole: its row is placed at
+                           # the sentence, not at the word its first id is on.
+                           **({'sentence_id': obj.id} if isinstance(obj, Sentence) else {}),
                            **labelled(f'{ws.doc_label(doc.id)} {plain_ref(doc, ref)} {qv(_what(obj)[:40])}',
                                       f'confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')
                                       + _left_label(mine))})

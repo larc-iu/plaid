@@ -104,6 +104,10 @@ class Context:
         # A word's lemma span, by word id: the one it has or the id of the
         # one this plan creates.
         self.lemma_at: Dict[str, str] = {}
+        # The lemmas a relation needed and the plan made from the word's form
+        # (``_seed_lemmas``), which no card row counts, so the applied
+        # message says them.
+        self.seeded = 0
         # What this plan is ALREADY creating, by (layer, word). A relation
         # needs a lemma span to hang off, and if the same plan sets that
         # word's lemma there must not be two: the second create wins the read
@@ -310,6 +314,7 @@ def _seed_lemmas(ctx: Context, op, word_id: str, head_id: str) -> None:
             ctx.lemma_at[wid] = planned
             continue
         made = ctx.lemma_at[wid] = ctx.b.new_id()
+        ctx.seeded += 1
         ctx.b.add(lambda batch, o=op, w=wid, f=form, i=made: batch.spans.create(
             o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM), id=i))
 
@@ -972,8 +977,18 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
+        if ctx.seeded:
+            notes.append(seeded_note(ctx.seeded))
         unwritten = ctx.confirm_rows.unwritten()
     return executed(counts, notes, unwritten)
+
+
+def seeded_note(n: int) -> str:
+    """The applied note of the lemmas the plan's heads needed, made from the
+    words' forms and left unverified (H8-ASSISTANT-2: "6 field values, 6
+    dependencies" wrote 12 spans)."""
+    return (f'{n} word{"s" if n != 1 else ""} with no lemma got {"their forms" if n != 1 else "its form"} '
+            f'as {"lemmas" if n != 1 else "its lemma"}, unverified')
 
 
 # --- summary --------------------------------------------------------------------

@@ -564,7 +564,7 @@ def test_a_head_on_an_unannotated_word_makes_its_lemma_first(ws):
     run(ws, 'set_head', document='Viaje', ref='s2.w2', head=1, deprel='punct')
     counts = execute_plan(ws.client, ws.ops, source='service:ud:assist', label='Assistant: test',
                           stamp_mode='verified')
-    assert counts == {'dependencies': 1}
+    assert counts == {'dependencies': 1, 'notes': ['2 words with no lemma got their forms as lemmas, unverified']}
     # One batch: the lemma spans first, and the relation between them names
     # them by the ids they are made under.
     [batch] = ws.client.batches
@@ -1107,6 +1107,16 @@ def test_a_lemma_seeded_from_the_form_is_the_rules_not_the_approvers(ws):
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     [made] = [p['args'] for p in ws.client.payloads('spans.create') if p['args'][0] == LEMMA]
     assert made[3] == LEMMA_FROM_FORM and made[3]['provSource'] == 'rule:lemma-from-form'
+
+
+def test_the_applied_message_counts_the_lemmas_a_plan_seeded(ws):
+    """No card row counts the lemmas the heads need ("6 field values, 6
+    dependencies" wrote 12 spans, H8-ASSISTANT-2), so the applied notes say
+    them, and a word whose lemma was there is not counted."""
+    run(ws, 'set_head', document='Viaje', ref='s2.w2', head=1, deprel='punct')
+    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=1, deprel='obj')
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert '2 words with no lemma got their forms as lemmas, unverified' in counts['notes'], counts
 
 
 def test_the_lemmas_of_new_words_are_the_rules_too(ws):

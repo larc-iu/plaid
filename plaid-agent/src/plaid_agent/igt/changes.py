@@ -120,6 +120,11 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         found = _find(ws, _first(op, (key,)), op.get('doc') or op.get('document_id'))
         if found:
             return _token_where(ws, *found)
+    if kind == 'confirm' and op.get('sentence_id'):
+        found = _find(ws, op['sentence_id'], op.get('doc'))
+        if found:
+            doc, s, _, _ = found
+            return _token_where(ws, doc, s, None, None)
     if kind == 'confirm':
         for key in ('span_ids', 'token_ids', 'link_ids'):
             ids = op.get(key) or []
