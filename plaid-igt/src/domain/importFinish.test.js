@@ -44,6 +44,8 @@ const stub = (refused) => {
     calls,
     projects: {
       get: async () => project(),
+      // The record's finished mark before the clear (markImportFinished).
+      setConfig: async () => {},
       deleteConfig: async (...a) => calls.push(['deleteConfig', ...a]),
     },
     spanLayers: {
