@@ -33,6 +33,7 @@ vi.mock('@/utils/feedback', () => ({
 const { useProjectImportRun } = await import('./useProjectImportRun.js');
 const { FinishPending, ImportRunPanel } = await import('@/components/projects/ImportPanels.jsx');
 const { ImportCancelled } = await import('@/import/stamps.js');
+const { UnfinishedImport } = await import('@/components/projects/UnfinishedImport.jsx');
 const { notifyWarning } = await import('@/utils/feedback');
 
 // A server holding each project's igt config, its vocabularies and which
@@ -356,6 +357,42 @@ describe('a whole import whose record cannot be cleared', () => {
     expect(read().finishPending).toBe(false);
     expect(client.config.get(read().projectIdRef.current).import).toBeUndefined();
     await view.unmount();
+  });
+});
+
+// R57 leftover: Try again outlived only the import page. Once the page was
+// left or loaded again, every screen offered Delete for a whole project.
+describe('a whole import whose record clear failed, read again later', () => {
+  it('offers Try again and no Delete, and Try again clears the record', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const client = serverClient();
+    client.failClears = 99;
+    const { view, read } = await mount(client, async () => ({ imported: 1, warnings: [] }));
+    await view.step(async () => {
+      buttons('Go')[0].click();
+      await vi.runAllTimersAsync();
+    });
+    vi.useRealTimers();
+    const id = read().projectIdRef.current;
+    await view.unmount();
+
+    // The project as a screen reads it after a reload.
+    const project = { id, name: 'Half', config: (await client.projects.get(id)).config };
+    const onFinished = vi.fn();
+    const again = await renderComponent(
+      <UnfinishedImport client={client} project={project} canManage onFinished={onFinished} />,
+    );
+    await act(async () => {});
+    expect(again.container.textContent).toContain(
+      'The import finished but could not be marked done.',
+    );
+    expect(buttons('Delete')).toEqual([]);
+    client.failClears = 0;
+    await again.step(async () => buttons('Try again')[0].click());
+    await act(async () => {});
+    expect(client.config.get(id).import).toBeUndefined();
+    expect(onFinished).toHaveBeenCalled();
+    await again.unmount();
   });
 });
 

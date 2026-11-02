@@ -172,7 +172,7 @@ const DocumentBody = ({ tab, context }) => {
       <Gate>
         <UnfinishedImport
           client={session}
-          project={{ id: projectId, name: project?.name }}
+          project={{ id: projectId, name: project?.name, config: project?.config }}
           canManage={permissions.canManage}
           onDeleted={() => navigate('/projects', { replace: true })}
         />

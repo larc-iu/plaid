@@ -372,6 +372,7 @@ describe('the import record', () => {
     const client = {
       projects: {
         get: async () => ({ config: { igt: { import: { kind: 'CLDF', vocabsMade: ['v1'] } } } }),
+        setConfig: async (id, ns, key, value) => calls.push(['set', id, ns, key, value]),
         deleteConfig: async (...a) => calls.push(['project', ...a]),
       },
       vocabLayers: {
@@ -380,7 +381,10 @@ describe('the import record', () => {
       },
     };
     expect(await markImportFinished(client, 'p1')).toBe(true);
+    // The record says the run was whole before anything else, so a clear
+    // that fails leaves a project offered Try again, not Delete (R57).
     expect(calls).toEqual([
+      ['set', 'p1', 'igt', 'import', { kind: 'CLDF', vocabsMade: ['v1'], finished: true }],
       ['vocab', 'v1', 'igt', 'import'],
       ['project', 'p1', 'igt', 'import'],
     ]);

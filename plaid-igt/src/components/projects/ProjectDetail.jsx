@@ -210,6 +210,7 @@ const ProjectBody = ({ project, projectId, client, documents, reload }) => {
         project={project}
         canManage={canManage}
         onDeleted={() => navigate('/projects', { replace: true })}
+        onFinished={() => reload()}
       />,
     );
   }

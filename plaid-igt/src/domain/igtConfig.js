@@ -342,14 +342,15 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
  * An import writes this on the project it is filling when the project is made
  * and removes it once the whole import has run, so a project whose import was
  * stopped, failed or was closed does not open as if it were complete:
- * `{kind, source, startedAt, vocabsMade, entriesAdded}`, `kind` being the
+ * `{kind, source, startedAt, vocabsMade, entriesAdded, finished}`, `kind` being the
  * format ('FLEx', 'FLEx .flextext', 'CLDF', 'ELAN', 'Plaid IGT archive'),
  * `source` the file it was reading, `vocabsMade` the ids of the vocabularies
  * the import made (each marked as importing too, see `vocabImporting`), which
  * a Delete of the project deletes with it when no other project links one,
  * and `entriesAdded` how many entries it made in each vocabulary it did not
  * make, `{vocabId: n}`, which stay. Such a project is only deleted, never
- * finished.
+ * finished. `finished` is true once the run was whole and only the clear is
+ * left (`markImportFinished`): that project is offered Try again instead.
  */
 const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
@@ -471,14 +472,25 @@ export const withLiveMarks = async (client, vocabs) => {
   });
 };
 
+/** Whether an import record says its run was whole (`markImportFinished`). */
+export const importRanWhole = (record) => record?.finished === true;
+
 /**
- * Record that it finished: the mark comes off every vocabulary the record
- * names, then the record goes. Says whether it all went, since a project that
- * keeps its record does not open.
+ * Record that it finished: the record first says so (`finished: true`), so a
+ * project whose clear then fails is offered Try again on every screen, never
+ * Delete. Then the mark comes off every vocabulary the record names, and the
+ * record goes. Says whether it all went, since a project that keeps its
+ * record does not open.
  */
 export const markImportFinished = async (client, projectId) => {
   try {
     const record = readImportState((await client.projects.get(projectId))?.config);
+    if (record && !importRanWhole(record)) {
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
+        ...record,
+        finished: true,
+      });
+    }
     for (const vocabId of record?.vocabsMade ?? []) {
       const vocab = await client.vocabLayers.get(vocabId);
       if (vocabImporting(vocab?.config)) {

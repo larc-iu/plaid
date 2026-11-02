@@ -7,8 +7,13 @@ import { DeleteProjectDialog } from '@ui/components/shared/DeleteProjectDialog.j
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { countOf } from '@ui/lib/plural.js';
-import { notifySuccess, notifyWarning } from '@/utils/feedback';
-import { readImportState, unmarkVocab } from '@/domain/igtConfig';
+import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import {
+  importRanWhole,
+  markImportFinished,
+  readImportState,
+  unmarkVocab,
+} from '@/domain/igtConfig';
 
 const quoted = (vocabs) => vocabs.map((v) => `“${v.name}”`).join(', ');
 
@@ -25,7 +30,8 @@ const nameOf = async (client, id) => {
  * What the import record says the import left in vocabularies: the ones it
  * made (`made`, which Delete takes unless another project links one) and the
  * entries it added to a lexicon the person keeps (`added`, `[{name, n}]`,
- * which stay).
+ * which stay), and whether its run was whole and only the clear is left
+ * (`whole`).
  */
 async function whatItLeft(client, project) {
   const config = project.config ?? (await client.projects.get(project.id))?.config;
@@ -38,7 +44,7 @@ async function whatItLeft(client, project) {
   for (const [id, n] of Object.entries(record.entriesAdded ?? {})) {
     if (n > 0) added.push({ name: (await nameOf(client, id)) ?? 'a lexicon', n });
   }
-  return { made, added };
+  return { made, added, whole: importRanWhole(record) };
 }
 
 /**
@@ -54,12 +60,18 @@ async function whatItLeft(client, project) {
  * is named. Entries the import added to a lexicon the person keeps stay, and
  * the screen says how many (R59).
  *
+ * A run that was whole but whose record could not be cleared (`finished` on
+ * the record) is not offered for deletion: the screen says it finished and
+ * offers Try again, as the import page did before a reload.
+ *
  * `project` is `{id, name}`, with `config` when the caller has it.
- * `onDeleted` runs once the project is gone.
+ * `onDeleted` runs once the project is gone, `onFinished` once Try again has
+ * cleared the record (the page is loaded again when it is not given).
  */
-export const UnfinishedImport = ({ client, project, canManage, onDeleted }) => {
+export const UnfinishedImport = ({ client, project, canManage, onDeleted, onFinished }) => {
   const [open, setOpen] = useState(false);
-  const [left, setLeft] = useState({ made: [], added: [] });
+  const [left, setLeft] = useState({ made: [], added: [], whole: false });
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -101,6 +113,38 @@ export const UnfinishedImport = ({ client, project, canManage, onDeleted }) => {
     setOpen(false);
     onDeleted?.();
   };
+
+  const tryAgain = async () => {
+    setBusy(true);
+    try {
+      if (await markImportFinished(client, project.id)) {
+        if (onFinished) onFinished();
+        else window.location.reload();
+      } else {
+        notifyError('The import could not be marked done.', 'Try again');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Read off the config the caller has at once, so a whole run never flashes
+  // Delete while the rest of the record is read.
+  if (left.whole || importRanWhole(readImportState(project.config))) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p>
+          The import finished but could not be marked done.
+          {canManage ? '' : ' A project maintainer can try again.'}
+        </p>
+        {canManage && (
+          <Button variant="outline" size="sm" disabled={busy} onClick={tryAgain}>
+            Try again
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   const consequence = (
     <>
