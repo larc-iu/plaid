@@ -119,8 +119,8 @@ export function baselineLossSentence(doc, ranges) {
     .filter(Boolean)
     .join(' ');
   if (said) return said;
-  const touched = shown.some((t) => ranges.some(([b, e]) => b < t.end && t.begin < e));
-  return touched ? 'Changes the words in the removed text.' : '';
+  const touched = shown.filter((t) => ranges.some(([b, e]) => b < t.end && t.begin < e)).length;
+  return touched ? `Changes ${countOf(touched, 'word')}.` : '';
 }
 
 export const useBaselineOperations = () => {

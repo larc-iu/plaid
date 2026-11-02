@@ -193,7 +193,9 @@ describe('useBaselineOperations, the counts in the confirm', () => {
     for (const ud of [false, true]) {
       const doc = anaKuti(ud);
       expect(baselineLossSentence(doc, [[0, 4]])).toBe('Deletes 1 word.');
-      expect(baselineLossSentence(doc, [[2, 4]])).toBe('Changes the words in the removed text.');
+      // P1-7: the question names how many words change, as the guide says.
+      expect(baselineLossSentence(doc, [[2, 4]])).toBe('Changes 1 word.');
+      expect(baselineLossSentence(doc, [[2, 7]])).toBe('Changes 2 words.');
       expect(baselineLossSentence(doc, [[3, 5]])).toBe('');
     }
   });
