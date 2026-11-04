@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useFollowEnd } from './useFollowEnd.js';
 import { replyLanded } from './replyLanded.js';
 import { RotateCcw, Check, X, Loader2, PanelRightClose } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -338,7 +339,6 @@ export const AssistantChat = ({
   // When the job on screen was requested, so a turn rejoined after a reload
   // shows how long it has really been going.
   const [startedAt, setStartedAt] = useState(null);
-  const bottomRef = useRef(null);
   const inputRef = useRef(null);
   // The listener below is mounted once, so the project it compares against
   // travels by ref.
@@ -521,9 +521,13 @@ export const AssistantChat = ({
   };
 
   // --- turns -----------------------------------------------------------------
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [active?.display.length, busy, progress, partial, liveThinking]);
+  // The thread keeps to its newest text only while the reader is at the end
+  // of it, and scrolls only itself, never the page.
+  const thread = useFollowEnd([active?.display.length, busy, progress, partial, liveThinking]);
+  useLayoutEffect(() => {
+    thread.toEnd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
 
   // Turns still running in another project. Navigating never stops one (the
   // record gets the outcome either way), and a reader who walked away from a
@@ -609,6 +613,7 @@ export const AssistantChat = ({
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend || sendingRef.current) return;
     sendingRef.current = true;
+    thread.toEnd();
     try {
       await sendNow(typed);
     } finally {
@@ -1086,7 +1091,11 @@ export const AssistantChat = ({
           </div>
         </header>
 
-        <div className={cn('flex-1 overflow-y-auto', compact ? 'px-3 py-3' : 'px-4 py-4')}>
+        <div
+          ref={thread.ref}
+          onScroll={thread.onScroll}
+          className={cn('flex-1 overflow-y-auto', compact ? 'px-3 py-3' : 'px-4 py-4')}
+        >
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             {display.length === 0 && !busy && <DisclosureNotice text={disclosure} />}
             {display.length === 0 && !busy && renderEmpty?.(chrome)}
@@ -1195,7 +1204,6 @@ export const AssistantChat = ({
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
             <span role="status" className="sr-only">
               {landed}
             </span>

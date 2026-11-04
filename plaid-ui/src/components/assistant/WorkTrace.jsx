@@ -1,4 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { useFollowEnd } from './useFollowEnd.js';
 import { Check, ChevronDown, ChevronRight, CircleX, Copy, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
@@ -279,15 +280,13 @@ const StepRow = ({ step, rounds, live, gone, exported }) => {
 };
 
 // The model's reasoning, as plain text. Live, it keeps its end in view as
-// it grows.
+// it grows, while the reader is at the end.
 const ThinkingText = ({ text, follow = false }) => {
-  const ref = useRef(null);
-  useLayoutEffect(() => {
-    if (follow && ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [follow, text]);
+  const { ref, onScroll } = useFollowEnd([text], { enabled: follow });
   return (
     <div
       ref={ref}
+      onScroll={onScroll}
       dir="auto"
       className="mb-1 ml-4 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border-l-2 border-muted py-0.5 pl-2 italic"
     >
