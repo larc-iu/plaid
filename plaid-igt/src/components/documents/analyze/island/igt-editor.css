@@ -820,7 +820,13 @@
 }
 /* A clitic's "=" (R49) sits on the clitic's side of the gap, its hair space
    (in the text) toward the host: the glyph ends at the gap's middle for a
-   proclitic on the left and starts there for an enclitic on the right. */
+   proclitic on the left and starts there for an enclitic on the right. The
+   joint is 0px wide, so without nowrap the line breaks at that hair space and
+   the "=" drops below the "-" line. */
+.igt-morph-joiner--left,
+.igt-morph-joiner--right {
+  white-space: nowrap;
+}
 .igt-morph-joiner--left {
   justify-content: flex-end;
 }
