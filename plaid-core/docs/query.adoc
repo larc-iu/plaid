@@ -92,6 +92,7 @@ The clients accept these keys in your language's own casing (see <<Clients and c
 
 A variable is a string beginning with `?`, such as `"?s1"` or `"?head"`.
 The name is up to you, and the same name in two clauses refers to the same entity.
+A variable in `find` must begin with an ASCII letter after the `?` and hold only ASCII letters, digits, `_` or `-`.
 Every variable in `find` must appear in some clause of `where`, and names beginning with `?__` are reserved.
 
 == Bindings
@@ -196,7 +197,7 @@ After `metadata` or `config` comes a key, and you can keep descending into neste
 
 Field names such as `begin` are matched loosely, ignoring case and `-` or `_`, so you can spell them in your client's style.
 The keys after `metadata` or `config` are your own data, so they are matched exactly, case included.
-A dot path reads object keys only, so a key that contains a `.`, or a value inside an array, needs the <<Metadata,`metadata` constraint>> instead.
+A dot path reads object keys only, so a key that contains a `.` needs the <<Metadata,`metadata` constraint>> instead.
 
 == Constraints
 
@@ -268,7 +269,7 @@ Use a predicate when you compare numeric values (see <<Predicate clauses>>).
 
 A boolean reads as the number `1` or `0`.
 `["=", "?s.value", true]` matches a stored `true` or `1`, but `"true"` as a string matches nothing.
-A boolean in a returned value or a group key reads as `1` or `0` too, never as `true` or `false`.
+A boolean in an aggregate's value or a group key reads as `1` or `0` too, never as `true` or `false`.
 
 === Metadata
 
