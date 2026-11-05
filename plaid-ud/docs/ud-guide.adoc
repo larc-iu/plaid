@@ -485,7 +485,7 @@ Some things to know before applying:
 == History
 
 Every change is recorded.
-**History**, at the end of a document's tab row, lists the actions taken on it, such as "Update upos", "Create relation", or a parser run with the name of the person who ran it.
+**History**, at the end of a document's tab row, lists the actions taken on it, such as "Update UPOS", "Create relation", or a parser run with the name of the person who ran it.
 Selecting an entry shows the document as it was right after that action, and an entry made of several changes can be expanded to select each one.
 Past states are **read-only**, and **Return to current** goes back to the live document.
 
@@ -527,7 +527,7 @@ Tick it and everything that person enters is marked as needing review until some
 
 A project's maintainers tailor the annotation scheme from the project's **Settings** tab.
 
-**UD settings** holds the controlled vocabularies (UPOS, XPOS and dependency relations), their **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** for <<_metadata>>.
+**UD settings** holds the controlled vocabularies (UPOS, XPOS and dependency relations), the **colors** of UPOS tags and relations, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** for <<_metadata>>.
 XPOS starts empty and the others from the universal sets. Each can be changed.
 **Save** writes only what you changed. If another maintainer changed the same setting since you opened the tab, nothing is saved and the message names the setting.
 
