@@ -62,7 +62,7 @@ On your profile you set a display name and a picture, change your password, and 
 The editor has a few levels you move between:
 
 * **Projects**: the list of all projects you can access. This is your home screen after signing in.
-* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Guidelines**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
+* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Guidelines**, **Assistant** (when an assistant is running), and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
 * **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
@@ -219,7 +219,7 @@ Under **Existing text**, select the words the segment covers.
 This is how you align a text that was typed before the recording was attached.
 
 The timeline colors each speaker's segments alike.
-Two segments may overlap in time only when they have different speakers, which is how cross-talk is recorded.
+Two segments may overlap in time only when both have a speaker and the speakers differ, which is how cross-talk is recorded.
 A dragged edge stops at any segment it may not overlap.
 
 === Speech detection
@@ -267,7 +267,7 @@ Words already there are kept, so text added later can be tokenized by running it
 
 A project can mark certain tokens as **ignored**, usually punctuation.
 Ignored tokens are not words. They read as plain text everywhere, in the grid, in counts, searches and exports, with no annotation and no morphemes.
-The built-in splitter breaks words at punctuation, so an orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed as **behaving as a letter** under **Settings → Annotation** (see <<_annotation>>).
+The built-in splitter breaks words at punctuation, so an orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed under **Characters that behave as letters** in **Settings → Annotation** (see <<_annotation>>).
 Then `k'a` stays one word.
 
 TIP: A word that came out split can be repaired by dragging across its pieces, which merges them into one word.
@@ -379,7 +379,8 @@ While you analyze, you connect a word or morpheme to an entry, by hand with the 
 
 Linking keeps the same word analyzed the same way everywhere it appears.
 A linked entry offers a guess in each field that has a **lexicon field** (see <<_annotation>>): the entry's value in that lexicon field.
-Because a vocabulary is shared, editing an entry updates every document linked to it.
+Because a vocabulary is shared, editing an entry changes it for every document linked to it.
+A value already in a document's field stays as it was.
 
 In the link popover, the linked entry's form opens the entry in its vocabulary.
 When no entry fits, **Create** adds one with the word's or morpheme's form and links it.
@@ -494,7 +495,7 @@ Some lexical units are longer than a word: an idiom, a phrasal verb, a compound 
 You can link such a **multi-word expression** to a single entry by gathering its words:
 
 1. **Shift+click** each word. Or, from one of a word's cells, press **Shift+→** (or **Shift+←**) to take in its neighbours, holding **Ctrl/Cmd** as well to skip a word that does not belong.
-2. A dashed line shows the words gathered so far. Press **Enter** to link them, or **Esc** to give up.
+2. A blue line shows the words gathered so far. Press **Enter** to link them, or **Esc** to give up.
 3. The popover works as it does for one word: pick an entry, or create one. A new entry gets the words joined by spaces, which you can edit to the citation form, and the type _multi-word expression_ (a phrase, to FieldWorks).
 
 A linked multi-word expression draws as a line under its words, labelled with the entry's form.
@@ -536,7 +537,7 @@ Step 2 reuses your own work, in the manner of FieldWorks' guesses from previous 
 A word receives a copy only when it is **unanalyzed**: still a single morpheme identical to the word, with no annotation values and no lexicon link.
 A word you have segmented, glossed, or linked, even partly, is never touched.
 
-For each such word, Plaid IGT looks at every other occurrence of the same form across the project, and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
+For each such word, Plaid IGT looks at every other occurrence of the same form in the document and in up to 25 other documents of the project, those with the most words it is looking for, and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
 If two analyses are tied, the word is left alone for you to decide.
 Only analyses a person made or confirmed count, so one machine pass never feeds the next.
 What a copy carries is set per project under **Settings → Services** (see <<_settings_services>>).
@@ -566,7 +567,7 @@ A project's **Activity** tab, for maintainers, shows who has been working and on
 
 The upper table counts each person's **changes** over a window you choose.
 A change is one action, so importing a corpus counts once, not once per sentence.
-Each row also counts the documents the person touched, with a bar for each day of the window.
+Each row also counts the documents the person touched, with a bar for each of the last 14 days.
 Below it, the members who have made no changes in that window are named.
 
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
@@ -736,7 +737,7 @@ The **Assistant** tab is a chat with a language model that knows your project.
 Ask it what is still unglossed, whether a suffix is glossed consistently, or to summarize the morphology it can see.
 It reads the documents, the lexicon, the search results, the project's guidelines, and the history to answer, and it shows what it read.
 
-A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches".
+A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches · 42 steps".
 Opened, it lists each step the assistant took, and a step opens to show exactly what it read.
 
 When you ask it to change something, it does not touch the data.
@@ -908,14 +909,14 @@ Exports are driven by **presets**.
 A preset fixes a format and which orthographies, fields, and options it includes, so the same export can be run again later, or by someone else.
 Maintainers create presets on the project's **Export** tab.
 Anyone can run one from there or from a document's Export tab, on this document, selected documents, or the whole project.
-Comments are not exported.
+Only a Plaid IGT JSON archive carries comments.
 
 Six formats are supported:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
 Its **Word line** setting prints the words as written, segmented into morphemes, or both, which is the four-line hand-in a field methods course asks for.
 **Number sentences** numbers them, and **Document header** prints the document's name and metadata above its text.
-* **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped together.
+* **FLEx** (`.flextext` + `.lift`): the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped together.
 In FieldWorks, import the lexicon first, from the Lexicon area (**File > Import > LIFT Lexicon**), keeping the `.lift-ranges` file beside the `.lift`.
 Then import the texts from the Texts & Words area (**File > Import > FLExText Interlinear**).
 The order matters because the texts link to entries that must already be there, and a README in the `.zip` repeats these steps.
@@ -1077,7 +1078,7 @@ An administrator sees an **Admin** link in the top bar, covering the whole serve
 = Typing Special Characters
 
 Most language data needs characters a keyboard does not have.
-In any field that holds language data, type a backslash followed by a two-letter code, and the code turns into the character as you finish it:
+In any field that holds language data, type a backslash followed by a two-character code, and the code turns into the character as you finish it:
 
 [cols="1,1,2"]
 |===
@@ -1121,7 +1122,7 @@ The tables below give the shortcuts as they come.
 You can change most of them under **Profile**, in **Keyboard shortcuts**: choose **Change** beside an action and press the keys you want.
 A change follows your account to any computer you sign in on, and shows in the `?` legends.
 **Reset** puts one shortcut back and **Reset all** puts back every one.
-Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned, with or without Shift.
+Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned.
 
 [[_anywhere]]
 == Any screen
@@ -1147,19 +1148,19 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The clitic is typed by its place in the word (see <<_morpheme_types>>).
-| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form, delete the morpheme.
+| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form other than a word's first, delete the morpheme.
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
-| **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
+| **\** + a two-character code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
 | **Ctrl/Cmd+Enter** | Accept the current word's whole analysis, every faint guess in its cells included, and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence. A value not in its closed tagset accepts nothing and keeps the caret on that cell.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays. On a sentence field, discard its proposed value. **Delete** does the same as Backspace.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word or sentence field that still has unverified proposals.
 | **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** accepts it and **Backspace** removes it.
 | **F2** | Respell the current word in a box over it, its text selected. **Enter** saves, **Esc** or clicking elsewhere cancels. The same action is **Respell** in the word's popover.
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
-| **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
+| **Enter** (while gathering) | Open the entry popover to link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
-| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, accepts a proposed link, and on a word unlinks the linked entry, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, accepts a proposed link, and on a word unlinks the linked entry, **Shift+Enter** links it to every unlinked occurrence of the form in the text, on the create row **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
