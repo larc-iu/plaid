@@ -192,7 +192,7 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 
 == Audit Log
 
-Every write to the database, apart from comments and each user's private data, is recorded in an append-only **audit log** which provides an account of who performed every change.
+Every write to the database, apart from comments, each user's private data, research telemetry and the record of which services have connected, is recorded in an append-only **audit log** which provides an account of who performed every change.
 The log is kept indefinitely, and it is what document time travel reads from (see <<Document Time Travel>>).
 It can be queried like so:
 

@@ -567,7 +567,7 @@ A project's **Activity** tab, for maintainers, shows who has been working and on
 
 The upper table counts each person's **changes** over a window you choose.
 A change is one action, so importing a corpus counts once, not once per sentence.
-Each row also counts the documents the person touched, with a bar for each of the last 14 days.
+Each row also counts the documents the person touched, with a bar for each day of the chosen window (the last 30 days for All time).
 Below it, the members who have made no changes in that window are named.
 
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
