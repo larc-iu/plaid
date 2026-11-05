@@ -74,7 +74,7 @@ Documents are then added under **Import and export**.
 == A project from Plaid IGT or Plaid UD
 
 A project made in Plaid IGT or Plaid UD must be set up for UMR before it opens here.
-When a maintainer opens its documents, the setup page offers **Set up for UMR**, which adds what UMR annotation needs and leaves everything already in the project as it is.
+When a maintainer opens its documents, a notice offers **Set up for UMR**, which adds what UMR annotation needs and leaves everything already in the project as it is.
 Other members see a notice asking for a maintainer.
 
 == Language
@@ -126,6 +126,7 @@ The Morphemes line joins the morphemes of a word with `-` or `=` as the canvas s
 Sentences are numbered 1, 2, 3, unless the document came from a file that numbered them otherwise, in which case they keep the file's numbers.
 A part of a sentence that the root does not reach, such as a node made with no parent, is left out of the file.
 A document the file format cannot hold is not exported, and the tab lists each problem.
+One such document stops the project's zip, and **Import and export** lists every problem.
 
 = The Canvas
 
@@ -161,7 +162,7 @@ A node aligns to whole words, never to a morpheme.
 == The margin
 
 The margin to the left of each graph holds the document graph's constants that the sentence uses: `author`, `root`, `document-creation-time` and any others.
-A document-level relation appears as a tag on each node it joins, in this sentence or another, colored by kind: modal in dark blue-grey, temporal in teal, coreference in brown.
+A document-level relation appears as a tag on each node it joins, in this sentence or another, colored by kind: modal in dark blue-grey, temporal in green, coreference in brown.
 The common `author :full-affirmative` is grey.
 
 A tag reads the triple in its own order, with a dot for the node itself, so `(s3d :before s3b)` is `● :before s3b` on `s3d`.
@@ -228,7 +229,7 @@ Open it by right-clicking the node, with the **⋯** button at its top right, or
 * **r** adds a second parent to the focused node: pick it from the list or click it, then give the relation.
 * Drag the grip on a node's lower edge onto another node for an edge, onto a word for a new child anchored there, or onto empty space for a child with no word. The relation is asked at the drop.
 
-Some relations take a value and never a node: the attributes, `:li`, `:wiki`, and a name's `:op1`, `:op2` and so on.
+Some relations take a value and never a node: `:aspect`, `:modal-strength`, the `:refer-` attributes, `:li`, `:wiki`, and a name's `:op1`, `:op2` and so on.
 An edge with one of these relations is refused, and so is an edge that would close a cycle, except through `:quote` or `:modal-predicate`.
 
 == Changing a node
@@ -355,7 +356,7 @@ A document's **Compare** tab scores its graphs against another document of the s
 Pick the other document and run Compare.
 The tab shows the document scores, then each sentence's two graphs side by side.
 
-In the graphs, a node with no counterpart has a dashed blue outline, and a node paired with a node of another concept has a solid rose one.
+In the graphs, a node with no counterpart has a dashed blue outline, and a node paired with a node of another concept has a solid brown one.
 Each sentence number and marked variable opens that place on the Annotate tab.
 A sentence edited since the comparison is marked **Changed since this comparison**.
 
