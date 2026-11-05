@@ -1713,7 +1713,7 @@ A maintainer sets the threshold on Plaid IGT's Services settings page, and it is
 ----
 
 Without it the threshold is 0.5.
-Both clients read it with `readConfidenceThreshold` and test a value with `isDoubtful`.
+Both clients read it with `readConfidenceThreshold` / `read_confidence_threshold` and test a value with `isDoubtful` / `is_doubtful`.
 
 A machine writer records what made a prediction in `provDetail.model`, such as `stanza==1.11.0`, and every one records the version of its own code in `provDetail.version`.
 `provDetail` describes the original prediction and is kept after a person edits the value.
@@ -1823,7 +1823,7 @@ client.relation_layers.set_constraints(deps_layer_id, "ud", [
 ])
 ----
 
-`check_constraints` lists what a list would break, without writing anything: the first 100 violations, or as many as `limit` asks, and `violation-count` counts them all.
+`check_constraints` lists what a list would break, without writing anything: the first 100 violations, or as many as `limit` asks, and `violation_count` counts them all.
 `repair_constraints` fixes what can be fixed and lists the rest, and a writer may run it on a single document by passing `document`.
 An app uses this when it sets up a project, or a setting changes the rules it wants, on layers whose data does not hold them yet.
 
@@ -1978,10 +1978,10 @@ Plaid is one process with one SQLite database, so a small machine that stays on 
 
 * A machine that stays on, reachable by your users, running Linux (the jar itself runs anywhere Java does, but these notes are for Linux).
 * https://www.oracle.com/java/technologies/downloads/[JDK 21 or later].
-* `plaid.jar` from https://github.com/larc-iu/plaid/releases[the releases page].
+* `plaid-<version>.jar` from https://github.com/larc-iu/plaid/releases[the releases page], saved as `plaid.jar`.
 * A hostname, if you want HTTPS (and you do, for anything that leaves your desk).
 
-Everything Plaid stores lives in one directory, `data/`, next to the jar: the database, uploaded recordings, nightly backups, the configuration file and the signing secret.
+Everything Plaid stores lives in one directory, `data/`, in the directory Plaid is started from: the database, uploaded recordings, nightly backups, the configuration file and the signing secret.
 Keep that directory private to the account that runs Plaid.
 
 == First launch
