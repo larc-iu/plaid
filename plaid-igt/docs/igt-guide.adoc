@@ -737,7 +737,7 @@ The **Assistant** tab is a chat with a language model that knows your project.
 Ask it what is still unglossed, whether a suffix is glossed consistently, or to summarize the morphology it can see.
 It reads the documents, the lexicon, the search results, the project's guidelines, and the history to answer, and it shows what it read.
 
-A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches".
+A line above each answer sums up the work behind it, such as "read 87 sentences in 40 documents · 2 searches · 42 steps".
 Opened, it lists each step the assistant took, and a step opens to show exactly what it read.
 
 When you ask it to change something, it does not touch the data.
@@ -909,14 +909,14 @@ Exports are driven by **presets**.
 A preset fixes a format and which orthographies, fields, and options it includes, so the same export can be run again later, or by someone else.
 Maintainers create presets on the project's **Export** tab.
 Anyone can run one from there or from a document's Export tab, on this document, selected documents, or the whole project.
-Comments are not exported.
+Only a Plaid IGT JSON archive carries comments.
 
 Six formats are supported:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
 Its **Word line** setting prints the words as written, segmented into morphemes, or both, which is the four-line hand-in a field methods course asks for.
 **Number sentences** numbers them, and **Document header** prints the document's name and metadata above its text.
-* **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped together.
+* **FLEx** (`.flextext` + `.lift`): the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped together.
 In FieldWorks, import the lexicon first, from the Lexicon area (**File > Import > LIFT Lexicon**), keeping the `.lift-ranges` file beside the `.lift`.
 Then import the texts from the Texts & Words area (**File > Import > FLExText Interlinear**).
 The order matters because the texts link to entries that must already be there, and a README in the `.zip` repeats these steps.
@@ -1078,7 +1078,7 @@ An administrator sees an **Admin** link in the top bar, covering the whole serve
 = Typing Special Characters
 
 Most language data needs characters a keyboard does not have.
-In any field that holds language data, type a backslash followed by a two-letter code, and the code turns into the character as you finish it:
+In any field that holds language data, type a backslash followed by a two-character code, and the code turns into the character as you finish it:
 
 [cols="1,1,2"]
 |===
@@ -1122,7 +1122,7 @@ The tables below give the shortcuts as they come.
 You can change most of them under **Profile**, in **Keyboard shortcuts**: choose **Change** beside an action and press the keys you want.
 A change follows your account to any computer you sign in on, and shows in the `?` legends.
 **Reset** puts one shortcut back and **Reset all** puts back every one.
-Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned, with or without Shift.
+Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morpheme form cannot be reassigned.
 
 [[_anywhere]]
 == Any screen
@@ -1148,19 +1148,19 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The clitic is typed by its place in the word (see <<_morpheme_types>>).
-| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form, delete the morpheme.
+| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form other than a word's first, delete the morpheme.
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
-| **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
+| **\** + a two-character code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
 | **Ctrl/Cmd+Enter** | Accept the current word's whole analysis, every faint guess in its cells included, and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence. A value not in its closed tagset accepts nothing and keeps the caret on that cell.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays. On a sentence field, discard its proposed value. **Delete** does the same as Backspace.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word or sentence field that still has unverified proposals.
 | **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** accepts it and **Backspace** removes it.
 | **F2** | Respell the current word in a box over it, its text selected. **Enter** saves, **Esc** or clicking elsewhere cancels. The same action is **Respell** in the word's popover.
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
-| **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
+| **Enter** (while gathering) | Open the entry popover to link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
-| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, accepts a proposed link, and on a word unlinks the linked entry, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links the highlighted one, on a morpheme together with its gloss, accepts a proposed link, and on a word unlinks the linked entry, **Shift+Enter** links it to every unlinked occurrence of the form in the text, on the create row **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
