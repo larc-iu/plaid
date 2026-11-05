@@ -1019,8 +1019,10 @@ PATCH /texts/9cfafcc6
 
 [,js]
 ----
-{ id: "9cfafcc6", body: "Fido barks!", digest: "b31c09…",
-  reshape: { tokens: [], spans: [], "vocab-links": [],
+{ id: "9cfafcc6", body: "Fido barks! Rex runs.", digest: "3d1b3c…",
+  reshape: { tokens: [ { id: "e0d3…", begin: 12, end: 15, layer: "5b0a…", text: "9cfafcc6", precedence: null, metadata: {} },
+                       { id: "f0d4…", begin: 16, end: 20, layer: "5b0a…", text: "9cfafcc6", precedence: null, metadata: {} } ],
+             spans: [], "vocab-links": [],
              deleted: { tokens: [], spans: [], relations: [], "vocab-links": [] } } }
 ----
 
@@ -1113,7 +1115,7 @@ We can create links between them and the above vocab items with vocab links like
 Notice that multiple tokens may be specified, allowing for multi-word and non-contiguous lexical items.
 
 Deleting a vocab item deletes every link to it.
-To merge entries, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` moves every link of the losers to the survivor and deletes the losers, in one operation.
+To merge entries, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` moves every link of the losers to the survivor, except a link on tokens the survivor is already linked to, which is deleted, and deletes the losers, in one operation.
 Metadata elsewhere that names a loser by its id is rewritten to name the survivor.
 
 == Metadata and Config
@@ -1181,7 +1183,7 @@ It is then refused with 409 if the stored value has changed:
 [,python]
 ----
 tagsets = project["config"]["igt"]["tagsets"]
-client.projects.set_config(project_id, "igt", "tagsets", {**tagsets, "Case": {"mode": "open", "values": []}},
+client.projects.set_config(project_id, "igt", "tagsets", {**tagsets, "Case": {"mode": "suggest", "values": []}},
                            expected=tagsets)
 ----
 
@@ -1376,7 +1378,7 @@ Because all of these are enforced and cascaded server-side, you can rely on the 
 Multiple users may edit the same document simultaneously, and in some cases, undesirable conflicts may occur as users fail to take into account each other's work.
 Suppose, for example, that one user is editing a sentence's lemmas, and the other is editing a sentence's POS tags.
 If the lemma editor doesn't know that a certain POS tag has changed, they might make the wrong decision about which lemma to assign.
-Plaid clients' optional **strict mode** causes edits to fail when someone other than the current user has made an edit.
+Plaid clients' optional **strict mode** causes edits to fail when anyone other than the current client has made an edit.
 Consider this exact scenario in code:
 
 [,javascript]
@@ -1389,7 +1391,7 @@ await client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
 
 When client 1 executes the second lemma span's value, unless they happened to have loaded the document anew after client 2's change, they will not be aware of the new POS tag for the second word.
 
-Strict mode causes requests to fail when someone other than the user in strict mode has edited a document since strict mode began.
+Strict mode causes requests to fail when anyone other than the client in strict mode, the same user in another client included, has edited the document since that client last read or wrote it.
 If client 1 had initiated strict mode at the beginning, then the second request would have failed:
 
 [,javascript]
