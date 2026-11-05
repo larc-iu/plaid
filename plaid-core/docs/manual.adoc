@@ -86,7 +86,7 @@ The clients build these URLs for you:
 
 A link token opens nothing else, lasts at most `[media] avatar_link_ttl_seconds` or `[media] link_ttl_seconds`, and stops working when the credential that made it does.
 
-Signing out of an app forgets the sign-in in that browser tab only.
+Signing out of an app forgets the sign-in in that browser only.
 To end every sign-in of your account on every device, call `client.auth.logout_everywhere()` (`client.auth.logoutEverywhere()` in JavaScript).
 Named API tokens are not affected, and are revoked one at a time with `api_tokens.revoke` (`apiTokens.revoke`).
 
@@ -192,7 +192,7 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 
 == Audit Log
 
-Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
+Every write to the database, apart from comments and each user's private data, is recorded in an append-only **audit log** which provides an account of who performed every change.
 The log is kept indefinitely, and it is what document time travel reads from (see <<Document Time Travel>>).
 It can be queried like so:
 
