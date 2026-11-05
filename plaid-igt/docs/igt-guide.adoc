@@ -379,7 +379,8 @@ While you analyze, you connect a word or morpheme to an entry, by hand with the 
 
 Linking keeps the same word analyzed the same way everywhere it appears.
 A linked entry offers a guess in each field that has a **lexicon field** (see <<_annotation>>): the entry's value in that lexicon field.
-Because a vocabulary is shared, editing an entry updates every document linked to it.
+Because a vocabulary is shared, editing an entry changes it for every document linked to it.
+A value already in a document's field stays as it was.
 
 In the link popover, the linked entry's form opens the entry in its vocabulary.
 When no entry fits, **Create** adds one with the word's or morpheme's form and links it.
@@ -494,7 +495,7 @@ Some lexical units are longer than a word: an idiom, a phrasal verb, a compound 
 You can link such a **multi-word expression** to a single entry by gathering its words:
 
 1. **Shift+click** each word. Or, from one of a word's cells, press **Shift+→** (or **Shift+←**) to take in its neighbours, holding **Ctrl/Cmd** as well to skip a word that does not belong.
-2. A dashed line shows the words gathered so far. Press **Enter** to link them, or **Esc** to give up.
+2. A blue line shows the words gathered so far. Press **Enter** to link them, or **Esc** to give up.
 3. The popover works as it does for one word: pick an entry, or create one. A new entry gets the words joined by spaces, which you can edit to the citation form, and the type _multi-word expression_ (a phrase, to FieldWorks).
 
 A linked multi-word expression draws as a line under its words, labelled with the entry's form.
@@ -536,7 +537,7 @@ Step 2 reuses your own work, in the manner of FieldWorks' guesses from previous 
 A word receives a copy only when it is **unanalyzed**: still a single morpheme identical to the word, with no annotation values and no lexicon link.
 A word you have segmented, glossed, or linked, even partly, is never touched.
 
-For each such word, Plaid IGT looks at every other occurrence of the same form across the project, and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
+For each such word, Plaid IGT looks at every other occurrence of the same form in the document and in up to 25 other documents of the project, those with the most words it is looking for, and copies the analysis given most often: the morphemes, the lexicon links, and the annotation values.
 If two analyses are tied, the word is left alone for you to decide.
 Only analyses a person made or confirmed count, so one machine pass never feeds the next.
 What a copy carries is set per project under **Settings → Services** (see <<_settings_services>>).
@@ -566,7 +567,7 @@ A project's **Activity** tab, for maintainers, shows who has been working and on
 
 The upper table counts each person's **changes** over a window you choose.
 A change is one action, so importing a corpus counts once, not once per sentence.
-Each row also counts the documents the person touched, with a bar for each day of the window.
+Each row also counts the documents the person touched, with a bar for each of the last 14 days.
 Below it, the members who have made no changes in that window are named.
 
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
