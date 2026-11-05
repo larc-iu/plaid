@@ -53,8 +53,9 @@ Plaid is a monorepo:
 | `plaid-ud/` | The bundled Universal Dependencies editor (a Vite/React SPA), served from the jar at `/ud/`.
 | `plaid-igt/` | The bundled interlinear glossed text editor (a Vite SPA), served from the jar at `/igt/`.
 | `plaid-dict/` | The bundled dictionary reader (a Vite/React SPA), served from the jar at `/dict/`.
-| `plaid-ui/` | The component and helper package the three SPAs share. Not published: each app resolves it from the checkout.
-| `plaid-agent/` | The Python assistants for UD and IGT, one distribution named `larc-plaid-agent`. Installed from a checkout, not published.
+| `plaid-umr/` | The bundled Uniform Meaning Representation editor (a Vite/React SPA), served from the jar at `/umr/`.
+| `plaid-ui/` | The component and helper package the four SPAs share. Not published: each app resolves it from the checkout.
+| `plaid-agent/` | The Python assistants for UD, IGT and UMR, one distribution named `larc-plaid-agent`. Installed from a checkout, not published.
 | `plaid-client-js/` | The official JavaScript client, published to npm as `@larc-iu/plaid-client`.
 | `plaid-client-py/` | The official Python client, published to PyPI as `larc-plaid-client`.
 | `examples/` | Small standalone demos built against the clients.
@@ -71,8 +72,8 @@ Run every task from the repository root.
 * https://www.oracle.com/java/technologies/downloads/[JDK 21 or later]
 * https://clojure.org/guides/install_clojure[Clojure CLI tools]
 * https://github.com/babashka/babashka#installation[babashka] (`bb`)
-* Node.js **20 or later**, for the two bundled SPAs. If you use `nvm`, activate it first (e.g. `nvm use 24`). The build fails fast with a hint if the active Node is too old.
-* Python 3, only if you want to build the Python client. Activate the environment you want it built into (e.g. `mamba activate base`) before running, since the build cannot activate one for you. Otherwise skip it with `--skip-clients`.
+* Node.js **24 or later**, for the four bundled SPAs. If you use `nvm`, activate it first (e.g. `nvm use 24`). The build fails fast with a hint if the active Node is too old.
+* Python 3.11 or later, only if you want to build the Python client or run `bb test`. The tasks use the interpreter `PLAID_PYTHON` names, else `PLAID_AGENT_PYTHON`, else the python of a `plaid-agent` environment in a mamba or conda install in your home directory (such as `~/miniforge3`), never the first `python` on `PATH`. Otherwise skip the client build with `--skip-clients`.
 
 === Build
 
@@ -131,7 +132,7 @@ A version number whose build or publish failed is not used again: the next attem
 
 == Working on plaid-core
 
-* `clojure -X:dev`: start a REPL, then type `(start)` to bring up the development server. See <http://localhost:8085>
+* `clojure -X:dev`: start the development server, and an nREPL server on port 7888. See <http://localhost:8085>
 * `clojure -M:test`: run the tests
 * `clojure -M:test --jobs auto`: run them on several JVMs at once (half the cores, at most 8), balanced by `src/test-runner/test-timings.edn`. `--jobs N` picks the count, `--shard I/N` runs one shard of that split, `--record-timings` rewrites the timings file, and `--slowest K` lists the slowest tests.
 * `clojure -M:outdated`: find outdated dependencies
