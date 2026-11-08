@@ -14,7 +14,7 @@ A React-based demo application for editing Universal Dependencies trees using th
 
 1. Make sure a Plaid server is running. From `plaid-core/`:
    ```bash
-   clojure -X:dev   # then type (start) at the REPL
+   clojure -X:dev   # starts the server on 8085 and an nREPL on 7888
    ```
 
 2. Install dependencies:

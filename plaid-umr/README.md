@@ -15,7 +15,7 @@ linguistic annotation platform.
 
 1. Start a Plaid server. From `plaid-core/`:
    ```bash
-   clojure -X:dev   # then type (start) at the REPL
+   clojure -X:dev   # starts the server on 8085 and an nREPL on 7888
    ```
 2. `npm install`
 3. `npm run dev`
