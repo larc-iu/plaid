@@ -325,7 +325,9 @@
         (handler request)))))
 
 (def ^:private root-landing-html
-  "<!DOCTYPE html>
+  "The page at /: the bundled apps, then links to the documentation site and
+  the repository, and the version. `{{version}}` is filled in once, here."
+  (str/replace "<!DOCTYPE html>
 <html lang=\"en\">
 <head>
   <meta charset=\"UTF-8\">
@@ -333,28 +335,76 @@
   <link rel=\"icon\" type=\"image/svg+xml\" href=\"/plaid.svg\">
   <title>Plaid</title>
   <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 1rem; }
-    h1 { display: flex; align-items: center; gap: 0.6rem; font-size: 1.5rem; margin-bottom: 1.5rem; }
-    ul { list-style: none; padding: 0; }
-    li { margin: 0.6rem 0; }
-    a { font-size: 1.1rem; }
+    :root {
+      --page: hsl(40 23% 98%);
+      --card: #fff;
+      --ink: hsl(222 47% 11%);
+      --muted: hsl(25 6% 40%);
+      --rule: hsl(30 8% 88%);
+      --primary: hsl(174 37% 26%);
+      --hover: hsl(40 14% 96%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: 'Source Sans 3', 'Source Sans Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 32rem; margin: 0 auto; padding: 4.5rem 1rem 2rem; }
+    h1 {
+      display: flex; align-items: center; gap: 0.7rem;
+      margin: 0 0 2rem; font-size: 1.75rem; font-weight: 600; letter-spacing: -0.01em;
+    }
+    h1 img { width: 32px; height: 32px; border-radius: 4px; }
+    ul {
+      list-style: none; margin: 0; padding: 0;
+      background: var(--card); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden;
+    }
+    li + li { border-top: 1px solid var(--rule); }
+    li a {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.9rem 1.1rem; color: inherit; text-decoration: none;
+    }
+    li a:hover { background: var(--hover); }
+    li a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+    .name { display: block; font-size: 1.05rem; font-weight: 600; }
+    .what { display: block; font-size: 0.9rem; color: var(--muted); }
+    .go { margin-left: auto; color: var(--muted); transition: transform 120ms, color 120ms; }
+    li a:hover .go { color: var(--primary); transform: translateX(2px); }
+    footer {
+      display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; align-items: baseline;
+      margin-top: 1.25rem; padding: 0 0.25rem; font-size: 0.9rem; color: var(--muted);
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .version { margin-left: auto; font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body>
-  <h1><img src=\"/plaid.svg\" alt=\"\" width=\"26\" height=\"26\">Plaid</h1>
-  <ul>
-    <li><a href=\"/ud/\">UD Editor</a></li>
-    <li><a href=\"/igt/\">IGT Editor</a></li>
-    <li><a href=\"/dict/\">Dictionary</a></li>
-    <li><a href=\"/umr/\">UMR Editor</a></li>
-    <li><a href=\"/api/v1/docs/\">API Docs</a></li>
-  </ul>
+  <main>
+    <h1><img src=\"/plaid.svg\" alt=\"\">Plaid</h1>
+    <ul>
+      <li><a href=\"/igt/\"><span><span class=\"name\">IGT</span><span class=\"what\">Interlinear glossed text</span></span><span class=\"go\" aria-hidden=\"true\">&rarr;</span></a></li>
+      <li><a href=\"/ud/\"><span><span class=\"name\">UD</span><span class=\"what\">Universal Dependencies</span></span><span class=\"go\" aria-hidden=\"true\">&rarr;</span></a></li>
+      <li><a href=\"/umr/\"><span><span class=\"name\">UMR</span><span class=\"what\">Uniform Meaning Representation</span></span><span class=\"go\" aria-hidden=\"true\">&rarr;</span></a></li>
+      <li><a href=\"/dict/\"><span><span class=\"name\">Dictionary</span><span class=\"what\">Lexicons</span></span><span class=\"go\" aria-hidden=\"true\">&rarr;</span></a></li>
+    </ul>
+    <footer>
+      <a href=\"https://larc-iu.github.io/plaid/\">Documentation</a>
+      <a href=\"https://github.com/larc-iu/plaid\">GitHub</a>
+      <span class=\"version\">{{version}}</span>
+    </footer>
+  </main>
 </body>
-</html>")
+</html>"
+               "{{version}}" (str (when (not= "dev" version/version) "v") version/version)))
 
 (defn wrap-root-landing
   "Intercepts GET / and returns a minimal HTML page linking to the bundled
-  apps and the API docs, plus GET /plaid.svg, which is the mark that page and
+  apps, plus GET /plaid.svg, which is the mark that page and
   its browser tab show. `bb build` copies the mark out of plaid-ui/public, the
   same file the three SPAs serve, so there is no second copy of the artwork to
   keep in step. In a source checkout that has not been built it is simply
