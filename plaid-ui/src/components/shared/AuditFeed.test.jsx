@@ -41,9 +41,9 @@ const feed = (d, resetKey) => (
 
 const shown = (container) => texts(container, 'td').join(' ');
 
-const olderButton = (container) =>
-  [...container.querySelectorAll('button')].find((b) => /Load older|Loading/.test(b.textContent)) ??
-  null;
+// The pager's Next page arrow, which fetches the next chunk past the last
+// loaded page.
+const olderButton = (container) => container.querySelector('button[aria-label="Next page"]');
 
 describe('the audit feed when its scope changes under it', () => {
   it('keeps the scope it was last asked for, however late the other answers', async () => {
@@ -78,7 +78,7 @@ describe('the audit feed when its scope changes under it', () => {
 
   it('drops an older page that belongs to the scope just left', async () => {
     // The cursor and the rows on screen are the previous scope's until the new
-    // first page lands, so "Load older" could append that scope's next page to
+    // first page lands, so Next page could append that scope's next page to
     // this one. Whichever half is fixed first, both have to be.
     const d = deferred();
     d.at('A');
@@ -101,10 +101,10 @@ describe('the audit feed when its scope changes under it', () => {
     await view.unmount();
   });
 
-  it('leaves the older-changes button usable after a re-scope mid-fetch', async () => {
+  it('leaves Next page usable after a re-scope mid-fetch', async () => {
     // Same shape as above, read off the CONTROL rather than the rows: the two
     // reads share one counter, so the dropped older page skipped the flag its
-    // own `finally` would have cleared and the button stayed "Loading…".
+    // own `finally` would have cleared and the arrow stayed disabled.
     const d = deferred();
     d.at('A');
     const view = await renderComponent(feed(d, 'A'));
@@ -112,16 +112,14 @@ describe('the audit feed when its scope changes under it', () => {
 
     d.at('A-older');
     await view.step(() => olderButton(view.container).click());
-    expect(olderButton(view.container).textContent).toContain('Loading');
+    expect(olderButton(view.container).disabled).toBe(true);
 
     d.at('B');
     await view.rerender(feed(d, 'B'));
     await view.step(async () => d.settle('B', [entry('bee')], 'more-of-b'));
     await view.step(async () => d.settle('A-older', [entry('ay-older')]));
 
-    const button = olderButton(view.container);
-    expect(button.textContent).toContain('Load older');
-    expect(button.disabled).toBe(false);
+    expect(olderButton(view.container).disabled).toBe(false);
     await view.unmount();
   });
 
@@ -131,6 +129,28 @@ describe('the audit feed when its scope changes under it', () => {
     const view = await renderComponent(feed(d, 'A'));
     await view.step(async () => d.settle('A', [entry('ay')]));
     expect(shown(view.container)).toContain('ay');
+    await view.unmount();
+  });
+});
+
+describe('the audit feed past its first chunk', () => {
+  it('has no Load older button, and Next page on the last loaded page loads and turns', async () => {
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    const first = Array.from({ length: 100 }, (_, i) => entry(`e${String(i).padStart(3, '0')}`));
+    await view.step(async () => d.settle('A', first, 'more-of-a'));
+    expect(view.container.textContent).not.toContain('Load older');
+    expect(view.container.textContent).toContain('1–100 of 100+');
+
+    d.at('A-older');
+    await view.step(() => olderButton(view.container).click());
+    await view.step(async () => d.settle('A-older', [entry('older')]));
+
+    expect(shown(view.container)).toContain('older');
+    expect(shown(view.container)).not.toContain('e000');
+    expect(view.container.textContent).toContain('101–101 of 101');
+    expect(view.container.textContent).not.toContain('101+');
     await view.unmount();
   });
 });

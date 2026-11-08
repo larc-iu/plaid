@@ -1,7 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '../ui/button.jsx';
-import { ListHint } from './list-search.jsx';
 import { DataTable } from './data-table.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
@@ -13,14 +11,12 @@ import { textIncludes } from '../../domain/collation.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
-// far: the table sorts and filters it, and "Load older" asks the server for
-// the next chunk.
+// far: the table sorts and filters it, and Next page past the last loaded
+// page asks the server for the next chunk.
 //
 // A window's worth of history is unbounded, so it is never all pulled at once.
-// A chunk is what a reader can page through without waiting, and asking for
-// more is a decision they make. Sorting and searching therefore act on what is
-// LOADED, the same scope for both, which is why the default order matches the
-// server's and older rows have to be asked for rather than appearing.
+// Sorting and searching act on what is LOADED, the same scope for both, which
+// is why the default order matches the server's.
 
 const CHUNK = 200;
 
@@ -83,14 +79,14 @@ export const AuditFeed = ({
     const isCurrent = begin();
     setLoading(true);
     // The rows and the cursor on screen are the PREVIOUS scope's. Clearing them
-    // here is what stops "Load older" fetching that scope's next page into this
+    // here is what stops Next page fetching that scope's next page into this
     // one while the first page of this one is still out.
     setEntries([]);
     setCursor(null);
     // Both reads share one counter, so a re-scope while an older page is out
     // makes that page stale and its `finally` skips the flag it set. Nothing
-    // else ever clears it, and the button then reads "Loading…" and stays
-    // disabled for the life of the mount.
+    // else ever clears it, and Next page then stays disabled for the life of
+    // the mount.
     setLoadingMore(false);
     try {
       const page = await fetchPage({ limit: CHUNK });
@@ -115,19 +111,22 @@ export const AuditFeed = ({
     load();
   }, [load]);
 
+  // Resolves true once the next chunk is in, so the pager turns onto it.
   const loadOlder = async () => {
-    if (!cursor) return;
+    if (!cursor) return false;
     // A re-scope while this is out drops the page rather than appending it.
     const isCurrent = begin();
     setLoadingMore(true);
     try {
       const page = await fetchPage({ limit: CHUNK, cursor });
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       setEntries((prev) => [...prev, ...(page.entries || [])]);
       setCursor(page.nextCursor || null);
+      return true;
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       notifyError(humanizeError(err), 'Failed to load the older changes');
+      return false;
     } finally {
       if (isCurrent()) setLoadingMore(false);
     }
@@ -252,15 +251,8 @@ export const AuditFeed = ({
         noun="change"
         empty={empty}
         loading={loading}
+        more={cursor && !loading ? { load: loadOlder, loading: loadingMore } : undefined}
       />
-      {cursor && !loading && (
-        <div className="flex items-center gap-2 px-3 pb-1">
-          <Button size="sm" variant="outline" onClick={loadOlder} disabled={loadingMore}>
-            {loadingMore ? 'Loading…' : 'Load older'}
-          </Button>
-          <ListHint>Older changes are not loaded yet.</ListHint>
-        </div>
-      )}
     </div>
   );
 };

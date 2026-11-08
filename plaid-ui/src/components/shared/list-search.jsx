@@ -116,6 +116,11 @@ const PagerButton = ({ icon, label, ...props }) => {
 // `pageSlice`/`usePagedList` return, so a call site spreads it:
 //   <ListPager {...paged} onPage={paged.setPage} position="top" />
 // Renders nothing when everything already fits on one page.
+//
+// `more` is for a list the server holds more of than is loaded:
+// `{ load, loading }`, where `load()` fetches the next chunk and resolves once
+// it is in. Next page on the last loaded page loads it and then turns, and the
+// total reads "200+".
 export const ListPager = ({
   page,
   pageCount,
@@ -123,12 +128,19 @@ export const ListPager = ({
   rangeEnd,
   total,
   onPage,
+  more,
   position = 'bottom',
   className,
 }) => {
-  if (pageCount <= 1) return null;
+  if (pageCount <= 1 && !more) return null;
   const atStart = page === 0;
   const atEnd = page >= pageCount - 1;
+  const next = async () => {
+    if (atEnd && more) {
+      if (!(await more.load())) return;
+    }
+    onPage(page + 1);
+  };
   return (
     <div
       className={cn(
@@ -153,13 +165,14 @@ export const ListPager = ({
       </div>
       <span className="tabular-nums">
         {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()}
+        {more ? '+' : ''}
       </span>
       <div className="flex items-center">
         <PagerButton
           icon={ChevronRight}
           label="Next page"
-          disabled={atEnd}
-          onClick={() => onPage(page + 1)}
+          disabled={more ? more.loading : atEnd}
+          onClick={next}
         />
         <PagerButton
           icon={ChevronLast}

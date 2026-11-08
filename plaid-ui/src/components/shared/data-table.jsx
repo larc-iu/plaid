@@ -42,6 +42,9 @@ import { ScrollEdgeCue } from './ScrollEdgeCue.jsx';
 // in a full-width cell, and a chevron column appears in front. Use it when a
 // row summarises a set that is too long to inline, the way one service
 // summarises the projects it is registered on.
+//
+// `more` is for rows the server holds past the ones loaded (ListPager's `more`):
+// Next page on the last loaded page fetches them.
 
 /**
  * Order two values, with a missing one counting as the smallest.
@@ -77,6 +80,7 @@ export const DataTable = ({
   empty = 'Nothing here.',
   noMatch,
   loading = false,
+  more,
   expand,
   className,
 }) => {
@@ -157,7 +161,7 @@ export const DataTable = ({
         </div>
       )}
 
-      <ListPager {...paged} onPage={paged.setPage} position="top" />
+      <ListPager {...paged} onPage={paged.setPage} more={more} position="top" />
 
       {loading && rows.length === 0 ? (
         <Loading className="px-4" />
@@ -266,7 +270,7 @@ export const DataTable = ({
         </div>
       )}
 
-      <ListPager {...paged} onPage={paged.setPage} position="bottom" />
+      <ListPager {...paged} onPage={paged.setPage} more={more} position="bottom" />
     </div>
   );
 };
