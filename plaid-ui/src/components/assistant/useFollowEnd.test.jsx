@@ -9,9 +9,14 @@ const sized = (el, height, client = 100) => {
   Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => client });
 };
 
-let api;
+// The hook's handle, kept where a test can call `toEnd()` on it.
+const handle = {};
+const keep = (api) => {
+  handle.api = api;
+};
 const Box = ({ grow, enabled = true }) => {
-  api = useFollowEnd([grow], { enabled });
+  const api = useFollowEnd([grow], { enabled });
+  keep(api);
   return <div data-testid="box" ref={api.ref} onScroll={api.onScroll} />;
 };
 
@@ -62,7 +67,7 @@ describe('useFollowEnd', () => {
     const { view, box } = await mount();
     sized(box, 500);
     scrollTo(box, 120);
-    await view.step(() => api.toEnd());
+    await view.step(() => handle.api.toEnd());
     expect(box.scrollTop).toBe(500);
     sized(box, 900);
     await view.rerender(<Box grow={1} />);
