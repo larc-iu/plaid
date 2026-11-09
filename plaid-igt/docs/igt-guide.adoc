@@ -1151,7 +1151,7 @@ Enter, Tab, the arrow keys, Escape, Backspace, Delete, and `-` and `=` in a morp
 | **Enter** (sentence field) | Save the value and leave the field. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The clitic is typed by its place in the word (see <<_morpheme_types>>).
-| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form other than a word's first, delete the morpheme.
+| **Backspace** | At the start of a morpheme form, merge it into the previous one. The merged-in morpheme's gloss and other values, its lexicon link and its comments are not kept. In an emptied morpheme form other than a word's first, delete the morpheme with its gloss and other values.
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-character code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
