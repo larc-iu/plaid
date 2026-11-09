@@ -167,15 +167,18 @@ const planCreate = (info, trimmed, timeBegin) => {
 
   // The new text goes right after the segments that start before it or at
   // the same time (at the front when there are none), or at the end of the
-  // body when no segment starts before or after it. Nowhere, when an earlier
-  // segment's text lies after a later one's.
+  // body when no segment starts before, after or at the same time as it.
+  // Nowhere, when an earlier segment's text lies after a later one's.
   const { leftBoundary, rightBoundary } = alignableRange(alignmentTokens, bodyLength, timeBegin);
-  const unbounded = leftBoundary === 0 && rightBoundary === bodyLength;
   let afterTies = leftBoundary;
+  let tiedWithAny = false;
   for (const token of alignmentTokens) {
     const tied = (token.metadata?.timeBegin || 0) === timeBegin;
-    if (tied && token.end > afterTies && token.end <= rightBoundary) afterTies = token.end;
+    if (!tied || token.end > rightBoundary) continue;
+    tiedWithAny = true;
+    if (token.end > afterTies) afterTies = token.end;
   }
+  const unbounded = !tiedWithAny && leftBoundary === 0 && rightBoundary === bodyLength;
   const insertPosition = unbounded ? bodyLength : afterTies;
   const temporalInversion = leftBoundary > rightBoundary;
 

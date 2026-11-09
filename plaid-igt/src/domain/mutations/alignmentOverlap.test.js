@@ -262,4 +262,20 @@ describe('a new segment tied with an existing one', () => {
   it('goes after the segment it ties with when no other segment exists', async () => {
     expect(await placed('bbb', [seg('B', 0, 3, 4, 5, 'Ben')], 4)).toBe('bbb NEW');
   });
+
+  it('goes after the segment it ties with when that is the only segment and untimed text follows it', async () => {
+    expect(await placed('bbb untimed tail', [seg('B', 0, 3, 4, 5, 'Ben')], 4)).toBe(
+      'bbb NEW untimed tail',
+    );
+  });
+
+  it('goes after the segments it ties with when they are the only ones and untimed text follows them', async () => {
+    expect(
+      await placed(
+        'bbb ccc untimed tail',
+        [seg('B', 0, 3, 4, 5, 'Ben'), seg('C', 4, 7, 4, 6, 'Cy')],
+        4,
+      ),
+    ).toBe('bbb ccc NEW untimed tail');
+  });
 });
