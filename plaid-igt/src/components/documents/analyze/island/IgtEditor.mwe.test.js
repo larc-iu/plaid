@@ -250,6 +250,39 @@ describe('gathering words into a multi-word expression', () => {
     expect(selectedForms()).toEqual(['w-1', 'w-2', 'w-4']);
   });
 
+  // H5-6: a filled cell reached by click or Tab has its whole value selected,
+  // and Shift+→ did nothing there until End collapsed the caret.
+  it('Shift+→ gathers from a filled cell whose whole value is selected', () => {
+    mount();
+    const cell = host.querySelector('[data-cell-key="wa:w-2:POS"]');
+    cell.focus();
+    cell.value = 'NOUN';
+    cell.setSelectionRange(0, 4);
+    const e = key(cell, 'ArrowRight', { shiftKey: true });
+    expect(e.defaultPrevented).toBe(true);
+    expect(selectedForms()).toEqual(['w-2', 'w-3']);
+  });
+
+  it('Shift+← gathers from a filled cell whose whole value is selected', () => {
+    mount();
+    const cell = host.querySelector('[data-cell-key="wa:w-2:POS"]');
+    cell.focus();
+    cell.value = 'NOUN';
+    cell.setSelectionRange(0, 4);
+    key(cell, 'ArrowLeft', { shiftKey: true });
+    expect(selectedForms()).toEqual(['w-1', 'w-2']);
+  });
+
+  it('Shift+→ gathers from a selection that runs to the end of the value', () => {
+    mount();
+    const cell = host.querySelector('[data-cell-key="wa:w-1:POS"]');
+    cell.focus();
+    cell.value = 'NOUN';
+    cell.setSelectionRange(2, 4, 'forward');
+    key(cell, 'ArrowRight', { shiftKey: true });
+    expect(selectedForms()).toEqual(['w-1', 'w-2']);
+  });
+
   it('inside a value Shift+→ is still text selection', () => {
     mount();
     const cell = host.querySelector('[data-cell-key="wa:w-1:POS"]');

@@ -6,7 +6,7 @@ import { joinMweForm, mweMorphType } from '@/domain/mwe';
 import { notifyInfo } from '@/utils/feedback';
 import { EMPTY_SET, numHtml, provClass } from './shared.js';
 import { cellKeyParts } from './cellReader.js';
-import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
+import { arrowStep, caretAtArrowEdge, isRtlBox } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { tokenizeFocus } from '../../../hooks/focusHandoff.js';
 
@@ -19,6 +19,23 @@ const GATHER_ACTIONS = [
   'analyze.gatherLeftSkip',
   'analyze.gatherRightSkip',
 ];
+
+// Where a gather key may take over from text selection: a collapsed caret at
+// the edge the key presses towards, as the plain arrows leave a cell, or a
+// selection that already runs to that edge, where Shift+arrow has nothing
+// left to select. Focusing a filled cell selects its whole value, which is at
+// both edges, and Shift+→ did nothing there (H5-6).
+const atGatherEdge = (el, visualRight) => {
+  if (caretAtArrowEdge(el, visualRight)) return true;
+  const start = el.selectionStart ?? 0;
+  const end = el.selectionEnd ?? 0;
+  const len = (el.value ?? '').length;
+  if (start === 0 && end === len) return true;
+  const towardLogicalEnd = isRtlBox(el) ? !visualRight : visualRight;
+  return towardLogicalEnd
+    ? end === len && el.selectionDirection !== 'backward'
+    : start === 0 && el.selectionDirection === 'backward';
+};
 
 export const mwe = {
   // A multi-word expression (MWE) is one lexicon entry linked from two or more
@@ -194,10 +211,9 @@ export const mwe = {
     const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
     const visualRight = gather.includes('Right');
     if (isInput && !sel) {
-      // Only from a collapsed caret at the value's edge, the way the plain
-      // arrows leave a cell, and measured against the CELL's own direction:
-      // inside a value Shift+arrow still selects text.
-      if (!caretAtArrowEdge(el, visualRight)) return false;
+      // Only from the value's edge, measured against the CELL's own
+      // direction: inside a value Shift+arrow still selects text.
+      if (!atGatherEdge(el, visualRight)) return false;
     }
     e.preventDefault();
     e.stopPropagation();
