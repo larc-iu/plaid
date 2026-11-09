@@ -92,6 +92,50 @@ describe('a writer who does not maintain the lexicon', () => {
     expect(doc.vocabularies.v1.vocabLinks.some((l) => l.vocabItem.form === 'the')).toBe(true);
   });
 
+  // H5-3: the form box sat inside the create row's <button>, so a Space typed
+  // in it activated the button, whose click created the entry from what was
+  // typed so far ("lei" of "lei re"). A browser activates the nearest button
+  // around a focused box, so no box in the popover may have one.
+  it('takes a form with a space, and no box in the popover sits inside a button', async () => {
+    const { client } = mount();
+    openOn('m-1');
+    click(popover().querySelector('.igt-vocab-pop__create'));
+    await new Promise((r) => setTimeout(r, 300));
+    const input = popover().querySelector('.igt-vocab-pop__create-input');
+    expect(input).not.toBeNull();
+    input.value = 'lei re';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    for (const box of popover().querySelectorAll('input, select, textarea')) {
+      expect(box.closest('button, [role="button"]')).toBeNull();
+    }
+    expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(false);
+    click(popover().querySelector('.igt-vocab-pop__create-go'));
+    await settle(4);
+    const made = client.calls.find((c) => c.kind === 'vocabItems.create');
+    expect(made.args.slice(0, 2)).toEqual(['v1', 'lei re']);
+  });
+
+  it('puts no box inside a button on a word or an expression either', async () => {
+    mount();
+    for (const open of [
+      () => openOn('w-1'),
+      () => {
+        click(form('w-3'), { shiftKey: true });
+        click(form('w-4'), { shiftKey: true });
+        key(label('mwe:new'), 'Enter');
+      },
+    ]) {
+      open();
+      click(popover().querySelector('.igt-vocab-pop__create'));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(popover().querySelector('.igt-vocab-pop__create-input')).not.toBeNull();
+      for (const box of popover().querySelectorAll('input, select, textarea')) {
+        expect(box.closest('button, [role="button"]')).toBeNull();
+      }
+      key(popover().querySelector('.igt-vocab-pop__search'), 'Escape');
+    }
+  });
+
   it('is offered "+ Create" for a multi-word expression', () => {
     mount();
     click(form('w-3'), { shiftKey: true });

@@ -405,7 +405,7 @@ export const vocabPopover = {
     };
     // Click on the create row: a single click opens the editor, a double
     // click (second click within 250ms) creates immediately. While editing,
-    // a click on the row acts as the "create" button for the typed form.
+    // the row's "+ Create" button creates the typed form.
     const onCreateClick = (e) => {
       e.stopPropagation();
       if (editingCreate) {
@@ -474,6 +474,28 @@ export const vocabPopover = {
       // chosen by click or by key hands focus back to it.
       this._focusPopover();
     };
+
+    // The create row's tail, the same whether its form is being edited or not.
+    const createExtras = html`${canTakeAll && activeIdx === limited.length
+      ? html`<span
+          class="igt-vocab-pop__take-all"
+          role="button"
+          tabindex="-1"
+          title=${allTitle}
+          @click=${(e) => {
+            e.stopPropagation();
+            clearTimeout(this._createClickTimer);
+            this._createClickTimer = null;
+            if (effectiveForm) act.create(effectiveForm, false, true);
+          }}
+          >all ×${others.length + 1}</span
+        >`
+      : nothing}
+    ${newFormSub != null
+      ? html`<span class="igt-vocab-pop__note"
+          >“${effectiveForm}” already exists. This adds a separate entry</span
+        >`
+      : nothing}`;
 
     // `dir="ltr"` on the panel: it is chrome, not data, and reads one way
     // whatever the grid under it is doing, the way a menu does. The entry forms
@@ -581,59 +603,55 @@ export const vocabPopover = {
             : nothing}
         </div>
         ${canCreate
-          ? html`<button
-              type="button"
-              class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
-              @mousemove=${(e) => {
-                if (!this._pointerMoved(e)) return;
-                const idx = limited.length;
-                if (this._popoverActiveIndex !== idx) {
-                  this._popoverActiveIndex = idx;
-                  this._render(true);
-                }
-              }}
-              title=${editingCreate
-                ? 'Enter to create the entry as typed · Esc to cancel'
-                : 'Click to edit the form before creating · double-click to create as is'}
-              @click=${onCreateClick}
-            >
-              ${editingCreate
-                ? html`+ Create
-                    <input
-                      class="igt-vocab-pop__create-input"
-                      spellcheck="false"
-                      dir="auto"
-                      aria-label="New entry form"
-                      .value=${live(this._popoverCreateEdit)}
-                      @click=${(e) => e.stopPropagation()}
-                      @input=${(e) => {
-                        this._popoverCreateEdit = e.target.value;
-                        this._render(true);
-                      }}
-                      @keydown=${onCreateEditKey}
-                    />${numHtml(newFormSub, 'igt-vocab-pop')}`
-                : html`+ Create "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}"`}
-              ${canTakeAll && activeIdx === limited.length
-                ? html`<span
-                    class="igt-vocab-pop__take-all"
-                    role="button"
-                    tabindex="-1"
-                    title=${allTitle}
-                    @click=${(e) => {
-                      e.stopPropagation();
-                      clearTimeout(this._createClickTimer);
-                      this._createClickTimer = null;
-                      if (effectiveForm) act.create(effectiveForm, false, true);
-                    }}
-                    >all ×${others.length + 1}</span
-                  >`
-                : nothing}
-              ${newFormSub != null
-                ? html`<span class="igt-vocab-pop__note"
-                    >“${effectiveForm}” already exists. This adds a separate entry</span
-                  >`
-                : nothing}
-            </button>`
+          ? editingCreate
+            ? // While the form is being edited the row is NOT a button: a
+              // browser activates the button around a focused box on Space,
+              // which created the entry from the text before the space (H5-3).
+              // "+ Create" is the button, beside the box.
+              html`<div
+                class="igt-vocab-pop__create is-editing ${activeIdx === limited.length
+                  ? 'is-active'
+                  : ''}"
+                @click=${(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  class="igt-vocab-pop__create-go"
+                  title="Create the entry as typed · Enter"
+                  @click=${onCreateClick}
+                >
+                  + Create
+                </button>
+                <input
+                  class="igt-vocab-pop__create-input"
+                  spellcheck="false"
+                  dir="auto"
+                  aria-label="New entry form"
+                  title="Enter to create the entry as typed · Esc to cancel"
+                  .value=${live(this._popoverCreateEdit)}
+                  @input=${(e) => {
+                    this._popoverCreateEdit = e.target.value;
+                    this._render(true);
+                  }}
+                  @keydown=${onCreateEditKey}
+                />${numHtml(newFormSub, 'igt-vocab-pop')} ${createExtras}
+              </div>`
+            : html`<button
+                type="button"
+                class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
+                @mousemove=${(e) => {
+                  if (!this._pointerMoved(e)) return;
+                  const idx = limited.length;
+                  if (this._popoverActiveIndex !== idx) {
+                    this._popoverActiveIndex = idx;
+                    this._render(true);
+                  }
+                }}
+                title="Click to edit the form before creating · double-click to create as is"
+                @click=${onCreateClick}
+              >
+                + Create "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}" ${createExtras}
+              </button>`
           : nothing}
         ${extraRows.map((r, j) => {
           const idx = limited.length + (canCreate ? 1 : 0) + j;

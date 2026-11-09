@@ -204,6 +204,29 @@ test('B5-04..09: create-row forms per token shape', async ({ page }) => {
   await expect(createRow(page)).toHaveCount(0);
 });
 
+test('H5-3: a form typed in "+ Create" may hold a space', async ({ page }) => {
+  // The box sat inside the row's button, and Space activated the button,
+  // which created the entry from the text before the space.
+  await openAnalyze(page);
+  await open(page, ids.w[W.hola], lexB.name);
+  await createRow(page).click();
+  const box = page.getByLabel('New entry form');
+  await expect(box).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('ho la');
+  await expect(box).toHaveValue('ho la');
+  await expect(pop(page)).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(chip(page, ids.w[W.hola])).toHaveText(/ho la/);
+  await expect
+    .poll(async () =>
+      (await client.vocabLayers.get(lexB.id, true)).items.some((it) => it.form === 'ho la'),
+    )
+    .toBe(true);
+  const items = (await client.vocabLayers.get(lexB.id, true)).items;
+  expect(items.some((it) => it.form === 'ho')).toBe(false);
+});
+
 test('B5-10/11: entries spelled alike are numbered, and a third is announced with its number', async ({
   page,
 }) => {

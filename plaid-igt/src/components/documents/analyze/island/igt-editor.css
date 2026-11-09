@@ -1198,6 +1198,39 @@
   background: var(--igt-blue-100);
   border-style: solid;
 }
+/* While its form is edited the row is a box holding "+ Create" (the button)
+   and the form, so no button surrounds the form (H5-3). */
+.igt-vocab-pop__create.is-editing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  box-sizing: border-box;
+  cursor: default;
+}
+.igt-vocab-pop__create-go {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.igt-vocab-pop__create-go:hover {
+  text-decoration: underline;
+}
+.igt-vocab-pop__create-go:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
+.igt-vocab-pop__create.is-editing .igt-vocab-pop__create-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.igt-vocab-pop__create.is-editing .igt-vocab-pop__note {
+  flex-basis: 100%;
+}
 .igt-vocab-pop__create:focus-visible {
   outline: 2px solid var(--igt-blue);
   outline-offset: 1px;
