@@ -96,3 +96,19 @@ test('every sentence ends with its blank line, and the file with a newline', () 
     assert.ok(!/\t_# newdoc/.test(joined));
   }
 });
+
+// A sentence made by a split has no stored sent_id. Its position-based id
+// `d-2` is the stored id of the sentence after it (the split shifted every
+// position), and the file named one sentence twice.
+test('a split sentence never takes a sent_id another sentence has', () => {
+  const out = build([
+    sentence([tok(1)], { sentenceToken: { metadata: { sent_id: 'd-1' } } }),
+    sentence([tok(1)]),
+    sentence([tok(1)], { sentenceToken: { metadata: { sent_id: 'd-2' } } }),
+  ]);
+  const ids = out
+    .split('\n')
+    .filter((l) => l.startsWith('# sent_id = '))
+    .map((l) => l.slice('# sent_id = '.length));
+  assert.deepEqual(ids, ['d-1', 'd-3', 'd-2']);
+});

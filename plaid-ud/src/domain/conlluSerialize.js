@@ -125,6 +125,25 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
   const docName = flat(name || 'unknown');
   output.push(`# newdoc id = ${docName}`);
 
+  // A sentence with no stored `sent_id` (one made by a split) gets
+  // `<doc>-<n>`, its position, or the next number no other sentence of the
+  // file has. Stored ids follow that same pattern (Plaid's own exports, GUM),
+  // so the position alone could name a sentence twice, which UD's validator
+  // refuses.
+  const usedIds = new Set(
+    sentenceData
+      .map((s) => s.sentenceToken?.metadata?.sent_id)
+      .filter((id) => id != null && id !== '')
+      .map(flat),
+  );
+  const freshId = (n) => {
+    let k = n;
+    while (usedIds.has(`${docName}-${k}`)) k += 1;
+    const id = `${docName}-${k}`;
+    usedIds.add(id);
+    return id;
+  };
+
   sentenceData.forEach((sentence, sentIdx) => {
     const morphemes = sentence.tokens;
     const idByLemmaSpanId = new Map();
@@ -152,7 +171,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     output.push(
       sentIdFromMeta
         ? `# sent_id = ${flat(sentIdFromMeta)}`
-        : `# sent_id = ${docName}-${sentIdx + 1}`,
+        : `# sent_id = ${freshId(sentIdx + 1)}`,
     );
 
     // Emit arbitrary `# k = v` metadata sorted alphabetically. If metadata
