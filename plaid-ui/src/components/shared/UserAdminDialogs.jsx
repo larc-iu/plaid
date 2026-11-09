@@ -141,28 +141,38 @@ export const UserAdminDialogs = ({ controller }) => {
                     onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="user-admin-edit-password">
-                    New password (leave blank to keep current)
-                  </Label>
-                  <Input
-                    id="user-admin-edit-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={editForm.password}
-                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="user-admin-edit-password-confirm">Confirm new password</Label>
-                  <Input
-                    id="user-admin-edit-password-confirm"
-                    type="password"
-                    autoComplete="new-password"
-                    value={editForm.confirmPassword}
-                    onChange={(e) => setEditForm({ ...editForm, confirmPassword: e.target.value })}
-                  />
-                </div>
+                {editingUser.id === currentUser?.id ? (
+                  <p className="text-xs text-muted-foreground">
+                    Change your own password on Profile.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="user-admin-edit-password">
+                        New password (leave blank to keep current)
+                      </Label>
+                      <Input
+                        id="user-admin-edit-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={editForm.password}
+                        onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="user-admin-edit-password-confirm">Confirm new password</Label>
+                      <Input
+                        id="user-admin-edit-password-confirm"
+                        type="password"
+                        autoComplete="new-password"
+                        value={editForm.confirmPassword}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, confirmPassword: e.target.value })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="flex items-start gap-2">
                   <Switch
                     id="edit-admin"

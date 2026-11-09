@@ -1,11 +1,13 @@
 (ns plaid.rest-api.v1.user
-  (:require [clojure.string :as str]
+  (:require [buddy.hashers :as hashers]
+            [clojure.string :as str]
             [plaid.rest-api.v1.schema :as schema]
             [plaid.media.avatar :as avatar]
             [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.pagination :as pagination]
+            [plaid.rest-api.v1.rate-limit :as rl]
             [reitit.coercion.malli]
             [plaid.sql.common :as psc]
             [plaid.sql.user :as user]
@@ -32,6 +34,27 @@
   {"Cache-Control" (if versioned?
                      "private, max-age=31536000, immutable"
                      "private, max-age=60")})
+
+(defn- current-password-refusal
+  "Nil when `current-password` is the account's password, else the response
+  that refuses the change. A change of your own password must name the one it
+  replaces, so a session left open on a shared computer cannot take the
+  account over. Wrong guesses count against the account's sign-in rate limit,
+  so this is not a way around it."
+  [db request id current-password]
+  (cond
+    (rl/over-limit? request id)
+    {:status 429 :body {:error "Too many wrong passwords, retry later"}}
+
+    (str/blank? current-password)
+    {:status 403 :body {:error "Enter your current password"}}
+
+    (hashers/check current-password (:user/password-hash (user/get-internal db id)))
+    (do (rl/clear! request id) nil)
+
+    :else
+    (do (rl/record-failure! request id)
+        {:status 403 :body {:error "Current password is incorrect"}})))
 
 (def avatar-link-routes
   ["/avatar-link"
@@ -108,21 +131,30 @@
                             "name or password. A user's ID is their email address and is fixed for "
                             "the life of the account: it is what they log in with, so no endpoint "
                             "changes it. A password or admin status change needs a signed-in session: "
-                            "one signed with a named API token is refused (403).")
+                            "one signed with a named API token is refused (403). A change of your own "
+                            "password, an admin's too, needs <body>current-password</body>: missing or "
+                            "wrong is a 403. An admin setting someone else's password does not.")
               :parameters {:body [:map
                                   [:password {:optional true} string?]
+                                  [:current-password {:optional true} string?]
                                   [:display-name {:optional true} string?]
                                   [:is-admin {:optional true} boolean?]]}
-              :handler (fn [{{{:keys [id]} :path {:keys [display-name password is-admin]} :body} :parameters
+              :handler (fn [{{{:keys [id]} :path {:keys [display-name password current-password is-admin]} :body} :parameters
                              db :db
                              :as request}]
                          (let [current-user-id (pra/->user-id request)
                                current-user (user/get db current-user-id)
                                is-self? (= id current-user-id)
-                               is-admin? (user/admin? current-user)]
+                               is-admin? (user/admin? current-user)
+                               ;; A delay so the check, which counts a wrong
+                               ;; guess, runs at most once.
+                               refusal (delay (current-password-refusal db request id current-password))]
                            (cond
                              (and (or (some? password) (some? is-admin)) (api-token/named-token? request))
                              api-token/session-only-refusal
+
+                             (and is-self? (some? password) @refusal)
+                             @refusal
 
                              is-admin?
                              (let [{:keys [success] :as result} (user/merge db

@@ -382,7 +382,7 @@
                        (rest-handler (-> (mock/request :patch "/api/v1/users/eight@b.com")
                                          (mock/header "accept" "application/edn")
                                          (mock/header "Authorization" (str "Bearer " token))
-                                         (mock/json-body {:password password}))))]
+                                         (mock/json-body {:password password :current-password "abc12345"}))))]
       (is (string? token))
       (is (= 400 (:status (self-patch "abc1234"))))
       (is (= 400 (:status (self-patch ""))))
@@ -464,3 +464,51 @@
     (is (= "first@b.com"
            (:user_id (plaid.sql.common/q1 db {:select [:user_id] :from [:operations]
                                               :where [:= :description "Create user second@b.com"]}))))))
+
+(defn- login-token [id password]
+  (some-> (rest-handler (-> (mock/request :post "/api/v1/login")
+                            (mock/header "accept" "application/edn")
+                            (mock/json-body {:user-id id :password password})))
+          :body slurp read-string :token))
+
+(defn- token-patch [token id body]
+  (rest-handler (-> (mock/request :patch (str "/api/v1/users/" id))
+                    (mock/header "accept" "application/edn")
+                    (mock/header "Authorization" (str "Bearer " token))
+                    (mock/json-body body))))
+
+(deftest changing-your-own-password-needs-the-current-one
+  ;; H1-1: the Profile page asked for the current password and the server never
+  ;; checked it, so an open session could take the account over.
+  (doseq [[id admin?] [["self@b.com" false] ["selfadmin@b.com" true]]]
+    (is (= 201 (:status (rest-handler (-> (admin-request :post "/api/v1/users")
+                                          (mock/json-body {:email id :password "first-pass" :is-admin admin?}))))))
+    (let [token (login-token id "first-pass")]
+      (testing (str id ": no current password is a 403 and the password stays")
+        (let [resp (token-patch token id {:password "second-pass"})]
+          (is (= 403 (:status resp)))
+          (is (= "Enter your current password" (:error (parse-response-body resp)))))
+        (is (string? (login-token id "first-pass"))))
+      (testing (str id ": a wrong current password is a 403 and the password stays")
+        (let [resp (token-patch token id {:password "second-pass" :current-password "not-it-at-all"})]
+          (is (= 403 (:status resp)))
+          (is (= "Current password is incorrect" (:error (parse-response-body resp)))))
+        (is (string? (login-token id "first-pass")))
+        (is (nil? (login-token id "second-pass"))))
+      (testing (str id ": a display name change alone needs no password")
+        (is (= 200 (:status (token-patch token id {:display-name "Self"})))))
+      (testing (str id ": the right current password changes it")
+        (is (= 200 (:status (token-patch token id {:password "second-pass" :current-password "first-pass"}))))
+        (is (string? (login-token id "second-pass")))
+        (is (nil? (login-token id "first-pass"))))))
+  (testing "an admin sets someone else's password with no current password"
+    (is (= 200 (:status (rest-handler (-> (admin-request :patch "/api/v1/users/self@b.com")
+                                          (mock/json-body {:password "third-pass"}))))))
+    (is (string? (login-token "self@b.com" "third-pass"))))
+  (testing "wrong guesses count against the sign-in limit"
+    (let [token (login-token "self@b.com" "third-pass")
+          statuses (mapv (fn [_] (:status (token-patch token "self@b.com" {:password "fourth-pass"
+                                                                           :current-password "guess-guess"})))
+                         (range 12))]
+      (is (= 403 (first statuses)))
+      (is (= 429 (last statuses))))))

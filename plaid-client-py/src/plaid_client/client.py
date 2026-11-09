@@ -1043,13 +1043,16 @@ class UsersResource(_Resource):
                              audit_message=audit_message)
 
     def update(self, id: str, *, password: Any = _UNSET, display_name: Any = _UNSET,
-               is_admin: Any = _UNSET, audit_message=None) -> Any:
+               is_admin: Any = _UNSET, audit_message=None,
+               current_password: Any = _UNSET) -> Any:
         """Modify a user.
 
         Admins may change the display name, password, and admin status of any
         user. All other users may only modify their own display name or
         password. A password change cannot be made with a named API token
-        (403): it needs a sign-in token.
+        (403): it needs a sign-in token. Changing your own password, an
+        admin's too, needs ``current_password`` (403 when missing or wrong).
+        It ends every session of the account, this one included.
 
         A user's id is their email address and is fixed for the life of the
         account — it is what they log in with, so nothing can change it.
@@ -1062,10 +1065,13 @@ class UsersResource(_Resource):
                 ``None`` to send JSON null.
             is_admin: New admin status. Omit to leave unchanged; pass ``None``
                 to send JSON null.
+            current_password: The password being replaced, for a change of
+                your own.
         """
         return self._request('PATCH', f'/api/v1/users/{id}',
-                             body=_body_of(password=password, display_name=display_name,
-                                           is_admin=is_admin), audit_message=audit_message)
+                             body=_body_of(password=password, current_password=current_password,
+                                           display_name=display_name, is_admin=is_admin),
+                             audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Deactivate a user.

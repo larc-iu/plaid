@@ -186,7 +186,9 @@ export function usersApi(client) {
      * Modify a user. Admins may change the display name, password, and admin
      * status of any user. All other users may only modify their own display
      * name or password. A password change cannot be made with a named API
-     * token (403): it needs a sign-in token.
+     * token (403): it needs a sign-in token. Changing your own password, an
+     * admin's too, needs `currentPassword` (403 when missing or wrong). It ends
+     * every session of the account, this one included.
      *
      * A user's id is their email address and is fixed for the life of the
      * account — it is what they log in with, so nothing can change it.
@@ -195,13 +197,16 @@ export function usersApi(client) {
      * @param {string} [displayName] - New display name
      * @param {boolean} [isAdmin] - New admin status
      * @param {string} [auditMessage] - Audit message for this write
+     * @param {{currentPassword?: string}} [options] - `currentPassword`: the
+     *   password being replaced, for a change of your own
      * @returns {Promise<User>}
      */
-    update: (id, password, displayName, isAdmin, auditMessage) =>
+    update: (id, password, displayName, isAdmin, auditMessage, { currentPassword } = {}) =>
       client._request("PATCH", `/api/v1/users/${id}`, {
         auditMessage,
         body: bodyOf({
           password,
+          "current-password": currentPassword,
           "display-name": displayName,
           "is-admin": isAdmin,
         }),

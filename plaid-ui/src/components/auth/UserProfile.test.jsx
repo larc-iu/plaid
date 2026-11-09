@@ -188,6 +188,51 @@ describe('the profile form', () => {
     await view.unmount();
   });
 
+  const fillPasswords = (view, current) =>
+    view.step(() => {
+      typeInto(view.container.querySelector('#currentPassword'), current);
+      typeInto(view.container.querySelector('#newPassword'), 'a-new-password');
+      typeInto(view.container.querySelector('#confirmPassword'), 'a-new-password');
+    });
+
+  it('sends the current password with a new one', async () => {
+    const update = vi.fn(async () => ({}));
+    auth.client = { ...baseClient(), users: { avatarUrl: () => null, update, get: vi.fn() } };
+    const view = await mount();
+    await openEditor(view);
+    await fillPasswords(view, 'the-old-one');
+    await submitAround(view, view.container.querySelector('#newPassword'));
+
+    expect(update).toHaveBeenCalledWith(
+      'ada@example.com',
+      'a-new-password',
+      undefined,
+      undefined,
+      undefined,
+      { currentPassword: 'the-old-one' },
+    );
+    await view.unmount();
+  });
+
+  it('shows a refused current password on its field', async () => {
+    const update = vi.fn(async () => {
+      throw Object.assign(new Error('HTTP 403'), {
+        status: 403,
+        responseData: { error: 'Current password is incorrect' },
+      });
+    });
+    auth.client = { ...baseClient(), users: { avatarUrl: () => null, update } };
+    const view = await mount();
+    await openEditor(view);
+    await fillPasswords(view, 'not-it');
+    await submitAround(view, view.container.querySelector('#newPassword'));
+
+    const field = view.container.querySelector('#currentPassword').parentElement;
+    expect(field.textContent).toContain('Current password is incorrect');
+    expect(toast.error).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
   it('says so rather than writing when nothing changed', async () => {
     const update = vi.fn();
     auth.client = { ...baseClient(), users: { avatarUrl: () => null, update } };

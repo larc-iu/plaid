@@ -108,7 +108,7 @@
       (assert-ok (api-call (token-req-fn tok) {:method :get :path (tokens-path "pw-user@example.com")})))
     ;; Change the password (bumps password_changes → invalidates session tokens).
     (api-call (token-req-fn session) {:method :patch :path "/api/v1/users/pw-user@example.com"
-                                      :body {:password "newpw123"}})
+                                      :body {:password "newpw123" :current-password "original-password"}})
     (testing "session token now invalid (control)"
       (is (= 401 (:status (api-call (token-req-fn session)
                                     {:method :get :path (tokens-path "pw-user@example.com")})))))

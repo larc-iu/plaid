@@ -144,6 +144,14 @@
     "sends": [{"method": "DELETE", "path": "/api/v1/vocab-items/I", "query": {"expected-link-count": "2"}}]
   },
   {
+    "name": "a change of your own password sends the current one",
+    "js": ["users.update", "ana@example.com", "new-pass-1", "$undefined", "$undefined", "$undefined", {"currentPassword": "old-pass-1"}],
+    "py": ["users.update", "ana@example.com"],
+    "py_kw": {"password": "new-pass-1", "current_password": "old-pass-1"},
+    "sends": [{"method": "PATCH", "path": "/api/v1/users/ana@example.com",
+               "body": {"password": "new-pass-1", "current-password": "old-pass-1"}}]
+  },
+  {
     "name": "a user create without a display name leaves it out",
     "js": ["users.create", "ana@example.com", "pw", false],
     "sends": [{"method": "POST", "path": "/api/v1/users", "body": {"email": "ana@example.com", "password": "pw", "is-admin": false}}]

@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/useAuth.js';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
-import { humanizeError } from '../../lib/errors.js';
+import { humanizeError, refusalSaid } from '../../lib/errors.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -196,12 +196,13 @@ export const UserProfile = ({ className, children }) => {
         return;
       }
 
-      // users.update(id, password, displayName, isAdmin)
       await client.users.update(
         user.id,
         updateData.password || undefined,
         updateData.displayName || undefined,
         undefined,
+        undefined,
+        updateData.password ? { currentPassword: fields.currentPassword } : {},
       );
       const updatedUserData = await client.users.get(user.id);
 
@@ -215,7 +216,10 @@ export const UserProfile = ({ className, children }) => {
         isAdmin: updatedUserData.isAdmin || false,
       });
     } catch (err) {
-      notifyError(humanizeError(err), 'Failed to save the profile');
+      // A refused current password belongs on its field.
+      const refused = fields.newPassword && refusalSaid(err);
+      if (refused) setErrors({ currentPassword: refused });
+      else notifyError(humanizeError(err), 'Failed to save the profile');
     } finally {
       setLoading(false);
     }
