@@ -384,6 +384,7 @@ A value already in a document's field stays as it was.
 
 In the link popover, the linked entry's form opens the entry in its vocabulary.
 When no entry fits, **Create** adds one with the word's or morpheme's form and links it.
+On a word or multi-word expression that no entry is spelled like or starts with, the popover starts on **Create**.
 Anyone who can edit the document can add an entry this way.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.

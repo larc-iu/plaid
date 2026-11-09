@@ -314,8 +314,10 @@ export const vocabPopover = {
     // lexicon read landing while this is open picks again (see
     // _refreshVocabularies) only when the user has not.
     if (this._popoverActiveIndex == null) {
-      // A pair list may start on no row (pairPicker.js _pairDefaultRow).
-      this._popoverActiveIndex = pairs && best < 0 && !search.trim() ? -1 : Math.max(0, best);
+      // A pair list may start on no row (pairPicker.js _pairDefaultRow), an
+      // entry list whose form chose no entry on "+ Create" (_entryList).
+      this._popoverActiveIndex =
+        best >= 0 || search.trim() ? Math.max(0, best) : pairs || !canCreate ? -1 : limited.length;
       this._popoverPickedIndex = this._popoverActiveIndex;
     }
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
@@ -903,7 +905,17 @@ export const vocabPopover = {
       it._tier !== TIERS.PRECEDENT &&
       (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
     const first = items.find((it) => !covered(it)) ?? items[0];
-    const best = entryRows.findIndex((r) => !r._context && r.id === first?.id);
+    // With nothing typed, Enter takes a row only when the form chose it: the
+    // current link, what the form was linked to before, or an entry spelled
+    // like it or starting with it. An entry that only contains the form, or
+    // is only near it by edit distance, is a guess, and Enter linked "thei"
+    // to the enclitic "na" (H5-1). -1 then, and the popover starts on
+    // "+ Create".
+    const chosen =
+      !!search.trim() ||
+      (currentItem && first?.id === currentItem.id) ||
+      (first && first._tier <= TIERS.PREFIX);
+    const best = chosen ? entryRows.findIndex((r) => !r._context && r.id === first?.id) : -1;
     return { limited: entryRows, truncated, best };
   },
 

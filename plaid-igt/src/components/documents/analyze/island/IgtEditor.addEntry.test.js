@@ -200,6 +200,28 @@ describe('the type row of a morpheme linked to an untyped entry', () => {
 });
 
 describe('the lexicon popover', () => {
+  // H5-1: on a form no entry is spelled like, the list starts on "+ Create",
+  // not on the entry nearest by edit distance, so Enter cannot link a word to
+  // an unrelated entry ("thei" to "na").
+  it('starts on "+ Create" when no entry matches the form, and Enter links nothing', async () => {
+    const { client } = mount();
+    openOn('w-1');
+    const pop = popover();
+    expect([...pop.querySelectorAll('.igt-vocab-pop__item')].length).toBeGreaterThan(0);
+    expect(pop.querySelector('.igt-vocab-pop__item.is-active')).toBeNull();
+    expect(pop.querySelector('.igt-vocab-pop__create').classList).toContain('is-active');
+    key(pop.querySelector('.igt-vocab-pop__search'), 'Enter');
+    await settle(4);
+    expect(client.calls.some((c) => c.kind === 'vocabLinks.create')).toBe(false);
+    expect(popover().querySelector('.igt-vocab-pop__create-input')).not.toBeNull();
+  });
+
+  it('starts on an entry spelled like the word', () => {
+    mount();
+    openOn('w-2');
+    expect(popover().querySelector('.igt-vocab-pop__item.is-active')).not.toBeNull();
+  });
+
   it('reads the lexicon again when it opens, so an entry added elsewhere since the page loaded is offered', async () => {
     const { doc, client } = mount();
     // Another person added "sat" after this page loaded.
