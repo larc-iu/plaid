@@ -420,6 +420,7 @@ A reply can also give you a file the assistant made, such as a table, to downloa
 The **Assistant** button in the header opens the assistant in a panel beside whatever you are looking at.
 The panel keeps the project's last conversation as you move between documents, and a question asked on a document is about that document.
 **Ask** on a sentence puts that sentence into your question.
+An answer that ends while you are in another tab or window is announced with a short sound, a ● at the start of the tab's title, and a notification if you allowed them when you first sent a message.
 
 Typing **@** in the message box names a sentence of the open document (`s3`) or a document of the project.
 Arrow keys move through the list, Enter takes the highlighted item, and Escape closes it.

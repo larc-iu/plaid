@@ -383,6 +383,7 @@ A narrow window has no room for it.
 The panel picks up your last conversation in the project you are in.
 Its history lists your other conversations, and **⤢** moves the open one to the **Assistant** tab.
 On a screen outside any project, it asks which project to use.
+An answer that ends while you are in another tab or window is announced with a short sound, a ● at the start of the tab's title, and a notification if you allowed them when you first sent a message.
 
 A question asked on a document is about that document, unless you name another.
 **Ask**, under a sentence, puts that sentence into the question.

@@ -800,6 +800,7 @@ The **Assistant** button in the header opens the same assistant in a panel besid
 The panel stays open as you move around, and it can be dragged wider or narrower.
 It picks up the last conversation you had in the project you are in and keeps it as you move from document to document.
 The panel's history lists your other conversations, and **Open in Assistant** moves the open one to the **Assistant** tab.
+An answer that ends while you are in another tab or window is announced with a short sound, a ● at the start of the tab's title, and a notification if you allowed them when you first sent a message.
 
 A question asked on a document is about that document, unless it names another.
 **Ask**, beside **Copy** on a sentence, puts that sentence into the question.
