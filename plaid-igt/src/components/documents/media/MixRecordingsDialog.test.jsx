@@ -57,6 +57,22 @@ const mount = async (props = {}) => {
 };
 
 describe('MixRecordingsDialog', () => {
+  it('offers only the full quality when no file is above the smaller rate', async () => {
+    decode.mockImplementation(async (file) => ({
+      name: file.name,
+      ...decoded[file.name],
+      sampleRate: 16000,
+    }));
+    try {
+      await mount();
+      expect(text()).toContain('Full quality (16 kHz)');
+      expect(text()).not.toContain('Smaller');
+      expect(document.body.querySelector('input[value="small"]')).toBe(null);
+    } finally {
+      decode.mockImplementation(async (file) => ({ name: file.name, ...decoded[file.name] }));
+    }
+  });
+
   it('lists each file with its length, channels and rate, and offers the two qualities with sizes', async () => {
     await mount({ knownSpeakers: ['Ana'] });
     expect(text()).toContain('ana.wav');

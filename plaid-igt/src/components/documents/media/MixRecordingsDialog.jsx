@@ -87,6 +87,9 @@ export function MixRecordingsDialog({
   const bytesOf = (q) => (plan ? mixBytes(plan, q) : null);
   const bytes = bytesOf(quality);
   const overLimit = maxBytes != null && bytes != null && bytes > maxBytes;
+  // Files already at the smaller rate or below have nothing to gain from it,
+  // so only the full quality is offered.
+  const qualities = plan && mixRate(plan, 'full') <= SMALL_RATE ? QUALITIES.slice(0, 1) : QUALITIES;
 
   const setTrack = (i, patch) =>
     setTracks((prev) => prev.map((t, k) => (k === i ? { ...t, ...patch } : t)));
@@ -173,7 +176,7 @@ export function MixRecordingsDialog({
           </p>
 
           <div role="radiogroup" aria-label="Quality" className="flex flex-col gap-1 text-sm">
-            {QUALITIES.map(([value, label]) => (
+            {qualities.map(([value, label]) => (
               <label key={value} className="flex cursor-pointer items-center gap-2">
                 <input
                   type="radio"
