@@ -53,7 +53,8 @@
    ["private user data" {:path "/api/v1/users/admin@example.com/data/x" :method "put" :body {:v 1}}]
    ["redeeming an invite" {:path "/api/v1/invites/redeem" :method "post"
                            :body {:code "x" :email "new@example.com" :password "password9"}}]
-   ["looking up an invite" {:path "/api/v1/invites/lookup" :method "post" :body {:code "x"}}]])
+   ["looking up an invite" {:path "/api/v1/invites/lookup" :method "post" :body {:code "x"}}]
+   ["accepting an invite" {:path "/api/v1/invites/accept" :method "post" :body {:code "x"}}]])
 
 (deftest a-write-that-refuses-a-key-refuses-the-batch
   (let [proj (create-test-project admin-request "P")

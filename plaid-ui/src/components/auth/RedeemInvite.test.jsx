@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { renderComponent, byText } from '../../test/renderComponent.jsx';
 import { RedeemInvite } from './RedeemInvite.jsx';
 
 const { authService, auth, notifySuccess } = vi.hoisted(() => ({
   authService: { lookupInvite: vi.fn(), serverLimits: vi.fn() },
-  auth: { redeemInvite: vi.fn(), user: null },
+  auth: { redeemInvite: vi.fn(), user: null, client: null },
   notifySuccess: vi.fn(),
 }));
 
@@ -131,6 +131,7 @@ describe('RedeemInvite', () => {
   });
 
   it('rewords a 409 as the question the reader is actually asking', async () => {
+    authService.lookupInvite.mockResolvedValue({ status: 'active', kind: 'signup' });
     auth.redeemInvite.mockResolvedValue({ success: false, status: 409 });
     const { container, step } = await mount();
 
@@ -190,7 +191,8 @@ describe('RedeemInvite', () => {
     expect(container.textContent).toBe('the project p1');
   });
 
-  it('warns a signed-in reader what accepting will do to their session', async () => {
+  it('warns a signed-in reader what a link with no project does to their session', async () => {
+    authService.lookupInvite.mockResolvedValue({ status: 'active', kind: 'signup' });
     auth.user = { displayName: 'Ada' };
     const { container } = await mount();
     expect(container.textContent).toContain('You are signed in as Ada');
@@ -208,5 +210,111 @@ describe('RedeemInvite', () => {
     expect(container.textContent).toContain('Choose a new password for ada@example.com.');
     expect(container.querySelector('#invite-email')).toBe(null);
     expect(container.querySelector('#invite-password')).not.toBe(null);
+  });
+
+  // H1-3, Luke's ruling 2026-11-09: an existing account can take an invite.
+  describe('with an account already', () => {
+    const LoginProbe = () => {
+      const location = useLocation();
+      return <p id="login-from">{location.state?.from}</p>;
+    };
+    const routed = (entry = '/invite/CODE') =>
+      renderComponent(
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route
+              path="/invite/:code"
+              element={
+                <RedeemInvite
+                  loginPath="/login"
+                  homePath="/projects"
+                  projectPath={(id) => `/projects/${id}/documents`}
+                />
+              }
+            />
+            <Route path="/login" element={<LoginProbe />} />
+            <Route path="/projects" element={<p>the project list</p>} />
+            <Route path="/projects/:projectId/documents" element={<p>the project p1</p>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    const signedIn = (accept) => {
+      auth.user = { id: 'ada@example.com', displayName: 'Ada' };
+      auth.client = { invites: { accept } };
+    };
+
+    it('offers sign-in to a reader who is signed out, and comes back here', async () => {
+      const { container, step } = await routed();
+      const link = byText(container, 'a', 'Sign in to join Lezgi');
+      expect(link.getAttribute('href')).toBe('/login');
+      await step(async () => link.click());
+      expect(container.querySelector('#login-from').textContent).toBe('/invite/CODE');
+    });
+
+    it('says to sign in when the address has an account', async () => {
+      auth.redeemInvite.mockResolvedValue({ success: false, status: 409 });
+      const { container, step } = await mount();
+      await step(async () => {
+        fill(container, 'invite-email', 'ada@example.com');
+        fill(container, 'invite-password', 'longenough');
+        fill(container, 'invite-confirm', 'longenough');
+        submit(container);
+      });
+      expect(alertText(container)).toBe(
+        'An account already exists for that email address. Sign in to join Lezgi.',
+      );
+    });
+
+    it('joins with one press when signed in, and opens the project', async () => {
+      const accept = vi.fn(async () => ({ projectId: 'p1', projectRole: 'writer', joined: true }));
+      signedIn(accept);
+      const { container, step } = await routed();
+      expect(container.querySelector('form')).toBe(null);
+      expect(container.textContent).toContain('Signed in as Ada');
+      expect(accept).not.toHaveBeenCalled();
+      await step(async () => byText(container, 'button', 'Join Lezgi').click());
+      expect(accept).toHaveBeenCalledWith('CODE');
+      expect(notifySuccess).toHaveBeenCalledWith('Joined Lezgi as a writer.', 'Welcome');
+      expect(container.textContent).toBe('the project p1');
+    });
+
+    it('joins straight away on the way back from sign-in', async () => {
+      const accept = vi.fn(async () => ({ projectId: 'p1', projectRole: 'writer', joined: true }));
+      signedIn(accept);
+      const { container } = await renderComponent(
+        <MemoryRouter initialEntries={[{ pathname: '/invite/CODE', state: { signedIn: true } }]}>
+          <Routes>
+            <Route
+              path="/invite/:code"
+              element={
+                <RedeemInvite
+                  loginPath="/login"
+                  homePath="/projects"
+                  projectPath={(id) => `/projects/${id}/documents`}
+                />
+              }
+            />
+            <Route path="/projects/:projectId/documents" element={<p>the project p1</p>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await new Promise((r) => setTimeout(r, 0));
+      expect(accept).toHaveBeenCalledWith('CODE');
+      expect(container.textContent).toBe('the project p1');
+    });
+
+    it('says why a link it could not use is dead', async () => {
+      const accept = vi.fn(async () => {
+        throw Object.assign(new Error('HTTP 410'), {
+          status: 410,
+          responseData: { status: 'used', error: 'That invite has already been used.' },
+        });
+      });
+      signedIn(accept);
+      const { container, step } = await routed();
+      await step(async () => byText(container, 'button', 'Join Lezgi').click());
+      expect(alertText(container)).toContain('This invite has already been used');
+      expect(byText(container, 'a', 'Open Plaid IGT').getAttribute('href')).toBe('/projects');
+    });
   });
 });

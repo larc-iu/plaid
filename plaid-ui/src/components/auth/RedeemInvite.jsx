@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { authService } from '../../services/auth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { usePasswordMinimum, passwordTooShort } from '../../hooks/usePasswordMinimum.js';
 import { notifySuccess } from '../../lib/notify.js';
+import { humanizeError, statusOf } from '../../lib/errors.js';
+import { appName } from '../../lib/uiConfig.js';
 import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '../../lib/email.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -44,7 +46,8 @@ const deadMessageFor = (preview) => {
 export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
   const { code } = useParams();
   const navigate = useNavigate();
-  const { redeemInvite, user } = useAuth();
+  const location = useLocation();
+  const { redeemInvite, user, client } = useAuth();
   // Stated up front rather than only on rejection: this is the one password
   // the user will have to remember.
   const passwordMinimum = usePasswordMinimum();
@@ -61,6 +64,10 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
   const [error, setError] = useState('');
 
   const isReset = preview?.kind === 'password-reset';
+  // A link into a project, which an account that exists can take too. One that
+  // makes an administrator is for a new account only.
+  const joinable = !isReset && !!preview?.projectName && !preview?.grantAdmin;
+  const [joining, setJoining] = useState(false);
   useDocumentTitle(isReset ? 'Set a new password' : 'Accept invitation');
 
   useEffect(() => {
@@ -116,10 +123,41 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
     // but the user's question is "what do I type instead".
     setError(
       result.status === 409
-        ? 'An account already exists for that email address.'
+        ? joinable
+          ? `An account already exists for that email address. Sign in to join ${preview.projectName}.`
+          : 'An account already exists for that email address.'
         : result.error || 'Failed to redeem this invite.',
     );
   };
+
+  // The signed-in account joins the project. A link that turned out dead says
+  // why, as the lookup would have.
+  const join = async () => {
+    setError('');
+    setJoining(true);
+    try {
+      const joined = await client.invites.accept(code);
+      if (joined.joined) {
+        notifySuccess(`Joined ${preview.projectName} as a ${joined.projectRole}.`, 'Welcome');
+      }
+      navigate(projectPath ? projectPath(joined.projectId) : homePath);
+    } catch (err) {
+      const status = err?.responseData?.status;
+      if (statusOf(err) === 410 && status) setPreview((pv) => ({ ...pv, status }));
+      else setError(humanizeError(err, 'Failed to join the project.'));
+      setJoining(false);
+    }
+  };
+
+  // Back from "Sign in to join": join straight away, once.
+  const joinedOnArrival = useRef(false);
+  useEffect(() => {
+    if (!user || !joinable || preview?.status !== 'active') return;
+    if (!location.state?.signedIn || joinedOnArrival.current) return;
+    joinedOnArrival.current = true;
+    join();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, joinable, preview?.status, location.state]);
 
   const deadMessage = deadMessageFor(preview);
 
@@ -152,7 +190,28 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
                 {lookupError || deadMessage}
               </div>
               <Button asChild variant="outline" className="w-full">
-                <Link to={loginPath}>Go to sign in</Link>
+                {user ? (
+                  <Link to={homePath}>Open {appName()}</Link>
+                ) : (
+                  <Link to={loginPath}>Go to sign in</Link>
+                )}
+              </Button>
+            </div>
+          ) : user && joinable ? (
+            <div className="flex flex-col gap-4">
+              {error && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {error}
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Signed in as <strong>{user.displayName}</strong>.
+              </p>
+              <Button onClick={join} disabled={joining} className="w-full">
+                {joining ? 'Joining…' : `Join ${preview.projectName}`}
               </Button>
             </div>
           ) : (
@@ -261,6 +320,14 @@ export const RedeemInvite = ({ loginPath, homePath, projectPath }) => {
                     ? 'Set password and sign in'
                     : 'Create account'}
               </Button>
+
+              {joinable && (
+                <Button asChild variant="outline" className="w-full">
+                  <Link to={loginPath} state={{ from: `/invite/${code}` }}>
+                    Sign in to join {preview.projectName}
+                  </Link>
+                </Button>
+              )}
             </form>
           )}
         </CardContent>

@@ -144,6 +144,11 @@
     "sends": [{"method": "DELETE", "path": "/api/v1/vocab-items/I", "query": {"expected-link-count": "2"}}]
   },
   {
+    "name": "accepting an invite sends the code",
+    "js": ["invites.accept", "ABCD-EFGH"],
+    "sends": [{"method": "POST", "path": "/api/v1/invites/accept", "body": {"code": "ABCD-EFGH"}}]
+  },
+  {
     "name": "a change of your own password sends the current one",
     "js": ["users.update", "ana@example.com", "new-pass-1", "$undefined", "$undefined", "$undefined", {"currentPassword": "old-pass-1"}],
     "py": ["users.update", "ana@example.com"],

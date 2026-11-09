@@ -2092,6 +2092,7 @@ The database file does not shrink after such a rebuild: to return the space, sto
 The administrator signs in first, at `https://plaid.example.edu/igt/`, and creates the instructor's account on the **Users** tab of the admin area.
 The instructor creates the project and, in its **Settings > Access**, makes **invitation links**: each grants a role on the project, is good for a set number of uses and days, and lets whoever opens it choose their own password.
 One link with fifteen uses is a class.
+A student who already has an account signs in from the link and joins with the same role.
 
 A student who forgets a password gets a password-reset link from the administrator, made in **Settings > Access**.
 The IGT guide's link:igt-guide.html#_sharing_and_permissions[Sharing and Permissions] section covers the roles.

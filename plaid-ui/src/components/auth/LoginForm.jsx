@@ -63,7 +63,9 @@ export const LoginForm = ({ tagline, homePath }) => {
         const loginPath = location.pathname;
         navigate(
           appPath(location.state?.from, loginPath) ?? appPath(stored, loginPath) ?? homePath,
-          { replace: true },
+          // `signedIn` tells the page it was reached through sign-in (an
+          // invite page joins its project then).
+          { replace: true, state: { signedIn: true } },
         );
       } else {
         setError(result.error || 'Email or password is incorrect.');

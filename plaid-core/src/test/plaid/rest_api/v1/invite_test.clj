@@ -522,3 +522,93 @@
     (testing "no read path serves the code back"
       (let [lr (api-call admin-request {:method :get :path "/api/v1/invites"})]
         (is (not (clojure.string/includes? (pr-str (:body lr)) code)))))))
+
+;; ---------------------------------------------------------------------------
+;; an existing account takes an invite (H1-3, Luke's ruling 2026-11-09)
+;; ---------------------------------------------------------------------------
+
+(defn- accept!
+  [request-fn code]
+  (api-call request-fn {:method :post :path "/api/v1/invites/accept" :body {:code code}}))
+
+(defn- project-role-of [pid user-id]
+  (let [p (:body (h/get-test-project admin-request pid))]
+    (some (fn [[k role]] (when (some #{user-id} (k p)) role))
+          [[:project/maintainers "maintainer"] [:project/writers "writer"] [:project/readers "reader"]])))
+
+(deftest an-existing-account-joins-with-the-links-role
+  (let [pid (h/create-test-project admin-request "Pear Stories")
+        [me me-request] (throwaway-user! "asha@example.com")
+        code (-> (mint! admin-request {:project-id pid :project-role "writer"}) :body :code)]
+    (testing "a signed-out caller is refused"
+      (assert-status 401 (api-call anon-request {:method :post :path "/api/v1/invites/accept"
+                                                 :body {:code code}})))
+    (testing "the account joins with the link's role"
+      (let [r (accept! me-request code)]
+        (assert-ok r)
+        (is (= pid (-> r :body :project-id)))
+        (is (= "writer" (-> r :body :project-role)))
+        (is (true? (-> r :body :joined))))
+      (is (= "writer" (project-role-of pid me))))
+    (testing "and the link is used up, for a new person too"
+      (is (= "used" (-> (lookup! code) :body :status)))
+      (assert-status 410 (redeem! {:code code :email "late@example.com" :password good-password}))
+      (let [[_ other-request] (throwaway-user! "bo@example.com")]
+        (assert-status 410 (accept! other-request code))))))
+
+(deftest accepting-is-checked-as-redemption-is
+  (let [pid (h/create-test-project admin-request "P")
+        [_ me-request] (throwaway-user! "chen@example.com")]
+    (testing "an unknown code is a 404"
+      (assert-not-found (accept! me-request "ZZZZZZZZ-ZZZZZZZZ-ZZZZZZZZ-ZZZZZZZZ")))
+    (testing "a revoked link is a 410"
+      (let [resp (mint! admin-request {:project-id pid :project-role "reader"})]
+        (assert-no-content (api-call admin-request {:method :delete
+                                                    :path (str "/api/v1/invites/" (-> resp :body :id))}))
+        (let [r (accept! me-request (-> resp :body :code))]
+          (assert-status 410 r)
+          (is (= "revoked" (-> r :body :status))))))
+    (testing "a link whose minter lost the authority is a 410"
+      (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/maintainers/user1@example.com")})
+      (let [code (-> (mint! user1-request {:project-id pid :project-role "writer"}) :body :code)]
+        (api-call admin-request {:method :delete :path (str "/api/v1/projects/" pid "/maintainers/user1@example.com")})
+        (let [r (accept! me-request code)]
+          (assert-status 410 r)
+          (is (= "inactive" (-> r :body :status))))))
+    (testing "an expired link is a 410"
+      (let [resp (mint! admin-request {:project-id pid :project-role "writer"})]
+        (plaid.sql.common/execute! db {:update :invites :set {:expires_at "2000-01-01T00:00:00Z"}
+                                       :where [:= :id (-> resp :body :id)]})
+        (assert-status 410 (accept! me-request (-> resp :body :code)))))
+    (testing "a link that only makes a new account is a 400 and stays unspent"
+      (doseq [body [{} {:grant-admin true :project-id pid :project-role "reader"}
+                    {:target-user-id "chen@example.com"}]]
+        (let [code (-> (mint! admin-request body) :body :code)]
+          (assert-bad-request (accept! me-request code))
+          (is (= "active" (-> (lookup! code) :body :status))))))
+    (testing "a named API token cannot accept"
+      (let [tok (-> (api-call me-request {:method :post :path "/api/v1/users/chen@example.com/tokens"
+                                          :body {:name "svc"}})
+                    :body :token)
+            code (-> (mint! admin-request {:project-id pid :project-role "writer"}) :body :code)]
+        (assert-forbidden (accept! (token-req-fn tok) code))
+        (is (= "active" (-> (lookup! code) :body :status)))))))
+
+(deftest a-link-never-lowers-a-role
+  (let [pid (h/create-test-project admin-request "P")
+        [me me-request] (throwaway-user! "dee@example.com")]
+    (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/maintainers/" me)})
+    (let [code (-> (mint! admin-request {:project-id pid :project-role "reader"}) :body :code)
+          r (accept! me-request code)]
+      (assert-ok r)
+      (is (false? (-> r :body :joined)))
+      (is (= "maintainer" (-> r :body :project-role)))
+      (is (= "maintainer" (project-role-of pid me)))
+      (testing "and a link that gave nothing is not spent"
+        (is (= "active" (-> (lookup! code) :body :status)))))
+    (testing "a stronger role is taken"
+      (let [[you you-request] (throwaway-user! "eve@example.com")]
+        (api-call admin-request {:method :post :path (str "/api/v1/projects/" pid "/readers/" you)})
+        (let [code (-> (mint! admin-request {:project-id pid :project-role "writer"}) :body :code)]
+          (assert-ok (accept! you-request code))
+          (is (= "writer" (project-role-of pid you))))))))

@@ -534,6 +534,26 @@ export function invitesApi(client) {
      */
     revoke: (id, auditMessage) =>
       client._request("DELETE", `/api/v1/invites/${id}`, { auditMessage }),
+    /**
+     * Join the project of an invite code with the account this client is
+     * signed in as: the account gets the invite's project role and the link
+     * counts one use. A role already held, or a stronger one, is kept and the
+     * link is not spent (`joined` false). 404 for an unknown code, 410 for a
+     * spent, expired, revoked or inactive one (with `status`), 400 for a link
+     * that only makes a new account (a password reset, an admin grant, no
+     * project). Needs a signed-in session, not a named API token (403).
+     * @param {string} code - The invite code
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<{projectId: string, projectRole: string, joined: boolean}>}
+     */
+    accept: (code, auditMessage) =>
+      client._request("POST", "/api/v1/invites/accept", {
+        auditMessage,
+        // The code is a credential, so it takes no Idempotency-Key and a
+        // batch cannot carry it.
+        noBatch: true,
+        body: { code },
+      }),
   };
 }
 

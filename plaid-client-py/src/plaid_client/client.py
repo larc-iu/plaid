@@ -1820,6 +1820,26 @@ class InvitesResource(_Resource):
         return self._request('DELETE', f'/api/v1/invites/{invite_id}',
                              audit_message=audit_message)
 
+    def accept(self, code: str, audit_message=None) -> Any:
+        """Join the project of an invite code with the account this client is
+        signed in as.
+
+        The account gets the invite's project role and the link counts one
+        use. A role already held, or a stronger one, is kept and the link is
+        not spent (``joined`` false). 404 for an unknown code, 410 for a
+        spent, expired, revoked or inactive one (with ``status``), 400 for a
+        link that only makes a new account (a password reset, an admin grant,
+        no project). Needs a signed-in session, not a named API token (403).
+
+        Args:
+            code: The invite code
+
+        Returns:
+            ``{'project_id', 'project_role', 'joined'}``
+        """
+        return self._request('POST', '/api/v1/invites/accept', body={'code': code},
+                             audit_message=audit_message, no_batch=True)
+
 
 class TokenLayersResource(_ConfigMethods, _LayerMethods, _ConstraintMethods, _Resource):
     _kind = 'token-layers'

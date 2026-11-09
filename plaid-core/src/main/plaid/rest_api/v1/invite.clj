@@ -19,7 +19,8 @@
     over `/spans/:span-id`. (These two once lived at `/invite-codes` on the
     belief that the collision was unavoidable. It was not.)
 
-    AUTHENTICATED: mint, list, and revoke, each subtree carrying
+    AUTHENTICATED: accept (an existing account joins the invite's project),
+    mint, list, and revoke, each subtree carrying
     `wrap-login-required` itself. Any logged-in user may call mint.
     `plaid.sql.invite/check-grant-authority!` decides whether they may grant
     what they asked for, and 403s if not. That keeps one place authoritative
@@ -135,6 +136,33 @@
                                (rl/record-invite-failure! request))
                              {:status (or status-code 500)
                               :body (merge {:error error} error-body)}))))}}]
+
+   ["/accept"
+    {:conflicting true
+     :openapi {:security [{:auth []}]}
+     :middleware [pra/wrap-login-required api-token/wrap-session-required rl/wrap-invite-rate-limit]
+     :post {:plaid/idempotency false
+            :summary (str "Join the project of an invite code with the account you are signed in "
+                          "as. The account gets the invite's <body>project-role</body> and the link "
+                          "counts one use. Checked as redemption is: 404 for an unknown code, 410 "
+                          "for one that is spent, expired, revoked, or inactive (its creator can no "
+                          "longer grant what it grants), with that <body>status</body> in the body. "
+                          "400 for a link that only makes a new account: a password reset, an admin "
+                          "grant, or no project. A role you already hold, or a stronger one, is kept "
+                          "and the link is not spent (<body>joined</body> false). Returns "
+                          "<body>project-id</body>, <body>project-role</body> (the role now held) and "
+                          "<body>joined</body>. Needs a signed-in session: a request signed with a "
+                          "named API token is refused (403).")
+            :parameters {:body {:code string?}}
+            :handler (fn [{{{:keys [code]} :body} :parameters db :db :as request}]
+                       (let [{:keys [success extra error error-body] status-code :code}
+                             (invite/accept! db code (pra/->user-id request))]
+                         (if success
+                           {:status 200 :body extra}
+                           (do (when (#{404 410} status-code)
+                                 (rl/record-invite-failure! request))
+                               {:status (or status-code 500)
+                                :body (merge {:error error} error-body)}))))}}]
 
    [""
     {:openapi {:security [{:auth []}]}

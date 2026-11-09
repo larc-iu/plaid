@@ -563,3 +563,70 @@
                             (assoc :error-body (:plaid/body (ex-data e))))}))]
     (or (:failure pre)
         (redeem-checked! db (:ok pre) email password display-name))))
+
+(def ^:private role-rank {"reader" 1 "writer" 2 "maintainer" 3})
+
+(defn- held-role
+  "The role `user-id` holds on `project-id` as a role name, or nil."
+  [db project-id user-id]
+  ({:project/readers "reader" :project/writers "writer" :project/maintainers "maintainer"}
+   (prj/role-of db project-id user-id)))
+
+(defn- accept-checked!
+  "The join transaction. Same rechecks as `redeem-checked!` (a fresh in-tx read
+  of the invite, its status with the minter's authority, the use count under
+  the writer lock), and attributed to the invite's creator the same way: the
+  minter's grant is what puts the account in the project."
+  [db invite-row user-id]
+  (submit-operation! [tx db {:type :invite/redeem
+                             :project (:project_id invite-row)
+                             :document nil
+                             :description (str "Add user " user-id " to project via invite")
+                             :user (:created_by invite-row)}]
+                     (let [row (psc/fetch-by-id tx :invites (:id invite-row))
+                           account (user/get-internal tx user-id)]
+                       (assert-redeemable! tx row)
+                       (when (or (nil? account) (some? (:user/deactivated-at account)))
+                         (throw (ex-info (str "That account has been deactivated. "
+                                              "Ask an administrator to reactivate it.")
+                                         {:code 403})))
+                       (let [project-id (:project_id row)
+                             role (:project_role row)
+                             held (held-role tx project-id user-id)]
+                         ;; A link never lowers a role, and one that would give
+                         ;; nothing new is not spent.
+                         (if (and held (>= (long (role-rank held)) (long (role-rank role))))
+                           {:project-id project-id :project-role held :joined false}
+                           (do (prj/add-role! tx project-id user-id role)
+                               (let [post (update row :uses inc)]
+                                 (psc/execute! tx {:update :invites
+                                                   :set {:uses (:uses post)}
+                                                   :where [:= :id (:id row)]})
+                                 (audit-invite-row! tx (:id row) :update row post))
+                               {:project-id project-id :project-role role :joined true}))))))
+
+(defn accept!
+  "Spend a project invite on an account that already exists: `user-id` joins
+  the invite's project with its role, and the link counts one use. Checked as
+  `redeem!` checks a signup (unknown code 404, revoked, used, expired or
+  inactive 410), and refused (400) for a link that makes a new account and
+  nothing else to join: a password reset, an admin grant, or no project.
+
+  Returns `{:success true :extra {:project-id :project-role :joined}}`.
+  `:joined` is false when the account already held that role or a stronger
+  one, which is left as it is, and then the link is not spent."
+  [db code user-id]
+  (let [pre (try
+              (let [row (find-by-code db code)]
+                (assert-redeemable! db row)
+                (when (or (:target_user_id row) (->bool (:grant_admin row)) (nil? (:project_id row)))
+                  (throw (ex-info "This link is for a new account." {:code 400})))
+                {:ok row})
+              (catch clojure.lang.ExceptionInfo e
+                {:failure (cond-> {:success false
+                                   :code (or (:code (ex-data e)) 500)
+                                   :error (ex-message e)}
+                            (:plaid/body (ex-data e))
+                            (assoc :error-body (:plaid/body (ex-data e))))}))]
+    (or (:failure pre)
+        (accept-checked! db (:ok pre) user-id))))

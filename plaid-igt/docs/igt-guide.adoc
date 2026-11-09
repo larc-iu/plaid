@@ -1054,6 +1054,7 @@ When you only have Reader access, the editor shows everything, but a banner says
 **Invitation links** let people join without an administrator creating each account.
 A maintainer mints a link that grants a role on the project, good for a set number of uses and a set number of days.
 Whoever opens it chooses their own password and lands in the project.
+Someone who already has an account signs in from the link instead and joins the project with the link's role.
 A link is not addressed to anyone, so record who it was meant for in its private **Label**.
 A link can be revoked at any time, and it stops working if its maker loses the access it grants.
 
