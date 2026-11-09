@@ -1075,7 +1075,7 @@ Someone who already has an account signs in from the link instead and joins the 
 A link is not addressed to anyone, so record who it was meant for in its private **Label**.
 A link can be revoked at any time, and it stops working if its maker loses the access it grants.
 
-An **administrator** can also create accounts directly from the same Access section, and can mint a password-reset link for someone who is locked out.
+An **administrator** can also create accounts directly from the same Access section, each added to the project with the role chosen, and can mint a password-reset link for someone who is locked out.
 
 Scripts and services should not borrow your sign-in.
 Mint a named **API token** on your profile page instead.

@@ -6,9 +6,10 @@ import { isEmail, EMAIL_INVALID_MESSAGE } from '../lib/email.js';
 import { usePasswordMinimum, passwordTooShort } from './usePasswordMinimum.js';
 
 // Account administration, shared by every screen that does it: the Access
-// screen of a project in each app (where an admin creates the account they are
-// about to grant a role to) and plaid-igt's admin panel, where the whole
-// directory is. One copy of the dialogs, one copy of the rules.
+// screen of a project in each app (where an admin creates the account and
+// grants it a role there in the same step, `projectId` and `roleHints` given)
+// and plaid-igt's admin panel, where the whole directory is. One copy of the
+// dialogs, one copy of the rules.
 //
 // `users.delete` is a DEACTIVATION on the server — logins and tokens are
 // refused, memberships are stripped, and the row stays with a timestamp —
@@ -22,10 +23,15 @@ const EMPTY_USER = {
   isAdmin: false,
 };
 
-export const useUserAdmin = ({ client, currentUser, onChanged }) => {
+// The project write for each role a new account can be given.
+const ADD_ROLE = { reader: 'addReader', writer: 'addWriter', maintainer: 'addMaintainer' };
+
+export const useUserAdmin = ({ client, currentUser, onChanged, projectId, roleHints }) => {
   const passwordMinimum = usePasswordMinimum();
+  // In a project the new account also gets a role there, Writer unless chosen.
+  const emptyNewUser = projectId ? { ...EMPTY_USER, role: 'writer' } : EMPTY_USER;
   const [createOpen, setCreateOpen] = useState(false);
-  const [newUser, setNewUser] = useState(EMPTY_USER);
+  const [newUser, setNewUser] = useState(emptyNewUser);
   const [creating, setCreating] = useState(false);
 
   const [editingUser, setEditingUser] = useState(null);
@@ -43,7 +49,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
   };
 
   const openCreate = () => {
-    setNewUser(EMPTY_USER);
+    setNewUser(emptyNewUser);
     setCreateOpen(true);
   };
 
@@ -75,14 +81,25 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       setCreating(true);
       // The email becomes the account's id and login, permanently. A blank
       // display name lets the server default it to the email's local part.
-      await client.users.create(
-        email,
-        newUser.password,
-        newUser.isAdmin,
-        newUser.displayName.trim() || undefined,
-      );
-      notifySuccess(`User "${email}" created`, 'User created');
-      setNewUser(EMPTY_USER);
+      const create = (c) =>
+        c.users.create(
+          email,
+          newUser.password,
+          newUser.isAdmin,
+          newUser.displayName.trim() || undefined,
+        );
+      if (projectId) {
+        // One batch, so the account never exists without its role.
+        await client.batched((b) => {
+          create(b);
+          b.projects[ADD_ROLE[newUser.role]](projectId, email);
+        });
+        notifySuccess(`User "${email}" created and added as a ${newUser.role}`, 'User created');
+      } else {
+        await create(client);
+        notifySuccess(`User "${email}" created`, 'User created');
+      }
+      setNewUser(emptyNewUser);
       setCreateOpen(false);
       await changed();
     } catch (err) {
@@ -194,6 +211,8 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
     // Consumed by <UserAdminDialogs>; a call site never reads these.
     state: {
       currentUser,
+      projectId,
+      roleHints,
       createOpen,
       setCreateOpen,
       newUser,

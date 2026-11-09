@@ -51,3 +51,30 @@ describe('the edit dialog', () => {
     await view.unmount();
   });
 });
+
+describe('the create dialog', () => {
+  const open = (projectId) => {
+    const c = controllerFor({ id: 'u@x.org', displayName: 'U' });
+    return {
+      state: {
+        ...c.state,
+        editingUser: null,
+        createOpen: true,
+        projectId,
+        newUser: { ...c.state.newUser, role: 'writer' },
+      },
+    };
+  };
+
+  it('asks the role in a project', async () => {
+    const view = await renderComponent(<UserAdminDialogs controller={open('p1')} />);
+    expect(document.body.querySelector('#user-admin-role')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('asks no role in the admin area', async () => {
+    const view = await renderComponent(<UserAdminDialogs controller={open(undefined)} />);
+    expect(document.body.querySelector('#user-admin-role')).toBeNull();
+    await view.unmount();
+  });
+});

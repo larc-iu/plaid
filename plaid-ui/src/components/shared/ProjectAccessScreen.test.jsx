@@ -32,16 +32,32 @@ const ROLE_OPTIONS = projectRoleOptions({
 const PROJECT = { id: 'p1', name: 'Ay', maintainers: ['u'], writers: [], readers: [] };
 const USER = { id: 'u', displayName: 'You', isAdmin: true };
 
-const fakeClient = (overrides = {}) => ({
-  projects: { get: vi.fn().mockResolvedValue(PROJECT) },
-  users: {
-    get: vi.fn(async (id) => ({ id, displayName: id, isAdmin: false })),
-    avatarUrl: () => null,
-    create: vi.fn().mockResolvedValue({ id: 'grace@example.com' }),
-    listPage: vi.fn().mockResolvedValue({ entries: [] }),
-    ...overrides,
-  },
-});
+const fakeClient = (overrides = {}) => {
+  const client = {
+    projects: {
+      get: vi.fn().mockResolvedValue(PROJECT),
+      addWriter: vi.fn().mockResolvedValue(null),
+    },
+    users: {
+      get: vi.fn(async (id) => ({ id, displayName: id, isAdmin: false })),
+      avatarUrl: () => null,
+      create: vi.fn().mockResolvedValue({ id: 'grace@example.com' }),
+      listPage: vi.fn().mockResolvedValue({ entries: [] }),
+      ...overrides,
+    },
+  };
+  // A batch view whose writes are the client's own, settled together.
+  client.batched = vi.fn(async (fn) => {
+    const sent = [];
+    const view = {
+      users: { create: (...a) => sent.push(client.users.create(...a)) },
+      projects: { addWriter: (...a) => sent.push(client.projects.addWriter(...a)) },
+    };
+    await fn(view);
+    return Promise.all(sent);
+  });
+  return client;
+};
 
 const mount = (client) =>
   renderComponent(
@@ -112,6 +128,25 @@ describe('creating an account from the access screen', () => {
     expect(client.users.create).toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith('Failed to create the account', {
       description: 'Failed to reach the server. Check your connection and try again.',
+    });
+    await view.unmount();
+  });
+
+  // H1-7: the account was made and the members table did not change.
+  it('adds the new account to the project as a writer', async () => {
+    const client = fakeClient();
+    const view = await mount(client);
+    await openCreate(view);
+    expect(field('user-admin-role').textContent).toContain('Writer');
+    await view.step(() => typeInto(field('user-admin-email'), 'grace@example.com'));
+    await view.step(() => typeInto(field('user-admin-password'), 'hopper123'));
+    await view.step(() => typeInto(field('user-admin-password-confirm'), 'hopper123'));
+    await submit(view);
+
+    expect(client.batched).toHaveBeenCalledTimes(1);
+    expect(client.projects.addWriter).toHaveBeenCalledWith('p1', 'grace@example.com');
+    expect(toast.success).toHaveBeenCalledWith('User created', {
+      description: 'User "grace@example.com" created and added as a writer',
     });
     await view.unmount();
   });

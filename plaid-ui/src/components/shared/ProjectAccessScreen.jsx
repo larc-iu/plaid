@@ -43,8 +43,14 @@ export const ProjectAccessScreen = ({
   const isAdmin = !!user?.isAdmin;
 
   // Account administration (create, edit, deactivate, reset link) is shared
-  // with plaid-igt's admin panel.
-  const userAdmin = useUserAdmin({ client, currentUser: user, onChanged: onDataUpdate });
+  // with plaid-igt's admin panel. An account created here joins the project.
+  const userAdmin = useUserAdmin({
+    client,
+    currentUser: user,
+    onChanged: onDataUpdate,
+    projectId,
+    roleHints: grantRoleHints(roleOptions),
+  });
   const { startEdit, createResetLink, resetting } = userAdmin;
 
   // Whether this user can hand out project invites. Maintainers can, which is

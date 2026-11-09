@@ -2,6 +2,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { GRANT_ROLES } from '../../domain/projectRoles.js';
 import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle } from '../ui/dialog';
 import { DELETE_BUTTON_CLASS } from '../../lib/destructive.js';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog.jsx';
@@ -15,6 +17,8 @@ import { MintedLinkDialog } from './MintedLinkDialog.jsx';
 export const UserAdminDialogs = ({ controller }) => {
   const {
     currentUser,
+    projectId,
+    roleHints = {},
     createOpen,
     setCreateOpen,
     newUser,
@@ -90,6 +94,26 @@ export const UserAdminDialogs = ({ controller }) => {
                 onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })}
               />
             </div>
+            {projectId && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="user-admin-role">Role in this project</Label>
+                <Select
+                  value={newUser.role}
+                  onValueChange={(v) => setNewUser({ ...newUser, role: v })}
+                >
+                  <SelectTrigger id="user-admin-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRANT_ROLES.map((r) => (
+                      <SelectItem key={r} value={r} hint={roleHints[r]}>
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-start gap-2">
               <Switch
                 id="new-admin"
