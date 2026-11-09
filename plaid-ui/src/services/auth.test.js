@@ -234,6 +234,20 @@ describe('authService', () => {
     expect(window.location.hash).toBe('#/login');
   });
 
+  it('keeps where an expired session was, for after sign-in', () => {
+    window.location.hash = '#/projects/p1/documents/d1?tab=analyze';
+    vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    authService.logout('expired');
+    expect(sessionStorage.getItem('plaid:return-to')).toBe('/projects/p1/documents/d1?tab=analyze');
+  });
+
+  it('keeps nothing on a sign-out a person asked for', () => {
+    window.location.hash = '#/projects/p1';
+    vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    authService.logout();
+    expect(sessionStorage.getItem('plaid:return-to')).toBe(null);
+  });
+
   it('rebuilds a client from a stored token, and none without one', () => {
     expect(authService.getClient()).toBe(null);
 

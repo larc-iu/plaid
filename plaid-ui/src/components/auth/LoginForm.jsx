@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appName } from '../../lib/uiConfig.js';
+import { appPath, takeReturnTo } from '../../lib/returnTo.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -40,6 +41,7 @@ export const LoginForm = ({ tagline, homePath }) => {
   });
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
   const handleSubmit = async (e) => {
@@ -55,7 +57,14 @@ export const LoginForm = ({ tagline, homePath }) => {
         } catch {
           /* storage unavailable */
         }
-        navigate(homePath);
+        // Where the reader was going (the guard's redirect, or a session that
+        // ended there), when it is a page of this app.
+        const stored = takeReturnTo();
+        const loginPath = location.pathname;
+        navigate(
+          appPath(location.state?.from, loginPath) ?? appPath(stored, loginPath) ?? homePath,
+          { replace: true },
+        );
       } else {
         setError(result.error || 'Email or password is incorrect.');
       }

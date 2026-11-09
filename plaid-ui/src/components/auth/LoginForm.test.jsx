@@ -69,7 +69,7 @@ describe('LoginForm', () => {
     });
 
     expect(auth.login).toHaveBeenCalledWith('ada@example.com', 'pw');
-    expect(navigate).toHaveBeenCalledWith('/somewhere');
+    expect(navigate).toHaveBeenCalledWith('/somewhere', { replace: true });
     expect(sessionStorage.getItem('plaid:logout-reason')).toBe(null);
   });
 

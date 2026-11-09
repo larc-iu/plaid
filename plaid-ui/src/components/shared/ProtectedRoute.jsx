@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Loading } from './Loading.jsx';
 
 // The guard every signed-in route sits behind, and what a reader sees while
@@ -18,6 +18,7 @@ import { Loading } from './Loading.jsx';
 export const createProtectedRoute = (useAuth, { loginPath }) => {
   const ProtectedRoute = ({ children }) => {
     const { isAuthenticated, loading } = useAuth();
+    const location = useLocation();
 
     if (loading) {
       return (
@@ -27,7 +28,10 @@ export const createProtectedRoute = (useAuth, { loginPath }) => {
       );
     }
 
-    return isAuthenticated ? children : <Navigate to={loginPath} replace />;
+    if (isAuthenticated) return children;
+    // Sign-in goes on to where the reader was going.
+    const from = location.pathname + location.search + location.hash;
+    return <Navigate to={loginPath} replace state={{ from }} />;
   };
   return ProtectedRoute;
 };

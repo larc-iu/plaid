@@ -4,6 +4,7 @@ import { notifySuccess, notifyWithAction } from '../lib/notify.js';
 import { hasUnsavedDraft } from '../hooks/useUnsavedDraft.js';
 import { anyDocumentSaving } from '../hooks/useSavingGuard.js';
 import { signedInAgain } from '../lib/signInAgain.js';
+import { rememberReturnTo } from '../lib/returnTo.js';
 
 // The session every app in this repo holds: one backend, one JWT, one set of
 // localStorage keys. The keys are deliberately NOT prefixed with `appPrefix`,
@@ -276,6 +277,8 @@ export const authService = {
     } catch {
       /* storage unavailable */
     }
+    // A session that ran out takes the reader back to this page after sign-in.
+    if (reason === 'expired') rememberReturnTo(window.location.hash.replace(/^#/, ''));
     localStorage.removeItem('token');
     localStorage.removeItem('userId');
     localStorage.removeItem('displayName');
