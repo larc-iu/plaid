@@ -49,6 +49,7 @@ const SpeakerField = ({ value, label, disabled, onCommit }) => {
  * @param speakers     `channelSpeakers` as stored, or null
  * @param knownSpeakers the project's and document's speaker suggestions
  * @param muted, solo  sets of channel indexes
+ * @param onRemove     the channels are not speakers after all (removes the list)
  */
 export function ChannelList({
   count,
@@ -59,6 +60,7 @@ export function ChannelList({
   onToggleMute,
   onToggleSolo,
   onSpeakerChange,
+  onRemove,
   readOnly = false,
 }) {
   if (!(count >= 2)) return null;
@@ -118,6 +120,18 @@ export function ChannelList({
           );
         })}
       </ul>
+      {!readOnly && onRemove && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground"
+            onClick={onRemove}
+          >
+            Remove speakers per channel
+          </Button>
+        </div>
+      )}
       {!readOnly && (
         <datalist id={SPEAKER_LIST_ID}>
           {knownSpeakers.map((s) => (

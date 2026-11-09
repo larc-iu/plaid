@@ -3,6 +3,28 @@ import { mountDocumentHook, fakeDocument, fakeClient } from '@/test/mountDocumen
 import { encodeWav } from '@/domain/media/mixdown.js';
 import { useMediaOperations } from './useMediaOperations.js';
 
+// The Web Audio graph, faked: what matters here is whether the element is
+// routed into it at all.
+const mixer = vi.hoisted(() => ({ made: 0, last: null }));
+vi.mock('@/domain/media/channelMixer.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  createChannelMixer: () => {
+    mixer.made += 1;
+    const m = {
+      attached: false,
+      attach: vi.fn(() => {
+        m.attached = true;
+        return true;
+      }),
+      plain: vi.fn(),
+      setGains: vi.fn(),
+      dispose: vi.fn(),
+    };
+    mixer.last = m;
+    return m;
+  },
+}));
+
 // The recording's channels on the media hook: how many there are (read off a
 // WAV's header the moment the file arrives), the speaker on each (written to
 // the document as channelSpeakers, sized to the recording), and which are
@@ -22,6 +44,8 @@ const link = () => ({
 
 let wav;
 beforeEach(() => {
+  mixer.made = 0;
+  mixer.last = null;
   localStorage.clear();
   wav = new Blob(
     [encodeWav([new Float32Array(16), new Float32Array(16), new Float32Array(16)], 16000)],
@@ -88,6 +112,52 @@ describe('useMediaOperations channels', () => {
     await h.step(() => h.api.toggleChannelSolo(2));
     await h.step(() => h.api.toggleChannelSolo(0));
     expect([...h.api.channelMix.solo].sort()).toEqual([0, 2]);
+    await h.unmount();
+  });
+
+  it('a recording with no channelSpeakers is never routed through the mixer', async () => {
+    const { h } = await mount();
+    expect(h.api.channelCount).toBe(3);
+    await h.step(() => h.api.setMediaElement(document.createElement('audio')));
+    await settle(h);
+    expect(mixer.made).toBe(0);
+    await h.unmount();
+  });
+
+  it('a recording with channelSpeakers is routed through the mixer', async () => {
+    const { h } = await mount({ channelSpeakers: ['Ana', 'Ben', ''] });
+    const el = document.createElement('audio');
+    await h.step(() => h.api.setMediaElement(el));
+    await settle(h);
+    expect(mixer.last.attach).toHaveBeenCalledWith(el, 3);
+    await h.unmount();
+  });
+
+  it('removing channelSpeakers takes the element out of the mixer', async () => {
+    const { h, doc } = await mount({ channelSpeakers: ['Ana', 'Ben', ''] });
+    await h.step(() => h.api.setMediaElement(document.createElement('audio')));
+    await settle(h);
+    expect(mixer.last.plain).not.toHaveBeenCalled();
+    doc.storedMetadata = {};
+    await h.setInputs({
+      ctx: { client: doc.client, acquireWriteLock: () => null, canWrite: true },
+    });
+    await settle(h);
+    expect(mixer.last.plain).toHaveBeenCalled();
+    await h.unmount();
+  });
+
+  it('speakers per channel writes an empty speaker for each channel', async () => {
+    const { h, doc } = await mount();
+    await h.step(() => h.api.addChannelSpeakers());
+    expect(doc.setMetadataKeys).toHaveBeenCalledWith({ channelSpeakers: ['', '', ''] });
+    await h.unmount();
+  });
+
+  it('the way back removes channelSpeakers', async () => {
+    const { h, doc } = await mount({ channelSpeakers: ['Ana', 'Ben', ''] });
+    await h.step(() => h.api.removeChannelSpeakers());
+    expect(doc.setMetadataKeys).toHaveBeenCalledWith({ channelSpeakers: null });
     await h.unmount();
   });
 });

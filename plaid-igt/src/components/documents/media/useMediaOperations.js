@@ -477,6 +477,21 @@ export const useMediaOperations = () => {
     },
     [doc],
   );
+  // Say the channels are speakers, one each with no name yet (a recording
+  // made elsewhere with a channel per speaker), or take that back: the
+  // recording then plays and shows as any other.
+  const addChannelSpeakers = useCallback(() => {
+    const count = channelCountRef.current ?? 0;
+    if (count < 2) return;
+    doc
+      .setMetadataKeys({ [CHANNEL_SPEAKERS_KEY]: Array.from({ length: count }, () => '') })
+      .catch((err) => console.error('Could not save the channel speakers:', err));
+  }, [doc]);
+  const removeChannelSpeakers = useCallback(() => {
+    doc
+      .setMetadataKeys({ [CHANNEL_SPEAKERS_KEY]: null })
+      .catch((err) => console.error('Could not remove the channel speakers:', err));
+  }, [doc]);
 
   // Whether the element has read the file it was handed. The file arrives
   // whole after the tab opens, and the transcript rows and the keys are live
@@ -1285,19 +1300,26 @@ export const useMediaOperations = () => {
 
   // Mute and Solo need the element's sound in Web Audio (channelMixer.js):
   // the element itself plays a third channel to a centre speaker and a fourth
-  // nowhere. Only a recording with two or more channels is routed there, so
-  // one with one plays as it always did.
+  // nowhere. Only a recording whose channels are speakers (channelSpeakers)
+  // with two or more channels is routed there. Any other plays on the element
+  // alone, a stereo one in stereo. One whose speakers are taken away again
+  // goes straight to the output, since an element cannot leave the graph.
+  const perSpeaker = !!channelSpeakers && channelCount >= 2;
   const mixerRef = useRef(null);
   useEffect(() => {
-    if (!mediaElement || !(channelCount >= 2)) return;
+    if (!perSpeaker) {
+      mixerRef.current?.plain();
+      return;
+    }
+    if (!mediaElement) return;
     if (!mixerRef.current) mixerRef.current = createChannelMixer();
     mixerRef.current.attach(mediaElement, channelCount);
-  }, [mediaElement, channelCount]);
+  }, [mediaElement, channelCount, perSpeaker]);
   useEffect(() => {
     const mixer = mixerRef.current;
-    if (!mixer?.attached || !(channelCount >= 2)) return;
+    if (!mixer?.attached || !perSpeaker) return;
     mixer.setGains(channelGains(channelCount, channelMix.muted, channelMix.solo));
-  }, [channelCount, channelMix]);
+  }, [channelCount, channelMix, perSpeaker]);
   useEffect(() => () => mixerRef.current?.dispose(), []);
 
   // Keep the DOM media element's volume in sync with `volume`. Covers the
@@ -1428,6 +1450,8 @@ export const useMediaOperations = () => {
     toggleChannelMute,
     toggleChannelSolo,
     setChannelSpeaker,
+    addChannelSpeakers,
+    removeChannelSpeakers,
     waveform,
 
     // Media state

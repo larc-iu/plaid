@@ -34,6 +34,7 @@ const mount = async (props = {}) => {
       onToggleMute={vi.fn()}
       onToggleSolo={vi.fn()}
       onSpeakerChange={vi.fn()}
+      onRemove={vi.fn()}
       {...props}
     />,
   );
@@ -95,5 +96,18 @@ describe('ChannelList', () => {
     await mount({ readOnly: true });
     expect(field('Ana speaker').disabled).toBe(true);
     expect(view.container.querySelector('datalist')).toBeNull();
+  });
+
+  it('Remove speakers per channel asks for the way back, and a reader has none', async () => {
+    const onRemove = vi.fn();
+    await mount({ onRemove });
+    const remove = () =>
+      all(view.container, 'button').find((b) => b.textContent === 'Remove speakers per channel');
+    await view.step(() => remove().click());
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    await view.unmount();
+    view = null;
+    await mount({ onRemove, readOnly: true });
+    expect(remove()).toBeUndefined();
   });
 });

@@ -28,7 +28,10 @@ const AudioCtx = () =>
 /**
  * The graph for one media element. `attach(element, count)` builds it (or
  * rebuilds the per-channel part for another count), `setGains(gains)` applies
- * the channels' gains, `dispose()` closes the context.
+ * the channels' gains, `plain()` sends the element straight to the output as
+ * it would play on its own (its channels are no longer speakers, and an
+ * element once made a source cannot leave the graph), `dispose()` closes the
+ * context.
  */
 export function createChannelMixer() {
   let context = null;
@@ -46,13 +49,19 @@ export function createChannelMixer() {
     });
   };
 
-  const rebuild = (count) => {
+  const teardown = () => {
     splitter?.disconnect();
     merger?.disconnect();
     for (const gain of gains) gain.disconnect();
+    splitter = null;
+    merger = null;
+    gains = [];
+  };
+
+  const rebuild = (count) => {
+    teardown();
     splitter = context.createChannelSplitter(count);
     merger = context.createChannelMerger(2);
-    gains = [];
     source.disconnect();
     source.connect(splitter);
     for (let i = 0; i < count; i += 1) {
@@ -87,6 +96,12 @@ export function createChannelMixer() {
       }
       if (gains.length !== count) rebuild(count);
       return true;
+    },
+    plain() {
+      if (!context) return;
+      teardown();
+      source.disconnect();
+      source.connect(context.destination);
     },
     setGains(next) {
       wanted = next || [];
