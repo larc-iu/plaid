@@ -253,3 +253,30 @@ describe('useVadProposals: a service run that produced nothing', () => {
     await r.unmount();
   });
 });
+
+// A proposal that meets a segment is dropped only when the two could not
+// stand together as segments: one speaker's proposals survive over another
+// speaker's segments (cross-talk), as the segments themselves may.
+describe('useVadProposals over segments', () => {
+  const seg = (id, b, e, speaker) => ({
+    id,
+    metadata: { timeBegin: b, timeEnd: e, ...(speaker ? { speaker } : {}) },
+  });
+  const spoken = (speakers) => ({ ...kept(REGIONS), speakers });
+
+  it("keeps a labelled proposal over another speaker's segment, drops the rest", async () => {
+    const tokens = [seg('a', 0, 1, 'Ben'), seg('b', 4, 5, 'Ana'), seg('c', 7, 8)];
+    const r = await renderComponent(<Probe saved={spoken(['Ana', 'Ana'])} tokens={tokens} />);
+    // The first proposal (0.42 to 3.1, Ana) meets Ben's segment: cross-talk, kept.
+    // The second (3.8 to 7.55, Ana) meets Ana's own segment and an unlabelled one: dropped.
+    expect(shown(r)).toBe('vad-0.420-3.100');
+    await r.unmount();
+  });
+
+  it('an unlabelled proposal is dropped by any segment it meets', async () => {
+    const tokens = [seg('a', 0, 1, 'Ben')];
+    const r = await renderComponent(<Probe saved={kept(REGIONS)} tokens={tokens} />);
+    expect(shown(r)).toBe('vad-3.800-7.550');
+    await r.unmount();
+  });
+});

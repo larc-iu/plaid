@@ -5,6 +5,7 @@ import { detectorParams } from './detectSpeechBuiltin.js';
 import { humanizeError } from '@ui/lib/errors.js';
 import { mediaFingerprint } from '../../../domain/media/mediaFingerprint.js';
 import { VAD_METADATA_KEY } from '../../../domain/media/speechDetectionKey.js';
+import { mayOverlap } from '../../../domain/alignmentTimes.js';
 
 // Speech detection as PROPOSALS, not as data.
 //
@@ -30,9 +31,16 @@ import { VAD_METADATA_KEY } from '../../../domain/media/speechDetectionKey.js';
 // The built-in model runs ONCE per recording. Its per-frame probabilities do
 // not depend on any parameter, so moving a slider re-derives the proposals from
 // the cached probabilities in well under a frame. Detect is slow, tuning is free.
+//
+// A recording with a speaker on each channel is listened to channel by
+// channel (`detect({ channels })`): one analysis per chosen channel, and each
+// of its proposals carries that channel's speaker. Two speakers' proposals may
+// overlap in time, as their segments may (alignmentTimes.js).
 
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
+// A proposal as the cross-talk rule reads a segment.
+const asToken = (p) => ({ metadata: { speaker: p.speaker ?? '' } });
 
 /** Where the cuts are kept on the document. */
 export { VAD_METADATA_KEY };
@@ -102,10 +110,15 @@ export function useVadProposals({
   saved = null,
   onPersist = null,
 }) {
-  const [analysis, setAnalysis] = useState(null); // { probs, lengthSamples }, built-in only
+  // [{ probs, lengthSamples, channel?, speaker? }], one per channel listened
+  // to, built-in only.
+  const [analysis, setAnalysis] = useState(null);
   const [serviceRegions, setServiceRegions] = useState(null); // [{timeBegin,timeEnd,speaker?}]
   const [status, setStatus] = useState('idle'); // idle | running | ready | error
   const [progress, setProgress] = useState(0);
+  // Which channel a run is on: `{ index, total, speaker }` while it runs over
+  // several, else null.
+  const [step, setStep] = useState(null);
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(() => new Set());
   const abortRef = useRef(null);
@@ -177,45 +190,60 @@ export function useVadProposals({
     });
   }, []);
 
-  // The built-in: decode, run the model, keep the probabilities.
-  const detect = useCallback(async () => {
-    if (!mediaBlob) return;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStatus('running');
-    setProgress(0);
-    setError(null);
-    setDismissed(new Set());
-    setServiceRegions(null);
-    try {
-      const result = await speechProbabilities(mediaBlob, {
-        onProgress: setProgress,
-        signal: controller.signal,
-      });
-      // Stopped, replaced, or nothing found: the tab keeps whatever is on it.
-      if (controller.signal.aborted || !result) {
-        settleToWhatIsThere();
-        return;
+  // The built-in: decode, run the model, keep the probabilities. With
+  // `channels` (`[{ channel, speaker }]`) the model listens to each chosen
+  // channel in turn, and each one's proposals carry its speaker.
+  const detect = useCallback(
+    async ({ channels = null } = {}) => {
+      if (!mediaBlob) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setStatus('running');
+      setProgress(0);
+      setStep(null);
+      setError(null);
+      setDismissed(new Set());
+      setServiceRegions(null);
+      const runs = channels?.length ? channels : [{ channel: null, speaker: undefined }];
+      try {
+        const results = [];
+        for (const [i, run] of runs.entries()) {
+          if (runs.length > 1) setStep({ index: i, total: runs.length, speaker: run.speaker });
+          const result = await speechProbabilities(mediaBlob, {
+            onProgress: (f) => setProgress((i + f) / runs.length),
+            signal: controller.signal,
+            channel: run.channel,
+          });
+          // Stopped, replaced, or nothing found: the tab keeps whatever is on it.
+          if (controller.signal.aborted || !result) {
+            settleToWhatIsThere();
+            return;
+          }
+          results.push({ ...result, channel: run.channel, speaker: run.speaker || undefined });
+        }
+        setAnalysis(results);
+        setStatus('ready');
+      } catch (e) {
+        console.error('Speech detection failed:', e);
+        // A run another run replaced does not get to speak: the tab belongs to
+        // the one that replaced it, whichever of them lands first.
+        if (abortRef.current !== controller) return;
+        // A run the reader stopped does not either. Tearing a worker down
+        // mid-run can come back as an error rather than as a cancellation, and
+        // that is not a failure anybody needs to hear about.
+        if (controller.signal.aborted) {
+          settleToWhatIsThere();
+          return;
+        }
+        setError(humanizeError(e));
+        setStatus('error');
+      } finally {
+        if (abortRef.current === controller) setStep(null);
       }
-      setAnalysis(result);
-      setStatus('ready');
-    } catch (e) {
-      console.error('Speech detection failed:', e);
-      // A run another run replaced does not get to speak: the tab belongs to
-      // the one that replaced it, whichever of them lands first.
-      if (abortRef.current !== controller) return;
-      // A run the reader stopped does not either. Tearing a worker down
-      // mid-run can come back as an error rather than as a cancellation, and
-      // that is not a failure anybody needs to hear about.
-      if (controller.signal.aborted) {
-        settleToWhatIsThere();
-        return;
-      }
-      setError(humanizeError(e));
-      setStatus('error');
-    }
-  }, [mediaBlob, settleToWhatIsThere]);
+    },
+    [mediaBlob, settleToWhatIsThere],
+  );
 
   // A `detect-speech` service's regions, taken as proposals like the model's.
   // Times are seconds; a region without a usable pair is dropped rather than
@@ -289,21 +317,35 @@ export function useVadProposals({
     const found =
       serviceRegions ??
       (analysis
-        ? toSeconds(
-            speechTimestamps(analysis.probs, analysis.lengthSamples, detectorParams(derivedFrom)),
-          )
+        ? analysis
+            .flatMap((a) =>
+              toSeconds(
+                speechTimestamps(a.probs, a.lengthSamples, detectorParams(derivedFrom)),
+              ).map((r) => ({
+                ...r,
+                ...(a.speaker ? { speaker: a.speaker } : {}),
+                ...(Number.isInteger(a.channel) ? { channel: a.channel } : {}),
+              })),
+            )
+            .sort((a, b) => a.timeBegin - b.timeBegin)
         : null);
     if (!found) return { proposals: [], foundCount: 0, regions: null };
     const tokens = alignmentTokens || [];
+    // A proposal meets a segment: dropped unless the two could stand together
+    // as segments (both labelled, different speakers), so one speaker's
+    // proposals survive over the other's segments.
+    const meets = (p) => (t) =>
+      timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin && !mayOverlap(asToken(p), t);
     return {
       regions: found,
       foundCount: found.length,
       proposals: found
-        .map((r) => ({ id: `vad-${r.timeBegin.toFixed(3)}-${r.timeEnd.toFixed(3)}`, ...r }))
+        .map((r) => ({
+          id: `vad-${Number.isInteger(r.channel) ? `${r.channel}-` : ''}${r.timeBegin.toFixed(3)}-${r.timeEnd.toFixed(3)}`,
+          ...r,
+        }))
         .filter((p) => !dismissed.has(p.id))
-        .filter(
-          (p) => !tokens.some((t) => timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin),
-        ),
+        .filter((p) => !tokens.some(meets(p))),
     };
   }, [analysis, serviceRegions, derivedFrom, dismissed, alignmentTokens]);
 
@@ -344,6 +386,7 @@ export function useVadProposals({
     hasAnalysis: !!analysis || !!serviceRegions,
     status,
     progress,
+    step,
     error,
     detect,
     acceptServiceRegions,

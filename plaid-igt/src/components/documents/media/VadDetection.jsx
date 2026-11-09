@@ -3,6 +3,8 @@ import { AudioLines } from 'lucide-react';
 import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
+import { ChannelChecklist } from './ChannelChecklist.jsx';
+import { useChosenChannels } from './useChosenChannels.js';
 
 // Speech detection: the button in the Recording header and the dialog behind
 // it. Only the controls live here. What detection produces is shown where it
@@ -12,15 +14,20 @@ import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 // With the built-in model every control re-derives the proposals from
 // probabilities already produced, so tuning is instant after the one slow pass.
 // Only Detect runs the model, and it keeps running with the dialog shut.
+//
+// A recording with a speaker on each channel lists the channels, each with a
+// box, and the detector listens to each chosen channel on its own.
 export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
   const [open, setOpen] = useState(false);
-  const { vad, detectSpot, detectRun, handleDetectSpeech, cancelRequest } = mediaOps;
+  const { vad, detectSpot, detectRun, handleDetectSpeech, cancelRequest, channelSpeakers } =
+    mediaOps;
   const { proposals, foundCount, status, error, hasAnalysis } = vad;
   const running = detectRun.running || status === 'running';
   const count = proposals.length;
   // Both methods stop from the one button: the built-in model aborts its
   // worker, a service is asked to stop. A service run used to offer neither.
   const stopDetection = detectSpot.service ? cancelRequest : vad.cancel;
+  const channels = useChosenChannels(channelSpeakers);
 
   const summary =
     count > 0
@@ -53,12 +60,13 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         error={status === 'error' ? error : null}
         result={status === 'ready' ? summary : null}
         runLabel="Detect"
-        onRun={handleDetectSpeech}
-        runDisabled={readOnly || disabled}
+        onRun={() => handleDetectSpeech({ channels: channels.chosen })}
+        runDisabled={readOnly || disabled || channels.none}
         onCancel={stopDetection}
         secondary={hasAnalysis && !running ? { label: 'Discard', onClick: vad.clear } : undefined}
       >
         <ServiceMethodRow spot={detectSpot} disabled={running} />
+        <ChannelChecklist channels={channels} disabled={running} />
       </ServiceRunDialog>
     </>
   );

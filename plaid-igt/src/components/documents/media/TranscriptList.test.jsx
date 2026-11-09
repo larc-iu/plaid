@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
+import { setStickySpeaker } from './stickySpeaker.js';
 import { pendingId, recordSettled } from '@ui/domain/pendingIds.js';
 import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { settle } from '@/domain/test-helpers.js';
@@ -850,6 +851,28 @@ describe('TranscriptList proposals', () => {
       timeEnd: 4.0,
       speaker: '',
     });
+  });
+
+  it('a proposal with a speaker makes a segment with that speaker', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(
+      element(doc, withVad({ proposals: [{ ...PROPOSALS[1], speaker: 'Ana' }] })),
+    );
+    expect(r.container.querySelector('[data-vad-proposal-row="vad-2"] input[list]').value).toBe(
+      'Ana',
+    );
+    const box = proposalText(r.container, 'vad-2');
+    setValue(box, 'hers');
+    press(box, 'Enter');
+    await settle();
+    expect(doc.createAlignment).toHaveBeenCalledWith({
+      text: 'hers',
+      timeBegin: 3.2,
+      timeEnd: 4.0,
+      speaker: 'Ana',
+    });
+    // The save made Ana the sticky speaker; the next test starts with none.
+    setStickySpeaker('');
   });
 
   it('saves what was typed into a proposal when focus leaves it', async () => {

@@ -539,7 +539,9 @@ export const useMediaOperations = () => {
   });
   useMirroredProgress(detectRun, {
     percent: vad.progress > 0 ? vad.progress * 100 : null,
-    message: 'Detecting speech…',
+    message: vad.step
+      ? `Detecting speech, ${vad.step.speaker || `channel ${vad.step.index + 1}`} (${vad.step.index + 1} of ${vad.step.total})…`
+      : 'Detecting speech…',
     active: detectRun.running && !detectSpot.service,
   });
 
@@ -1031,76 +1033,99 @@ export const useMediaOperations = () => {
   // somebody types into a proposal, so this run takes NO write lock — typing
   // into a proposal IS how it is accepted, and locking would break the gesture
   // the feature exists for.
-  const handleDetectSpeech = useCallback(async () => {
-    const service = detectSpot.service;
-    if (!service) {
-      detectRun.start(['Detect speech']);
+  // `channels` (`[{ channel, speaker }]`) is the chosen channels of a
+  // recording with a speaker on each: the built-in listens to each on its
+  // own, and a service is asked once per channel, with `channel` and
+  // `speaker` beside the ids, and its regions take that speaker. Null runs
+  // the whole recording as it always did.
+  const handleDetectSpeech = useCallback(
+    async ({ channels = null } = {}) => {
+      const service = detectSpot.service;
+      if (!service) {
+        detectRun.start(['Detect speech']);
+        try {
+          await vad.detect({ channels });
+        } finally {
+          detectRun.finish();
+        }
+        return;
+      }
+      // One service run at a time, the same guard Transcribe carries. Without
+      // it the dialog opened its progress row and the proposal list went to
+      // "running", `requestService` refused and returned nothing, and the run
+      // ended a beat later saying nothing at all.
+      if (isProcessing) {
+        notifyError('Another service run is in progress.', 'Detect speech');
+        return;
+      }
+
+      const missing = Object.values(detectSpot.params.errors);
+      if (missing.length) {
+        notifyError(missing[0], 'Missing required option');
+        return;
+      }
+      const runs = channels?.length ? channels : [null];
+      detectRun.start(
+        runs.length > 1
+          ? runs.map((c) => c.speaker || `Channel ${c.channel + 1}`)
+          : ['Detect speech'],
+      );
+      vad.beginServiceRun();
       try {
-        await vad.detect();
+        const regions = [];
+        for (const [i, run] of runs.entries()) {
+          if (runs.length > 1) detectRun.step(i);
+          const result = await requestService(
+            project.id,
+            doc.document.id,
+            service.serviceId,
+            {
+              ...detectSpot.params.coerced(),
+              documentId: doc.document.id,
+              projectId: project.id,
+              ...(run ? { channel: run.channel, speaker: run.speaker || '' } : {}),
+            },
+            {
+              successTitle: 'Speech detection complete',
+              successMessage: `${service.serviceName} finished.`,
+              errorTitle: 'Failed to detect speech',
+              errorMessage: `${service.serviceName} reported an error.`,
+              stoppedTitle: 'Speech detection',
+              // Detection writes nothing: a segment is a stretch of the baseline
+              // and cannot exist without text, so there is nothing to have kept.
+              stoppedMessage: 'Stopped. The proposals on the document are unchanged.',
+              // And it writes down no run, so a reload would find nothing to rejoin.
+              lostMessage: 'Lost contact with the service.',
+            },
+          );
+          // A stopped run carries no regions, and a refused one is not a result at
+          // all. Either taken as an empty list would read as "no speech found" and
+          // wipe the proposals the document already had.
+          if (!result || result.stopped === true) {
+            vad.abandonServiceRun();
+            return;
+          }
+          // A detect-speech service RETURNS its regions and writes nothing: a
+          // segment is a stretch of the baseline and cannot exist without text.
+          // A channel's regions take the channel's speaker unless the service
+          // named one.
+          for (const s of result.segments ?? []) {
+            regions.push(run?.speaker && !s.speaker ? { ...s, speaker: run.speaker } : s);
+          }
+        }
+        vad.acceptServiceRegions(regions);
+      } catch (error) {
+        // A lost connection is not a failed detection: the run may still be out
+        // there, and the proposals already on the document are untouched either
+        // way. The request hook has said so, so leave the dialog as it was.
+        if (error?.pending) vad.abandonServiceRun();
+        else vad.failRun(error?.message ?? String(error));
       } finally {
         detectRun.finish();
       }
-      return;
-    }
-    // One service run at a time, the same guard Transcribe carries. Without
-    // it the dialog opened its progress row and the proposal list went to
-    // "running", `requestService` refused and returned nothing, and the run
-    // ended a beat later saying nothing at all.
-    if (isProcessing) {
-      notifyError('Another service run is in progress.', 'Detect speech');
-      return;
-    }
-
-    const missing = Object.values(detectSpot.params.errors);
-    if (missing.length) {
-      notifyError(missing[0], 'Missing required option');
-      return;
-    }
-    detectRun.start(['Detect speech']);
-    vad.beginServiceRun();
-    try {
-      const result = await requestService(
-        project.id,
-        doc.document.id,
-        service.serviceId,
-        {
-          ...detectSpot.params.coerced(),
-          documentId: doc.document.id,
-          projectId: project.id,
-        },
-        {
-          successTitle: 'Speech detection complete',
-          successMessage: `${service.serviceName} finished.`,
-          errorTitle: 'Failed to detect speech',
-          errorMessage: `${service.serviceName} reported an error.`,
-          stoppedTitle: 'Speech detection',
-          // Detection writes nothing: a segment is a stretch of the baseline
-          // and cannot exist without text, so there is nothing to have kept.
-          stoppedMessage: 'Stopped. The proposals on the document are unchanged.',
-          // And it writes down no run, so a reload would find nothing to rejoin.
-          lostMessage: 'Lost contact with the service.',
-        },
-      );
-      // A stopped run carries no regions, and a refused one is not a result at
-      // all. Either taken as an empty list would read as "no speech found" and
-      // wipe the proposals the document already had.
-      if (!result || result.stopped === true) {
-        vad.abandonServiceRun();
-        return;
-      }
-      // A detect-speech service RETURNS its regions and writes nothing: a
-      // segment is a stretch of the baseline and cannot exist without text.
-      vad.acceptServiceRegions(result.segments ?? []);
-    } catch (error) {
-      // A lost connection is not a failed detection: the run may still be out
-      // there, and the proposals already on the document are untouched either
-      // way. The request hook has said so, so leave the dialog as it was.
-      if (error?.pending) vad.abandonServiceRun();
-      else vad.failRun(error?.message ?? String(error));
-    } finally {
-      detectRun.finish();
-    }
-  }, [detectSpot, detectRun, vad, requestService, isProcessing, project, doc]);
+    },
+    [detectSpot, detectRun, vad, requestService, isProcessing, project, doc],
+  );
 
   // Deleting a segment takes its text with it by default: a segment IS its
   // utterance, and the row asks first only when annotations are built on that

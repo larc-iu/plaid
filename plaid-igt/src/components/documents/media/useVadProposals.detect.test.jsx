@@ -195,3 +195,49 @@ describe('a detection run that is not the one on screen', () => {
     await view.unmount();
   });
 });
+
+// A recording with a speaker on each channel is listened to channel by
+// channel, and each channel's proposals carry its speaker.
+describe('a detection run over channels', () => {
+  it('runs the model once per chosen channel and labels each proposal with the speaker', async () => {
+    const view = await renderComponent(<Probe />);
+    await view.step(() => {
+      api.detect({
+        channels: [
+          { channel: 0, speaker: 'Ana' },
+          { channel: 2, speaker: '' },
+        ],
+      });
+    });
+    expect(speechProbabilities).toHaveBeenCalledTimes(1);
+    expect(speechProbabilities.mock.calls[0][1].channel).toBe(0);
+    expect(api.step).toEqual({ index: 0, total: 2, speaker: 'Ana' });
+    await view.step(() => runs[0].finish({ probs: SECOND, lengthSamples: 10 }));
+    await settle(view);
+    expect(speechProbabilities).toHaveBeenCalledTimes(2);
+    expect(speechProbabilities.mock.calls[1][1].channel).toBe(2);
+    await view.step(() => runs[1].finish({ probs: FIRST, lengthSamples: 10 }));
+    await settle(view);
+    expect(api.status).toBe('ready');
+    expect(api.step).toBeNull();
+    // In time order, the first channel's proposal with its speaker and the
+    // third channel's with none, each named by its channel.
+    expect(api.proposals.map((p) => [p.id, p.speaker ?? null])).toEqual([
+      ['vad-2-0.100-1.000', null],
+      ['vad-0-5.000-6.250', 'Ana'],
+    ]);
+    await view.unmount();
+  });
+
+  it('with no channels named listens to the whole recording as before', async () => {
+    const view = await renderComponent(<Probe />);
+    await view.step(() => {
+      api.detect();
+    });
+    expect(speechProbabilities.mock.calls[0][1].channel).toBe(null);
+    await view.step(() => runs[0].finish({ probs: FIRST, lengthSamples: 10 }));
+    await settle(view);
+    expect(idsOf(api)).toBe('vad-0.100-1.000');
+    await view.unmount();
+  });
+});

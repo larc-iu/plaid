@@ -590,7 +590,10 @@ const ProposalRow = memo(function ProposalRow({
   registerText,
 }) {
   const [draft, setDraftState] = useState('');
-  const [speaker, setSpeakerState] = useState(getStickySpeaker);
+  // A proposal with a speaker (a channel's, or a service's) makes a segment
+  // with that speaker. One without takes the last speaker saved, as a new
+  // segment does.
+  const [speaker, setSpeakerState] = useState(() => proposal.speaker || getStickySpeaker());
   const ref = useRef(null);
   // Mirrored into refs for the same reason the segment row does it: the blur
   // that follows a keystroke runs before React re-renders, so a guard read

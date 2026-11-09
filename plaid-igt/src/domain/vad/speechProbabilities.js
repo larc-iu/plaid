@@ -12,13 +12,18 @@ import { decodeShared } from './sharedDecode.js';
 /**
  * @param {Blob} blob                 the recording, as fetched for playback
  * @param {(fraction: number) => void} [onProgress]  0..1, model frames only
+ * @param {number|null} [channel]     listen to this one channel (0-based)
+ *                                    rather than the mix of them all, for a
+ *                                    recording with a speaker on each channel
  * @returns {Promise<{probs: Float32Array, lengthSamples: number} | null>}
  *          null when cancelled
  */
-export async function speechProbabilities(blob, { onProgress, signal } = {}) {
+export async function speechProbabilities(blob, { onProgress, signal, channel = null } = {}) {
   // The timeline's waveform may be decoding the same recording now, and then
-  // gets the same array: a copy goes to the worker, never the shared one.
-  const { samples: decoded, shared } = await decodeShared(blob);
+  // gets the same arrays: a copy goes to the worker, never the shared one.
+  const perChannel = Number.isInteger(channel);
+  const { samples: mono, channels, shared } = await decodeShared(blob, { perChannel });
+  const decoded = perChannel ? (channels?.[channel] ?? mono) : mono;
   const samples = shared ? decoded.slice() : decoded;
   const lengthSamples = samples.length;
   if (signal?.aborted) return null;
