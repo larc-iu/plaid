@@ -36,10 +36,9 @@ const MP3_SCAN_BYTES = 64 * 1024;
 
 async function mp3Rate(file) {
   const head = await readSlice(file, 0, 10);
-  if (head.byteLength < 10) return null;
   let at = 0;
   // Past an ID3v2 tag, whose size is four 7-bit bytes.
-  if (typeAt(head, 0).startsWith('ID3')) {
+  if (head.byteLength >= 10 && typeAt(head, 0).startsWith('ID3')) {
     at =
       10 +
       ((head.getUint8(6) << 21) |
