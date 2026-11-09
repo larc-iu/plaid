@@ -63,8 +63,9 @@ const checkpoint = (shouldStop) => {
 //   copyContents — { segmentation, links, fields } for the copy phase
 //   onProgress   — ({percent, message}) as the phases advance
 //   shouldStop   — read at each checkpoint, true ends the run there
-//   leave        — words the link phase leaves alone with their morphemes:
-//                  the ones a copy phase run before analyzed (H17-IGT-EDIT-2)
+//   leave        — words whose links (and their morphemes') the link phase
+//                  keeps, filling only what has none: the ones a copy phase
+//                  run before analyzed (H17-IGT-EDIT-2, H5-5)
 // Returns { copied, copiedWordIds, linked, ok, stopped }. `copiedWordIds` names
 // the words the copy phase wrote, so the dialog can tell the model step to
 // leave them. Copy runs first so the linker doesn't
@@ -239,7 +240,7 @@ async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
 // names the rule and its version. The run's operation is opened once the edits
 // made before it have landed: the client holds one open operation, and an
 // edit still saving holds one, which this run's would otherwise join.
-// `leave` is the words the copy phase just analyzed, which it leaves alone.
+// `leave` is the words the copy phase just analyzed, whose links it keeps.
 async function runLinkPhase(doc, onProgress, shouldStop, leave = []) {
   await doc.whenSaved();
   const run = builtinRun(BUILTIN_LINK_PRECEDENT);

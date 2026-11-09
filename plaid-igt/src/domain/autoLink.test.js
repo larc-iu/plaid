@@ -77,6 +77,35 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
+  // H5-5 (Luke 2026-11-09): a copied word keeps the links the copy brought,
+  // and what the copy left unlinked is filled in the same run. One run used
+  // to leave ama=na's "na" unlinked, and a second run linked it.
+  it('fills what a copy left unlinked in the same run, so one run gives what two runs give (H5-5)', () => {
+    const vocabs = {
+      v1: {
+        id: 'v1',
+        items: [
+          { id: 'i-ama', form: 'ama' },
+          { id: 'i-na', form: 'na' },
+        ],
+      },
+    };
+    const precedent = precedentOf(res([['i-na', null, 'na', 'morpheme', null, null, null, 1]]));
+    const copied = { id: 'i-ama', prov: 'machine', provSource: AUTO_LINK_SOURCE };
+    const sentences = sentence([
+      word('w1', 'ama=na', null, [morph('m1', 'ama', copied), morph('m2', 'na')]),
+    ]);
+    const once = computeAutoLinkProposals({
+      sentences,
+      vocabularies: vocabs,
+      precedent,
+      leave: ['w1'],
+    });
+    const second = computeAutoLinkProposals({ sentences, vocabularies: vocabs, precedent });
+    expect(once).toEqual([{ tokenId: 'm2', vocabItemId: 'i-na', form: 'na', kind: 'morpheme' }]);
+    expect(once).toEqual(second);
+  });
+
   it('links to a sense, not to the headword standing over it', () => {
     // A FLEx entry with several senses imports as a headword (no gloss of its
     // own) plus its senses, all sharing the form. The headword sorts first by

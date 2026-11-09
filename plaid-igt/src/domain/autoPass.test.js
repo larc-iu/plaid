@@ -325,7 +325,22 @@ describe('runBuiltinAnalysis: link precedent', () => {
     expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai1']);
   });
 
-  it('leaves the words it is told to, as the dialog tells it the words its copy step analyzed (H17-IGT-EDIT-2)', async () => {
+  it('keeps the links of the words it is told to, as the dialog tells it the words its copy step analyzed (H17-IGT-EDIT-2)', async () => {
+    const server = { a: ['kai1'], b: [] };
+    const doc = makeLinkDoc(server);
+    // The copy brought kai2, a machine link precedent would replace.
+    doc.sentences[0].tokens.push({
+      id: 't-copied',
+      content: 'kai',
+      vocabItem: { id: 'kai2', prov: 'machine' },
+      morphemes: [],
+    });
+    const res = await runBuiltinAnalysis(doc, { copy: false, link: true, leave: ['t-copied'] });
+    expect(res.ok).toBe(true);
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.tokenId)).toEqual(['t-open']);
+  });
+
+  it('links what a copied word has no link for in the same run (H5-5)', async () => {
     const server = { a: ['kai1'], b: [] };
     const doc = makeLinkDoc(server);
     doc.sentences[0].tokens.push({
@@ -336,7 +351,10 @@ describe('runBuiltinAnalysis: link precedent', () => {
     });
     const res = await runBuiltinAnalysis(doc, { copy: false, link: true, leave: ['t-copied'] });
     expect(res.ok).toBe(true);
-    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.tokenId)).toEqual(['t-open']);
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.tokenId)).toEqual([
+      't-open',
+      't-copied',
+    ]);
   });
 
   it('follows no unverified machine link: with only those as precedent, the exact form decides (R28)', async () => {

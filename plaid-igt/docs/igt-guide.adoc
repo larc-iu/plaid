@@ -519,7 +519,7 @@ Everything it produces shows in violet until you accept or discard it (see <<_pr
 1. **Propose translations.** A translation service drafts a free translation for every sentence. It runs first because the later steps read the translation. Needs a connected translation service.
 2. **Copy previous analyses.** Every word that has not been analyzed at all is given the analysis the same word form has most often had elsewhere in the project. This is built in and needs no service (see <<_copying_previous_analyses>>).
 3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word a person has not analyzed. Needs a connected analysis service.
-4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. Needs the project to have a vocabulary.
+4. **Link to the lexicon.** Words and morphemes no person has linked are linked to lexicon entries, by the built-in rule described below or by a service. It runs last so that it can link the stems step 3 produced. On a word step 2 copied, the built-in rule keeps the links the copy brought and links only what has none. Needs the project to have a vocabulary.
 
 A service step is unavailable when no service for it is online.
 An analysis service writes its glosses into the morpheme field whose lexicon field is the entry's gloss, and a translation service into the sentence field whose role is the translation, or the field chosen in the dialog.

@@ -206,9 +206,11 @@ function hasForm(items, id, form) {
 // chip, not two identical ones). A word with several morphemes may link on
 // its own alongside them.
 //
-// `leave` names words left alone with their morphemes: the ones the same
-// Auto-analyze run's copy phase just analyzed, whose links came with their
-// glosses as one analysis (H17-IGT-EDIT-2).
+// `leave` names words whose links stay as they are, with their morphemes'
+// links: the ones the same Auto-analyze run's copy phase just analyzed, whose
+// links came with their glosses as one analysis (H17-IGT-EDIT-2). What such a
+// word or morpheme has no link for is filled like any other, so one run links
+// what a second run would (H5-5).
 export function computeAutoLinkProposals({
   sentences,
   vocabularies,
@@ -219,7 +221,8 @@ export function computeAutoLinkProposals({
   const left = new Set(leave);
   const items = buildItemIndex(vocabularies);
   const proposals = [];
-  const consider = (entity, form, kind) => {
+  const consider = (entity, form, kind, keepLinks = false) => {
+    if (keepLinks && entity.vocabItem) return;
     // A zero morph is never auto-linked. Its form carries no information to
     // match on, so with one ∅ entry in the lexicon every zero in the project
     // would link to it, and with several `resolveForm` would pick by smallest
@@ -234,12 +237,12 @@ export function computeAutoLinkProposals({
   };
   const words = [];
   for (const s of sentences || []) {
-    for (const t of s.tokens || []) if (!left.has(t.id)) words.push(t);
+    for (const t of s.tokens || []) words.push(t);
   }
   for (const t of words) {
     for (const m of t.morphemes || []) {
       const form = morphFormOf(m);
-      if (form) consider(m, form, KINDS.MORPHEME);
+      if (form) consider(m, form, KINDS.MORPHEME, left.has(t.id));
     }
   }
   const proposedMorphs = new Set(proposals.map((p) => p.tokenId));
@@ -249,7 +252,7 @@ export function computeAutoLinkProposals({
     // Word forms lose edge punctuation by the project's ignore rule (the
     // same trim the popover's "+ Create" applies): `derechos.` links to
     // `derechos`. Morpheme forms are used verbatim.
-    consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), KINDS.WORD);
+    consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), KINDS.WORD, left.has(t.id));
   }
   return proposals;
 }
